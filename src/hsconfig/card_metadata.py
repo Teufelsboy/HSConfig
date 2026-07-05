@@ -67,6 +67,10 @@ def hydrate_card_metadata(
             "card_class": source.get("card_class", source.get("class")),
             "text": source.get("text", ""),
             "mechanics": list(source.get("mechanics", card.get("mechanics", [])) or []),
+            "referenced_tags": list(
+                source.get("referenced_tags", source.get("referencedTags", [])) or []
+            ),
+            "entourage": list(source.get("entourage", []) or []),
             "metadata_status": metadata_status,
             "source_record_key": source_key if source else None,
         }
