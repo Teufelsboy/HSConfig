@@ -37,7 +37,7 @@ def enrich_card_metadata(
         semantic_families.update(_semantic_families_from_card(enriched))
         linked_entities = list(enriched.get("linked_entities", []))
 
-        if "shadowform" in semantic_families:
+        if "shadowform" in semantic_families and "start_of_game" in semantic_families:
             hero_power, warning = _mind_spike_entity(hjson_index)
             linked_entities.append(hero_power)
             if warning:
@@ -72,9 +72,12 @@ def enrich_card_metadata(
 
 def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
     merged = dict(card)
-    merged.setdefault("name", hjson.get("name"))
-    merged.setdefault("type", hjson.get("type"))
-    merged.setdefault("text", hjson.get("text", ""))
+    if _is_missing_value(merged.get("name")) or merged.get("name") == merged.get("card_id"):
+        merged["name"] = hjson.get("name")
+    if _is_missing_value(merged.get("type")) or str(merged.get("type")).upper() == "UNKNOWN":
+        merged["type"] = hjson.get("type")
+    if _is_missing_value(merged.get("text")):
+        merged["text"] = hjson.get("text", "")
     merged["referenced_tags"] = list(
         dict.fromkeys([*merged.get("referenced_tags", []), *hjson.get("referenced_tags", [])])
     )
@@ -85,7 +88,7 @@ def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
 
 
 def _semantic_families_from_card(card: dict[str, Any]) -> set[str]:
-    text = _plain_text(str(card.get("text", ""))).lower()
+    text = _plain_text(f"{card.get('name', '')} {card.get('text', '')}").lower()
     tags = {str(tag).upper() for tag in card.get("referenced_tags", [])}
     families: set[str] = set()
     if "START_OF_GAME_KEYWORD" in tags or "start of game" in text:
@@ -97,6 +100,10 @@ def _semantic_families_from_card(card: dict[str, Any]) -> set[str]:
     if str(card.get("type", "")).upper() == "HERO_POWER":
         families.add("hero_power")
     return families
+
+
+def _is_missing_value(value: Any) -> bool:
+    return value is None or str(value).strip() == ""
 
 
 def _mind_spike_entity(index: dict[str, dict[str, Any]]) -> tuple[dict[str, Any], str | None]:

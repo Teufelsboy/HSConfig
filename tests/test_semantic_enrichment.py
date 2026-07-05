@@ -60,6 +60,56 @@ def test_enrichment_uses_fallback_mind_spike_when_json_rows_are_missing():
     assert enriched["semantic_enrichment_warnings"]
 
 
+def test_enrichment_hydrates_sparse_darkbishop_from_hearthstonejson():
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "dbf_id": 64443,
+                "name": "SW_448",
+                "type": "UNKNOWN",
+                "text": "",
+                "mechanic_families": [],
+                "metadata_status": "source_record",
+            }
+        ]
+    }
+
+    enriched = enrich_card_metadata(
+        card_metadata,
+        hearthstonejson_cards=load_cards_json(FIXTURE),
+    )
+
+    card = enriched["cards"][0]
+    assert card["name"] == "Darkbishop Benedictus"
+    assert card["type"] == "MINION"
+    assert "shadowform" in card["semantic_families"]
+    assert "hero_power_transform" in card["semantic_families"]
+    assert enriched["deckwide_effects"][0]["target_name"] == "Mind Spike"
+
+
+def test_shadowform_spell_does_not_replace_starting_hero_power():
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "EX1_625",
+                "name": "Shadowform",
+                "type": "SPELL",
+                "text": "Enter Shadowform. Your Hero Power becomes 'Deal 2 damage.'",
+                "mechanic_families": ["spell"],
+                "metadata_status": "source_record",
+            }
+        ]
+    }
+
+    enriched = enrich_card_metadata(card_metadata, hearthstonejson_cards=[])
+
+    card = enriched["cards"][0]
+    assert "shadowform" in card["semantic_families"]
+    assert "hero_power_transform" not in card["semantic_families"]
+    assert enriched["deckwide_effects"] == []
+
+
 def test_non_shadowform_cards_keep_existing_mechanic_families():
     card_metadata = {
         "cards": [
