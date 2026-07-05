@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
+import operator
 from typing import Any
 
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
+NUMERIC_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Div: operator.truediv,
+    ast.Mult: operator.mul,
+    ast.Sub: operator.sub,
+}
 
 
 def compile_globalvalues(
@@ -135,10 +143,39 @@ def _scale_numeric_string(value: str | None, multiplier: float) -> str:
     if value is None:
         return "1"
     try:
-        scaled = float(value) * multiplier
+        scaled = _numeric_value(value) * multiplier
     except ValueError:
         return value
     return f"{scaled:.2f}"
+
+
+def _numeric_value(value: str) -> float:
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        return float(_eval_numeric_expression(ast.parse(value, mode="eval").body))
+    except (SyntaxError, ValueError, ZeroDivisionError):
+        raise ValueError(value) from None
+
+
+def _eval_numeric_expression(node: ast.AST) -> float:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -_eval_numeric_expression(node.operand)
+    if isinstance(node, ast.BinOp):
+        operator_fn = NUMERIC_OPERATORS.get(type(node.op))
+        if operator_fn is None:
+            raise ValueError("unsupported numeric operator")
+        return float(
+            operator_fn(
+                _eval_numeric_expression(node.left),
+                _eval_numeric_expression(node.right),
+            )
+        )
+    raise ValueError("unsupported numeric expression")
 
 
 def _classify_key(key: str) -> str:

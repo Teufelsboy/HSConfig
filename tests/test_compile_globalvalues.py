@@ -64,3 +64,23 @@ def test_validate_package_rejects_globalvalues_missing_baseline_keys(tmp_path: P
 
     assert report["status"] == "failed"
     assert any("GlobalValues missing baseline key" in error for error in report["errors"])
+
+
+def test_compile_globalvalues_scales_simple_numeric_expressions():
+    default_values = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Default GlobalValues fixture",
+        "GlobalMinionIntrinsicValue": {"values": [{"condition": "*", "value": "3.32 + 2"}]},
+    }
+    contract = {
+        "deck_name": "Fixture Aggro",
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {"GlobalMinionIntrinsicValue": "increase"},
+        },
+    }
+
+    result = compile_globalvalues(default_values, contract)
+
+    assert result["config"]["GlobalMinionIntrinsicValue"]["values"][0]["value"] == "6.12"
+    assert result["profile"]["changed_keys"] == ["GlobalMinionIntrinsicValue"]

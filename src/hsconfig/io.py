@@ -8,8 +8,11 @@ from typing import Any
 
 
 def read_json(path: str | Path) -> Any:
-    with Path(path).open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    text = Path(path).read_text(encoding="utf-8-sig")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return json.loads(_strip_trailing_commas(text))
 
 
 def write_json(path: str | Path, data: Any) -> None:
@@ -32,3 +35,40 @@ def slugify_deck_name(deck_name: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9]+", "_", deck_name.strip().lower())
     slug = re.sub(r"_+", "_", slug).strip("_")
     return slug or "deck"
+
+
+def _strip_trailing_commas(text: str) -> str:
+    output: list[str] = []
+    in_string = False
+    escape = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            output.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+
+        if char == ",":
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "}]":
+                index += 1
+                continue
+
+        output.append(char)
+        index += 1
+    return "".join(output)

@@ -14,6 +14,38 @@ def test_json_round_trip_and_hash(tmp_path: Path):
     assert file_sha256(path) == hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def test_read_json_accepts_utf8_bom(tmp_path: Path):
+    path = tmp_path / "runtime_globalvalues.json"
+    path.write_bytes(b"\xef\xbb\xbf{\"GameCardId\":\"GlobalValues\"}")
+
+    assert read_json(path) == {"GameCardId": "GlobalValues"}
+
+
+def test_read_json_accepts_visionai_trailing_commas(tmp_path: Path):
+    path = tmp_path / "runtime_globalvalues.json"
+    path.write_text(
+        """
+        {
+          "GameCardId": "GlobalValues",
+          "FirstTurnValueWeight": {
+            "values": [
+              {
+                "condition": "*",
+                "value": "0",
+              },
+            ],
+          },
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    assert read_json(path) == {
+        "GameCardId": "GlobalValues",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+    }
+
+
 def test_slugify_deck_name_normalizes_names():
     assert slugify_deck_name("Shadow Priest!") == "shadow_priest"
     assert slugify_deck_name("  CtA Paladin  ") == "cta_paladin"

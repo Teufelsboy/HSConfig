@@ -162,7 +162,7 @@ def _coerce_source_claims(
         return normalize_source_claims(claims)
     for claim in claims:
         claim.setdefault("cards", [])
-        claim["cards"] = sorted({str(card) for card in claim.get("cards", [])})
+        claim["cards"] = list(dict.fromkeys(str(card) for card in claim.get("cards", [])))
         claim.setdefault("claim_type", "general")
         claim.setdefault("confidence", "source_backed")
         claim.setdefault("source_claim_ids", [claim["claim_id"]])
@@ -283,8 +283,28 @@ def _confidence_label(card_map: dict[str, dict[str, Any]], claims: list[dict[str
 def _global_value_overlays(card_map: dict[str, dict[str, Any]]) -> dict[str, str]:
     overlays: dict[str, str] = {}
     all_roles = {role for card in card_map.values() for role in card.get("roles", [])}
+    if {"pressure", "damage", "combo_piece"} & all_roles:
+        overlays.update(
+            {
+                "GlobalMinionAttack": "increase",
+                "GlobalMinionIntrinsicValue": "increase",
+                "OppGlobalHeroHealth": "increase",
+                "OppGlobalMinionAttack": "decrease",
+                "OppGlobalMinionHealth": "decrease",
+                "OppGlobalMinionIntrinsicValue": "decrease",
+            }
+        )
     if "divine_shield" in all_roles:
         overlays["GlobalDivineShield"] = "increase"
+    if "charge" in all_roles:
+        overlays["GlobalCharge"] = "increase"
+    if "rush" in all_roles:
+        overlays["GlobalRush"] = "increase"
+    if "location" in all_roles:
+        overlays["GlobalLocationIntrinsicValue"] = "increase"
+        overlays["GlobalLocationHealth"] = "increase"
+    if "hero_power" in all_roles:
+        overlays["MyHeroPowerValue"] = "increase"
     if "taunt" in all_roles:
         overlays["GlobalTaunt"] = "decrease"
     return overlays
