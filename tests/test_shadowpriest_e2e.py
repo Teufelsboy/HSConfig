@@ -55,7 +55,12 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
+    contract = json.loads((reports / "gameplan_contract.json").read_text(encoding="utf-8"))
+    globalvalues_profile = json.loads(
+        (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
+    )
     deck_config = (runtime / "CustomConfig" / "deck_config.ini").read_text(encoding="utf-8")
+    darkbishop_contract = contract["cards"]["SW_448"]
 
     assert build_code == 0
     assert validate_code == 0
@@ -74,8 +79,21 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert card_id_map["545"]["card_id"] == "DS1_233"
     assert any(card["card_id"] == "SW_448" for card in semantic_report["cards"])
     assert (reports / "card_semantic_audit.md").exists()
+    assert "hero_power_transform" in darkbishop_contract["roles"]
+    assert "hero_power_pressure" in darkbishop_contract["roles"]
+    assert darkbishop_contract["linked_entities"][0]["card_id"] == "EX1_625t"
+    assert contract["deckwide_effects"][0]["target_name"] == "Mind Spike"
+    assert (
+        contract["card_usage_expectations"]["SW_448"]["expected_use"]
+        == "start_of_game_shadowform_enables_hero_power_pressure"
+    )
+    hero_power_profile = globalvalues_profile["keys"]["MyHeroPowerValue"]
+    assert hero_power_profile["decision"] == "overlay_changed"
+    assert "Mind Spike" in hero_power_profile["reason"]
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert (deck_dir / "DS1_233.json").exists()
+    assert not (deck_dir / "Presume.json").exists()
+    assert not (deck_dir / "Concede.json").exists()
     assert (runtime_deck_dir / "DS1_233.json").exists()
     assert "ShadowPriest = shadowpriest" in deck_config
