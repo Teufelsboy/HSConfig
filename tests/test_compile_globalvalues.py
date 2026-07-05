@@ -1,0 +1,66 @@
+import json
+from pathlib import Path
+
+from hsconfig.compile_globalvalues import compile_globalvalues
+from hsconfig.io import write_json
+from hsconfig.validate_package import validate_config_package
+
+
+def test_compile_globalvalues_preserves_and_profiles_every_key(tmp_path: Path):
+    default_values = json.loads(
+        Path("tests/fixtures/default_globalvalues.json").read_text(encoding="utf-8")
+    )
+    contract = {
+        "deck_name": "Fixture Aggro",
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {"GlobalDivineShield": "increase"},
+        },
+    }
+
+    result = compile_globalvalues(default_values, contract)
+    config = result["config"]
+    profile = result["profile"]
+
+    assert set(config) == set(default_values)
+    assert profile["key_count"] == len(default_values)
+    assert set(profile["changed_keys"]) == {
+        "FirstTurnValueWeight",
+        "SecondTurnValueWeight",
+        "GlobalDivineShield",
+    }
+    assert "GlobalTaunt" in profile["unchanged_keys"]
+    for key, value in config.items():
+        if key not in {"GameCardId", "ConfigComment"}:
+            assert isinstance(value, dict)
+            assert isinstance(value["values"], list)
+
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(deck_dir / "GlobalValues.json", config)
+
+    assert (
+        validate_config_package(
+            tmp_path,
+            globalvalues_baseline=default_values,
+            globalvalues_profile=profile,
+        )["status"]
+        == "passed"
+    )
+
+
+def test_validate_package_rejects_globalvalues_missing_baseline_keys(tmp_path: Path):
+    default_values = json.loads(
+        Path("tests/fixtures/default_globalvalues.json").read_text(encoding="utf-8")
+    )
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    partial = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "partial",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+    }
+    write_json(deck_dir / "GlobalValues.json", partial)
+
+    report = validate_config_package(tmp_path, globalvalues_baseline=default_values)
+
+    assert report["status"] == "failed"
+    assert any("GlobalValues missing baseline key" in error for error in report["errors"])

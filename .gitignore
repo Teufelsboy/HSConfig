@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -16,18 +17,25 @@ dist/
 .venv/
 venv/
 env/
+ENV/
 
 # HSConfig generated output
 outputs/
 tmp/
+temp/
 
 # Hearthstone / HearthRanger runtime evidence
-*.log
 Power.log
+*.log
 *.hdtreplay
 *.hsreplay
 Hearthstone.log
 HearthRanger.log
+HearthRangerLogs/
+HearthstoneLogs/
+runtime_evidence/
+private_runtime/
+runtime_exports/
 
 # Local editor noise
 .idea/
