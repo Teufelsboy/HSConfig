@@ -84,3 +84,27 @@ def test_compile_globalvalues_scales_simple_numeric_expressions():
 
     assert result["config"]["GlobalMinionIntrinsicValue"]["values"][0]["value"] == "6.12"
     assert result["profile"]["changed_keys"] == ["GlobalMinionIntrinsicValue"]
+
+
+def test_compile_globalvalues_uses_hero_power_overlay_reason():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "MyHeroPowerValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {"MyHeroPowerValue": "increase"},
+            "global_value_overlay_reasons": {
+                "MyHeroPowerValue": "Darkbishop Benedictus enables Mind Spike as pressure damage."
+            },
+        }
+    }
+
+    result = compile_globalvalues(baseline, contract)
+
+    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
+    profile = result["profile"]["keys"]["MyHeroPowerValue"]
+    assert profile["decision"] == "overlay_changed"
+    assert profile["reason"] == "Darkbishop Benedictus enables Mind Spike as pressure damage."

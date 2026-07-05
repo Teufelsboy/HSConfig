@@ -41,6 +41,7 @@ def compile_globalvalues(
     key_profiles: dict[str, dict[str, Any]] = {}
     overlays = dict(aggression_profile.get("global_value_overlays", {}))
     overlays.update(aggression_profile.get("mechanic_priorities", {}))
+    overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
 
     for key in default_values:
         if key in TOP_LEVEL_KEYS:
@@ -66,7 +67,7 @@ def compile_globalvalues(
                 {
                     "decision": "overlay_changed" if after != before else "baseline_confirmed",
                     "new_value": after,
-                    "reason": _overlay_reason(key, overlay),
+                    "reason": overlay_reasons.get(key, _overlay_reason(key, overlay)),
                 }
             )
         after = _first_value(config[key])
