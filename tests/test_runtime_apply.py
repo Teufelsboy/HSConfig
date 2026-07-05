@@ -97,6 +97,7 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
             str(runtime),
             "--out",
             str(package),
+            "--allow-placeholder",
             "--json",
         ]
     )

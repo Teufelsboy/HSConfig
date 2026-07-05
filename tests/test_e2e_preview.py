@@ -30,6 +30,7 @@ def test_build_preview_creates_valid_package_without_cards_json(tmp_path: Path, 
             str(runtime),
             "--out",
             str(out),
+            "--allow-placeholder",
             "--json",
         ]
     )

@@ -27,11 +27,13 @@ def test_build_deck_identity_from_explicit_cards():
             {"card_id": "A", "dbf_id": 1, "count": 2},
         ],
         hero_dbf_id=7,
+        format="FT_WILD",
     )
 
     assert identity["deck_name"] == "Example"
     assert identity["deck_slug"] == "example"
     assert identity["hero_dbf_id"] == 7
+    assert identity["format"] == "FT_WILD"
     assert identity["cards"][0] == {"card_id": "B", "dbf_id": 2, "count": 1}
     assert identity["cards"][1] == {"card_id": "A", "dbf_id": 1, "count": 2}
     assert identity["card_count_total"] == 3

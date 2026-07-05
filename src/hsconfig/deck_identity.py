@@ -24,6 +24,7 @@ def build_deck_identity(
     deck_code: str,
     cards: list[dict[str, Any]],
     hero_dbf_id: int | None = None,
+    format: str | None = None,
 ) -> dict[str, Any]:
     normalized_cards = [_normalize_card(card) for card in cards]
     fingerprint = stable_deck_fingerprint(
@@ -34,6 +35,7 @@ def build_deck_identity(
         "deck_slug": slugify_deck_name(deck_name),
         "deck_code_hash": hashlib.sha256(deck_code.encode("utf-8")).hexdigest(),
         "hero_dbf_id": hero_dbf_id,
+        "format": format,
         "cards": normalized_cards,
         "deck_fingerprint": fingerprint,
         "card_count_total": sum(card["count"] for card in normalized_cards),

@@ -5,6 +5,12 @@ from pathlib import Path
 from hsconfig.cli import main
 
 
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+
+
 def test_validate_missing_package_returns_nonzero_json(tmp_path: Path, capsys):
     code = main(["validate", "--package", str(tmp_path / "missing"), "--json"])
 
@@ -59,6 +65,44 @@ def test_build_accepts_cards_json_object(tmp_path: Path, capsys):
     assert payload["status"] == "passed"
     assert (out / "CustomConfig" / "explicit_cards" / "EX1_001.json").exists()
     assert (out / "CustomConfig" / "explicit_cards" / "EX1_002.json").exists()
+
+
+def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    reports = out / "reports"
+    deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
+    manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
+    receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
+    card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert deck_identity["hero_dbf_id"] == 813
+    assert deck_identity["format"] == "FT_WILD"
+    assert deck_identity["card_count_total"] == 30
+    assert manifest["card_source"] == "deckstring"
+    assert manifest["format"] == "FT_WILD"
+    assert receipt["decoder"] == "hearthstone.deckstrings"
+    assert card_id_map["545"]["card_id"] == "DS1_233"
+    assert (out / "CustomConfig" / "shadowpriest" / "DS1_233.json").exists()
 
 
 def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsys):

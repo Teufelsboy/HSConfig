@@ -12,6 +12,7 @@ from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
@@ -52,6 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--runtime-root", required=True)
     build.add_argument("--cards-json")
     build.add_argument("--claims-json")
+    build.add_argument("--allow-placeholder", action="store_true")
     build.add_argument("--json", action="store_true")
 
     validate = subparsers.add_parser("validate")
@@ -73,13 +75,21 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if deck_dir.exists():
         shutil.rmtree(deck_dir)
 
-    cards = _load_cards(args.cards_json, deck_name=args.deck_name, deck_code=args.deck_code)
+    cards_payload = _load_cards(
+        args.cards_json,
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        allow_placeholder=args.allow_placeholder,
+    )
+    cards = cards_payload["cards"]
     claims = _load_claims(args.claims_json)
     source_records = _source_records_from_cards(cards)
     deck_identity = build_deck_identity(
         deck_name=args.deck_name,
         deck_code=args.deck_code,
         cards=cards,
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
     )
     card_metadata = hydrate_card_metadata(
         cards=deck_identity["cards"],
@@ -110,11 +120,20 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         deck_code=args.deck_code,
         runtime_root=args.runtime_root,
         target_config_mode="preview",
+        format=cards_payload.get("format"),
     ).to_dict()
     manifest["cards_json"] = str(Path(args.cards_json)) if args.cards_json else None
     manifest["claims_json"] = str(Path(args.claims_json)) if args.claims_json else None
+    manifest["card_source"] = cards_payload["card_source"]
     write_json(reports_dir / "input_manifest.json", manifest)
     write_json(reports_dir / "deck_identity.json", deck_identity)
+    if cards_payload.get("deckstring_decode_receipt") is not None:
+        write_json(
+            reports_dir / "deckstring_decode_receipt.json",
+            cards_payload["deckstring_decode_receipt"],
+        )
+    if cards_payload.get("card_id_map") is not None:
+        write_json(reports_dir / "card_id_map.json", cards_payload["card_id_map"])
     write_json(reports_dir / "gameplan_contract.json", gameplan_contract)
     write_json(reports_dir / "surface_intent.json", surface_intent)
     write_json(reports_dir / "globalvalues_baseline.json", baseline)
@@ -178,9 +197,32 @@ def _apply(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return {"status": "applied", "receipt": receipt}, 0
 
 
-def _load_cards(cards_json: str | None, *, deck_name: str, deck_code: str) -> list[dict[str, Any]]:
+def _load_cards(
+    cards_json: str | None,
+    *,
+    deck_name: str,
+    deck_code: str,
+    allow_placeholder: bool = False,
+) -> dict[str, Any]:
+    if cards_json is None and not allow_placeholder:
+        decoded = decode_deck_code(deck_code)
+        return {
+            "cards": decoded["cards"],
+            "hero_dbf_id": decoded["hero_dbf_id"],
+            "format": decoded["format"],
+            "deckstring_decode_receipt": decoded["deckstring_decode_receipt"],
+            "card_id_map": decoded["card_id_map"],
+            "card_source": "deckstring",
+        }
     if cards_json is None:
-        return _placeholder_cards(deck_name=deck_name, deck_code=deck_code)
+        return {
+            "cards": _placeholder_cards(deck_name=deck_name, deck_code=deck_code),
+            "hero_dbf_id": None,
+            "format": None,
+            "deckstring_decode_receipt": None,
+            "card_id_map": None,
+            "card_source": "placeholder",
+        }
     payload = read_json(cards_json)
     if isinstance(payload, dict):
         payload = payload.get("cards")
@@ -189,7 +231,14 @@ def _load_cards(cards_json: str | None, *, deck_name: str, deck_code: str) -> li
     cards = [_normalize_card_input(card) for card in payload]
     if not cards:
         raise ValueError("--cards-json did not contain any cards")
-    return cards
+    return {
+        "cards": cards,
+        "hero_dbf_id": None,
+        "format": None,
+        "deckstring_decode_receipt": None,
+        "card_id_map": None,
+        "card_source": "cards_json",
+    }
 
 
 def _load_claims(claims_json: str | None) -> list[dict[str, Any]]:
