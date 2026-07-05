@@ -52,6 +52,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
     receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
+    semantic_report = json.loads(
+        (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
+    )
     deck_config = (runtime / "CustomConfig" / "deck_config.ini").read_text(encoding="utf-8")
 
     assert build_code == 0
@@ -69,6 +72,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert manifest["format"] == "FT_WILD"
     assert receipt["unresolved_card_count"] == 0
     assert card_id_map["545"]["card_id"] == "DS1_233"
+    assert any(card["card_id"] == "SW_448" for card in semantic_report["cards"])
+    assert (reports / "card_semantic_audit.md").exists()
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert (deck_dir / "DS1_233.json").exists()

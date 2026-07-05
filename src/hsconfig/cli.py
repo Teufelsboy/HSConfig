@@ -17,9 +17,12 @@ from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.guide_research import normalize_source_claims
+from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.models import InputManifest
 from hsconfig.runtime_apply import apply_package
+from hsconfig.semantic_audit import render_semantic_audit_markdown
+from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
 
@@ -95,6 +98,22 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         cards=deck_identity["cards"],
         source_records=source_records,
     )
+    hearthstonejson_cards: list[dict[str, Any]] = []
+    semantic_fetch_error: str | None = None
+    try:
+        hearthstonejson_cards = fetch_latest_cards(timeout=10.0)
+    except Exception as exc:
+        semantic_fetch_error = str(exc)
+    semantic_report = enrich_card_metadata(
+        card_metadata,
+        hearthstonejson_cards=hearthstonejson_cards,
+    )
+    if semantic_fetch_error is not None:
+        semantic_report.setdefault("semantic_enrichment_warnings", []).append(
+            {"card_id": None, "warning": f"hearthstonejson_fetch_failed: {semantic_fetch_error}"}
+        )
+        semantic_report["semantic_enrichment_status"] = "partial"
+    card_metadata = {"cards": semantic_report["cards"]}
     source_claims = normalize_source_claims(claims)
     gameplan_contract = build_gameplan_contract(
         deck_identity=deck_identity,
@@ -134,6 +153,12 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         )
     if cards_payload.get("card_id_map") is not None:
         write_json(reports_dir / "card_id_map.json", cards_payload["card_id_map"])
+    write_json(reports_dir / "semantic_enrichment_report.json", semantic_report)
+    (reports_dir / "card_semantic_audit.md").write_text(
+        render_semantic_audit_markdown(semantic_report),
+        encoding="utf-8",
+        newline="\n",
+    )
     write_json(reports_dir / "gameplan_contract.json", gameplan_contract)
     write_json(reports_dir / "surface_intent.json", surface_intent)
     write_json(reports_dir / "globalvalues_baseline.json", baseline)

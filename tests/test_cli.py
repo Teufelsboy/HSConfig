@@ -92,6 +92,9 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
     receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
+    semantic_report = json.loads(
+        (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -102,6 +105,8 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     assert manifest["format"] == "FT_WILD"
     assert receipt["decoder"] == "hearthstone.deckstrings"
     assert card_id_map["545"]["card_id"] == "DS1_233"
+    assert any(card["card_id"] == "SW_448" for card in semantic_report["cards"])
+    assert (reports / "card_semantic_audit.md").exists()
     assert (out / "CustomConfig" / "shadowpriest" / "DS1_233.json").exists()
 
 
