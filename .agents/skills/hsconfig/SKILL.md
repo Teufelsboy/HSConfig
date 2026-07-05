@@ -13,14 +13,16 @@ Inputs:
 - deck code
 - optional expert card JSON override
 - optional source-backed guide claims JSON list
-- runtime root only when applying
+- runtime root for `prepare` / `build` baseline profiling and for `apply`
 
 Workflow:
 
-1. Decode the deck code first and record exact CardIDs in `deckstring_decode_receipt.json` and `card_id_map.json`.
-2. Generate direct runtime config surfaces only: `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` when a concrete valid combo exists.
-3. Validate the package before any apply.
-4. Runtime apply only when the user asks; apply updates `CustomConfig/deck_config.ini` for the visible HearthRanger deck name.
+1. Use `hsconfig prepare` as the normal deck-to-config path.
+2. Decode the deck code first and record exact CardIDs in `deckstring_decode_receipt.json` and `card_id_map.json`.
+3. Write the research contract under `reports/research/`: archetype, claims, card roles, mulligan anchors, usage expectations, bad patterns, and GlobalValues intent.
+4. Generate direct runtime config surfaces only: `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` when a concrete valid combo exists.
+5. Validate the package before any apply.
+6. Runtime apply only when the user asks; apply updates `CustomConfig/deck_config.ini` for the visible HearthRanger deck name.
 
 Rules:
 

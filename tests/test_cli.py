@@ -26,6 +26,15 @@ def test_pyproject_exposes_hsconfig_entrypoint():
     assert pyproject["project"]["scripts"]["hsconfig"] == "hsconfig.cli:main"
 
 
+def test_readme_documents_prepare_as_normal_path():
+    text = Path("README.md").read_text(encoding="utf-8")
+
+    assert "hsconfig prepare" in text
+    assert "reports/research" in text
+    assert "hsconfig build" in text
+    assert "hsconfig apply" in text
+
+
 def test_build_accepts_cards_json_object(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
@@ -201,11 +210,26 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
 
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
+    research_dir = out / "reports" / "research"
+    archetype_research = json.loads(
+        (research_dir / "archetype_research.json").read_text(encoding="utf-8")
+    )
+    card_role_map = json.loads((research_dir / "card_role_map.json").read_text(encoding="utf-8"))
+    mulligan_anchor_map = json.loads(
+        (research_dir / "mulligan_anchor_map.json").read_text(encoding="utf-8")
+    )
+    globalvalue_intent = json.loads(
+        (research_dir / "globalvalue_intent.json").read_text(encoding="utf-8")
+    )
     deck_dir = out / "CustomConfig" / "guide_cards"
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
 
     assert code == 0
     assert payload["status"] == "passed"
+    assert archetype_research["confidence"] == "guide_backed"
+    assert card_role_map["EX1_001"]["confidence"] == "guide_backed"
+    assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
+    assert globalvalue_intent["pressure_bias"] == "high"
     assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
     assert combo["ComboList"]["values"][0]["combo"] == "EX1_001 >> EX1_002"

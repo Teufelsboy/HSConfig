@@ -20,6 +20,11 @@ from hsconfig.guide_research import normalize_source_claims
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.models import InputManifest
+from hsconfig.research_contract import (
+    build_research_contract_bundle,
+    write_research_contract_bundle,
+    write_research_contract_bundle_to_dir,
+)
 from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
@@ -32,8 +37,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        if args.command == "build":
+        if args.command == "prepare":
+            payload, code = _prepare(args)
+        elif args.command == "build":
             payload, code = _build(args)
+        elif args.command == "research-contract":
+            payload, code = _research_contract(args)
         elif args.command == "validate":
             payload, code = _validate(args)
         elif args.command == "apply":
@@ -59,6 +68,25 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--allow-placeholder", action="store_true")
     build.add_argument("--json", action="store_true")
 
+    prepare = subparsers.add_parser("prepare")
+    prepare.add_argument("--deck-name", required=True)
+    prepare.add_argument("--deck-code", required=True)
+    prepare.add_argument("--out", required=True)
+    prepare.add_argument("--runtime-root", required=True)
+    prepare.add_argument("--cards-json")
+    prepare.add_argument("--claims-json")
+    prepare.add_argument("--allow-placeholder", action="store_true")
+    prepare.add_argument("--json", action="store_true")
+
+    research_contract = subparsers.add_parser("research-contract")
+    research_contract.add_argument("--deck-name", required=True)
+    research_contract.add_argument("--deck-code", required=True)
+    research_contract.add_argument("--out", required=True)
+    research_contract.add_argument("--cards-json")
+    research_contract.add_argument("--claims-json")
+    research_contract.add_argument("--allow-placeholder", action="store_true")
+    research_contract.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")
@@ -70,14 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    out = Path(args.out)
-    deck_slug = slugify_deck_name(args.deck_name)
-    deck_dir = out / "CustomConfig" / deck_slug
-    reports_dir = out / "reports"
-    if deck_dir.exists():
-        shutil.rmtree(deck_dir)
-
+def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     cards_payload = _load_cards(
         args.cards_json,
         deck_name=args.deck_name,
@@ -113,12 +134,52 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             {"card_id": None, "warning": f"hearthstonejson_fetch_failed: {semantic_fetch_error}"}
         )
         semantic_report["semantic_enrichment_status"] = "partial"
-    card_metadata = {"cards": semantic_report["cards"]}
+    enriched_card_metadata = {"cards": semantic_report["cards"]}
     source_claims = normalize_source_claims(claims)
+    research_bundle = build_research_contract_bundle(
+        deck_identity=deck_identity,
+        card_metadata=enriched_card_metadata,
+        source_claims=source_claims,
+    )
+    return {
+        "cards_payload": cards_payload,
+        "deck_identity": deck_identity,
+        "card_metadata": enriched_card_metadata,
+        "semantic_report": semantic_report,
+        "source_claims": source_claims,
+        "research_bundle": research_bundle,
+    }
+
+
+def _prepare(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    payload, code = _build(args)
+    payload = dict(payload)
+    payload["command"] = "prepare"
+    if code == 0:
+        payload["next_action"] = "READY_TO_APPLY_OR_HANDOFF"
+    return payload, code
+
+
+def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    deck_slug = slugify_deck_name(args.deck_name)
+    deck_dir = out / "CustomConfig" / deck_slug
+    reports_dir = out / "reports"
+    if deck_dir.exists():
+        shutil.rmtree(deck_dir)
+
+    context = _build_preconfig_context(args)
+    cards_payload = context["cards_payload"]
+    deck_identity = context["deck_identity"]
+    card_metadata = context["card_metadata"]
+    semantic_report = context["semantic_report"]
+    source_claims = context["source_claims"]
+    research_bundle = context["research_bundle"]
     gameplan_contract = build_gameplan_contract(
         deck_identity=deck_identity,
         card_metadata=card_metadata,
         source_claims=source_claims,
+        research_bundle=research_bundle,
     )
     surface_intent = build_surface_intent(gameplan_contract)
 
@@ -159,6 +220,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         encoding="utf-8",
         newline="\n",
     )
+    write_research_contract_bundle(research_bundle, reports_dir)
     write_json(reports_dir / "gameplan_contract.json", gameplan_contract)
     write_json(reports_dir / "surface_intent.json", surface_intent)
     write_json(reports_dir / "globalvalues_baseline.json", baseline)
@@ -183,6 +245,37 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         code,
     )
+
+
+def _research_contract(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    _prepare_research_output_dir(out)
+
+    context = _build_preconfig_context(args)
+    deck_identity = context["deck_identity"]
+    bundle = context["research_bundle"]
+    write_research_contract_bundle_to_dir(bundle, out)
+
+    return (
+        {
+            "status": "passed",
+            "research_dir": str(out),
+            "deck_slug": deck_identity["deck_slug"],
+            "confidence": bundle["archetype_research"]["confidence"],
+        },
+        0,
+    )
+
+
+def _prepare_research_output_dir(out: Path) -> None:
+    if not out.exists():
+        return
+    if not out.is_dir():
+        raise ValueError(f"Research output path exists and is not a directory: {out}")
+    children = list(out.iterdir())
+    if not children:
+        return
+    raise ValueError(f"Refusing to overwrite non-empty research output directory: {out}")
 
 
 def _validate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:

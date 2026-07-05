@@ -12,6 +12,12 @@ ROLE_BLOCKS = {
     "weapon": "BeforePhysicalAttackBonus",
 }
 
+BACKED_CONFIDENCE_LANES = {
+    "guide_backed",
+    "source_backed",
+    "source_backed_static_semantics",
+}
+
 
 def compile_cardid_behaviors(
     contract: dict[str, Any] | None = None,
@@ -134,7 +140,7 @@ def _priority_value(roles: set[str], confidence: str) -> str:
         return "12"
     if "pressure" in roles or "combo_piece" in roles:
         return "10"
-    if confidence == "source_backed":
+    if confidence in BACKED_CONFIDENCE_LANES:
         return "7"
     return "5"
 

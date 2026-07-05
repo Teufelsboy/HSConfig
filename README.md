@@ -10,9 +10,23 @@ HSConfig does not parse replays, evaluate winrate, inspect post-game evidence, o
 
 ## Commands
 
-Build a package from deck input. `hsconfig` decodes the Hearthstone deck code through
-HearthSim deckstrings, writes exact CardIDs, and records `deckstring_decode_receipt.json`
-plus `card_id_map.json` under `reports/`.
+Prepare a complete validated package from deck input. This is the normal path.
+`hsconfig prepare` decodes the Hearthstone deck code through HearthSim deckstrings,
+writes exact CardIDs, enriches static card semantics, writes the research contract
+under `reports/research/`, compiles runtime config, and validates the package.
+
+```powershell
+hsconfig prepare --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\shadowpriest" --json
+```
+
+Diagnostic research-only output:
+
+```powershell
+hsconfig research-contract --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\reports\research" --json
+```
+
+Lower-level package build remains available when a caller already controls the
+research inputs:
 
 ```powershell
 hsconfig build --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\shadowpriest" --json

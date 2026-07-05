@@ -65,3 +65,32 @@ def test_compile_cardid_behaviors_preserves_roles_when_surface_rows_are_passed()
 
     assert "BeforePlayCardBonus" in files["EX1_001.json"]
     assert "BeforeBattlecryTargetBonus" in files["EX1_001.json"]
+
+
+def test_compile_cardid_treats_backed_confidence_lanes_as_stronger_than_generic():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "EX1_GUIDE": {
+                "roles": ["deck_card"],
+                "source_claim_ids": ["claim_guide"],
+                "confidence": "guide_backed",
+            },
+            "EX1_STATIC": {
+                "roles": ["deck_card"],
+                "source_claim_ids": [],
+                "confidence": "source_backed_static_semantics",
+            },
+            "EX1_GENERIC": {
+                "roles": ["deck_card"],
+                "source_claim_ids": [],
+                "confidence": "generic_low_confidence",
+            },
+        },
+    }
+
+    files = compile_cardid_behaviors(contract)
+
+    assert files["EX1_GUIDE.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
+    assert files["EX1_STATIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
+    assert files["EX1_GENERIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "5"

@@ -31,6 +31,8 @@ def test_skill_content_sets_direct_config_boundary():
     assert "validate" in text.lower()
     assert "runtime apply only when the user asks" in text.lower()
     assert "--allow-placeholder" in text
+    assert "hsconfig prepare" in text
+    assert "research contract" in text.lower()
 
 
 def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
@@ -41,6 +43,9 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
     assert "card_id_map.json" in text
     assert "CustomConfig/deck_config.ini" in text
     assert "--allow-placeholder" in text
+    assert "hsconfig prepare" in text
+    assert "research-contract" in text
+    assert "reports/research" in text
 
 
 def test_skill_docs_keep_presume_concede_out_of_normal_path():

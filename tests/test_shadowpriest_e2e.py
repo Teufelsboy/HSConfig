@@ -16,7 +16,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
 
     build_code = main(
         [
-            "build",
+            "prepare",
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
@@ -56,6 +56,12 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
     semantic_audit = (reports / "card_semantic_audit.md").read_text(encoding="utf-8")
+    research_card_roles = json.loads(
+        (reports / "research" / "card_role_map.json").read_text(encoding="utf-8")
+    )
+    research_globalvalues = json.loads(
+        (reports / "research" / "globalvalue_intent.json").read_text(encoding="utf-8")
+    )
     contract = json.loads((reports / "gameplan_contract.json").read_text(encoding="utf-8"))
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
@@ -91,6 +97,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         contract["card_usage_expectations"]["SW_448"]["expected_use"]
         == "start_of_game_shadowform_enables_hero_power_pressure"
     )
+    assert research_card_roles["SW_448"]["confidence"] == "source_backed_static_semantics"
+    assert "hero_power_transform" in research_card_roles["SW_448"]["roles"]
+    assert research_globalvalues["overlays"]["MyHeroPowerValue"] == "increase"
     hero_power_profile = globalvalues_profile["keys"]["MyHeroPowerValue"]
     assert hero_power_profile["decision"] == "overlay_changed"
     assert "Mind Spike" in hero_power_profile["reason"]
