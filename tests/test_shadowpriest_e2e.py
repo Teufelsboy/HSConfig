@@ -1,0 +1,76 @@
+import json
+from pathlib import Path
+
+from hsconfig.cli import main
+
+
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+
+
+def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, capsys):
+    package = tmp_path / "shadowpriest_package"
+    runtime = tmp_path / "runtime"
+
+    build_code = main(
+        [
+            "build",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(runtime),
+            "--out",
+            str(package),
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    validate_code = main(["validate", "--package", str(package), "--json"])
+    validate_out = json.loads(capsys.readouterr().out)
+
+    apply_code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--json",
+        ]
+    )
+    apply_out = json.loads(capsys.readouterr().out)
+
+    reports = package / "reports"
+    deck_dir = package / "CustomConfig" / "shadowpriest"
+    runtime_deck_dir = runtime / "CustomConfig" / "shadowpriest"
+    deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
+    manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
+    receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
+    card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
+    deck_config = (runtime / "CustomConfig" / "deck_config.ini").read_text(encoding="utf-8")
+
+    assert build_code == 0
+    assert validate_code == 0
+    assert apply_code == 0
+    assert validate_out["status"] == "passed"
+    assert apply_out["status"] == "applied"
+    assert apply_out["receipt"]["mapped_deck_name"] == "ShadowPriest"
+    assert deck_identity["deck_name"] == "ShadowPriest"
+    assert deck_identity["deck_slug"] == "shadowpriest"
+    assert deck_identity["hero_dbf_id"] == 813
+    assert deck_identity["format"] == "FT_WILD"
+    assert deck_identity["card_count_total"] == 30
+    assert manifest["card_source"] == "deckstring"
+    assert manifest["format"] == "FT_WILD"
+    assert receipt["unresolved_card_count"] == 0
+    assert card_id_map["545"]["card_id"] == "DS1_233"
+    assert (deck_dir / "GlobalValues.json").exists()
+    assert (deck_dir / "Mulligan.json").exists()
+    assert (deck_dir / "DS1_233.json").exists()
+    assert (runtime_deck_dir / "DS1_233.json").exists()
+    assert "ShadowPriest = shadowpriest" in deck_config

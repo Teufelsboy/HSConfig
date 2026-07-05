@@ -105,6 +105,32 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     assert (out / "CustomConfig" / "shadowpriest" / "DS1_233.json").exists()
 
 
+def test_build_rejects_invalid_deck_code_without_placeholder_flag(tmp_path: Path, capsys):
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Fixture Deck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert not list(out.glob("CustomConfig/fixture_deck/HSC_*.json"))
+
+
 def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(

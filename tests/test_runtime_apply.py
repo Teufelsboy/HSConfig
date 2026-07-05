@@ -22,6 +22,8 @@ def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
     other_deck = runtime / "CustomConfig" / "other"
     write_json(stale_deck / "stale.json", {"old": True})
     write_json(other_deck / "keep.json", {"keep": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    deck_config.write_text("[CONFIGS]\nOther Deck = other\n", encoding="utf-8")
 
     receipt = apply_package(package_root=package, runtime_root=runtime, config_dir="deck")
 
@@ -31,6 +33,10 @@ def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
     assert not (runtime / "CustomConfig" / "deck" / "stale.json").exists()
     assert (runtime / "CustomConfig" / "other" / "keep.json").exists()
+    assert "Other Deck = other" in deck_config.read_text(encoding="utf-8")
+    assert "deck = deck" in deck_config.read_text(encoding="utf-8")
+    assert receipt["mapped_deck_name"] == "deck"
+    assert receipt["deck_config_ini_updated"] is True
     receipt_path = package / "reports" / "runtime_apply_receipt.json"
     assert receipt_path.exists()
     assert json.loads(receipt_path.read_text(encoding="utf-8"))["status"] == "applied"
@@ -123,3 +129,60 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
     assert payload["receipt"]["target_path"].endswith("CustomConfig/apply_deck") or payload[
         "receipt"
     ]["target_path"].endswith("CustomConfig\\apply_deck")
+    assert payload["receipt"]["mapped_deck_name"] == "Apply Deck"
+    assert payload["receipt"]["deck_config_ini_updated"] is True
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    assert "Apply Deck = apply_deck" in deck_config.read_text(encoding="utf-8")
+
+
+def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section(tmp_path: Path):
+    package = tmp_path / "package"
+    package_deck = package / "CustomConfig" / "shadowpriest"
+    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
+    write_json(
+        package_deck / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "ShadowPriest", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+
+    runtime = tmp_path / "runtime"
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    deck_config.parent.mkdir(parents=True)
+    deck_config.write_bytes(
+        "\ufeff[CONFIGS]\r\nShadowPriest = old_shadow\r\nOther Deck = other\r\n".encode("utf-8")
+    )
+
+    receipt = apply_package(package_root=package, runtime_root=runtime)
+    text = deck_config.read_text(encoding="utf-8")
+
+    assert receipt["mapped_deck_name"] == "ShadowPriest"
+    assert receipt["config_dir"] == "shadowpriest"
+    assert receipt["deck_config_ini_previous_sha256"] != receipt["deck_config_ini_current_sha256"]
+    assert text.count("[CONFIGS]") == 1
+    assert "ShadowPriest = shadowpriest" in text
+    assert "ShadowPriest = old_shadow" not in text
+    assert "Other Deck = other" in text
+
+
+def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_path: Path):
+    package = tmp_path / "package"
+    package_deck = package / "CustomConfig" / "deck"
+    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
+    write_json(
+        package_deck / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "Bad\nDeck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+
+    with pytest.raises(ValueError, match="deck_config.ini"):
+        apply_package(package_root=package, runtime_root=tmp_path / "runtime")
+
+    assert not (tmp_path / "runtime" / "CustomConfig" / "deck").exists()

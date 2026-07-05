@@ -10,19 +10,21 @@ HSConfig does not parse replays, evaluate winrate, inspect post-game evidence, o
 
 ## Commands
 
-Build a deterministic preview package:
+Build a package from deck input. `hsconfig` decodes the Hearthstone deck code through
+HearthSim deckstrings, writes exact CardIDs, and records `deckstring_decode_receipt.json`
+plus `card_id_map.json` under `reports/`.
 
 ```powershell
-hsconfig build --deck-name "Fixture Deck" --deck-code "fixture-code" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\fixture_deck" --json
+hsconfig build --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\shadowpriest" --json
 ```
 
-Build from explicit card rows:
+Expert override: build from explicit card rows instead of deckstring decode.
 
 ```powershell
 hsconfig build --deck-name "Fixture Deck" --deck-code "fixture-code" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\fixture_deck" --cards-json ".\cards.json" --json
 ```
 
-Build from explicit card rows plus guide-backed claims:
+Expert override: add source-backed guide claims.
 
 ```powershell
 hsconfig build --deck-name "Fixture Deck" --deck-code "fixture-code" --runtime-root "C:\Users\darbo\Desktop\HS" --out ".\outputs\fixture_deck" --cards-json ".\cards.json" --claims-json ".\claims.json" --json
@@ -37,7 +39,10 @@ hsconfig validate --package ".\outputs\fixture_deck" --json
 Apply a validated package to a HearthRanger runtime only when requested:
 
 ```powershell
-hsconfig apply --package ".\outputs\fixture_deck" --runtime-root "C:\Users\darbo\Desktop\HS" --json
+hsconfig apply --package ".\outputs\shadowpriest" --runtime-root "C:\Users\darbo\Desktop\HS" --json
 ```
 
-`--cards-json` accepts either a list of card objects or an object with a `cards` list. `--claims-json` accepts either a list of source-backed guide claims or an object with a `claims` list. Without explicit cards, `build` creates a tiny deterministic placeholder deck identity from the deck name and deck code so the package can still be previewed and validated.
+`apply` copies the validated deck folder into `CustomConfig/<deck_slug>` and updates
+`CustomConfig/deck_config.ini` so HearthRanger maps the visible deck name to that folder.
+
+`--cards-json` accepts either a list of card objects or an object with a `cards` list. `--claims-json` accepts either a list of source-backed guide claims or an object with a `claims` list. `--allow-placeholder` is only for fixture/test previews when a real deckstring is intentionally unavailable.

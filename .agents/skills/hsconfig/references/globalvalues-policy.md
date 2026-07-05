@@ -5,6 +5,7 @@
 Rules:
 
 - Start from the active runtime baseline at `CustomConfig/default/GlobalValues.json` or `CustomConfig/Default/GlobalValues.json` when available.
+- Runtime baselines may contain UTF-8 BOMs, trailing commas, or simple numeric expressions from HearthRanger-edited files; load and profile the baseline instead of hand-normalizing it.
 - Use the bundled fallback baseline only for preview/CI when no runtime default exists, and record that fallback source in reports.
 - Preserve every loaded baseline key.
 - Profile every key as changed, confirmed, or blocked.

@@ -25,10 +25,30 @@ def test_skill_content_sets_direct_config_boundary():
 
     assert "name: hsconfig" in text
     assert "HearthRanger" in text
+    assert "Decode the deck code first" in text
     assert "GlobalValues" in text
     assert "no replay analysis" in text.lower()
     assert "validate" in text.lower()
     assert "runtime apply only when the user asks" in text.lower()
+    assert "--allow-placeholder" in text
+
+
+def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
+    text = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+
+    assert "HearthSim deckstring decode" in text
+    assert "deckstring_decode_receipt.json" in text
+    assert "card_id_map.json" in text
+    assert "CustomConfig/deck_config.ini" in text
+    assert "--allow-placeholder" in text
+
+
+def test_globalvalues_policy_mentions_runtime_file_quirks():
+    text = (SKILL_ROOT / "references" / "globalvalues-policy.md").read_text(encoding="utf-8")
+
+    assert "UTF-8 BOMs" in text
+    assert "trailing commas" in text
+    assert "simple numeric expressions" in text
 
 
 def test_skill_scripts_delegate_to_cli():
