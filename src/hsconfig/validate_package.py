@@ -180,14 +180,20 @@ def _validate_globalvalues(
 ) -> list[str]:
     errors = _validate_values_blocks(path, data)
     if baseline is not None:
+        generated_overlay_keys = set()
+        if profile is not None:
+            generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
         for key in baseline:
             if key not in data:
                 errors.append(f"{path}: GlobalValues missing baseline key {key}")
-        extra_keys = set(data) - set(baseline)
+        extra_keys = set(data) - set(baseline) - generated_overlay_keys
         for key in sorted(extra_keys):
             errors.append(f"{path}: GlobalValues unexpected key {key}")
     if profile is not None:
-        expected_key_count = len(baseline) if baseline is not None else len(data)
+        generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
+        expected_key_count = (
+            len(baseline) + len(generated_overlay_keys) if baseline is not None else len(data)
+        )
         if profile.get("key_count") != expected_key_count:
             errors.append(
                 f"{path}: GlobalValues profile key_count mismatch: "

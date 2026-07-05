@@ -108,3 +108,41 @@ def test_compile_globalvalues_uses_hero_power_overlay_reason():
     profile = result["profile"]["keys"]["MyHeroPowerValue"]
     assert profile["decision"] == "overlay_changed"
     assert profile["reason"] == "Darkbishop Benedictus enables Mind Spike as pressure damage."
+
+
+def test_compile_globalvalues_adds_known_overlay_key_missing_from_runtime_baseline(tmp_path: Path):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Runtime default without hero power key",
+        "GlobalHeroAttack": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {"MyHeroPowerValue": "increase"},
+            "global_value_overlay_reasons": {
+                "MyHeroPowerValue": "Darkbishop Benedictus enables Mind Spike as pressure damage."
+            },
+        }
+    }
+
+    result = compile_globalvalues(baseline, contract)
+    config = result["config"]
+    profile = result["profile"]
+
+    assert config["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
+    assert profile["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert profile["key_count"] == len(config)
+    assert profile["keys"]["MyHeroPowerValue"]["decision"] == "overlay_changed"
+
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(deck_dir / "GlobalValues.json", config)
+
+    assert (
+        validate_config_package(
+            tmp_path,
+            globalvalues_baseline=baseline,
+            globalvalues_profile=profile,
+        )["status"]
+        == "passed"
+    )

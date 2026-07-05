@@ -7,6 +7,12 @@ from typing import Any
 
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
+KNOWN_GENERATED_OVERLAY_DEFAULTS = {
+    "MyHeroPowerValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    "EnemyHeroPowerValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    "MyWeaponValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    "EnemyWeaponValue": {"values": [{"condition": "*", "value": "1.00"}]},
+}
 NUMERIC_OPERATORS = {
     ast.Add: operator.add,
     ast.Div: operator.truediv,
@@ -29,21 +35,30 @@ def compile_globalvalues(
     contract = contract or {"aggression_profile": posture or {}}
     aggression_profile = contract.get("aggression_profile", posture or {})
 
+    overlays = dict(aggression_profile.get("global_value_overlays", {}))
+    overlays.update(aggression_profile.get("mechanic_priorities", {}))
+    overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
+    generated_overlay_keys = sorted(
+        key
+        for key in overlays
+        if key not in default_values and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
+    )
+
     config = {
         key: deepcopy(value) if key in TOP_LEVEL_KEYS else _values_block(value)
         for key, value in default_values.items()
     }
+    for key in generated_overlay_keys:
+        config[key] = _values_block(KNOWN_GENERATED_OVERLAY_DEFAULTS[key])
     config["GameCardId"] = "GlobalValues"
     config.setdefault("ConfigComment", "Generated GlobalValues")
 
     changed_keys: list[str] = []
     unchanged_keys: list[str] = []
     key_profiles: dict[str, dict[str, Any]] = {}
-    overlays = dict(aggression_profile.get("global_value_overlays", {}))
-    overlays.update(aggression_profile.get("mechanic_priorities", {}))
-    overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
+    profile_keys = [*default_values, *generated_overlay_keys]
 
-    for key in default_values:
+    for key in profile_keys:
         if key in TOP_LEVEL_KEYS:
             key_profiles[key] = {
                 "category": "metadata",
@@ -60,6 +75,9 @@ def compile_globalvalues(
             "decision": "baseline_confirmed",
             "reason": "No deck-specific overlay required.",
         }
+        if key in generated_overlay_keys:
+            decision["generated_overlay_key"] = True
+            decision["reason"] = "Known deck-specific overlay key was absent from runtime default."
         overlay = _overlay_for_key(key, aggression_profile, overlays)
         if overlay is not None:
             after = _apply_overlay(config[key], overlay)
@@ -80,7 +98,8 @@ def compile_globalvalues(
     return {
         "config": config,
         "profile": {
-            "key_count": len(default_values),
+            "key_count": len(profile_keys),
+            "generated_overlay_keys": generated_overlay_keys,
             "changed_keys": changed_keys,
             "unchanged_keys": unchanged_keys,
             "keys": key_profiles,
