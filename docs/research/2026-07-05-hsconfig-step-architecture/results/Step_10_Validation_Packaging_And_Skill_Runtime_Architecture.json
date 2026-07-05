@@ -1,0 +1,292 @@
+{
+  "step_name": "Step 10 Validation Packaging And Skill Runtime Architecture",
+  "source_type": "architecture",
+  "step_goal": "Define a lean HSConfig repository and repo-local Codex skill architecture that keeps `SKILL.md` short, pushes heavy detail into references and scripts, emits preview-first config packages with strict JSON validation and source provenance, and isolates guarded runtime apply from authoring and research work.",
+  "required_inputs": [
+    {
+      "name": "validated_upstream_contracts",
+      "required": true,
+      "purpose": "Stable machine-readable inputs such as `deck_intake.json`, `deck_research_contract.json`, and `gameplan_contract.json` that author the config surfaces deterministically.",
+      "governance": "Step 10 packages and validates outputs from prior contracts; it must not replace missing upstream semantics with free-form skill prose."
+    },
+    {
+      "name": "visionai_syntax_source_manifest",
+      "required": true,
+      "purpose": "Pinned official-document source bundle and local cache references that define the supported runtime surfaces and syntax model.",
+      "governance": "Every validator and packaging receipt must point back to the exact syntax source manifest used for the run."
+    },
+    {
+      "name": "source_citation_bundle",
+      "required": true,
+      "purpose": "Per-claim URLs or local file refs for guide facts, card facts, runtime-surface assumptions, and packaging decisions.",
+      "governance": "Any generated row or packaging claim without provenance must fail closed or stay in a visible suppression report."
+    },
+    {
+      "name": "target_surface_plan",
+      "required": true,
+      "purpose": "Explicit declaration of which surfaces this run may generate, such as `Mulligan`, `GlobalValues`, `CardID`, or `Combo`.",
+      "governance": "Do not infer extra files from deck archetype names or operator convenience; emit only the declared documented surfaces."
+    },
+    {
+      "name": "runtime_root_and_mode",
+      "required": true,
+      "purpose": "Target runtime root plus explicit packaging mode such as `preview`, `fake`, or guarded `apply` candidate.",
+      "governance": "Preview and fake packaging remain read-only; apply packaging is only a later guarded path and must not be activated implicitly."
+    },
+    {
+      "name": "fixture_and_trigger_eval_inputs",
+      "required": true,
+      "purpose": "Representative golden decks, expected preview outputs, and trigger-evaluation prompts used to keep the skill lean and verifiable.",
+      "governance": "Use a small curated fixture set and trigger-eval set instead of growing `SKILL.md` into a long operator manual."
+    }
+  ],
+  "produced_outputs": [
+    {
+      "artifact": ".agents/skills/hsconfig/SKILL.md",
+      "required": true,
+      "purpose": "Short repo-local skill manifest with trigger conditions, boundaries, required inputs, output contract, and validation command."
+    },
+    {
+      "artifact": ".agents/skills/hsconfig/references/",
+      "required": true,
+      "purpose": "Deferred long-form docs for operator flow, config-surface translation notes, and boundary explanations that should not load at discovery time."
+    },
+    {
+      "artifact": ".agents/skills/hsconfig/scripts/",
+      "required": true,
+      "purpose": "Deterministic helpers for schema checks, strict JSON validation, fixture comparison, manifest generation, and package assembly."
+    },
+    {
+      "artifact": "outputs/<deck_slug>/config_preview/<deck_slug>/*.json",
+      "required": true,
+      "purpose": "Preview runtime files such as `Mulligan.json`, `GlobalValues.json`, per-card files, and `Combo.json` when supported by the declared surface plan."
+    },
+    {
+      "artifact": "outputs/<deck_slug>/config_preview/reports/visionai_syntax_report.json",
+      "required": true,
+      "purpose": "Strict JSON and runtime-surface validation report tied to the chosen syntax model and source manifest."
+    },
+    {
+      "artifact": "outputs/<deck_slug>/config_preview/reports/config_preview_receipt.json",
+      "required": true,
+      "purpose": "Receipt covering generated preview files, hashes, suppression-report refs, source manifest refs, and `runtime_write_performed=false`."
+    },
+    {
+      "artifact": "outputs/<deck_slug>/fake_runtime_receipt.json",
+      "required": true,
+      "purpose": "Dry-run packaging proof that preview artifacts can be mapped into the runtime shape without touching live files."
+    },
+    {
+      "artifact": "outputs/<deck_slug>/write_receipt.json",
+      "required": false,
+      "purpose": "Guarded apply evidence with runtime hashes, rollback metadata, and touched paths when and only when the dedicated apply path is invoked."
+    },
+    {
+      "artifact": "tests/fixtures/hsconfig/<fixture_name>/",
+      "required": true,
+      "purpose": "Golden examples for generated preview files, manifests, and validator receipts."
+    },
+    {
+      "artifact": "tests/fixtures/hsconfig/fixture_manifest.json",
+      "required": true,
+      "purpose": "Index of fixture cases, source manifests, expected output files, and assertion policy."
+    }
+  ],
+  "reliable_uses": [
+    "Keep HSConfig discoverable by loading only skill metadata at startup and deferring detailed instructions, references, and scripts until the skill is actually selected.",
+    "Separate reusable repository policy from task-specific workflow logic by keeping repo-wide rules in `AGENTS.md` and step-specific procedure in the skill and references.",
+    "Package preview outputs, fake-write evidence, and guarded-apply evidence as distinct layers with different authority and different `runtime_write_performed` expectations.",
+    "Enforce strict JSON materialization, filename-to-surface routing, row provenance, and supported-surface checks before any preview package is treated as ready.",
+    "Emit manifests and receipts that let later steps trace every generated row and every packaged file back to upstream contracts and cited sources.",
+    "Use small deterministic scripts and test fixtures for mechanical work instead of expanding the skill body with repeated command text, schema details, or large examples.",
+    "Keep runtime mutation outside the skill activation boundary by routing live writes only through the dedicated runtime writer."
+  ],
+  "limitations": [
+    "This step can define packaging, validation, and skill structure, but it cannot prove that a generated deck package improves gameplay or that the live runtime accepted the files without later guarded-write evidence.",
+    "A lean skill does not replace upstream card, archetype, mulligan, combo, or global-values research contracts; it only orchestrates and validates them.",
+    "Local skill examples such as HSTuner are useful anti-bloat evidence, but they are not a normative API contract for Codex or a proof that only one workflow split is valid.",
+    "Strict preview validation can prove file shape, provenance shape, and supported-surface alignment, but it cannot by itself prove undocumented runtime semantics or hidden-information correctness.",
+    "Plugin packaging is distribution strategy, not authoring necessity; Step 10 should start repo-local and avoid plugin complexity unless cross-repo reuse is actually needed."
+  ],
+  "relevant_config_surfaces": [
+    ".agents/skills/hsconfig/SKILL.md",
+    ".agents/skills/hsconfig/references/",
+    ".agents/skills/hsconfig/scripts/",
+    "AGENTS.md repository guidance that declares guardrails and verification expectations",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Mulligan.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/GlobalValues.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/*.json per-card runtime files",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Combo.json",
+    "outputs/<deck_slug>/config_preview/reports/visionai_syntax_report.json",
+    "outputs/<deck_slug>/config_preview/reports/config_preview_receipt.json",
+    "outputs/<deck_slug>/config_preview/reports/mulligan_condition_suppression_report.json",
+    "outputs/<deck_slug>/config_preview/reports/combo_suppression_report.json",
+    "outputs/<deck_slug>/fake_runtime_receipt.json",
+    "outputs/<deck_slug>/write_receipt.json",
+    "outputs/<deck_slug>/runtime_surface_snapshot.json",
+    "tests/fixtures/hsconfig/fixture_manifest.json"
+  ],
+  "aggressive_generation_policy": {
+    "principle": "Keep the skill small and the compiler aggressive: preserve all source-backed, documented, syntax-safe config intent in preview outputs, and move everything else into deterministic manifests, suppression reports, or deferred references instead of bloating instructions.",
+    "rules": [
+      "Prefer repo-local `.agents/skills/hsconfig` authoring first, because the workflow is tightly coupled to HSConfig outputs and repository tests.",
+      "Keep `SKILL.md` limited to trigger conditions, boundaries, required inputs, output contract, validation entrypoint, and one compact example.",
+      "Move long syntax explanations, edge cases, and operator walkthroughs into `references/` so they load only when the skill is selected.",
+      "Move deck decode, schema validation, hash calculation, fixture diffing, and package assembly into `scripts/` so the skill does not narrate deterministic mechanics.",
+      "Generate all declared documented preview surfaces in one pass when upstream contracts support them; do not hold back valid surfaces just because one separate claim was suppressed.",
+      "When a claim cannot be translated safely, emit a visible suppression record or contract gap instead of weakening the claim into guessed JSON or silently dropping it.",
+      "Treat preview, fake, and guarded apply as separate packaging stages with separate receipts and validation gates, never as one implicit command with hidden mutation."
+    ]
+  },
+  "validation_gates": [
+    "The research JSON itself must cover every required field in `fields.yaml` and pass `validate_json.py` for this research batch.",
+    "Generated preview files must parse as strict JSON with no comments or trailing commas.",
+    "Preview validation must reject unsupported runtime surfaces, aggregate `CardBehavior.json`, wrong top-level shapes, and invalid row provenance.",
+    "Every generated preview row must have exactly one provenance record that maps file path and JSON pointer back to a stable upstream rule and source citation.",
+    "The syntax report must include a source stamp with manifest reference, source doc keys, registry policy, and parser version or equivalent source-parser identity.",
+    "The config preview receipt must include hash coverage for generated preview files and for required suppression reports when those reports exist.",
+    "Preview and fake-stage artifacts must keep `runtime_write_performed=false`.",
+    "Guarded apply must require a separate `write_receipt.json`, same-invocation runtime snapshot, rollback metadata, source-hash freshness, and apply-mode validation before any live runtime mutation is considered ready.",
+    "Fixture comparisons must pass for at least one representative deck package and one negative or suppression case before the skill is treated as stable.",
+    "Trigger-evaluation prompts must show that the skill activates for HSConfig packaging tasks and stays inactive for unrelated Step 2 tuning or runtime-analysis tasks."
+  ],
+  "architectural_implications": [
+    "HSConfig should keep the repository rule layer in `AGENTS.md` and the reusable workflow layer in `.agents/skills/hsconfig`, rather than duplicating policy blocks in every reference file.",
+    "The skill should be repo-local and minimal: `SKILL.md`, a small `references/` set, and a small `scripts/` set. Do not start with plugin packaging, cloud distribution, or multiple overlapping skills.",
+    "Add dedicated modules for preview validation, packaging receipts, manifest generation, and fixture comparison instead of burying those concerns inside one monolithic authoring script.",
+    "The CLI surface should be explicit and stage-based, for example `intake`, `research`, `compile`, `validate-preview`, `package-runtime --mode fake`, and `package-runtime --mode apply`, so preview and apply authority are visibly separated.",
+    "Source provenance should be first-class in packaging: manifests, syntax reports, preview receipts, and row-provenance tables should all preserve source IDs and file hashes.",
+    "Use one compact reference example near the skill, and move broader regression cases into `tests/fixtures/hsconfig` so maintenance happens through tests, not through a larger and larger skill body.",
+    "Do not copy HSTuner's broader session-management, post-game loop, and guarded auto-tuning surface into HSConfig. Step 10 is an authoring and packaging workflow, not a live-tuning system.",
+    "If cross-repo reuse later becomes real, package the already-lean repo-local skill as a plugin without changing the preview/apply contracts."
+  ],
+  "recommended_contracts": [
+    {
+      "contract": "input_manifest.json",
+      "status": "required",
+      "purpose": "Deck identity, runtime root, target mode, declared surfaces, and source citation refs required for a packaging run."
+    },
+    {
+      "contract": "source_manifest.json",
+      "status": "required",
+      "purpose": "Pinned URLs, local cache paths, capture dates, and hashes for official syntax docs and deck-guide evidence used during generation."
+    },
+    {
+      "contract": "config_plan.json",
+      "status": "required",
+      "purpose": "Planned output files, skipped surfaces, suppression expectations, and package stage for the current run."
+    },
+    {
+      "contract": "generation_result.json",
+      "status": "required",
+      "purpose": "Files written, file hashes, unresolved gaps, and `runtime_write_performed` state for the run."
+    },
+    {
+      "contract": "validation_report.json",
+      "status": "required",
+      "purpose": "Combined syntax, schema, provenance, receipt, and fixture-diff results for every generated surface."
+    },
+    {
+      "contract": "config_preview_receipt.json",
+      "status": "required",
+      "purpose": "Preview package receipt with report refs, preview hashes, syntax source stamp linkage, and stage authority."
+    },
+    {
+      "contract": "fake_runtime_receipt.json",
+      "status": "required_for_runtime_packaging",
+      "purpose": "Dry-run proof that the preview package can map to the live runtime layout without writing to it."
+    },
+    {
+      "contract": "write_receipt.json",
+      "status": "required_for_apply",
+      "purpose": "Guarded apply evidence with runtime hash checks, touched paths, rollback operations, and after-hash capture."
+    },
+    {
+      "contract": "fixture_manifest.json",
+      "status": "required",
+      "purpose": "Golden-case index for deck fixtures, expected outputs, negative cases, and validator assertions."
+    },
+    {
+      "contract": "skill_trigger_eval.json",
+      "status": "recommended",
+      "purpose": "Explicit, implicit, and negative prompts used to keep activation boundaries stable as the skill evolves."
+    }
+  ],
+  "never_autogenerate_without": [
+    "Validated upstream deck and gameplan contracts rather than free-form deck notes alone.",
+    "A cited source manifest that covers every non-trivial strategic or syntax claim used in the package.",
+    "An explicit surface plan stating which runtime files may be generated in this run.",
+    "A successful strict-preview validation pass over every generated JSON file.",
+    "Row-provenance coverage showing exactly one source-backed provenance entry per generated runtime row.",
+    "A preview receipt and, for runtime-targeted packaging, a fake-runtime receipt before guarded apply is even considered.",
+    "At least one golden fixture or fixture-diff pass proving the packaging layout and validator outputs match a known case.",
+    "A deliberate apply invocation for live runtime mutation; preview or fake packaging alone must never imply apply authority."
+  ],
+  "must_cite_sources": [
+    {
+      "source": "https://developers.openai.com/codex/skills",
+      "reason": "Primary official source for skill structure, required `SKILL.md` metadata, optional `scripts/` and `references/`, repo-local authoring, and plugin distribution boundary."
+    },
+    {
+      "source": "https://developers.openai.com/codex/concepts/customization",
+      "reason": "Primary official source for progressive disclosure, repo-local `.agents/skills`, and the split between `AGENTS.md` and skills."
+    },
+    {
+      "source": "https://developers.openai.com/codex/use-cases/reusable-codex-skills",
+      "reason": "Official guidance for turning repeatable repo workflows into compact skills with optional scripts, references, and assets."
+    },
+    {
+      "source": "https://developers.openai.com/blog/skills-agents-sdk",
+      "reason": "Official blog explanation of keeping workflows close to the repo, using `.agents/skills`, and relying on progressive disclosure rather than front-loading context."
+    },
+    {
+      "source": "https://developers.openai.com/blog/eval-skills",
+      "reason": "Official guidance for manual trigger checks, small eval sets, and systematic skill verification."
+    },
+    {
+      "source": "https://developers.openai.com/codex/guides/agents-md",
+      "reason": "Official source for repository instruction layering and for keeping project guidance practical and close to the code."
+    },
+    {
+      "source": "https://developers.openai.com/codex/learn/best-practices",
+      "reason": "Official source for concise `AGENTS.md`, practical verification guidance, and keeping reusable guidance out of repeated prompts."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/operator/artifact-ownership.md",
+      "reason": "Primary local evidence for the preview, fake, apply, and Step 2 read-only artifact boundaries that HSConfig should emulate without inheriting Step 2 complexity."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/AI_HANDOFF.md",
+      "reason": "Primary local evidence for preview-first command ordering, apply boundary, and required Step 1 validation outputs."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+      "reason": "Primary local evidence for strict JSON parsing, runtime-surface validation, and row-provenance enforcement."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/acceptance_readiness.py",
+      "reason": "Primary local evidence for receipt checks, suppression-report linkage, source-stamp validation, and guarded-apply gate conditions."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/artifact_registry.py",
+      "reason": "Primary local evidence for artifact-family separation, preview authority, and the distinction between non-authoritative preview outputs and apply evidence."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/development/test-factories.md",
+      "reason": "Primary local evidence for keeping fixtures small, explicit, and read-only."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-architecture/results/Lean_Codex_Skill_And_Repo_Structure.json",
+      "reason": "Closest prior HSConfig-specific synthesis on lean skill layout, scripts versus references, and anti-bloat design."
+    },
+    {
+      "source": "C:/Users/darbo/.codex/skills/hstuner/SKILL.md",
+      "reason": "Local anti-pattern evidence for how a broader operational loop can grow large when multiple concerns are bundled into one skill."
+    },
+    {
+      "source": "C:/Users/darbo/.codex/skills/research/validate_json.py",
+      "reason": "Local validation script required by this research batch and evidence for complete field coverage checks."
+    }
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,119 @@
+{
+  "step_name": "Step 08 CardID Behavior Compiler Architecture",
+  "source_type": "official_docs",
+  "step_goal": "Compile source-backed per-card guide semantics into HearthRanger VisionAI card-local `CARDID.json` files that preserve the documented row shape, route each claim to the correct rule block, keep file ownership aligned with the correct `GameCardId`, and emit only syntax-safe behavior, target, choice, hero-power, attack, upgrade, end-turn, and priority rows.",
+  "required_inputs": [
+    "A validated Step 05 gameplan contract with stable `rule_id` values and explicit `correct_play_semantics` coverage for `card_usage`, `target_policy`, `trade_policy`, `resource_policy`, `hero_power_policy`, `choice_policy`, and any needed per-card exception clauses.",
+    "Resolved concrete Hearthstone CardIDs for every emitted file owner, including source cards, hero power cards, battlecry cards with targets, and any option-card identities used by Discover, Choose One, upgrade, or Adapt flows.",
+    "The current official HearthRanger VisionAI syntax sources for generic JSON config and card behavior, with a source manifest or equivalent hash check proving the compiler is targeting the documented page set.",
+    "A routing layer that decides whether a claim belongs to value blocks such as `InHandBonus`, `OnBoardBonus`, or `BeforePlayCardBonus`, target blocks such as `BeforeBattlecryTargetBonus`, action blocks such as `BeforeUseHeroPowerBonus` or `BeforePhysicalAttackBonus`, choice blocks such as `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, or `OnAdaptCardBonus`, or search-order blocks such as `InHandPlayPriority` and `OnBoardPlayPriority`.",
+    "Version-floor knowledge for documented version-gated features, especially `OnChooseOneCardBonus` needing v9.6.0.0 or higher and `BeforeUpgradeCardBonus` needing v10.3.0.0 or higher.",
+    "Stable row-order intent so emitted `values` arrays preserve authorial priority instead of being re-sorted by card id or block name."
+  ],
+  "produced_outputs": [
+    "One runtime-target per-card `CustomConfig/<deck>/<CARDID>.json` file for every card or option-card that receives documented behavior rows.",
+    "A `card_behavior_compilation_receipt.json` or equivalent receipt recording source URLs, source hashes, emitted files, row order, version assumptions, and validator status.",
+    "A `card_behavior_suppression_report.json` artifact listing every guide claim that could not be lowered into a documented `CARDID.json` block without inventing unsupported semantics.",
+    "Per-row provenance records that map each emitted `CARDID.json` row to a stable gameplan key, a source doc key, confidence, and patchability class.",
+    "An optional preview-only aggregate report, separate from runtime files, that helps operators inspect all emitted card-behavior rows without introducing an unsupported live `CardBehavior.json` package surface."
+  ],
+  "reliable_uses": [
+    "Emit documented per-card behavior files whose `GameCardId` exactly matches the filename stem and whose configurable blocks use the official object-plus-`values`-array shape.",
+    "Compile unconditional or condition-backed timing intent into `InHandBonus`, `OnBoardBonus`, and `BeforePlayCardBonus` rows when the guide claim is explicitly about the value of holding, maintaining, or playing that specific card.",
+    "Compile target guidance for targeted battlecries into `BeforeBattlecryTargetBonus` when the guide contract explicitly identifies the source card and a documented target condition.",
+    "Compile discover preferences into `OnDiscoverCardBonus` rows on the source card file, because the official card-behavior sample uses the discover-generating card file and filters on offered `my_discover` option ids.",
+    "Compile Choose One preferences into `OnChooseOneCardBonus` rows on the chosen option-card file when the branch card id is concretely resolved, because the official sample uses `CARDIDa` and `CARDIDb` option files rather than the base card file.",
+    "Compile hero-power use preferences into `BeforeUseHeroPowerBonus` rows when the active or transformed hero power card id is known and the guide claim is about using that hero power.",
+    "Compile attack posture for minions, weapons, or hero attacks into `BeforePhysicalAttackBonus` rows when the guide claim is explicitly about whether that attacker should swing and at what target type.",
+    "Compile end-turn, upgrade, and priority hints into `BeforeEndTurnBonus`, `BeforeUpgradeCardBonus`, `InHandPlayPriority`, and `OnBoardPlayPriority` while preserving the official distinction that priority changes search order rather than final board value.",
+    "Compile Adapt choice rows into `OnAdaptCardBonus` only when the owning option-card identity and the intended choice semantics are explicitly resolved; the official docs name this block but do not show a concrete sample [uncertain]."
+  ],
+  "limitations": [
+    "This step can compile documented `CARDID.json` syntax, but it cannot prove runtime load success, gameplay improvement, or that HearthRanger actually followed the emitted rows in a live game.",
+    "This step must not invent undocumented behavior grammar, undocumented target-owner conventions, or undocumented file-ownership rules when a guide claim is vague or symbolic.",
+    "This step must not collapse multi-card sequencing advice into `CARDID.json` if the real claim is a same-turn or cross-turn combo; that belongs to `Combo.json` rather than to card-local behavior rows.",
+    "The official docs clearly document the available card-behavior blocks and the generic condition language, but they do not give equally detailed examples for every block, especially `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `BeforeEndTurnBonus`, and `OnBoardPlayPriority`, so some lowering rules remain architecture inference rather than directly illustrated runtime behavior [uncertain].",
+    "The official docs provide a concrete Choose One sample but only list `OnAdaptCardBonus` by name, so the exact recommended file-ownership and option-resolution pattern for Adapt choices is not illustrated by an official sample [uncertain].",
+    "This step should stay card-local. Broad board-value tuning, speculative deck-wide resource changes, and unsupported documented surfaces such as `Concede.json` or `Presume.json` are outside the safe authority of this compiler."
+  ],
+  "relevant_config_surfaces": [
+    "`CustomConfig/deck_config.ini` `[CONFIGS]` mapping from exact deck name to the custom config directory.",
+    "`CustomConfig/<deck>/<CARDID>.json` as the runtime file surface for card-local behavior authoring.",
+    "`CARDID.json` top-level keys `GameCardId` and `ConfigComment` plus documented behavior blocks `InHandBonus`, `OnBoardBonus`, `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `BeforeOverkilledBonus`, `BeforeEndTurnBonus`, `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, `OnAdaptCardBonus`, `BeforeUpgradeCardBonus`, `InHandPlayPriority`, and `OnBoardPlayPriority`.",
+    "The per-row `values[*]` shape with required keys `comment`, `condition`, and `value`, all emitted as strings.",
+    "The HSConfig semantic source surfaces that feed this step, especially `correct_play_semantics.card_usage`, `correct_play_semantics.target_policy`, `correct_play_semantics.trade_policy`, `correct_play_semantics.resource_policy`, `correct_play_semantics.hero_power_policy`, `correct_play_semantics.choice_policy`, and any per-card exception fields such as `hold_policy` or `forbidden_actions`.",
+    "Preview-only diagnostics such as `card_behavior_suppression_report.json`, `config_row_provenance.json`, and the syntax-validation receipt."
+  ],
+  "aggressive_generation_policy": [
+    "Prefer the most specific documented card-behavior block that matches the guide claim instead of flattening everything into `BeforePlayCardBonus`; target intent should stay target-specific, choice intent should stay choice-specific, and search-order intent should stay in priority blocks.",
+    "Use `condition: \"*\"` for unconditional guide claims, and otherwise emit the narrowest documented condition expression that preserves the claim without adding unsupported predicates.",
+    "Preserve row order from the normalized compiler plan, because official matching is top-to-bottom and an automatic re-sort can silently change which row fires first.",
+    "Keep Discover rows on the discover-source card file, and keep Choose One rows on the resolved option-card file, because those ownership patterns are documented more clearly than a generic one-file-for-everything strategy.",
+    "Emit positive or negative `value` strings and priority strings as documented expression strings, never numeric JSON scalars, and keep every block inside the required `values` container.",
+    "Do not convert combo advice, deck-wide board-value policy, or hidden-information heuristics into card-local behavior rows just to avoid suppressions; prefer a visible suppression entry over a speculative `CARDID.json` rule.",
+    "Emit version-gated blocks only when the runtime floor is known; if the deck package version is unknown, suppress `OnChooseOneCardBonus` or `BeforeUpgradeCardBonus` rather than gambling on compatibility.",
+    "Treat Adapt choice authoring as opt-in and ownership-sensitive until HSConfig has a concrete option-identity resolver for that mechanic, because the official docs expose the block name but not a worked sample [uncertain]."
+  ],
+  "validation_gates": [
+    "The research result must cover every required field from `fields.yaml` and pass `validate_json.py` for this research batch.",
+    "Official source currentness must be proven by a live fetch or equivalent hash match against the local docs manifest for the generic JSON config page and the card-behavior page.",
+    "Every emitted runtime file must be strict JSON with no comments, no trailing commas, and a `GameCardId` equal to the filename stem.",
+    "Every top-level block must be one of the documented card-behavior blocks; unknown keys and aggregate runtime `CardBehavior.json` output must be rejected.",
+    "Every emitted row must contain `comment`, `condition`, and `value`, and `value` must be emitted as a documented expression string rather than as a numeric JSON scalar.",
+    "Every block that is version-gated must carry a satisfied version-floor assumption before emission, especially `OnChooseOneCardBonus` and `BeforeUpgradeCardBonus`.",
+    "Every choice-oriented row must have resolved file ownership, including discover-source ownership and concrete option-card ownership for Choose One or Adapt when applicable.",
+    "Every emitted row must have exactly one provenance link back to a stable gameplan clause and a `card_behavior` source-doc key.",
+    "Every suppressed guide claim must appear in a machine-readable suppression report with the raw claim, owning card context, and suppression reason."
+  ],
+  "architectural_implications": [
+    "HSConfig should implement a dedicated CardID behavior compiler instead of using free-form JSON templates. The compiler needs explicit sub-stages for file-owner resolution, block routing, condition lowering, row ordering, suppression reporting, and strict preview validation.",
+    "That compiler should treat official docs as a syntax contract and the gameplan contract as a semantic contract. The official pages decide what blocks exist; the gameplan decides which card actually deserves a row and why.",
+    "A `card_behavior_surface_router` should map semantic families to documented blocks, for example `card_usage` to `BeforePlayCardBonus` or `InHandBonus`, target rules to `BeforeBattlecryTargetBonus` or attack-related rows, `choice_policy` to Discover, Choose One, or Adapt blocks, hero-power policy to `BeforeUseHeroPowerBonus`, and explicit search-order hints to `InHandPlayPriority` or `OnBoardPlayPriority`.",
+    "A separate `option_identity_resolver` is required so the compiler knows whether a rule belongs to the base card file, a discover-source file, a Choose One branch file such as `CARDIDa` or `CARDIDb`, a transformed hero power file, or an upgrade or Adapt option file [uncertain].",
+    "Version-gated surfaces should be enforced by a dedicated compatibility check before emission, not by burying version assumptions inside arbitrary rule rows.",
+    "The existing repo boundary in `src/hsranger_core/visionai_docs.py` and `src/hsranger_core/visionai_model.py` should remain the final syntax gate, while HSConfig broadens semantic coverage beyond the current simple `BeforePlayCardBonus` preview emitted by `src/hsranger_core/config_author.py`.",
+    "HSConfig should keep a preview-only aggregate inspection report for operator review, but runtime output must stay file-per-card and must not ship a live `CardBehavior.json` package surface.",
+    "Every emitted row should carry stable provenance fields so later Step 2 review can explain why a row exists, which guide clause authorized it, and whether it was a source-backed preview row or a stricter runtime-confirmed patch candidate."
+  ],
+  "recommended_contracts": [
+    "A `card_behavior_intent_map.json` contract that records `claim_id`, `owner_card_id`, `source_card_id`, `surface`, `block_name`, `condition_expr`, `value_expr`, `row_order`, `version_floor`, and `source_refs` for every candidate `CARDID.json` row.",
+    "A `card_behavior_option_resolution.json` contract that resolves discover option ids, Choose One branch ids, transformed hero power ids, upgrade target ids, and any Adapt option ids before the compiler assigns file ownership.",
+    "A `card_behavior_capabilities.json` contract that lists documented rule blocks, version gates, row-key shape, unsupported shortcuts, and any local fail-closed policies layered on top of the official docs.",
+    "A `card_behavior_suppression_report.json` contract that records rejected claims, owning card context, unresolved option identities, unsupported predicates, missing version floors, and the exact reason the rule was not emitted.",
+    "A `card_behavior_row_provenance.json` or shared `config_row_provenance.json` contract that links each emitted row to file path, JSON pointer, source doc key, source gameplan key, confidence, and patchability.",
+    "A `card_behavior_compilation_receipt.json` contract that records official source URLs, content hashes, emitted files, block counts, version assumptions, validator status, and the preview-versus-runtime authority boundary."
+  ],
+  "never_autogenerate_without": [
+    "The official HearthRanger generic JSON config page and card-behavior page, confirmed current for the target compiler run by live fetch or matching content hashes.",
+    "Concrete file-owner identity for every emitted row, including exact `CARDID`, hero power card id, or option-card id when a rule belongs to a branch or choice outcome.",
+    "A validated gameplan clause that explicitly authorizes the row and specifies whether the claim is about play timing, on-board value, target choice, hero-power use, attack, choice resolution, upgrade, end-turn, or priority ordering.",
+    "A declared version floor whenever the compiler wants to use documented version-gated behavior blocks.",
+    "Strict JSON and syntax-model validation over every emitted `CARDID.json` file before downstream steps can treat the preview as ready.",
+    "Per-row provenance coverage and a suppression report for every unresolved or non-emitted claim.",
+    "Concrete option identity resolution before generating Discover, Choose One, Adapt, transformed hero power, or upgrade-specific rows; human-readable labels alone are not enough."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://hearthstonejson.com/docs/cards.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/card_behavior.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/config_author.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/gameplan_contract.schema.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/semantics/mechanic_registry.py",
+    "C:/Users/darbo/Documents/HS/docs/operator/generated-semantic-contracts.md",
+    "C:/Users/darbo/Documents/HS/outputs/mechpala/step2_analysis/semantic_coverage.json"
+  ],
+  "uncertain": [
+    "reliable_uses",
+    "limitations",
+    "aggressive_generation_policy",
+    "architectural_implications"
+  ]
+}

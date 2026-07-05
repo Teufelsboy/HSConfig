@@ -1,0 +1,115 @@
+{
+  "step_name": "Audit 03 Lean Skill Boundary Versus Direct Finetuned Config",
+  "source_type": "architecture",
+  "step_goal": "Audit whether HSConfig can remain a lean Codex skill while still producing directly finetuned initial CustomConfig packages from deck input and online guide expectations.",
+  "required_inputs": [
+    "approved HSConfig architecture scope",
+    "deck input contract",
+    "source evidence bundle",
+    "gameplan contract",
+    "VisionAI surface registry",
+    "compiler capability matrix",
+    "validation and packaging policy"
+  ],
+  "produced_outputs": [
+    "lean_skill_boundary_verdict",
+    "repo_local_skill_layout",
+    "compiler_core_scope",
+    "runtime_apply_boundary",
+    "validation_packaging_contract",
+    "skill_trigger_policy"
+  ],
+  "reliable_uses": [
+    "Define which responsibilities belong in HSConfig versus HSTuner.",
+    "Confirm that direct initial config generation requires deterministic scripts and contracts, not a prompt-only skill.",
+    "Confirm that replay parsing, winrate validation, runtime tuning, and candidate promotion should stay out of HSConfig.",
+    "Confirm that SKILL.md should be short and references/scripts should carry the heavier domain logic."
+  ],
+  "limitations": [
+    "This audit does not prove that a future generated config loads in HearthRanger.",
+    "This audit does not decide exact numeric values for a particular deck.",
+    "This audit does not implement runtime apply or validation scripts.",
+    "This audit cannot replace per-deck guide research and card identity resolution."
+  ],
+  "relevant_config_surfaces": [
+    "Mulligan.json",
+    "GlobalValues.json",
+    "CARDID.json",
+    "Combo.json",
+    "Presume.json",
+    "Concede.json",
+    "deck_config.ini"
+  ],
+  "aggressive_generation_policy": [
+    "Be aggressive in compilation coverage, not in workflow scope: if upstream contracts justify a documented surface, emit it in preview instead of shrinking to a tiny safe subset.",
+    "Compile the full declared initial package in one deterministic pass from deck intake, source-backed research, and gameplan contracts rather than asking for later replay tuning to fill basic config gaps.",
+    "Fail closed with visible suppression reports when a guide claim cannot be lowered safely; do not replace specific missing mappings with timid generic output or with hidden omissions.",
+    "Preserve direct finetuned intent at Step 1 by emitting per-card behavior, mulligan anchors, combo sequences, and authorized deck-wide overlays immediately when the contract and syntax model support them.",
+    "Keep runtime proof claims out of scope. The skill may be nonconservative about initial config authoring while still refusing to claim `CONFIG_LOAD_OK`, gameplay improvement, or finetune readiness without post-run evidence."
+  ],
+  "validation_gates": [
+    "The audit result JSON itself must pass `python ~/.codex/skills/research/validate_json.py -f C:\\Users\\darbo\\Documents\\HS\\docs\\research\\2026-07-05-hsconfig-nonconservative-design-audit\\fields.yaml -j C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-nonconservative-design-audit\\results\\Audit_03_Lean_Skill_Boundary_Versus_Direct_Finetuned_Config.json`.",
+    "HSConfig architecture should require validated upstream inputs before generation: deck identity, source-backed research contract, and gameplan contract.",
+    "Every generated preview file must pass strict JSON validation, supported-surface checks, filename-to-`GameCardId` checks, and per-surface row-shape validation.",
+    "Every generated preview row must have exactly one provenance record linking the runtime row to a stable upstream rule and cited source.",
+    "Preview artifacts and fake-runtime receipts must keep `runtime_write_performed=false`; guarded apply requires a separate write receipt and runtime snapshot outside the lean skill body.",
+    "At least one representative golden fixture and one suppression or negative case must pass package comparison before the architecture is considered ready for implementation."
+  ],
+  "architectural_implications": [
+    "Implement HSConfig as a small repo-local skill boundary only after introducing a minimal deterministic generation core: input manifest, source manifest, config plan, per-row provenance table, preview receipt, fake-runtime receipt, and strict preview validator.",
+    "Keep direct initial config generation in Step 1 only. Do not import Step 2 replay parsing, missplay detection, candidate promotion, guarded auto-apply tuning loops, or HSTuner session-management artifacts into HSConfig.",
+    "Make the skill body short and trigger-oriented, and move syntax detail, worked examples, and package assembly mechanics into `references/` and `scripts/` so the skill does not become a long operational runbook.",
+    "Require declared surface planning up front so the generator can emit all supported direct outputs in one pass: `GlobalValues.json`, `Mulligan.json`, per-card `CARDID.json`, and `Combo.json`, while keeping unsupported or unresolved claims in suppression artifacts instead of silently omitting them.",
+    "Treat preview, fake runtime packaging, and guarded apply as separate stages with separate receipts and authority semantics. HSConfig may prepare a high-confidence package, but live mutation must remain outside the lean skill boundary.",
+    "HSConfig must not reduce GlobalValues authoring to a tiny handful of obvious keys. It should copy the active runtime default baseline, profile every key, and record why each key stays baseline or receives an authorized overlay.",
+    "Direct initial finetuning for GlobalValues should stay narrow but intentional: the architecture should allow documented pre-run overlays such as turn-weight posture when the gameplan explicitly authorizes them, while keeping broad speculative value-family retuning out of Step 1.",
+    "A lean boundary still requires deterministic GlobalValues artifacts: baseline hash capture, all-key profile report, overlay authorization contract, row provenance, and preview receipt linkage.",
+    "The architecture should keep GlobalValues generation compiler-driven, not prompt-shaped. Otherwise the skill either becomes bloated with hand-written key logic or collapses into an under-specified prompt that cannot justify direct finetuned output.",
+    "The lean skill must still own direct preview generation for `Mulligan.json`, per-card `CARDID.json`, `Combo.json`, and deck-local `GlobalValues.json` from validated upstream contracts.",
+    "Per-card behavior cannot remain an optional later enhancement. Direct finetuned initial config requires explicit routing from guide semantics into documented card-local rule blocks with filename-to-`GameCardId` enforcement and row provenance.",
+    "Mulligan generation must compile guide-backed keep and discard anchors into runtime-safe rows and record unsupported conditional branches in a suppression report rather than dropping them.",
+    "Combo generation must emit only concrete ordered card-id chains, with unresolved symbolic sequences staying in a combo suppression artifact.",
+    "Concede and Presume should remain documented-but-disabled surfaces unless HSConfig adds first-class support, validation, and package authority for them. Their presence in official docs is not enough to pull them into the lean initial boundary."
+  ],
+  "recommended_contracts": [
+    "input_manifest.json",
+    "source_manifest.json",
+    "config_plan.json",
+    "deck_research_contract.json",
+    "gameplan_contract.json",
+    "config_row_provenance.json",
+    "global_values_key_profile_report.json",
+    "mulligan_condition_suppression_report.json",
+    "combo_suppression_report.json",
+    "validation_report.json",
+    "config_preview_receipt.json",
+    "fake_runtime_receipt.json",
+    "fixture_manifest.json"
+  ],
+  "never_autogenerate_without": [
+    "A decoded deck list and resolved CardIDs.",
+    "A source-backed gameplan contract.",
+    "A complete GlobalValues baseline profile.",
+    "Per-row provenance for emitted config rows.",
+    "Strict JSON and VisionAI surface validation.",
+    "A package manifest and validation report before runtime apply."
+  ],
+  "must_cite_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-architecture\\results\\Lean_Codex_Skill_And_Repo_Structure.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-architecture\\results\\Direct_Config_Generation_Decision_Model.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-architecture\\results\\HearthRanger_VisionAI_Config_Surface_Contract.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-step-architecture\\results\\Step_07_GlobalValues_Compiler_Architecture.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-step-architecture\\results\\Step_08_CardID_Behavior_Compiler_Architecture.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-05-hsconfig-step-architecture\\results\\Step_10_Validation_Packaging_And_Skill_Runtime_Architecture.json",
+    "C:\\Users\\darbo\\Documents\\HS\\docs\\operator\\deck-research-contract.md",
+    "C:\\Users\\darbo\\Documents\\HS\\src\\hsranger_core\\artifact_registry.py",
+    "C:\\Users\\darbo\\Documents\\HS\\src\\hsranger_core\\acceptance_readiness.py",
+    "C:\\Users\\darbo\\Documents\\HS\\src\\hsranger_core\\visionai_model.py",
+    "C:\\Users\\darbo\\Documents\\HS\\src\\hsranger_core\\schemas\\deck_research_bundle_manifest.schema.json",
+    "C:\\Users\\darbo\\Documents\\HS\\outputs\\shadow_priest\\deck_research_contract.json",
+    "C:\\Users\\darbo\\Documents\\HS\\outputs\\shadow_priest\\research_bundle\\source_evidence_index.json",
+    "C:\\Users\\darbo\\Documents\\HS\\outputs\\shadow_priest\\research_bundle\\card_usage_expectations.json",
+    "C:\\Users\\darbo\\.codex\\skills\\research\\validate_json.py"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,98 @@
+{
+  "step_name": "Step 06 Mulligan Compiler Architecture",
+  "source_type": "official_docs",
+  "step_goal": "Compile guide-backed opening-hand expectations into a syntax-safe HearthRanger VisionAI `Mulligan.json` that preserves aggressive keep intent, documented discard intent, documented selector syntax, and explicit suppression of unsupported or non-runtime-safe conditions.",
+  "required_inputs": [
+    "A normalized mulligan contract with `default_keep`, `conditional_keep`, `default_throw`, stable `rule_id` values, and source references.",
+    "Resolved Hearthstone CardIDs for every concrete card selector that may appear in `mulligan` rows.",
+    "Optional matchup metadata that explicitly tags coin-only, no-coin-only, and opponent-class-specific claims.",
+    "A compiler capability matrix that separates officially documented Mulligan syntax from the narrower repo-approved runtime-safe condition subset.",
+    "An ordered rule list so emitted rows preserve intended priority instead of re-sorting by card or condition."
+  ],
+  "produced_outputs": [
+    "A runtime-target `Mulligan.json` file with `GameCardId`, `ConfigComment`, and `Mulligan.values` rows.",
+    "A `mulligan_condition_suppression_report.json` artifact that records every guide condition that was intentionally not emitted to runtime.",
+    "A `mulligan_compilation_receipt.json` or equivalent embedded receipt that records source refs, rule order, suppressions, and validation results.",
+    "Per-row provenance entries that map each emitted Mulligan row back to a stable gameplan rule and source citation."
+  ],
+  "reliable_uses": [
+    "Emit syntactically valid Mulligan rows with the required row keys `comment`, `mulligan`, `condition`, and `value`.",
+    "Compile unconditional keeps and throws into `condition: \"*\"` rows using concrete CardIDs or documented `DROPn` selectors.",
+    "Compile documented same-hand synergy selectors such as `CARD_A + CARD_B` and `DROP1 + CARD_A` when the guide claim is concrete enough.",
+    "Compile duplicated-card keeps with the documented comma-plus selector form when the runtime version requirement is acceptable, for example `LOOT_149, LOOT_149+ LOOT_149` for version 10.4.5.0 or higher.",
+    "Compile `coin` and `nocoin` branches when the guide claim maps directly to the official Mulligan condition surface.",
+    "Compile opponent-class branches when the condition uses documented hero checks such as `opp_hero(count(),warrior=true) > 0` or `hero_class=warrior | rogue | paladin`.",
+    "Preserve aggressive keep intent by using broad documented selectors like `DROP1`, `DROP2`, `DROP3`, and plus-combos instead of collapsing everything to single-card keeps.",
+    "Suppress guide clauses that require unsupported or locally unvalidated Mulligan predicates instead of forcing them into runtime JSON."
+  ],
+  "limitations": [
+    "This step can compile documented Mulligan syntax, but it cannot prove that the resulting rules improve gameplay or that HearthRanger actually loaded them in a live runtime session.",
+    "This step must not invent undocumented Mulligan grammar for vague guide advice such as `keep if curve is good`, `keep if enough early pressure`, or `keep if spell density is high`.",
+    "The current repo preview validator intentionally allows a narrower Mulligan condition subset than the broader generic VisionAI condition language, so some officially documented-looking guide translations must still be suppressed for local runtime safety.",
+    "The official Mulligan page explicitly documents that hold beats discard, but it does not explicitly document same-type tie-break behavior for overlapping hold rows or overlapping discard rows, so preserving author order is a conservative policy rather than a proven runtime rule [uncertain]."
+  ],
+  "relevant_config_surfaces": [
+    "`CustomConfig/deck_config.ini` `[CONFIGS]` mapping from exact deck name to config directory.",
+    "`CustomConfig/<deck>/Mulligan.json` as the runtime surface for opening-hand rules.",
+    "`Mulligan.values[*]` rows with keys `comment`, `mulligan`, `condition`, and `value`.",
+    "The HSConfig gameplan surface that feeds this step, typically `mulligan_plan.default_keep`, `mulligan_plan.conditional_keep`, and `mulligan_plan.default_throw`.",
+    "The preview-only diagnostic surface `config_preview/reports/mulligan_condition_suppression_report.json`."
+  ],
+  "aggressive_generation_policy": [
+    "Default to the most aggressive documented keep expression that the guide actually supports, preferring `DROPn` selectors or plus-combos when they describe the guide better than isolated single-card rows.",
+    "Emit explicit discard rows for guide-backed throws, but keep any overlapping documented hold rows because the official Mulligan doc states that hold has higher priority than discard.",
+    "Preserve ordered rule emission from the normalized gameplan instead of alphabetizing rows, so the compiler does not accidentally change priority intent.",
+    "Translate coin and no-coin advice only into the documented `coin`, `nocoin`, or opening-hand-count equivalents shown in the official Mulligan doc.",
+    "Translate matchup advice only when it can be expressed with official opponent-hero patterns; otherwise keep the richer guide clause in the gameplan contract and emit a suppression report entry.",
+    "Do not downgrade aggressive guide clauses into timid single-card keeps just to avoid suppression; prefer exact documented selectors first, then suppress with an explanation if no documented selector can carry the claim.",
+    "Treat unsupported composite guide logic such as `coin OR cheap curve in hand` as report-only unless a separate compiler pass can split it into multiple individually documented rows without changing meaning."
+  ],
+  "validation_gates": [
+    "The research result must cover every required field from `fields.yaml` and pass `validate_json.py` for this research batch.",
+    "Generated `Mulligan.json` must be strict JSON with no comments or trailing commas.",
+    "Top-level Mulligan structure must be exactly `GameCardId`, `ConfigComment`, and `Mulligan`.",
+    "Every emitted Mulligan row must contain `comment`, `mulligan`, `condition`, and `value`, and `value` must be either `hold` or `discard`.",
+    "Every emitted `condition` must pass the local runtime-safety gate used by `hsranger_core.mulligan_runtime_safety.runtime_safe_mulligan_condition` when the target is the current preview/apply workflow.",
+    "Every emitted row must have exactly one provenance mapping back to a stable gameplan rule and documented source surface.",
+    "Every suppressed guide condition must appear in `mulligan_condition_suppression_report.json` with the raw condition text and the suppression reason."
+  ],
+  "architectural_implications": [
+    "HSConfig should implement a dedicated Mulligan compiler instead of treating Mulligan rows as generic JSON text templates.",
+    "That compiler should have separate sub-stages for selector compilation, condition compilation, row ordering, and suppression reporting.",
+    "Selector compilation should understand concrete CardIDs, `DROPn`, documented plus-combos, and the duplicated-card selector form.",
+    "Condition compilation should operate in two modes: an official-doc understanding mode and a stricter runtime-safe emission mode for the current HSranger preview pipeline.",
+    "The current repo files `src/hsranger_core/config_author.py`, `src/hsranger_core/mulligan_runtime_safety.py`, and `src/hsranger_core/visionai_model.py` already define the enforcement boundary that HSConfig should target for preview-safe output.",
+    "HSConfig should keep unsupported guide richness in its own machine-readable contract instead of flattening or silently discarding it, then expose a suppression report for operator review.",
+    "Priority must be modeled explicitly because `hold` versus `discard` precedence is part of the official contract, and row order should remain stable across rebuilds for diffability."
+  ],
+  "recommended_contracts": [
+    "A `mulligan_plan` contract with `rule_id`, `default_keep`, `conditional_keep`, `default_throw`, `source_refs`, and explicit per-claim condition metadata.",
+    "A `mulligan_compiler_capabilities.json` contract that lists allowed selectors, allowed condition families, version-gated features such as `hero_class` and duplicate-selector syntax, and suppression reasons.",
+    "A `mulligan_row_provenance` contract that records file path, JSON pointer, source doc key, source gameplan key, confidence, and patchability.",
+    "A `mulligan_condition_suppression_report.json` contract with `status`, `suppressed_count`, `suppressed_condition_keys`, `items`, `raw_condition`, and human-readable suppression reasons.",
+    "A `mulligan_compilation_receipt.json` contract that records emitted row order, source URLs, validator status, and version assumptions."
+  ],
+  "never_autogenerate_without": [
+    "Official HearthRanger Mulligan documentation and generic JSON-condition documentation cited in the compilation receipt.",
+    "Concrete CardID resolution for every emitted non-`DROPn` selector.",
+    "An explicit ordered mulligan plan rather than an unordered set of keep suggestions.",
+    "A documented translation path for every emitted condition, or a suppression report entry when no safe translation exists.",
+    "A successful local syntax and runtime-safety validation pass for the emitted Mulligan rows.",
+    "A declared version floor when using documented version-gated features such as `hero_class` or the duplicate-selector sample."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/mulligan.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/mulligan_runtime_safety.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/config_author.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "C:/Users/darbo/Documents/HS/outputs/cta_paladin/config_preview/reports/mulligan_condition_suppression_report.json"
+  ],
+  "uncertain": [
+    "limitations"
+  ]
+}

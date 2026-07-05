@@ -1,0 +1,72 @@
+topic: HSConfig Complete Step Architecture
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-05-hsconfig-step-architecture\results
+  batch_size: 10
+  items_per_agent: 1
+items:
+  - name: Step 01 Input And Scope Contract
+    category: architecture
+    description: >
+      Research the minimal but complete deck input contract for HSConfig: deck name,
+      deck code, optional format, runtime root, target config mode, source citation
+      requirements, and how to keep the workflow deck-neutral while generating
+      aggressive guide-aligned config artifacts.
+  - name: Step 02 Deckstring Decode And Card Identity
+    category: data_api
+    description: >
+      Research deterministic deck code decoding and card identity mapping for Hearthstone:
+      DBF ids, CardIDs, heroes, hero powers, format, duplicate counts, HearthSim deckstrings,
+      HearthstoneJSON, HSData/CardDefs.xml, and local runtime CardID verification needs.
+  - name: Step 03 Card Metadata And Mechanic Taxonomy
+    category: data_api
+    description: >
+      Research how HSConfig should hydrate card text, card type, cost, mechanics,
+      play requirements, targeting constraints, generated entities, hero powers, weapons,
+      secrets, locations, deathrattle, battlecry, discover, dredge, tradeable, overload,
+      discard, silence, transform, and other mechanic families for config generation.
+  - name: Step 04 Online Guide And Data Research Bundle
+    category: community_guide
+    description: >
+      Research reliable online sources for archetype plans, mulligan guides, matchup posture,
+      card roles, known bad patterns, stats, guide freshness, patch drift, source confidence,
+      and how HSConfig should use guides aggressively without copying unsupported claims into
+      invalid VisionAI config.
+  - name: Step 05 Archetype And Gameplan Contract
+    category: architecture
+    description: >
+      Research the structured gameplan contract HSConfig should build before any config file:
+      archetype, speed, win conditions, mulligan anchors, card role map, card usage expectations,
+      target policies, face/trade posture, resource policy, hero power policy, combo sequencing,
+      known bad patterns, and per-card coverage.
+  - name: Step 06 Mulligan Compiler Architecture
+    category: official_docs
+    description: >
+      Research HearthRanger VisionAI Mulligan.json syntax and how HSConfig should compile guide
+      expectations into aggressive hold/discard rows, DROPn rules, plus-combos, coin/nocoin,
+      opponent class conditions, priority ordering, and suppression of unsupported conditions.
+  - name: Step 07 GlobalValues Compiler Architecture
+    category: official_docs
+    description: >
+      Research HearthRanger VisionAI GlobalValues.json, board-value and final-board-value
+      semantics, default baseline copying, key profiling, aggressive archetype-specific overlays,
+      and rules for changing turn weights, minion/hero/weapon/secret/deck values without breaking
+      syntax or making unsupported claims.
+  - name: Step 08 CardID Behavior Compiler Architecture
+    category: official_docs
+    description: >
+      Research HearthRanger VisionAI card-local CARDID.json behavior syntax and how HSConfig
+      should compile per-card guide expectations into InHandBonus, OnBoardBonus,
+      BeforePlayCardBonus, target bonuses, Discover/ChooseOne/Adapt choices, hero power,
+      attack, upgrade, end-turn, and priority rules.
+  - name: Step 09 Combo Presume And Concede Surface Architecture
+    category: official_docs
+    description: >
+      Research Combo.json, Presume.json, and Concede.json. Define when concrete ordered
+      same-turn or cross-turn combos should be emitted, when presume/play-around assumptions
+      are valuable, when concede is useful, and which vague guide claims must remain report-only.
+  - name: Step 10 Validation Packaging And Skill Runtime Architecture
+    category: skill_architecture
+    description: >
+      Research the lean HSConfig repo and Codex skill structure: progressive disclosure,
+      scripts versus references, CLI surface, preview/apply packaging, strict JSON validation,
+      source citations, config manifests, test fixtures, and how to avoid HSTuner-style bloat.

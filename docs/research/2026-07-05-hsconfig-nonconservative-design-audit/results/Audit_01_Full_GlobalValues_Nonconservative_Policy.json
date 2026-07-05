@@ -1,0 +1,106 @@
+{
+  "step_name": "Audit 01 Full GlobalValues Nonconservative Policy",
+  "source_type": "official_docs",
+  "step_goal": "Audit whether the proposed HSConfig GlobalValues architecture is aggressive enough for Step 1 by requiring full default-baseline profiling, posture-driven direct overlay decisions where official board-value semantics clearly support them, broader intentional governance than a tiny safe subset, and explicit reasons for every unchanged key.",
+  "required_inputs": [
+    "The official HearthRanger `GlobalValues` help page, because it documents the baseline-copy recommendation, the board-value formula, the final-board-value weighting model, and the example that aggro decks can prefer first-turn value.",
+    "The official HearthRanger generic JSON-config page, because it confirms the shared strict-JSON object-plus-`values`-array structure that `GlobalValues.json` must preserve.",
+    "The active runtime baseline file `CustomConfig/default/GlobalValues.json`, because a nonconservative audit must inspect the real default key inventory rather than a reduced public example.",
+    "The current HSConfig Step 07 architecture result and any local compiler code that implements all-key profiling, per-key classification, board-value component mapping, and overlay authorization.",
+    "An archetype or gameplan posture contract that states direct priorities such as early-board pressure, board preservation, weapon burst, hero-power damage, or opponent-board suppression in machine-readable form.",
+    "A per-key baseline authority view that can connect each copied key to one of four states: direct Step 1 overlay candidate, Step 1 baseline hold with explicit reason, Step 2 evidence-only candidate, or unsupported until clearer mapping exists."
+  ],
+  "produced_outputs": [
+    "An audited `GlobalValues` policy verdict that says the existing architecture is partially correct but still too conservative if it only authorizes turn-weight overlays and leaves other keys at baseline without posture-specific reasoning.",
+    "A full-key `global_values_key_profile_report.json` where every baseline key is present, classified, and accompanied by an intentional reason for either overlay, baseline hold, Step 2 deferral, or unsupported status.",
+    "A posture-linked `global_values_key_authority.json` matrix that covers the full copied baseline inventory instead of only a handful of sample keys.",
+    "A machine-readable `pre_run_assumption_overlays` plan that may contain more than the two turn-weight keys when the key name, board-value component, and guide posture align directly enough to justify a bounded overlay.",
+    "A nonconservative audit receipt that records baseline hash, profile count, direct-overlay candidates, blocked candidates, unchanged-key reasons, and source references."
+  ],
+  "reliable_uses": [
+    "Confirm that baseline-first materialization is the correct starting point, because the official page strongly recommends copying `GlobalValues.json` from the default directory before editing it.",
+    "Confirm that all default keys must be profiled and intentionally governed, because the public docs do not publish a complete key catalog and therefore the runtime baseline is the only authoritative inventory.",
+    "Confirm that a Step 1 architecture may safely use the official board-value model and first-turn versus second-turn weighting semantics as direct policy inputs rather than as vague commentary only.",
+    "Determine that an architecture is too conservative if it profiles every key but permits pre-run overlays only for a tiny hard-coded subset without testing whether other baseline keys have a direct posture-backed mapping.",
+    "Determine that unchanged keys are insufficiently governed when they are grouped under generic reasons such as `copy_baseline` without a per-key posture explanation or an explicit authority class.",
+    "Require that the nonconservative path still stays syntax-safe by demanding baseline `old_value` matches, deck-local output only, rollback notes, provenance, and fail-closed behavior for ambiguous keys."
+  ],
+  "limitations": [
+    "This audit can judge design sufficiency against official documentation and local architecture evidence, but it cannot prove that any proposed overlay improves gameplay or loads correctly in a fresh HearthRanger runtime session.",
+    "The official `GlobalValues` page documents the baseline-copy rule, the board-value formula, turn-weight semantics, and an example key `GlobalDivineShield`, but it does not publish a complete authoritative machine-readable list of all live default keys.",
+    "The official docs show that many global values exist and are described as self-explanatory, but they do not themselves define a precise causal tuning handbook for every key family; HSConfig still needs local governance and review boundaries.",
+    "[uncertain] Some direct-overlay recommendations beyond `FirstTurnValueWeight` and `SecondTurnValueWeight` rely on key-name and board-value-component interpretation from the live baseline plus local board-value mapping, not on an official per-key semantic catalog."
+  ],
+  "relevant_config_surfaces": [
+    "`CustomConfig/default/GlobalValues.json` as the authoritative default baseline inventory.",
+    "`CustomConfig/<deck>/GlobalValues.json` as the only Step 1 patch target.",
+    "Per-key `values[*]` rows inside `GlobalValues.json`, including but not limited to `FirstTurnValueWeight`, `SecondTurnValueWeight`, and copied `Global*` or `OppGlobal*` families.",
+    "The upstream `global_values_contract` or equivalent gameplan posture contract that authorizes or forbids direct Step 1 overlays.",
+    "`config_preview/reports/global_values_key_profile_report.json` as the exhaustive unchanged-key and overlay-reason ledger.",
+    "`global_values_key_authority.json` or equivalent per-key authority matrix.",
+    "Local board-value component artifacts such as `board_value_model` and `board_value_components`, because they are the bridge between guide posture and concrete global-value families."
+  ],
+  "aggressive_generation_policy": [
+    "Keep the existing full-baseline copy requirement. Nonconservative does not mean inventing a reduced file; it means governing every copied key deliberately.",
+    "Do not stop at two turn-weight overlays. The architecture should test every copied baseline key against explicit posture and board-value mappings before deciding whether it stays baseline, becomes a direct Step 1 overlay candidate, or is deferred to Step 2.",
+    "Authorize direct Step 1 overlays whenever three conditions hold together: the key name maps cleanly to a documented or locally modeled board-value component, the archetype posture states a concrete preference that points at that component, and the change can be expressed as a bounded deck-local overlay with baseline `old_value` matching and rollback.",
+    "At minimum, the direct-overlay candidate search should not be limited to turn weights; it should also evaluate copied families already represented in local board-value mapping such as own and opponent hero, weapon, and minion value groups, plus explicit example-like combat keywords such as `GlobalDivineShield` when posture and rationale are concrete enough.",
+    "Every unchanged key must receive an intentional explanation such as `kept at baseline because posture does not target this component`, `kept at baseline because docs are too weak for Step 1 causality`, or `Step 2 evidence required because this key influences hidden or broad behavior beyond static guide confidence`.",
+    "Keys without a concrete posture mapping must fail closed, but they must still be audited individually; silent baseline preservation is too conservative for this design goal.",
+    "[uncertain] If the live default baseline exposes additional clearly named keys for hand, deck, hero power, or secret components, the architecture should evaluate them for direct Step 1 overlay candidacy instead of categorically deferring them, provided the posture contract and rollback controls are equally explicit."
+  ],
+  "validation_gates": [
+    "The research JSON must cover every required field from the local `fields.yaml` and pass `validate_json.py`.",
+    "The audit must verify that the profiled key count matches the copied baseline key count after excluding only reserved non-value metadata keys such as `GameCardId` and `ConfigComment`.",
+    "Every baseline key must appear in the key profile report with one explicit authority class and one explicit unchanged-or-changed reason.",
+    "Any direct Step 1 overlay candidate must already exist in the copied baseline and must provide `old_value`, `value`, `reason`, `expected_effect`, `risk`, `rollback`, and `source_refs`.",
+    "Any key marked as direct Step 1 overlay must have a concrete posture-to-component mapping, not only a vague guide phrase such as `play more aggressively`.",
+    "Any key kept at baseline must still record why it was not changed for this posture and whether it remains Step 2 eligible or unsupported.",
+    "Generated deck-local `GlobalValues.json` files must remain strict JSON, preserve `GameCardId = GlobalValues`, and keep the baseline object-plus-`values`-array shape.",
+    "The audit must reject architectures where the authority matrix covers only a tiny hand-picked subset of keys while the rest are handled by generic fallback text."
+  ],
+  "architectural_implications": [
+    "Replace any sample-only authority matrix with an exhaustive baseline-derived authority matrix generated after baseline load and before config emission.",
+    "Extend `global_values_key_profile_report.json` from coarse categories into a per-key governance ledger containing `board_value_component`, `posture_relevance`, `step1_authority`, `why_not_changed_now`, `step2_review_path`, and `source_refs`.",
+    "Split Step 1 GlobalValues policy into two passes: first `profile_every_key`, then `authorize_direct_overlays_from_posture` so the system can be broad in consideration without becoming reckless in emission.",
+    "Move from `turn_weight_only unless evidence exists` to `full-key review with bounded direct overlays where posture mapping is explicit`; this is the core nonconservative correction.",
+    "Keep runtime-write boundaries unchanged: all Step 1 changes remain deck-local preview artifacts, and default baseline files are never mutated.",
+    "[uncertain] Introduce a generated `global_values_posture_overlay_candidates.json` report that lists every copied key considered for direct Step 1 overlay, even when the final decision is `keep baseline`, so reviewers can see that the architecture actively searched the full space rather than protecting only a narrow preapproved subset."
+  ],
+  "recommended_contracts": [
+    "A `global_values_contract` with `baseline_source`, `baseline_hash_required`, `patch_authorization`, `posture_summary`, `required_evidence`, and `source_refs`.",
+    "A `global_values_key_profile_report.json` contract with one row per copied baseline key containing `key`, `board_value_component`, `posture_relevance`, `step1_authority`, `why_not_changed_now`, `baseline_value_count`, `overlay`, and `step2_review_path`.",
+    "A `global_values_key_authority.json` contract generated from the live baseline inventory, not from a fixed small dictionary, so every runtime key receives an explicit authority class.",
+    "A `pre_run_assumption_overlays` structure that is allowed to include any directly mappable key family, not just turn weights, as long as baseline matching, rollback, posture rationale, and provenance requirements are satisfied.",
+    "A `board_value_component_to_key_map.json` contract that records which copied keys are directly tied to own and opponent hero, weapon, minion, hero-power, hand, deck, or secret components, and which components remain unsupported or incomplete.",
+    "[uncertain] A `global_values_posture_overlay_candidates.json` review artifact that captures the full nonconservative search space, including rejected candidates and rejection reasons, so unchanged keys are provably intentional rather than passively inherited."
+  ],
+  "never_autogenerate_without": [
+    "The official HearthRanger `GlobalValues` help page and generic JSON-config page, because the nonconservative policy still depends on documented file shape and board-value semantics.",
+    "A copied live default `CustomConfig/default/GlobalValues.json` baseline and its recorded hash.",
+    "A successful all-key profile proving that every copied default key was considered individually.",
+    "An archetype posture contract specific enough to justify direct component-level overlays rather than only generic aggro or control labels.",
+    "Per-overlay baseline `old_value` matching, rollback notes, provenance, and deck-local patch targeting.",
+    "A per-key authority matrix that covers the full baseline inventory, not just example keys.",
+    "Fail-closed handling for keys whose semantics remain too ambiguous for Step 1 despite their presence in the baseline.",
+    "Fresh runtime evidence before any overlay is promoted from posture-backed Step 1 assumption to broader gameplay-causality claim."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/global_values.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_07_GlobalValues_Compiler_Architecture.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-architecture/results/HearthRanger_VisionAI_Config_Surface_Contract.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_profile.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_key_authority.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/board_value.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/gameplan_profiles.py"
+  ],
+  "uncertain": [
+    "limitations",
+    "aggressive_generation_policy",
+    "architectural_implications",
+    "recommended_contracts"
+  ]
+}

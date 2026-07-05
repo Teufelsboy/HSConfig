@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local environments
+.venv/
+venv/
+env/
+
+# HSConfig generated output
+outputs/
+tmp/
+
+# Hearthstone / HearthRanger runtime evidence
+*.log
+Power.log
+*.hdtreplay
+*.hsreplay
+Hearthstone.log
+HearthRanger.log
+
+# Local editor noise
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,67 @@
+{
+  "source_type": "official_docs",
+  "reliable_uses": [
+    "Defining the minimum Codex skill shape: `SKILL.md` with `name` and `description`, plus optional `scripts/`, `references/`, `assets/`, and `agents/openai.yaml`.",
+    "Designing progressive disclosure so HSConfig stays discoverable without front-loading HearthRanger syntax into every turn.",
+    "Choosing repo-local placement under `.agents/skills` so the skill follows the HSConfig repository instead of the user profile.",
+    "Separating instruction-only behavior from deterministic helper scripts and heavier reference material.",
+    "Testing trigger quality with explicit and implicit prompts before broadening the skill."
+  ],
+  "limitations": [
+    "Official Codex docs define skill packaging and invocation, not HearthRanger or VisionAI config semantics.",
+    "Local bundled skills show current patterns and anti-patterns, but they are examples rather than a normative API guarantee.",
+    "A lean skill structure alone cannot prove generated `GlobalValues.json`, `Mulligan.json`, or card-local JSON files are strategically correct.",
+    "The HSTuner skill demonstrates workflow bloat risk, but it does not establish the only valid operator flow for HSConfig."
+  ],
+  "relevant_config_surfaces": [
+    ".agents/skills/hsconfig/SKILL.md",
+    ".agents/skills/hsconfig/references/",
+    ".agents/skills/hsconfig/scripts/",
+    "Generated `GlobalValues.json`",
+    "Generated `Mulligan.json`",
+    "Generated card-local `CardID.json` files",
+    "Generated `Combo.json`",
+    "Optional `Presume.json` and `Concede.json`",
+    "Validation artifacts such as `contracts/*.json` and `reports/*.json`"
+  ],
+  "architectural_implications": [
+    "Keep HSConfig as a repo-local skill in `C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig` so discovery stays bounded to the repository and its subfolders.",
+    "Keep `SKILL.md` short and trigger-oriented: scope, entry conditions, required inputs, output contract, validation command, and hard boundaries.",
+    "Move bulky HearthRanger syntax, card-targeting examples, and edge-case notes into `references/` so Codex loads them only when the skill is selected.",
+    "Move deterministic work such as deck-code decoding, schema checks, rule normalization, and fixture comparison into `scripts/` so the skill does not narrate mechanical steps.",
+    "Keep exactly one representative worked example near the skill, and store richer golden fixtures in repo `tests/fixtures/` rather than expanding `SKILL.md` into a runbook.",
+    "Model the skill around one job: produce or revise HSConfig artifacts from cited research inputs; do not bundle post-game tuning, runtime sampling, or patch-apply workflows.",
+    "Use `AGENTS.md` for repository-wide guardrails and keep the skill focused on the reusable method; do not duplicate large policy blocks inside the skill.",
+    "If broader reuse is later needed across repositories, package the skill as a plugin, but start local first."
+  ],
+  "recommended_contracts": [
+    "`input_manifest.json`: deck code, deck name, format, target files, and source citations required for a run.",
+    "`research_snapshot.json`: archetype claim, mulligan sources, card-role evidence, and confidence notes that justify generation decisions.",
+    "`config_plan.json`: planned surfaces to write (`GlobalValues`, `Mulligan`, `CardID`, `Combo`, optional `Presume` and `Concede`) plus skipped surfaces and reasons.",
+    "`generation_result.json`: files written, file hashes, assumptions, unresolved gaps, and `runtime_write_performed=false`.",
+    "`validation_report.json`: schema checks, command results, fixture diffs, and pass/fail status for every generated surface.",
+    "`example_case.json`: a single minimal worked example used for regression checks of the skill trigger and output shape.",
+    "`skill_trigger_eval.csv`: explicit, implicit, and negative prompts used to verify activation boundaries."
+  ],
+  "never_autogenerate_without": [
+    "A decoded deck list and authoritative card metadata for every card in the deck.",
+    "Cited source material that explains the intended archetype, mulligan priorities, and any non-obvious card behavior used in the config.",
+    "A declared output contract that lists exactly which config surfaces may be written in the current run.",
+    "A deterministic validation pass over generated JSON files, including syntax, required keys, and repo-specific rule checks.",
+    "A reviewable report that records assumptions, skipped surfaces, and any heuristics or guessed values.",
+    "At least one golden example or fixture diff showing the generator matches the expected shape for a known deck before wider rollout."
+  ],
+  "must_cite_sources": [
+    "https://developers.openai.com/codex/skills",
+    "https://developers.openai.com/codex/plugins/build",
+    "https://developers.openai.com/codex/guides/agents-md",
+    "https://developers.openai.com/codex/learn/best-practices",
+    "https://developers.openai.com/blog/eval-skills",
+    "https://developers.openai.com/codex/use-cases/reusable-codex-skills",
+    "C:\\Users\\darbo\\.codex\\.tmp\\plugins\\plugins\\superpowers\\skills\\writing-skills\\SKILL.md",
+    "C:\\Users\\darbo\\.codex\\.tmp\\plugins\\plugins\\superpowers\\skills\\writing-skills\\testing-skills-with-subagents.md",
+    "C:\\Users\\darbo\\.codex\\skills\\hstuner\\SKILL.md",
+    "C:\\Users\\darbo\\.codex\\skills\\research\\validate_json.py"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,123 @@
+{
+  "step_name": "Step 04 Online Guide And Data Research Bundle",
+  "source_type": "community_guide",
+  "step_goal": "Collect, normalize, cite, and confidence-score current guide, stats, patch, archetype, mulligan, matchup, and card-role claims so HSConfig can generate guide-aligned config intent without confusing research claims with VisionAI runtime syntax.",
+  "required_inputs": [
+    "deckstring_decode_receipt.json from Step 02",
+    "card_metadata_snapshot.json from Step 03",
+    "deck name and format",
+    "retrieval timestamp",
+    "patch context",
+    "allowed source families such as Vicious Syndicate, HSReplay, HSGuru, official patch notes, HearthSim, and HearthstoneJSON"
+  ],
+  "produced_outputs": [
+    "source_evidence_index.json",
+    "patch_context_receipt.json",
+    "archetype_research.json",
+    "mulligan_anchor_map.json",
+    "card_role_map.json",
+    "card_usage_expectations.json",
+    "known_bad_patterns.json",
+    "matchup_posture_assumptions.json",
+    "config_surface_intent_map.json"
+  ],
+  "reliable_uses": [
+    "Vicious Syndicate Data Reaper reports are the strongest public source for current Standard archetype popularity, rank-segmented matchup spreads, and macro posture. As of July 5, 2026, the latest visible report is vS Data Reaper Report #352 from June 18, 2026, covering the late Cataclysm metagame.",
+    "Vicious Syndicate Deck Library is the best public human-guide source for current-archetype plans, strengths, weaknesses, tech options, replacement options, and card-role context when its deck page date is aligned with the active patch or expansion.",
+    "Vicious Syndicate day-1 theorycraft articles are useful as aggressive early-expansion priors for likely win conditions, mulligan anchors, and synergy packages before replay volume stabilizes, but only as explicitly low-confidence bootstrap guidance.",
+    "HSReplay Mulligan G-V2 is the strongest public mulligan-specific source because it conditions keep or replace guidance on offered hand, player deck, opponent class, and initiative, which is directly useful for mulligan anchor generation.",
+    "HSGuru stats and matchup surfaces are reliable for card-impact signals, exact-list discovery, archetype-conditioned card-role hints, and low-confidence matchup posture, especially when sample sizes are visible and the deck page matches the submitted list.",
+    "HearthSim Deckstrings plus HearthstoneJSON provide the deterministic foundation for aggressive guide use: exact deck decode, hero and format detection, dbfId joins, card text, mechanics, and related metadata required before any guide claim can be mapped onto real cards.",
+    "Official Blizzard patch notes are the authority for freshness gates, expansion rollover dates, card-pool changes, and patch-drift detection; they should decide when a once-good guide becomes stale."
+  ],
+  "limitations": [
+    "Vicious Syndicate publishes weekly, not continuously. On July 5, 2026, the latest visible report is from June 18, 2026, while official Patch 36.0 was posted on June 29, 2026 and Escape from Violet Hold launches on July 7, 2026, so late-Cataclysm guide claims are already in a patch-drift window.",
+    "Vicious Syndicate day-1 articles are theorycrafting inputs rather than validated matchup truth; they should never outrank later live-data reports.",
+    "HSReplay Mulligan G-V2 is Standard-only today and explicitly does not model Demon Hunter Outcast hand-position logic, so it is not full-format or full-mechanic coverage.",
+    "HSGuru warns that sample sizes matter, that meta and deck stats are subject to deck-tracker bias, and that matchup archetyping relies on cards played because the opponent's exact list is unknown.",
+    "Deckstrings and card metadata can prove what the deck contains, but they cannot prove mulligan posture, face-versus-trade rules, combo timing, or safe VisionAI syntax targets.",
+    "Generic web guide portals can surface years-old Hearthstone pages, so HSConfig should never ingest open-web guide text without visible publication-date checks and a patch-context gate.",
+    "No public guide or stats site proves HearthRanger config load, runtime correctness, or gameplay improvement; online research is Step 1 evidence only."
+  ],
+  "relevant_config_surfaces": [
+    "research bundle/source_evidence_index.json",
+    "research bundle/archetype_research.json",
+    "research bundle/mulligan_anchor_map.json",
+    "research bundle/matchup_posture_assumptions.json",
+    "research bundle/card_role_map.json",
+    "research bundle/card_usage_expectations.json",
+    "research bundle/known_bad_patterns.json",
+    "research bundle/config_surface_intent_map.json",
+    "outputs/<deck_slug>/deck_research_contract.json",
+    "outputs/<deck_slug>/gameplan_contract.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Mulligan.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/GlobalValues.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/*.json per-card CardID files",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Combo.json only when exact sequencing is source-backed",
+    "outputs/<deck_slug>/config_preview/reports/mulligan_condition_suppression_report.json"
+  ],
+  "aggressive_generation_policy": [
+    "Use guides aggressively as strategic priors: keep explicit mulligan anchors, card roles, matchup posture, known bad patterns, and win-condition language instead of falling back to generic archetype assumptions.",
+    "Require source freshness and claim confidence, but do not suppress a useful guide claim merely because it is not yet replay-proven.",
+    "Translate guide claims to config intent only after the later VisionAI compiler confirms that the claim can be represented by documented syntax.",
+    "Downgrade stale or conflicting claims to lower confidence rather than deleting them, so the compiler can still expose them as report-only intent."
+  ],
+  "validation_gates": [
+    "Every source claim must have source_evidence_index provenance.",
+    "Every current-data claim must carry retrieved_at and patch_context fields.",
+    "High-confidence mulligan and matchup claims require at least one guide-style and one data-style source when available.",
+    "Claims that cannot map to documented VisionAI surfaces must be retained in suppression or report artifacts, not silently dropped.",
+    "Source drift must be visible when a guide predates a balance patch or expansion launch window."
+  ],
+  "architectural_implications": [
+    "Separate ingestion into four claim families: guide_text, stat_snapshot, deck_identity, and patch_timeline. Each claim should carry its own freshness, scope, and confidence instead of collapsing everything into one archetype blob.",
+    "Aggressive guide use should first enrich research artifacts such as archetype_research, mulligan_anchor_map, card_role_map, matchup_posture_assumptions, and known_bad_patterns. Runtime config rows should be emitted only after a second translation step confirms documented VisionAI syntax.",
+    "Add an explicit patch_context gate. If a guide or stat claim predates the latest balance patch or the next expansion launch window, downgrade it automatically to low confidence or stale_for_runtime.",
+    "Require cross-source consensus for any high-confidence mulligan or matchup claim: at least one current human guide source and one current data source must point in the same direction.",
+    "Represent unsupported advice, such as flexible sequencing, bluff lines, or situational face-versus-trade heuristics, as report-only guidance or contract gaps rather than forcing invalid GlobalValues, Mulligan, Combo, or CardID JSON.",
+    "Keep exact-list identity immutable. The submitted deckstring, decoded card set, and metadata snapshot are hard facts; archetype naming, role tags, and matchup posture stay revisable as newer public data arrives.",
+    "Store bad patterns separately from positive rules. HSConfig needs a dedicated suppression surface so guide warnings can block unsafe autogeneration even when they do not translate into a direct action row.",
+    "Date-stamp every source claim with published_at and retrieved_at because a source can be recent but no longer current after an official patch or imminent expansion rollover."
+  ],
+  "recommended_contracts": [
+    "source_evidence_index.json: normalized source registry with url, title, source_family, published_at, retrieved_at, format, patch_context, source_confidence, claim_confidence, and staleness_status.",
+    "patch_context_receipt.json: active official patch, next expansion or set rollover date, retrieval date, freshness policy, and downgrade reasons for stale public claims.",
+    "deckstring_decode_receipt.json: deck code, hero dbfId, format, canonical card dbfIds, decode library, and decode version.",
+    "card_metadata_snapshot.json: cardId, dbfId, cost, class, type, text, mechanics, and play-requirement metadata for every decoded card.",
+    "archetype_identification_receipt.json: submitted exact list, matched archetype labels by source, ambiguity notes, and final confidence.",
+    "archetype_research.json: primary win conditions, board posture, resource posture, matchup posture, known bad patterns, unsupported mechanics, and source refs.",
+    "mulligan_anchor_map.json: unconditional anchors, matchup-conditioned anchors, anti-keeps, evidence refs, and freshness status.",
+    "card_role_map.json: each decoded card mapped to role tags with exact-source refs and confidence.",
+    "matchup_posture_assumptions.json: default posture and opponent-archetype-conditioned posture rows with evidence gates and low-sample warnings.",
+    "known_bad_patterns.json: guide-derived traps, over-commit patterns, dead-keep patterns, and translation status into runtime-safe surfaces.",
+    "config_surface_intent_map.json: per-claim mapping into Mulligan.json, GlobalValues.json, CardID JSON, Combo.json, or report-only suppression.",
+    "unsupported_claims_report.json: every discarded or downgraded guide claim with the reason it could not safely become VisionAI config."
+  ],
+  "never_autogenerate_without": [
+    "A successful deckstring decode and card-metadata join for every card in the submitted list.",
+    "A current patch_context_receipt grounded in official Blizzard patch or expansion dates.",
+    "A source_evidence_index entry for every archetype, mulligan, matchup, card-role, or bad-pattern claim used by the generator.",
+    "At least one current human guide source and one current data source for any high-confidence mulligan or matchup posture claim.",
+    "Automatic downgrade to low confidence or stale_for_runtime when a claim predates the active patch, expansion window, or required data-collection buffer.",
+    "Validation that every decoded card is covered in card_role_map.json and card_usage_expectations.json before config preview is treated as specific.",
+    "A preview-only translation pass that checks every proposed Mulligan, GlobalValues, Combo, or CardID row against documented VisionAI syntax boundaries.",
+    "Human-visible suppression or unsupported-claim reporting for advice that cannot be translated into valid runtime JSON.",
+    "Local Step 1 acceptance authority before any guarded runtime apply; online guide research alone is never sufficient."
+  ],
+  "must_cite_sources": [
+    "https://www.vicioussyndicate.com/drr/",
+    "https://www.vicioussyndicate.com/vs-data-reaper-report-352/",
+    "https://www.vicioussyndicate.com/deck-library/",
+    "https://www.vicioussyndicate.com/45-decks-to-try-out-on-day-1-of-cataclysm/",
+    "https://hsreplay.net/mulligan-gv2/",
+    "https://www.hsguru.com/stats/explanation",
+    "https://www.hsguru.com/meta",
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://hearthstonejson.com/",
+    "https://hearthstone.blizzard.com/en-us/news/24287396",
+    "C:/Users/darbo/Documents/HS/docs/operator/deck-research-contract.md",
+    "C:/Users/darbo/Documents/HS/docs/operator/new-deck-checklist.md"
+  ],
+  "uncertain": []
+}

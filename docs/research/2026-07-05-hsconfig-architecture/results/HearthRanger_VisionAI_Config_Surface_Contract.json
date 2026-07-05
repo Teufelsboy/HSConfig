@@ -1,0 +1,79 @@
+{
+  "source_type": "official_docs",
+  "reliable_uses": [
+    "Confirm the official VisionAI page set and, as of 2026-07-05, confirm that the live HearthRanger pages for json_config, card_behavior, mulligan, combo, global_values, concede, and presume still match the cached hashes captured on 2026-06-04.",
+    "Prove the activation workflow through CustomConfig/deck_config.ini, where the [CONFIGS] section maps an exact deck name to a custom configuration directory name under CustomConfig.",
+    "Prove the documented runtime file names and top-level roles for CARDID.json, Mulligan.json, Combo.json, GlobalValues.json, Concede.json, and Presume.json.",
+    "Prove that card-local behavior is file-per-CardID, with GameCardId matching the file name stem and rule blocks stored as values arrays evaluated from top to bottom.",
+    "Prove the shared condition and value expression language basics: AND, OR, *, entity collection expressions such as my_minions(count(), ...), and comparison operators >, <, =, >=, <=, != for filters and >, <, >=, <=, ==, != for conditions.",
+    "Prove the documented card-behavior rule-block family, including InHandBonus, OnBoardBonus, BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, BeforeOverkilledBonus, BeforeEndTurnBonus, OnDiscoverCardBonus, OnChooseOneCardBonus, OnAdaptCardBonus, BeforeUpgradeCardBonus, InHandPlayPriority, and OnBoardPlayPriority.",
+    "Prove mulligan selector examples and semantics, including direct card ids, comma-separated lists, plus-combos, wildcard *, DROP1 and higher, coin, nocoin, hero_class, and the documented precedence rule that hold rules outrank discard rules.",
+    "Prove combo syntax, where >> means a same-turn sequence, >-> means a cross-turn sequence, and the number of combo card ids must match the number of value segments.",
+    "Prove the board-value formula and weighting semantics, including the own-minus-opponent component model and the combination formula Final board value = (first turn board value) * FirstTurnValueWeight + (second turn board value) * SecondTurnValueWeight.",
+    "Prove the documented meanings of Concede.json value 1 and Presume.json value as the maximum number of copies the opponent may still hold."
+  ],
+  "limitations": [
+    "The official VisionAI pages do not document Node 0, actual-play trace ids, or any decision-trace schema; those belong to repo-side runtime analysis rather than to HearthRanger CustomConfig syntax.",
+    "The official GlobalValues page does not enumerate a complete machine-readable key catalog. It documents FirstTurnValueWeight, SecondTurnValueWeight, and example keys such as GlobalDivineShield, then states that other global values are self-explanatory.",
+    "The official pages are prose examples, not a strict parser specification. They are useful for shape and semantics, but they do not themselves guarantee which malformed variants the runtime may still reject.",
+    "The official pages do not define a conservative safe subset for mulligan conditions. The local repo therefore narrows generated Mulligan.json conditions to patterns it can validate as runtime-safe.",
+    "The official pages document Concede.json and Presume.json, but the current local runtime package intentionally blocks those surfaces for generated preview or runtime packages.",
+    "The official pages explain board-value components and weights, but they do not prove when a deck-wide GlobalValues override is causally justified from gameplay logs or when it is safe to auto-apply."
+  ],
+  "relevant_config_surfaces": [
+    "CustomConfig/deck_config.ini",
+    "CustomConfig/<ConfigDir>/<CARDID>.json",
+    "CustomConfig/<ConfigDir>/Mulligan.json",
+    "CustomConfig/<ConfigDir>/Combo.json",
+    "CustomConfig/<ConfigDir>/GlobalValues.json",
+    "CustomConfig/<ConfigDir>/Concede.json",
+    "CustomConfig/<ConfigDir>/Presume.json"
+  ],
+  "architectural_implications": [
+    "HSConfig should treat deck_config.ini as the activation gate. The left side must be the exact HearthRanger deck name, the right side must be the config directory name, and the line must not be commented with a leading semicolon.",
+    "HSConfig should model card-local behavior as file-per-CardID, with GameCardId equal to the file name stem and each documented block containing a values array of rows with string comment, condition, and value fields.",
+    "HSConfig should separate the shared expression grammar from file-specific row schemas. CARDID.json, Mulligan.json, Combo.json, GlobalValues.json, Concede.json, and Presume.json have different required top-level blocks and row keys.",
+    "HSConfig should treat GlobalValues.json as a deck-wide high-risk surface. Safe generation should start from a copied default baseline and then overlay only explicitly authorized keys rather than inventing a partial fresh file.",
+    "HSConfig should encode the documented board-value model directly: own hand, hero, hero power, weapon, secret, minions, and deck minus the corresponding opponent components, combined through first-turn and second-turn weights.",
+    "HSConfig should keep Node 0 out of direct config-generation contracts. Node 0 belongs to Step 2 replay or debug evidence, not to CustomConfig authoring.",
+    "HSConfig should emit strict JSON only: no comments, no trailing commas, no aggregate CardBehavior.json runtime file, string row values, and object-plus-values-array shape for every configurable block.",
+    "HSConfig should represent Concede.json and Presume.json as documented surfaces that are currently unsupported by this repo's runtime package, so generation should fail closed unless first-class support is added.",
+    "HSConfig should preserve an extracted registry of official json keys and rule blocks from the official HTML pages so future syntax drift can be detected by hash and parser checks."
+  ],
+  "recommended_contracts": [
+    "visionai_source_manifest: official URL list, capture date, content hash, and local cache path for every VisionAI help page used to build syntax knowledge.",
+    "visionai_registry: extracted json_keys and rule_blocks per official page so the syntax surface is source-backed instead of hand-maintained.",
+    "visionai_syntax_model: supported file surfaces, required top-level keys, row-key contracts, combo separators, and allowed Mulligan.json actions.",
+    "deck_config_contract: exact [CONFIGS] mapping shape, exact-deck-name activation rule, and comment-line exclusion.",
+    "card_behavior_contract: file naming, GameCardId equality, allowed top-level rule blocks, string-only row fields, and first-match top-to-bottom semantics.",
+    "mulligan_contract: selector grammar for card ids, comma lists, plus-combos, DROPn, wildcard *, and allowed actions hold and discard, plus the precedence rule hold over discard.",
+    "combo_contract: ComboList.values row shape, same-turn vs cross-turn separator semantics, and equal segment-count validation between combo and value.",
+    "global_values_contract: baseline-copy requirement, per-key overlay authorization, board-value model reference, and first-turn vs second-turn weighting rules.",
+    "unsupported_documented_surfaces_contract: explicit fail-closed policy for documented but runtime-unsupported Concede.json and Presume.json surfaces.",
+    "strict_json_contract: UTF-8 JSON object only, no comments, no trailing commas, values arrays for every configurable block, and string-typed row values."
+  ],
+  "never_autogenerate_without": [
+    "Official HearthRanger VisionAI page hashes or live fetch confirmation for the exact pages used to build the syntax contract.",
+    "A source-backed syntax registry or equivalent extraction pass over the official HTML pages so documented keys and block names are not guessed.",
+    "An exact deck name to config directory mapping for CustomConfig/deck_config.ini.",
+    "A copied default GlobalValues.json baseline from the active runtime when generating or changing deck-wide global values.",
+    "An explicit runtime-support decision for whether the target package supports only CARDID.json, Mulligan.json, Combo.json, and GlobalValues.json, or also first-class Concede.json and Presume.json handling.",
+    "Strict JSON validation over the generated files before they are treated as ready.",
+    "Blocking behavior when a requested rule depends on undocumented surfaces, Node 0 semantics, or gameplay-causality claims that the official docs do not encode.",
+    "For Mulligan.json, only condition patterns already proven safe for the target runtime package, because unsupported condition syntax can invalidate the file load.",
+    "For Combo.json, concrete ordered card sequences with matching value segments rather than vague synergy descriptions."
+  ],
+  "must_cite_sources": [
+    "Official HearthRanger JSON syntax page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official HearthRanger card behavior page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Official HearthRanger mulligan page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Official HearthRanger combo page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official HearthRanger global values page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official HearthRanger concede page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "Official HearthRanger presume page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "Local syntax model and runtime-surface contract: C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "Local strict preview validator and runtime support boundary: C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "Local board-value contract used by HSranger: C:/Users/darbo/Documents/HS/src/hsranger_core/board_value.py"
+  ],
+  "uncertain": []
+}

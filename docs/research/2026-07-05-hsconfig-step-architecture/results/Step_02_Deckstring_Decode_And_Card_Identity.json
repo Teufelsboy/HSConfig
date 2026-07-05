@@ -1,0 +1,107 @@
+{
+  "step_name": "Step 02 Deckstring Decode And Card Identity",
+  "source_type": "data_api",
+  "step_goal": "Turn a submitted Hearthstone deckstring into a deterministic, source-cited identity receipt: format, hero DBF id, canonical card DBF ids with duplicate counts, optional sideboards, and a stable join from DBF ids to CardIDs and card metadata before any guide inference or config generation starts.",
+  "required_inputs": [
+    "A raw deckstring copied from Hearthstone or an equivalent base64 deck code.",
+    "A selected card data authority for DBF-to-CardID resolution, preferably HearthstoneJSON `cards.json` or an equivalent HSData `CardDefs.xml` snapshot.",
+    "Locale choice for human-readable names, typically `enUS` when using HearthstoneJSON.",
+    "A local runtime verification source when downstream work depends on live client-visible ids, especially `C:/Users/darbo/Desktop/HS/Data/cardxml1.dat` and `C:/Users/darbo/AppData/Roaming/HearthstoneDeckTracker/CardDefs/CardDefs.base.xml`.",
+    "A source precedence policy that states which authority wins when HearthstoneJSON and local runtime files differ on freshness or build date.",
+    "Optional deck registry or caller metadata when downstream steps need a deck slug or HDT binding, because deck names must not be used to guess card identity."
+  ],
+  "produced_outputs": [
+    "A `deckstring_decode_receipt.json` artifact with reserved byte, version, format id and name, hero DBF ids, canonical card DBF ids with counts, sideboards, deck size, and decoder provenance.",
+    "A `card_identity_map.json` artifact keyed by DBF id and CardID for every decoded hero, maindeck card, and sideboard owner or sideboard card.",
+    "A `hero_identity.json` artifact that records the starting hero CardID and starting hero power identity when the chosen card data source exposes it.",
+    "A `local_card_source_probe.json` artifact that records the live verification files, timestamps, build markers, and which source won each identity join.",
+    "A `generated_id_seed_map.json` artifact for deterministic derived ids that are needed later, kept separate from the ids literally present in the deckstring.",
+    "An explicit `unknown_dbf_ids` or `identity_gaps` list instead of silent fallback when any required id cannot be resolved."
+  ],
+  "reliable_uses": [
+    "Decode the deckstring deterministically into hero ids, card ids, duplicate counts, deck size, and optional sideboard rows.",
+    "Normalize the card list into canonical ascending DBF-id order so the same deck identity is stable across adapters and runs.",
+    "Resolve decoded DBF ids to stable CardIDs, names, types, classes, and other static card metadata through HearthstoneJSON or HSData-derived card data.",
+    "Preserve exact duplicate counts, including odd but legal structures such as n-copy rows and sideboards, without collapsing them into generic assumptions.",
+    "Detect malformed deckstrings early through base64, reserved-byte, version, format, varint, sideboard-flag, and trailing-byte validation.",
+    "Seed later steps with exact per-card identity for filenames such as `CARDID.json`, deck intake artifacts, and card-role or usage maps.",
+    "Record source provenance so later steps can distinguish decoded ids from derived ids and local-runtime-verified ids."
+  ],
+  "limitations": [
+    "This step cannot infer archetype, mulligan policy, matchup posture, or gameplay sequencing from deck identity alone.",
+    "This step cannot prove runtime activation in HearthRanger, config load, or gameplay correctness.",
+    "Deckstrings identify the starting hero, not transformed or later-played heroes, so current hero state after a hero card or transform still requires runtime evidence.",
+    "Static card datasets do not guarantee complete generated-entity coverage for every modern card effect, so derived token or split-card ids must stay source-cited and separately tracked.",
+    "A correct DBF-to-CardID join does not prove that the local runtime files are fresh enough for the current client build unless freshness is checked explicitly.",
+    "Deck name, slug, HDT deck id, and HSReplay or tracker identifiers are external bindings and must not be guessed from the deckstring."
+  ],
+  "relevant_config_surfaces": [
+    "outputs/<deck_slug>/deck_intake.json",
+    "outputs/<deck_slug>/deckstring_decode_receipt.json",
+    "outputs/<deck_slug>/card_identity_map.json",
+    "outputs/<deck_slug>/hero_identity.json",
+    "outputs/<deck_slug>/generated_id_seed_map.json",
+    "outputs/<deck_slug>/gameplan_contract.json for hero-power-state and exact card coverage seeding",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/*.json because per-card filenames and references depend on exact CardIDs",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Combo.json when later steps reference exact card ids or sideboard-owner relationships",
+    "outputs/<deck_slug>/config_preview/reports/source_freshness_report.json"
+  ],
+  "aggressive_generation_policy": "Decode the full identity surface first and keep it specific. Preserve every legal hero id, sideboard row, duplicate count, and unusual section instead of flattening toward generic class-level assumptions. Derive starting hero and hero-power identity whenever the chosen static source names them, emit explicit anomaly or gap fields when identity cannot be proven, and block downstream config generation only on unresolved required ids rather than on harmless structural complexity.",
+  "validation_gates": [
+    "The deckstring must decode as valid base64, start with reserved byte `0x00`, use supported version `1`, and use a supported format id.",
+    "The decoded one-copy, two-copy, n-copy, and sideboard sections must aggregate into a canonical card list whose counts sum to the recorded deck size.",
+    "Hero ids must be preserved exactly. If the hero array is empty or contains more than one hero, emit an anomaly receipt instead of silently coercing the result.",
+    "Every decoded hero DBF id, maindeck DBF id, sideboard card DBF id, and sideboard-owner DBF id must resolve through the chosen card authority or be listed explicitly in `unknown_dbf_ids`.",
+    "Derived ids such as starting hero power ids or deterministic generated ids must be recorded separately from the decoded deckstring ids and must cite the source that produced them.",
+    "If local runtime verification is enabled, record file freshness and build evidence before downstream steps trust the mapping. In the current local environment, `cardxml1.dat` was last written on 2026-07-01, `CardDefs.base.xml` was last written on 2026-06-19, and `CardDefs.base.xml` reports build `245096`.",
+    "Downstream preview generation may proceed only when all required identity fields for hero, maindeck cards, and referenced sideboard owners are resolved or intentionally blocked with a visible gap receipt."
+  ],
+  "architectural_implications": [
+    "Keep deckstring decoding, card-data hydration, and deck-registry or tracker binding as separate modules. Only the first two are deterministic from the submitted deck and chosen card dataset.",
+    "Adopt an adapter-first decoder with a normalized output contract, such as `python-hearthstone` as the primary parser and a native parser as a fallback, so Step 02 stays robust without changing downstream schemas.",
+    "Store `decoded_dbf_ids`, `derived_dbf_ids`, and `runtime_verified_ids` as separate provenance classes. This prevents hero power ids, deterministic generated ids, and local file confirmations from being confused with literal deckstring contents.",
+    "Support sideboards and future or niche format ids as first-class schema concepts even when most current constructed decks do not use them.",
+    "Add a read-only local runtime probe that compares HearthstoneJSON, `cardxml1.dat`, and `CardDefs.base.xml` freshness before later steps create live-facing config artifacts.",
+    "Make Step 02 the sole owner of the canonical `card_identity_map` contract so later guide and config steps never have to re-guess DBF-to-CardID mapping.",
+    "Treat transformed hero powers and other runtime-visible replacements as a later runtime-evidence concern, not as something Step 02 can certify from static deck identity."
+  ],
+  "recommended_contracts": [
+    "deckstring_decode_receipt.json: deck_code, decoder, reserved, version, format id and name, hero_dbf_ids, canonical cards, sideboards, deck_size, and decode anomalies.",
+    "card_identity_map.json: per-dbf record with CardID, name, type, class, collectible flag, and source provenance.",
+    "hero_identity.json: starting hero dbf id and CardID, class, and starting hero power identity when available from the selected static dataset.",
+    "generated_id_seed_map.json: deterministic derived ids that later config generation may need, with `derived_from`, reason, and source ref.",
+    "local_card_source_probe.json: file paths, timestamps, build ids, source hashes when available, and source-precedence verdict.",
+    "identity_gap_report.json: unresolved dbf ids, missing source fields, stale-source warnings, and blocked downstream uses.",
+    "deck_registry_binding.json: optional deck slug, HDT deck id, and tracker ids kept separate from decoded card identity."
+  ],
+  "never_autogenerate_without": [
+    "A successful `deckstring_decode_receipt.json` for the exact submitted deck code.",
+    "A complete card identity join for every required hero, maindeck card, and sideboard owner id, or an explicit blocking `identity_gap_report.json`.",
+    "An explicit source-precedence decision when both HearthstoneJSON and local runtime card sources are available.",
+    "A separate provenance record for derived ids such as hero powers or deterministic generated entities whenever a downstream config surface depends on them.",
+    "A freshness check for local runtime files before using them to override or confirm the main card authority on a current patch.",
+    "An anomaly receipt for empty hero arrays, multiple heroes, unsupported format ids, malformed sideboard payloads, or unresolved required ids.",
+    "A rule that forbids deck-name or slug heuristics from deciding card identity."
+  ],
+  "must_cite_sources": [
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://github.com/HearthSim/hearthstone-deckstrings",
+    "https://github.com/HearthSim/hearthstone-deckstrings/releases/tag/v3.0.0",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+    "https://hearthsim.info/docs/cards/",
+    "https://github.com/HearthSim/hsdata",
+    "https://github.com/HearthSim/python-hearthstone-data",
+    "https://github.com/HearthSim/HearthDb",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/deckstrings.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/hearthstone_deckstrings.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/hearthstonejson.py",
+    "C:/Users/darbo/Documents/HS/tests/test_deckstrings.py",
+    "C:/Users/darbo/Documents/HS/tests/test_hearthstone_deckstrings.py",
+    "C:/Users/darbo/Documents/HS/scripts/build_deck_card_fixture.py",
+    "C:/Users/darbo/Documents/HS/docs/operator/deck-research-contract.md",
+    "C:/Users/darbo/Desktop/HS/Data/cardxml1.dat",
+    "C:/Users/darbo/AppData/Roaming/HearthstoneDeckTracker/CardDefs/CardDefs.base.xml"
+  ],
+  "uncertain": []
+}

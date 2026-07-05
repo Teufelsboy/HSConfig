@@ -1,0 +1,123 @@
+{
+  "step_name": "Step 09 Combo Presume And Concede Surface Architecture",
+  "source_type": "official_docs",
+  "step_goal": "Define the syntax-safe lowering policy for documented `Combo.json`, `Presume.json`, and `Concede.json` surfaces so HSConfig emits only concrete ordered combo rows, records hidden-information play-around assumptions and concede heuristics in explicit contracts, and keeps vague or runtime-unsupported guidance report-only.",
+  "required_inputs": [
+    "The official VisionAI syntax pages for `Combo.json`, `Presume.json`, `Concede.json`, and the shared json condition/value language.",
+    "A normalized gameplan contract that separates concrete combo sequences from symbolic synergy notes, play-around assumptions, and concede heuristics.",
+    "Resolved Hearthstone CardIDs for every card that may appear in a combo row or in a presume opponent-hand assumption.",
+    "A stable combo intent shape with `rule_id`, ordered `sequence`, explicit timing semantics such as same-turn or cross-turn, source refs, and confidence.",
+    "A runtime-support matrix that distinguishes supported runtime surfaces from registry-known but currently unsupported ones.",
+    "The active `GlobalValues.json` baseline or equivalent board-value policy context when evaluating whether `Presume.json` would matter, because the official presume page states it only takes effect when `SecondTurnValueWeight` is not zero.",
+    "A report-only routing path for guide claims that cannot be expressed safely in documented runtime syntax."
+  ],
+  "produced_outputs": [
+    "A runtime-target `Combo.json` file only when at least one combo row is eligible for safe emission.",
+    "A `combo_surface_contract.json` or equivalent machine-readable contract that records ordered sequence rows, timing kind, source refs, and emission status.",
+    "A `combo_suppression_report.json` artifact that records symbolic, incomplete, or otherwise non-emittable combo claims.",
+    "A `presume_intent_report.json` artifact that stores source-backed play-around assumptions with exact opponent card ids, condition gates, and the reason they remained report-only or unsupported.",
+    "A `concede_intent_report.json` artifact that stores explicit concede heuristics, operator-policy flags, and the reason they remained report-only or unsupported.",
+    "Updated `config_surface_intent_map.json` rows that classify each claim as `Combo.json`, `Presume.json`, `Concede.json`, or report-only suppression."
+  ],
+  "reliable_uses": [
+    "Emit a `Combo.json` row when the source-backed claim names at least two exact ordered CardIDs and the sequence is concrete enough to map into the official `ComboList.values[*]` shape.",
+    "Emit a same-turn combo row when the source explicitly describes a one-turn order, for example `card A then card B this turn`, and the intended separator is the documented `>>` operator.",
+    "Emit a cross-turn combo row when the source explicitly describes an ordered setup-then-payoff sequence that spans turns and the intended separator is the documented `>->` operator rather than a guessed same-turn chain.",
+    "Preserve the documented requirement that combo card segment count and value segment count match, so every emitted combo sequence has a structurally aligned reward or penalty expression.",
+    "Use `Presume.json` as a strategic modeling concept for source-backed play-around assumptions about exact opposing cards, especially AOE or other identifiable punish cards that change how second-turn simulation should value a line.",
+    "Use `Concede.json` as a strategic modeling concept for explicit extra auto-concede policies when the desired behavior is a deterministic efficiency or farming rule rather than a gameplay-improvement claim.",
+    "Keep row-order significance for `Concede.json` if first-class support is ever added, because the official concede page states values are matched from top to bottom.",
+    "Route vague synergy, bluff, or generic play-around language into report-only artifacts instead of forcing it into runtime JSON."
+  ],
+  "limitations": [
+    "The official pages document file shapes and example semantics, but they do not define when a deck guide claim is sufficiently trustworthy to become an emitted runtime rule.",
+    "The current local runtime package and strict preview validator support runtime emission for `Combo.json`, but intentionally reject `Presume.json` and `Concede.json` as registry-known unsupported surfaces.",
+    "Hidden-information assumptions such as `the opponent probably has removal` cannot be proven from static deck research alone; only exact, source-backed, explicitly bounded assumptions belong in a presume-intent report.",
+    "Generic statements such as `play around board clears`, `save payoff for later`, `concede bad games`, or `sequence for tempo` do not contain enough card, timing, or condition detail to authorize runtime emission.",
+    "The current local preview author hardcodes same-turn `>>` output for emitted combo previews, so full cross-turn authoring requires an explicit operator field and compiler support beyond today's implementation.",
+    "The official combo page proves separator semantics and row shape, but it does not define a canonical numeric scoring policy for combo `value` segments; example numbers are illustrative rather than a documented optimization formula [uncertain]."
+  ],
+  "relevant_config_surfaces": [
+    "`CustomConfig/deck_config.ini` for mapping an exact deck name to the custom config directory.",
+    "`CustomConfig/<deck>/Combo.json` with top-level `GameCardId`, `ConfigComment`, and `ComboList`.",
+    "`Combo.json.ComboList.values[*]` rows with keys `comment`, `condition`, `combo`, and `value`.",
+    "`CustomConfig/<deck>/Presume.json` with top-level `GameCardId`, `ConfigComment`, and `PresumeOppInHandCard`.",
+    "`Presume.json.PresumeOppInHandCard.values[*]` rows with exact opponent card ids, conditions, and maximum-copy `value` semantics.",
+    "`CustomConfig/<deck>/Concede.json` with top-level `GameCardId`, `ConfigComment`, and `ExtraConcdeSettings`.",
+    "`Concede.json.ExtraConcdeSettings.values[*]` rows with `condition` and `value` evaluated from top to bottom.",
+    "`GlobalValues.json` `SecondTurnValueWeight` as a prerequisite dependency for any future `Presume.json` effect.",
+    "Preview-only reports such as `combo_suppression_report.json`, `presume_intent_report.json`, and `concede_intent_report.json`."
+  ],
+  "aggressive_generation_policy": [
+    "Be aggressive about emitting combo rows only after the claim is concrete, not after it is merely plausible; exact source-backed sequence detail should unlock emission instead of being suppressed out of caution.",
+    "Treat same-turn and cross-turn as separate compile targets. Do not collapse an explicitly cross-turn setup-payoff line into a same-turn `>>` row, and do not infer `>->` unless the source or upstream contract explicitly requires it.",
+    "Prefer emitting an exact ordered `Combo.json` row over downgrading the claim into a vague card-behavior bonus when the guide clearly describes sequencing rather than general card preference.",
+    "Suppress any combo claim that lacks at least two concrete CardIDs, uses placeholders such as `wide_board` or `setup_piece`, omits order, or relies on generated-card uncertainty that the compiler cannot resolve safely.",
+    "Treat `Presume.json` assumptions as valuable only when they use exact opposing card ids, explicit matchup or turn gates, and a clearly bounded copy limit; generic `opponent may have removal` language stays report-only.",
+    "Treat `Concede.json` as useful only for explicit operator-approved auto-concede heuristics with deterministic condition language and a literal concede value, never for vague frustration rules, generic bad-matchup narratives, or inferred low-winrate states.",
+    "Even when `Presume.json` or `Concede.json` logic is strategically meaningful, keep those surfaces fail-closed for default runtime generation until the repo intentionally adds first-class authoring, validation, and apply support."
+  ],
+  "validation_gates": [
+    "The research output must cover every field from `fields.yaml` and pass `validate_json.py` for this research batch.",
+    "Any emitted `Combo.json` must be strict JSON with exact top-level keys `GameCardId`, `ConfigComment`, and `ComboList`.",
+    "Every emitted combo row must contain `comment`, `condition`, `combo`, and `value`, and the number of combo segments must equal the number of value segments.",
+    "Every emitted combo row must use only documented separators: `>>` for same-turn or `>->` for cross-turn.",
+    "Every emitted combo row must trace back to exactly one stable source-backed gameplan clause and one official source doc key.",
+    "Any source-backed combo claim that cannot be emitted safely must appear in `combo_suppression_report.json` with the rule id, raw sequence, and suppression reason.",
+    "Any `Presume.json` or `Concede.json` intent must currently fail the runtime-support gate and remain outside preview runtime files unless the support matrix changes first.",
+    "Any future `Presume.json` row must additionally prove that `SecondTurnValueWeight` is non-zero and that the assumption uses exact opponent CardIDs plus explicit copy-limit semantics.",
+    "Any future `Concede.json` row must additionally preserve documented top-to-bottom evaluation order and use a literal concede value that matches the official semantics."
+  ],
+  "architectural_implications": [
+    "HSConfig should implement Step 09 as a dedicated surface-policy pass rather than as a loose extension of generic gameplan compilation.",
+    "The combo contract should add an explicit operator field, such as `same_turn` or `cross_turn`, because the official docs distinguish `>>` from `>->` and the current preview builder only materializes same-turn rows.",
+    "Combo lowering should consume a concrete sequence contract and should refuse symbolic placeholders such as `wide_board`, `tempo`, `pressure`, or `setup` unless a prior step has already resolved them into exact CardIDs.",
+    "Step 09 should create first-class report-only artifacts for `presume` and `concede` intents so hidden-information and auto-concede ideas remain visible, reviewable, and source-backed even while runtime emission is blocked.",
+    "The runtime support matrix from `visionai_docs.py` and `visionai_model.py` should be treated as a hard gate: `combo` is runtime-supported, while `presume` and `concede` are registry-known but unsupported in the current package.",
+    "If first-class `Presume.json` support is ever added, HSConfig should couple it to explicit `GlobalValues.SecondTurnValueWeight` awareness so play-around assumptions are not authored into a deck package where they cannot affect second-turn simulation.",
+    "If first-class `Concede.json` support is ever added, HSConfig should keep it behind an operator-policy flag separate from gameplay optimization, because conceding is an execution policy rather than a card-play heuristic.",
+    "The current `config_author.py` preview path should be extended before claiming cross-turn combo support, because today it always joins emitted sequences with ` >> `.",
+    "Suppression reporting should be considered a required product surface, not debug noise, because this step's main quality boundary is explaining why strategic claims were not emitted."
+  ],
+  "recommended_contracts": [
+    "`combo_surface_contract.json`: ordered combo rows with `rule_id`, `card_ids`, `operator`, `condition`, `timing_kind`, `role_labels`, `source_refs`, `confidence`, and `emission_status`.",
+    "`combo_suppression_report.json`: suppressed combo claims with raw sequence tokens, unresolved placeholders, missing-card reasons, operator ambiguity, and source refs.",
+    "`presume_intent_report.json`: report-only hidden-information assumptions with exact opponent card ids, turn or matchup gates, maximum-copy policy, dependence on `SecondTurnValueWeight`, and runtime-support status.",
+    "`concede_intent_report.json`: report-only extra auto-concede heuristics with explicit condition text, operator-policy flags, precedence notes, and runtime-support status.",
+    "`config_surface_intent_map.json`: per-claim routing into `Combo.json`, `Presume.json`, `Concede.json`, or report-only suppression.",
+    "`runtime_surface_support_matrix.json`: machine-readable reflection of supported runtime surfaces versus registry-known unsupported surfaces for the target workflow.",
+    "`combo_row_provenance.json`: one-row-per-emitted-combo-rule provenance mapping to gameplan clause, source doc key, confidence, and patchability class.",
+    "`report_only_guidance_registry.json`: a shared place for vague sequencing, play-around, or concede guidance that must stay visible without pretending to be runtime-safe."
+  ],
+  "never_autogenerate_without": [
+    "Official HearthRanger combo, presume, concede, and shared json-config documentation captured or live-verified for the target workflow.",
+    "An explicit runtime-support decision showing that the target package supports the surface being generated; for the current repo this permits `Combo.json` but blocks `Presume.json` and `Concede.json`.",
+    "For `Combo.json`, at least two exact CardIDs, fixed order, and an explicit same-turn or cross-turn operator.",
+    "For cross-turn combo emission, a source-backed reason that the sequence spans turns instead of a compiler guess based on card cost or intuition alone.",
+    "For any combo emission, a successful structural validation pass proving row keys, strict JSON shape, and combo/value segment-count alignment.",
+    "For any future `Presume.json` emission, exact opponent CardIDs, explicit condition gates, a maximum-copy interpretation for `value`, and proof that `SecondTurnValueWeight` is non-zero.",
+    "For any future `Concede.json` emission, explicit top-to-bottom ordered conditions, an operator-approved policy flag, and a successful runtime-support gate that no longer blocks the surface.",
+    "A suppression path for every vague, symbolic, or unsupported strategic claim that cannot be translated safely into documented runtime syntax."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/combo.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/concede.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/presume.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/config_author.py",
+    "C:/Users/darbo/Documents/HS/docs/superpowers/audits/2026-06-12-workflow-cleanup-audit.md",
+    "C:/Users/darbo/Documents/HS/outputs/cta_paladin/gameplan_contract.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_05_Archetype_And_Gameplan_Contract.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-architecture/results/HearthRanger_VisionAI_Config_Surface_Contract.json"
+  ],
+  "uncertain": [
+    "limitations"
+  ]
+}

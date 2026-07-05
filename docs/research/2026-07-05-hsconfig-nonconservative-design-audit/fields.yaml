@@ -1,0 +1,48 @@
+field_categories:
+  - category: hsconfig_architecture
+    fields:
+      - name: step_name
+        required: true
+        description: "Name of the HSConfig architecture step being researched."
+      - name: source_type
+        required: true
+        description: "Primary source category: official_docs, data_api, community_guide, local_project, or architecture."
+      - name: step_goal
+        required: true
+        description: "The purpose of this step in the deck-to-config workflow."
+      - name: required_inputs
+        required: true
+        description: "Inputs this step must receive before it can produce reliable output."
+      - name: produced_outputs
+        required: true
+        description: "Machine-readable artifacts or runtime config files produced by this step."
+      - name: reliable_uses
+        required: true
+        description: "What this step can safely decide or generate."
+      - name: limitations
+        required: true
+        description: "What this step cannot prove or must not decide alone."
+      - name: relevant_config_surfaces
+        required: true
+        description: "HearthRanger/VisionAI config surfaces this step may affect."
+      - name: aggressive_generation_policy
+        required: true
+        description: "How this step should avoid being overly conservative while staying syntax-safe."
+      - name: validation_gates
+        required: true
+        description: "Checks that must pass before downstream steps can trust this output."
+      - name: architectural_implications
+        required: true
+        description: "Concrete module, contract, CLI, or skill-design implications."
+      - name: recommended_contracts
+        required: true
+        description: "Machine-readable contracts HSConfig should create or consume for this step."
+      - name: never_autogenerate_without
+        required: true
+        description: "Evidence or validation that must exist before generating config artifacts from this step."
+      - name: must_cite_sources
+        required: true
+        description: "Source URLs, local docs, repositories, or official docs that should support this step."
+      - name: uncertain
+        required: true
+        description: "Field names with uncertain values."

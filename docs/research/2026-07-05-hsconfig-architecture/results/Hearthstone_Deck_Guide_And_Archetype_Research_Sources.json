@@ -1,0 +1,78 @@
+{
+  "source_type": "community_guide",
+  "reliable_uses": [
+    "Vicious Syndicate Data Reaper reports provide current meta-level matchup spreads, archetype popularity, and rank-segmented performance that can seed matchup posture assumptions and source-backed archetype confidence.",
+    "Vicious Syndicate day-1 and deck overview articles provide human-written game plans, likely mulligan anchors, synergy notes, and likely win conditions for new archetypes before large replay samples exist.",
+    "HSReplay archetype and deck surfaces plus Mulligan G-V2 provide data-backed opening-hand guidance, per-deck or per-archetype mulligan context, and matchup-oriented deck discovery for Standard lists.",
+    "HSGuru deck pages, card stats, archetype stats, matchup tabs, and replay links help identify exact list variants, archetype labels, and card-level impact signals that can support role tagging and low-confidence matchup posture.",
+    "HearthSim Deckstrings documentation and reference libraries provide deterministic decode and encode behavior for deck codes, including hero, format, and DBF-based card lists.",
+    "HearthstoneJSON provides machine-readable card IDs, dbfId mapping, card text, mechanics, type, class, and play-requirement metadata needed to join decoded deckstrings to card semantics."
+  ],
+  "limitations": [
+    "Vicious Syndicate day-1 deck articles are theorycrafted and explicitly not a replacement for post-launch, data-backed refinement.",
+    "HSReplay Mulligan G-V2 is Standard-only according to its FAQ, so it should not be treated as full Wild or all-format coverage.",
+    "HSReplay and HSGuru statistics reflect tracker-user populations rather than the full ladder population; low-sample windows and fresh-patch periods can overfit rare lists.",
+    "HSGuru matchup analysis relies on card-play-based archetype classification because the opponent's exact list is unknown, so similar archetypes can blur together.",
+    "Deckstring specifications and card metadata can decode and describe cards, but they cannot infer matchup plans, combo timing, or safe VisionAI targets by themselves.",
+    "None of these online sources prove HearthRanger config load, runtime correctness, or gameplay improvement; Step 1 remains static research only."
+  ],
+  "relevant_config_surfaces": [
+    "research bundle/source_evidence_index.json",
+    "research bundle/card_role_map.json",
+    "research bundle/card_usage_expectations.json",
+    "research bundle/archetype_research.json",
+    "research bundle/matchup_posture_assumptions.json",
+    "research bundle/config_surface_intent_map.json",
+    "outputs/<deck_slug>/deck_research_contract.json",
+    "outputs/<deck_slug>/gameplan_contract.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Mulligan.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/GlobalValues.json",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/*.json per-card CARDID files",
+    "outputs/<deck_slug>/config_preview/<deck_slug>/Combo.json only when exact sequencing is source-backed",
+    "outputs/<deck_slug>/config_preview/reports/mulligan_condition_suppression_report.json"
+  ],
+  "architectural_implications": [
+    "Separate three pipelines: deckstring decoding, card metadata hydration, and strategy or archetype inference. Only the first two are deterministic; the third must stay confidence-scored and source-cited.",
+    "Store source claims at card-level and archetype-level separately so a deck can inherit general archetype posture while exact-list card roles still depend on the decoded cards present in the submitted list.",
+    "Require patch, format, and retrieval-date stamping on all community-guide claims because mulligan advice and matchup posture drift quickly after balance patches and expansions.",
+    "Use consensus weighting: prefer high-confidence static semantics only when a guide source such as Vicious Syndicate and a data source such as HSReplay or HSGuru point in the same direction.",
+    "Map unsupported symbolic advice, such as flexible face-versus-trade heuristics, into gameplan or suppression-report artifacts first; emit runtime Mulligan or Combo rows only when the claim can be translated into documented VisionAI syntax.",
+    "Treat exact deck identity and archetype identity as separate contracts: the submitted deckstring should remain immutable, while archetype inference can be revised when newer public data changes classification."
+  ],
+  "recommended_contracts": [
+    "source_evidence_index.json: normalized source registry with url, source_family, retrieved_at, patch_or_expansion, format, access_notes, and per-claim confidence.",
+    "deckstring_decode_receipt.json: deck_code, hero_dbf_id, format, canonical_card_dbf_ids, and decode library or spec version.",
+    "card_metadata_snapshot.json: card_id, dbfId, cost, class, type, mechanics, text, playRequirements, and locale or build provenance for every decoded card.",
+    "archetype_research.json: archetype label, confidence, primary win conditions, mulligan anchors, board and resource posture, face-versus-trade rules, known bad patterns, unsupported mechanics, and source refs.",
+    "card_role_map.json: every decoded deck card mapped to one or more role tags with evidence refs and confidence.",
+    "card_usage_expectations.json: hold, play, target, and resource expectations per card, with matchup-conditioned rows separated from unconditional rows.",
+    "matchup_posture_assumptions.json: default posture plus opponent archetype-conditioned posture rows, each evidence-gated and explicitly low-confidence when sample sizes are weak.",
+    "config_surface_intent_map.json: claims translated into intended surfaces such as Mulligan.json, GlobalValues.json, CARDID.json, Combo.json, or report-only suppression.",
+    "archetype_identification_receipt.json: exact deck list, matched archetype source, confidence, and ambiguity notes."
+  ],
+  "never_autogenerate_without": [
+    "A successful deckstring decode and card-metadata join for every card in the submitted deck code.",
+    "A source_evidence_index entry for every archetype, mulligan, matchup, or card-role claim used by the generator.",
+    "At least one current guide-style source and one current data-style source for any high-confidence mulligan or matchup posture claim.",
+    "Explicit downgrade to low confidence or contract_gap when sources disagree, are stale for the current patch, or do not cover the exact list.",
+    "Validation that every decoded card is covered in card_role_map.json and card_usage_expectations.json.",
+    "A preview-only pass that validates deck_research_contract.json, gameplan_contract.json, and config preview artifacts before any guarded write-runtime step.",
+    "Human-visible suppression or gap reporting for claims that cannot be translated into documented Mulligan.json, Combo.json, GlobalValues.json, or CARDID.json syntax.",
+    "Acceptance authority from local Step 1 reports before any live runtime apply; online research alone is not sufficient."
+  ],
+  "must_cite_sources": [
+    "https://www.vicioussyndicate.com/vs-data-reaper-report-350/",
+    "https://www.vicioussyndicate.com/45-decks-to-try-out-on-day-1-of-cataclysm/",
+    "https://hsreplay.net/mulligan-gv2/",
+    "https://hsreplay.net/archetypes/355/face-hunter",
+    "https://www.hsguru.com/stats/explanation",
+    "https://www.hsguru.com/decks",
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://github.com/HearthSim/hearthstone-deckstrings",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://hearthstonejson.com/",
+    "C:/Users/darbo/Documents/HS/docs/operator/deck-research-contract.md",
+    "C:/Users/darbo/Documents/HS/docs/operator/new-deck-checklist.md"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,226 @@
+{
+  "step_name": "Step 01 Input And Scope Contract",
+  "source_type": "architecture",
+  "step_goal": "Define one minimal but complete intake contract that gives HSConfig enough identity, scope, provenance, and mode information to generate deck-specific preview artifacts without hard-coding deck templates or making runtime claims.",
+  "required_inputs": [
+    {
+      "name": "deck_name",
+      "required": true,
+      "purpose": "Human-readable label for output folders, reports, and operator context.",
+      "governance": "Use for labeling only; never use deck_name to infer hero, cards, format, or strategy."
+    },
+    {
+      "name": "deck_code",
+      "required": true,
+      "purpose": "Authoritative structural deck identity input.",
+      "governance": "Decode first, then derive hero, format, card counts, sideboards, and deck fingerprint from the decoded payload rather than from remembered archetype labels."
+    },
+    {
+      "name": "format",
+      "required": false,
+      "purpose": "Optional caller-supplied format hint or override.",
+      "governance": "If absent, derive from the decoded deckstring. If present, normalize and compare against the decoded value so mismatches become explicit blockers or degraded status instead of silent assumptions."
+    },
+    {
+      "name": "runtime_root",
+      "required": true,
+      "purpose": "Target HearthRanger runtime root for packaging, fake write planning, guarded apply planning, and later drift checks.",
+      "governance": "Carry this path in the contract even when the current step is preview-only. The presence of runtime_root does not authorize writes."
+    },
+    {
+      "name": "target_config_mode",
+      "required": true,
+      "purpose": "Declare whether the caller wants preview-only authoring or a later runtime-targeted package lineage.",
+      "governance": "Normalize to an explicit enum such as preview, fake_write_package, or guarded_apply_candidate. Step 01 may plan for later apply lineage but must remain read-only."
+    },
+    {
+      "name": "card_data_source",
+      "required": true,
+      "purpose": "Explicit card-data source used to resolve DBF ids into CardIDs and card metadata.",
+      "governance": "Require an explicit path or pinned source reference. Do not resolve card identity from deck_name, class nickname, or guide pages when explicit card data is available."
+    },
+    {
+      "name": "source_citation_bundle",
+      "required": true,
+      "purpose": "Initial provenance registry for deckstring facts, card-data facts, and later guide or meta claims.",
+      "governance": "Every non-trivial claim must carry source id, provider, URL or file path, claim layer, capture time or pinned-local status, content hash when practical, confidence, freshness rule, and trust ceiling."
+    }
+  ],
+  "produced_outputs": [
+    {
+      "artifact": "input_scope_contract.json",
+      "required": true,
+      "purpose": "Canonical Step 01 record containing deck_name, deck_code, normalized format, runtime_root, target_config_mode, deck slug, deck fingerprint, source refs, and read-only scope flags."
+    },
+    {
+      "artifact": "deck_intake.json",
+      "required": true,
+      "purpose": "Decoded deck artifact with hero, cards, sideboards, identity diagnostics, unknown DBF ids, and source refs for deckstring and card-data resolution."
+    },
+    {
+      "artifact": "source_evidence_index.json",
+      "required": true,
+      "purpose": "Seeded source registry that starts with stable identity facts and can later absorb dated guide_interpretation and dated_meta_claim rows without losing provenance."
+    },
+    {
+      "artifact": "step1_preflight.json",
+      "required": true,
+      "purpose": "Read-only readiness record for local roots, planned artifacts, missing inputs, and blocked or degraded reasons."
+    }
+  ],
+  "reliable_uses": [
+    "Prove deck identity from deck_code plus explicit card-data provenance.",
+    "Derive or normalize format before any guide lookup or config authoring.",
+    "Bind every later Step 1 artifact to one deck fingerprint so deck swaps and stale evidence are detectable.",
+    "Carry runtime_root and target_config_mode as packaging scope metadata without implying runtime mutation.",
+    "Seed a provenance model that distinguishes stable_reference_fact, deck_identity_fact, guide_interpretation, and dated_meta_claim.",
+    "Authorize aggressive preview authoring only on documented config surfaces and only when the claim stays source-backed and syntax-compatible."
+  ],
+  "limitations": [
+    "This step cannot prove CONFIG_LOAD_OK, RUNTIME_SAMPLED, gameplay improvement, finetune readiness, or patch correctness.",
+    "This step must not infer card identity, hero identity, or strategy from deck_name alone.",
+    "This step must not let guide prose or current meta pages become runtime proof or guarded-apply authority.",
+    "This step cannot decide undocumented VisionAI behavior, hidden-information logic, or owner-sensitive conditionals as auto-generated runtime rows.",
+    "This step cannot authorize GlobalValues retuning or post-run patch promotion without fresh runtime evidence.",
+    "This step should treat symbolic combo plans, conditional mulligan prose, and broad matchup narratives as upstream intent unless they can be reduced to documented preview-safe surfaces."
+  ],
+  "relevant_config_surfaces": [
+    {
+      "surface": "Mulligan.json",
+      "step01_role": "Potential preview target once guide-backed mulligan intent is compiled into documented keep or discard rows."
+    },
+    {
+      "surface": "CARDID.json",
+      "step01_role": "Potential preview target for card-local behavior rows once per-card intent is source-backed and syntax-safe."
+    },
+    {
+      "surface": "GlobalValues.json",
+      "step01_role": "Potential preview target only as a baseline-aware contract surface; Step 01 should not treat broad tuning claims as proven."
+    },
+    {
+      "surface": "Combo.json",
+      "step01_role": "Potential preview target only when sequencing is concrete, documented, and reducible to card-id-level rows."
+    },
+    {
+      "surface": "deck_config.ini fragment",
+      "step01_role": "Packaging surface for mapping the generated deck slug to the runtime package directory."
+    }
+  ],
+  "aggressive_generation_policy": {
+    "principle": "Be aggressive about preserving deck-specific guide intent, but conservative about what becomes runtime-shaped JSON.",
+    "rules": [
+      "Anchor identity to deck_code, decoded cards, and explicit card data first.",
+      "Use deck-neutral compilers that operate on card ids, role tags, patch surfaces, and source refs rather than on hard-coded deck names or archetype templates.",
+      "Allow guide-backed claims to enrich archetype summary, mulligan anchors, card roles, usage expectations, board-value intent, and config-surface intent before games are played.",
+      "Emit preview candidates only on documented surfaces and only when the claim survives syntax validation and provenance checks.",
+      "Preserve unsupported or symbolic intent as suppressed rows, review notes, explicit low-confidence records, or contract gaps instead of silently dropping it.",
+      "Keep preview mode first. A request for later apply lineage may change packaging metadata, but not Step 01 authority."
+    ]
+  },
+  "validation_gates": [
+    "deck_code must decode successfully.",
+    "Explicit card-data input must exist and resolve deck DBF ids as far as possible; unknown DBF ids must remain visible.",
+    "decklist_fingerprint, deck_code_hash, unresolved_card_count, and card_count_total must be materialized.",
+    "Normalized format must be present, either decoded from deckstring or validated against an explicit caller value.",
+    "runtime_root must be recorded and classified as scope metadata, not as write authority.",
+    "target_config_mode must be normalized to an allowed enum and must not bypass preview-first workflow boundaries.",
+    "source_evidence_index must contain at least the deckstring decode fact and the card-data source fact.",
+    "All generated Step 01 artifacts must remain read-only with runtime_write_performed=false or equivalent scope metadata.",
+    "Any later guide-derived claim must carry freshness and trust-ceiling metadata before downstream steps can treat it as more than a generic fallback."
+  ],
+  "architectural_implications": [
+    "HSConfig should expose a dedicated intake layer that is separate from research interpretation and separate from config authoring.",
+    "The intake contract should own deck identity normalization, deck fingerprinting, format normalization, runtime_root capture, target_config_mode normalization, and source-registry seeding.",
+    "The research layer should consume the input-scope contract and source_evidence_index rather than raw deck_name strings or ad hoc notes.",
+    "The config-authoring layer should accept only documented preview-safe intent maps plus explicit mode metadata, and should never read guide pages directly.",
+    "HSConfig should keep a preview-first state machine: intake -> research contract -> gameplan or intent maps -> config preview -> fake package -> guarded apply later.",
+    "Any CLI or API surface should make the deck-neutral boundary explicit by requiring deck_code and explicit card data, while treating deck_name as a label."
+  ],
+  "recommended_contracts": [
+    {
+      "contract": "input_scope_contract",
+      "status": "new_or_adapted",
+      "purpose": "Minimal Step 01 contract for deck identity, scope, mode, and provenance seeds."
+    },
+    {
+      "contract": "deck_intake",
+      "status": "consume_or_port",
+      "purpose": "Decoded deck artifact with hero, cards, sideboards, unknown ids, and identity diagnostics."
+    },
+    {
+      "contract": "step1_preflight",
+      "status": "consume_or_port",
+      "purpose": "Read-only local-roots and planned-artifacts readiness check."
+    },
+    {
+      "contract": "source_evidence_index",
+      "status": "consume_or_port",
+      "purpose": "Typed source registry for stable facts, guide interpretations, and dated meta claims."
+    },
+    {
+      "contract": "deck_research_contract",
+      "status": "downstream_consumer",
+      "purpose": "Source-backed per-card semantics contract built only after Step 01 has established clean identity and provenance anchors."
+    }
+  ],
+  "never_autogenerate_without": [
+    "A valid decoded deck_code.",
+    "Explicit card-data provenance sufficient to resolve card ids or to make unresolved ids explicit.",
+    "A materialized deck fingerprint and deck_code_hash.",
+    "An explicit target_config_mode.",
+    "A recorded runtime_root for any runtime-targeted package lineage.",
+    "At least one stable identity source and one card-data source recorded in source_evidence_index.",
+    "Clear separation between source-backed preview intent and runtime proof boundaries."
+  ],
+  "must_cite_sources": [
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/deck_intake.py",
+      "reason": "Primary local evidence for required intake fields, deck-neutral card-data requirement, fingerprinting, format capture, and source_refs shape."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/step1_preflight.schema.json",
+      "reason": "Primary local evidence for runtime_root as read-only Step 1 scope metadata and for preview-safe readiness boundaries."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/source_evidence_index.schema.json",
+      "reason": "Primary local evidence for typed Step 1 provenance, confidence, trust ceilings, and runtime_write_performed=false."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/operator/deck-research-contract.md",
+      "reason": "Primary local evidence for the preview-first Step 1 sequence and the static-versus-runtime boundary."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/src/hsranger_core/gameplan_contract_builder.py",
+      "reason": "Primary local evidence for runtime package boundaries, required preview files, and non-goals around runtime claims."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/superpowers/research/autonomous-deck-research-contract-builder-2026-06-16/results/External_deck_and_card_source_model.json",
+      "reason": "Local research evidence for stable versus freshness-sensitive source classes, trust ceilings, and deck-neutral source modeling."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HS/docs/superpowers/research/autonomous-deck-research-contract-builder-2026-06-16/results/HearthRanger_VisionAI_patchsurface_boundary.json",
+      "reason": "Local research evidence for documented preview surfaces and for keeping Step 1 aggressive but fail-closed."
+    },
+    {
+      "source": "https://hearthsim.info/docs/deckstrings/",
+      "reason": "Primary external reference for deckstring structure, versioning, format encoding, heroes, and DBF-id-based card identity."
+    },
+    {
+      "source": "https://hearthstonejson.com/docs/cards.html",
+      "reason": "Primary external reference for card-data fields such as id, dbfId, cardClass, type, and collectible scope."
+    },
+    {
+      "source": "https://us.forums.blizzard.com/en/hearthstone/t/card-library-and-card-api-launched/8158",
+      "reason": "Official Blizzard confirmation that public card-library and card-API surfaces exist."
+    },
+    {
+      "source": "https://hsreplay.net/meta/",
+      "reason": "Representative current meta source that should be treated as dated_meta_claim or guide_interpretation rather than stable identity proof."
+    },
+    {
+      "source": "https://www.vicioussyndicate.com/drr/matchup-chart-data-reaper-report/",
+      "reason": "Representative matchup-data source that must stay freshness-scoped and never become runtime proof by itself."
+    }
+  ],
+  "uncertain": []
+}

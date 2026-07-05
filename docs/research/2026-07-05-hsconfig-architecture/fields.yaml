@@ -1,0 +1,36 @@
+fields:
+  source_type:
+    description: "Primary source category: official_docs, community_guide, data_api, repo_reference, or local_project."
+    type: string
+  reliable_uses:
+    description: "What this source can reliably support for HSConfig architecture."
+    type: array
+    items: string
+  limitations:
+    description: "What this source cannot prove or should not decide alone."
+    type: array
+    items: string
+  relevant_config_surfaces:
+    description: "HearthRanger/VisionAI config files or surfaces affected by this source."
+    type: array
+    items: string
+  architectural_implications:
+    description: "Concrete implications for HSConfig modules, contracts, validation, or skill references."
+    type: array
+    items: string
+  recommended_contracts:
+    description: "Machine-readable contracts HSConfig should create or consume."
+    type: array
+    items: string
+  never_autogenerate_without:
+    description: "Evidence or validation that must exist before generating a live config artifact."
+    type: array
+    items: string
+  must_cite_sources:
+    description: "Source URLs, local docs, or repositories that should be cited in generated research outputs."
+    type: array
+    items: string
+  uncertain:
+    description: "Field names with uncertain values."
+    type: array
+    items: string

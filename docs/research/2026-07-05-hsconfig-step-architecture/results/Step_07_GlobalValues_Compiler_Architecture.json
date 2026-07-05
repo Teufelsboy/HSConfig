@@ -1,0 +1,112 @@
+{
+  "step_name": "Step 07 GlobalValues Compiler Architecture",
+  "source_type": "official_docs",
+  "step_goal": "Compile a syntax-safe HearthRanger VisionAI `GlobalValues.json` by copying the active runtime default baseline, preserving the documented board-value model, profiling every copied key, and limiting pre-run deck-specific changes to explicitly authorized overlays instead of speculative broad tuning.",
+  "required_inputs": [
+    "The official HearthRanger `GlobalValues` help page and the generic VisionAI JSON-config page so the compiler uses documented file shape, board-value semantics, and turn-weight semantics.",
+    "Access to the active runtime baseline file `CustomConfig/default/GlobalValues.json`, because the official page strongly recommends copying that file before editing.",
+    "A validated `global_values_contract` or equivalent gameplan section that states whether pre-run overlays are forbidden or allowed, which keys are allowed, and why.",
+    "A baseline hash and runtime surface snapshot for the exact default `GlobalValues.json` that was copied.",
+    "A full-key profile step that classifies every copied baseline key before deck-local output is written.",
+    "If any overlay is requested, an explicit `old_value`, new `value`, rationale, rollback note, and source references for each changed key."
+  ],
+  "produced_outputs": [
+    "A deck-local `CustomConfig/<deck>/GlobalValues.json` that preserves the copied baseline shape and keeps `GameCardId` equal to `GlobalValues`.",
+    "A `global_values_key_profile_report.json` artifact that records every baseline key, its classification, whether it stayed baseline or received a pre-run overlay, and any blocking reasons.",
+    "Row-level provenance entries for each emitted `values` row so every preserved or overlaid row can be traced back to a contract clause and source.",
+    "A preview receipt or equivalent report that records baseline source path, baseline hash, overlay keys, and validation status.",
+    "A machine-readable board-value contract that links documented board-value components to local downstream review expectations."
+  ],
+  "reliable_uses": [
+    "Create a strict-JSON `GlobalValues.json` that uses the documented object-plus-`values`-array shape instead of legacy scalar entries.",
+    "Preserve the documented board-value formula: own hand, hero, hero power, weapon, secret, minions, and deck minus the corresponding opponent components.",
+    "Preserve the documented final-board-value formula by emitting `FirstTurnValueWeight` and `SecondTurnValueWeight` as normal `values` blocks.",
+    "Copy every key that exists in the active runtime default baseline instead of inventing a reduced custom file shape.",
+    "Profile copied keys into categories such as turn-weight review candidates, own-side board-value surfaces, opponent-side board-value surfaces, or baseline-preserved keys.",
+    "Apply narrow pre-run overlays to documented turn-weight keys when a gameplan explicitly authorizes them, the baseline `old_value` matches, and the change stays deck-local.",
+    "Keep broad minion, hero, weapon, secret, and deck-related value families at their copied baseline when no source-backed authorization exists."
+  ],
+  "limitations": [
+    "This step can preserve documented syntax and documented board-value semantics, but it cannot prove that a changed `GlobalValues.json` improves gameplay or even that HearthRanger loaded it correctly in a fresh runtime session.",
+    "The official `GlobalValues` page documents the board-value formula, `FirstTurnValueWeight`, `SecondTurnValueWeight`, and an example such as `GlobalDivineShield`, but it does not publish a complete machine-readable public catalog for every live runtime key.",
+    "This step must not infer that an aggressive archetype automatically justifies broad edits to hero, minion, weapon, secret, or deck-related values; the public docs only clearly document the turn-weight surface as a direct board-value policy control.",
+    "Changing many `GlobalValues` keys at once is high risk because a deck-wide global change can affect many unrelated decisions; this compiler architecture should therefore avoid broad pre-run tuning batches.",
+    "[uncertain] The public docs and cached registry do not prove that every live `GlobalValues` key name and meaning will stay version-stable across future HearthRanger releases, so HSConfig should treat the active runtime baseline as authoritative and diffable rather than hard-coding a frozen key list."
+  ],
+  "relevant_config_surfaces": [
+    "`CustomConfig/deck_config.ini` `[CONFIGS]` mapping from exact deck name to config directory.",
+    "`CustomConfig/default/GlobalValues.json` as the authoritative runtime baseline source to copy.",
+    "`CustomConfig/<deck>/GlobalValues.json` as the deck-local runtime surface.",
+    "Per-key `values[*]` rows inside `GlobalValues.json`, especially `FirstTurnValueWeight` and `SecondTurnValueWeight`.",
+    "The upstream `global_values_contract` or equivalent gameplan section that authorizes baseline-only behavior or narrow overlays.",
+    "The preview-only artifact `config_preview/reports/global_values_key_profile_report.json`.",
+    "The local board-value contract surface used for later review, such as `board_value_model` and `board_value_components`."
+  ],
+  "aggressive_generation_policy": [
+    "Be aggressive about preserving the full runtime default baseline, not aggressive about inventing new numeric values. A complete copied baseline is safer than a short custom file.",
+    "Use archetype-specific aggression first through the documented turn-weight surface, because the public docs explicitly describe first-turn versus second-turn weighting and give an aggro-style example.",
+    "Apply pre-run overlays only to an explicitly allowed narrow key set, and require `old_value` matching against the copied baseline before any row is changed.",
+    "Keep non-turn-weight keys such as minion, hero, weapon, secret, and deck-related value groups at their copied baseline unless a later evidence-backed workflow authorizes a narrower change.",
+    "Prefer a small deck-local overlay on top of the copied baseline over emitting a reduced file that contains only the changed keys.",
+    "Do not translate vague guide claims such as `play more aggressively`, `value face more`, or `protect board better` into unsupported broad `GlobalValues` edits; keep those claims in contracts or reports until a concrete documented key mapping exists.",
+    "If an archetype-specific profile is emitted pre-run, make it reversible, hash-bound to the copied baseline, and clearly labeled as a preview assumption rather than a proven optimal policy."
+  ],
+  "validation_gates": [
+    "The research result must cover every required field from `fields.yaml` and pass `validate_json.py` for this research batch.",
+    "Generated `GlobalValues.json` must be strict JSON with no comments or trailing commas.",
+    "Top-level `GameCardId` must equal `GlobalValues`.",
+    "The emitted file must be based on a copied baseline whose hash and source path are recorded in the receipt or profile report.",
+    "At minimum, `FirstTurnValueWeight` and `SecondTurnValueWeight` must exist and each must be an object containing a `values` array with `condition` and `value` fields.",
+    "Every baseline key copied from `CustomConfig/default/GlobalValues.json` must appear in the key profile report, and the profiled key count must match the loaded baseline key count.",
+    "Any overlay key must already exist in the baseline, and its declared `old_value` must match the copied baseline value before the overlay is accepted.",
+    "Every emitted row must have provenance linking it to either baseline materialization or an explicitly authorized overlay rule.",
+    "Any requested non-turn-weight change without fresh supporting evidence must fail closed or remain report-only instead of being emitted."
+  ],
+  "architectural_implications": [
+    "HSConfig should implement a dedicated `GlobalValues` compiler pipeline rather than treating the file as free-form JSON text.",
+    "That pipeline should be staged as baseline load -> baseline shape validation -> all-key profile -> optional overlay authorization -> deck-local file emission -> receipt and provenance generation.",
+    "The baseline loader should read `CustomConfig/default/GlobalValues.json` from the active runtime root and deep-copy the document before any edits are considered.",
+    "The syntax model should distinguish a narrow guaranteed minimum key set from the broader live baseline inventory, because the active runtime may contain more keys than the public minimum example shows.",
+    "A `global_values_contract` should be mandatory whenever overlays are allowed, with explicit `patch_authorization`, `baseline_hash_required`, `required_evidence`, and per-overlay metadata.",
+    "Step 1 pre-run overlays and Step 2 evidence-backed tuning must remain separate lanes. Step 1 may authorize only narrow documented assumptions, while later tuning must require fresh legal-option and outcome evidence.",
+    "Local board-value review should use a component contract that maps own and opponent hero, weapon, and minion families to candidate `GlobalValues` keys while keeping unsupported components as formula-only or evidence-required surfaces.",
+    "Deck-local `GlobalValues` patches should never mutate `CustomConfig/default/GlobalValues.json`; the default file is the source baseline, not the patch target."
+  ],
+  "recommended_contracts": [
+    "A `global_values_contract` with `rule_id`, `baseline_source`, `baseline_hash_required`, `patch_authorization`, `required_evidence`, `policy`, `fresh_evidence_required`, and `source_refs`.",
+    "A `pre_run_assumption_overlays` structure for authorized Step 1 overlays, where each row contains `key`, `old_value`, `value`, `reason`, `expected_effect`, `risk`, `rollback`, and `source_refs`.",
+    "A `global_values_key_profile_report.json` contract with baseline counts, classifications, blocking reasons, overlay keys, and per-key actions.",
+    "A `config_row_provenance.json` or equivalent receipt section that records file path, JSON pointer, source doc key, source gameplan key, confidence, and patchability for each emitted row.",
+    "A shared `board_value_model` contract that preserves the documented board-value formula and its Step 1 boundary.",
+    "A `global_values_key_authority.json` matrix for later review work that records which key families may ever be considered for evidence-backed tuning and the minimum repeat or review posture they require.",
+    "A runtime surface snapshot contract that captures the current default `GlobalValues.json` hash and other config lineage needed before later deck-local tuning."
+  ],
+  "never_autogenerate_without": [
+    "The official HearthRanger `GlobalValues` help page and generic JSON-config page cited in the compilation receipt or manifest.",
+    "Access to the active runtime baseline `CustomConfig/default/GlobalValues.json`, or a clearly labeled fallback path that is not mistaken for a full live baseline.",
+    "Successful baseline shape validation proving that the copied file uses `values` blocks and includes required turn-weight keys.",
+    "A baseline hash and runtime surface snapshot for the copied default file.",
+    "An explicit contract that says whether overlays are forbidden or allowed before fresh runtime evidence exists.",
+    "For any overlay, a documented key mapping, baseline `old_value` match, rollback note, and source-backed rationale.",
+    "For any non-turn-weight change, fresh runtime evidence tied to the current deck, active config hash, legal options, chosen actions, and outcomes.",
+    "A passing provenance and profile pass showing that every copied baseline key was considered."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/global_values.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_baseline.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_profile.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/board_value.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_key_authority.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/gameplan_validation.py",
+    "C:/Users/darbo/Documents/HS/tests/test_config_author_global_values.py",
+    "C:/Users/darbo/Documents/HS/docs/superpowers/archive/research/ctapaladin-step1-deck-to-config/results/Step_14_GlobalValues_Default_Materialization_And_Board_Value_Policy.json"
+  ],
+  "uncertain": [
+    "limitations"
+  ]
+}

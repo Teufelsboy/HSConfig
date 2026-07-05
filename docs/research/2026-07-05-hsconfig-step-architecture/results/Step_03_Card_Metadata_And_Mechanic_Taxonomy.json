@@ -1,0 +1,116 @@
+{
+  "step_name": "Step 03 Card Metadata And Mechanic Taxonomy",
+  "source_type": "data_api",
+  "step_goal": "Hydrate a deck-neutral, source-backed card metadata layer that resolves card text, card type, cost, stats, mechanics, play and target constraints, linked hero powers, linked rewards, and generated-entity relationships into a normalized taxonomy that later HSConfig steps can safely lower into gameplan, Mulligan.json, CARDID.json, Combo.json, and GlobalValues.json decisions without inventing unsupported runtime behavior.",
+  "required_inputs": [
+    "Step 02 exact card identity output: deck card CardIDs, DBF ids, hero identity, format, duplicate counts, and any sideboard relationships.",
+    "A first-class all-cards metadata source that covers collectible and non-collectible cards, because heroes, hero powers, enchantments, secrets, locations, quest rewards, and generated tokens are all relevant to config generation.",
+    "HearthstoneJSON cards feed for stable baseline fields such as id, dbfId, name, text, type, cardClass, cost, attack, health, durability, mechanics, referencedTags, spellSchool, heroPowerDbfId, overload, questReward, and targetingArrowText when present.",
+    "A CardDefs.xml or python-hearthstone cardxml enrichment pass for fields that are documented in HearthstoneJSON docs but not reliably present in the current live JSON payload, especially play requirements, entourage-style generation links, and other deep relationship data [uncertain].",
+    "Local mechanic family registry and VisionAI surface registry so metadata facts can be mapped to the repo's supported runtime surfaces instead of to imaginary config files.",
+    "A source-provenance policy per field so downstream steps know whether a value came from JSON, CardDefs.xml, derived heuristics, or unresolved fallback."
+  ],
+  "produced_outputs": [
+    "card_metadata_bundle.json: one normalized object per resolved card id with source-backed fields, optional linked entities, and field-level provenance.",
+    "mechanic_taxonomy.json: a canonical family map that classifies cards into families such as battlecry, deathrattle, discover, dredge, tradeable, overload, location, weapon, secret, hero_power, generated_entity, discard, silence, transform, choose_one, and targeting.",
+    "card_targeting_constraints.json: normalized play requirement and target constraint rows that later steps can consume without re-parsing raw source payloads.",
+    "linked_entity_graph.json: hero to hero-power, quest to reward, card to generated or referenced entity, and card to non-collectible dependency closure.",
+    "card_surface_hints.json: per-card recommendations for whether the card is a likely CARDID.json candidate, Combo.json candidate, Mulligan-only concern, or GlobalValues-relevant mechanic family.",
+    "step03_validation_report.json: coverage, unresolved fields, unresolved linked entities, and drift notes between documented source fields and currently observed live payload fields."
+  ],
+  "reliable_uses": [
+    "Resolve deck cards plus required non-deck linked cards such as heroes, hero powers, quest rewards, locations, weapons, secrets, and generated tokens into one normalized metadata graph.",
+    "Hydrate localized card text and non-localized enums so later steps can reason over both exact structured fields and human-readable text without losing CardID fidelity.",
+    "Classify mechanic families from explicit source fields such as mechanics, referencedTags, type, overload, heroPowerDbfId, and questReward before any runtime-specific lowering occurs.",
+    "Identify direct config-relevant card facts such as type HERO_POWER, type WEAPON, type LOCATION, SECRET mechanic, OVERLOAD numeric cost, and DISCOVER or CHOOSE_ONE choice surfaces.",
+    "Build a deterministic boundary between source facts and derived heuristics, so later steps can tell whether a target rule came from explicit metadata, from a safe derived family label, or from unresolved text-only inference.",
+    "Provide stable per-card inputs for Step 05 gameplan contracts and for Step 08 card-local behavior compilation without forcing those later steps to reopen raw upstream card sources.",
+    "Feed the local mechanic registry with card coverage so family-level audits, detector boundaries, and patchability decisions stay aligned with the actual card data layer."
+  ],
+  "limitations": [
+    "Card metadata can describe what a card is and what tags or relationships are visible in source data, but it cannot by itself prove correct play, target quality, timing quality, or gameplay improvement.",
+    "Random-generation pools, discover pools, dredge quality, and transform outcomes are often only partially encoded in stable card metadata; they still need runtime or gameplan context before becoming strict behavior rules.",
+    "Card text alone is not a safe source of exact target legality or ordered combo semantics when a structured field is missing. Text parsing may help classification, but it must not be treated as gameplay proof.",
+    "The live HearthstoneJSON docs describe playRequirements and entourage, but a 2026-07-05 probe of the current latest cards.json payload observed heroPowerDbfId, referencedTags, overload, and questReward while not surfacing playRequirements, entourage, or childIds in sampled output, so JSON-only hydration is currently insufficient for some Step 03 needs [uncertain].",
+    "Generated entity lineage is not uniformly first-class across all mechanic families. Some relationships are explicit, such as heroPowerDbfId and questReward, while others may require CardDefs-level parsing or curated fallbacks [uncertain].",
+    "This step must not decide whether Concede.json, Presume.json, or broad GlobalValues tuning should be emitted from a card family alone; those remain later-step policy decisions."
+  ],
+  "relevant_config_surfaces": [
+    "deck_research_contract.json",
+    "gameplan_contract.json",
+    "card_obligation_matrix.json",
+    "decision_trace_requirements.json",
+    "CustomConfig/<deck_config_dir>/<CARDID>.json",
+    "CustomConfig/<deck_config_dir>/Mulligan.json",
+    "CustomConfig/<deck_config_dir>/Combo.json",
+    "CustomConfig/<deck_config_dir>/GlobalValues.json",
+    "src/hsranger_core/card_data.py",
+    "src/hsranger_core/deck_intake.py",
+    "src/hsranger_core/semantics/mechanic_registry.py",
+    "src/hsranger_core/visionai_docs.py"
+  ],
+  "aggressive_generation_policy": [
+    "Prefer explicit upstream metadata over conservative text-only fallback. If a mechanic is already represented in mechanics, referencedTags, type, heroPowerDbfId, overload, or questReward, record it directly instead of downgrading it to unknown.",
+    "Use layered enrichment instead of one weak source: HearthstoneJSON for broad normalized coverage first, then CardDefs.xml or python-hearthstone enrichment for deeper constraints and relationships, then deterministic text heuristics only for report-only hints.",
+    "Materialize non-collectible linked entities aggressively when a stable link exists, because later config steps need hero powers, rewards, tokens, and related generated entities even when they are not in the original 30-card deck.",
+    "Map mechanics into canonical family names early, using the local registry order and aliases, so later steps can emit deck-level obligations without re-deciding taxonomy each time.",
+    "Allow report-only derived hints for unresolved targeting or generation semantics, but block runtime-rule lowering when the source is only prose text or an unsupported inference.",
+    "Keep unresolved data explicit rather than silently omitting it. An unresolved play requirement or generation link is safer as a first-class blocker than as a fabricated CARDID.json target rule."
+  ],
+  "validation_gates": [
+    "Every deck card from Step 02 must resolve to a normalized card object with at least CardID, DBF id, name, type, cost when available, and source provenance.",
+    "Every linked hero, hero power, quest reward, and other non-collectible dependency required by deck cards must either resolve successfully or be listed in an unresolved linkage report.",
+    "Mechanic family assignment must be deterministic and aligned to the local mechanic registry; no deck-relevant mechanic should fall into an unregistered family bucket without an explicit blocker.",
+    "Targeting and play-constraint rows may only be marked strict when backed by an explicit structured source field. If the current JSON layer lacks playRequirements for a card, the unresolved gap must stay visible instead of being guessed from prose [uncertain].",
+    "Generated-entity relationships must carry relationship type and source kind, such as hero_power_link, quest_reward_link, explicit_generated_link, or heuristic_text_hint, so downstream steps can distinguish safe lowering from report-only knowledge.",
+    "A live-source drift note must compare the documented HearthstoneJSON field model against the currently observed payload shape and fail closed when a required documented field family is absent from the chosen source layer [uncertain].",
+    "The produced Step 03 artifacts must be consumable by Step 05 and Step 08 without reopening raw card feeds, meaning the normalized objects must already expose the fields those steps need."
+  ],
+  "architectural_implications": [
+    "Expand the local card-data adapter from a minimal deck-intake helper into a layered metadata pipeline that can preserve text, mechanics, referenced tags, stats, spell school, overload, hero power links, reward links, and future relationship fields.",
+    "Separate source facts from derived taxonomy in the artifact model. Raw fields such as mechanics or heroPowerDbfId should remain queryable even after a card is classified into battlecry, discover, or hero_power families.",
+    "Add field-level provenance and unresolved-field tracking so later steps can distinguish JSON-backed facts from CardDefs-backed facts and from heuristic-only hints.",
+    "Keep generated entity closure as its own artifact or sub-object rather than flattening it into card text. Hero powers, quest rewards, and generated tokens need identity-preserving linkage.",
+    "Treat Step 03 as a read-only compilation stage that feeds research, gameplan, and config compilers. It should not mutate runtime config and should not claim gameplay semantics that belong to Step 2 evidence.",
+    "Align the emitted family names to the repo's mechanic_registry order and aliases so detector, coverage, and patchability layers can reuse the same canonical vocabulary."
+  ],
+  "recommended_contracts": [
+    "card_metadata_bundle.json: normalized per-card facts with raw field values, canonical enums, linked entity references, and field_sources.",
+    "mechanic_taxonomy.json: card_id to family list plus family derivation evidence such as mechanics, referencedTags, type, overload, or explicit link field.",
+    "card_targeting_constraints.json: play requirement and targeting constraint rows with strictness level, source kind, and downstream-lowering eligibility.",
+    "linked_entity_graph.json: relationship graph for hero_power_link, quest_reward_link, explicit_generated_link, referenced_tag_dependency, and token lineage.",
+    "metadata_source_manifest.json: source URLs, capture dates, hashes, local cache paths, and chosen priority order for JSON, CardDefs.xml, and repo-local fixtures.",
+    "step03_validation_report.json: deck coverage, unresolved linked entities, unresolved required fields, source drift notes, and blocker reasons.",
+    "A CardDefs-backed enrichment contract for play requirements and generated-entity closure should be added if HSConfig cannot rely on the current live HearthstoneJSON payload to surface those fields consistently [uncertain]."
+  ],
+  "never_autogenerate_without": [
+    "Exact Step 02 card identity resolution for every deck card and every hero identity involved.",
+    "At least one first-class all-cards metadata source that includes non-collectible cards, not just collectible deck cards.",
+    "Field-level provenance, so downstream compilers know whether a fact came from HearthstoneJSON, CardDefs.xml, local registry logic, or heuristic fallback.",
+    "Successful linked-entity expansion for hero powers, rewards, and other required non-deck cards, or an explicit unresolved-entity blocker.",
+    "A strict rule that target constraints and play requirements are emitted only from structured metadata, not from text-only guesses.",
+    "A fallback plan for documented-but-missing field families such as playRequirements or generation links when the chosen JSON layer does not surface them [uncertain].",
+    "Validation that the normalized taxonomy vocabulary matches the repo's supported mechanic registry and VisionAI surface boundaries."
+  ],
+  "must_cite_sources": [
+    "HearthstoneJSON card docs: https://hearthstonejson.com/docs/cards.html",
+    "HearthstoneJSON API entrypoint: https://hearthstonejson.com/",
+    "Live payload probe used on 2026-07-05: https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+    "HearthSim card data reference: https://hearthsim.info/docs/cards/",
+    "HearthSim python-hearthstone repository: https://github.com/HearthSim/python-hearthstone/",
+    "Local card adapter surface: C:/Users/darbo/Documents/HS/src/hsranger_core/card_data.py",
+    "Local deck intake contract: C:/Users/darbo/Documents/HS/src/hsranger_core/deck_intake.py",
+    "Local mechanic family registry: C:/Users/darbo/Documents/HS/src/hsranger_core/semantics/mechanic_registry.py",
+    "Local VisionAI syntax registry surface: C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "Local generated operator contract reference: C:/Users/darbo/Documents/HS/docs/operator/generated-contracts.md",
+    "Local semantic coverage boundary: C:/Users/darbo/Documents/HS/docs/operator/semantic-coverage.md",
+    "Local official VisionAI cache manifest: C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json"
+  ],
+  "uncertain": [
+    "required_inputs",
+    "limitations",
+    "validation_gates",
+    "recommended_contracts",
+    "never_autogenerate_without"
+  ]
+}

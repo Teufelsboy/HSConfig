@@ -1,0 +1,31 @@
+topic: HSConfig Skill Architecture
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-05-hsconfig-architecture\results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: HearthRanger VisionAI Config Surface Contract
+    category: official_docs
+    description: >
+      Research HearthRanger VisionAI CustomConfig documentation for GlobalValues.json,
+      Mulligan.json, card-local CardID JSON behavior, Combo.json, Presume/Concede
+      where documented, board-value semantics, Node 0, conditions, filters, and safe
+      syntax boundaries for direct deck config generation.
+  - name: Hearthstone Deck Guide And Archetype Research Sources
+    category: community_guide_and_data
+    description: >
+      Research reliable online sources for deck guides, mulligan guides, card roles,
+      matchup plans, deck code decoding, card metadata, and archetype identification
+      that can support initial HSConfig generation before games are played.
+  - name: Direct Config Generation Decision Model
+    category: architecture
+    description: >
+      Research how to turn deck research into deterministic config artifacts:
+      Mulligan anchors, GlobalValues profile, CardID target/use rules, Combo sequencing,
+      Presume/Concede if useful, and validation gates when assuming the bot plays optimally.
+  - name: Lean Codex Skill And Repo Structure
+    category: skill_architecture
+    description: >
+      Research how a concise Codex skill should be structured for HSConfig, including
+      progressive disclosure, scripts versus references, output contracts, examples,
+      validation commands, and avoiding HSTuner-style workflow bloat.
