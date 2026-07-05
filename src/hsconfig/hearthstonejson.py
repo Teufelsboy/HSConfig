@@ -37,16 +37,20 @@ def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:
     card_id = str(row.get("id") or "").strip()
     if not card_id:
         raise ValueError("HearthstoneJSON card row missing id")
+    dbf_id = row.get("dbfId", row.get("dbf_id"))
+    cost = row.get("cost")
     return {
         "id": card_id,
-        "dbf_id": int(row["dbfId"]) if row.get("dbfId") is not None else None,
+        "dbf_id": int(dbf_id) if dbf_id is not None else None,
         "name": str(row.get("name") or card_id),
         "type": str(row.get("type") or "UNKNOWN"),
-        "card_class": row.get("cardClass"),
-        "cost": int(row["cost"]) if row.get("cost") is not None else None,
+        "card_class": row.get("cardClass", row.get("card_class")),
+        "cost": int(cost) if cost is not None else None,
         "text": str(row.get("text") or ""),
         "mechanics": [str(item) for item in row.get("mechanics", []) or []],
-        "referenced_tags": [str(item) for item in row.get("referencedTags", []) or []],
+        "referenced_tags": [
+            str(item) for item in row.get("referencedTags", row.get("referenced_tags", [])) or []
+        ],
         "entourage": [str(item) for item in row.get("entourage", []) or []],
     }
 
@@ -54,7 +58,7 @@ def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:
 def index_cards_by_id(cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     index: dict[str, dict[str, Any]] = {}
     for card in cards:
-        normalized = normalize_card_row(card) if "id" not in card else dict(card)
+        normalized = normalize_card_row(card)
         index[str(normalized["id"])] = normalized
         if normalized.get("dbf_id") is not None:
             index[str(normalized["dbf_id"])] = normalized

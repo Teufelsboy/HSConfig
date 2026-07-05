@@ -58,6 +58,15 @@ def test_index_cards_by_id_supports_id_and_dbf_lookup():
     assert index["EX1_625t"]["type"] == "HERO_POWER"
 
 
+def test_index_cards_by_id_normalizes_raw_hearthstonejson_rows():
+    cards = json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+    index = index_cards_by_id(cards)
+
+    assert index["64443"]["id"] == "SW_448"
+    assert index["SW_448"]["referenced_tags"] == ["START_OF_GAME_KEYWORD"]
+
+
 def test_latest_url_points_to_hearthstonejson_latest_cards():
     assert HEARTHSTONEJSON_LATEST_ENUS_CARDS_URL == (
         "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
