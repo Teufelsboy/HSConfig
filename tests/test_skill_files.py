@@ -43,6 +43,17 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
     assert "--allow-placeholder" in text
 
 
+def test_skill_docs_keep_presume_concede_out_of_normal_path():
+    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    surfaces = (SKILL_ROOT / "references" / "visionai-surfaces.md").read_text(encoding="utf-8")
+
+    assert "Presume.json` or `Concede.json`" in text
+    assert "normal path" in surfaces
+    assert "Presume.json" not in workflow
+    assert "Concede.json" not in workflow
+
+
 def test_globalvalues_policy_mentions_runtime_file_quirks():
     text = (SKILL_ROOT / "references" / "globalvalues-policy.md").read_text(encoding="utf-8")
 

@@ -28,7 +28,7 @@ Rules:
 - Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
 - Keep full `GlobalValues` coverage and write the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
-- Do not emit `Presume.json` or `Concede.json` unless an explicit enabled policy exists.
+- Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
 
 References:
 

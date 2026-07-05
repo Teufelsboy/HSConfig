@@ -1,7 +1,7 @@
 from hsconfig.surface_intent import build_surface_intent
 
 
-def test_surface_intent_routes_all_runtime_surfaces_from_contract():
+def test_surface_intent_routes_normal_runtime_surfaces_from_contract():
     contract = {
         "cards": {
             "EX1_001": {
@@ -31,7 +31,28 @@ def test_surface_intent_routes_all_runtime_surfaces_from_contract():
     assert ("EX1_001", "EX1_001.json") in surfaces
     assert ("EX1_002", "EX1_002.json") in surfaces
     assert (None, "Combo.json") in surfaces
-    assert (None, "Presume.json") in surfaces
-    assert (None, "Concede.json") in surfaces
+    assert (None, "Presume.json") not in surfaces
+    assert (None, "Concede.json") not in surfaces
     assert "GlobalValues.json" in intent["required_surfaces"]
     assert "Combo.json" in intent["optional_surfaces"]
+    assert "Presume.json" not in intent["optional_surfaces"]
+    assert "Concede.json" not in intent["optional_surfaces"]
+
+
+def test_surface_intent_can_route_legacy_policies_when_explicitly_enabled():
+    contract = {
+        "cards": {},
+        "policies": {
+            "presume": [{"rule_id": "presume_1", "value": "opponent_is_slow"}],
+            "concede": [{"rule_id": "concede_1", "value": "lethal_unavailable"}],
+        },
+        "legacy_policy_surfaces_enabled": True,
+    }
+
+    intent = build_surface_intent(contract)
+
+    surfaces = {(row.get("card_id"), row["surface"]) for row in intent["rows"]}
+    assert (None, "Presume.json") in surfaces
+    assert (None, "Concede.json") in surfaces
+    assert "Presume.json" in intent["optional_surfaces"]
+    assert "Concede.json" in intent["optional_surfaces"]

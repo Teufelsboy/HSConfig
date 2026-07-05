@@ -58,7 +58,7 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    policies = contract.get("policies", {})
+    policies = contract.get("policies", {}) if contract.get("legacy_policy_surfaces_enabled") else {}
     if policies.get("presume"):
         optional_surfaces.add("Presume.json")
         rows.append(
