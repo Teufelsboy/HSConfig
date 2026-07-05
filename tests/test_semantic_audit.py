@@ -14,9 +14,12 @@ def test_render_semantic_audit_markdown_lists_deckwide_effects_and_warnings():
         ],
         "deckwide_effects": [
             {
+                "source_card_id": "SW_448",
                 "source_card_name": "Darkbishop Benedictus",
                 "effect": "replace_starting_hero_power",
+                "target_card_id": "EX1_625t",
                 "target_name": "Mind Spike",
+                "reason": "Darkbishop Benedictus enters Shadowform at Start of Game.",
             }
         ],
         "semantic_enrichment_warnings": [
@@ -28,7 +31,8 @@ def test_render_semantic_audit_markdown_lists_deckwide_effects_and_warnings():
 
     assert "# Card Semantic Audit" in markdown
     assert "Status: `partial`" in markdown
-    assert "Darkbishop Benedictus" in markdown
-    assert "Mind Spike" in markdown
+    assert "SW_448 Darkbishop Benedictus" in markdown
+    assert "EX1_625t Mind Spike" in markdown
     assert "hero_power_transform" in markdown
+    assert "Darkbishop Benedictus enters Shadowform at Start of Game." in markdown
     assert "mind_spike_resolved_from_builtin_fallback" in markdown

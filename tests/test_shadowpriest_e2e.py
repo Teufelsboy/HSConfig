@@ -55,6 +55,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
+    semantic_audit = (reports / "card_semantic_audit.md").read_text(encoding="utf-8")
     contract = json.loads((reports / "gameplan_contract.json").read_text(encoding="utf-8"))
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
@@ -79,6 +80,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert card_id_map["545"]["card_id"] == "DS1_233"
     assert any(card["card_id"] == "SW_448" for card in semantic_report["cards"])
     assert (reports / "card_semantic_audit.md").exists()
+    assert "SW_448 Darkbishop Benedictus" in semantic_audit
+    assert "EX1_625t Mind Spike" in semantic_audit
+    assert "Mind Spike is a damage Hero Power" in semantic_audit
     assert "hero_power_transform" in darkbishop_contract["roles"]
     assert "hero_power_pressure" in darkbishop_contract["roles"]
     assert darkbishop_contract["linked_entities"][0]["card_id"] == "EX1_625t"

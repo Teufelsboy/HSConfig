@@ -15,12 +15,19 @@ def render_semantic_audit_markdown(report: dict[str, Any]) -> str:
     deckwide_effects = report.get("deckwide_effects", [])
     if deckwide_effects:
         for effect in deckwide_effects:
+            source = _id_name(
+                effect.get("source_card_id"),
+                effect.get("source_card_name"),
+            )
+            target = _id_name(effect.get("target_card_id"), effect.get("target_name"))
             lines.append(
                 "- "
-                f"{effect.get('source_card_name', effect.get('source_card_id', 'Unknown'))}: "
+                f"{source}: "
                 f"`{effect.get('effect', 'unknown')}` -> "
-                f"{effect.get('target_name', effect.get('target_card_id', 'Unknown'))}"
+                f"{target}"
             )
+            if effect.get("reason"):
+                lines.append(f"  - Reason: {effect['reason']}")
     else:
         lines.append("- None")
 
@@ -28,10 +35,10 @@ def render_semantic_audit_markdown(report: dict[str, Any]) -> str:
     for card in report.get("cards", []):
         families = ", ".join(card.get("semantic_families", [])) or "none"
         linked = ", ".join(
-            f"{entity.get('name', entity.get('card_id'))} ({entity.get('card_id')})"
+            _id_name(entity.get("card_id"), entity.get("name"))
             for entity in card.get("linked_entities", [])
         )
-        lines.append(f"- {card.get('name', card.get('card_id'))} (`{card.get('card_id')}`): {families}")
+        lines.append(f"- {_id_name(card.get('card_id'), card.get('name'))}: {families}")
         if linked:
             lines.append(f"  - Linked: {linked}")
 
@@ -45,3 +52,11 @@ def render_semantic_audit_markdown(report: dict[str, Any]) -> str:
 
     lines.append("")
     return "\n".join(lines)
+
+
+def _id_name(card_id: Any, name: Any) -> str:
+    card_id_text = str(card_id or "UNKNOWN")
+    name_text = str(name or card_id_text)
+    if name_text == card_id_text:
+        return card_id_text
+    return f"{card_id_text} {name_text}"
