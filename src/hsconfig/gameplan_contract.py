@@ -56,7 +56,13 @@ def build_gameplan_contract(
                 )
             }
         )
-        roles = _infer_roles(mechanic_families, related_claims)
+        semantic_families = sorted(
+            {
+                *mechanic_families,
+                *[str(item) for item in metadata.get("semantic_families", [])],
+            }
+        )
+        roles = _infer_roles(semantic_families, related_claims)
         coverage_status = "source_backed" if related_claims else "generic_low_confidence"
         source_claim_ids = [str(claim["claim_id"]) for claim in related_claims]
         card_record = {
@@ -64,6 +70,8 @@ def build_gameplan_contract(
             "name": metadata.get("name", deck_card.get("name", card_id)),
             "count": int(deck_card.get("count", metadata.get("count", 1))),
             "mechanic_families": mechanic_families,
+            "semantic_families": semantic_families,
+            "linked_entities": list(metadata.get("linked_entities", [])),
             "roles": roles,
             "coverage_status": coverage_status,
             "confidence": coverage_status,
@@ -105,6 +113,10 @@ def build_gameplan_contract(
     combos, combo_suppression_report = _infer_combos(claim_rows, set(card_map))
     policies = _infer_policies(claim_rows)
     confidence_label = _confidence_label(card_map, claim_rows)
+    deckwide_effects = _deckwide_effects(card_map, metadata_by_card)
+    global_value_overlays, global_value_overlay_reasons = _global_value_overlay_profile(
+        card_map, deckwide_effects
+    )
 
     return {
         "deck_name": str(deck_identity.get("deck_name", deck_name or "Deck")),
@@ -118,8 +130,10 @@ def build_gameplan_contract(
         "aggression_profile": {
             "speed": "aggro",
             "pressure_bias": "high",
-            "global_value_overlays": _global_value_overlays(card_map),
+            "global_value_overlays": global_value_overlays,
+            "global_value_overlay_reasons": global_value_overlay_reasons,
         },
+        "deckwide_effects": deckwide_effects,
         "cards": card_map,
         "card_role_map": role_rows,
         "mulligan_anchors": sorted(mulligan_anchors, key=lambda row: row["card_id"]),
@@ -197,6 +211,8 @@ def _infer_expected_use(roles: list[str], claims: list[dict[str, Any]]) -> str:
         return "keep_and_pressure"
     if "mulligan_anchor" in roles:
         return "keep_and_play_on_plan"
+    if "hero_power_transform" in roles and "hero_power_pressure" in roles:
+        return "start_of_game_shadowform_enables_hero_power_pressure"
     if "combo_piece" in roles:
         return "hold_for_combo_window"
     if _has_negative_keep(text):
@@ -280,8 +296,12 @@ def _confidence_label(card_map: dict[str, dict[str, Any]], claims: list[dict[str
     return "mixed"
 
 
-def _global_value_overlays(card_map: dict[str, dict[str, Any]]) -> dict[str, str]:
+def _global_value_overlay_profile(
+    card_map: dict[str, dict[str, Any]],
+    deckwide_effects: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, str]]:
     overlays: dict[str, str] = {}
+    reasons: dict[str, str] = {}
     all_roles = {role for card in card_map.values() for role in card.get("roles", [])}
     if {"pressure", "damage", "combo_piece"} & all_roles:
         overlays.update(
@@ -303,11 +323,50 @@ def _global_value_overlays(card_map: dict[str, dict[str, Any]]) -> dict[str, str
     if "location" in all_roles:
         overlays["GlobalLocationIntrinsicValue"] = "increase"
         overlays["GlobalLocationHealth"] = "increase"
-    if "hero_power" in all_roles:
+    if {"hero_power", "hero_power_pressure", "hero_power_transform"} & all_roles:
         overlays["MyHeroPowerValue"] = "increase"
+        reasons["MyHeroPowerValue"] = _hero_power_overlay_reason(deckwide_effects)
     if "taunt" in all_roles:
         overlays["GlobalTaunt"] = "decrease"
-    return overlays
+    return overlays, reasons
+
+
+def _hero_power_overlay_reason(deckwide_effects: list[dict[str, Any]]) -> str:
+    for effect in deckwide_effects:
+        if effect.get("effect") == "replace_starting_hero_power":
+            return (
+                f"{effect.get('source_card_name', effect.get('source_card_id'))} "
+                f"enters Shadowform and enables {effect.get('target_name', 'the Hero Power')} "
+                "as pressure damage."
+            )
+    return "Hero Power pressure is part of this deck plan."
+
+
+def _deckwide_effects(
+    card_map: dict[str, dict[str, Any]],
+    metadata_by_card: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rows = []
+    for card_id, card in card_map.items():
+        _metadata = metadata_by_card.get(card_id, {})
+        for linked in card.get("linked_entities", []):
+            if "hero_power_transform" not in card.get("roles", []):
+                continue
+            rows.append(
+                {
+                    "source_card_id": card_id,
+                    "source_card_name": card.get("name", card_id),
+                    "effect": "replace_starting_hero_power",
+                    "target_card_id": linked.get("card_id"),
+                    "target_name": linked.get("name"),
+                    "target_type": linked.get("type"),
+                    "reason": (
+                        f"{card.get('name', card_id)} enables "
+                        f"{linked.get('name', linked.get('card_id'))} as the deck's pressure Hero Power."
+                    ),
+                }
+            )
+    return sorted(rows, key=lambda row: (row["source_card_id"], row["effect"], str(row["target_card_id"])))
 
 
 def _claim_text(claims: list[dict[str, Any]]) -> str:

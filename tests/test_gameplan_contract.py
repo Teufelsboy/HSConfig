@@ -133,3 +133,55 @@ def test_gameplan_contract_preserves_combo_order_from_normalized_claims():
     contract = build_gameplan_contract(deck_identity, card_metadata, source_claims)
 
     assert contract["combos"][0]["cards"] == ["BBB_002", "AAA_001"]
+
+
+def test_gameplan_contract_turns_shadowform_semantics_into_hero_power_pressure():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "cards": [{"card_id": "SW_448", "count": 1}],
+    }
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "mechanic_families": ["minion"],
+                "semantic_families": [
+                    "minion",
+                    "start_of_game",
+                    "shadowform",
+                    "hero_power_transform",
+                    "hero_power_pressure",
+                ],
+                "linked_entities": [
+                    {
+                        "card_id": "EX1_625t",
+                        "name": "Mind Spike",
+                        "type": "HERO_POWER",
+                        "text": "Deal $2 damage.",
+                    }
+                ],
+                "deckwide_effects": [
+                    {
+                        "effect": "replace_starting_hero_power",
+                        "target_card_id": "EX1_625t",
+                        "target_name": "Mind Spike",
+                    }
+                ],
+            }
+        ]
+    }
+
+    contract = build_gameplan_contract(deck_identity, card_metadata)
+
+    darkbishop = contract["cards"]["SW_448"]
+    assert "hero_power_transform" in darkbishop["roles"]
+    assert "hero_power_pressure" in darkbishop["roles"]
+    assert darkbishop["linked_entities"][0]["card_id"] == "EX1_625t"
+    assert contract["deckwide_effects"][0]["effect"] == "replace_starting_hero_power"
+    assert (
+        contract["card_usage_expectations"]["SW_448"]["expected_use"]
+        == "start_of_game_shadowform_enables_hero_power_pressure"
+    )
+    assert contract["aggression_profile"]["global_value_overlays"]["MyHeroPowerValue"] == "increase"
+    assert "Mind Spike" in contract["aggression_profile"]["global_value_overlay_reasons"]["MyHeroPowerValue"]
