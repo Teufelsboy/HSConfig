@@ -124,3 +124,75 @@ def test_compile_cardid_routes_targeting_intent_to_specific_bonus_block():
     bonus_values = files["DMF_090.json"]["BeforePlayCardBonus"]["values"]
     assert len(bonus_values) == 1
     assert bonus_values[0]["value"] == "12"
+
+
+def test_compile_cardid_uses_explicit_behavior_block_rows():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "EX1_001": {
+                "roles": ["deck_card"],
+                "source_claim_ids": [],
+                "confidence": "generic_low_confidence",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_001",
+            "behavior_block": "BeforeOverkilledBonus",
+            "rule_id_suffix": "overkill_behavior",
+            "condition": "my_target(count(),minion=true) > 0",
+            "value": "11",
+            "roles": ["overkill"],
+            "source_claim_ids": ["claim_overkill"],
+            "confidence": "guide_backed",
+            "meaningful_runtime_surface": True,
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    assert files["EX1_001.json"]["BeforeOverkilledBonus"]["values"] == [
+        {
+            "comment": "Fixture: EX1_001_overkill_behavior",
+            "condition": "my_target(count(),minion=true) > 0",
+            "value": "11",
+        }
+    ]
+
+
+def test_compile_cardid_does_not_duplicate_role_fallback_for_explicit_block():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "EX1_002": {
+                "roles": ["discover"],
+                "source_claim_ids": [],
+                "confidence": "generic_low_confidence",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_002",
+            "behavior_block": "OnDiscoverCardBonus",
+            "rule_id_suffix": "prefer_specific_discover",
+            "condition": "my_discover(count(),cardid=EX1_003) > 0",
+            "value": "12",
+            "roles": ["discover"],
+            "source_claim_ids": ["claim_discover"],
+            "confidence": "guide_backed",
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    discover_values = files["EX1_002.json"]["OnDiscoverCardBonus"]["values"]
+    assert len(discover_values) == 1
+    assert discover_values[0]["condition"] == "my_discover(count(),cardid=EX1_003) > 0"
+    assert discover_values[0]["value"] == "12"

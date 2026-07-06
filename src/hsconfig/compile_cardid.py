@@ -57,6 +57,12 @@ def compile_cardid_behaviors(
             source_claim_ids,
             confidence,
         )
+        explicit_blocks = _append_explicit_behavior_rows(
+            config,
+            deck_name,
+            card_id,
+            card.get("behavior_rows", []),
+        )
         if "pressure" in roles:
             _append_block_row(
                 config,
@@ -82,6 +88,8 @@ def compile_cardid_behaviors(
         for role in sorted(roles):
             block = ROLE_BLOCKS.get(role)
             if block is None:
+                continue
+            if block in explicit_blocks:
                 continue
             _append_block_row(
                 config,
@@ -122,6 +130,8 @@ def _cards_from_rows(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         if row.get("intent"):
             card["roles"].append(str(row["intent"]))
         card["source_claim_ids"].extend(row.get("source_claim_ids", []))
+        if row.get("behavior_block"):
+            card.setdefault("behavior_rows", []).append(dict(row))
     return cards
 
 
@@ -149,6 +159,7 @@ def _merge_row_cards(
                 *[str(claim_id) for claim_id in row_card.get("source_claim_ids", [])],
             }
         )
+        card.setdefault("behavior_rows", []).extend(row_card.get("behavior_rows", []))
         if card.get("confidence") != "source_backed":
             card["confidence"] = row_card.get("confidence", card.get("confidence", "source_backed"))
 
@@ -163,6 +174,30 @@ def _priority_value(roles: set[str], confidence: str) -> str:
     return "5"
 
 
+def _append_explicit_behavior_rows(
+    config: dict[str, Any],
+    deck_name: str,
+    card_id: str,
+    behavior_rows: list[dict[str, Any]],
+) -> set[str]:
+    emitted_blocks: set[str] = set()
+    for row in behavior_rows:
+        block = str(row["behavior_block"])
+        _append_block_row(
+            config,
+            block,
+            deck_name,
+            card_id,
+            str(row.get("rule_id_suffix") or row.get("intent") or "behavior"),
+            str(row.get("value", "6")),
+            [str(claim_id) for claim_id in row.get("source_claim_ids", [])],
+            str(row.get("confidence", "source_backed")),
+            condition=str(row.get("condition", "*")),
+        )
+        emitted_blocks.add(block)
+    return emitted_blocks
+
+
 def _append_block_row(
     config: dict[str, Any],
     block: str,
@@ -172,12 +207,14 @@ def _append_block_row(
     value: str,
     source_claim_ids: list[str],
     confidence: str,
+    *,
+    condition: str = "*",
 ) -> None:
     rule_id = f"{card_id}_{rule_id_suffix}"
     config.setdefault(block, {"values": []})["values"].append(
         {
             "comment": f"{deck_name}: {rule_id}",
-            "condition": "*",
+            "condition": condition,
             "value": value,
         }
     )
