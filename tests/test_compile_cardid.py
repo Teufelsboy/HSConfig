@@ -196,3 +196,37 @@ def test_compile_cardid_does_not_duplicate_role_fallback_for_explicit_block():
     assert len(discover_values) == 1
     assert discover_values[0]["condition"] == "my_discover(count(),cardid=EX1_003) > 0"
     assert discover_values[0]["value"] == "12"
+
+
+def test_compile_cardid_does_not_duplicate_pressure_fallbacks_for_explicit_before_play_block():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "EX1_PRESSURE": {
+                "roles": ["pressure", "prefer_enemy_hero"],
+                "source_claim_ids": [],
+                "confidence": "generic_low_confidence",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_PRESSURE",
+            "behavior_block": "BeforePlayCardBonus",
+            "rule_id_suffix": "explicit_before_play",
+            "condition": "my_hero(count(),damaged=true) > 0",
+            "value": "15",
+            "roles": ["pressure", "prefer_enemy_hero"],
+            "source_claim_ids": ["claim_before_play"],
+            "confidence": "guide_backed",
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    before_play_values = files["EX1_PRESSURE.json"]["BeforePlayCardBonus"]["values"]
+    assert len(before_play_values) == 1
+    assert before_play_values[0]["condition"] == "my_hero(count(),damaged=true) > 0"
+    assert before_play_values[0]["value"] == "15"

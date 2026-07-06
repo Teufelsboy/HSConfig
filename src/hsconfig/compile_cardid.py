@@ -63,7 +63,7 @@ def compile_cardid_behaviors(
             card_id,
             card.get("behavior_rows", []),
         )
-        if "pressure" in roles:
+        if "pressure" in roles and "BeforePlayCardBonus" not in explicit_blocks:
             _append_block_row(
                 config,
                 "BeforePlayCardBonus",
@@ -74,7 +74,7 @@ def compile_cardid_behaviors(
                 source_claim_ids,
                 confidence,
             )
-        if "prefer_enemy_hero" in roles:
+        if "prefer_enemy_hero" in roles and "BeforePlayCardBonus" not in explicit_blocks:
             _append_block_row(
                 config,
                 "BeforePlayCardBonus",
