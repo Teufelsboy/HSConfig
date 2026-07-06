@@ -221,3 +221,78 @@ def test_prepare_gameplan_uses_research_bundle_intent(tmp_path: Path, capsys):
     assert set(research_globalvalues["overlays"]).issubset(
         set(gameplan["aggression_profile"]["global_value_overlays"])
     )
+
+
+def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path: Path, capsys):
+    cards_json = tmp_path / "shadow_cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "SW_448",
+                        "dbf_id": 1,
+                        "count": 1,
+                        "name": "Darkbishop Benedictus",
+                        "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
+                    },
+                    {
+                        "card_id": "BAR_311",
+                        "dbf_id": 2,
+                        "count": 2,
+                        "name": "Frazzled Freshman",
+                        "text": "A strong early minion.",
+                    },
+                    {
+                        "card_id": "SW_446",
+                        "dbf_id": 3,
+                        "count": 1,
+                        "name": "Mind Spike",
+                        "text": "Hero Power: Deal 2 damage.",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--guide-sources-json",
+            "tests/fixtures/shadowpriest_guide_sources.json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    source_index = json.loads((reports / "source_evidence_index.json").read_text(encoding="utf-8"))
+    unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert payload["guide_claims_count"] >= 4
+    assert payload["guide_backed_cards"] >= 2
+    assert payload["uncovered_cards_count"] == 0
+    assert coverage["guide_backed_cards"] >= 2
+    assert guide_bundle["claims"]
+    assert source_index[0]["claim_count"] == 4
+    assert unsupported == []
+    assert (reports / "mulligan_plan_report.json").exists()
+    assert (reports / "card_behavior_plan_report.json").exists()
+    assert (reports / "combo_plan_report.json").exists()
+    assert (reports / "global_values_authority_matrix.json").exists()

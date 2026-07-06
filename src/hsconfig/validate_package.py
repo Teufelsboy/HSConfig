@@ -159,6 +159,13 @@ def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
     values = block.get("values") if isinstance(block, dict) else []
     if not isinstance(values, list):
         values = []
+    if (
+        len(values) == 1
+        and isinstance(values[0], dict)
+        and values[0].get("mulligan") == "*"
+        and values[0].get("value") == "discard"
+    ):
+        errors.append(f"{path}: lone_wildcard_discard")
     for index, row in enumerate(values):
         if not isinstance(row, dict):
             errors.append(f"{path}: Mulligan row {index} must be an object")
@@ -241,11 +248,15 @@ def _has_values_array(value: Any) -> bool:
 def _validate_combo_row(path: Path, index: int, row: Any) -> list[str]:
     if not isinstance(row, dict):
         return [f"{path}: ComboList row {index} must be an object"]
+    allowed_keys = {"comment", "condition", "combo", "value"}
+    errors = [
+        f"{path}: ComboList row {index} unsupported ComboList row key {key}"
+        for key in sorted(set(row) - allowed_keys)
+    ]
     combo = str(row.get("combo", "")).strip()
     value = str(row.get("value", "")).strip()
     combo_segments = _split_combo_segments(combo)
     value_segments = _split_combo_segments(value)
-    errors: list[str] = []
     if len(combo_segments) < 2:
         errors.append(f"{path}: ComboList row {index} combo row must contain at least two cards")
     if len(combo_segments) != len(value_segments):

@@ -149,6 +149,17 @@ def build_gameplan_contract(
     global_value_overlays, global_value_overlay_reasons = _global_value_overlay_profile_from_research(
         research_bundle, card_map, deckwide_effects
     )
+    guide_claim_bundle = research_bundle.get("guide_claim_bundle", {}) if isinstance(research_bundle, dict) else {}
+    source_backed_actions = [
+        claim
+        for claim in claim_rows
+        if str(claim.get("support_status", "")) in {"source_backed", "static_semantics"}
+    ]
+    static_semantic_actions = [
+        claim
+        for claim in claim_rows
+        if str(claim.get("source_family", "")) == "hearthstonejson_static_semantics"
+    ]
 
     return {
         "deck_name": str(deck_identity.get("deck_name", deck_name or "Deck")),
@@ -169,6 +180,8 @@ def build_gameplan_contract(
         "cards": card_map,
         "card_role_map": role_rows,
         "mulligan_anchors": sorted(mulligan_anchors, key=lambda row: row["card_id"]),
+        "card_expectations": usage_expectations,
+        "hero_power_expectations": _hero_power_expectations(deckwide_effects),
         "card_usage_expectations": usage_expectations,
         "card_usage_expectation_rows": [
             usage_expectations[card_id] for card_id in sorted(usage_expectations)
@@ -182,6 +195,9 @@ def build_gameplan_contract(
         "policies": policies,
         "confidence_label": confidence_label,
         "source_claims": claim_rows,
+        "source_backed_actions": source_backed_actions,
+        "static_semantic_actions": static_semantic_actions,
+        "unsupported_or_review_only_claims": guide_claim_bundle.get("unsupported_claims", []),
     }
 
 
@@ -374,6 +390,8 @@ def _coverage_status(claims: list[dict[str, Any]], semantic_families: list[str])
     if claims:
         if any(_is_guide_claim(claim) for claim in claims):
             return "guide_backed"
+        if all(_is_static_semantic_claim(claim) for claim in claims):
+            return "source_backed_static_semantics"
         return "source_backed"
     if {"hero_power_transform", "hero_power_pressure", "start_of_game", "shadowform"} & set(
         semantic_families
@@ -391,6 +409,14 @@ def _is_guide_claim(claim: dict[str, Any]) -> bool:
     url = str(claim.get("url", "")).lower()
     source_title = str(claim.get("source_title", "")).lower()
     return "guide" in source or "guide" in url or "guide" in source_title
+
+
+def _is_static_semantic_claim(claim: dict[str, Any]) -> bool:
+    return (
+        str(claim.get("confidence")) == "source_backed_static_semantics"
+        or str(claim.get("source_family")) == "hearthstonejson_static_semantics"
+        or str(claim.get("support_status")) == "static_semantics"
+    )
 
 
 def _research_known_bad_patterns(
@@ -505,6 +531,20 @@ def _deckwide_effects(
                 }
             )
     return sorted(rows, key=lambda row: (row["source_card_id"], row["effect"], str(row["target_card_id"])))
+
+
+def _hero_power_expectations(deckwide_effects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_card_id": effect.get("source_card_id"),
+            "target_card_id": effect.get("target_card_id"),
+            "target_name": effect.get("target_name"),
+            "expected_use": "pressure_hero_power_after_start_of_game_transform",
+            "reason": effect.get("reason"),
+        }
+        for effect in deckwide_effects
+        if effect.get("effect") == "replace_starting_hero_power"
+    ]
 
 
 def _claim_text(claims: list[dict[str, Any]]) -> str:

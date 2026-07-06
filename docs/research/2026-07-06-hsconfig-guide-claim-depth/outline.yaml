@@ -1,0 +1,49 @@
+topic: HSConfig Guide Claim And Surface Depth Closure
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-06-hsconfig-guide-claim-depth\results
+  batch_size: 6
+  items_per_agent: 1
+items:
+  - name: Autonomous Guide Claim Builder
+    category: community_guide
+    description: >
+      Research how HSConfig should convert current deck guides, deck/meta pages,
+      HearthstoneJSON card data, and explicit source snippets into a normalized
+      claims.json without human-authored claims-json. Focus on source confidence,
+      freshness, per-card coverage, claim types, and how to avoid copying vague guide
+      text into unsupported runtime rows.
+  - name: Mulligan Depth Closure
+    category: official_docs
+    description: >
+      Research how HSConfig should compile non-conservative Mulligan.json from guide
+      claims: concrete keeps, explicit throws, DROPn selectors, plus-combos, coin and
+      nocoin branches, opponent-class conditions, hold-over-discard priority, and
+      prevention of a lone wildcard discard fallback.
+  - name: CardID Behavior Surface Router
+    category: official_docs
+    description: >
+      Research how HSConfig should route card usage expectations into documented
+      CARDID.json blocks beyond InHandPlayPriority: InHandBonus, OnBoardBonus,
+      BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus,
+      BeforePhysicalAttackBonus, Discover and Choose One bonus blocks, target filters,
+      row order, and suppression.
+  - name: Combo And Sequencing Closure
+    category: official_docs
+    description: >
+      Research how HSConfig should decide when to emit Combo.json using same-turn and
+      cross-turn syntax, how to distinguish concrete deck-present sequences from vague
+      synergy, and how to report suppressed combo claims without overfitting.
+  - name: GlobalValues Authority Matrix
+    category: official_docs
+    description: >
+      Research how HSConfig should keep full GlobalValues baseline profiling while
+      allowing stronger but explainable pre-run deck posture changes. Cover board-value
+      semantics, turn weights, hero power value, broad pressure overlays, and which
+      numeric changes must remain blocked without runtime evidence.
+  - name: ShadowPriest Evidence Mapping Example
+    category: community_guide
+    description: >
+      Research ShadowPriest with Darkbishop Benedictus as a concrete example. Map
+      source-backed claims for Mind Spike, proactive burn pressure, mulligan keeps,
+      target posture, and possible combo lines to HSConfig surfaces, while identifying
+      claims that must remain report-only.

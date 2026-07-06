@@ -1,0 +1,93 @@
+{
+  "step_name": "Mulligan Depth Closure",
+  "source_type": "official_docs",
+  "step_goal": "Define how HSConfig should compile guide-backed, non-conservative opening-hand claims into a syntax-safe HearthRanger VisionAI `Mulligan.json` that keeps aggressive intent, preserves explicit throw rules, supports documented selector depth, and avoids an unsafe lone wildcard discard fallback.",
+  "required_inputs": [
+    "An ordered mulligan claim plan that separates unconditional keeps, conditional keeps, and explicit throws instead of flattening everything into per-card anchors.",
+    "Resolved CardIDs for every concrete card selector used in mulligan rows.",
+    "Guide-normalized selector metadata that distinguishes concrete card lists, `DROPn` selectors, plus-combos, duplicate-selector forms, and wildcard fallback intent.",
+    "Condition metadata that distinguishes `*`, `coin`, `nocoin`, opening-hand-count equivalents, and opponent-class conditions backed by official JSON condition syntax.",
+    "A compiler capability matrix with documented version floors for `hero_class` and duplicate-selector syntax.",
+    "Priority metadata so emitted rows preserve guide order and hold-versus-discard intent."
+  ],
+  "produced_outputs": [
+    "A strict-JSON `Mulligan.json` with documented top-level keys `GameCardId`, `ConfigComment`, and `Mulligan.values`.",
+    "Ordered mulligan rows that use `comment`, `mulligan`, `condition`, and `value` with `hold` or `discard` only.",
+    "A suppression or compilation receipt artifact that records unsupported guide claims, version-gated features, and whether wildcard discard fallback was allowed or blocked.",
+    "Per-row provenance that maps each emitted row back to guide claims and stable rule identifiers."
+  ],
+  "documented_capabilities": [
+    "The official Mulligan documentation supports concrete card selectors, comma-separated hold lists, explicit discard rows, `DROP1`, `DROP2`, `DROP3`, and higher `DROPn` selectors.",
+    "The official Mulligan documentation supports plus-combo selectors such as `CARD_A + CARD_B` and `DROP1 + CARD_A`.",
+    "The official Mulligan documentation shows a duplicate-selector form for keeping one copy by default and two copies when available, gated to HearthRanger v10.4.5.0 or higher.",
+    "The official Mulligan documentation supports `coin` and `nocoin` conditions and also shows the opening-hand-count equivalent `my_hand(count()) == 4` for coin cases.",
+    "The official Mulligan documentation supports opponent-class conditions through `opp_hero(count(),warrior=true) > 0` and multi-class `hero_class=warrior | rogue | paladin`, with `hero_class` available in v9.6.0.0 or higher.",
+    "The official Mulligan documentation states that hold rules have higher priority than discard rules when rows overlap.",
+    "The official JSON-condition documentation supports `AND`, `OR`, `*`, entity collection expressions, opponent hero checks, and filter syntax needed by documented mulligan conditions."
+  ],
+  "current_hsconfig_support": [
+    "The current local compiler emits a valid `Mulligan` block with required top-level structure and row keys.",
+    "The current local compiler can carry through a `condition` string and an `intent` value from upstream rows, so it can serialize documented conditions if a richer upstream contract already exists.",
+    "The current local implementation primarily consumes `mulligan_anchors` keyed by concrete `card_id`, which means the normal path currently models simple per-card hold anchors rather than full selector-level mulligan rules.",
+    "The current research and gameplan contract builders reduce mulligan intent to `hold`, `avoid`, or `neutral`, but only `hold` anchors are promoted into the normal mulligan output path.",
+    "The current compiler appends an unconditional `mulligan: \"*\"`, `condition: \"*\"`, `value: \"discard\"` fallback by default.",
+    "The current compiler sorts rows by `(card_id, rule_id)` instead of preserving source order.",
+    "The current package validator checks only row presence and `hold` or `discard` values for mulligan rows; it does not validate selector depth, documented version gates, or wildcard-fallback safety."
+  ],
+  "observed_gap": [
+    "HSConfig does not currently model guide claims as ordered mulligan rows with separate selector kinds, so it cannot faithfully compile concrete keeps, explicit throws, `DROPn`, plus-combos, duplicate selectors, coin branches, no-coin branches, and opponent-class branches as first-class rule types.",
+    "Negative mulligan guide claims are currently reduced to `avoid` in research contracts, but the normal gameplan-to-mulligan path does not turn them into explicit `discard` rows.",
+    "The current compiler only emits concrete card-id rows plus a blanket wildcard discard fallback, so it cannot express non-conservative documented selectors such as `DROP1 + CARD_A` or targeted matchup keeps without a richer upstream rule contract.",
+    "The current compiler reorders rows alphabetically by card id, which can weaken guide-authored priority intent even though the design spec requires preserved row order.",
+    "The default wildcard discard fallback can be emitted even when HSConfig has not compiled a narrow positive keep plan, which is exactly the failure mode this closure needs to prevent."
+  ],
+  "aggressive_generation_policy": [
+    "Compile mulligan rules from an ordered, selector-level plan instead of from card-only anchors.",
+    "Emit the strongest documented selector that matches the guide claim: concrete CardID list when the guide names exact cards, `DROPn` when the guide says to keep all cards at a mana band, and plus-combos when the guide describes same-hand combinations.",
+    "Emit explicit `discard` rows for guide-backed throw claims instead of collapsing them into `avoid` metadata only.",
+    "Compile `coin` and `nocoin` branches directly when the guide claim is explicit, and allow the documented `my_hand(count()) == 4` equivalent only when that translation is intentional and source-backed.",
+    "Compile opponent-class clauses only through documented `opp_hero(...)` patterns, using `hero_class` only when the declared version floor supports it.",
+    "Preserve overlapping hold and discard rows because official docs say hold outranks discard; do not delete an explicit discard row simply because a broader hold row also exists.",
+    "Allow wildcard `discard` fallback only when the guide defines a narrow keep plan and HSConfig has already emitted at least one non-wildcard hold row; never emit a lone wildcard discard row.",
+    "If a guide claim cannot be represented with documented selector and condition syntax, suppress it into a report instead of guessing a weaker or broader row."
+  ],
+  "validation_gates": [
+    "The result JSON for this research batch must cover every field in `fields.yaml` and pass `validate_json.py`.",
+    "Generated `Mulligan.json` must be strict JSON and must keep the official top-level `Mulligan.values` shape.",
+    "Every emitted mulligan row must include `comment`, `mulligan`, `condition`, and `value`, and `value` must be only `hold` or `discard`.",
+    "Every `mulligan` selector must match a documented selector family: concrete CardID, comma-separated CardID list, `DROPn`, documented plus-combo, documented duplicate-selector form, or wildcard `*` when explicitly allowed by policy.",
+    "Every emitted condition must come from documented Mulligan or JSON-condition grammar, including any declared version gates.",
+    "Validation must fail if the compiled mulligan output contains a wildcard discard row but no earlier non-wildcard hold row.",
+    "Validation must fail if source order was lost between the ordered mulligan plan and emitted runtime rows.",
+    "Suppressed claims must be written to a report with raw guide claim text, suppression reason, and source references."
+  ],
+  "recommended_design_change": [
+    "Replace the current `mulligan_anchors`-only model with an ordered `mulligan_plan` contract that stores row-level rules such as `rule_id`, `priority_index`, `selector_kind`, `selector_text`, `intent`, `condition`, `version_floor`, `source_claim_ids`, and `allow_wildcard_fallback`.",
+    "Teach the research-contract builder to preserve explicit throws and selector-level guide richness instead of collapsing negative claims to `avoid` and positive claims to card-only hold anchors.",
+    "Teach the gameplan builder and `compile_mulligan.py` to emit rows in source order, preserve discard rows, and serialize documented selectors beyond raw CardIDs.",
+    "Add a dedicated mulligan validator that checks selector grammar, version-gated features, and the rule `wildcard discard requires at least one earlier non-wildcard hold row`.",
+    "Write a `mulligan_compilation_receipt.json` or equivalent suppression report so operators can see which guide claims were emitted, downgraded, version-gated, or blocked."
+  ],
+  "never_autogenerate_without": [
+    "Official HearthRanger Mulligan documentation and official JSON-condition documentation cited for every selector and condition family that is emitted.",
+    "Concrete CardID resolution for every emitted non-`DROPn` selector component.",
+    "An ordered guide-backed mulligan plan that distinguishes keep rows, throw rows, selector forms, and conditional branches.",
+    "A declared version floor when using `hero_class` or duplicate-selector syntax.",
+    "A validation rule that blocks wildcard discard fallback unless at least one earlier non-wildcard hold row exists.",
+    "A suppression path for vague or unsupported guide claims rather than silent downgrades."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/mulligan.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/specs/2026-07-05-hsconfig-design.md"
+  ],
+  "uncertain": []
+}

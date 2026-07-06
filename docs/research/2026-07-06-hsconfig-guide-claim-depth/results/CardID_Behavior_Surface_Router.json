@@ -1,0 +1,94 @@
+{
+  "step_name": "CardID Behavior Surface Router",
+  "source_type": "official_docs",
+  "step_goal": "Route validated per-card usage expectations into the most specific documented `CARDID.json` block so HSConfig can express hold value, on-board value, play timing, battlecry targets, hero-power use, attack posture, Discover choices, Choose One branches, and search-order hints without flattening them into generic `InHandPlayPriority` or `BeforePlayCardBonus` rows.",
+  "required_inputs": [
+    "The official HearthRanger generic JSON config page and card-behavior page, confirmed through the local `docs_cache_manifest.json` or an equivalent live fetch for the same URLs.",
+    "Exact deck-card ownership for every emitted runtime file, with `GameCardId` equal to the `<CARDID>.json` filename stem.",
+    "Claim-level gameplan data that separates hold policy, play timing, target policy, hero-power policy, attack policy, Discover policy, and Choose One policy instead of only broad card roles.",
+    "Concrete option identity resolution for Discover offer card ids and Choose One branch ids such as `CARDIDa` and `CARDIDb`.",
+    "A compiler plan that records `block_name`, `condition_expr`, `value_expr`, `row_order`, and provenance for each candidate row before JSON emission.",
+    "A fail-closed suppression path for claims that are source-backed but cannot be lowered into documented CARDID syntax safely."
+  ],
+  "produced_outputs": [
+    "Per-card runtime-target files at `CustomConfig/<deck>/<CARDID>.json` for every card or option card with documented behavior rows.",
+    "A `card_behavior_intent_map.json` artifact that records claim id, owner card id, target surface block, condition string, value string, row order, and source provenance for every candidate row.",
+    "A `card_behavior_option_resolution.json` artifact that resolves Discover offer ids, Choose One option ids, hero-power ids, and any other non-base-card owner identities before emission.",
+    "A `card_behavior_suppression_report.json` artifact that records every guide-backed behavior claim that could not be emitted with documented syntax, along with the owning card context and suppression reason.",
+    "A validation receipt that proves strict JSON shape, filename and `GameCardId` agreement, documented block usage only, and complete provenance coverage for emitted rows."
+  ],
+  "documented_capabilities": [
+    "Official HearthRanger CARDID behavior files are file-per-card: the runtime file is named `<CARDID>.json`, and `GameCardId` must match the filename stem.",
+    "Documented CARDID rule blocks include `InHandBonus`, `OnBoardBonus`, `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `BeforeEndTurnBonus`, `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, `InHandPlayPriority`, and `OnBoardPlayPriority` for the behavior families relevant to this routing task.",
+    "Each configurable CARDID block uses an object containing a `values` array, and each row uses string fields such as `comment`, `condition`, and `value`.",
+    "The official JSON-config page states that rows are checked from top to bottom, so emitted row order changes runtime behavior and cannot be treated as cosmetic.",
+    "The documented condition language supports wildcard `*`, boolean combinations such as `AND`, and filtered expressions such as `my_minions(count())`, `my_target(count(),hero=true)`, `my_discover(count(),cardid=...)`, and `my_player(count(),quest_progress >= 0)`.",
+    "The official Discover sample places `OnDiscoverCardBonus` on the discover-source card file and filters specific offered options through `my_discover(count(),cardid=...)` conditions.",
+    "The official Choose One guidance uses the option-card files rather than the base card file: for a minion with Choose One, the first branch is `CARDIDa` and the second branch is `CARDIDb`.",
+    "Target posture can be expressed through documented target filters inside the `condition` string, for example `my_target(count(),hero=true) > 0` in `BeforePhysicalAttackBonus`."
+  ],
+  "current_hsconfig_support": [
+    "The current `src/hsconfig/surface_intent.py` routes every deck card to a per-card runtime file and marks the surface family as `CARDID.json`, which is the correct file-level runtime boundary.",
+    "The current `src/hsconfig/compile_cardid.py` always emits `InHandPlayPriority` and can additionally emit `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, and `OnDiscoverCardBonus` from coarse role labels.",
+    "The current local validators in `src/hsconfig/validate_package.py`, `src/hsconfig/visionai_registry.py`, `C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py`, and `C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py` already recognize the broader documented CARDID block family and enforce strict shape checks such as `GameCardId` matching, supported block names, and `values` arrays.",
+    "The current HSConfig path does not yet lower claim-specific `InHandBonus`, `OnBoardBonus`, `OnChooseOneCardBonus`, target-filter rows, explicit row-order plans, or claim-level suppression output for card behavior."
+  ],
+  "observed_gap": [
+    "Current HSConfig routing is still role-driven rather than claim-driven. It decides a file family correctly, but it does not yet decide the most specific documented CARDID block for each usage expectation.",
+    "Current HSConfig does not preserve a claim-level intermediate that says whether a behavior belongs to `InHandBonus`, `OnBoardBonus`, `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `OnDiscoverCardBonus`, or `OnChooseOneCardBonus`.",
+    "Current HSConfig does not resolve Choose One branch ownership into `CARDIDa` or `CARDIDb`, so it cannot safely emit documented Choose One rows yet.",
+    "Current HSConfig does not lower explicit target filters from guide semantics into the documented `condition` language for battlecries, attacks, or hero-power decisions.",
+    "Current HSConfig has no dedicated `card_behavior_suppression_report.json`, so documented-but-unemitted behavior claims are at risk of being flattened into generic bonuses or disappearing from the operator-visible output."
+  ],
+  "aggressive_generation_policy": [
+    "Route hold or delayed-use expectations into `InHandBonus` when the guide claim is about the value of keeping the card in hand rather than playing it immediately.",
+    "Route on-board persistence, trade posture, or protect-this-minion expectations into `OnBoardBonus` when the claim is about keeping the card alive or valuable after it has landed.",
+    "Route immediate play-timing expectations into `BeforePlayCardBonus` when the claim is specifically about whether to play the card now, later, or only under a board-state condition.",
+    "Route targeted battlecry expectations into `BeforeBattlecryTargetBonus` when the source card and the legal target filter are explicit.",
+    "Route hero-power usage expectations into `BeforeUseHeroPowerBonus` only when the active hero-power card id is resolved and the claim is truly about using that hero power rather than about a deck-wide posture.",
+    "Route minion, weapon, or hero attack posture into `BeforePhysicalAttackBonus` and keep the target preference in the documented `condition` string, for example through `my_target(...)` filters.",
+    "Route Discover preferences into `OnDiscoverCardBonus` on the discover-source card file and express offer filtering through `my_discover(count(),cardid=...)` conditions instead of inventing helper keys.",
+    "Route Choose One preferences into `OnChooseOneCardBonus` on the resolved option-card files `CARDIDa` and `CARDIDb`, not on the base card file, because that is the documented ownership pattern.",
+    "Use `InHandPlayPriority` or `OnBoardPlayPriority` only for search-order hints. Do not use priority rows as a substitute for behavior blocks that carry stronger documented semantics.",
+    "Preserve the planned row order exactly from highest-priority or most-specific rule to fallback rule, because the documented runtime evaluates rows from top to bottom.",
+    "When a guide-backed claim cannot be lowered into a documented CARDID block with exact owner identity and a supported condition expression, suppress it explicitly instead of emitting a guessed generic bonus row."
+  ],
+  "validation_gates": [
+    "The official source set must be tied to the documented HearthRanger URLs through the local `fixtures/visionai/docs_cache_manifest.json` or a current equivalent fetch of the same pages.",
+    "Every emitted file must be strict JSON, and the file name stem must equal `GameCardId`.",
+    "Every emitted top-level block must be one of the documented CARDID behavior blocks recognized by the local syntax model and validators.",
+    "Every emitted row must contain `comment`, `condition`, and `value`, and `value` must be emitted as a string expression rather than a numeric JSON scalar.",
+    "Every Discover or Choose One row must have resolved owner identity before emission: discover-source card for `OnDiscoverCardBonus`, and concrete branch card ids such as `CARDIDa` and `CARDIDb` for `OnChooseOneCardBonus`.",
+    "Every claim that survives research intake must end in exactly one visible state: emitted CARDID row with provenance, or suppression report entry with reason.",
+    "The preview package must pass the local strict validators in `src/hsconfig/validate_package.py` and `C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py` before downstream steps treat it as ready."
+  ],
+  "recommended_design_change": [
+    "Add a dedicated `card_behavior_surface_router` stage that converts claim-level card-usage expectations into explicit row candidates with `owner_card_id`, `block_name`, `condition_expr`, `value_expr`, `row_order`, and provenance.",
+    "Split option ownership resolution into a separate `option_identity_resolver` so Discover-source ownership and Choose One branch ownership are decided before block routing.",
+    "Extend `surface_intent.py` from file-family routing to claim-level CARDID block routing, so the intent layer records not only `<CARDID>.json` but also the exact documented block each claim should target.",
+    "Extend `compile_cardid.py` to consume routed row candidates instead of coarse card roles, preserving planned row order and emitting only documented blocks with documented row keys.",
+    "Add `card_behavior_suppression_report.json` as a first-class artifact so unsupported predicates, unresolved option ids, and non-emittable claims stay visible instead of being silently generalized."
+  ],
+  "never_autogenerate_without": [
+    "A current official syntax reference for the generic JSON config page and the card-behavior page, or a hash-matched local cache of those exact pages.",
+    "Exact file-owner identity for the emitted rule, including base card id, discover-source card id, hero-power card id, or Choose One branch id as applicable.",
+    "A validated claim that clearly states whether the expectation is about in-hand value, on-board value, play timing, target choice, hero-power use, attack posture, Discover choice, or Choose One branch choice.",
+    "A documented condition expression that can carry the needed target or option filter without inventing undocumented JSON keys.",
+    "A visible suppression path for every source-backed claim that cannot be emitted safely with the documented CARDID grammar.",
+    "Strict preview validation proving JSON shape, supported block usage, filename and `GameCardId` agreement, and provenance coverage."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/card_behavior.html",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_08_CardID_Behavior_Compiler_Architecture.json"
+  ],
+  "uncertain": []
+}

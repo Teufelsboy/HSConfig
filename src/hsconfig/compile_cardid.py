@@ -7,8 +7,15 @@ ROLE_BLOCKS = {
     "battlecry": "BeforeBattlecryTargetBonus",
     "charge": "BeforePhysicalAttackBonus",
     "discover": "OnDiscoverCardBonus",
+    "freeze": "BeforePlayCardBonus",
     "hero_power": "BeforeUseHeroPowerBonus",
+    "location": "BeforePlayCardBonus",
+    "overload": "BeforePlayCardBonus",
+    "prefer_enemy_minion": "BeforeBattlecryTargetBonus",
+    "prefer_friendly_minion": "BeforePlayCardBonus",
     "rush": "BeforePhysicalAttackBonus",
+    "secret": "BeforePlayCardBonus",
+    "tradeable": "BeforePlayCardBonus",
     "weapon": "BeforePhysicalAttackBonus",
 }
 
@@ -58,6 +65,17 @@ def compile_cardid_behaviors(
                 card_id,
                 "pressure_play_bonus",
                 "8",
+                source_claim_ids,
+                confidence,
+            )
+        if "prefer_enemy_hero" in roles:
+            _append_block_row(
+                config,
+                "BeforePlayCardBonus",
+                deck_name,
+                card_id,
+                "prefer_enemy_hero_bonus",
+                "12",
                 source_claim_ids,
                 confidence,
             )
@@ -161,8 +179,5 @@ def _append_block_row(
             "comment": f"{deck_name}: {rule_id}",
             "condition": "*",
             "value": value,
-            "source_rule_id": rule_id,
-            "source_claim_ids": source_claim_ids,
-            "confidence": confidence,
         }
     )

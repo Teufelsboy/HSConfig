@@ -33,6 +33,7 @@ def test_skill_content_sets_direct_config_boundary():
     assert "--allow-placeholder" in text
     assert "hsconfig prepare" in text
     assert "research contract" in text.lower()
+    assert "--guide-sources-json" in text
 
 
 def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
@@ -46,6 +47,7 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
     assert "hsconfig prepare" in text
     assert "research-contract" in text
     assert "reports/research" in text
+    assert "--guide-sources-json" in text
 
 
 def test_skill_docs_keep_presume_concede_out_of_normal_path():
@@ -57,6 +59,22 @@ def test_skill_docs_keep_presume_concede_out_of_normal_path():
     assert "normal path" in surfaces
     assert "Presume.json" not in workflow
     assert "Concede.json" not in workflow
+
+
+def test_guide_research_policy_documents_structured_source_flow():
+    skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    operator_policy = Path("docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (skill_policy, operator_policy):
+        assert "--guide-sources-json" in text
+        assert "mulligan_keep" in text
+        assert "targeting_rule" in text
+        assert "unsupported_claims_report.json" in text
+        assert "HSConfig does not" in text or "Do not infer replay performance" in text
 
 
 def test_globalvalues_policy_mentions_runtime_file_quirks():

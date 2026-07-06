@@ -1,0 +1,39 @@
+[
+  {
+    "source_url": "https://example.invalid/shadow-priest-guide",
+    "source_title": "Shadow Priest Guide Fixture",
+    "source_family": "guide_fixture",
+    "retrieved_at": "2026-07-06T12:00:00Z",
+    "claims": [
+      {
+        "claim_kind": "mulligan_keep",
+        "cards": ["SW_448"],
+        "stance": "keep",
+        "evidence_text_short": "Keep Darkbishop Benedictus because it enables the Shadow Priest hero power package.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "mulligan_keep",
+        "cards": ["BAR_311"],
+        "stance": "keep",
+        "evidence_text_short": "Keep early pressure one-drops in aggressive Shadow Priest mulligans.",
+        "source_confidence": "medium"
+      },
+      {
+        "claim_kind": "targeting_rule",
+        "cards": ["SW_446"],
+        "stance": "prefer_enemy_hero",
+        "conditions": {"posture": "aggressive_burn"},
+        "evidence_text_short": "Mind Spike is primarily face pressure in aggressive Shadow Priest unless board survival requires a trade.",
+        "source_confidence": "medium"
+      },
+      {
+        "claim_kind": "gameplan_posture",
+        "cards": ["SW_448"],
+        "stance": "aggressive",
+        "evidence_text_short": "Shadow Priest uses early pressure and burn reach.",
+        "source_confidence": "medium"
+      }
+    ]
+  }
+]

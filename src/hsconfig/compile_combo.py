@@ -30,11 +30,8 @@ def compile_combo(
             {
                 "comment": f"{deck_name}: {rule_id}",
                 "condition": sequence.get("condition", "*"),
-                "combo": f" {operator} ".join(cards),
-                "value": f" {operator} ".join(value_parts),
-                "source_rule_id": rule_id,
-                "source_claim_ids": list(sequence.get("source_claim_ids", [])),
-                "confidence": sequence.get("confidence", "source_backed"),
+                "combo": operator.join(cards),
+                "value": operator.join(value_parts),
             }
         )
     return {

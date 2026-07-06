@@ -1,0 +1,108 @@
+{
+  "step_name": "Autonomous Guide Claim Builder",
+  "source_type": "community_guide",
+  "step_goal": "Autonomously convert current deck guides, deck or meta pages, HearthstoneJSON card data, and explicit source snippets into a normalized `claims.json` that is source-backed, freshness-aware, per-card complete, and usable by later HSConfig compilers without requiring a human-authored claims file.",
+  "required_inputs": [
+    "A successful deckstring decode with exact hero, format, CardIDs, dbfIds, counts, and canonical deck identity.",
+    "A HearthstoneJSON card snapshot or pinned latest-build fetch that provides card id, dbfId, name, text, mechanics, referenced tags, entourage, cost, class, and type for every deck card.",
+    "A source registry for current guide and data pages with `source_family`, `url`, `title`, `published_at`, `retrieved_at`, and visibility or access notes.",
+    "A patch-context receipt that records the active official patch, the next expansion or card-pool rollover window, and the downgrade policy for stale guide claims.",
+    "A card-name resolver that maps guide mentions, archetype labels, nicknames, and snippet entities back to exact in-deck CardIDs before claims are emitted.",
+    "A snippet extractor that stores short evidence locators, paraphrases, hashes, and source positions instead of copying full guide paragraphs.",
+    "At least one human-guide family and one data family when HSConfig wants high-confidence mulligan, matchup, or posture claims rather than only low-confidence deck-page priors."
+  ],
+  "produced_outputs": [
+    "A normalized `claims.json` with atomic claim rows rather than copied guide prose.",
+    "A `source_evidence_index.json` file that records every source page, publication date, retrieval date, source family, patch context, and evidence locator used to justify a claim.",
+    "A `claim_coverage_report.json` file that marks each deck card as `claim_backed`, `static_semantics_backfilled`, `archetype_inferred`, or `uncovered_low_confidence`.",
+    "A `claim_conflict_report.json` file that records contradictory sources, freshness downgrades, and the final confidence lane assigned to each contested claim.",
+    "An `unsupported_claims_report.json` file for vague, symbolic, or non-emittable advice that must remain visible but must not be turned into runtime rows.",
+    "A `patch_context_receipt.json` file that explains why older guides were kept, downgraded, or blocked for runtime-targeting use."
+  ],
+  "documented_capabilities": [
+    "HearthstoneJSON documents stable card-object fields such as `id`, `dbfId`, `name`, `text`, `cost`, `type`, `cardClass`, `mechanics`, `referencedTags`, `entourage`, and `playRequirements`, and its API is versioned by build with `/v1/latest/` for the current build.",
+    "HearthSim Deckstrings documents deterministic deck encode and decode using `[dbfId, count]` pairs plus hero and format identity, which makes exact deck-card resolution a hard prerequisite before claim generation.",
+    "The Vicious Syndicate Deck Library explicitly provides decklists, strategies, strengths and weaknesses, tech options, and replacement options for current archetypes, which makes it a strong human-guide source for role, mulligan, and gameplan claims.",
+    "Vicious Syndicate Data Reaper reports provide current archetype distribution, matchup winrates, power rankings, and patch-era decklists, which makes them strong evidence for freshness-aware archetype and matchup posture claims.",
+    "HSReplay Mulligan G-V2 explicitly conditions keep or replace guidance on the offered hand, the player's deck, the opponent's class, and initiative, which makes it the strongest public mulligan-specific source family for concrete opening-hand claims. Its own FAQ also states that it is Standard-only today and does not model Demon Hunter Outcast hand-position logic.",
+    "HSGuru documents mulligan impact, drawn impact, sample-size warnings, deck-tracker bias, and a matchup-classification buffer after new cards or patches, so it is a useful data-family source when HSConfig needs card-impact priors and freshness caveats.",
+    "The local HSConfig design spec already defines the intended guide-research behavior: collect current guide and data sources, record source URLs and retrieval date, record patch context, extract archetype, mulligan, role, combo, target, posture, and bad-pattern claims, attach confidence and freshness, and avoid copying large guide text."
+  ],
+  "current_hsconfig_support": [
+    "HSConfig already fetches and normalizes HearthstoneJSON `cards.json` from `https://api.hearthstonejson.com/v1/latest/enUS/cards.json`, and preserves exact `id`, `dbf_id`, `name`, `type`, `card_class`, `cost`, `text`, `mechanics`, `referenced_tags`, and `entourage` fields.",
+    "HSConfig already hydrates deck-card metadata and derives coarse `mechanic_families` from card type, text, and mechanics, which is enough for static semantic backfilling when guide coverage is missing.",
+    "HSConfig already normalizes explicitly supplied raw claims deterministically, deduplicates them by a stable hash-based `claim_id`, preserves combo card order, preserves optional fields such as `retrieved_at`, `policy`, `source_title`, and `values`, and emits `source_refs`.",
+    "HSConfig already builds a research-contract bundle that contains `archetype_research`, `claims`, `card_role_map`, `mulligan_anchor_map`, `card_usage_expectations`, `known_bad_patterns`, `globalvalue_intent`, and `coverage_summary`.",
+    "HSConfig already distinguishes `guide_backed`, `source_backed`, `source_backed_static_semantics`, `archetype_inferred`, and `generic_low_confidence` lanes when claims are already present or when only static metadata exists.",
+    "HSConfig already marks uncovered cards explicitly in coverage outputs, but only after a human or fixture has already supplied a claims payload."
+  ],
+  "observed_gap": [
+    "HSConfig does not yet autonomously browse, fetch, parse, or normalize live guide pages, deck pages, meta pages, or user-provided snippets into claim rows.",
+    "The current `normalize_source_claims` contract still treats the core evidence payload as free-text `claim` plus a loose `claim_type`; it does not enforce atomic claim taxonomy, evidence locators, publication dates, staleness status, or contradiction handling.",
+    "There is no claim-builder stage that turns guide text into exact per-card or deck-level facts before runtime-surface routing. Today, source claims must already exist when they enter HSConfig.",
+    "Freshness is not yet first-class. `retrieved_at` can be carried through, but the current local code does not calculate `published_at`, `active_patch`, `freshness_status`, `staleness_reason`, or patch-window downgrades.",
+    "Per-card coverage is currently reported only after claims are supplied. There is no autonomous backfill step that resolves uncovered deck cards into `static_semantics_backfilled` or `archetype_inferred` claim rows inside `claims.json` itself.",
+    "There is no built-in paraphrase or quote-discipline layer. If a human supplies vague guide prose today, HSConfig can preserve it as a raw claim string even when the sentence is too vague to support a concrete runtime row.",
+    "There is no source-family weighting model that differentiates exact guide advice, deck-page data snapshots, meta summaries, card semantics, and operator-supplied snippets."
+  ],
+  "aggressive_generation_policy": [
+    "Autogenerate claims aggressively only at the claim-builder layer, not at the runtime-row layer. When a current source names exact cards and concrete intent, HSConfig should emit an atomic claim even if later compilers decide the claim must remain report-only.",
+    "Prefer paraphrased atomic claims over copied prose. Convert source text such as `aggressively mulligan for X` into a structured claim with `claim_kind`, `cards`, `stance`, `scope`, and `conditions`, while preserving only a short evidence snippet and locator in the source index.",
+    "Allow a single current guide page to create low- or medium-confidence guide claims for deck-level plan, role, and bad-pattern research, but require cross-source support before promoting mulligan, matchup, or combo claims into a high-confidence runtime-targeting lane.",
+    "Use HearthstoneJSON semantics aggressively to backfill uncovered cards into claim coverage, but label those rows as `source_backed_static_semantics` or `archetype_inferred`, never as `guide_backed`.",
+    "When a guide claim is concrete but no documented runtime surface can safely express it, keep the claim in `claims.json` with `support_status = report_only` instead of dropping or weakening it into guessed runtime JSON.",
+    "Downgrade stale or pre-rotation claims automatically rather than deleting them. A stale guide can still inform deck understanding, but it should not receive the same confidence as a current patch-aligned source."
+  ],
+  "validation_gates": [
+    "Every emitted claim must include `claim_id`, `claim_kind`, `scope`, `cards`, `source_family`, `source_url`, `source_title`, `retrieved_at`, `freshness_status`, `claim_confidence`, `support_status`, and at least one evidence locator or source hash.",
+    "Every deck-card reference in a claim must resolve to an exact CardID in the submitted deck, except when the claim explicitly models an external target or matchup card and marks that scope separately.",
+    "Every deck card must appear in the claim coverage report before downstream compilation proceeds, with one of four statuses: `claim_backed`, `static_semantics_backfilled`, `archetype_inferred`, or `uncovered_low_confidence`.",
+    "Guide-text ingestion must enforce a paraphrase-first rule and a short-snippet cap. Large copied guide paragraphs must be rejected or rewritten into atomic claims before normalization succeeds.",
+    "Claims older than the active balance patch or inside a known expansion rollover window must be downgraded automatically unless a newer confirming source exists.",
+    "Claims derived from tracker-based stats must carry sample-size notes and source-bias warnings when the source itself documents those limitations.",
+    "Conflicting claims must remain machine-visible. HSConfig should never silently collapse disagreements between a current guide source and a current data source without writing a conflict record and final downgrade reason.",
+    "Any claim whose intent cannot be routed safely to later documented surfaces must be marked `report_only` or `unsupported`, never rewritten into unsupported runtime grammar."
+  ],
+  "recommended_design_change": [
+    "Add a dedicated `guide_claim_builder.py` stage ahead of the current `guide_research.py` normalization boundary. This stage should own source capture, snippet extraction, card resolution, freshness scoring, contradiction handling, and per-card coverage backfill.",
+    "Extend the normalized claim schema from free-text-only rows to a structured contract such as: `claim_id`, `claim_kind`, `scope`, `cards`, `supporting_cards`, `stance`, `conditions`, `source_family`, `source_url`, `source_title`, `published_at`, `retrieved_at`, `active_patch`, `freshness_status`, `source_confidence`, `claim_confidence`, `evidence_mode`, `evidence_locator`, `evidence_text_short`, `evidence_hash`, `support_status`, and `source_refs`.",
+    "Define a small fixed claim taxonomy for the builder: `archetype`, `mulligan_keep`, `mulligan_throw`, `card_role`, `combo_sequence`, `target_rule`, `posture`, `bad_pattern`, `tech_slot`, and `replacement_option`. Keep `general` only as a temporary fallback that must be explained in validation output.",
+    "Split evidence acquisition from claim emission. Source adapters should extract page-specific facts into an intermediate `evidence_rows.json`, and only a second pass should convert those rows into normalized claims after card resolution and freshness checks.",
+    "Backfill uncovered cards automatically by generating semantic-only claims from HearthstoneJSON for cards whose role is obvious from static metadata or linked hero-power entities, while leaving weakly inferable cards flagged as `uncovered_low_confidence`.",
+    "Write four first-class artifacts for downstream steps: `claims.json`, `source_evidence_index.json`, `claim_coverage_report.json`, and `unsupported_claims_report.json`. Treat them as required research outputs, not optional diagnostics.",
+    "Add tests that prove three behaviors: vague prose is rewritten or rejected, stale sources are downgraded by patch context, and every deck card receives an explicit coverage status even when guides mention only part of the list."
+  ],
+  "never_autogenerate_without": [
+    "A successful deckstring decode and exact HearthstoneJSON join for every submitted deck card.",
+    "A source-evidence record for every non-trivial claim, including at minimum URL or local snippet origin, retrieval date, source family, and evidence locator.",
+    "A patch-context receipt that compares source dates with the active patch date and the next expansion or card-pool transition window.",
+    "A card resolver that can map every in-guide card mention used for claim generation to exact CardIDs before the claim is accepted as card-scoped.",
+    "A per-card coverage pass that explicitly marks cards as guide-backed, semantic-backfilled, archetype-inferred, or uncovered-low-confidence.",
+    "A paraphrase or atomic-claim conversion pass that prevents vague guide sentences from being copied directly into runtime-targeting workflows.",
+    "A downgrade or conflict policy for claims whose source family, freshness, sample size, or cross-source agreement is insufficient for high-confidence use.",
+    "A visible report-only path for advice that cannot become safe runtime syntax, including symbolic sequencing advice, matchup heuristics, and broad posture language."
+  ],
+  "must_cite_sources": [
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://hearthstonejson.com/",
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://www.vicioussyndicate.com/deck-library/",
+    "https://www.vicioussyndicate.com/vs-data-reaper-report-352/",
+    "https://hsreplay.net/mulligan-gv2/",
+    "https://articles.hsreplay.net/2019/04/15/the-art-of-mulligan/",
+    "https://www.hsguru.com/stats/explanation",
+    "https://www.hsguru.com/meta",
+    "https://hearthstone.blizzard.com/en-us/news/24287396/36-0-patch-notes",
+    "https://hearthstone.blizzard.com/en-us/expansions-adventures",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_research.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/hearthstonejson.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_metadata.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_research.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_research_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/specs/2026-07-05-hsconfig-design.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_04_Online_Guide_And_Data_Research_Bundle.json"
+  ],
+  "uncertain": []
+}

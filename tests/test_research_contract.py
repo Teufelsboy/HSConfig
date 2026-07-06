@@ -79,6 +79,7 @@ def test_research_contract_emits_all_operator_artifacts():
         "known_bad_patterns",
         "globalvalue_intent",
         "coverage_summary",
+        "guide_claim_bundle",
     }
     assert bundle["archetype_research"]["deck_name"] == "Fixture Aggro"
     assert bundle["archetype_research"]["confidence"] == "guide_backed"
@@ -168,3 +169,4 @@ def test_write_research_contract_bundle_writes_expected_files(tmp_path: Path):
     assert "EX1_001" in read_json(research_dir / "card_usage_expectations.json")
     assert read_json(research_dir / "known_bad_patterns.json") == []
     assert read_json(research_dir / "coverage_summary.json")["deck_card_count"] == 1
+    assert read_json(research_dir / "guide_claim_bundle.json")["claims"] == []

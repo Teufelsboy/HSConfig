@@ -1,0 +1,92 @@
+{
+  "step_name": "Combo And Sequencing Closure",
+  "source_type": "official_docs",
+  "step_goal": "Define when HSConfig should lower guide-backed sequence claims into official `Combo.json`, choosing `>>` for same-turn lines and `>->` for cross-turn lines, while keeping vague synergy visible through suppression reporting instead of guessed runtime rows.",
+  "required_inputs": [
+    "The official HearthRanger VisionAI combo syntax page and the shared JSON condition syntax page, pinned through the local docs cache manifest or live verification.",
+    "Exact deck identity with resolved deck-present CardIDs for every card that may appear in a combo row.",
+    "Normalized source claims that preserve `source_claim_ids`, the ordered card sequence, timing semantics, optional condition text, and whether the claim is an explicit sequence or only general synergy.",
+    "A combo contract field that separates concrete sequence candidates from vague support-package, setup, or payoff notes before runtime compilation.",
+    "A report-only suppression artifact so non-emittable combo claims stay visible instead of being silently dropped.",
+    "Package validation rules that check official row shape, segment parity, supported separators, and provenance outside the runtime row."
+  ],
+  "produced_outputs": [
+    "A strict-JSON `Combo.json` only when at least one combo claim is concrete enough for official runtime syntax.",
+    "A `combo_suppression_report.json` that records every suppressed combo claim with raw claim text, resolved cards, suppression reason, and source references.",
+    "A combo contract or row-plan artifact that stores `rule_id`, ordered cards, timing kind, condition, segment values, and emission status before final lowering.",
+    "Per-row provenance outside the runtime row, such as `config_row_provenance.json`, linking each emitted combo row back to source claims and compiler decisions.",
+    "A validation report that proves strict JSON, official key shape, supported separators, and combo/value segment parity."
+  ],
+  "documented_capabilities": [
+    "The official HearthRanger combo documentation defines `Combo.json` with top-level `GameCardId`, `ConfigComment`, and `ComboList.values` rows containing `comment`, `condition`, `combo`, and `value`.",
+    "The official combo documentation states that `>>` means a combo in one turn and `>->` means a combo between two turns.",
+    "The official combo documentation states that the number of card IDs in `combo` must match the number of value segments in `value`.",
+    "The official JSON config documentation defines reusable condition syntax such as `*`, `AND`, and `OR`, so combo rows may use documented condition expressions instead of free-text timing notes.",
+    "The local HSConfig design spec already states that the Combo compiler should emit concrete sequences, support both same-turn and cross-turn syntax, require at least two concrete CardIDs, and keep vague synergy report-only."
+  ],
+  "current_hsconfig_support": [
+    "The current `compile_combo.py` already accepts both official separators, `>>` and `>->`, through an explicit `operator` field.",
+    "The current combo compiler already rejects invalid operators, sequences shorter than two cards, and combo/value segment-count mismatches.",
+    "The current `gameplan_contract.py` preserves card order from normalized combo claims and suppresses combos when referenced cards are not in the deck.",
+    "The current `gameplan_contract.py` defaults missing combo operators to `>>` and missing segment values to repeated `10` values, which means timing and scoring can still be compiler-filled instead of source-proven.",
+    "The current `surface_intent.py` exposes `Combo.json` as an optional surface when the contract contains combos, but it currently labels that intent as `same_turn_combo_sequences` instead of tracking same-turn and cross-turn separately.",
+    "The current `validate_package.py` checks only that combo rows have at least two segments and matching combo/value segment counts; it does not enforce the exact official combo row-key set and currently tolerates extra provenance keys inside runtime rows."
+  ],
+  "observed_gap": [
+    "HSConfig does not yet require a first-class timing field that proves whether a sequence is same-turn or cross-turn before combo emission, so timing can still fall back to the compiler default `>>`.",
+    "HSConfig does not yet distinguish explicit ordered deck-present sequences from vague synergy strongly enough; today a claim with two deck cards and the word `combo` can become a runtime combo even when the guide never states the exact order or turn boundary.",
+    "The current suppression path is too narrow because it reliably suppresses `card_not_in_deck`, but it does not require suppression for missing timing, missing order, placeholder setup language, or unresolved generated-card assumptions.",
+    "The current runtime combo row shape carries internal provenance fields such as `source_rule_id`, `source_claim_ids`, and `confidence`, even though the official combo help page documents runtime rows only with `comment`, `condition`, `combo`, and `value`.",
+    "The current defaulting of operator and value segments risks overfitting because it can make a vague guide claim look like a concrete same-turn runtime sequence with made-up weights."
+  ],
+  "aggressive_generation_policy": [
+    "Emit a `Combo.json` row only when the source-backed claim names at least two exact deck-present CardIDs, gives a fixed play order, and makes the sequence concrete enough to classify as same-turn or cross-turn.",
+    "Use `>>` only when the source or normalized claim explicitly indicates a one-turn chain, such as `this turn`, `same turn`, or an immediate follow-up sequence that does not span turns.",
+    "Use `>->` only when the source or normalized claim explicitly indicates a setup-then-payoff line across turns, such as `set up on one turn and cash in next turn`; never infer `>->` from mana cost, intuition, or general archetype knowledge alone.",
+    "Treat phrases such as `save for payoff`, `combo card`, `support piece`, `setup`, `pressure`, `tempo`, or `synergy with` as report-only unless a prior step has already resolved them into an ordered, deck-present sequence with explicit timing.",
+    "Allow combo-row conditions only when they are `*` or a documented JSON condition string; timing must not be smuggled into free-text comments.",
+    "Do not invent guide-specific strength numbers from vague prose. If segment values are not source-backed, use a deterministic compiler-owned default policy that is clearly marked in provenance rather than treated as guide-backed semantics.",
+    "Every suppressed combo claim must still be written to `combo_suppression_report.json` with enough detail for review, so conservative blocking does not erase useful sequence knowledge."
+  ],
+  "validation_gates": [
+    "The research output JSON must cover every field in `fields.yaml` and pass `validate_json.py`.",
+    "Any emitted `Combo.json` must be strict JSON and must use only the official top-level keys `GameCardId`, `ConfigComment`, and `ComboList`.",
+    "Every emitted combo row must contain only the official runtime keys `comment`, `condition`, `combo`, and `value`; provenance must live in a sidecar artifact, not inside the runtime row.",
+    "Every emitted combo row must contain at least two concrete CardID segments, and the number of `combo` segments must equal the number of `value` segments.",
+    "Every emitted combo row must use only documented separators: `>>` for same-turn or `>->` for cross-turn.",
+    "Validation must fail if a combo row was emitted without explicit timing evidence, without explicit order, or with any card not present in the deck identity unless a separate generated-entity resolution step has already authorized it.",
+    "Validation must fail if a claim was routed to `Combo.json` even though its suppression reason is `missing_order`, `missing_timing`, `vague_synergy_only`, `card_not_in_deck`, or `generated_entity_unresolved`.",
+    "Validation must require a `combo_suppression_report.json` whenever source claims mention combo or sequencing but no safe runtime combo row is emitted."
+  ],
+  "recommended_design_change": [
+    "Add a first-class combo sequence contract that stores `rule_id`, ordered `cards`, `timing_kind`, `operator`, `condition`, `values`, `source_claim_ids`, `confidence`, `deck_presence_status`, and `suppression_reason` before runtime lowering.",
+    "Tighten `gameplan_contract.py` so combo inference requires explicit sequence evidence instead of any claim that merely mentions `combo`; missing timing, missing order, vague synergy, and unresolved generated-card references should become suppression reasons rather than default `>>` rows.",
+    "Update `surface_intent.py` so combo intent distinguishes `same_turn_combo_sequences`, `cross_turn_combo_sequences`, and report-only suppressed combo claims instead of a single same-turn label.",
+    "Update `compile_combo.py` so runtime rows contain only the official combo keys and all provenance is written to sidecar artifacts such as `config_row_provenance.json`.",
+    "Strengthen `validate_package.py` and combo tests to enforce the exact official row-key shape, supported separator set, explicit timing provenance, and mandatory suppression reporting."
+  ],
+  "never_autogenerate_without": [
+    "Official HearthRanger combo syntax documentation and official JSON-condition documentation pinned in the docs cache manifest or live-verified for the run.",
+    "At least two exact deck-present CardIDs for every emitted combo row.",
+    "An explicit ordered sequence with explicit same-turn or cross-turn timing semantics.",
+    "A documented `condition` string or the literal wildcard `*`.",
+    "Combo/value segment parity that passes package validation.",
+    "A suppression path for every combo or sequencing claim that cannot be lowered safely into official runtime syntax."
+  ],
+  "must_cite_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/combo.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/specs/2026-07-05-hsconfig-design.md"
+  ],
+  "uncertain": []
+}

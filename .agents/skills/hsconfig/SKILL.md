@@ -12,25 +12,29 @@ Inputs:
 - deck name
 - deck code
 - optional expert card JSON override
-- optional source-backed guide claims JSON list
+- optional legacy source-backed guide claims JSON list
+- optional structured guide sources JSON from current guide/archetype research
 - runtime root for `prepare` / `build` baseline profiling and for `apply`
 
 Workflow:
 
-1. Use `hsconfig prepare` as the normal deck-to-config path.
-2. Decode the deck code first and record exact CardIDs in `deckstring_decode_receipt.json` and `card_id_map.json`.
-3. Write the research contract under `reports/research/`: archetype, claims, card roles, mulligan anchors, usage expectations, bad patterns, and GlobalValues intent.
-4. Generate direct runtime config surfaces only: `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` when a concrete valid combo exists.
-5. Validate the package before any apply.
-6. Runtime apply only when the user asks; apply updates `CustomConfig/deck_config.ini` for the visible HearthRanger deck name.
+1. Decode the deck code first, then resolve deck identity and card metadata.
+2. Research current guide/archetype/card-usage sources.
+3. Write structured guide sources with card-specific claims.
+4. Run `hsconfig prepare --guide-sources-json ...`.
+5. Verify the research contract plus `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, and `global_values_authority_matrix.json`.
+6. Apply only after validation is green.
 
 Rules:
 
 - Build direct guide-aligned configs only.
 - Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
+- Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
 - Keep full `GlobalValues` coverage and write the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
+- Runtime apply only when the user asks.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
+- Tell the user whether the package is guide-backed, static-semantics-backed, or still has uncovered cards.
 
 References:
 

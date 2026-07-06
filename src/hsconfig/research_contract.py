@@ -21,6 +21,8 @@ def build_research_contract_bundle(
     deck_identity: dict[str, Any],
     card_metadata: dict[str, Any] | list[dict[str, Any]],
     source_claims: dict[str, Any] | list[dict[str, Any]] | None,
+    *,
+    guide_claim_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     cards = _deck_cards(deck_identity)
     metadata_by_card = _metadata_by_card(card_metadata)
@@ -95,6 +97,13 @@ def build_research_contract_bundle(
         ),
         "globalvalue_intent": globalvalue_intent,
         "coverage_summary": coverage_summary,
+        "guide_claim_bundle": guide_claim_bundle
+        or {
+            "claims": claims,
+            "unsupported_claims": [],
+            "coverage": {},
+            "source_evidence_index": [],
+        },
     }
 
 
@@ -112,6 +121,8 @@ def write_research_contract_bundle_to_dir(bundle: dict[str, Any], output_dir: Pa
     write_json(output_dir / "known_bad_patterns.json", bundle["known_bad_patterns"])
     write_json(output_dir / "globalvalue_intent.json", bundle["globalvalue_intent"])
     write_json(output_dir / "coverage_summary.json", bundle["coverage_summary"])
+    if "guide_claim_bundle" in bundle:
+        write_json(output_dir / "guide_claim_bundle.json", bundle["guide_claim_bundle"])
 
 
 def _deck_cards(deck_identity: dict[str, Any]) -> list[dict[str, Any]]:
@@ -191,6 +202,8 @@ def _confidence_for_card(claims: list[dict[str, Any]], semantic_families: list[s
     if claims:
         if any(_is_guide_claim(claim) for claim in claims):
             return "guide_backed"
+        if all(_is_static_semantic_claim(claim) for claim in claims):
+            return "source_backed_static_semantics"
         return "source_backed"
     if {"hero_power_transform", "hero_power_pressure", "start_of_game", "shadowform"} & set(
         semantic_families
@@ -208,6 +221,14 @@ def _is_guide_claim(claim: dict[str, Any]) -> bool:
     url = str(claim.get("url", "")).lower()
     source_title = str(claim.get("source_title", "")).lower()
     return "guide" in source or "guide" in url or "guide" in source_title
+
+
+def _is_static_semantic_claim(claim: dict[str, Any]) -> bool:
+    return (
+        str(claim.get("confidence")) == "source_backed_static_semantics"
+        or str(claim.get("source_family")) == "hearthstonejson_static_semantics"
+        or str(claim.get("support_status")) == "static_semantics"
+    )
 
 
 def _mulligan_intent(

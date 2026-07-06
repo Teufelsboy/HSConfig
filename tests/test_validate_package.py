@@ -106,6 +106,32 @@ def test_validate_package_rejects_special_surface_blocks_without_values(tmp_path
     assert any("unsupported block EX1_001" in error for error in report["errors"])
 
 
+def test_validate_package_rejects_lone_wildcard_mulligan_discard(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "bad",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "discard everything",
+                        "mulligan": "*",
+                        "condition": "*",
+                        "value": "discard",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any("lone_wildcard_discard" in error for error in report["errors"])
+
+
 def test_validate_package_rejects_combo_segment_mismatch(tmp_path: Path):
     deck_dir = tmp_path / "CustomConfig" / "deck"
     write_json(
@@ -138,6 +164,33 @@ def test_validate_package_rejects_one_card_combo(tmp_path: Path):
 
     assert report["status"] == "failed"
     assert any("combo row must contain at least two cards" in error for error in report["errors"])
+
+
+def test_validate_package_rejects_combo_runtime_provenance_keys(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "Combo.json",
+        {
+            "GameCardId": "Combo",
+            "ConfigComment": "bad",
+            "ComboList": {
+                "values": [
+                    {
+                        "comment": "bad",
+                        "condition": "*",
+                        "combo": "EX1_001>>EX1_002",
+                        "value": "10>>10",
+                        "source_claim_ids": ["claim_a"],
+                    }
+                ]
+            },
+        },
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any("unsupported ComboList row key source_claim_ids" in error for error in report["errors"])
 
 
 def test_validate_package_rejects_unsupported_card_behavior_block(tmp_path: Path):

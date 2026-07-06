@@ -232,4 +232,83 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
     assert globalvalue_intent["pressure_bias"] == "high"
     assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
-    assert combo["ComboList"]["values"][0]["combo"] == "EX1_001 >> EX1_002"
+    assert combo["ComboList"]["values"][0]["combo"] == "EX1_001>>EX1_002"
+
+
+def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                    {"card_id": "EX1_002", "dbf_id": 2, "count": 1, "name": "Burst Two"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    guide_sources = tmp_path / "sources.json"
+    guide_sources.write_text(
+        json.dumps(
+            [
+                {
+                    "source_url": "https://example.invalid/guide",
+                    "source_title": "Guide",
+                    "source_family": "guide",
+                    "claims": [
+                        {
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["EX1_001"],
+                            "stance": "keep",
+                            "evidence_text_short": "Keep Pressure One.",
+                        }
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    plan_reports = tmp_path / "plan_reports"
+    plan_reports.mkdir()
+    (plan_reports / "mulligan_plan_report.json").write_text(
+        json.dumps(
+            {
+                "deck_name": "Plan Override",
+                "rules": [],
+                "quality": {"blocked_reason": "no_source_backed_mulligan_keeps"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan Override",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--guide-sources-json",
+            str(guide_sources),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    mulligan = json.loads(
+        (out / "CustomConfig" / "plan_override" / "Mulligan.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert mulligan["Mulligan"]["values"] == []

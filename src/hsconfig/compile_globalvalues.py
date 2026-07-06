@@ -37,6 +37,20 @@ def compile_globalvalues(
 
     overlays = dict(aggression_profile.get("global_value_overlays", {}))
     overlays.update(aggression_profile.get("mechanic_priorities", {}))
+    authority_matrix = contract.get("global_values_authority_matrix", {})
+    if isinstance(authority_matrix, dict) and authority_matrix.get("allowed_step1_overlays"):
+        allowed_overlays = {
+            str(row["key"]): str(row["overlay"])
+            for row in authority_matrix.get("allowed_step1_overlays", [])
+            if isinstance(row, dict) and row.get("key") not in {None, "baseline"}
+        }
+        overlays = {
+            key: allowed_overlays.get(key, value)
+            for key, value in overlays.items()
+            if key in allowed_overlays
+        }
+        for key, value in allowed_overlays.items():
+            overlays.setdefault(key, value)
     overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
     generated_overlay_keys = sorted(
         key

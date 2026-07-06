@@ -1,0 +1,45 @@
+field_categories:
+  - category: hsconfig_depth_audit
+    fields:
+      - name: step_name
+        required: true
+        description: "Name of the HSConfig depth-audit area being researched."
+      - name: source_type
+        required: true
+        description: "Primary source category: official_docs, data_api, community_guide, local_project, or architecture."
+      - name: step_goal
+        required: true
+        description: "The purpose of this area in the deck-to-config workflow."
+      - name: required_inputs
+        required: true
+        description: "Inputs required before HSConfig can make strong non-conservative config decisions."
+      - name: produced_outputs
+        required: true
+        description: "Machine-readable artifacts, reports, or runtime config files this area should produce."
+      - name: documented_capabilities
+        required: true
+        description: "Capabilities explicitly supported by documented HearthRanger, Hearthstone, or local HSConfig sources."
+      - name: current_hsconfig_support
+        required: true
+        description: "What the current local HSConfig implementation already supports."
+      - name: observed_gap
+        required: true
+        description: "Gap between desired direct guide-aligned config output and current behavior."
+      - name: aggressive_generation_policy
+        required: true
+        description: "How HSConfig should be less conservative while staying syntax-safe and source-backed."
+      - name: validation_gates
+        required: true
+        description: "Checks required before downstream steps trust generated artifacts."
+      - name: recommended_design_change
+        required: true
+        description: "Concrete architecture, module, CLI, contract, or skill-doc change recommended."
+      - name: never_autogenerate_without
+        required: true
+        description: "Evidence or validation required before emitting runtime config rows."
+      - name: must_cite_sources
+        required: true
+        description: "Source URLs or local files that support the finding."
+      - name: uncertain
+        required: true
+        description: "Field names with uncertain values."

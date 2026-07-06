@@ -5,7 +5,7 @@ from hsconfig.io import write_json
 from hsconfig.validate_package import validate_config_package
 
 
-def test_compile_cardid_behaviors_emit_valid_files_with_provenance(tmp_path: Path):
+def test_compile_cardid_behaviors_emit_valid_files_with_clean_runtime_rows(tmp_path: Path):
     contract = {
         "deck_name": "Fixture Aggro",
         "cards": {
@@ -26,9 +26,8 @@ def test_compile_cardid_behaviors_emit_valid_files_with_provenance(tmp_path: Pat
 
     assert set(files) == {"EX1_001.json", "EX1_002.json"}
     assert files["EX1_001.json"]["GameCardId"] == "EX1_001"
-    assert files["EX1_001.json"]["InHandPlayPriority"]["values"][0]["source_claim_ids"] == [
-        "claim_a"
-    ]
+    priority_row = files["EX1_001.json"]["InHandPlayPriority"]["values"][0]
+    assert set(priority_row) == {"comment", "condition", "value"}
     assert "BeforeBattlecryTargetBonus" in files["EX1_001.json"]
     assert "OnDiscoverCardBonus" in files["EX1_002.json"]
 
@@ -94,3 +93,34 @@ def test_compile_cardid_treats_backed_confidence_lanes_as_stronger_than_generic(
     assert files["EX1_GUIDE.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
     assert files["EX1_STATIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
     assert files["EX1_GENERIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "5"
+
+
+def test_compile_cardid_routes_targeting_intent_to_specific_bonus_block():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "DMF_090": {
+                "roles": ["deck_card"],
+                "source_claim_ids": [],
+                "confidence": "generic_low_confidence",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "DMF_090",
+            "intent": "prefer_enemy_hero",
+            "roles": ["prefer_enemy_hero"],
+            "source_claim_ids": ["claim_a"],
+            "confidence": "guide_backed",
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    assert "BeforePlayCardBonus" in files["DMF_090.json"]
+    bonus_values = files["DMF_090.json"]["BeforePlayCardBonus"]["values"]
+    assert len(bonus_values) == 1
+    assert bonus_values[0]["value"] == "12"

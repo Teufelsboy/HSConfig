@@ -1,0 +1,95 @@
+{
+  "step_name": "ShadowPriest Evidence Mapping Example",
+  "source_type": "community_guide",
+  "step_goal": "Use ShadowPriest with Darkbishop Benedictus as a concrete depth-audit example and decide which source-backed guide claims should compile into HSConfig runtime surfaces, which should only influence report-level intent, and which need stronger evidence before any runtime row is emitted.",
+  "required_inputs": [
+    "The local ShadowPriest deck identity from C:/Users/darbo/Documents/HSConfig/README.md and C:/Users/darbo/Documents/HSConfig/src/hsconfig/deckstring_decode.py.",
+    "Static card and semantic handling from C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_metadata.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/semantic_enrichment.py.",
+    "Research-bundle, gameplan-contract, and surface-routing behavior from C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py, C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py, and C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py.",
+    "Runtime compiler boundaries from C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py, C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py, C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py, and C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py.",
+    "Community guide claims for Shadow Priest playstyle, mulligan, and burst posture from note.com, HearthPwn, and Out of Games.",
+    "Official HearthRanger syntax references for CARDID.json and Combo.json surfaces."
+  ],
+  "produced_outputs": [
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-06-hsconfig-guide-claim-depth/results/ShadowPriest_Evidence_Mapping_Example.json",
+    "A source-backed routing verdict for five claim families: Mind Spike, proactive burn pressure, mulligan keeps, target posture, and combo lines.",
+    "A concrete list of what should compile into GlobalValues.json, Mulligan.json, CARDID.json, and Combo.json for this deck.",
+    "A report-only boundary list for claims that remain too vague, too matchup-conditional, or too target-specific for safe runtime emission."
+  ],
+  "documented_capabilities": [
+    "HSConfig can preserve exact ShadowPriest CardIDs from the deckstring and keep row-level provenance through research and compilation.",
+    "HSConfig can recognize Darkbishop Benedictus as a start-of-game Shadowform enabler and carry the linked Mind Spike hero power into deckwide semantic outputs.",
+    "HSConfig can raise MyHeroPowerValue and broad face-pressure GlobalValues overlays when the deck semantics imply hero-power pressure.",
+    "HSConfig can emit Mulligan.json hold rows for guide-backed concrete keeps when the keep target is explicit.",
+    "HSConfig can emit one CARDID.json file per card and currently lowers generic pressure and role-derived priority rows into supported runtime files.",
+    "HSConfig can emit Combo.json rows when a guide gives at least two exact CardIDs and an explicit same-turn or cross-turn sequence operator.",
+    "HSConfig can keep unsupported or under-specified claims visible through report-level artifacts instead of silently dropping them."
+  ],
+  "current_hsconfig_support": [
+    "Mind Spike is already supported indirectly: static semantics detect Darkbishop Benedictus -> Mind Spike, the gameplan contract records the deckwide effect, and GlobalValues intent can raise MyHeroPowerValue.",
+    "Broad proactive burn pressure is already supported indirectly through GlobalValues overlays such as OppGlobalHeroHealth increase and OppGlobalMinionIntrinsicValue decrease, plus generic pressure-oriented CARDID priority rows.",
+    "Concrete opener keeps like Papercraft Angel, Ship's Chirurgeon, Twilight Deceptor, Shadowbomber, and Voidtouched Attendant can be represented in Mulligan.json when the claim is unconditional and tied to specific card IDs.",
+    "A concrete early-turn line such as Acupuncture >> Frenzied Felwing can be represented in Combo.json because the guide names the cards and the local ShadowPriest deck contains both card IDs.",
+    "Report-level provenance can already retain the reason why a claim was compiled or suppressed."
+  ],
+  "observed_gap": [
+    "There is still no dedicated hero-power targeting router for Mind Spike, so claims like 'use Mind Spike every turn' or 'send Mind Spike face unless the board-control breakpoint matters' cannot yet lower into a specific runtime target rule.",
+    "Current CARDID lowering is still too generic for target posture. Community claims such as 'go face against combo and control, but use hero power on minions when preserving board control matters' require target-specific attack and spell routing that compile_cardid.py does not currently build from guide evidence.",
+    "Matchup-conditional mulligans such as 'Papercraft Angel priority increases against aggro' need a documented condition-capability matrix before HSConfig should emit a non-trivial Mulligan.json condition string.",
+    "Burst packages such as Voidtouched Attendant plus Mind Blast, Shadowbomber plus Raise Dead, or 'save burst for lethal' are strategically clear but still too vague for safe Combo.json emission when the source does not give exact order, timing window, or value segments.",
+    "Compound guide sentences can currently over-attach meaning across cards. A mixed statement about a mulligan keep and a combo line can cause extra mulligan anchors or an oversized combo row unless the evidence is split into smaller atomic claims first."
+  ],
+  "aggressive_generation_policy": [
+    "Always compile Darkbishop Benedictus into deckwide Mind Spike pressure intent and raise MyHeroPowerValue in GlobalValues.json; this is static semantic authority, not a speculative guide inference.",
+    "Compile unconditional, card-specific keeps into Mulligan.json instead of falling back to neutral opener behavior.",
+    "Use GlobalValues.json to encode broad proactive burn posture, because the guides consistently describe ShadowPriest as an archetype that races face damage and values closing speed over attrition.",
+    "Emit Combo.json only for exact card sequences with explicit order and operator. Do not guess combo order from general burst language.",
+    "Keep target-posture claims visible in report-only guidance until HSConfig has a documented target-intent router for hero power, spells, and physical attacks.",
+    "Split compound guide prose into atomic evidence units before routing so mulligan, pressure, and combo claims do not leak into each other."
+  ],
+  "validation_gates": [
+    "The local ShadowPriest deck must contain every card named in an emitted Mulligan.json or Combo.json rule.",
+    "Mind Spike support must be grounded in static local semantics: Darkbishop Benedictus has to resolve to a deckwide replace_starting_hero_power effect linked to EX1_625t.",
+    "Every unconditional keep claim emitted to Mulligan.json must name an exact card ID and preserve its source URL or local claim id.",
+    "Every Combo.json row must have at least two exact card IDs, an explicit operator, and the same number of combo and value segments.",
+    "Every emitted CARDID.json, Mulligan.json, and Combo.json file must pass supported-surface validation and strict JSON validation.",
+    "Every source-backed claim that is not safely emittable must remain visible in a report-only artifact with a reason such as target_posture_not_lowered, condition_not_proven_safe, or combo_sequence_under_specified.",
+    "Atomic claim segmentation must be checked before compilation so a sentence that mixes mulligan and combo advice does not incorrectly mark all referenced cards as keeps."
+  ],
+  "recommended_design_change": [
+    "Add an evidence-normalization layer that splits community guide prose into atomic claim rows before routing. One atomic row should describe one keep, one target posture, or one combo sequence, not all three at once.",
+    "Add a target-intent router that maps guide claims to the most specific documented CARDID blocks such as BeforePhysicalAttackBonus, BeforeBattlecryTargetBonus, and BeforeUseHeroPowerBonus instead of only generic pressure bonuses.",
+    "Add a mulligan capability matrix that explicitly distinguishes safe unconditional keeps from matchup-conditional or coin-conditional rules that still need proven syntax support.",
+    "Add a combo evidence contract with explicit operator, timing window, value segments, and allowed report-only reasons so HSConfig can separate exact combo lines from vague burst packages cleanly.",
+    "Add a report_only_guidance_registry.json artifact for strategic claims like 'go face versus control' or 'save burst for lethal' that matter operationally but are not yet safe runtime rows."
+  ],
+  "never_autogenerate_without": [
+    "Exact local deck identity and exact card IDs for every claimed keep or combo piece.",
+    "A direct source-backed link between Darkbishop Benedictus and Mind Spike before any hero-power pressure adjustment is emitted.",
+    "An explicit card-specific keep statement before creating a Mulligan.json hold row.",
+    "An explicit ordered sequence with two or more exact card IDs before creating a Combo.json row.",
+    "A proven condition-syntax path before emitting matchup-conditional mulligan or target-specific runtime conditions.",
+    "A suppression or report-only path for any guide claim that is strategically useful but not yet safely representable."
+  ],
+  "must_cite_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/deckstring_decode.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_metadata.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/semantic_enrichment.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_gameplan_contract.py",
+    "https://note.com/hasbou2u/n/n0ec5759fbeee?hl=en",
+    "https://www.hearthpwn.com/decks/1394605-legend-wild-shadow-priest",
+    "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+    "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm"
+  ],
+  "uncertain": []
+}

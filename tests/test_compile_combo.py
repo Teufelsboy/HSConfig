@@ -24,9 +24,9 @@ def test_compile_combo_returns_valid_segment_parity_payload(tmp_path: Path):
 
     assert combo is not None
     row = combo["ComboList"]["values"][0]
-    assert row["combo"] == "EX1_001 >> EX1_002"
-    assert row["value"] == "12 >> 8"
-    assert row["source_claim_ids"] == ["claim_a"]
+    assert row["combo"] == "EX1_001>>EX1_002"
+    assert row["value"] == "12>>8"
+    assert set(row) == {"comment", "condition", "combo", "value"}
 
     deck_dir = tmp_path / "CustomConfig" / "deck"
     write_json(deck_dir / "Combo.json", combo)
@@ -46,3 +46,26 @@ def test_compile_combo_rejects_invalid_segment_parity():
                 "combos": [{"rule_id": "bad", "cards": ["EX1_001", "EX1_002"], "values": ["10"]}],
             }
         )
+
+
+def test_compile_combo_accepts_combo_plan_rows():
+    combo = compile_combo(
+        {"deck_name": "Fixture"},
+        sequences=[
+            {
+                "rule_id": "combo_plan_1",
+                "cards": ["CARD_A", "CARD_B"],
+                "values": ["10", "10"],
+                "operator": ">>",
+                "source_claim_ids": ["claim_a"],
+            }
+        ],
+    )
+
+    assert combo is not None
+    assert combo["ComboList"]["values"][0] == {
+        "comment": "Fixture: combo_plan_1",
+        "condition": "*",
+        "combo": "CARD_A>>CARD_B",
+        "value": "10>>10",
+    }

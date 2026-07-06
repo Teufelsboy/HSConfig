@@ -8,17 +8,22 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.card_metadata import hydrate_card_metadata
+from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
+from hsconfig.combo_plan import build_combo_plan
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract
+from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
+from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
+from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.models import InputManifest
 from hsconfig.research_contract import (
     build_research_contract_bundle,
@@ -65,6 +70,8 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--runtime-root", required=True)
     build.add_argument("--cards-json")
     build.add_argument("--claims-json")
+    build.add_argument("--guide-sources-json")
+    build.add_argument("--plan-reports-dir")
     build.add_argument("--allow-placeholder", action="store_true")
     build.add_argument("--json", action="store_true")
 
@@ -75,6 +82,8 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--runtime-root", required=True)
     prepare.add_argument("--cards-json")
     prepare.add_argument("--claims-json")
+    prepare.add_argument("--guide-sources-json")
+    prepare.add_argument("--plan-reports-dir")
     prepare.add_argument("--allow-placeholder", action="store_true")
     prepare.add_argument("--json", action="store_true")
 
@@ -84,6 +93,7 @@ def _build_parser() -> argparse.ArgumentParser:
     research_contract.add_argument("--out", required=True)
     research_contract.add_argument("--cards-json")
     research_contract.add_argument("--claims-json")
+    research_contract.add_argument("--guide-sources-json")
     research_contract.add_argument("--allow-placeholder", action="store_true")
     research_contract.add_argument("--json", action="store_true")
 
@@ -107,6 +117,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     )
     cards = cards_payload["cards"]
     claims = _load_claims(args.claims_json)
+    guide_sources = _load_guide_sources(getattr(args, "guide_sources_json", None))
     source_records = _source_records_from_cards(cards)
     deck_identity = build_deck_identity(
         deck_name=args.deck_name,
@@ -135,17 +146,28 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         )
         semantic_report["semantic_enrichment_status"] = "partial"
     enriched_card_metadata = {"cards": semantic_report["cards"]}
-    source_claims = normalize_source_claims(claims)
+    source_documents = [*guide_sources, *_guide_documents_from_legacy_claims(claims)]
+    guide_claim_bundle = build_guide_claim_bundle(
+        deck_identity=deck_identity,
+        card_metadata=enriched_card_metadata,
+        source_documents=source_documents,
+    )
+    source_claims = {
+        "claims": guide_claim_bundle["claims"],
+        "claim_count": len(guide_claim_bundle["claims"]),
+    }
     research_bundle = build_research_contract_bundle(
         deck_identity=deck_identity,
         card_metadata=enriched_card_metadata,
         source_claims=source_claims,
+        guide_claim_bundle=guide_claim_bundle,
     )
     return {
         "cards_payload": cards_payload,
         "deck_identity": deck_identity,
         "card_metadata": enriched_card_metadata,
         "semantic_report": semantic_report,
+        "guide_claim_bundle": guide_claim_bundle,
         "source_claims": source_claims,
         "research_bundle": research_bundle,
     }
@@ -165,14 +187,13 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     deck_slug = slugify_deck_name(args.deck_name)
     deck_dir = out / "CustomConfig" / deck_slug
     reports_dir = out / "reports"
-    if deck_dir.exists():
-        shutil.rmtree(deck_dir)
 
     context = _build_preconfig_context(args)
     cards_payload = context["cards_payload"]
     deck_identity = context["deck_identity"]
     card_metadata = context["card_metadata"]
     semantic_report = context["semantic_report"]
+    guide_claim_bundle = context["guide_claim_bundle"]
     source_claims = context["source_claims"]
     research_bundle = context["research_bundle"]
     gameplan_contract = build_gameplan_contract(
@@ -181,17 +202,58 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         source_claims=source_claims,
         research_bundle=research_bundle,
     )
+    plan_claims = list(guide_claim_bundle.get("claims", []))
+    mulligan_plan = build_mulligan_plan(
+        deck_name=args.deck_name,
+        claims=plan_claims,
+        card_roles=research_bundle.get("card_role_map", {}),
+    )
+    card_behavior_plan = route_card_behavior_claims(plan_claims)
+    combo_plan = build_combo_plan(
+        deck_cards=set(gameplan_contract.get("cards", {})),
+        claims=plan_claims,
+    )
+    global_values_authority_matrix = build_globalvalues_authority_matrix(
+        aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
+        claims=plan_claims,
+    )
+    plan_reports_dir = getattr(args, "plan_reports_dir", None)
+    if plan_reports_dir is not None:
+        plan_dir = Path(plan_reports_dir)
+        if not plan_dir.is_dir():
+            raise ValueError(f"--plan-reports-dir must be an existing directory: {plan_dir}")
+        guide_claim_bundle = _read_plan_report(plan_dir, "guide_claim_bundle.json", guide_claim_bundle)
+        mulligan_plan = _read_plan_report(plan_dir, "mulligan_plan_report.json", mulligan_plan)
+        card_behavior_plan = _read_plan_report(
+            plan_dir, "card_behavior_plan_report.json", card_behavior_plan
+        )
+        combo_plan = _read_plan_report(plan_dir, "combo_plan_report.json", combo_plan)
+        global_values_authority_matrix = _read_plan_report(
+            plan_dir, "global_values_authority_matrix.json", global_values_authority_matrix
+        )
+    gameplan_contract = {
+        **gameplan_contract,
+        "guide_claim_bundle": guide_claim_bundle,
+        "mulligan_plan": mulligan_plan,
+        "card_behavior_plan": card_behavior_plan,
+        "combo_plan": combo_plan,
+        "global_values_authority_matrix": global_values_authority_matrix,
+    }
     surface_intent = build_surface_intent(gameplan_contract)
 
     baseline_receipt = load_globalvalues_baseline(args.runtime_root)
     baseline = baseline_receipt["baseline"]
     globalvalues = compile_globalvalues(baseline, gameplan_contract)
+    if deck_dir.exists():
+        shutil.rmtree(deck_dir)
     write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
     write_json(deck_dir / "Mulligan.json", compile_mulligan(gameplan_contract))
-    for filename, payload in compile_cardid_behaviors(gameplan_contract).items():
+    for filename, payload in compile_cardid_behaviors(
+        gameplan_contract, rows=card_behavior_plan["rows"]
+    ).items():
         write_json(deck_dir / filename, payload)
 
-    combo = compile_combo(gameplan_contract)
+    combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
     if combo is not None:
         write_json(deck_dir / "Combo.json", combo)
 
@@ -204,6 +266,12 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     ).to_dict()
     manifest["cards_json"] = str(Path(args.cards_json)) if args.cards_json else None
     manifest["claims_json"] = str(Path(args.claims_json)) if args.claims_json else None
+    manifest["guide_sources_json"] = (
+        str(Path(args.guide_sources_json)) if getattr(args, "guide_sources_json", None) else None
+    )
+    manifest["plan_reports_dir"] = (
+        str(Path(args.plan_reports_dir)) if getattr(args, "plan_reports_dir", None) else None
+    )
     manifest["card_source"] = cards_payload["card_source"]
     write_json(reports_dir / "input_manifest.json", manifest)
     write_json(reports_dir / "deck_identity.json", deck_identity)
@@ -215,6 +283,10 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if cards_payload.get("card_id_map") is not None:
         write_json(reports_dir / "card_id_map.json", cards_payload["card_id_map"])
     write_json(reports_dir / "semantic_enrichment_report.json", semantic_report)
+    write_json(reports_dir / "guide_claim_bundle.json", guide_claim_bundle)
+    write_json(reports_dir / "source_evidence_index.json", guide_claim_bundle["source_evidence_index"])
+    write_json(reports_dir / "claim_coverage_report.json", guide_claim_bundle["coverage"])
+    write_json(reports_dir / "unsupported_claims_report.json", guide_claim_bundle["unsupported_claims"])
     (reports_dir / "card_semantic_audit.md").write_text(
         render_semantic_audit_markdown(semantic_report),
         encoding="utf-8",
@@ -223,6 +295,14 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_research_contract_bundle(research_bundle, reports_dir)
     write_json(reports_dir / "gameplan_contract.json", gameplan_contract)
     write_json(reports_dir / "surface_intent.json", surface_intent)
+    write_json(reports_dir / "mulligan_plan_report.json", mulligan_plan)
+    write_json(reports_dir / "card_behavior_plan_report.json", card_behavior_plan)
+    write_json(reports_dir / "combo_plan_report.json", combo_plan)
+    write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
+    write_json(
+        reports_dir / "global_values_blocked_changes.json",
+        global_values_authority_matrix["blocked_until_runtime_evidence"],
+    )
     write_json(reports_dir / "globalvalues_baseline.json", baseline)
     write_json(reports_dir / "globalvalues_baseline_receipt.json", baseline_receipt)
     write_json(reports_dir / "globalvalues_profile.json", globalvalues["profile"])
@@ -242,6 +322,9 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "package": str(out),
             "deck_slug": deck_slug,
             "errors": report["errors"],
+            "guide_claims_count": len(guide_claim_bundle["claims"]),
+            "guide_backed_cards": guide_claim_bundle["coverage"]["guide_backed_cards"],
+            "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
         },
         code,
     )
@@ -373,6 +456,100 @@ def _load_claims(claims_json: str | None) -> list[dict[str, Any]]:
             raise ValueError("Every claim row must be an object")
         claims.append(dict(claim))
     return claims
+
+
+def _load_guide_sources(guide_sources_json: str | None) -> list[dict[str, Any]]:
+    if guide_sources_json is None:
+        return []
+    payload = read_json(guide_sources_json)
+    if isinstance(payload, dict):
+        payload = payload.get("sources", payload.get("documents", payload.get("guide_sources")))
+    if not isinstance(payload, list):
+        raise ValueError("--guide-sources-json must contain a list or an object with a sources list")
+    sources = []
+    for source in payload:
+        if not isinstance(source, dict):
+            raise ValueError("Every guide source row must be an object")
+        sources.append(dict(source))
+    return sources
+
+
+def _guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not claims:
+        return []
+    documents: dict[tuple[str, str], dict[str, Any]] = {}
+    for claim in claims:
+        source_url = str(claim.get("url", ""))
+        source_title = str(claim.get("source_title", claim.get("source", "legacy claims")))
+        key = (source_url, source_title)
+        document = documents.setdefault(
+            key,
+            {
+                "source_url": source_url,
+                "source_title": source_title,
+                "source_family": str(claim.get("source", "legacy_claims")),
+                "retrieved_at": str(claim.get("retrieved_at", "")),
+                "claims": [],
+            },
+        )
+        document["claims"].append(_legacy_claim_to_guide_claim(claim))
+    return list(documents.values())
+
+
+def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    text = str(claim.get("claim", ""))
+    claim_type = str(claim.get("claim_type", "general")).lower()
+    cards = [str(card) for card in claim.get("cards", [])]
+    if "combo" in claim_type:
+        claim_kind = "combo_sequence"
+    elif "mulligan" in claim_type or "keep" in text.lower():
+        claim_kind = "mulligan_keep"
+    elif any(marker in text.lower() for marker in ("face", "target", "enemy hero")):
+        claim_kind = "targeting_rule"
+    elif any(marker in text.lower() for marker in ("pressure", "aggressive", "aggro", "burn")):
+        claim_kind = "gameplan_posture"
+    else:
+        claim_kind = "card_role"
+    converted = {
+        "claim_kind": claim_kind,
+        "cards": cards,
+        "stance": _legacy_stance(claim_kind, text),
+        "evidence_text_short": text,
+        "source_confidence": "high" if claim.get("source") == "guide" else "medium",
+    }
+    if claim_kind == "combo_sequence":
+        converted["sequence"] = cards
+        if "values" in claim:
+            converted["values"] = claim["values"]
+    for optional_key in ("condition", "conditions"):
+        if optional_key in claim:
+            converted[optional_key] = claim[optional_key]
+    return converted
+
+
+def _legacy_stance(claim_kind: str, text: str) -> str:
+    lowered = text.lower()
+    if claim_kind == "mulligan_keep":
+        return "keep"
+    if claim_kind == "combo_sequence":
+        return "ordered_combo"
+    if claim_kind == "targeting_rule" and ("face" in lowered or "enemy hero" in lowered):
+        return "prefer_enemy_hero"
+    if claim_kind == "gameplan_posture":
+        return "aggressive"
+    if "pressure" in lowered:
+        return "pressure"
+    return "deck_card"
+
+
+def _read_plan_report(plan_dir: Path, filename: str, fallback: dict[str, Any]) -> dict[str, Any]:
+    path = plan_dir / filename
+    if not path.exists():
+        return fallback
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        raise ValueError(f"Plan report must be an object: {path}")
+    return payload
 
 
 def _placeholder_cards(*, deck_name: str, deck_code: str) -> list[dict[str, Any]]:

@@ -1,0 +1,92 @@
+{
+  "step_name": "GlobalValues Authority Matrix",
+  "source_type": "official_docs",
+  "step_goal": "Keep GlobalValues.json as a complete runtime-baseline profile while allowing a limited set of explainable pre-run deck-posture overlays that are documented, source-backed, and reversible.",
+  "required_inputs": [
+    "Exact deck identity: deck name, deck code, resolved CardIDs, and any linked hero-power or generated-entity CardIDs that affect deck posture.",
+    "Official VisionAI source pages for JSON syntax, GlobalValues.json, and card behavior, including the documented board-value formula and documented BeforeUseHeroPowerBonus surface.",
+    "A live or bundled default GlobalValues.json baseline copied in values-block form, with baseline source path or hash recorded.",
+    "A source-backed gameplan or research contract that states pressure posture, hero-power posture, and any requested GlobalValues overlays with per-key reasons in English.",
+    "A per-key authority model that separates pre_run_overlay_allowed, copy_baseline_only, and runtime_evidence_required keys before compilation starts."
+  ],
+  "produced_outputs": [
+    "CustomConfig/<deck_slug>/GlobalValues.json as a complete baseline-derived file.",
+    "reports/global_values_key_profile_report.json with one decision for every copied baseline key and every generated known overlay key.",
+    "reports/globalvalue_intent.json or equivalent contract rows for pressure bias, overlay reasons, expected effect, and rollback posture.",
+    "validation_report.json or package-validation output proving baseline completeness, values-array shape, and GameCardId correctness.",
+    "A machine-readable blocked-or-suppressed list for requested GlobalValues numeric changes that are not authorized pre-run."
+  ],
+  "documented_capabilities": [
+    "Official HearthRanger docs explicitly recommend copying GlobalValues.json from the default directory and editing that copy, not inventing a fresh partial file.",
+    "Official docs define board value as own hand, hero, hero power, weapon, secret, minions, and deck minus the corresponding opponent components.",
+    "Official docs define Final board value = first turn board value * FirstTurnValueWeight + second turn board value * SecondTurnValueWeight, with default 0 and 1 weights and an aggro example of 1 and 0.",
+    "Official card-behavior docs expose BeforeUseHeroPowerBonus as a documented runtime surface, so hero-power posture can be expressed more locally than with deck-wide tuning alone.",
+    "Official docs show GlobalValues rows as values arrays with string values and conditions, so HSConfig can preserve block shape while changing authorized numeric values.",
+    "Official docs acknowledge that many other global values exist but do not provide a complete machine-readable semantic catalog for every key."
+  ],
+  "current_hsconfig_support": [
+    "HSConfig already builds GlobalValues.json baseline-first from the runtime default when available and falls back to a bundled baseline when it is not.",
+    "HSConfig already profiles every copied key, classifies keys, and emits a complete GlobalValues.json plus a key-profile report.",
+    "HSConfig already supports explainable overlay reasons per key and records changed versus unchanged keys.",
+    "HSConfig already supports pre-run turn-weight overlays driven by aggression-profile speed and can raise MyHeroPowerValue through a documented overlay path.",
+    "HSConfig already adds known overlay defaults such as MyHeroPowerValue when the runtime baseline does not contain that key, then validates the result against the baseline and profile."
+  ],
+  "observed_gap": [
+    "HSConfig does not yet expose one explicit authority matrix that tells callers which GlobalValues keys are safe for static pre-run posture overlays versus which keys must stay baseline-only or runtime-evidence-only.",
+    "The current implementation can express pressure posture through overlay bundles, but broad pressure-oriented numeric changes are not yet governed by a first-class per-key authorization contract with blocked reasons.",
+    "Turn-weight overlays are currently implementation-driven, while the official docs describe a stronger aggro example; the repo needs one declared policy for when to use softer ratios versus stronger documented examples.",
+    "Hero-power posture is supported, but the contract boundary between a safe static hero-power assumption and a blocked runtime-only hero-power tuning change is not yet explicit enough.",
+    "There is no dedicated report that cleanly distinguishes requested-but-blocked broad GlobalValues tuning from authorized pre-run posture overlays."
+  ],
+  "aggressive_generation_policy": [
+    "Always start from the full copied baseline and require a decision for every key; stronger generation means more explicit authority and reasoning, not fewer copied keys.",
+    "Allow FirstTurnValueWeight and SecondTurnValueWeight overlays pre-run when the gameplan contract explicitly authorizes an aggro, tempo, or pressure posture and records the expected board-value effect plus rollback to the baseline.",
+    "Allow a pre-run MyHeroPowerValue increase only when static card semantics or guide claims prove that hero-power pressure is part of the deck plan, such as a transformed damage hero power or a documented hero-power-centric archetype.",
+    "Allow small named pressure overlays only as per-key decisions with separate reason, source refs, baseline value, new value, and expected effect; never as a blanket global aggression multiplier.",
+    "Prefer card-local CARDID.json hero-power or target rows when the intent is narrow and local; reserve GlobalValues.json for deck-wide posture that the official board-value model actually covers.",
+    "Keep under-explained or weakly justified keys at copy_baseline until runtime evidence can connect them to observed board-value failures."
+  ],
+  "validation_gates": [
+    "The generated GlobalValues.json must retain every baseline key, keep GameCardId equal to GlobalValues, and keep values-array block shape for every configurable key.",
+    "Every overlay must record old_value, new_value, reason, expected effect, source refs, and rollback posture before the package is considered ready.",
+    "If an overlay claims a baseline row exists, its recorded old_value must match the current copied baseline row; drift must fail closed.",
+    "Every key in the profile report must end in one of three states: baseline_confirmed, overlay_changed, or blocked_with_reason.",
+    "A requested broad multi-key pressure change must be rejected unless each affected key is separately authorized and explained.",
+    "Package validation must pass after compilation, and blocked changes must remain visible in reports instead of being silently dropped."
+  ],
+  "recommended_design_change": [
+    "Add a first-class global_values_authority_matrix contract or report that assigns every GlobalValues key a category, board-value component, step1 gate, allowed pre-run overlay policy, and blocked-without-runtime-evidence policy.",
+    "Teach compile_globalvalues to consume that authority matrix so the output profile can say not only what changed, but why a requested numeric change was copied, changed, or blocked.",
+    "Split pressure posture into named pre-run overlay bundles such as turn_weight_posture, hero_power_pressure, and broad_pressure_bundle, where every bundle expands into explicit per-key rows rather than hidden heuristics.",
+    "Emit a dedicated global_values_blocked_changes.json report so guide-backed but runtime-unsafe numeric requests stay auditable instead of disappearing into generic suppression text.",
+    "Align the Step 1 contract language across HS and HSConfig so pre_run_assumption_overlay_allowed is clearly different from fresh runtime evidence authorization."
+  ],
+  "never_autogenerate_without": [
+    "Never autogenerate any GlobalValues.json row without a copied baseline row or an explicit generated-overlay default that the compiler knows how to materialize safely.",
+    "Never autogenerate a broad multi-key pressure retune, a blanket increase or decrease, or a more-than-five-key pressure bundle without fresh runtime evidence and per-key authorization.",
+    "Never autogenerate opponent-global attack, health, intrinsic-value, weapon, or similar board-value component retunes from one guide sentence alone; these must remain runtime-evidence-only because they can shift many unrelated decisions.",
+    "Never autogenerate a hero-power value change when the exact transformed or deck-relevant hero-power identity is unresolved.",
+    "Never autogenerate undocumented or weakly explained GlobalValues keys simply because they appear in the baseline; baseline presence alone is enough to copy, not enough to tune.",
+    "Never autogenerate post-run style finetuning claims without baseline-hash continuity, active-config identity, legal options, outcome references, and repeated runtime evidence rows.",
+    "Never autogenerate a GlobalValues row in scalar form or any shape that diverges from the copied values-array structure."
+  ],
+  "must_cite_sources": [
+    "Official HearthRanger JSON syntax page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official HearthRanger GlobalValues page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official HearthRanger card behavior page: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/specs/2026-07-05-hsconfig-design.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-05-hsconfig-research-contract-builder.md",
+    "C:/Users/darbo/Documents/HS/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HS/docs/operator/generated-semantic-contracts.md",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/gameplan_contract.schema.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values_key_authority.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/global_values.py",
+    "C:/Users/darbo/Documents/HS/docs/superpowers/specs/2026-06-08-step1-deep-gap-improvement-audit-v3-design.md",
+    "C:/Users/darbo/Documents/HS/skills/hearthranger-config/references/visionai-syntax-contract.md",
+    "C:/Users/darbo/Documents/HS/skills/hearthranger-config/references/visionai-authoring.md"
+  ],
+  "uncertain": []
+}
