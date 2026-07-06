@@ -6,6 +6,11 @@ SHADOWPRIEST_CODE = (
     "KgG17oG1cEGAAA="
 )
 
+MECHPALA_CODE = (
+    "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/"
+    "AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA=="
+)
+
 
 def test_decode_shadowpriest_deck_code_to_exact_cardids():
     decoded = decode_deck_code(SHADOWPRIEST_CODE)
@@ -51,3 +56,19 @@ def test_decode_receipt_contains_dbf_and_cardid_map():
     card_id_map = decoded["card_id_map"]
     assert card_id_map["545"]["card_id"] == "DS1_233"
     assert card_id_map["64429"]["card_id"] == "SW_446"
+
+
+def test_decode_mechpala_sideboards_from_hearthsim_triplets():
+    decoded = decode_deck_code(MECHPALA_CODE)
+
+    assert decoded["hero_dbf_id"] == 671
+    assert decoded["format"] == "FT_WILD"
+    assert decoded["card_count_total"] == 30
+    assert decoded["sideboard_count"] == 3
+    assert decoded["deckstring_decode_receipt"]["sideboard_unique_card_count"] == 3
+    assert len(decoded["sideboards"]) == 1
+
+    sideboard = decoded["sideboards"][0]
+    assert sideboard["owner_dbf_id"] == 102983
+    assert sideboard["owner_card_id"]
+    assert {card["dbf_id"] for card in sideboard["cards"]} == {104947, 104950, 110446}

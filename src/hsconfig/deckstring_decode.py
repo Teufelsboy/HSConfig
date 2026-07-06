@@ -138,27 +138,50 @@ def _card_row(cards_db: dict[int, Any], dbf_id: int, count: int) -> dict[str, An
 
 
 def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+    grouped: dict[int | None, list[tuple[int, int]]] = {}
     if not sideboards:
-        return rows
-    for index, sideboard in enumerate(sideboards, start=1):
-        owner_dbf_id = None
-        cards_payload = []
+        return []
+
+    for sideboard in sideboards:
+        if isinstance(sideboard, tuple) and len(sideboard) == 3:
+            card_dbf_id, count, owner_dbf_id = sideboard
+            grouped.setdefault(int(owner_dbf_id), []).append((int(card_dbf_id), int(count)))
+            continue
         if isinstance(sideboard, tuple) and len(sideboard) >= 2:
-            owner_dbf_id = sideboard[0]
+            owner_dbf_id = int(sideboard[0]) if sideboard[0] is not None else None
             cards_payload = sideboard[1] or []
-        elif isinstance(sideboard, dict):
-            owner_dbf_id = sideboard.get("owner") or sideboard.get("owner_dbf_id")
+            grouped.setdefault(owner_dbf_id, []).extend(
+                (int(dbf_id), int(count)) for dbf_id, count in cards_payload
+            )
+            continue
+        if isinstance(sideboard, dict):
+            owner = sideboard.get("owner") or sideboard.get("owner_dbf_id")
+            owner_dbf_id = int(owner) if owner is not None else None
             cards_payload = sideboard.get("cards", [])
-        card_rows = [
-            _card_row(cards_db, int(dbf_id), int(count))
-            for dbf_id, count in cards_payload
-        ]
+            grouped.setdefault(owner_dbf_id, []).extend(
+                (int(dbf_id), int(count)) for dbf_id, count in cards_payload
+            )
+            continue
+        raise ValueError(f"Unsupported sideboard row shape: {sideboard!r}")
+
+    rows: list[dict[str, Any]] = []
+    for index, (owner_dbf_id, cards_payload) in enumerate(
+        sorted(grouped.items(), key=lambda item: str(item[0])),
+        start=1,
+    ):
+        owner_card_id = None
+        if owner_dbf_id is not None:
+            owner_card = cards_db.get(owner_dbf_id)
+            owner_card_id = str(owner_card.card_id) if owner_card is not None else None
         rows.append(
             {
                 "sideboard_index": index,
-                "owner_dbf_id": int(owner_dbf_id) if owner_dbf_id is not None else None,
-                "cards": card_rows,
+                "owner_dbf_id": owner_dbf_id,
+                "owner_card_id": owner_card_id,
+                "cards": [
+                    _card_row(cards_db, dbf_id, count)
+                    for dbf_id, count in sorted(cards_payload)
+                ],
             }
         )
     return rows

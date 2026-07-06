@@ -42,6 +42,25 @@ def test_build_deck_identity_from_explicit_cards():
     assert len(identity["deck_fingerprint"]) == 64
 
 
+def test_build_deck_identity_preserves_sideboard_owner_identity():
+    deck_identity = build_deck_identity(
+        deck_name="Mech Paladin",
+        deck_code="test-code",
+        cards=[{"card_id": "CORE_EX1_383", "dbf_id": 671, "count": 30}],
+        sideboards=[
+            {
+                "sideboard_index": 1,
+                "owner_dbf_id": 102983,
+                "owner_card_id": "TOY_516",
+                "cards": [{"card_id": "TOY_517", "dbf_id": 104947, "count": 1}],
+            }
+        ],
+    )
+
+    assert deck_identity["sideboards"][0]["owner_dbf_id"] == 102983
+    assert deck_identity["sideboards"][0]["owner_card_id"]
+
+
 def test_build_deck_identity_rejects_missing_card_id():
     with pytest.raises(ValueError, match="card_id"):
         build_deck_identity(
