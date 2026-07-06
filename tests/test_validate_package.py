@@ -17,6 +17,10 @@ def test_supported_surface_accepts_special_and_cardid_json():
     assert "OnDiscoverCardBonus" in CARD_BEHAVIOR_BLOCKS
 
 
+def test_card_behavior_registry_includes_before_overkilled_bonus():
+    assert "BeforeOverkilledBonus" in CARD_BEHAVIOR_BLOCKS
+
+
 def test_supported_surface_rejects_non_json_and_invalid_cardid_names():
     assert not supported_surface("EX1_001.txt")
     assert not supported_surface("notes_EX1_001")
@@ -208,6 +212,22 @@ def test_validate_package_rejects_unsupported_card_behavior_block(tmp_path: Path
 
     assert report["status"] == "failed"
     assert any("unsupported card behavior block UnknownBlock" in error for error in report["errors"])
+
+
+def test_validate_package_accepts_before_overkilled_bonus_block(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "EX1_001.json",
+        {
+            "GameCardId": "EX1_001",
+            "ConfigComment": "test",
+            "BeforeOverkilledBonus": {"values": [{"condition": "*", "value": "1"}]},
+        },
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "passed"
 
 
 def test_validate_package_rejects_non_json_surface_with_underscore(tmp_path: Path):

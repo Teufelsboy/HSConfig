@@ -13,6 +13,7 @@ CARD_BEHAVIOR_BLOCKS = frozenset(
         "BeforeUseHeroPowerBonus",
         "BeforePhysicalAttackBonus",
         "BeforeEndTurnBonus",
+        "BeforeOverkilledBonus",
         "OnDiscoverCardBonus",
         "OnChooseOneCardBonus",
         "OnAdaptCardBonus",
