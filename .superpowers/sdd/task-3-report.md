@@ -47,3 +47,48 @@ No changes were required in `src/hsconfig/guide_source_builder.py`; the Task 3 i
 ## Concerns
 
 None.
+
+---
+
+## Task 3 Review Fix: Source Document Claim Validation
+
+## Status
+
+DONE
+
+## Fix Commit
+
+- `132b0ef69de61e8210d58bb081a885b3b3c35dca` (`fix: enforce source document claim validation`)
+
+## Files Changed
+
+- `src/hsconfig/source_document_builder.py`
+- `tests/test_source_document_builder.py`
+- `tests/test_guide_claim_builder.py`
+
+## Review Findings Fixed
+
+- Missing or blank `source_confidence` is now treated as `missing_claim_keys`; those claims are routed to `unsupported_claims` and are not promoted as `source_backed`.
+- Documents missing any `REQUIRED_SOURCE_KEYS` now promote zero claims. Each affected claim is emitted as unsupported evidence with `reason="missing_source_keys"` and the exact `missing_source_keys`.
+- `build_source_document_bundle(...)` now keeps its own `claim_coverage_report` source-only: cards without accepted source claims are `uncovered_low_confidence`. Static semantic coverage remains in `guide_claim_builder` only after static claim rows are appended.
+
+## Regression Tests Added
+
+- `test_missing_or_blank_source_confidence_is_not_promoted`
+- `test_missing_source_keys_reject_all_claims_from_document`
+- `test_source_document_coverage_is_source_only_without_static_backfill`
+- Added guide-bundle coverage assertions proving `static_semantics_backfilled` is reported only after static semantic claim rows exist.
+
+## Tests Run
+
+- `python -m pytest tests/test_source_document_builder.py tests/test_guide_claim_builder.py -q`
+  - Red before fix: `3 failed, 10 passed in 0.19s`
+  - Green after fix: `13 passed in 0.07s`
+- `python -m pytest tests/test_research_contract.py -q`
+  - Green after fix: `4 passed in 0.06s`
+- `git diff --check -- src/hsconfig/source_document_model.py src/hsconfig/source_document_builder.py src/hsconfig/guide_claim_builder.py tests/test_source_document_builder.py tests/test_guide_claim_builder.py`
+  - Passed; Git reported CRLF normalization warnings only.
+
+## Concerns
+
+None.
