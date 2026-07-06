@@ -202,6 +202,27 @@ def test_non_cardid_diagnostic_row_does_not_count_as_runtime_surface():
     assert row["first_missing_link"] == "needs_runtime_surface"
 
 
+def test_non_meaningful_cardid_row_keeps_fallback_runtime_surface_visibility():
+    report = _report_for_card(
+        card_id="CARD_009",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_009",
+                    "surface": "CardID.json",
+                    "meaningful_runtime_surface": False,
+                }
+            ]
+        },
+    )
+
+    row = report["cards"]["CARD_009"]
+    assert row["runtime_surfaces"] == ["CARD_009.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+
+
 def test_emitted_cardid_files_add_runtime_surface_without_marking_generic_card_ready():
     report = _report_for_card(
         card_id="CARD_008",

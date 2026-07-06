@@ -57,10 +57,11 @@ def build_config_readiness_report(
 ) -> dict[str, Any]:
     cards = _cards_from_deck(deck_identity, gameplan_contract)
     uncovered = {str(card) for card in claim_coverage.get("uncovered_cards", [])}
+    all_cardid_cards = _cards_from_any_card_behavior(card_behavior_plan)
     concrete_cardid_cards = _cards_from_card_behavior(card_behavior_plan)
     emitted_cardid_file_map = _emitted_cardid_file_map(
         emitted_cardid_files,
-        fallback_cardids=concrete_cardid_cards,
+        fallback_cardids=all_cardid_cards,
     )
     emitted_cardid_cards = set(emitted_cardid_file_map) & concrete_cardid_cards
     unsupported_condition_cards = _cards_from_unsupported_condition_suppression(
@@ -153,6 +154,14 @@ def _cards_from_deck(
             cards[normalized_id]["card_id"] = normalized_id
 
     return cards
+
+
+def _cards_from_any_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
+    return {
+        str(row["card_id"])
+        for row in card_behavior_plan.get("rows", [])
+        if _is_cardid_runtime_row(row)
+    }
 
 
 def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
