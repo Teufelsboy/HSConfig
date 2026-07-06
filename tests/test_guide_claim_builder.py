@@ -47,6 +47,52 @@ def test_builds_atomic_claims_from_structured_sources():
     assert bundle["source_evidence_index"][0]["claim_count"] == 1
 
 
+def test_source_documents_are_integrated_before_static_semantic_backfill():
+    bundle = build_guide_claim_bundle(
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "cards": [
+                {"card_id": "SW_448", "count": 1},
+                {"card_id": "CORE_CS2_235", "count": 1},
+            ],
+        },
+        card_metadata={
+            "SW_448": {
+                "name": "Darkbishop Benedictus",
+                "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
+            },
+            "CORE_CS2_235": {
+                "name": "Shadowform",
+                "text": "Your Hero Power becomes 'Deal 2 damage'.",
+            },
+        },
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/shadow-priest-guide",
+                "source_title": "Shadow Priest Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_448"],
+                        "stance": "keep",
+                        "evidence_text_short": "Keep Darkbishop Benedictus in every opener.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert bundle["claims"][0]["claim_kind"] == "mulligan_keep"
+    assert bundle["claims"][0]["support_status"] == "source_backed"
+    assert any(claim["support_status"] == "static_semantics" for claim in bundle["claims"][1:])
+    assert bundle["claim_coverage_report"]["cards"]["SW_448"]["coverage_status"] == "guide_backed"
+    assert bundle["claim_conflict_report"]["conflict_count"] == 0
+    assert bundle["coverage"]["guide_backed_cards"] == 1
+
+
 def test_vague_source_text_is_reported_not_promoted():
     bundle = build_guide_claim_bundle(
         deck_identity={"deck_name": "AnyDeck"},

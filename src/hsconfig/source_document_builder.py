@@ -1,0 +1,412 @@
+from __future__ import annotations
+
+from hashlib import sha256
+import json
+from typing import Any
+
+from hsconfig.source_document_model import (
+    REQUIRED_CLAIM_KEYS,
+    REQUIRED_SOURCE_KEYS,
+    SUPPORTED_ATOMIC_CLAIM_KINDS,
+)
+
+
+DECK_SCOPED_CLAIM_KINDS = {"archetype", "gameplan_posture"}
+
+STATIC_TEXT_MARKERS = (
+    "battlecry",
+    "deathrattle",
+    "discover",
+    "dredge",
+    "tradeable",
+    "overload",
+    "freeze",
+    "frozen",
+    "lifesteal",
+    "taunt",
+    "rush",
+    "charge",
+    "secret",
+    "location",
+    "weapon",
+    "equip",
+    "silence",
+    "transform",
+    "destroy",
+    "discard",
+    "hero power becomes",
+    "enter shadowform",
+)
+
+
+def build_source_document_bundle(
+    *,
+    deck_identity: dict[str, Any],
+    card_metadata: dict[str, Any],
+    source_documents: list[dict[str, Any]],
+) -> dict[str, Any]:
+    cards = _card_metadata_by_id(card_metadata)
+    _merge_deck_identity_cards(cards, deck_identity)
+    deck_card_ids = _deck_card_ids(deck_identity, cards)
+    claims: list[dict[str, Any]] = []
+    unsupported_claims: list[dict[str, Any]] = []
+    source_evidence_index: list[dict[str, Any]] = []
+
+    for source_index, document in enumerate(source_documents, start=1):
+        source_ref = f"source:{source_index}"
+        missing_source_keys = _missing_keys(document, REQUIRED_SOURCE_KEYS)
+        raw_claims = document.get("claims", [])
+        if not isinstance(raw_claims, list):
+            unsupported_claims.append(
+                {
+                    "source_ref": source_ref,
+                    "reason": "claims_not_list",
+                    "source_url": str(document.get("source_url", "")),
+                    "missing_source_keys": missing_source_keys,
+                }
+            )
+            raw_claims = []
+
+        promoted_count = 0
+        unsupported_count_before = len(unsupported_claims)
+        for claim_index, raw_claim in enumerate(raw_claims, start=1):
+            if not isinstance(raw_claim, dict):
+                unsupported_claims.append(
+                    {
+                        "source_ref": source_ref,
+                        "claim_index": claim_index,
+                        "reason": "claim_not_object",
+                    }
+                )
+                continue
+            normalized, unsupported = _normalize_source_claim(
+                raw_claim,
+                document=document,
+                source_ref=source_ref,
+                claim_index=claim_index,
+                known_card_ids=deck_card_ids,
+            )
+            if unsupported is not None:
+                unsupported_claims.append(unsupported)
+                continue
+            assert normalized is not None
+            claims.append(normalized)
+            promoted_count += 1
+
+        source_evidence_index.append(
+            {
+                "source_ref": source_ref,
+                "source_id": str(document.get("source_id", f"source_{source_index}")),
+                "source_url": str(document.get("source_url", "")),
+                "source_title": str(document.get("source_title", "")),
+                "source_family": str(document.get("source_family", "unknown")),
+                "retrieved_at": str(document.get("retrieved_at", "")),
+                "claim_count": promoted_count,
+                "unsupported_claim_count": len(unsupported_claims) - unsupported_count_before,
+                "missing_source_keys": missing_source_keys,
+            }
+        )
+
+    return {
+        "claims": claims,
+        "source_evidence_index": source_evidence_index,
+        "claim_coverage_report": _build_claim_coverage_report(
+            deck_identity=deck_identity,
+            cards=cards,
+            claims=claims,
+        ),
+        "claim_conflict_report": {"conflict_count": 0, "conflicts": []},
+        "unsupported_claims": unsupported_claims,
+    }
+
+
+def _normalize_source_claim(
+    raw_claim: dict[str, Any],
+    *,
+    document: dict[str, Any],
+    source_ref: str,
+    claim_index: int,
+    known_card_ids: set[str],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    claim_kind = _clean_text(raw_claim.get("claim_kind", raw_claim.get("claim_type", "")))
+    cards = _normalize_cards(raw_claim.get("cards", []))
+    scope = _clean_text(raw_claim.get("scope", "card")).lower() or "card"
+    if claim_kind == "archetype" and not cards:
+        scope = "deck"
+    missing_claim_keys = _missing_claim_keys(raw_claim)
+    if "claim_kind" in missing_claim_keys or "evidence_text_short" in missing_claim_keys:
+        unsupported = _unsupported(
+            raw_claim,
+            document,
+            source_ref,
+            claim_index,
+            "missing_claim_keys",
+        )
+        unsupported["missing_claim_keys"] = missing_claim_keys
+        return None, unsupported
+    if not cards and not _is_deck_scoped(claim_kind, scope):
+        return None, _unsupported(raw_claim, document, source_ref, claim_index, "not_card_specific")
+    if claim_kind not in SUPPORTED_ATOMIC_CLAIM_KINDS:
+        return None, _unsupported(
+            raw_claim,
+            document,
+            source_ref,
+            claim_index,
+            "unsupported_claim_kind",
+        )
+    missing_cards = [card for card in cards if card not in known_card_ids]
+    if missing_cards:
+        unsupported = _unsupported(raw_claim, document, source_ref, claim_index, "card_not_in_deck")
+        unsupported["missing_cards"] = missing_cards
+        return None, unsupported
+
+    evidence = _claim_evidence(raw_claim)
+    source_refs = [source_ref, *[str(item) for item in raw_claim.get("source_refs", [])]]
+    if document.get("source_url"):
+        source_refs.append(str(document["source_url"]))
+    claim = {
+        "claim_kind": claim_kind,
+        "claim_type": _legacy_claim_type(claim_kind),
+        "source": str(document.get("source_family", "guide")),
+        "url": str(document.get("source_url", "")),
+        "source_url": str(document.get("source_url", "")),
+        "source_title": str(document.get("source_title", "")),
+        "source_family": str(document.get("source_family", "guide")),
+        "retrieved_at": str(document.get("retrieved_at", "")),
+        "cards": cards,
+        "scope": scope,
+        "stance": _clean_text(raw_claim.get("stance", "")),
+        "conditions": _normalize_optional(raw_claim.get("conditions", raw_claim.get("condition", {}))),
+        "claim": evidence,
+        "evidence_text_short": evidence,
+        "source_confidence": _clean_text(raw_claim.get("source_confidence", "medium")) or "medium",
+        "claim_confidence": _clean_text(raw_claim.get("claim_confidence", raw_claim.get("source_confidence", "medium"))) or "medium",
+        "confidence": "guide_backed",
+        "support_status": "source_backed",
+        "source_refs": list(dict.fromkeys(source_refs)),
+    }
+    if "sequence" in raw_claim:
+        claim["sequence"] = _normalize_cards(raw_claim["sequence"])
+    if "values" in raw_claim:
+        claim["values"] = _normalize_optional(raw_claim["values"])
+    if "condition" in raw_claim:
+        condition = _normalize_optional(raw_claim["condition"])
+        claim["condition"] = condition
+        if "runtime_block" in raw_claim:
+            claim["conditions"] = condition
+    if "runtime_block" in raw_claim:
+        claim["runtime_block"] = _clean_text(raw_claim["runtime_block"])
+    if "runtime_value" in raw_claim:
+        claim["runtime_value"] = _clean_text(raw_claim["runtime_value"])
+    if "mechanic" in raw_claim:
+        claim["mechanic"] = _clean_text(raw_claim["mechanic"]).lower()
+    if evidence:
+        claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
+    claim["claim_id"] = _claim_id(claim)
+    claim["source_claim_ids"] = [claim["claim_id"]]
+    return claim, None
+
+
+def _build_claim_coverage_report(
+    *,
+    deck_identity: dict[str, Any],
+    cards: dict[str, dict[str, Any]],
+    claims: list[dict[str, Any]],
+) -> dict[str, Any]:
+    source_claim_ids_by_card: dict[str, list[str]] = {card_id: [] for card_id in cards}
+    for claim in claims:
+        for card_id in claim.get("cards", []):
+            source_claim_ids_by_card.setdefault(str(card_id), []).append(str(claim["claim_id"]))
+
+    rows: dict[str, dict[str, Any]] = {}
+    status_counts = {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 0,
+        "uncovered_low_confidence": 0,
+    }
+    for card_id, card in sorted(cards.items()):
+        source_claim_ids = list(dict.fromkeys(source_claim_ids_by_card.get(card_id, [])))
+        if source_claim_ids:
+            coverage_status = "guide_backed"
+        elif _has_static_semantics(card):
+            coverage_status = "static_semantics_backfilled"
+        else:
+            coverage_status = "uncovered_low_confidence"
+        status_counts[coverage_status] += 1
+        rows[card_id] = {
+            "card_id": card_id,
+            "name": str(card.get("name", card_id)),
+            "coverage_status": coverage_status,
+            "source_claim_ids": source_claim_ids,
+        }
+
+    return {
+        "deck_name": str(deck_identity.get("deck_name", "Deck")),
+        "total_cards": len(cards),
+        "cards": rows,
+        "summary": status_counts,
+    }
+
+
+def _unsupported(
+    raw_claim: dict[str, Any],
+    document: dict[str, Any],
+    source_ref: str,
+    claim_index: int,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "source_ref": source_ref,
+        "claim_index": claim_index,
+        "reason": reason,
+        "claim_kind": _clean_text(raw_claim.get("claim_kind", raw_claim.get("claim_type", ""))),
+        "cards": _normalize_cards(raw_claim.get("cards", [])),
+        "source_url": str(document.get("source_url", "")),
+        "source_title": str(document.get("source_title", "")),
+        "evidence_text_short": _claim_evidence(raw_claim),
+    }
+
+
+def _card_metadata_by_id(card_metadata: dict[str, Any] | list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    if isinstance(card_metadata, list):
+        return {str(row["card_id"]): dict(row) for row in card_metadata}
+    if isinstance(card_metadata, dict) and isinstance(card_metadata.get("cards"), list):
+        return {str(row["card_id"]): dict(row) for row in card_metadata["cards"]}
+    cards: dict[str, dict[str, Any]] = {}
+    if isinstance(card_metadata, dict):
+        for card_id, row in card_metadata.items():
+            if isinstance(row, dict):
+                value = dict(row)
+                value.setdefault("card_id", str(card_id))
+                cards[str(card_id)] = value
+    return cards
+
+
+def _merge_deck_identity_cards(cards: dict[str, dict[str, Any]], deck_identity: dict[str, Any]) -> None:
+    for card in deck_identity.get("cards", []):
+        if not isinstance(card, dict):
+            continue
+        card_id = str(card.get("card_id", "")).strip()
+        if not card_id:
+            continue
+        row = cards.setdefault(card_id, {})
+        row.setdefault("card_id", card_id)
+        for key in ("name", "count"):
+            if key in card and key not in row:
+                row[key] = card[key]
+
+
+def _deck_card_ids(deck_identity: dict[str, Any], cards: dict[str, dict[str, Any]]) -> set[str]:
+    deck_cards = [
+        str(card.get("card_id", "")).strip()
+        for card in deck_identity.get("cards", [])
+        if isinstance(card, dict) and str(card.get("card_id", "")).strip()
+    ]
+    if deck_cards:
+        return set(deck_cards)
+    return set(cards)
+
+
+def _missing_keys(document: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
+    return [key for key in keys if not _clean_text(document.get(key, ""))]
+
+
+def _missing_claim_keys(raw_claim: dict[str, Any]) -> list[str]:
+    missing = []
+    for key in REQUIRED_CLAIM_KEYS:
+        if key == "source_confidence":
+            continue
+        if key == "claim_kind":
+            value = raw_claim.get("claim_kind", raw_claim.get("claim_type", ""))
+        elif key == "evidence_text_short":
+            value = _claim_evidence(raw_claim)
+        else:
+            value = raw_claim.get(key, "")
+        if not _clean_text(value):
+            missing.append(key)
+    return missing
+
+
+def _is_deck_scoped(claim_kind: str, scope: str) -> bool:
+    return claim_kind in DECK_SCOPED_CLAIM_KINDS and scope in {"deck", "archetype"}
+
+
+def _has_static_semantics(card: dict[str, Any]) -> bool:
+    text = _clean_text(card.get("text", "")).lower()
+    mechanics = card.get("mechanics", [])
+    semantic_families = card.get("semantic_families", card.get("mechanic_families", []))
+    mechanics_list = mechanics if isinstance(mechanics, list) else []
+    semantic_families_list = semantic_families if isinstance(semantic_families, list) else []
+    marker_text = " ".join(
+        [
+            text,
+            *[str(item).lower() for item in mechanics_list],
+            *[str(item).lower() for item in semantic_families_list],
+        ]
+    )
+    return any(marker in marker_text for marker in STATIC_TEXT_MARKERS)
+
+
+def _legacy_claim_type(claim_kind: str) -> str:
+    return {
+        "mulligan_keep": "mulligan_keep",
+        "mulligan_discard": "mulligan_discard",
+        "card_role": "card_role",
+        "targeting_rule": "targeting",
+        "combo_sequence": "combo",
+        "gameplan_posture": "gameplan_posture",
+        "hero_power_transform": "hero_power_transform",
+        "mechanic_usage": "mechanic_usage",
+        "known_bad_pattern": "bad_pattern",
+        "tech_slot": "tech_slot",
+        "replacement_option": "replacement_option",
+        "archetype": "archetype",
+    }.get(claim_kind, "general")
+
+
+def _claim_id(claim: dict[str, Any]) -> str:
+    payload = {
+        key: value
+        for key, value in claim.items()
+        if key not in {"claim_id", "source_claim_ids"}
+    }
+    canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return f"claim_{sha256(canonical.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _normalize_cards(cards: Any) -> list[str]:
+    if cards is None:
+        return []
+    if isinstance(cards, str):
+        candidates = [cards]
+    else:
+        candidates = list(cards)
+    normalized: list[str] = []
+    for candidate in candidates:
+        card = _clean_text(candidate)
+        if card and card not in normalized:
+            normalized.append(card)
+    return normalized
+
+
+def _normalize_optional(value: Any) -> Any:
+    if isinstance(value, str):
+        return _clean_text(value)
+    if isinstance(value, list):
+        return [_normalize_optional(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _normalize_optional(value[key]) for key in sorted(value)}
+    return value
+
+
+def _claim_evidence(raw_claim: dict[str, Any]) -> str:
+    return _clean_text(
+        raw_claim.get(
+            "evidence_text_short",
+            raw_claim.get("claim", raw_claim.get("reason", "")),
+        )
+    )
+
+
+def _clean_text(value: Any) -> str:
+    return " ".join(str(value).strip().split())

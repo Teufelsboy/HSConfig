@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
+    {
+        "archetype",
+        "mulligan_keep",
+        "mulligan_discard",
+        "card_role",
+        "targeting_rule",
+        "combo_sequence",
+        "gameplan_posture",
+        "hero_power_transform",
+        "mechanic_usage",
+        "known_bad_pattern",
+        "tech_slot",
+        "replacement_option",
+    }
+)
+
+REQUIRED_SOURCE_KEYS = ("source_url", "source_title", "source_family", "retrieved_at")
+REQUIRED_CLAIM_KEYS = ("claim_kind", "evidence_text_short", "source_confidence")

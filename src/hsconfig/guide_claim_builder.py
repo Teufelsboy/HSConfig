@@ -5,6 +5,8 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from hsconfig.source_document_builder import build_source_document_bundle
+
 
 SUPPORTED_CLAIM_KINDS = {
     "mulligan_keep",
@@ -58,51 +60,25 @@ def build_guide_claim_bundle(
     claims: list[dict[str, Any]] = []
     unsupported_claims: list[dict[str, Any]] = []
     source_evidence_index: list[dict[str, Any]] = []
-    guide_backed_cards: set[str] = set()
+    claim_conflict_report = {"conflict_count": 0, "conflicts": []}
 
-    for doc_index, document in enumerate(source_documents, start=1):
-        source_ref = f"source:{doc_index}"
-        raw_claims = document.get("claims", [])
-        if not isinstance(raw_claims, list):
-            unsupported_claims.append(
-                {
-                    "source_ref": source_ref,
-                    "reason": "claims_not_list",
-                    "source_url": document.get("source_url", ""),
-                }
-            )
-            raw_claims = []
-        promoted_count = 0
-        for claim_index, raw_claim in enumerate(raw_claims, start=1):
-            if not isinstance(raw_claim, dict):
-                unsupported_claims.append(
-                    {"source_ref": source_ref, "claim_index": claim_index, "reason": "claim_not_object"}
-                )
-                continue
-            normalized, unsupported = _normalize_source_claim(
-                raw_claim,
-                document=document,
-                source_ref=source_ref,
-                claim_index=claim_index,
-                known_card_ids=set(cards),
-            )
-            if unsupported is not None:
-                unsupported_claims.append(unsupported)
-                continue
-            assert normalized is not None
-            claims.append(normalized)
-            guide_backed_cards.update(normalized["cards"])
-            promoted_count += 1
-        source_evidence_index.append(
-            {
-                "source_ref": source_ref,
-                "source_url": str(document.get("source_url", "")),
-                "source_title": str(document.get("source_title", "")),
-                "source_family": str(document.get("source_family", "unknown")),
-                "retrieved_at": str(document.get("retrieved_at", "")),
-                "claim_count": promoted_count,
-            }
+    if source_documents:
+        source_document_bundle = build_source_document_bundle(
+            deck_identity=deck_identity,
+            card_metadata=card_metadata,
+            source_documents=source_documents,
         )
+        claims.extend(source_document_bundle["claims"])
+        unsupported_claims.extend(source_document_bundle["unsupported_claims"])
+        source_evidence_index.extend(source_document_bundle["source_evidence_index"])
+        claim_conflict_report = source_document_bundle["claim_conflict_report"]
+
+    guide_backed_cards = {
+        card
+        for claim in claims
+        if claim.get("support_status") == "source_backed"
+        for card in claim.get("cards", [])
+    }
 
     static_claims = _static_semantic_claims(cards, existing_claims=claims)
     claims.extend(static_claims)
@@ -122,6 +98,13 @@ def build_guide_claim_bundle(
         "uncovered_cards": uncovered_cards,
         "claim_kinds": sorted({str(claim.get("claim_kind")) for claim in claims}),
     }
+    claim_coverage_report = _build_claim_coverage_report(
+        deck_identity=deck_identity,
+        cards=cards,
+        claims=claims,
+        guide_backed_cards=guide_backed_cards,
+        static_semantic_cards=static_semantic_cards,
+    )
     result = ClaimBuildResult(
         claims=claims,
         unsupported_claims=unsupported_claims,
@@ -133,6 +116,50 @@ def build_guide_claim_bundle(
         "unsupported_claims": result.unsupported_claims,
         "coverage": result.coverage,
         "source_evidence_index": result.source_evidence_index,
+        "claim_coverage_report": claim_coverage_report,
+        "claim_conflict_report": claim_conflict_report,
+    }
+
+
+def _build_claim_coverage_report(
+    *,
+    deck_identity: dict[str, Any],
+    cards: dict[str, dict[str, Any]],
+    claims: list[dict[str, Any]],
+    guide_backed_cards: set[str],
+    static_semantic_cards: set[str],
+) -> dict[str, Any]:
+    claim_ids_by_card: dict[str, list[str]] = {card_id: [] for card_id in cards}
+    for claim in claims:
+        for card_id in claim.get("cards", []):
+            claim_ids_by_card.setdefault(str(card_id), []).append(str(claim["claim_id"]))
+
+    status_counts = {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 0,
+        "uncovered_low_confidence": 0,
+    }
+    rows: dict[str, dict[str, Any]] = {}
+    for card_id, card in sorted(cards.items()):
+        if card_id in guide_backed_cards:
+            coverage_status = "guide_backed"
+        elif card_id in static_semantic_cards:
+            coverage_status = "static_semantics_backfilled"
+        else:
+            coverage_status = "uncovered_low_confidence"
+        status_counts[coverage_status] += 1
+        rows[card_id] = {
+            "card_id": card_id,
+            "name": str(card.get("name", card_id)),
+            "coverage_status": coverage_status,
+            "source_claim_ids": list(dict.fromkeys(claim_ids_by_card.get(card_id, []))),
+        }
+
+    return {
+        "deck_name": str(deck_identity.get("deck_name", "Deck")),
+        "total_cards": len(cards),
+        "cards": rows,
+        "summary": status_counts,
     }
 
 
