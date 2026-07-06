@@ -82,3 +82,35 @@ def test_depth_report_warns_when_cards_need_guide_claims():
             "readiness_lane": "generic_low_confidence",
         }
     ]
+
+
+def test_depth_report_marks_usable_with_runtime_gaps():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "claim_role",
+                    "claim_kind": "card_role",
+                    "cards": ["EX1_READY"],
+                    "source_family": "guide",
+                }
+            ],
+            "unsupported_claims": [],
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 2},
+            "cards": {
+                "EX1_READY": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                },
+                "EX1_GAP": {
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_runtime_surface",
+                },
+            },
+        },
+    )
+
+    assert report["depth_status"] == "usable_with_runtime_gaps"
+    assert report["summary"]["cards_needing_runtime_surface"] == 1
