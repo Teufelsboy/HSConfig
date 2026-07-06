@@ -24,11 +24,11 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
                         "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
                     },
                     {
-                        "card_id": "BAR_311",
+                        "card_id": "TOY_518",
                         "dbf_id": 2,
                         "count": 2,
-                        "name": "Frazzled Freshman",
-                        "text": "A strong early minion.",
+                        "name": "Treasure Distributor",
+                        "text": "After you summon a Pirate, give it +1 Attack.",
                     },
                     {
                         "card_id": "SW_446",
@@ -80,7 +80,7 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
     assert code == 0
     assert payload["status"] == "passed"
     assert guide_claims["claims"]
-    assert [row["mulligan"] for row in mulligan_values[:2]] == ["SW_448", "BAR_311"]
+    assert [row["mulligan"] for row in mulligan_values[:2]] == ["SW_448", "SW_446"]
     assert mulligan_values[-1]["mulligan"] == "*"
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
     assert "BeforePlayCardBonus" in cardid
@@ -163,3 +163,45 @@ def test_real_shadowpriest_deckcode_depth_prepare_has_clean_runtime(tmp_path: Pa
                 for row in block.get("values", []):
                     assert "source_claim_ids" not in row
                     assert "confidence" not in row
+
+
+def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, capsys):
+    out = tmp_path / "shadowpriest_depth"
+
+    result = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path),
+            "--out",
+            str(out),
+            "--guide-sources-json",
+            "tests/fixtures/shadowpriest_guide_sources.json",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    reports = out / "reports"
+    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    readiness = json.loads(
+        (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
+    )
+    depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
+    mulligan = json.loads(
+        (out / "CustomConfig" / "shadowpriest" / "Mulligan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert result == 0
+    assert coverage["guide_backed_cards"] >= 8
+    assert len(coverage["uncovered_cards"]) <= 4
+    assert depth["depth_status"] == "usable"
+    assert readiness["summary"]["generic_low_confidence"] <= 4
+    assert readiness["summary"]["runtime_emitted"] >= 4
+    assert len(mulligan["Mulligan"]["values"]) >= 4

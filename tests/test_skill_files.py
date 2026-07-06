@@ -1,7 +1,8 @@
 from pathlib import Path
 
 
-SKILL_ROOT = Path(".agents/skills/hsconfig")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SKILL_ROOT = REPO_ROOT / ".agents" / "skills" / "hsconfig"
 
 
 def test_skill_has_required_files():
@@ -34,6 +35,20 @@ def test_skill_content_sets_direct_config_boundary():
     assert "hsconfig prepare" in text
     assert "research contract" in text.lower()
     assert "--guide-sources-json" in text
+
+
+def test_skill_documents_guide_depth_closure_reports():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (skill, workflow, policy):
+        assert "per_card_config_readiness_report.json" in text
+        assert "guide_source_depth_report.json" in text
+    assert "no replay analysis" in skill.lower()
+    assert "winrate" in skill.lower()
 
 
 def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():

@@ -66,6 +66,14 @@ Key reports:
 - `reports/card_behavior_plan_report.json`
 - `reports/combo_plan_report.json`
 - `reports/global_values_authority_matrix.json`
+- `reports/per_card_config_readiness_report.json`
+- `reports/guide_source_depth_report.json`
+
+The readiness and depth reports are the normal quality check for guide-backed
+config generation, not postgame proof. A valid package may still contain
+`archetype_inferred` or `generic_low_confidence` cards, but those lanes tell
+Codex to improve the structured guide source before treating the package as
+deeply configured.
 
 Validate a package:
 

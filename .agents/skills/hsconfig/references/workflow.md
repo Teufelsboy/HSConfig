@@ -1,8 +1,12 @@
 # Workflow
 
-Normal flow: deck input -> guide research -> structured guide sources -> `hsconfig prepare --guide-sources-json ...` -> HearthSim deckstring decode -> exact identity -> card metadata -> guide/static research contract -> guide-backed gameplan -> plan reports -> compilers -> validation -> optional runtime apply.
+Normal flow: deck input -> guide research -> structured guide sources for every
+deck card -> `hsconfig prepare --guide-sources-json ...` ->
+HearthSim deckstring decode -> exact identity -> card metadata ->
+guide/static research contract -> guide-backed gameplan -> plan reports ->
+readiness/depth reports -> compilers -> validation -> optional runtime apply.
 
-Use `hsconfig prepare` for package creation. It writes `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
+Use `hsconfig prepare` for package creation. It writes `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
 
 Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. It writes no `CustomConfig` runtime package.
 

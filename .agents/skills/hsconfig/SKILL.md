@@ -21,9 +21,16 @@ Workflow:
 1. Decode the deck code first, then resolve deck identity and card metadata.
 2. Research current guide/archetype/card-usage sources.
 3. Write structured guide sources with card-specific claims.
-4. Run `hsconfig prepare --guide-sources-json ...`.
-5. Verify the research contract plus `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, and `global_values_authority_matrix.json`.
-6. Apply only after validation is green.
+4. Check that the structured guide sources give every deck card a card role,
+   mulligan stance, usage expectation, mechanic expectation, combo relation, or
+   explicit low-confidence fallback.
+5. Run `hsconfig prepare --guide-sources-json ...`.
+6. Verify the research contract plus `claim_coverage_report.json`,
+   `mulligan_plan_report.json`, `card_behavior_plan_report.json`,
+   `combo_plan_report.json`, `global_values_authority_matrix.json`,
+   `per_card_config_readiness_report.json`, and
+   `guide_source_depth_report.json`.
+7. Apply only after validation is green.
 
 Rules:
 

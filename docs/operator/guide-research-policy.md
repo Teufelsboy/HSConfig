@@ -42,6 +42,21 @@ Pass this file with `--guide-sources-json`.
 ]
 ```
 
+## Per-Card Depth Rule
+
+Before normal `hsconfig prepare`, Codex should try to give every deck card at
+least one structured expectation. The preferred order is card-specific guide
+claim, current card text/static semantics, archetype-inferred role, then
+`generic_low_confidence` as the last visible fallback.
+
+For each card, prefer claims that answer at least one of these questions:
+
+- keep, discard, or situational mulligan
+- face, trade, friendly target, discover, weapon, location, or Hero Power usage
+- combo sequence or synergy partner
+- board-value posture or GlobalValues effect
+- known bad pattern
+
 Supported `claim_kind` values are `mulligan_keep`, `mulligan_discard`, `card_role`, `targeting_rule`, `combo_sequence`, `gameplan_posture`, `hero_power_transform`, and `mechanic_usage`.
 
 ## Reports
@@ -54,5 +69,7 @@ Supported `claim_kind` values are `mulligan_keep`, `mulligan_discard`, `card_rol
 - `card_behavior_plan_report.json`: CardID routing and suppression reasons.
 - `combo_plan_report.json`: exact ordered combos and suppressed combo claims.
 - `global_values_authority_matrix.json`: Step1 GlobalValues overlays and runtime-only blocked changes.
+- `per_card_config_readiness_report.json`: card-level lane, runtime surfaces, and first missing link.
+- `guide_source_depth_report.json`: source-depth status, source families, claim kinds, and research warnings.
 
 HSConfig does not prove gameplay improvement. It creates the best available initial config from current source claims and card semantics.
