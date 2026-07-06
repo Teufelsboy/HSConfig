@@ -1,0 +1,295 @@
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any
+
+from hsconfig.io import slugify_deck_name
+
+
+RUNTIME_SURFACE_MULLIGAN = "Mulligan.json"
+RUNTIME_SURFACE_COMBO = "Combo.json"
+RUNTIME_SURFACE_GLOBALVALUES = "GlobalValues.json"
+CARDID_SURFACE_FAMILY = "CARDID.json"
+CARDID_SURFACE_ALIASES = {"CARDID.json", "CardID.json"}
+
+LANES = (
+    "runtime_emitted",
+    "mulligan_only",
+    "globalvalues_only",
+    "report_only_supported",
+    "archetype_inferred",
+    "generic_low_confidence",
+)
+MISSING_LINKS = (
+    "none",
+    "needs_guide_claim",
+    "needs_runtime_surface",
+    "needs_mulligan_claim",
+    "needs_combo_sequence",
+    "needs_condition_lowering",
+    "needs_mechanic_lowering",
+)
+MECHANIC_LOWERING_ROLES = {
+    "battlecry",
+    "discover",
+    "weapon",
+    "location",
+    "secret",
+    "hero_power",
+}
+GUIDE_BACKED_COVERAGE_STATUSES = {
+    "guide_backed",
+    "source_backed",
+    "source_backed_static_semantics",
+}
+
+
+def build_config_readiness_report(
+    *,
+    deck_identity: dict[str, Any],
+    claim_coverage: dict[str, Any],
+    gameplan_contract: dict[str, Any],
+    mulligan_plan: dict[str, Any],
+    card_behavior_plan: dict[str, Any],
+    combo_plan: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+) -> dict[str, Any]:
+    cards = _cards_from_deck(deck_identity, gameplan_contract)
+    uncovered = {str(card) for card in claim_coverage.get("uncovered_cards", [])}
+    cardid_cards = _cards_from_card_behavior(card_behavior_plan)
+    unsupported_condition_cards = _cards_from_unsupported_condition_suppression(
+        card_behavior_plan
+    )
+    mulligan_cards = _cards_from_mulligan(mulligan_plan)
+    combo_cards = _cards_from_combos(combo_plan)
+    globalvalue_cards = _cards_from_globalvalues(
+        gameplan_contract,
+        global_values_authority_matrix,
+    )
+
+    rows: dict[str, dict[str, Any]] = {}
+    lane_counter: Counter[str] = Counter()
+    missing_counter: Counter[str] = Counter()
+
+    for card_id, card in sorted(cards.items()):
+        runtime_surfaces = _runtime_surfaces(
+            card_id=card_id,
+            cardid_cards=cardid_cards,
+            mulligan_cards=mulligan_cards,
+            combo_cards=combo_cards,
+            globalvalue_cards=globalvalue_cards,
+        )
+        lane, missing = _lane_and_missing_link(
+            card_id=card_id,
+            card=card,
+            uncovered=uncovered,
+            cardid_cards=cardid_cards,
+            unsupported_condition_cards=unsupported_condition_cards,
+            mulligan_cards=mulligan_cards,
+            combo_cards=combo_cards,
+            globalvalue_cards=globalvalue_cards,
+        )
+
+        lane_counter[lane] += 1
+        if missing != "none":
+            missing_counter[missing] += 1
+
+        rows[card_id] = {
+            "card_id": card_id,
+            "name": str(card.get("name", card_id)),
+            "count": int(card.get("count", 1)),
+            "coverage_status": str(card.get("coverage_status", card.get("confidence", ""))),
+            "roles": [str(role) for role in card.get("roles", [])],
+            "source_claim_ids": [str(item) for item in card.get("source_claim_ids", [])],
+            "runtime_surfaces": runtime_surfaces,
+            "readiness_lane": lane,
+            "first_missing_link": missing,
+        }
+
+    deck_name = str(deck_identity.get("deck_name", gameplan_contract.get("deck_name", "Deck")))
+    deck_slug = str(
+        deck_identity.get(
+            "deck_slug",
+            gameplan_contract.get("deck_slug", slugify_deck_name(deck_name)),
+        )
+    )
+    return {
+        "deck_name": deck_name,
+        "deck_slug": deck_slug,
+        "summary": _summary(
+            total_cards=len(rows),
+            lane_counter=lane_counter,
+            missing_counter=missing_counter,
+        ),
+        "cards": rows,
+    }
+
+
+def _cards_from_deck(
+    deck_identity: dict[str, Any],
+    gameplan_contract: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    cards: dict[str, dict[str, Any]] = {}
+    for card in deck_identity.get("cards", []):
+        if not isinstance(card, dict) or not card.get("card_id"):
+            continue
+        card_id = str(card["card_id"])
+        cards[card_id] = {"card_id": card_id, **dict(card)}
+
+    contract_cards = gameplan_contract.get("cards", {})
+    if isinstance(contract_cards, dict):
+        for card_id, card in contract_cards.items():
+            if not isinstance(card, dict):
+                continue
+            normalized_id = str(card.get("card_id", card_id))
+            cards[normalized_id] = {**cards.get(normalized_id, {}), **dict(card)}
+            cards[normalized_id]["card_id"] = normalized_id
+
+    return cards
+
+
+def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
+    return {
+        str(row["card_id"])
+        for row in card_behavior_plan.get("rows", [])
+        if _is_cardid_runtime_row(row)
+    }
+
+
+def _is_cardid_runtime_row(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and bool(row.get("card_id"))
+        and (
+            row.get("surface_family") == CARDID_SURFACE_FAMILY
+            or row.get("surface") in CARDID_SURFACE_ALIASES
+        )
+    )
+
+
+def _cards_from_unsupported_condition_suppression(
+    card_behavior_plan: dict[str, Any],
+) -> set[str]:
+    cards: set[str] = set()
+    for row in card_behavior_plan.get("suppressed", []):
+        if not isinstance(row, dict) or row.get("reason") != "unsupported_condition":
+            continue
+        for key in ("card_id", "card"):
+            if row.get(key):
+                cards.add(str(row[key]))
+        suppressed_cards = row.get("cards", [])
+        if isinstance(suppressed_cards, str):
+            suppressed_cards = [suppressed_cards]
+        cards.update(str(card) for card in suppressed_cards if str(card))
+    return cards
+
+
+def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
+    return {
+        str(row["card"])
+        for row in mulligan_plan.get("rules", [])
+        if isinstance(row, dict) and row.get("card") and str(row["card"]) != "*"
+    }
+
+
+def _cards_from_combos(combo_plan: dict[str, Any]) -> set[str]:
+    cards: set[str] = set()
+    for combo in combo_plan.get("combos", []):
+        if not isinstance(combo, dict):
+            continue
+        combo_cards = combo.get("cards", [])
+        if isinstance(combo_cards, str):
+            combo_cards = [combo_cards]
+        cards.update(str(card) for card in combo_cards if str(card))
+    return cards
+
+
+def _cards_from_globalvalues(
+    gameplan_contract: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+) -> set[str]:
+    if not global_values_authority_matrix.get("allowed_step1_overlays"):
+        return set()
+
+    cards: set[str] = set()
+    for effect in gameplan_contract.get("deckwide_effects", []):
+        if isinstance(effect, dict) and effect.get("source_card_id"):
+            cards.add(str(effect["source_card_id"]))
+    for expectation in gameplan_contract.get("hero_power_expectations", []):
+        if isinstance(expectation, dict) and expectation.get("source_card_id"):
+            cards.add(str(expectation["source_card_id"]))
+    return cards
+
+
+def _runtime_surfaces(
+    *,
+    card_id: str,
+    cardid_cards: set[str],
+    mulligan_cards: set[str],
+    combo_cards: set[str],
+    globalvalue_cards: set[str],
+) -> list[str]:
+    surfaces = []
+    if card_id in cardid_cards:
+        surfaces.append(f"{card_id}.json")
+    if card_id in mulligan_cards:
+        surfaces.append(RUNTIME_SURFACE_MULLIGAN)
+    if card_id in combo_cards:
+        surfaces.append(RUNTIME_SURFACE_COMBO)
+    if card_id in globalvalue_cards:
+        surfaces.append(RUNTIME_SURFACE_GLOBALVALUES)
+    return surfaces
+
+
+def _lane_and_missing_link(
+    *,
+    card_id: str,
+    card: dict[str, Any],
+    uncovered: set[str],
+    cardid_cards: set[str],
+    unsupported_condition_cards: set[str],
+    mulligan_cards: set[str],
+    combo_cards: set[str],
+    globalvalue_cards: set[str],
+) -> tuple[str, str]:
+    coverage = str(card.get("coverage_status", card.get("confidence", ""))).lower()
+    roles = {str(role).lower() for role in card.get("roles", [])}
+    is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
+
+    if card_id in cardid_cards or card_id in combo_cards:
+        return "runtime_emitted", "none"
+    if card_id in mulligan_cards:
+        return "mulligan_only", "needs_runtime_surface"
+    if card_id in globalvalue_cards:
+        return "globalvalues_only", "needs_runtime_surface"
+    if card_id in uncovered or coverage == "generic_low_confidence":
+        return "generic_low_confidence", "needs_guide_claim"
+    if coverage == "archetype_inferred":
+        return "archetype_inferred", "needs_guide_claim"
+    if card_id in unsupported_condition_cards:
+        return "report_only_supported", "needs_condition_lowering"
+    if is_guide_backed and "mulligan_anchor" in roles:
+        return "report_only_supported", "needs_mulligan_claim"
+    if is_guide_backed and "combo_piece" in roles:
+        return "report_only_supported", "needs_combo_sequence"
+    if roles & MECHANIC_LOWERING_ROLES:
+        return "report_only_supported", "needs_mechanic_lowering"
+    return "report_only_supported", "needs_runtime_surface"
+
+
+def _summary(
+    *,
+    total_cards: int,
+    lane_counter: Counter[str],
+    missing_counter: Counter[str],
+) -> dict[str, int]:
+    return {
+        "total_cards": total_cards,
+        **{lane: lane_counter[lane] for lane in LANES},
+        "cards_needing_guide_claims": missing_counter["needs_guide_claim"],
+        "cards_needing_runtime_surface": missing_counter["needs_runtime_surface"],
+        "cards_needing_mulligan_claims": missing_counter["needs_mulligan_claim"],
+        "cards_needing_combo_sequence": missing_counter["needs_combo_sequence"],
+        "cards_needing_condition_lowering": missing_counter["needs_condition_lowering"],
+        "cards_needing_mechanic_lowering": missing_counter["needs_mechanic_lowering"],
+    }
