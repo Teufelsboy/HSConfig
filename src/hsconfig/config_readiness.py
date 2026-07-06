@@ -53,10 +53,16 @@ def build_config_readiness_report(
     card_behavior_plan: dict[str, Any],
     combo_plan: dict[str, Any],
     global_values_authority_matrix: dict[str, Any],
+    emitted_cardid_files: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> dict[str, Any]:
     cards = _cards_from_deck(deck_identity, gameplan_contract)
     uncovered = {str(card) for card in claim_coverage.get("uncovered_cards", [])}
-    cardid_cards = _cards_from_card_behavior(card_behavior_plan)
+    concrete_cardid_cards = _cards_from_card_behavior(card_behavior_plan)
+    emitted_cardid_file_map = _emitted_cardid_file_map(
+        emitted_cardid_files,
+        fallback_cardids=concrete_cardid_cards,
+    )
+    emitted_cardid_cards = set(emitted_cardid_file_map)
     unsupported_condition_cards = _cards_from_unsupported_condition_suppression(
         card_behavior_plan
     )
@@ -74,7 +80,7 @@ def build_config_readiness_report(
     for card_id, card in sorted(cards.items()):
         runtime_surfaces = _runtime_surfaces(
             card_id=card_id,
-            cardid_cards=cardid_cards,
+            emitted_cardid_file_map=emitted_cardid_file_map,
             mulligan_cards=mulligan_cards,
             combo_cards=combo_cards,
             globalvalue_cards=globalvalue_cards,
@@ -83,7 +89,8 @@ def build_config_readiness_report(
             card_id=card_id,
             card=card,
             uncovered=uncovered,
-            cardid_cards=cardid_cards,
+            concrete_cardid_cards=concrete_cardid_cards,
+            emitted_cardid_cards=emitted_cardid_cards,
             unsupported_condition_cards=unsupported_condition_cards,
             mulligan_cards=mulligan_cards,
             combo_cards=combo_cards,
@@ -156,6 +163,26 @@ def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
     }
 
 
+def _emitted_cardid_file_map(
+    emitted_cardid_files: list[str] | tuple[str, ...] | set[str] | None,
+    *,
+    fallback_cardids: set[str],
+) -> dict[str, str]:
+    if emitted_cardid_files is None:
+        return {card_id: f"{card_id}.json" for card_id in fallback_cardids}
+
+    file_map: dict[str, str] = {}
+    for emitted_file in emitted_cardid_files:
+        filename = str(emitted_file).replace("\\", "/").rsplit("/", 1)[-1]
+        if not filename.endswith(".json"):
+            continue
+        card_id = filename.removesuffix(".json")
+        if not card_id:
+            continue
+        file_map[card_id] = filename
+    return file_map
+
+
 def _is_cardid_runtime_row(row: Any) -> bool:
     return (
         isinstance(row, dict)
@@ -224,14 +251,14 @@ def _cards_from_globalvalues(
 def _runtime_surfaces(
     *,
     card_id: str,
-    cardid_cards: set[str],
+    emitted_cardid_file_map: dict[str, str],
     mulligan_cards: set[str],
     combo_cards: set[str],
     globalvalue_cards: set[str],
 ) -> list[str]:
     surfaces = []
-    if card_id in cardid_cards:
-        surfaces.append(f"{card_id}.json")
+    if card_id in emitted_cardid_file_map:
+        surfaces.append(emitted_cardid_file_map[card_id])
     if card_id in mulligan_cards:
         surfaces.append(RUNTIME_SURFACE_MULLIGAN)
     if card_id in combo_cards:
@@ -246,7 +273,8 @@ def _lane_and_missing_link(
     card_id: str,
     card: dict[str, Any],
     uncovered: set[str],
-    cardid_cards: set[str],
+    concrete_cardid_cards: set[str],
+    emitted_cardid_cards: set[str],
     unsupported_condition_cards: set[str],
     mulligan_cards: set[str],
     combo_cards: set[str],
@@ -256,7 +284,7 @@ def _lane_and_missing_link(
     roles = {str(role).lower() for role in card.get("roles", [])}
     is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
 
-    if card_id in cardid_cards or card_id in combo_cards:
+    if card_id in concrete_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
     if card_id in mulligan_cards:
         return "mulligan_only", "needs_runtime_surface"
@@ -274,6 +302,8 @@ def _lane_and_missing_link(
         return "report_only_supported", "needs_combo_sequence"
     if roles & MECHANIC_LOWERING_ROLES:
         return "report_only_supported", "needs_mechanic_lowering"
+    if card_id in emitted_cardid_cards:
+        return "report_only_supported", "none"
     return "report_only_supported", "needs_runtime_surface"
 
 

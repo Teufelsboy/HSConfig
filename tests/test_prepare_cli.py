@@ -296,3 +296,90 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()
+
+
+def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
+    cards_json = tmp_path / "shadow_cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "SW_448",
+                        "dbf_id": 1,
+                        "count": 1,
+                        "name": "Darkbishop Benedictus",
+                        "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
+                    },
+                    {
+                        "card_id": "BAR_311",
+                        "dbf_id": 2,
+                        "count": 2,
+                        "name": "Frazzled Freshman",
+                        "text": "A strong early minion.",
+                    },
+                    {
+                        "card_id": "SW_446",
+                        "dbf_id": 3,
+                        "count": 1,
+                        "name": "Mind Spike",
+                        "text": "Hero Power: Deal 2 damage.",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    result = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--guide-sources-json",
+            "tests/fixtures/shadowpriest_guide_sources.json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    readiness = json.loads(
+        (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
+    )
+    depth = json.loads(
+        (reports / "guide_source_depth_report.json").read_text(encoding="utf-8")
+    )
+    deck_dir = package / "CustomConfig" / "shadowpriest"
+    actual_cardid_files = sorted(
+        path.name
+        for path in deck_dir.glob("*.json")
+        if path.name not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
+    )
+    reported_cardid_files = sorted(
+        {
+            surface
+            for row in readiness["cards"].values()
+            for surface in row["runtime_surfaces"]
+            if surface not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
+        }
+    )
+
+    assert result == 0
+    assert readiness["summary"]["total_cards"] == 3
+    assert "depth_status" in depth
+    assert payload["config_readiness_summary"] == readiness["summary"]
+    assert payload["guide_source_depth_status"] == depth["depth_status"]
+    assert actual_cardid_files == reported_cardid_files
+    for filename in actual_cardid_files:
+        card_id = filename.removesuffix(".json")
+        assert filename in readiness["cards"][card_id]["runtime_surfaces"]

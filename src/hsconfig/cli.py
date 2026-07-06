@@ -14,6 +14,7 @@ from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.combo_plan import build_combo_plan
+from hsconfig.config_readiness import build_config_readiness_report
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract
@@ -21,6 +22,7 @@ from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.guide_research import normalize_source_claims
+from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.mulligan_plan import build_mulligan_plan
@@ -239,6 +241,23 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "combo_plan": combo_plan,
         "global_values_authority_matrix": global_values_authority_matrix,
     }
+    cardid_behavior_files = compile_cardid_behaviors(
+        gameplan_contract, rows=card_behavior_plan["rows"]
+    )
+    config_readiness_report = build_config_readiness_report(
+        deck_identity=deck_identity,
+        claim_coverage=guide_claim_bundle["coverage"],
+        gameplan_contract=gameplan_contract,
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan=card_behavior_plan,
+        combo_plan=combo_plan,
+        global_values_authority_matrix=global_values_authority_matrix,
+        emitted_cardid_files=cardid_behavior_files.keys(),
+    )
+    guide_source_depth_report = build_guide_source_depth_report(
+        guide_claim_bundle=guide_claim_bundle,
+        config_readiness_report=config_readiness_report,
+    )
     surface_intent = build_surface_intent(gameplan_contract)
 
     baseline_receipt = load_globalvalues_baseline(args.runtime_root)
@@ -248,9 +267,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         shutil.rmtree(deck_dir)
     write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
     write_json(deck_dir / "Mulligan.json", compile_mulligan(gameplan_contract))
-    for filename, payload in compile_cardid_behaviors(
-        gameplan_contract, rows=card_behavior_plan["rows"]
-    ).items():
+    for filename, payload in cardid_behavior_files.items():
         write_json(deck_dir / filename, payload)
 
     combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
@@ -299,6 +316,8 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "card_behavior_plan_report.json", card_behavior_plan)
     write_json(reports_dir / "combo_plan_report.json", combo_plan)
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
+    write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
+    write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)
     write_json(
         reports_dir / "global_values_blocked_changes.json",
         global_values_authority_matrix["blocked_until_runtime_evidence"],
@@ -325,6 +344,8 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "guide_claims_count": len(guide_claim_bundle["claims"]),
             "guide_backed_cards": guide_claim_bundle["coverage"]["guide_backed_cards"],
             "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
+            "config_readiness_summary": config_readiness_report["summary"],
+            "guide_source_depth_status": guide_source_depth_report["depth_status"],
         },
         code,
     )

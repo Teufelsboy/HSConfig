@@ -10,6 +10,7 @@ def _report_for_card(
     mulligan_plan: dict | None = None,
     card_behavior_plan: dict | None = None,
     combo_plan: dict | None = None,
+    emitted_cardid_files: list[str] | None = None,
 ) -> dict:
     return build_config_readiness_report(
         deck_identity={
@@ -34,6 +35,7 @@ def _report_for_card(
         card_behavior_plan=card_behavior_plan or {"rows": []},
         combo_plan=combo_plan or {"combos": []},
         global_values_authority_matrix={"allowed_step1_overlays": []},
+        emitted_cardid_files=emitted_cardid_files,
     )
 
 
@@ -189,3 +191,21 @@ def test_non_cardid_diagnostic_row_does_not_count_as_runtime_surface():
     assert row["runtime_surfaces"] == []
     assert row["readiness_lane"] == "report_only_supported"
     assert row["first_missing_link"] == "needs_runtime_surface"
+
+
+def test_emitted_cardid_files_add_runtime_surface_without_marking_generic_card_ready():
+    report = _report_for_card(
+        card_id="CARD_008",
+        roles=[],
+        coverage_status="generic_low_confidence",
+        claim_coverage={"uncovered_cards": ["CARD_008"], "total_cards": 1},
+        card_behavior_plan={"rows": []},
+        emitted_cardid_files=["CARD_008.json"],
+    )
+
+    row = report["cards"]["CARD_008"]
+    assert row["runtime_surfaces"] == ["CARD_008.json"]
+    assert row["readiness_lane"] == "generic_low_confidence"
+    assert row["first_missing_link"] == "needs_guide_claim"
+    assert report["summary"]["runtime_emitted"] == 0
+    assert report["summary"]["cards_needing_guide_claims"] == 1
