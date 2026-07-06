@@ -404,7 +404,17 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "identity_gap_report.json", context["identity_gap_report"])
     write_json(reports_dir / "guide_claim_bundle.json", guide_claim_bundle)
     write_json(reports_dir / "source_evidence_index.json", guide_claim_bundle["source_evidence_index"])
-    write_json(reports_dir / "claim_coverage_report.json", guide_claim_bundle["coverage"])
+    write_json(
+        reports_dir / "claim_coverage_report.json",
+        {
+            **guide_claim_bundle.get("coverage", {}),
+            **guide_claim_bundle.get("claim_coverage_report", {}),
+        },
+    )
+    write_json(
+        reports_dir / "claim_conflict_report.json",
+        guide_claim_bundle.get("claim_conflict_report", {"conflict_count": 0, "conflicts": []}),
+    )
     write_json(reports_dir / "unsupported_claims_report.json", guide_claim_bundle["unsupported_claims"])
     (reports_dir / "card_semantic_audit.md").write_text(
         render_semantic_audit_markdown(semantic_report),
@@ -445,6 +455,8 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
         globalvalue_authority=global_values_authority_matrix,
         generated_files=generated_files,
+        claim_conflict_report=guide_claim_bundle.get("claim_conflict_report"),
+        claim_coverage_report=guide_claim_bundle.get("claim_coverage_report"),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1

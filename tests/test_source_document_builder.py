@@ -194,3 +194,76 @@ def test_source_document_coverage_is_source_only_without_static_backfill():
         "static_semantics_backfilled": 0,
         "uncovered_low_confidence": 1,
     }
+
+
+def test_source_document_builder_downgrades_stale_sources():
+    deck_identity = {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A", "count": 2}]}
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/old",
+                "source_title": "Old Guide",
+                "source_family": "guide",
+                "retrieved_at": "2024-01-01T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["CARD_A"],
+                        "stance": "keep",
+                        "evidence_text_short": "Old guide keep.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert bundle["claims"][0]["freshness_status"] == "stale"
+    assert bundle["claims"][0]["claim_confidence"] == "medium"
+
+
+def test_source_document_builder_reports_conflicting_mulligan_claims():
+    deck_identity = {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A", "count": 2}]}
+    docs = [
+        {
+            "source_url": "https://example.invalid/a",
+            "source_title": "Guide A",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "stance": "keep",
+                    "evidence_text_short": "Keep Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        },
+        {
+            "source_url": "https://example.invalid/b",
+            "source_title": "Guide B",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_discard",
+                    "cards": ["CARD_A"],
+                    "stance": "discard",
+                    "evidence_text_short": "Throw Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        },
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=docs,
+    )
+
+    assert bundle["claim_conflict_report"]["conflict_count"] == 1
+    assert bundle["claim_conflict_report"]["conflicts"][0]["card_id"] == "CARD_A"

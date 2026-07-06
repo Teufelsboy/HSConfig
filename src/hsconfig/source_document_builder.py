@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from hashlib import sha256
 import json
 from typing import Any
@@ -12,6 +13,18 @@ from hsconfig.source_document_model import (
 
 
 DECK_SCOPED_CLAIM_KINDS = {"archetype", "gameplan_posture"}
+
+
+def classify_freshness(retrieved_at: str, *, current_date: str = "2026-07-07") -> str:
+    if not retrieved_at:
+        return "unknown"
+    try:
+        retrieved = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00")).date()
+        current = date.fromisoformat(current_date)
+    except ValueError:
+        return "unknown"
+    return "stale" if (current - retrieved).days > 365 else "current"
+
 
 def build_source_document_bundle(
     *,
@@ -133,7 +146,7 @@ def build_source_document_bundle(
             cards=cards,
             claims=claims,
         ),
-        "claim_conflict_report": {"conflict_count": 0, "conflicts": []},
+        "claim_conflict_report": _build_claim_conflict_report(claims),
         "unsupported_claims": unsupported_claims,
     }
 
@@ -179,6 +192,13 @@ def _normalize_source_claim(
         return None, unsupported
 
     evidence = _claim_evidence(raw_claim)
+    source_confidence = _clean_text(raw_claim.get("source_confidence", ""))
+    freshness_status = classify_freshness(str(document.get("retrieved_at", "")))
+    claim_confidence = (
+        "medium"
+        if freshness_status == "stale" and source_confidence == "high"
+        else source_confidence
+    )
     source_refs = [source_ref, *[str(item) for item in raw_claim.get("source_refs", [])]]
     if document.get("source_url"):
         source_refs.append(str(document["source_url"]))
@@ -191,14 +211,15 @@ def _normalize_source_claim(
         "source_title": str(document.get("source_title", "")),
         "source_family": str(document.get("source_family", "guide")),
         "retrieved_at": str(document.get("retrieved_at", "")),
+        "freshness_status": freshness_status,
         "cards": cards,
         "scope": scope,
         "stance": _clean_text(raw_claim.get("stance", "")),
         "conditions": _normalize_optional(raw_claim.get("conditions", raw_claim.get("condition", {}))),
         "claim": evidence,
         "evidence_text_short": evidence,
-        "source_confidence": _clean_text(raw_claim.get("source_confidence", "")),
-        "claim_confidence": _clean_text(raw_claim.get("claim_confidence", raw_claim.get("source_confidence", "medium"))) or "medium",
+        "source_confidence": source_confidence,
+        "claim_confidence": claim_confidence,
         "confidence": "guide_backed",
         "support_status": "source_backed",
         "source_refs": list(dict.fromkeys(source_refs)),
@@ -262,6 +283,34 @@ def _build_claim_coverage_report(
         "cards": rows,
         "summary": status_counts,
     }
+
+
+def _build_claim_conflict_report(claims: list[dict[str, Any]]) -> dict[str, Any]:
+    mulligan_claims_by_card: dict[str, dict[str, set[str]]] = {}
+    for claim in claims:
+        claim_kind = str(claim.get("claim_kind", ""))
+        if claim_kind not in {"mulligan_keep", "mulligan_discard"}:
+            continue
+        claim_id = str(claim.get("claim_id", ""))
+        for card_id in claim.get("cards", []):
+            kinds = mulligan_claims_by_card.setdefault(str(card_id), {})
+            kinds.setdefault(claim_kind, set()).add(claim_id)
+
+    conflicts = []
+    for card_id, kinds in sorted(mulligan_claims_by_card.items()):
+        if {"mulligan_keep", "mulligan_discard"} <= set(kinds):
+            claim_ids = set()
+            for ids in kinds.values():
+                claim_ids.update(ids)
+            conflicts.append(
+                {
+                    "card_id": card_id,
+                    "conflict_family": "mulligan",
+                    "claim_ids": sorted(claim_ids),
+                    "resolution": "downgrade_to_report_visible_conflict",
+                }
+            )
+    return {"conflict_count": len(conflicts), "conflicts": conflicts}
 
 
 def _unsupported(

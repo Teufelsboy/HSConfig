@@ -106,3 +106,26 @@ def test_unsupported_conditions_are_operator_warnings():
     reasons = {warning["reason"] for warning in summary["warnings"]}
     assert "unsupported_condition" in reasons
     assert "globalvalue_runtime_evidence_required" in reasons
+
+
+def test_claim_conflicts_and_low_confidence_coverage_are_operator_warnings():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="deck-code",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "source_backed", "claim_count": 12},
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        claim_conflict_report={"conflict_count": 1, "conflicts": [{"card_id": "CARD_A"}]},
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 1,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 2,
+            }
+        },
+        generated_files=[],
+    )
+
+    assert {"reason": "claim_conflicts_present", "conflict_count": 1} in summary["warnings"]
+    assert {"reason": "cards_still_low_confidence", "card_count": 2} in summary["warnings"]

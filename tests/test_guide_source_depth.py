@@ -147,3 +147,32 @@ def test_depth_report_guide_gap_takes_precedence_over_runtime_gap():
     assert report["depth_status"] == "needs_more_research"
     assert report["summary"]["cards_needing_runtime_surface"] == 1
     assert report["summary"]["cards_needing_guide_claims"] == 1
+
+
+def test_depth_report_surfaces_claim_conflicts_and_low_confidence_coverage():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [],
+            "unsupported_claims": [],
+            "source_evidence_index": [],
+            "claim_conflict_report": {
+                "conflict_count": 1,
+                "conflicts": [{"card_id": "CARD_001"}],
+            },
+            "claim_coverage_report": {
+                "summary": {
+                    "guide_backed": 1,
+                    "static_semantics_backfilled": 0,
+                    "uncovered_low_confidence": 2,
+                }
+            },
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 2},
+            "cards": {},
+        },
+    )
+
+    assert {"reason": "claim_conflicts_present", "conflict_count": 1} in report["warnings"]
+    assert {"reason": "cards_still_low_confidence", "card_count": 2} in report["warnings"]
+    assert report["summary"]["warnings_count"] == 2

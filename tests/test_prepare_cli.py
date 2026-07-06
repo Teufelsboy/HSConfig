@@ -516,3 +516,104 @@ def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
     for filename in actual_cardid_files:
         card_id = filename.removesuffix(".json")
         assert filename in readiness["cards"][card_id]["runtime_surfaces"]
+
+
+def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "CARD_A",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Card A",
+                        "text": "Fixture card.",
+                    },
+                    {
+                        "card_id": "CARD_B",
+                        "dbf_id": 2,
+                        "count": 2,
+                        "name": "Card B",
+                        "text": "Fixture card.",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/keep",
+                        "source_title": "Keep Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["CARD_A"],
+                                "stance": "keep",
+                                "evidence_text_short": "Keep Card A.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    },
+                    {
+                        "source_url": "https://example.invalid/discard",
+                        "source_title": "Discard Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "mulligan_discard",
+                                "cards": ["CARD_A"],
+                                "stance": "discard",
+                                "evidence_text_short": "Discard Card A.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Fixture",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    capsys.readouterr()
+    reports = package / "reports"
+    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    conflicts = json.loads((reports / "claim_conflict_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 1
+    assert coverage["cards"]["CARD_A"]["coverage_status"] == "guide_backed"
+    assert coverage["cards"]["CARD_B"]["coverage_status"] == "uncovered_low_confidence"
+    assert conflicts["conflict_count"] == 1
+    assert conflicts["conflicts"][0]["card_id"] == "CARD_A"
+    assert {"reason": "claim_conflicts_present", "conflict_count": 1} in operator_summary["warnings"]
+    assert {"reason": "cards_still_low_confidence", "card_count": 1} in operator_summary["warnings"]

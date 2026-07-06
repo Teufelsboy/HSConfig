@@ -40,6 +40,7 @@ def build_guide_source_depth_report(
                     "readiness_lane": lane,
                 }
             )
+    warnings.extend(_claim_gate_warnings(guide_claim_bundle))
 
     total_cards = _total_cards(config_readiness_report, cards)
     cards_needing_guide_claims = sum(
@@ -95,6 +96,49 @@ def _total_cards(
         except (TypeError, ValueError):
             return len(cards)
     return len(cards)
+
+
+def _claim_gate_warnings(guide_claim_bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    conflict_report = guide_claim_bundle.get("claim_conflict_report", {})
+    if isinstance(conflict_report, dict):
+        conflict_count = _int_value(conflict_report.get("conflict_count", 0))
+        if conflict_count > 0:
+            warnings.append(
+                {"reason": "claim_conflicts_present", "conflict_count": conflict_count}
+            )
+    coverage_report = guide_claim_bundle.get("claim_coverage_report", {})
+    if isinstance(coverage_report, dict):
+        low_confidence_count = _low_confidence_card_count(coverage_report)
+        if low_confidence_count > 0:
+            warnings.append(
+                {
+                    "reason": "cards_still_low_confidence",
+                    "card_count": low_confidence_count,
+                }
+            )
+    return warnings
+
+
+def _low_confidence_card_count(report: dict[str, Any]) -> int:
+    summary = report.get("summary", {})
+    if isinstance(summary, dict) and "uncovered_low_confidence" in summary:
+        return _int_value(summary.get("uncovered_low_confidence", 0))
+    cards = report.get("cards", {})
+    if not isinstance(cards, dict):
+        return 0
+    return sum(
+        1
+        for row in cards.values()
+        if isinstance(row, dict) and row.get("coverage_status") == "uncovered_low_confidence"
+    )
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _claim_source_family(claim: dict[str, Any]) -> str:

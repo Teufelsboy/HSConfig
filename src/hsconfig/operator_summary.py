@@ -16,6 +16,8 @@ def build_operator_summary(
     unsupported_conditions: list[dict[str, Any]] | None,
     globalvalue_authority: dict[str, Any] | None,
     generated_files: list[str],
+    claim_conflict_report: dict[str, Any] | None = None,
+    claim_coverage_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     technical_status = _technical_status(technical_validation)
     semantic_status = _semantic_status(guide_source_depth)
@@ -25,6 +27,8 @@ def build_operator_summary(
         semantic_status=semantic_status,
         unsupported_conditions=unsupported_conditions or [],
         globalvalue_authority=globalvalue_authority or {},
+        claim_conflict_report=claim_conflict_report or {},
+        claim_coverage_report=claim_coverage_report or {},
     )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
@@ -92,6 +96,8 @@ def _warnings(
     semantic_status: str,
     unsupported_conditions: list[dict[str, Any]],
     globalvalue_authority: dict[str, Any],
+    claim_conflict_report: dict[str, Any],
+    claim_coverage_report: dict[str, Any],
 ) -> list[dict[str, Any]]:
     warnings: list[dict[str, Any]] = []
     if semantic_status == "STATIC_SEMANTICS_USABLE":
@@ -103,6 +109,14 @@ def _warnings(
     if guide_source_depth and isinstance(guide_source_depth.get("warnings"), list):
         warnings.extend(
             warning for warning in guide_source_depth["warnings"] if isinstance(warning, dict)
+        )
+    conflict_count = _int_value(claim_conflict_report.get("conflict_count", 0))
+    if conflict_count > 0:
+        warnings.append({"reason": "claim_conflicts_present", "conflict_count": conflict_count})
+    low_confidence_count = _low_confidence_card_count(claim_coverage_report)
+    if low_confidence_count > 0:
+        warnings.append(
+            {"reason": "cards_still_low_confidence", "card_count": low_confidence_count}
         )
     for condition in unsupported_conditions:
         warning = dict(condition)
@@ -118,6 +132,27 @@ def _warnings(
             }
         )
     return warnings
+
+
+def _low_confidence_card_count(report: dict[str, Any]) -> int:
+    summary = report.get("summary", {})
+    if isinstance(summary, dict) and "uncovered_low_confidence" in summary:
+        return _int_value(summary.get("uncovered_low_confidence", 0))
+    cards = report.get("cards", {})
+    if not isinstance(cards, dict):
+        return 0
+    return sum(
+        1
+        for row in cards.values()
+        if isinstance(row, dict) and row.get("coverage_status") == "uncovered_low_confidence"
+    )
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _next_action_and_policy(
