@@ -13,32 +13,6 @@ from hsconfig.source_document_model import (
 
 DECK_SCOPED_CLAIM_KINDS = {"archetype", "gameplan_posture"}
 
-STATIC_TEXT_MARKERS = (
-    "battlecry",
-    "deathrattle",
-    "discover",
-    "dredge",
-    "tradeable",
-    "overload",
-    "freeze",
-    "frozen",
-    "lifesteal",
-    "taunt",
-    "rush",
-    "charge",
-    "secret",
-    "location",
-    "weapon",
-    "equip",
-    "silence",
-    "transform",
-    "destroy",
-    "discard",
-    "hero power becomes",
-    "enter shadowform",
-)
-
-
 def build_source_document_bundle(
     *,
     deck_identity: dict[str, Any],
@@ -69,6 +43,50 @@ def build_source_document_bundle(
 
         promoted_count = 0
         unsupported_count_before = len(unsupported_claims)
+        if missing_source_keys:
+            if raw_claims:
+                for claim_index, raw_claim in enumerate(raw_claims, start=1):
+                    if isinstance(raw_claim, dict):
+                        unsupported = _unsupported(
+                            raw_claim,
+                            document,
+                            source_ref,
+                            claim_index,
+                            "missing_source_keys",
+                        )
+                    else:
+                        unsupported = {
+                            "source_ref": source_ref,
+                            "claim_index": claim_index,
+                            "reason": "missing_source_keys",
+                            "source_url": str(document.get("source_url", "")),
+                        }
+                    unsupported["missing_source_keys"] = missing_source_keys
+                    unsupported_claims.append(unsupported)
+            else:
+                unsupported_claims.append(
+                    {
+                        "source_ref": source_ref,
+                        "reason": "missing_source_keys",
+                        "source_url": str(document.get("source_url", "")),
+                        "missing_source_keys": missing_source_keys,
+                    }
+                )
+            source_evidence_index.append(
+                {
+                    "source_ref": source_ref,
+                    "source_id": str(document.get("source_id", f"source_{source_index}")),
+                    "source_url": str(document.get("source_url", "")),
+                    "source_title": str(document.get("source_title", "")),
+                    "source_family": str(document.get("source_family", "unknown")),
+                    "retrieved_at": str(document.get("retrieved_at", "")),
+                    "claim_count": promoted_count,
+                    "unsupported_claim_count": len(unsupported_claims) - unsupported_count_before,
+                    "missing_source_keys": missing_source_keys,
+                }
+            )
+            continue
+
         for claim_index, raw_claim in enumerate(raw_claims, start=1):
             if not isinstance(raw_claim, dict):
                 unsupported_claims.append(
@@ -134,7 +152,7 @@ def _normalize_source_claim(
     if claim_kind == "archetype" and not cards:
         scope = "deck"
     missing_claim_keys = _missing_claim_keys(raw_claim)
-    if "claim_kind" in missing_claim_keys or "evidence_text_short" in missing_claim_keys:
+    if missing_claim_keys:
         unsupported = _unsupported(
             raw_claim,
             document,
@@ -179,7 +197,7 @@ def _normalize_source_claim(
         "conditions": _normalize_optional(raw_claim.get("conditions", raw_claim.get("condition", {}))),
         "claim": evidence,
         "evidence_text_short": evidence,
-        "source_confidence": _clean_text(raw_claim.get("source_confidence", "medium")) or "medium",
+        "source_confidence": _clean_text(raw_claim.get("source_confidence", "")),
         "claim_confidence": _clean_text(raw_claim.get("claim_confidence", raw_claim.get("source_confidence", "medium"))) or "medium",
         "confidence": "guide_backed",
         "support_status": "source_backed",
@@ -228,8 +246,6 @@ def _build_claim_coverage_report(
         source_claim_ids = list(dict.fromkeys(source_claim_ids_by_card.get(card_id, [])))
         if source_claim_ids:
             coverage_status = "guide_backed"
-        elif _has_static_semantics(card):
-            coverage_status = "static_semantics_backfilled"
         else:
             coverage_status = "uncovered_low_confidence"
         status_counts[coverage_status] += 1
@@ -314,8 +330,6 @@ def _missing_keys(document: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
 def _missing_claim_keys(raw_claim: dict[str, Any]) -> list[str]:
     missing = []
     for key in REQUIRED_CLAIM_KEYS:
-        if key == "source_confidence":
-            continue
         if key == "claim_kind":
             value = raw_claim.get("claim_kind", raw_claim.get("claim_type", ""))
         elif key == "evidence_text_short":
@@ -329,22 +343,6 @@ def _missing_claim_keys(raw_claim: dict[str, Any]) -> list[str]:
 
 def _is_deck_scoped(claim_kind: str, scope: str) -> bool:
     return claim_kind in DECK_SCOPED_CLAIM_KINDS and scope in {"deck", "archetype"}
-
-
-def _has_static_semantics(card: dict[str, Any]) -> bool:
-    text = _clean_text(card.get("text", "")).lower()
-    mechanics = card.get("mechanics", [])
-    semantic_families = card.get("semantic_families", card.get("mechanic_families", []))
-    mechanics_list = mechanics if isinstance(mechanics, list) else []
-    semantic_families_list = semantic_families if isinstance(semantic_families, list) else []
-    marker_text = " ".join(
-        [
-            text,
-            *[str(item).lower() for item in mechanics_list],
-            *[str(item).lower() for item in semantic_families_list],
-        ]
-    )
-    return any(marker in marker_text for marker in STATIC_TEXT_MARKERS)
 
 
 def _legacy_claim_type(claim_kind: str) -> str:

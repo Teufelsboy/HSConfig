@@ -37,10 +37,7 @@ def test_source_document_builder_atomizes_claims_and_tracks_coverage():
     assert bundle["claims"][0]["claim_kind"] == "mulligan_keep"
     assert bundle["claims"][0]["support_status"] == "source_backed"
     assert bundle["claim_coverage_report"]["cards"]["CARD_A"]["coverage_status"] == "guide_backed"
-    assert bundle["claim_coverage_report"]["cards"]["CARD_B"]["coverage_status"] in {
-        "static_semantics_backfilled",
-        "uncovered_low_confidence",
-    }
+    assert bundle["claim_coverage_report"]["cards"]["CARD_B"]["coverage_status"] == "uncovered_low_confidence"
     assert bundle["source_evidence_index"][0]["source_url"] == "https://example.invalid/guide"
 
 
@@ -86,3 +83,114 @@ def test_source_document_builder_reports_unsupported_and_off_deck_claims():
     ]
     assert bundle["unsupported_claims"][1]["missing_cards"] == ["CARD_MISSING"]
     assert bundle["claim_conflict_report"]["conflict_count"] == 0
+
+
+def test_missing_or_blank_source_confidence_is_not_promoted():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/guide",
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "evidence_text_short": "Keep Card A.",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "evidence_text_short": "Keep Card A in slow matchups.",
+                    "source_confidence": "   ",
+                },
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    assert bundle["claims"] == []
+    assert [claim["reason"] for claim in bundle["unsupported_claims"]] == [
+        "missing_claim_keys",
+        "missing_claim_keys",
+    ]
+    assert [claim["missing_claim_keys"] for claim in bundle["unsupported_claims"]] == [
+        ["source_confidence"],
+        ["source_confidence"],
+    ]
+    assert bundle["source_evidence_index"][0]["claim_count"] == 0
+
+
+def test_missing_source_keys_reject_all_claims_from_document():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "evidence_text_short": "Keep Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    assert bundle["claims"] == []
+    assert bundle["unsupported_claims"][0]["reason"] == "missing_source_keys"
+    assert bundle["unsupported_claims"][0]["missing_source_keys"] == ["source_url"]
+    assert bundle["unsupported_claims"][0]["claim_kind"] == "mulligan_keep"
+    assert bundle["source_evidence_index"][0]["claim_count"] == 0
+    assert bundle["source_evidence_index"][0]["missing_source_keys"] == ["source_url"]
+
+
+def test_source_document_coverage_is_source_only_without_static_backfill():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "CARD_A",
+                "count": 2,
+                "name": "Card A",
+                "text": "Battlecry: Discover a spell.",
+            }
+        ]
+    }
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata=card_metadata,
+        source_documents=[],
+    )
+
+    assert bundle["claims"] == []
+    assert bundle["claim_coverage_report"]["cards"]["CARD_A"]["coverage_status"] == "uncovered_low_confidence"
+    assert bundle["claim_coverage_report"]["summary"] == {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 0,
+        "uncovered_low_confidence": 1,
+    }

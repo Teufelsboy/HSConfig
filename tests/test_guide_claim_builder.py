@@ -135,6 +135,9 @@ def test_static_semantics_cover_mechanic_text_without_guide_sources():
     assert any(c["claim_kind"] == "mechanic_usage" and c["mechanic"] == "weapon" for c in claims)
     assert bundle["coverage"]["guide_backed_cards"] == 0
     assert bundle["coverage"]["static_semantic_cards"] == 2
+    assert bundle["claim_coverage_report"]["cards"]["CARD_001"]["coverage_status"] == "static_semantics_backfilled"
+    assert bundle["claim_coverage_report"]["cards"]["CARD_002"]["coverage_status"] == "static_semantics_backfilled"
+    assert bundle["claim_coverage_report"]["summary"]["static_semantics_backfilled"] == 2
 
 
 def test_off_deck_card_claim_is_reported_not_promoted():
@@ -146,12 +149,14 @@ def test_off_deck_card_claim_is_reported_not_promoted():
                 "source_url": "https://example.invalid/guide",
                 "source_title": "Guide",
                 "source_family": "guide",
+                "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
                         "claim_kind": "mulligan_keep",
                         "cards": ["CARD_MISSING"],
                         "stance": "keep",
                         "evidence_text_short": "Keep a card that is not in this deck.",
+                        "source_confidence": "high",
                     }
                 ],
             }
@@ -172,12 +177,14 @@ def test_deck_scoped_gameplan_posture_claim_is_promoted_without_cards():
                 "source_url": "https://example.invalid/guide",
                 "source_title": "Guide",
                 "source_family": "guide",
+                "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
                         "claim_kind": "gameplan_posture",
                         "scope": "deck",
                         "stance": "aggressive",
                         "evidence_text_short": "This archetype plays aggressively.",
+                        "source_confidence": "medium",
                     }
                 ],
             }
@@ -199,6 +206,7 @@ def test_preserves_explicit_runtime_lowering_fields_for_router():
                 "source_url": "https://example.invalid/shadow-priest-guide",
                 "source_title": "Shadow Priest Guide",
                 "source_family": "guide",
+                "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
                         "claim_kind": "targeting_rule",
@@ -237,6 +245,7 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
                 "source_url": "https://example.invalid/shadow-priest-guide",
                 "source_title": "Shadow Priest Guide",
                 "source_family": "guide",
+                "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
                         "claim_kind": "targeting_rule",
