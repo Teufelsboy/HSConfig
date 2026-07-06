@@ -267,3 +267,65 @@ def test_source_document_builder_reports_conflicting_mulligan_claims():
 
     assert bundle["claim_conflict_report"]["conflict_count"] == 1
     assert bundle["claim_conflict_report"]["conflicts"][0]["card_id"] == "CARD_A"
+
+
+def test_source_document_builder_preserves_low_claim_confidence_from_current_high_source():
+    deck_identity = {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A", "count": 2}]}
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/current",
+                "source_title": "Current Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["CARD_A"],
+                        "stance": "keep",
+                        "evidence_text_short": "Weakly keep Card A.",
+                        "source_confidence": "high",
+                        "claim_confidence": "low",
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert bundle["claims"][0]["source_confidence"] == "high"
+    assert bundle["claims"][0]["freshness_status"] == "current"
+    assert bundle["claims"][0]["claim_confidence"] == "low"
+
+
+def test_source_document_builder_preserves_low_claim_confidence_from_stale_medium_source():
+    deck_identity = {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A", "count": 2}]}
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/stale",
+                "source_title": "Stale Guide",
+                "source_family": "guide",
+                "retrieved_at": "2024-01-01T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["CARD_A"],
+                        "stance": "keep",
+                        "evidence_text_short": "Old weak keep Card A.",
+                        "source_confidence": "medium",
+                        "claim_confidence": "low",
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert bundle["claims"][0]["source_confidence"] == "medium"
+    assert bundle["claims"][0]["freshness_status"] == "stale"
+    assert bundle["claims"][0]["claim_confidence"] == "low"

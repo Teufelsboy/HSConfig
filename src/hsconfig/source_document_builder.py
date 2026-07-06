@@ -194,11 +194,9 @@ def _normalize_source_claim(
     evidence = _claim_evidence(raw_claim)
     source_confidence = _clean_text(raw_claim.get("source_confidence", ""))
     freshness_status = classify_freshness(str(document.get("retrieved_at", "")))
-    claim_confidence = (
-        "medium"
-        if freshness_status == "stale" and source_confidence == "high"
-        else source_confidence
-    )
+    claim_confidence = _clean_text(raw_claim.get("claim_confidence", "")) or source_confidence
+    if freshness_status == "stale" and claim_confidence == "high":
+        claim_confidence = "medium"
     source_refs = [source_ref, *[str(item) for item in raw_claim.get("source_refs", [])]]
     if document.get("source_url"):
         source_refs.append(str(document["source_url"]))
