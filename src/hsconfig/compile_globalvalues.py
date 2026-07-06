@@ -40,7 +40,7 @@ def compile_globalvalues(
     authority_matrix = contract.get("global_values_authority_matrix", {})
     if isinstance(authority_matrix, dict) and authority_matrix.get("allowed_step1_overlays"):
         allowed_overlays = {
-            str(row["key"]): str(row["overlay"])
+            str(row["key"]): _overlay_from_authority_row(row)
             for row in authority_matrix.get("allowed_step1_overlays", [])
             if isinstance(row, dict) and row.get("key") not in {None, "baseline"}
         }
@@ -160,6 +160,17 @@ def _overlay_for_key(
     if key in overlays:
         return str(overlays[key])
     return None
+
+
+def _overlay_from_authority_row(row: dict[str, Any]) -> str:
+    if row.get("overlay") is not None:
+        return str(row["overlay"])
+    operation = str(row.get("operation", "none"))
+    if operation == "set":
+        return f"set:{row.get('value')}"
+    if operation in {"increase", "decrease"}:
+        return operation
+    return str(row.get("value", "none"))
 
 
 def _apply_overlay(block: dict[str, Any], overlay: str) -> str:

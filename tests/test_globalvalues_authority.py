@@ -31,3 +31,68 @@ def test_runtime_only_numeric_tuning_is_reported_not_applied():
         row["reason"] == "requires_runtime_evidence"
         for row in matrix["blocked_until_runtime_evidence"]
     )
+
+
+def test_posture_overlay_matrix_supports_named_step1_postures():
+    cases = {
+        "aggro_burn": {"FirstTurnValueWeight", "MyHeroPowerValue"},
+        "token_board": {"GlobalMinionAttack", "GlobalMinionIntrinsicValue"},
+        "weapon_pressure": {"MyWeaponValue"},
+        "deathrattle_recruit": {"GlobalMinionIntrinsicValue"},
+        "control_value": {"SecondTurnValueWeight"},
+    }
+
+    for posture, expected_keys in cases.items():
+        matrix = build_globalvalues_authority_matrix(
+            aggression_profile=posture,
+            claims=[
+                {
+                    "claim_kind": "gameplan_posture",
+                    "stance": posture,
+                    "claim_id": f"claim_{posture}",
+                }
+            ],
+        )
+
+        rows_by_key = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
+        assert expected_keys <= set(rows_by_key), posture
+        for key in expected_keys:
+            assert rows_by_key[key]["operation"] in {"set", "increase", "decrease"}
+            assert "reason" in rows_by_key[key]
+
+
+def test_unknown_posture_keeps_baseline_default():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="unknown",
+        claims=[{"claim_kind": "gameplan_posture", "stance": "unknown"}],
+    )
+
+    assert matrix["allowed_step1_overlays"] == [
+        {
+            "key": "baseline",
+            "overlay": "none",
+            "operation": "none",
+            "value": None,
+            "authority": "baseline_default",
+            "claim_refs": [],
+            "reason": "no_source_backed_posture_overlay",
+        }
+    ]
+
+
+def test_source_posture_claim_overrides_generic_aggro_profile():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggro",
+        claims=[
+            {
+                "claim_kind": "gameplan_posture",
+                "stance": "weapon_pressure",
+                "claim_id": "claim_weapon",
+            }
+        ],
+    )
+
+    allowed = {row["key"] for row in matrix["allowed_step1_overlays"]}
+    assert matrix["posture"] == "weapon_pressure"
+    assert "MyWeaponValue" in allowed
+    assert "MyHeroPowerValue" not in allowed

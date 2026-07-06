@@ -120,14 +120,18 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     reports = package / "reports"
     research_dir = reports / "research"
     validation = json.loads((reports / "validation_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
     card_roles = json.loads((research_dir / "card_role_map.json").read_text(encoding="utf-8"))
 
     assert code == 0
     assert payload["status"] == "passed"
     assert payload["command"] == "prepare"
     assert payload["package"] == str(package)
-    assert payload["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert validation["status"] == "passed"
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert payload["operator_summary"]["next_action"] == operator_summary["next_action"]
+    assert payload["next_action"] == operator_summary["next_action"]
     assert (package / "CustomConfig" / "shadowpriest" / "GlobalValues.json").exists()
     assert (package / "CustomConfig" / "shadowpriest" / "Mulligan.json").exists()
     assert card_roles["SW_448"]["confidence"] == "source_backed_static_semantics"
@@ -249,6 +253,7 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
     source_index = json.loads((reports / "source_evidence_index.json").read_text(encoding="utf-8"))
     unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -259,7 +264,168 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert guide_bundle["claims"]
     assert source_index[0]["claim_count"] >= 12
     assert unsupported == []
+    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert (reports / "mulligan_plan_report.json").exists()
+
+
+def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builder_artifacts(
+    tmp_path: Path, capsys
+):
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/shadow-priest",
+                        "source_title": "Shadow Priest Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-06T00:00:00Z",
+                        "deck_name": "ShadowPriest",
+                        "archetype": "aggro_burn",
+                        "claims": [
+                            {
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["SW_448"],
+                                "condition": {"coin": True},
+                                "reason": "Keep Darkbishop Benedictus.",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    guide_sources = json.loads((reports / "guide_sources.json").read_text(encoding="utf-8"))
+    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert guide_sources["source_depth_status"] == "source_backed"
+    assert receipt["source_depth_status"] == "source_backed"
+    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert "reports/guide_builder_receipt.json" in {
+        path.replace("\\", "/") for path in operator_summary["generated_files"]
+    }
+
+
+def test_prepare_no_auto_research_fallback_requests_research_before_strong_config(
+    tmp_path: Path, capsys
+):
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--no-auto-research-fallback",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    operator_summary = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
+    assert operator_summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+    assert payload["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+
+
+def test_prepare_source_posture_drives_globalvalues_authority_matrix(
+    tmp_path: Path, capsys
+):
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/weapon-guide",
+                        "source_title": "Weapon Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-06T00:00:00Z",
+                        "deck_name": "ShadowPriest",
+                        "archetype": "weapon_pressure",
+                        "claims": [
+                            {
+                                "claim_kind": "gameplan_posture",
+                                "scope": "deck",
+                                "stance": "weapon_pressure",
+                                "reason": "Prioritize weapon pressure.",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    capsys.readouterr()
+    reports = package / "reports"
+    authority = json.loads(
+        (reports / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    allowed = {row["key"] for row in authority["allowed_step1_overlays"]}
+
+    assert code == 0
+    assert authority["posture"] == "weapon_pressure"
+    assert "MyWeaponValue" in allowed
+    assert "MyHeroPowerValue" not in allowed
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()

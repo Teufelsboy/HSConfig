@@ -13,6 +13,9 @@ def test_decode_shadowpriest_deck_code_to_exact_cardids():
     assert decoded["hero_dbf_id"] == 813
     assert decoded["format"] == "FT_WILD"
     assert decoded["card_count_total"] == 30
+    assert decoded["sideboard_count"] == 0
+    assert decoded["main_deck"] == decoded["cards"]
+    assert decoded["sideboards"] == []
     assert decoded["unresolved_card_count"] == 0
     assert {card["card_id"] for card in decoded["cards"]} == {
         "CFM_637",
@@ -43,6 +46,7 @@ def test_decode_receipt_contains_dbf_and_cardid_map():
     assert receipt["hero_dbf_id"] == 813
     assert receipt["format"] == "FT_WILD"
     assert receipt["card_count_total"] == 30
+    assert receipt["sideboard_count"] == 0
 
     card_id_map = decoded["card_id_map"]
     assert card_id_map["545"]["card_id"] == "DS1_233"

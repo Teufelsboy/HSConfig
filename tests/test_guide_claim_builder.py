@@ -197,7 +197,7 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
                         "cards": ["SW_446"],
                         "stance": "prefer_enemy_hero",
                         "conditions": {"posture": "burn"},
-                        "condition": "my_runtime_condition > 0",
+                        "condition": "my_target(count(),hero=true) > 0",
                         "runtime_block": "BeforePlayCardBonus",
                         "runtime_value": "12",
                         "evidence_text_short": "Voidtouched Attendant should support burn pressure when the runtime condition is active.",
@@ -212,8 +212,8 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
     routed = route_card_behavior_claims([claim])
     row = routed["card_rows"]["SW_446"][0]
 
-    assert claim["condition"] == "my_runtime_condition > 0"
-    assert claim["conditions"] == "my_runtime_condition > 0"
+    assert claim["condition"] == "my_target(count(),hero=true) > 0"
+    assert claim["conditions"] == "my_target(count(),hero=true) > 0"
     assert row["behavior_block"] == "BeforePlayCardBonus"
     assert row["value"] == "12"
-    assert row["condition"] == "my_runtime_condition > 0"
+    assert row["condition"] == "my_target(count(),hero=true) > 0"

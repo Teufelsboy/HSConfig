@@ -54,6 +54,12 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
     hero_dbf_id = parsed["heroes"][0] if parsed["heroes"] else None
     format_name = _format_name(parsed["format"])
     card_count_total = sum(card["count"] for card in cards)
+    sideboards = _sideboard_rows(cards_db, parsed.get("sideboards", []))
+    sideboard_count = sum(
+        card["count"]
+        for sideboard in sideboards
+        for card in sideboard.get("cards", [])
+    )
     receipt = {
         "decoder": "hearthstone.deckstrings",
         "deck_code_length": len(deck_code),
@@ -61,15 +67,20 @@ def decode_deck_code(deck_code: str) -> dict[str, Any]:
         "hero_dbf_id": hero_dbf_id,
         "card_count_total": card_count_total,
         "unique_card_count": len(cards),
+        "sideboard_count": sideboard_count,
+        "sideboard_unique_card_count": sum(len(sideboard.get("cards", [])) for sideboard in sideboards),
         "unresolved_card_count": len(unresolved),
         "unresolved_cards": unresolved,
     }
 
     return {
         "cards": cards,
+        "main_deck": cards,
+        "sideboards": sideboards,
         "hero_dbf_id": hero_dbf_id,
         "format": format_name,
         "card_count_total": card_count_total,
+        "sideboard_count": sideboard_count,
         "unresolved_card_count": len(unresolved),
         "deckstring_decode_receipt": receipt,
         "card_id_map": card_id_map,
@@ -83,13 +94,15 @@ def _parse_deckstring(deck_code: str) -> dict[str, Any]:
             "cards": parsed.cards,
             "heroes": parsed.heroes,
             "format": parsed.format,
+            "sideboards": getattr(parsed, "sideboards", []),
         }
 
-    cards, heroes, format_value, _sideboards = parsed
+    cards, heroes, format_value, sideboards = parsed
     return {
         "cards": cards,
         "heroes": heroes,
         "format": format_value,
+        "sideboards": sideboards,
     }
 
 
@@ -122,6 +135,33 @@ def _card_row(cards_db: dict[int, Any], dbf_id: int, count: int) -> dict[str, An
         "mechanics": sorted(set(mechanics)),
         "metadata_status": "source_record",
     }
+
+
+def _sideboard_rows(cards_db: dict[int, Any], sideboards: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not sideboards:
+        return rows
+    for index, sideboard in enumerate(sideboards, start=1):
+        owner_dbf_id = None
+        cards_payload = []
+        if isinstance(sideboard, tuple) and len(sideboard) >= 2:
+            owner_dbf_id = sideboard[0]
+            cards_payload = sideboard[1] or []
+        elif isinstance(sideboard, dict):
+            owner_dbf_id = sideboard.get("owner") or sideboard.get("owner_dbf_id")
+            cards_payload = sideboard.get("cards", [])
+        card_rows = [
+            _card_row(cards_db, int(dbf_id), int(count))
+            for dbf_id, count in cards_payload
+        ]
+        rows.append(
+            {
+                "sideboard_index": index,
+                "owner_dbf_id": int(owner_dbf_id) if owner_dbf_id is not None else None,
+                "cards": card_rows,
+            }
+        )
+    return rows
 
 
 def _format_name(format_value: FormatType | int | None) -> str | None:

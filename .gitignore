@@ -23,6 +23,7 @@ ENV/
 outputs/
 tmp/
 temp/
+.superpowers/
 
 # Hearthstone / HearthRanger runtime evidence
 Power.log

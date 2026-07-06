@@ -30,9 +30,11 @@ def test_skill_content_sets_direct_config_boundary():
     assert "GlobalValues" in text
     assert "no replay analysis" in text.lower()
     assert "validate" in text.lower()
-    assert "runtime apply only when the user asks" in text.lower()
+    assert "runtime apply is allowed after validation" in text.lower()
     assert "--allow-placeholder" in text
     assert "hsconfig prepare" in text
+    assert "hsconfig research-deck" in text
+    assert "operator_summary.json" in text
     assert "research contract" in text.lower()
     assert "--guide-sources-json" in text
 
@@ -60,6 +62,7 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
     assert "CustomConfig/deck_config.ini" in text
     assert "--allow-placeholder" in text
     assert "hsconfig prepare" in text
+    assert "research-deck" in text
     assert "research-contract" in text
     assert "reports/research" in text
     assert "--guide-sources-json" in text
@@ -101,7 +104,9 @@ def test_guide_research_policy_documents_structured_source_flow():
     )
 
     for text in (skill_policy, operator_policy):
+        assert "--source-documents-json" in text
         assert "--guide-sources-json" in text
+        assert "research-deck" in text
         assert "mulligan_keep" in text
         assert "targeting_rule" in text
         assert "unsupported_claims_report.json" in text

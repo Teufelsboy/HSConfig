@@ -1,6 +1,6 @@
 # Guide Research Policy
 
-HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig.
+HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig, then normalizes that research with `hsconfig research-deck`.
 
 ## Accepted Sources
 
@@ -20,7 +20,7 @@ HSConfig compiles structured source claims. Codex performs the live guide resear
 
 ## Structured Source Format
 
-Pass this file with `--guide-sources-json`.
+Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.
 
 ```json
 [
@@ -74,6 +74,11 @@ Supported `claim_kind` values are `mulligan_keep`, `mulligan_discard`, `card_rol
 
 ## Reports
 
+- `operator_summary.json`: operator-facing technical and semantic readiness.
+- `guide_builder_receipt.json`: guide-source normalization status and source counts.
+- `candidate_archetypes.json`: primary and fallback archetype candidates.
+- `deck_fingerprint.json`: deck multiset identity used by research normalization.
+- `identity_graph_report.json`: main deck, sideboard, hero, and metadata identity.
 - `guide_claim_bundle.json`: normalized claims used by the build.
 - `source_evidence_index.json`: source-level summary.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
@@ -85,4 +90,4 @@ Supported `claim_kind` values are `mulligan_keep`, `mulligan_discard`, `card_rol
 - `per_card_config_readiness_report.json`: card-level lane, runtime surfaces, and first missing link.
 - `guide_source_depth_report.json`: source-depth status, source families, claim kinds, and research warnings.
 
-HSConfig does not prove gameplay improvement. It creates the best available initial config from current source claims and card semantics.
+HSConfig does not prove gameplay improvement. It creates the best available initial config from current source claims and card semantics. HSTuner remains the post-game analysis and tuning tool.

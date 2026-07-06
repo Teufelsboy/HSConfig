@@ -22,11 +22,19 @@ from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.guide_research import normalize_source_claims
+from hsconfig.guide_source_builder import (
+    build_candidate_archetypes,
+    build_deck_fingerprint,
+    build_guide_builder_receipt,
+    build_guide_sources,
+)
 from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.hearthstonejson import fetch_latest_cards
+from hsconfig.identity_graph import build_identity_gap_report, build_identity_graph_report
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.models import InputManifest
+from hsconfig.operator_summary import build_operator_summary
 from hsconfig.research_contract import (
     build_research_contract_bundle,
     write_research_contract_bundle,
@@ -50,6 +58,8 @@ def main(argv: list[str] | None = None) -> int:
             payload, code = _build(args)
         elif args.command == "research-contract":
             payload, code = _research_contract(args)
+        elif args.command == "research-deck":
+            payload, code = _research_deck(args)
         elif args.command == "validate":
             payload, code = _validate(args)
         elif args.command == "apply":
@@ -73,6 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--cards-json")
     build.add_argument("--claims-json")
     build.add_argument("--guide-sources-json")
+    build.add_argument("--source-documents-json")
     build.add_argument("--plan-reports-dir")
     build.add_argument("--allow-placeholder", action="store_true")
     build.add_argument("--json", action="store_true")
@@ -85,6 +96,8 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--cards-json")
     prepare.add_argument("--claims-json")
     prepare.add_argument("--guide-sources-json")
+    prepare.add_argument("--source-documents-json")
+    prepare.add_argument("--auto-research-fallback", action=argparse.BooleanOptionalAction, default=True)
     prepare.add_argument("--plan-reports-dir")
     prepare.add_argument("--allow-placeholder", action="store_true")
     prepare.add_argument("--json", action="store_true")
@@ -96,8 +109,18 @@ def _build_parser() -> argparse.ArgumentParser:
     research_contract.add_argument("--cards-json")
     research_contract.add_argument("--claims-json")
     research_contract.add_argument("--guide-sources-json")
+    research_contract.add_argument("--source-documents-json")
     research_contract.add_argument("--allow-placeholder", action="store_true")
     research_contract.add_argument("--json", action="store_true")
+
+    research_deck = subparsers.add_parser("research-deck")
+    research_deck.add_argument("--deck-name", required=True)
+    research_deck.add_argument("--deck-code", required=True)
+    research_deck.add_argument("--out", required=True)
+    research_deck.add_argument("--cards-json")
+    research_deck.add_argument("--source-documents-json")
+    research_deck.add_argument("--allow-placeholder", action="store_true")
+    research_deck.add_argument("--json", action="store_true")
 
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
@@ -118,7 +141,8 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         allow_placeholder=args.allow_placeholder,
     )
     cards = cards_payload["cards"]
-    claims = _load_claims(args.claims_json)
+    claims = _load_claims(getattr(args, "claims_json", None))
+    source_documents_input = _load_source_documents(getattr(args, "source_documents_json", None))
     guide_sources = _load_guide_sources(getattr(args, "guide_sources_json", None))
     source_records = _source_records_from_cards(cards)
     deck_identity = build_deck_identity(
@@ -127,6 +151,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         cards=cards,
         hero_dbf_id=cards_payload.get("hero_dbf_id"),
         format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
     )
     card_metadata = hydrate_card_metadata(
         cards=deck_identity["cards"],
@@ -134,10 +159,12 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     )
     hearthstonejson_cards: list[dict[str, Any]] = []
     semantic_fetch_error: str | None = None
-    try:
-        hearthstonejson_cards = fetch_latest_cards(timeout=10.0)
-    except Exception as exc:
-        semantic_fetch_error = str(exc)
+    semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
+    if not semantic_fetch_skipped:
+        try:
+            hearthstonejson_cards = fetch_latest_cards(timeout=10.0)
+        except Exception as exc:
+            semantic_fetch_error = str(exc)
     semantic_report = enrich_card_metadata(
         card_metadata,
         hearthstonejson_cards=hearthstonejson_cards,
@@ -148,6 +175,24 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         )
         semantic_report["semantic_enrichment_status"] = "partial"
     enriched_card_metadata = {"cards": semantic_report["cards"]}
+    generated_guide_sources = None
+    if source_documents_input:
+        generated_guide_sources = build_guide_sources(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            card_roles={},
+            source_documents=source_documents_input,
+        )
+        guide_sources = generated_guide_sources["sources"]
+    elif not guide_sources and getattr(args, "auto_research_fallback", True):
+        generated_guide_sources = build_guide_sources(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            card_roles={},
+            source_documents=[],
+        )
+    elif not guide_sources:
+        generated_guide_sources = _research_required_guide_sources(args.deck_name, deck_identity)
     source_documents = [*guide_sources, *_guide_documents_from_legacy_claims(claims)]
     guide_claim_bundle = build_guide_claim_bundle(
         deck_identity=deck_identity,
@@ -164,6 +209,46 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         source_claims=source_claims,
         guide_claim_bundle=guide_claim_bundle,
     )
+    if generated_guide_sources is None and guide_sources:
+        generated_guide_sources = build_guide_sources(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            card_roles=research_bundle.get("card_role_map", {}),
+            source_documents=guide_sources,
+        )
+    guide_builder_receipt = build_guide_builder_receipt(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        source_documents=source_documents_input,
+        guide_sources=generated_guide_sources or build_guide_sources(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            card_roles=research_bundle.get("card_role_map", {}),
+            source_documents=guide_sources,
+        ),
+    )
+    deck_fingerprint = build_deck_fingerprint(deck_identity, deck_identity["cards"])
+    candidate_archetypes = build_candidate_archetypes(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        card_roles=research_bundle.get("card_role_map", {}),
+        source_documents=source_documents_input or guide_sources,
+    )
+    identity_graph_report = build_identity_graph_report(
+        deck_identity=deck_identity,
+        hearthstonejson_receipt={
+            "source": "hearthstonejson_latest_enus_cards",
+            "card_count": len(hearthstonejson_cards),
+            "status": (
+                "skipped"
+                if semantic_fetch_skipped
+                else "fetched"
+                if semantic_fetch_error is None
+                else "fetch_failed"
+            ),
+            "error": semantic_fetch_error,
+        },
+    )
     return {
         "cards_payload": cards_payload,
         "deck_identity": deck_identity,
@@ -172,6 +257,12 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         "guide_claim_bundle": guide_claim_bundle,
         "source_claims": source_claims,
         "research_bundle": research_bundle,
+        "guide_sources_generated": generated_guide_sources,
+        "guide_builder_receipt": guide_builder_receipt,
+        "deck_fingerprint": deck_fingerprint,
+        "candidate_archetypes": candidate_archetypes,
+        "identity_graph_report": identity_graph_report,
+        "identity_gap_report": build_identity_gap_report(identity_graph_report),
     }
 
 
@@ -180,7 +271,11 @@ def _prepare(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     payload = dict(payload)
     payload["command"] = "prepare"
     if code == 0:
-        payload["next_action"] = "READY_TO_APPLY_OR_HANDOFF"
+        operator_summary = payload.get("operator_summary")
+        if isinstance(operator_summary, dict):
+            payload["next_action"] = operator_summary.get("next_action", "READY_WITH_WARNINGS")
+        else:
+            payload["next_action"] = "READY_TO_APPLY_OR_HANDOFF"
     return payload, code
 
 
@@ -300,6 +395,13 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if cards_payload.get("card_id_map") is not None:
         write_json(reports_dir / "card_id_map.json", cards_payload["card_id_map"])
     write_json(reports_dir / "semantic_enrichment_report.json", semantic_report)
+    if context.get("guide_sources_generated") is not None:
+        write_json(reports_dir / "guide_sources.json", context["guide_sources_generated"])
+    write_json(reports_dir / "deck_fingerprint.json", context["deck_fingerprint"])
+    write_json(reports_dir / "candidate_archetypes.json", context["candidate_archetypes"])
+    write_json(reports_dir / "guide_builder_receipt.json", context["guide_builder_receipt"])
+    write_json(reports_dir / "identity_graph_report.json", context["identity_graph_report"])
+    write_json(reports_dir / "identity_gap_report.json", context["identity_gap_report"])
     write_json(reports_dir / "guide_claim_bundle.json", guide_claim_bundle)
     write_json(reports_dir / "source_evidence_index.json", guide_claim_bundle["source_evidence_index"])
     write_json(reports_dir / "claim_coverage_report.json", guide_claim_bundle["coverage"])
@@ -334,6 +436,17 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         require_globalvalues_profile=True,
     )
     write_json(reports_dir / "validation_report.json", report)
+    generated_files = _generated_package_files(out, deck_dir, reports_dir)
+    operator_summary = build_operator_summary(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        technical_validation=report,
+        guide_source_depth=context["guide_builder_receipt"],
+        unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
+        globalvalue_authority=global_values_authority_matrix,
+        generated_files=generated_files,
+    )
+    write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1
     return (
         {
@@ -346,9 +459,67 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
             "config_readiness_summary": config_readiness_report["summary"],
             "guide_source_depth_status": guide_source_depth_report["depth_status"],
+            "operator_summary": operator_summary,
+            "next_action": operator_summary["next_action"],
         },
         code,
     )
+
+
+def _research_deck(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    _prepare_research_output_dir(out)
+    args.skip_semantic_fetch = True
+
+    context = _build_preconfig_context(args)
+    deck_identity = context["deck_identity"]
+    write_json(out / "deck_fingerprint.json", context["deck_fingerprint"])
+    write_json(out / "candidate_archetypes.json", context["candidate_archetypes"])
+    write_json(out / "guide_sources.json", context["guide_sources_generated"])
+    write_json(out / "guide_builder_receipt.json", context["guide_builder_receipt"])
+    write_json(out / "identity_graph_report.json", context["identity_graph_report"])
+    write_json(out / "identity_gap_report.json", context["identity_gap_report"])
+
+    written_files = [
+        str(path)
+        for path in sorted(out.glob("*.json"))
+    ]
+    return (
+        {
+            "status": "OK",
+            "deck_name": args.deck_name,
+            "deck_slug": deck_identity["deck_slug"],
+            "source_depth_status": context["guide_builder_receipt"]["source_depth_status"],
+            "written_files": written_files,
+        },
+        0,
+    )
+
+
+def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "deck_name": deck_name,
+        "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
+        "source_depth_status": "needs_more_research",
+        "sources": [],
+        "summary": {
+            "source_count": 0,
+            "claim_count": 0,
+            "stale_source_count": 0,
+            "downgraded_source_count": 0,
+            "static_card_semantics_used": False,
+        },
+    }
+
+
+def _generated_package_files(out: Path, deck_dir: Path, reports_dir: Path) -> list[str]:
+    files = [
+        *sorted(deck_dir.glob("*.json")),
+        *sorted(path for path in reports_dir.rglob("*") if path.is_file()),
+        reports_dir / "operator_summary.json",
+    ]
+    return sorted({str(path.relative_to(out)) for path in files})
 
 
 def _research_contract(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -432,6 +603,7 @@ def _load_cards(
             "cards": decoded["cards"],
             "hero_dbf_id": decoded["hero_dbf_id"],
             "format": decoded["format"],
+            "sideboards": decoded.get("sideboards", []),
             "deckstring_decode_receipt": decoded["deckstring_decode_receipt"],
             "card_id_map": decoded["card_id_map"],
             "card_source": "deckstring",
@@ -441,6 +613,7 @@ def _load_cards(
             "cards": _placeholder_cards(deck_name=deck_name, deck_code=deck_code),
             "hero_dbf_id": None,
             "format": None,
+            "sideboards": [],
             "deckstring_decode_receipt": None,
             "card_id_map": None,
             "card_source": "placeholder",
@@ -457,6 +630,7 @@ def _load_cards(
         "cards": cards,
         "hero_dbf_id": None,
         "format": None,
+        "sideboards": [],
         "deckstring_decode_receipt": None,
         "card_id_map": None,
         "card_source": "cards_json",
@@ -493,6 +667,22 @@ def _load_guide_sources(guide_sources_json: str | None) -> list[dict[str, Any]]:
             raise ValueError("Every guide source row must be an object")
         sources.append(dict(source))
     return sources
+
+
+def _load_source_documents(source_documents_json: str | None) -> list[dict[str, Any]]:
+    if source_documents_json is None:
+        return []
+    payload = read_json(source_documents_json)
+    if isinstance(payload, dict):
+        payload = payload.get("source_documents", payload.get("documents", payload.get("sources")))
+    if not isinstance(payload, list):
+        raise ValueError("--source-documents-json must contain a list or an object with a source_documents list")
+    documents = []
+    for document in payload:
+        if not isinstance(document, dict):
+            raise ValueError("Every source document row must be an object")
+        documents.append(dict(document))
+    return documents
 
 
 def _guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -13,35 +13,39 @@ Inputs:
 - deck code
 - optional expert card JSON override
 - optional legacy source-backed guide claims JSON list
-- optional structured guide sources JSON from current guide/archetype research
+- optional researched source documents JSON
+- optional normalized guide sources JSON from `hsconfig research-deck`
 - runtime root for `prepare` / `build` baseline profiling and for `apply`
 
 Workflow:
 
 1. Decode the deck code first, then resolve deck identity and card metadata.
 2. Research current guide/archetype/card-usage sources.
-3. Write structured guide sources with card-specific claims.
-4. Check that the structured guide sources give every deck card a card role,
+3. Write researched source documents with card-specific claims.
+4. Run `hsconfig research-deck --source-documents-json ...` when source documents exist, or run it without sources to create static-semantics fallback artifacts.
+5. Check that the normalized guide sources give every deck card a card role,
    mulligan stance, usage expectation, mechanic expectation, combo relation, or
    explicit low-confidence fallback.
-5. Run `hsconfig prepare --guide-sources-json ...`.
-6. Verify the research contract plus `claim_coverage_report.json`,
+6. Run `hsconfig prepare --guide-sources-json ...`.
+7. Verify `operator_summary.json`, the research contract, and
+   `claim_coverage_report.json`,
    `mulligan_plan_report.json`, `card_behavior_plan_report.json`,
    `combo_plan_report.json`, `global_values_authority_matrix.json`,
    `per_card_config_readiness_report.json`, and
    `guide_source_depth_report.json`.
-7. Apply only after validation is green.
+8. Apply when `operator_summary.json` has `technical_status=VALID_PACKAGE` and the user requested autonomous runtime apply.
 
 Rules:
 
 - Build direct guide-aligned configs only.
 - Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
 - Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
+- Use `operator_summary.json` as the operator-facing readiness file; do not confuse `semantic_status` with runtime validity.
 - Keep full `GlobalValues` coverage and write the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
-- Runtime apply only when the user asks.
+- Runtime apply is allowed after validation when the user asked for autonomous apply.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
-- Tell the user whether the package is guide-backed, static-semantics-backed, or still has uncovered cards.
+- Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 
 References:
 

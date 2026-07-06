@@ -2,7 +2,7 @@
 
 Use current deck guides and data sources as strategic priors when live research is part of the request.
 
-Every source document should be written as structured JSON and passed with `--guide-sources-json`. Runtime files stay clean; provenance and confidence stay in reports.
+Every source document should be written as structured JSON and normalized with `hsconfig research-deck`. Runtime files stay clean; provenance and confidence stay in reports.
 
 Accepted source types:
 
@@ -20,7 +20,7 @@ Rejected source types:
 - stale claims that contradict current card text
 - advice that cannot be mapped to Mulligan, CardID behavior, Combo, or GlobalValues posture
 
-Structured source shape:
+Structured source document shape for `--source-documents-json`:
 
 ```json
 [
@@ -41,6 +41,8 @@ Structured source shape:
   }
 ]
 ```
+
+Normalized guide sources from `research-deck` can then be passed to `prepare` with `--guide-sources-json`.
 
 Optional CardID lowering fields for card-specific claims:
 
@@ -86,7 +88,7 @@ Confidence lanes:
 - `archetype_inferred`: mechanics imply a reasonable deck-plan role, but no direct guide claim exists.
 - `generic_low_confidence`: HSConfig can only cover the card generically.
 
-The research contract lives under `reports/research/` and includes archetype, claims, card roles, mulligan anchors, usage expectations, known bad patterns, and GlobalValues intent.
+`operator_summary.json` is the main readiness file. The research contract lives under `reports/research/` and includes archetype, claims, card roles, mulligan anchors, usage expectations, known bad patterns, and GlobalValues intent.
 
 Unsupported claims appear in `unsupported_claims_report.json`. Uncovered cards appear in `claim_coverage_report.json`.
 

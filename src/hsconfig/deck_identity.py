@@ -25,8 +25,10 @@ def build_deck_identity(
     cards: list[dict[str, Any]],
     hero_dbf_id: int | None = None,
     format: str | None = None,
+    sideboards: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     normalized_cards = [_normalize_card(card) for card in cards]
+    normalized_sideboards = _normalize_sideboards(sideboards or [])
     fingerprint = stable_deck_fingerprint(
         (card["card_id"], card["count"]) for card in normalized_cards
     )
@@ -37,8 +39,15 @@ def build_deck_identity(
         "hero_dbf_id": hero_dbf_id,
         "format": format,
         "cards": normalized_cards,
+        "main_deck": normalized_cards,
+        "sideboards": normalized_sideboards,
         "deck_fingerprint": fingerprint,
         "card_count_total": sum(card["count"] for card in normalized_cards),
+        "sideboard_count": sum(
+            card["count"]
+            for sideboard in normalized_sideboards
+            for card in sideboard.get("cards", [])
+        ),
         "unresolved_card_count": sum(1 for card in normalized_cards if not card["card_id"]),
     }
 
@@ -53,3 +62,23 @@ def _normalize_card(card: dict[str, Any]) -> dict[str, Any]:
         "dbf_id": int(dbf_id) if dbf_id is not None else None,
         "count": int(card.get("count", 1)),
     }
+
+
+def _normalize_sideboards(sideboards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = []
+    for index, sideboard in enumerate(sideboards, start=1):
+        if not isinstance(sideboard, dict):
+            continue
+        normalized.append(
+            {
+                "sideboard_index": int(sideboard.get("sideboard_index", index)),
+                "owner_dbf_id": (
+                    int(sideboard["owner_dbf_id"])
+                    if sideboard.get("owner_dbf_id") is not None
+                    else None
+                ),
+                "owner_card_id": sideboard.get("owner_card_id"),
+                "cards": [_normalize_card(card) for card in sideboard.get("cards", [])],
+            }
+        )
+    return normalized

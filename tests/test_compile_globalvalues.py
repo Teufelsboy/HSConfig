@@ -146,3 +146,35 @@ def test_compile_globalvalues_adds_known_overlay_key_missing_from_runtime_baseli
         )["status"]
         == "passed"
     )
+
+
+def test_compile_globalvalues_accepts_operation_value_authority_rows():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1.00"}]},
+        "MyWeaponValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "global_values_authority_matrix": {
+            "allowed_step1_overlays": [
+                {
+                    "key": "FirstTurnValueWeight",
+                    "operation": "set",
+                    "value": "0.70",
+                    "reason": "weapon deck still values first turn.",
+                },
+                {
+                    "key": "MyWeaponValue",
+                    "operation": "increase",
+                    "value": None,
+                    "reason": "weapon pressure posture.",
+                },
+            ]
+        }
+    }
+
+    result = compile_globalvalues(baseline, contract)
+
+    assert result["config"]["FirstTurnValueWeight"]["values"][0]["value"] == "0.70"
+    assert result["config"]["MyWeaponValue"]["values"][0]["value"] == "1.15"

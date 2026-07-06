@@ -625,15 +625,15 @@ hsconfig apply --package ...
 
 - [ ] Add or extend docs tests if the repo has them, likely `tests/test_docs.py` or `tests/test_skill_docs.py`.
 - [ ] Add `rg` checks in test or verification for banned active-doc phrases:
-  - "only default mulligan"
-  - "guide source optional only"
-  - "post-game tuning in HSConfig"
+  - "default-only mulligan"
+  - "guide source as merely optional"
+  - "post-game tuning owned by HSConfig"
 
 **Verification:**
 
 ```powershell
 python -m pytest tests/test_skill_docs.py tests/test_docs.py -q
-rg -n "only default mulligan|post-game tuning in HSConfig|guide source optional only" README.md docs C:\Users\darbo\.codex\skills\hsconfig\SKILL.md
+rg -n "default-only mulligan|post-game tuning owned by HSConfig|guide source as merely optional" README.md docs C:\Users\darbo\.codex\skills\hsconfig\SKILL.md
 ```
 
 The `rg` command should return no active-doc matches.
@@ -789,7 +789,7 @@ python -m pytest -q
 - [ ] Run active-doc scan:
 
 ```powershell
-rg -n "only default mulligan|post-game tuning in HSConfig|guide source optional only" README.md docs src tests C:\Users\darbo\.codex\skills\hsconfig\SKILL.md
+rg -n "default-only mulligan|post-game tuning owned by HSConfig|guide source as merely optional" README.md docs src tests C:\Users\darbo\.codex\skills\hsconfig\SKILL.md
 ```
 
 Expected: no matches except test strings that intentionally assert these phrases are absent.
