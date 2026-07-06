@@ -62,7 +62,7 @@ def build_config_readiness_report(
         emitted_cardid_files,
         fallback_cardids=concrete_cardid_cards,
     )
-    emitted_cardid_cards = set(emitted_cardid_file_map)
+    emitted_cardid_cards = set(emitted_cardid_file_map) & concrete_cardid_cards
     unsupported_condition_cards = _cards_from_unsupported_condition_suppression(
         card_behavior_plan
     )
@@ -159,8 +159,16 @@ def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
     return {
         str(row["card_id"])
         for row in card_behavior_plan.get("rows", [])
-        if _is_cardid_runtime_row(row)
+        if _is_meaningful_cardid_runtime_row(row)
     }
+
+
+def _is_meaningful_cardid_runtime_row(row: Any) -> bool:
+    return (
+        _is_cardid_runtime_row(row)
+        and row.get("meaningful_runtime_surface") is True
+        and bool(row.get("behavior_block"))
+    )
 
 
 def _emitted_cardid_file_map(

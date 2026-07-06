@@ -59,7 +59,16 @@ def test_runtime_emitted_card_gets_runtime_lane():
             }
         },
         mulligan_plan={"rules": []},
-        card_behavior_plan={"rows": [{"card_id": "CARD_001", "surface": "CardID.json"}]},
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_001",
+                    "surface": "CardID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
         combo_plan={"combos": []},
         global_values_authority_matrix={"allowed_step1_overlays": []},
     )
@@ -209,3 +218,64 @@ def test_emitted_cardid_files_add_runtime_surface_without_marking_generic_card_r
     assert row["first_missing_link"] == "needs_guide_claim"
     assert report["summary"]["runtime_emitted"] == 0
     assert report["summary"]["cards_needing_guide_claims"] == 1
+
+
+def test_readiness_counts_only_meaningful_cardid_rows_as_runtime_emitted():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Fixture",
+            "deck_slug": "fixture",
+            "cards": [
+                {"card_id": "EX1_GENERIC", "name": "Generic", "count": 1},
+                {"card_id": "EX1_DEEP", "name": "Deep", "count": 1},
+            ],
+        },
+        claim_coverage={"uncovered_cards": []},
+        gameplan_contract={
+            "deck_name": "Fixture",
+            "deck_slug": "fixture",
+            "cards": {
+                "EX1_GENERIC": {
+                    "card_id": "EX1_GENERIC",
+                    "name": "Generic",
+                    "coverage_status": "guide_backed",
+                    "roles": ["deck_card"],
+                },
+                "EX1_DEEP": {
+                    "card_id": "EX1_DEEP",
+                    "name": "Deep",
+                    "coverage_status": "guide_backed",
+                    "roles": ["overkill"],
+                },
+            },
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={
+            "rows": [
+                {
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "card_id": "EX1_GENERIC",
+                    "roles": ["deck_card"],
+                    "meaningful_runtime_surface": False,
+                },
+                {
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "card_id": "EX1_DEEP",
+                    "roles": ["overkill"],
+                    "behavior_block": "BeforeOverkilledBonus",
+                    "meaningful_runtime_surface": True,
+                },
+            ],
+            "suppressed": [],
+        },
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+        emitted_cardid_files={"EX1_GENERIC.json", "EX1_DEEP.json"},
+    )
+
+    assert report["cards"]["EX1_DEEP"]["readiness_lane"] == "runtime_emitted"
+    assert report["cards"]["EX1_DEEP"]["first_missing_link"] == "none"
+    assert report["cards"]["EX1_GENERIC"]["readiness_lane"] == "report_only_supported"
+    assert report["cards"]["EX1_GENERIC"]["first_missing_link"] == "needs_runtime_surface"
