@@ -237,6 +237,10 @@ def _normalize_source_claim(
         claim["runtime_value"] = _clean_text(raw_claim["runtime_value"])
     if "mechanic" in raw_claim:
         claim["mechanic"] = _clean_text(raw_claim["mechanic"]).lower()
+    if "selector_kind" in raw_claim:
+        claim["selector_kind"] = _clean_text(raw_claim["selector_kind"])
+    if "selector" in raw_claim:
+        claim["selector"] = _clean_text(raw_claim["selector"])
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
     claim["claim_id"] = _claim_id(claim)

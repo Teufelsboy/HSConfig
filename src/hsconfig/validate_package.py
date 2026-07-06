@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.io import read_json
+from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
     expected_game_card_id,
@@ -166,16 +167,34 @@ def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
         and values[0].get("value") == "discard"
     ):
         errors.append(f"{path}: lone_wildcard_discard")
+    has_previous_non_wildcard_hold = False
     for index, row in enumerate(values):
         if not isinstance(row, dict):
             errors.append(f"{path}: Mulligan row {index} must be an object")
             continue
+        selector_info: dict[str, Any] | None = None
         if not row.get("mulligan"):
             errors.append(f"{path}: Mulligan row {index} missing mulligan")
+        else:
+            selector_info = normalize_mulligan_selector({"selector": row.get("mulligan")})
+            if not selector_info["supported"]:
+                errors.append(
+                    f"{path}: Mulligan row {index} unsupported_mulligan_selector "
+                    f"{selector_info['selector']}"
+                )
         if "condition" not in row:
             errors.append(f"{path}: Mulligan row {index} missing condition")
         if row.get("value") not in {"hold", "discard"}:
             errors.append(f"{path}: Mulligan row {index} value must be hold or discard")
+        if selector_info is None or not selector_info["supported"]:
+            continue
+        is_wildcard = selector_info["selector_kind"] == "wildcard"
+        if row.get("value") == "discard" and is_wildcard and not has_previous_non_wildcard_hold:
+            errors.append(
+                f"{path}: Mulligan wildcard discard appears before any non-wildcard hold"
+            )
+        if row.get("value") == "hold" and not is_wildcard:
+            has_previous_non_wildcard_hold = True
     return errors
 
 

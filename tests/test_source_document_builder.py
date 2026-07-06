@@ -41,6 +41,43 @@ def test_source_document_builder_atomizes_claims_and_tracks_coverage():
     assert bundle["source_evidence_index"][0]["source_url"] == "https://example.invalid/guide"
 
 
+def test_source_document_builder_preserves_mulligan_selectors():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "count": 2, "name": "Card A"},
+            {"card_id": "CARD_B", "count": 2, "name": "Card B"},
+        ],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/guide",
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "selector_kind": "plus_combo",
+                    "selector": "CARD_A + CARD_B",
+                    "evidence_text_short": "Keep the two-card opener together.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    assert bundle["claims"][0]["selector_kind"] == "plus_combo"
+    assert bundle["claims"][0]["selector"] == "CARD_A + CARD_B"
+
+
 def test_source_document_builder_reports_unsupported_and_off_deck_claims():
     deck_identity = {
         "deck_name": "Fixture",

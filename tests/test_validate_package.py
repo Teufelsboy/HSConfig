@@ -136,6 +136,67 @@ def test_validate_package_rejects_lone_wildcard_mulligan_discard(tmp_path: Path)
     assert any("lone_wildcard_discard" in error for error in report["errors"])
 
 
+def test_validate_package_rejects_mulligan_wildcard_discard_before_hold(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "bad",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "discard everything too early",
+                        "mulligan": "*",
+                        "condition": "*",
+                        "value": "discard",
+                    },
+                    {
+                        "comment": "hold later",
+                        "mulligan": "EX1_001",
+                        "condition": "*",
+                        "value": "hold",
+                    },
+                ]
+            },
+        },
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any(
+        "Mulligan wildcard discard appears before any non-wildcard hold" in error
+        for error in report["errors"]
+    )
+
+
+def test_validate_package_rejects_unsupported_mulligan_selector(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "bad",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "unsupported selector",
+                        "mulligan": "EX1_001 | EX1_002",
+                        "condition": "*",
+                        "value": "hold",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any("unsupported_mulligan_selector" in error for error in report["errors"])
+
+
 def test_validate_package_rejects_combo_segment_mismatch(tmp_path: Path):
     deck_dir = tmp_path / "CustomConfig" / "deck"
     write_json(

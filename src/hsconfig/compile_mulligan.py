@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.mulligan_selector import normalize_mulligan_selector
+
 
 def compile_mulligan(
     contract: dict[str, Any] | None = None,
@@ -36,7 +38,7 @@ def compile_mulligan(
         config["Mulligan"]["values"].append(
             {
                 "comment": f"{deck_name}: {anchor.get('rule_id', f'{card_id}_mulligan_hold')}",
-                "mulligan": card_id,
+                "mulligan": anchor.get("selector", card_id),
                 "condition": anchor.get("condition", "*"),
                 "value": anchor.get("intent", "hold"),
             }
@@ -59,6 +61,8 @@ def _anchors_from_contract(contract: dict[str, Any]) -> list[dict[str, Any]]:
         {
             "rule_id": str(anchor.get("rule_id", f"{anchor['card_id']}_mulligan_hold")),
             "card_id": str(anchor["card_id"]),
+            "selector_kind": "card",
+            "selector": str(anchor["card_id"]),
             "intent": str(anchor.get("intent", "hold")),
             "condition": anchor.get("condition", "*"),
             "source_claim_ids": list(anchor.get("source_claim_ids", [])),
@@ -70,22 +74,34 @@ def _anchors_from_contract(contract: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _anchors_from_plan(plan: dict[str, Any]) -> list[dict[str, Any]]:
     anchors = []
+    has_previous_non_wildcard_hold = False
     for index, rule in enumerate(plan.get("rules", []), start=1):
         if not isinstance(rule, dict):
             continue
-        card_id = str(rule.get("card", ""))
-        if not card_id:
+        selector_info = normalize_mulligan_selector(rule)
+        if not selector_info["supported"]:
             continue
+        intent = str(rule.get("action", rule.get("intent", "hold")))
+        is_wildcard = selector_info["selector_kind"] == "wildcard"
+        if is_wildcard and intent == "discard" and not has_previous_non_wildcard_hold:
+            continue
+        card_id = str(rule.get("card", selector_info["selector"]))
+        if not card_id:
+            card_id = selector_info["selector"]
         anchors.append(
             {
                 "rule_id": str(rule.get("rule_id", f"{card_id}_mulligan_{index}")),
                 "card_id": card_id,
-                "intent": str(rule.get("action", rule.get("intent", "hold"))),
+                "selector_kind": selector_info["selector_kind"],
+                "selector": selector_info["selector"],
+                "intent": intent,
                 "condition": rule.get("condition", "*"),
                 "source_claim_ids": list(rule.get("source_claim_ids", [])),
                 "confidence": rule.get("confidence", "source_backed"),
             }
         )
+        if intent == "hold" and not is_wildcard:
+            has_previous_non_wildcard_hold = True
     return anchors
 
 
@@ -98,6 +114,8 @@ def _anchors_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "rule_id": str(row.get("rule_id", f"{row['card_id']}_mulligan_hold")),
                 "card_id": str(row["card_id"]),
+                "selector_kind": "card",
+                "selector": str(row["card_id"]),
                 "intent": str(row.get("intent", "hold")),
                 "condition": row.get("condition", "*"),
                 "source_claim_ids": list(row.get("source_claim_ids", [])),

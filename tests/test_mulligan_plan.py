@@ -17,7 +17,10 @@ def test_mulligan_plan_has_concrete_keeps_before_wildcard_discard():
     assert [row["card"] for row in plan["rules"][:2]] == ["SW_448", "CARD_002"]
     assert plan["rules"][-1] == {
         "card": "*",
+        "selector_kind": "wildcard",
+        "selector": "*",
         "action": "discard",
+        "condition": "*",
         "reason": "discard_unlisted_cards_after_source_backed_keeps",
     }
     assert plan["quality"]["has_concrete_keeps"] is True
@@ -143,3 +146,44 @@ def test_mulligan_plan_source_discard_prevents_role_fallback_for_same_card():
     assert len(card_rules) == 1
     assert card_rules[0]["action"] == "discard"
     assert card_rules[0]["condition"] == "nocoin"
+
+
+def test_mulligan_plan_preserves_source_claim_selector_depth():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A", "CARD_B"],
+                "selector_kind": "plus_combo",
+                "selector": "CARD_A + CARD_B",
+                "conditions": {"coin": True},
+                "claim_id": "keep_combo_coin",
+            }
+        ],
+        card_roles={},
+    )
+
+    rule = plan["rules"][0]
+    assert rule["selector_kind"] == "plus_combo"
+    assert rule["selector"] == "CARD_A + CARD_B"
+    assert rule["condition"] == "coin"
+
+
+def test_mulligan_plan_suppresses_unsupported_selectors():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "selector": "CARD_A | CARD_B",
+                "claim_id": "bad_selector",
+            }
+        ],
+        card_roles={},
+    )
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"][0]["reason"] == "unsupported_mulligan_selector"
+    assert plan["suppressed_rules"][0]["selector"] == "CARD_A | CARD_B"

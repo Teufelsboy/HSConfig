@@ -45,3 +45,62 @@ def test_compile_mulligan_consumes_plan_and_omits_lone_wildcard(tmp_path: Path):
     deck_dir = tmp_path / "CustomConfig" / "deck"
     write_json(deck_dir / "Mulligan.json", result)
     assert validate_config_package(tmp_path)["status"] == "passed"
+
+
+def test_compile_mulligan_emits_drop_and_plus_selectors_in_plan_order():
+    config = compile_mulligan(
+        {
+            "deck_name": "Fixture",
+            "mulligan_plan": {
+                "rules": [
+                    {
+                        "rule_id": "keep_drop1",
+                        "selector_kind": "drop_n",
+                        "selector": "DROP1",
+                        "action": "hold",
+                        "condition": "*",
+                    },
+                    {
+                        "rule_id": "keep_combo",
+                        "selector_kind": "plus_combo",
+                        "selector": "CARD_A + CARD_B",
+                        "action": "hold",
+                        "condition": "coin",
+                    },
+                    {
+                        "rule_id": "throw_card_c",
+                        "selector_kind": "card",
+                        "selector": "CARD_C",
+                        "action": "discard",
+                        "condition": "*",
+                    },
+                ]
+            },
+        }
+    )
+
+    rows = config["Mulligan"]["values"]
+    assert [row["mulligan"] for row in rows] == ["DROP1", "CARD_A + CARD_B", "CARD_C"]
+    assert rows[1]["condition"] == "coin"
+    assert rows[2]["value"] == "discard"
+
+
+def test_compile_mulligan_blocks_lone_wildcard_discard():
+    config = compile_mulligan(
+        {
+            "deck_name": "Fixture",
+            "mulligan_plan": {
+                "rules": [
+                    {
+                        "rule_id": "discard_all",
+                        "selector_kind": "wildcard",
+                        "selector": "*",
+                        "action": "discard",
+                        "condition": "*",
+                    }
+                ]
+            },
+        }
+    )
+
+    assert config["Mulligan"]["values"] == []
