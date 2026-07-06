@@ -455,8 +455,9 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
         globalvalue_authority=global_values_authority_matrix,
         generated_files=generated_files,
+        claim_coverage_report=guide_claim_bundle["coverage"],
+        config_readiness_summary=config_readiness_report["summary"],
         claim_conflict_report=guide_claim_bundle.get("claim_conflict_report"),
-        claim_coverage_report=guide_claim_bundle.get("claim_coverage_report"),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1

@@ -94,6 +94,13 @@ Key reports:
 `operator_summary.json` is the operator-facing readiness file. It separates
 technical package validity from semantic source strength through
 `technical_status`, `semantic_status`, `next_action`, and `apply_policy`.
+Status meanings:
+
+- VALID_PACKAGE means the JSON package loads structurally.
+- SOURCE_BACKED_STRONG means HSConfig has enough current guide-backed coverage for strong initial config.
+- STATIC_SEMANTICS_USABLE means the package is safe but not guide-depth.
+- VALID_BUT_NOT_GUIDE_STRONG means Codex should improve source documents before calling the package optimized.
+
 The readiness and depth reports are quality checks for guide-backed config
 generation, not postgame proof. A valid package may still contain
 `archetype_inferred` or `generic_low_confidence` cards, but those lanes tell

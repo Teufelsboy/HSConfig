@@ -129,7 +129,8 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert payload["package"] == str(package)
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
     assert payload["operator_summary"]["next_action"] == operator_summary["next_action"]
     assert payload["next_action"] == operator_summary["next_action"]
     assert (package / "CustomConfig" / "shadowpriest" / "GlobalValues.json").exists()
@@ -326,7 +327,8 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert payload["status"] == "passed"
     assert guide_sources["source_depth_status"] == "source_backed"
     assert receipt["source_depth_status"] == "source_backed"
-    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
@@ -360,9 +362,9 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
 
     assert code == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
-    assert operator_summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
-    assert payload["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert payload["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
 
 
 def test_prepare_source_posture_drives_globalvalues_authority_matrix(

@@ -39,6 +39,27 @@ def test_skill_content_sets_direct_config_boundary():
     assert "--guide-sources-json" in text
 
 
+def test_operator_status_definitions_are_documented():
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    required_lines = {
+        "VALID_PACKAGE means the JSON package loads structurally.",
+        (
+            "SOURCE_BACKED_STRONG means HSConfig has enough current guide-backed "
+            "coverage for strong initial config."
+        ),
+        "STATIC_SEMANTICS_USABLE means the package is safe but not guide-depth.",
+        (
+            "VALID_BUT_NOT_GUIDE_STRONG means Codex should improve source "
+            "documents before calling the package optimized."
+        ),
+    }
+    for text in (readme, skill):
+        for line in required_lines:
+            assert line in text
+
+
 def test_skill_documents_guide_depth_closure_reports():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")

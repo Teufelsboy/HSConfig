@@ -33,7 +33,9 @@ Workflow:
    `combo_plan_report.json`, `global_values_authority_matrix.json`,
    `per_card_config_readiness_report.json`, and
    `guide_source_depth_report.json`.
-8. Apply when `operator_summary.json` has `technical_status=VALID_PACKAGE` and the user requested autonomous runtime apply.
+8. Apply when `operator_summary.json` has `technical_status=VALID_PACKAGE`,
+   the user requested autonomous runtime apply, and the `next_action` does not
+   ask for more source work before strong apply.
 
 Rules:
 
@@ -41,6 +43,10 @@ Rules:
 - Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
 - Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
 - Use `operator_summary.json` as the operator-facing readiness file; do not confuse `semantic_status` with runtime validity.
+- VALID_PACKAGE means the JSON package loads structurally.
+- SOURCE_BACKED_STRONG means HSConfig has enough current guide-backed coverage for strong initial config.
+- STATIC_SEMANTICS_USABLE means the package is safe but not guide-depth.
+- VALID_BUT_NOT_GUIDE_STRONG means Codex should improve source documents before calling the package optimized.
 - Keep full `GlobalValues` coverage and write the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
 - Runtime apply is allowed after validation when the user asked for autonomous apply.
