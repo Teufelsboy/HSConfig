@@ -99,6 +99,7 @@ def test_real_shadowpriest_deckcode_depth_prepare_has_clean_runtime(tmp_path: Pa
                     "source_url": "https://example.invalid/shadow-priest-real",
                     "source_title": "Shadow Priest Fixture",
                     "source_family": "guide_fixture",
+                    "retrieved_at": "2026-07-07T00:00:00Z",
                     "claims": [
                         {
                             "claim_kind": "mulligan_keep",

@@ -46,6 +46,8 @@ from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
 
+LEGACY_CLAIMS_RETRIEVED_AT = "1970-01-01T00:00:00Z"
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
@@ -712,12 +714,17 @@ def _guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[di
                 "source_url": source_url,
                 "source_title": source_title,
                 "source_family": str(claim.get("source", "legacy_claims")),
-                "retrieved_at": str(claim.get("retrieved_at", "")),
+                "retrieved_at": _legacy_claim_retrieved_at(claim),
                 "claims": [],
             },
         )
         document["claims"].append(_legacy_claim_to_guide_claim(claim))
     return list(documents.values())
+
+
+def _legacy_claim_retrieved_at(claim: dict[str, Any]) -> str:
+    retrieved_at = str(claim.get("retrieved_at", "")).strip()
+    return retrieved_at or LEGACY_CLAIMS_RETRIEVED_AT
 
 
 def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:

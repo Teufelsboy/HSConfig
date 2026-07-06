@@ -2,7 +2,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from hsconfig.cli import main
+from hsconfig.cli import _guide_documents_from_legacy_claims, main
 
 
 SHADOWPRIEST_CODE = (
@@ -143,6 +143,22 @@ def test_build_rejects_invalid_deck_code_without_placeholder_flag(tmp_path: Path
     assert code == 1
     assert payload["status"] == "failed"
     assert not list(out.glob("CustomConfig/fixture_deck/HSC_*.json"))
+
+
+def test_legacy_claims_synthesize_legacy_retrieved_at_when_unstamped():
+    documents = _guide_documents_from_legacy_claims(
+        [
+            {
+                "source": "guide",
+                "url": "https://example.invalid/deck-guide",
+                "claim": "Always keep Pressure One.",
+                "cards": ["EX1_001"],
+                "claim_type": "mulligan",
+            }
+        ]
+    )
+
+    assert documents[0]["retrieved_at"] == "1970-01-01T00:00:00Z"
 
 
 def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsys):
