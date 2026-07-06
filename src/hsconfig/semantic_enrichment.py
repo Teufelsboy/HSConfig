@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from hsconfig.hearthstonejson import index_cards_by_id
+from hsconfig.option_identity_resolver import resolve_linked_entities
 
 
 MIND_SPIKE_FALLBACK = {
@@ -35,11 +36,16 @@ def enrich_card_metadata(
 
         semantic_families = {str(item) for item in enriched.get("mechanic_families", [])}
         semantic_families.update(_semantic_families_from_card(enriched))
-        linked_entities = list(enriched.get("linked_entities", []))
+        card_id = str(enriched.get("card_id") or enriched.get("id") or "")
+        resolved_links = resolve_linked_entities([enriched], hjson_index).get(card_id, [])
+        linked_entities = _merge_linked_entities(enriched.get("linked_entities", []), resolved_links)
 
         if "shadowform" in semantic_families and "start_of_game" in semantic_families:
-            hero_power, warning = _mind_spike_entity(hjson_index)
-            linked_entities.append(hero_power)
+            hero_power = _starting_hero_power_link(linked_entities)
+            warning = None
+            if hero_power is None:
+                hero_power, warning = _mind_spike_entity(hjson_index)
+                linked_entities = _merge_linked_entities(linked_entities, [hero_power])
             if warning:
                 warnings.append({"card_id": enriched["card_id"], "warning": warning})
             semantic_families.update({"hero_power_transform", "hero_power_pressure"})
@@ -84,6 +90,13 @@ def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
     merged["entourage"] = list(
         dict.fromkeys([*merged.get("entourage", []), *hjson.get("entourage", [])])
     )
+    if _is_missing_value(merged.get("hero_power_dbf_id")):
+        merged["hero_power_dbf_id"] = hjson.get("hero_power_dbf_id")
+    if _is_missing_value(merged.get("quest_reward")):
+        merged["quest_reward"] = hjson.get("quest_reward")
+    play_requirements = dict(hjson.get("play_requirements", {}) or {})
+    play_requirements.update(dict(merged.get("play_requirements", {}) or {}))
+    merged["play_requirements"] = play_requirements
     return merged
 
 
@@ -111,12 +124,13 @@ def _mind_spike_entity(index: dict[str, dict[str, Any]]) -> tuple[dict[str, Any]
     if row:
         return (
             {
+                "link_kind": "starting_hero_power",
                 "card_id": str(row["id"]),
                 "dbf_id": row.get("dbf_id"),
                 "name": str(row.get("name", "Mind Spike")),
                 "type": str(row.get("type", "HERO_POWER")),
                 "text": str(row.get("text", "")),
-                "source": "hearthstonejson",
+                "source": "builtin_shadowform_fallback",
             },
             None,
         )
@@ -137,3 +151,25 @@ def _dedupe_deckwide_effects(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
         seen.add(key)
         deduped.append(row)
     return sorted(deduped, key=lambda row: (row["source_card_id"], row["effect"], row["target_card_id"]))
+
+
+def _merge_linked_entities(existing: Any, additions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = [dict(row) for row in existing if isinstance(row, dict)] if isinstance(existing, list) else []
+    seen = {
+        (str(row.get("link_kind", "")), str(row.get("card_id", "")), str(row.get("source", "")))
+        for row in rows
+    }
+    for row in additions:
+        key = (str(row.get("link_kind", "")), str(row.get("card_id", "")), str(row.get("source", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(dict(row))
+    return rows
+
+
+def _starting_hero_power_link(linked_entities: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for row in linked_entities:
+        if row.get("link_kind") == "starting_hero_power":
+            return row
+    return None

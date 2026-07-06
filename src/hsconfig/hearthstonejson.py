@@ -39,6 +39,7 @@ def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("HearthstoneJSON card row missing id")
     dbf_id = row.get("dbfId", row.get("dbf_id"))
     cost = row.get("cost")
+    hero_power_dbf_id = row.get("heroPowerDbfId", row.get("hero_power_dbf_id"))
     return {
         "id": card_id,
         "dbf_id": int(dbf_id) if dbf_id is not None else None,
@@ -51,6 +52,11 @@ def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:
         "referenced_tags": [
             str(item) for item in row.get("referencedTags", row.get("referenced_tags", [])) or []
         ],
+        "hero_power_dbf_id": int(hero_power_dbf_id) if hero_power_dbf_id is not None else None,
+        "quest_reward": row.get("questReward", row.get("quest_reward")),
+        "play_requirements": dict(
+            row.get("playRequirements", row.get("play_requirements", {})) or {}
+        ),
         "entourage": [str(item) for item in row.get("entourage", []) or []],
     }
 

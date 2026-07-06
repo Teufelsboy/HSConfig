@@ -45,8 +45,31 @@ def test_normalize_card_row_preserves_semantic_fields():
         "text": "enter Shadowform",
         "mechanics": [],
         "referenced_tags": ["START_OF_GAME_KEYWORD"],
+        "hero_power_dbf_id": None,
+        "quest_reward": None,
+        "play_requirements": {},
         "entourage": [],
     }
+
+
+def test_normalize_card_row_preserves_identity_link_fields():
+    row = normalize_card_row(
+        {
+            "id": "HERO_09",
+            "dbfId": 637,
+            "name": "Anduin",
+            "type": "HERO",
+            "heroPowerDbfId": 479,
+            "questReward": "QUEST_REWARD_CARD",
+            "playRequirements": {"REQ_TARGET_TO_PLAY": 0},
+            "entourage": ["TOKEN_001"],
+        }
+    )
+
+    assert row["hero_power_dbf_id"] == 479
+    assert row["quest_reward"] == "QUEST_REWARD_CARD"
+    assert row["play_requirements"] == {"REQ_TARGET_TO_PLAY": 0}
+    assert row["entourage"] == ["TOKEN_001"]
 
 
 def test_index_cards_by_id_supports_id_and_dbf_lookup():

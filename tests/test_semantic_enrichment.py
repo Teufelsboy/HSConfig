@@ -34,7 +34,55 @@ def test_enrich_darkbishop_links_shadowform_and_mind_spike():
     assert "hero_power_pressure" in card["semantic_families"]
     assert card["linked_entities"][0]["card_id"] == "EX1_625t"
     assert card["linked_entities"][0]["type"] == "HERO_POWER"
+    assert card["linked_entities"][0]["source"] == "builtin_shadowform_fallback"
     assert enriched["deckwide_effects"][0]["effect"] == "replace_starting_hero_power"
+
+
+def test_enrichment_adds_direct_hjson_linked_entities_from_hero_power_dbf_id():
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "HERO_09",
+                "dbf_id": 637,
+                "name": "Anduin",
+                "type": "HERO",
+                "mechanic_families": [],
+                "metadata_status": "source_record",
+            }
+        ]
+    }
+
+    enriched = enrich_card_metadata(
+        card_metadata,
+        hearthstonejson_cards=[
+            {
+                "id": "HERO_09",
+                "dbfId": 637,
+                "name": "Anduin",
+                "type": "HERO",
+                "heroPowerDbfId": 479,
+            },
+            {
+                "id": "CS1h_001",
+                "dbfId": 479,
+                "name": "Lesser Heal",
+                "type": "HERO_POWER",
+            },
+        ],
+    )
+
+    card = enriched["cards"][0]
+    assert card["hero_power_dbf_id"] == 479
+    assert card["linked_entities"] == [
+        {
+            "link_kind": "starting_hero_power",
+            "card_id": "CS1h_001",
+            "dbf_id": 479,
+            "name": "Lesser Heal",
+            "type": "HERO_POWER",
+            "source": "hearthstonejson.heroPowerDbfId",
+        }
+    ]
 
 
 def test_enrichment_uses_fallback_mind_spike_when_json_rows_are_missing():
