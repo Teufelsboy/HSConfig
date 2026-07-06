@@ -114,3 +114,36 @@ def test_depth_report_marks_usable_with_runtime_gaps():
 
     assert report["depth_status"] == "usable_with_runtime_gaps"
     assert report["summary"]["cards_needing_runtime_surface"] == 1
+
+
+def test_depth_report_guide_gap_takes_precedence_over_runtime_gap():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "claim_role",
+                    "claim_kind": "card_role",
+                    "cards": ["EX1_RUNTIME_GAP"],
+                    "source_family": "guide",
+                }
+            ],
+            "unsupported_claims": [],
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 2},
+            "cards": {
+                "EX1_RUNTIME_GAP": {
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_runtime_surface",
+                },
+                "EX1_GUIDE_GAP": {
+                    "readiness_lane": "generic_low_confidence",
+                    "first_missing_link": "needs_guide_claim",
+                },
+            },
+        },
+    )
+
+    assert report["depth_status"] == "needs_more_research"
+    assert report["summary"]["cards_needing_runtime_surface"] == 1
+    assert report["summary"]["cards_needing_guide_claims"] == 1
