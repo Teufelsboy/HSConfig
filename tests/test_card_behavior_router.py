@@ -114,6 +114,25 @@ def test_router_maps_overkill_mechanic_to_before_overkilled_bonus():
     assert row["value"] == "6"
 
 
+def test_router_preserves_dredge_discover_cardid_fallback():
+    report = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_dredge",
+                "claim_kind": "mechanic_usage",
+                "cards": ["TSC_001"],
+                "mechanic": "dredge",
+                "source_confidence": "high",
+            }
+        ]
+    )
+
+    row = report["card_rows"]["TSC_001"][0]
+
+    assert row["behavior_block"] == "OnDiscoverCardBonus"
+    assert row["roles"] == ["discover"]
+
+
 def test_router_accepts_explicit_documented_runtime_block():
     report = route_card_behavior_claims(
         [

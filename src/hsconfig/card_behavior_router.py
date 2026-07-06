@@ -32,7 +32,7 @@ ROLE_BLOCKS = {
 MECHANIC_ROLE_MAP = {
     "battlecry": "battlecry",
     "discover": "discover",
-    "dredge": "dredge",
+    "dredge": "discover",
     "tradeable": "tradeable",
     "overload": "overload",
     "overkill": "overkill",
