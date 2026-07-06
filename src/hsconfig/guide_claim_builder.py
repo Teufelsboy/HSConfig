@@ -187,7 +187,10 @@ def _normalize_source_claim(
     if "values" in raw_claim:
         claim["values"] = _normalize_optional(raw_claim["values"])
     if "condition" in raw_claim:
-        claim["condition"] = _normalize_optional(raw_claim["condition"])
+        condition = _normalize_optional(raw_claim["condition"])
+        claim["condition"] = condition
+        if "runtime_block" in raw_claim:
+            claim["conditions"] = condition
     if "runtime_block" in raw_claim:
         claim["runtime_block"] = _clean_text(raw_claim["runtime_block"])
     if "runtime_value" in raw_claim:

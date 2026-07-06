@@ -180,3 +180,40 @@ def test_preserves_explicit_runtime_lowering_fields_for_router():
     assert row["behavior_block"] == "BeforePlayCardBonus"
     assert row["value"] == "12"
     assert row["condition"] == "*"
+
+
+def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "ShadowPriest"},
+        card_metadata={"SW_446": {"name": "Voidtouched Attendant", "text": ""}},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/shadow-priest-guide",
+                "source_title": "Shadow Priest Guide",
+                "source_family": "guide",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["SW_446"],
+                        "stance": "prefer_enemy_hero",
+                        "conditions": {"posture": "burn"},
+                        "condition": "my_runtime_condition > 0",
+                        "runtime_block": "BeforePlayCardBonus",
+                        "runtime_value": "12",
+                        "evidence_text_short": "Voidtouched Attendant should support burn pressure when the runtime condition is active.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "targeting_rule")
+    routed = route_card_behavior_claims([claim])
+    row = routed["card_rows"]["SW_446"][0]
+
+    assert claim["condition"] == "my_runtime_condition > 0"
+    assert claim["conditions"] == "my_runtime_condition > 0"
+    assert row["behavior_block"] == "BeforePlayCardBonus"
+    assert row["value"] == "12"
+    assert row["condition"] == "my_runtime_condition > 0"
