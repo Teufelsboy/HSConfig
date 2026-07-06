@@ -76,6 +76,22 @@ def test_skill_docs_keep_presume_concede_out_of_normal_path():
     assert "Concede.json" not in workflow
 
 
+def test_skill_docs_describe_cardid_runtime_block_lowering():
+    root = Path(".agents/skills/hsconfig")
+    card_policy = (root / "references" / "card-behavior-policy.md").read_text(
+        encoding="utf-8"
+    )
+    guide_policy = (root / "references" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "runtime_block" in guide_policy
+    assert "BeforeOverkilledBonus" in card_policy
+    assert "meaningful_runtime_surface" in card_policy
+    assert "Presume.json" in card_policy
+    assert "Concede.json" in card_policy
+
+
 def test_guide_research_policy_documents_structured_source_flow():
     skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
         encoding="utf-8"

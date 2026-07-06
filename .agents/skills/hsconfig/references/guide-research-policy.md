@@ -42,6 +42,17 @@ Structured source shape:
 ]
 ```
 
+Optional CardID lowering fields for card-specific claims:
+
+- `runtime_block`: documented CardID block to use, for example
+  `BeforePlayCardBonus`, `OnDiscoverCardBonus`, or `BeforeOverkilledBonus`.
+- `runtime_value`: numeric string to emit in the VisionAI row.
+- `condition`: VisionAI condition string. Use `*` unless the source clearly
+  supports a condition.
+
+Use `runtime_block` only for guide-backed or static-semantics-backed claims. If
+the exact block is uncertain, omit it and let HSConfig route or report the gap.
+
 Supported `claim_kind` values:
 
 - `mulligan_keep`

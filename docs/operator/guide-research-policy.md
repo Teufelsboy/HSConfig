@@ -42,6 +42,19 @@ Pass this file with `--guide-sources-json`.
 ]
 ```
 
+For CardID behavior claims, prefer source-backed `runtime_block` when the guide
+or card text clearly maps to a documented VisionAI block. Examples:
+
+- face pressure or play timing: `BeforePlayCardBonus`
+- targeted Battlecry: `BeforeBattlecryTargetBonus`
+- Hero Power use: `BeforeUseHeroPowerBonus`
+- attack or weapon posture: `BeforePhysicalAttackBonus`
+- Overkill payoff: `BeforeOverkilledBonus`
+- Discover option preference: `OnDiscoverCardBonus`
+
+Do not request undocumented blocks. Unsupported blocks are suppressed into
+reports and do not become runtime JSON.
+
 ## Per-Card Depth Rule
 
 Before normal `hsconfig prepare`, Codex should try to give every deck card at
