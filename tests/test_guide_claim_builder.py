@@ -1,3 +1,4 @@
+from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 
 
@@ -141,3 +142,41 @@ def test_deck_scoped_gameplan_posture_claim_is_promoted_without_cards():
     assert posture_claims
     assert posture_claims[0]["cards"] == []
     assert posture_claims[0]["scope"] == "deck"
+
+
+def test_preserves_explicit_runtime_lowering_fields_for_router():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "ShadowPriest"},
+        card_metadata={"SW_446": {"name": "Voidtouched Attendant", "text": ""}},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/shadow-priest-guide",
+                "source_title": "Shadow Priest Guide",
+                "source_family": "guide",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["SW_446"],
+                        "stance": "prefer_enemy_hero",
+                        "runtime_block": "BeforePlayCardBonus",
+                        "runtime_value": "12",
+                        "condition": "*",
+                        "evidence_text_short": "Voidtouched Attendant should support the face-damage pressure plan.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "targeting_rule")
+    routed = route_card_behavior_claims([claim])
+    row = routed["card_rows"]["SW_446"][0]
+
+    assert claim["runtime_block"] == "BeforePlayCardBonus"
+    assert claim["runtime_value"] == "12"
+    assert claim["condition"] == "*"
+    assert claim["conditions"] == "*"
+    assert row["behavior_block"] == "BeforePlayCardBonus"
+    assert row["value"] == "12"
+    assert row["condition"] == "*"

@@ -37,9 +37,11 @@
         "claim_kind": "targeting_rule",
         "cards": ["SW_446"],
         "stance": "prefer_enemy_hero",
-        "conditions": {"posture": "aggressive_burn"},
-        "evidence_text_short": "Voidtouched Attendant supports face-pressure lines unless board survival requires a trade.",
-        "source_confidence": "medium"
+        "runtime_block": "BeforePlayCardBonus",
+        "runtime_value": "12",
+        "condition": "*",
+        "evidence_text_short": "Voidtouched Attendant should support the face-damage pressure plan.",
+        "source_confidence": "high"
       },
       {
         "claim_kind": "targeting_rule",

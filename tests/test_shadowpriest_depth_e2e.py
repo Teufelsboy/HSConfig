@@ -197,6 +197,12 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
             encoding="utf-8"
         )
     )
+    voidtouched = json.loads(
+        (out / "CustomConfig" / "shadowpriest" / "SW_446.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    before_play_values = voidtouched["BeforePlayCardBonus"]["values"]
 
     assert result == 0
     assert coverage["guide_backed_cards"] >= 8
@@ -206,3 +212,7 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert readiness["summary"]["generic_low_confidence"] <= 4
     assert readiness["summary"]["runtime_emitted"] >= 4
     assert len(mulligan["Mulligan"]["values"]) >= 4
+    assert any(
+        row["value"] == "12" and "prefer_enemy_hero" in row.get("comment", "")
+        for row in before_play_values
+    )

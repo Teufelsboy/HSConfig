@@ -186,6 +186,12 @@ def _normalize_source_claim(
         claim["sequence"] = _normalize_cards(raw_claim["sequence"])
     if "values" in raw_claim:
         claim["values"] = _normalize_optional(raw_claim["values"])
+    if "condition" in raw_claim:
+        claim["condition"] = _normalize_optional(raw_claim["condition"])
+    if "runtime_block" in raw_claim:
+        claim["runtime_block"] = _clean_text(raw_claim["runtime_block"])
+    if "runtime_value" in raw_claim:
+        claim["runtime_value"] = _clean_text(raw_claim["runtime_value"])
     if "mechanic" in raw_claim:
         claim["mechanic"] = _clean_text(raw_claim["mechanic"]).lower()
     if evidence:
