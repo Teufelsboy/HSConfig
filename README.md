@@ -104,7 +104,7 @@ Status meanings:
 
 | Status | Meaning | Normal action |
 | --- | --- | --- |
-| `VALID_PACKAGE` | Runtime JSON is structurally valid and load-safe. | Safe handoff or apply with warnings when requested. |
+| `VALID_PACKAGE` | Runtime JSON is structurally valid and load-safe. | Handoff only; for apply, follow `operator_summary.next_action` and `apply_policy`, and source work may still be needed. |
 | `SOURCE_BACKED_STRONG` | Current source-backed card coverage supports a strong initial config. | Preferred apply/handoff state. |
 | `STATIC_SEMANTICS_USABLE` | Static card semantics produced a valid package without enough live guide depth. | Use only as a safe baseline, then improve sources. |
 | `VALID_BUT_NOT_GUIDE_STRONG` | Package is valid, but some cards still need guide claims, runtime surfaces, combo/mulligan detail, or conflict resolution. | Read `reports/operator_summary.json` fields `guide_strength_summary` and `semantic_blockers`. |
