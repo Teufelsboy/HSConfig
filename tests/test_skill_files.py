@@ -263,3 +263,10 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
     assert "HSConfig does not parse replays" in docs
     assert "Presume.json" in docs
     assert "Concede.json" in docs
+
+
+def test_readme_documents_installed_skill_sync():
+    text = Path("README.md").read_text(encoding="utf-8")
+
+    assert "scripts/sync_installed_skill.py --check" in text
+    assert "scripts/sync_installed_skill.py" in text

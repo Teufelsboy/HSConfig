@@ -10,6 +10,8 @@ HSConfig does not parse replays, evaluate winrate, inspect post-game evidence, o
 
 Normal command path: write `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> `hsconfig prepare --guide-sources-json ...` -> inspect `reports/operator_summary.json` -> `hsconfig apply ...` only when requested.
 
+Maintainer sync: after changing `.agents/skills/hsconfig`, run `python scripts/sync_installed_skill.py --check`; if drift is expected, run `python scripts/sync_installed_skill.py`.
+
 ```powershell
 hsconfig research-deck --source-documents-json ".\source_documents.json" --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\research" --json
 ```
