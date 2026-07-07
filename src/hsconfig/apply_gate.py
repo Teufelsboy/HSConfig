@@ -7,6 +7,7 @@ from hsconfig.io import read_json
 
 
 OPTIONAL_NORMAL_PATH_SURFACES = ("Presume.json", "Concede.json")
+REQUIRED_RUNTIME_FILES = ("GlobalValues.json", "Mulligan.json")
 
 
 def evaluate_apply_gate(
@@ -34,6 +35,10 @@ def evaluate_apply_gate(
                 "path": str(operator_path),
             },
         )
+
+    structure_reasons = _required_package_structure_reasons(package, summary)
+    if structure_reasons:
+        return _blocked(operator_path, *structure_reasons)
 
     optional_surface_reasons = [
         *_summary_optional_surface_reasons(summary),
@@ -101,6 +106,87 @@ def evaluate_apply_gate(
             "apply_policy": apply_policy,
         },
     )
+
+
+def _required_package_structure_reasons(
+    package: Path, summary: dict[str, Any]
+) -> list[dict[str, str]]:
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return [
+            {
+                "reason": "missing_custom_config_directory",
+                "path": str(custom_config),
+            }
+        ]
+
+    manifest = package / "reports" / "input_manifest.json"
+    if not manifest.is_file():
+        return [
+            {
+                "reason": "missing_input_manifest",
+                "path": str(manifest),
+            }
+        ]
+
+    deck_dirs = sorted(path for path in custom_config.iterdir() if path.is_dir())
+    if not deck_dirs:
+        return [
+            {
+                "reason": "missing_deck_runtime_directory",
+                "path": str(custom_config),
+            }
+        ]
+    if len(deck_dirs) > 1:
+        return [
+            {
+                "reason": "multiple_deck_runtime_directories",
+                "path": str(custom_config),
+            }
+        ]
+
+    deck_dir = deck_dirs[0]
+    for filename in REQUIRED_RUNTIME_FILES:
+        required = deck_dir / filename
+        if not required.is_file():
+            return [
+                {
+                    "reason": "missing_required_runtime_file",
+                    "path": str(required),
+                }
+            ]
+
+    card_files = [
+        path
+        for path in sorted(deck_dir.glob("*.json"))
+        if path.name
+        not in {
+            "Combo.json",
+            "Concede.json",
+            "GlobalValues.json",
+            "Mulligan.json",
+            "Presume.json",
+        }
+    ]
+    if not card_files:
+        return [
+            {
+                "reason": "missing_cardid_runtime_file",
+                "path": str(deck_dir),
+            }
+        ]
+
+    summary_files = _summary_generated_file_set(summary)
+    for filename in REQUIRED_RUNTIME_FILES:
+        key = _normalize_generated_file_path((deck_dir / filename).relative_to(package))
+        if key not in summary_files:
+            return [
+                {
+                    "reason": "required_runtime_file_not_in_operator_summary",
+                    "generated_file": key,
+                }
+            ]
+    return []
 
 
 def _summary_optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str, str]]:

@@ -275,7 +275,11 @@ def test_apply_cli_blocks_empty_operator_summary_runtime_files(tmp_path: Path, c
     assert payload["status"] == "blocked"
     assert (
         payload["apply_gate"]["reasons"][0]["reason"]
-        == "operator_summary_runtime_files_missing"
+        == "required_runtime_file_not_in_operator_summary"
+    )
+    assert (
+        payload["apply_gate"]["reasons"][0]["generated_file"]
+        == "CustomConfig/deck/GlobalValues.json"
     )
     assert not runtime.exists()
 

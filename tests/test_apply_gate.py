@@ -10,8 +10,28 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     write_json(package / "reports" / "operator_summary.json", payload)
 
 
+def _write_minimal_runtime_package(package: Path) -> None:
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "new"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+
+
 def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
     package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
     _write_operator_summary(
         package,
         {
@@ -40,6 +60,7 @@ def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
 
 def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path):
     package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
     _write_operator_summary(
         package,
         {
@@ -48,7 +69,11 @@ def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path)
             "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
             "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 3}],
-            "generated_files": ["CustomConfig\\deck\\GlobalValues.json"],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
         },
     )
 
@@ -71,6 +96,7 @@ def test_apply_gate_allows_valid_source_informed_package_only_with_explicit_esca
     tmp_path: Path,
 ):
     package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
     _write_operator_summary(
         package,
         {
@@ -79,7 +105,11 @@ def test_apply_gate_allows_valid_source_informed_package_only_with_explicit_esca
             "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
             "semantic_blockers": [{"reason": "cards_need_runtime_surface", "count": 2}],
-            "generated_files": ["CustomConfig\\deck\\GlobalValues.json"],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
         },
     )
 
@@ -99,6 +129,7 @@ def test_apply_gate_allows_valid_source_informed_package_only_with_explicit_esca
 
 def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path):
     package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
     _write_operator_summary(
         package,
         {
@@ -107,7 +138,11 @@ def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path
             "next_action": "FIX_PACKAGE_BEFORE_APPLY",
             "apply_policy": "BLOCKED",
             "semantic_blockers": [],
-            "generated_files": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
         },
     )
 
@@ -120,6 +155,7 @@ def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path
 @pytest.mark.parametrize("surface", ["Presume.json", "Concede.json"])
 def test_apply_gate_blocks_normal_path_optional_surfaces(tmp_path: Path, surface: str):
     package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
     _write_operator_summary(
         package,
         {
@@ -128,7 +164,12 @@ def test_apply_gate_blocks_normal_path_optional_surfaces(tmp_path: Path, surface
             "next_action": "READY_TO_APPLY_OR_HANDOFF",
             "apply_policy": "ALLOWED",
             "semantic_blockers": [],
-            "generated_files": [f"CustomConfig\\deck\\{surface}"],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+                f"CustomConfig\\deck\\{surface}",
+            ],
         },
     )
 
@@ -148,9 +189,7 @@ def test_apply_gate_blocks_actual_optional_surface_when_summary_is_stale(
     tmp_path: Path, surface: str
 ):
     package = tmp_path / "package"
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
-    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    _write_minimal_runtime_package(package)
     write_json(package / "CustomConfig" / "deck" / surface, {})
     _write_operator_summary(
         package,
@@ -181,9 +220,7 @@ def test_apply_gate_blocks_actual_optional_surface_when_summary_is_stale(
 
 def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
     package = tmp_path / "package"
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
-    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    _write_minimal_runtime_package(package)
     write_json(package / "CustomConfig" / "deck" / "nested" / "Presume.json", {})
     _write_operator_summary(
         package,
@@ -214,9 +251,7 @@ def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
 
 def test_apply_gate_blocks_actual_runtime_file_missing_from_summary(tmp_path: Path):
     package = tmp_path / "package"
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
-    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    _write_minimal_runtime_package(package)
     write_json(package / "CustomConfig" / "deck" / "EX1_999.json", {})
     _write_operator_summary(
         package,
@@ -258,6 +293,10 @@ def test_apply_gate_blocks_actual_runtime_files_when_summary_runtime_entries_mis
     tmp_path: Path, generated_files
 ):
     package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
     write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
     write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
     write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
@@ -276,8 +315,8 @@ def test_apply_gate_blocks_actual_runtime_files_when_summary_runtime_entries_mis
 
     assert gate["status"] == "blocked"
     assert gate["reasons"][0] == {
-        "reason": "operator_summary_runtime_files_missing",
-        "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
+        "reason": "required_runtime_file_not_in_operator_summary",
+        "generated_file": "CustomConfig/deck/GlobalValues.json",
     }
 
 
@@ -291,3 +330,69 @@ def test_apply_gate_blocks_missing_operator_summary(tmp_path: Path):
             "path": str(tmp_path / "package" / "reports" / "operator_summary.json"),
         }
     ]
+
+
+def test_apply_gate_blocks_summary_only_ready_package(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0] == {
+        "reason": "missing_custom_config_directory",
+        "path": str(package / "CustomConfig"),
+    }
+
+
+def test_apply_gate_blocks_package_without_input_manifest(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "new"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0] == {
+        "reason": "missing_input_manifest",
+        "path": str(package / "reports" / "input_manifest.json"),
+    }
