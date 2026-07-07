@@ -161,3 +161,5 @@ Depth reports:
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 
 Do not infer replay performance, winrate, or postgame tuning from HSConfig outputs.
+
+`hsconfig apply` enforces this boundary. A valid package that is not `SOURCE_BACKED_STRONG` requires the explicit `--allow-source-informed` flag before runtime files are written.

@@ -25,7 +25,7 @@ hsconfig validate --package ".\outputs\shadowpriest" --json
 hsconfig apply --package ".\outputs\shadowpriest" --runtime-root "C:\Users\darbo\Desktop\HS" --json
 ```
 
-Run `apply` only when the user or task requests runtime writes and `operator_summary.json` allows it through `next_action` and `apply_policy`.
+Run `apply` only when runtime writes are intended. The command enforces `reports/operator_summary.json`: by default it writes only when `technical_status=VALID_PACKAGE`, `semantic_status=SOURCE_BACKED_STRONG`, `next_action=READY_TO_APPLY_OR_HANDOFF`, and `apply_policy=ALLOWED`. Use `--allow-source-informed` only when intentionally applying a valid package that still needs more guide depth.
 
 ## Status Model
 

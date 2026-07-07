@@ -38,4 +38,5 @@ Use `hsconfig research-contract` only when the research bundle should be inspect
 
 Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. It still writes `reports/research/*`. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
-Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when requested by the user or task; apply copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
+When apply is allowed, it copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
+Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json` and blocks by default unless the package is source-backed ready. Use `--allow-source-informed` only for intentional valid-but-not-strong packages.
