@@ -13,6 +13,14 @@ SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "uncovered_cards=0",
     "claim_conflicts=0",
 ]
+READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
+    "cards_need_guide_claims": "cards_needing_guide_claims",
+    "cards_need_runtime_surface": "cards_needing_runtime_surface",
+    "cards_need_mulligan_claims": "cards_needing_mulligan_claims",
+    "cards_need_combo_sequence": "cards_needing_combo_sequence",
+    "cards_need_condition_lowering": "cards_needing_condition_lowering",
+    "cards_need_mechanic_lowering": "cards_needing_mechanic_lowering",
+}
 
 
 def build_operator_summary(
@@ -270,7 +278,8 @@ def _semantic_blockers(
     }
     for missing_link, (reason, strength) in missing_link_reasons.items():
         affected = _affected_cards_by_missing_link(config_readiness_report, missing_link)
-        count = len(affected) or _int_value(config_readiness_summary.get(reason, 0))
+        summary_key = READINESS_SUMMARY_KEY_BY_BLOCKER_REASON.get(reason, reason)
+        count = len(affected) or _int_value(config_readiness_summary.get(summary_key, 0))
         if count:
             blockers.append(
                 {
