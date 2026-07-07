@@ -295,6 +295,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
                                 "cards": ["SW_448"],
                                 "condition": {"coin": True},
                                 "reason": "Keep Darkbishop Benedictus.",
+                                "source_confidence": "high",
                             }
                         ],
                     }
@@ -403,6 +404,8 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
 
     payload = json.loads(capsys.readouterr().out)
     reports = package / "reports"
+    guide_sources = json.loads((reports / "guide_sources.json").read_text(encoding="utf-8"))
+    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
     guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
     unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
@@ -410,6 +413,11 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
     assert code == 0
     assert payload["status"] == "passed"
     assert payload["guide_claims_count"] == 0
+    assert guide_sources["source_depth_status"] == "needs_more_research"
+    assert guide_sources["summary"]["claim_count"] == 0
+    assert guide_sources["sources"][0]["claims"] == []
+    assert receipt["source_depth_status"] == "needs_more_research"
+    assert receipt["claim_count"] == 0
     assert guide_bundle["claims"] == []
     assert [row["missing_claim_keys"] for row in unsupported] == [
         ["source_confidence"],

@@ -62,12 +62,14 @@ def test_research_deck_accepts_source_documents_json(tmp_path: Path, capsys):
                                 "cards": ["SW_448"],
                                 "condition": {"coin": True},
                                 "reason": "Keep Darkbishop Benedictus.",
+                                "source_confidence": "high",
                             },
                             {
                                 "claim_kind": "gameplan_posture",
                                 "scope": "deck",
                                 "stance": "aggro_burn",
                                 "reason": "Push damage.",
+                                "source_confidence": "high",
                             },
                         ],
                     }

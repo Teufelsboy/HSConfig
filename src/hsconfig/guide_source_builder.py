@@ -5,6 +5,7 @@ import json
 from collections import Counter
 from typing import Any
 
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_freshness import is_stale_source
 
 
@@ -78,19 +79,31 @@ def build_guide_sources(
     deck_identity: dict[str, Any],
     card_roles: dict[str, Any] | list[dict[str, Any]],
     source_documents: list[dict[str, Any]],
+    validated_claim_bundle: dict[str, Any] | None = None,
     current_date: Any = None,
 ) -> dict[str, Any]:
+    strict_bundle = _validated_source_document_bundle(
+        deck_identity=deck_identity,
+        source_documents=source_documents,
+        validated_claim_bundle=validated_claim_bundle,
+        current_date=current_date,
+    )
+    claims_by_source_ref = _claims_by_source_ref(strict_bundle.get("claims", []))
+    evidence_by_source_ref = _source_evidence_by_ref(strict_bundle.get("source_evidence_index", []))
     normalized_sources: list[dict[str, Any]] = []
     stale_count = 0
     downgraded_count = 0
+    unsupported_claim_count = 0
     for index, document in enumerate(source_documents, start=1):
+        source_ref = f"source:{index}"
         warnings = _source_warnings(deck_name, document, current_date=current_date)
         stale_count += int(any(warning["reason"] == "stale_source" for warning in warnings))
         downgraded_count += int(bool(warnings))
+        evidence_row = evidence_by_source_ref.get(source_ref, {})
+        unsupported_claim_count += int(evidence_row.get("unsupported_claim_count", 0))
         claims = [
             _normalize_claim(claim, source_index=index, claim_index=claim_index)
-            for claim_index, claim in enumerate(document.get("claims", []) or [], start=1)
-            if isinstance(claim, dict)
+            for claim_index, claim in enumerate(claims_by_source_ref.get(source_ref, []), start=1)
         ]
         normalized_sources.append(
             {
@@ -102,6 +115,7 @@ def build_guide_sources(
                 "deck_name": str(document.get("deck_name", "")),
                 "archetype": str(document.get("archetype", "")),
                 "claims": claims,
+                "unsupported_claim_count": int(evidence_row.get("unsupported_claim_count", 0)),
                 "warnings": warnings,
             }
         )
@@ -120,6 +134,7 @@ def build_guide_sources(
         "summary": {
             "source_count": len(normalized_sources),
             "claim_count": claim_count,
+            "unsupported_claim_count": unsupported_claim_count,
             "stale_source_count": stale_count,
             "downgraded_source_count": downgraded_count,
             "static_card_semantics_used": not normalized_sources,
@@ -167,6 +182,60 @@ def _claim_id(claim: dict[str, Any], source_index: int, claim_index: int) -> str
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ).hexdigest()[:12]
     return f"claim_{digest}"
+
+
+def _validated_source_document_bundle(
+    *,
+    deck_identity: dict[str, Any],
+    source_documents: list[dict[str, Any]],
+    validated_claim_bundle: dict[str, Any] | None,
+    current_date: Any = None,
+) -> dict[str, Any]:
+    if isinstance(validated_claim_bundle, dict):
+        return validated_claim_bundle
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity.get("cards", [])},
+        source_documents=source_documents,
+        current_date=current_date,
+    )
+
+
+def _claims_by_source_ref(claims: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        if str(claim.get("support_status", "")) != "source_backed":
+            continue
+        source_ref = _claim_source_ref(claim)
+        if not source_ref:
+            continue
+        grouped.setdefault(source_ref, []).append(claim)
+    return grouped
+
+
+def _claim_source_ref(claim: dict[str, Any]) -> str:
+    source_refs = claim.get("source_refs", [])
+    if not isinstance(source_refs, list):
+        return ""
+    for source_ref in source_refs:
+        source_ref_text = str(source_ref)
+        if source_ref_text.startswith("source:"):
+            return source_ref_text
+    return ""
+
+
+def _source_evidence_by_ref(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        source_ref = str(row.get("source_ref", "")).strip()
+        if not source_ref:
+            continue
+        grouped[source_ref] = row
+    return grouped
 
 
 def _source_warnings(

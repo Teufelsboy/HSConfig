@@ -197,6 +197,12 @@ def test_missing_or_blank_source_confidence_is_not_promoted():
         card_metadata={"cards": deck_identity["cards"]},
         source_documents=source_documents,
     )
+    guide_sources = build_guide_sources(
+        deck_name="Fixture",
+        deck_identity=deck_identity,
+        card_roles={},
+        source_documents=source_documents,
+    )
 
     assert bundle["claims"] == []
     assert [claim["reason"] for claim in bundle["unsupported_claims"]] == [
@@ -208,6 +214,9 @@ def test_missing_or_blank_source_confidence_is_not_promoted():
         ["source_confidence"],
     ]
     assert bundle["source_evidence_index"][0]["claim_count"] == 0
+    assert guide_sources["source_depth_status"] == "needs_more_research"
+    assert guide_sources["summary"]["claim_count"] == 0
+    assert guide_sources["sources"][0]["claims"] == []
 
 
 def test_missing_source_keys_reject_all_claims_from_document():

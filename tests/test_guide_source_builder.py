@@ -38,6 +38,7 @@ def test_source_backed_documents_are_normalized_to_guide_sources():
                     "condition": {"coin": True},
                     "confidence": "source_backed",
                     "reason": "Keep the enabler.",
+                    "source_confidence": "high",
                 }
             ],
         }

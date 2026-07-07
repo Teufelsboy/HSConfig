@@ -180,13 +180,6 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     generated_guide_sources = None
     strict_source_documents = guide_sources
     if source_documents_input:
-        generated_guide_sources = build_guide_sources(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            card_roles={},
-            source_documents=source_documents_input,
-        )
-        guide_sources = generated_guide_sources["sources"]
         strict_source_documents = source_documents_input
     elif not guide_sources and getattr(args, "auto_research_fallback", True):
         generated_guide_sources = build_guide_sources(
@@ -215,7 +208,15 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         source_claims=source_claims,
         guide_claim_bundle=guide_claim_bundle,
     )
-    if generated_guide_sources is None and guide_sources:
+    if source_documents_input:
+        generated_guide_sources = build_guide_sources(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            card_roles=research_bundle.get("card_role_map", {}),
+            source_documents=source_documents_input,
+            validated_claim_bundle=guide_claim_bundle,
+        )
+    elif generated_guide_sources is None and guide_sources:
         generated_guide_sources = build_guide_sources(
             deck_name=args.deck_name,
             deck_identity=deck_identity,
