@@ -124,7 +124,16 @@ def _actual_optional_surface_reasons(package: Path) -> list[dict[str, str]]:
     if not custom_config.is_dir():
         return []
     reasons: list[dict[str, str]] = []
-    for path in sorted(custom_config.glob("*/*.json")):
+    for path in sorted(path for path in custom_config.rglob("*") if path.is_file()):
+        relative_parts = path.relative_to(custom_config).parts
+        if len(relative_parts) != 2:
+            reasons.append(
+                {
+                    "reason": "nested_runtime_file_present",
+                    "generated_file": str(path),
+                }
+            )
+            continue
         if path.name in OPTIONAL_NORMAL_PATH_SURFACES:
             reasons.append(
                 {

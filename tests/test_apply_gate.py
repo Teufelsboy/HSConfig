@@ -179,6 +179,39 @@ def test_apply_gate_blocks_actual_optional_surface_when_summary_is_stale(
     ]
 
 
+def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
+    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
+    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    write_json(package / "CustomConfig" / "deck" / "nested" / "Presume.json", {})
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"] == [
+        {
+            "reason": "nested_runtime_file_present",
+            "generated_file": str(package / "CustomConfig" / "deck" / "nested" / "Presume.json"),
+        }
+    ]
+
+
 def test_apply_gate_blocks_missing_operator_summary(tmp_path: Path):
     gate = evaluate_apply_gate(tmp_path / "package")
 
