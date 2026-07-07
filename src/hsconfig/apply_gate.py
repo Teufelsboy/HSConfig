@@ -38,6 +38,7 @@ def evaluate_apply_gate(
     optional_surface_reasons = [
         *_summary_optional_surface_reasons(summary),
         *_actual_optional_surface_reasons(package),
+        *_actual_files_missing_from_summary_reasons(package, summary),
     ]
     if optional_surface_reasons:
         return _blocked(operator_path, *optional_surface_reasons)
@@ -142,6 +143,50 @@ def _actual_optional_surface_reasons(package: Path) -> list[dict[str, str]]:
                 }
             )
     return reasons
+
+
+def _actual_files_missing_from_summary_reasons(
+    package: Path, summary: dict[str, Any]
+) -> list[dict[str, str]]:
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return []
+
+    summary_files = _summary_generated_file_set(summary)
+    if not summary_files:
+        return []
+
+    reasons: list[dict[str, str]] = []
+    for path in sorted(path for path in custom_config.rglob("*") if path.is_file()):
+        relative_parts = path.relative_to(custom_config).parts
+        if len(relative_parts) != 2:
+            continue
+        if path.name in OPTIONAL_NORMAL_PATH_SURFACES:
+            continue
+        summary_key = _normalize_generated_file_path(path.relative_to(package))
+        if summary_key not in summary_files:
+            reasons.append(
+                {
+                    "reason": "actual_runtime_file_not_in_operator_summary",
+                    "generated_file": str(path),
+                }
+            )
+    return reasons
+
+
+def _summary_generated_file_set(summary: dict[str, Any]) -> set[str]:
+    generated = summary.get("generated_files", [])
+    if not isinstance(generated, list):
+        return set()
+    return {
+        _normalize_generated_file_path(Path(str(item)))
+        for item in generated
+        if str(item).replace("\\", "/").startswith("CustomConfig/")
+    }
+
+
+def _normalize_generated_file_path(path: Path) -> str:
+    return path.as_posix().replace("\\", "/")
 
 
 def _allowed(
