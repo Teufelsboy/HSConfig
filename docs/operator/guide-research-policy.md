@@ -169,3 +169,7 @@ For each card, prefer claims that answer at least one of these questions:
 - `guide_source_depth_report.json`: source-depth status, source families, claim kinds, and research warnings.
 
 HSConfig does not prove gameplay improvement. It creates the best available initial config from current source claims and card semantics. HSTuner remains the post-game analysis and tuning tool.
+
+## Next-Wave Source Autonomy
+
+See `docs/operator/autonomous-source-builder-next.md` for the source-acquisition contract that should feed `research-deck` before future deck-only autonomy work. This document is intentionally a contract, not an implementation of web browsing or scraping.
