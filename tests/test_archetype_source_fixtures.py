@@ -380,6 +380,44 @@ def test_piraterogue_fixture_covers_pirate_weapon_pressure():
     assert any(marker in text for marker in ("weapon", "face", "tempo", "pressure"))
 
 
+def test_piraterogue_fixture_closes_known_source_claim_gaps():
+    bundle = _source_bundle_for_fixture("PirateRogue")
+    claims_by_card = {}
+    for claim in bundle["claims"]:
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {
+        "CFM_637",
+        "CORE_NEW1_027",
+        "CS2_073",
+        "DMF_519",
+        "DRG_056",
+        "NX2_006",
+        "TOY_505",
+        "TOY_518",
+        "TTN_922",
+        "VAC_938",
+    }
+    assert expected_cards <= set(claims_by_card)
+    assert any(
+        claim.get("runtime_block") == "OnBoardBonus"
+        for claim in claims_by_card["CORE_NEW1_027"]
+    )
+    assert any(
+        claim.get("runtime_block") == "BeforePlayCardBonus"
+        for claim in claims_by_card["CS2_073"]
+    )
+    assert any(
+        claim.get("runtime_block") == "BeforeBattlecryTargetBonus"
+        for claim in claims_by_card["DMF_519"]
+    )
+    assert any(
+        claim.get("runtime_block") == "BeforePhysicalAttackBonus"
+        for claim in claims_by_card["NX2_006"]
+    )
+
+
 def test_treantdruid_fixture_covers_token_board_snowball():
     claims = _claims("TreantDruid")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()

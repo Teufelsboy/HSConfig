@@ -30,7 +30,7 @@
       "archetype_bucket": "pirate_tempo_weapon_pressure",
       "primary_mechanics": ["pirate", "tempo", "weapon_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "BigShaman",

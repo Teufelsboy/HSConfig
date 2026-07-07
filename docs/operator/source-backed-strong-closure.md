@@ -20,7 +20,7 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 |---|---|---|
 | ShadowPriest | `core_source_backed_fixture` | Already strong. Preserve this as the control fixture. |
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
-| PirateRogue | `source_informed_valid_fixture` | Close guide-claim gaps. |
+| PirateRogue | `core_source_backed_fixture` | Already strong. Preserve this as the third promoted fixture. |
 | CtAPaladin | `source_informed_valid_fixture` | Close guide-claim and recruit/board-flood runtime-surface gaps. |
 | BigShaman | `source_informed_valid_fixture` | Close guide-claim and big/recruit/deathrattle runtime-surface gaps. |
 | Discolock | `source_informed_valid_fixture` | Close guide-claim, discard runtime-surface, and mechanic-lowering gaps. |
@@ -38,7 +38,7 @@ Fresh local prepare runs after the strict stage split show:
 |---|---|---:|---:|---:|
 | ShadowPriest | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
 | CtAPaladin | `VALID_BUT_NOT_GUIDE_STRONG` | 4 | 4 | 0 |
-| PirateRogue | `VALID_BUT_NOT_GUIDE_STRONG` | 10 | 0 | 0 |
+| PirateRogue | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
 | BigShaman | `VALID_BUT_NOT_GUIDE_STRONG` | 2 | 6 | 0 |
 | Discolock | `VALID_BUT_NOT_GUIDE_STRONG` | 2 | 9 | 2 |
 | TreantDruid | `VALID_BUT_NOT_GUIDE_STRONG` | 9 | 3 | 0 |

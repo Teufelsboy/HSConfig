@@ -45,6 +45,86 @@
         },
         {
           "claim_kind": "card_role",
+          "cards": ["CFM_637"],
+          "stance": "pirate_followup_summon",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you play a Pirate, summon this minion from your deck.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CORE_NEW1_027"],
+          "stance": "pirate_board_buff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Your other Pirates have +1/+1.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CS2_073"],
+          "stance": "burst_attack_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Give a minion +2 Attack. Combo: +4 Attack instead.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DMF_519"],
+          "stance": "combo_minion_removal",
+          "runtime_block": "BeforeBattlecryTargetBonus",
+          "evidence_text_short": "Combo: Deal 1 damage to a minion for each other card you've played this turn.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_056"],
+          "stance": "pirate_hand_summon",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you play a Pirate, summon this minion from your hand.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["NX2_006"],
+          "stance": "hero_attack_pirate_summon",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "evidence_text_short": "After your hero attacks, summon a 1/1 Undead Pirate.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_505"],
+          "stance": "pirate_draw_engine",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a Pirate, draw a card.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_518"],
+          "stance": "pirate_attack_buff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a Pirate, give it +1 Attack.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TTN_922"],
+          "stance": "hand_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Shuffle the two left-most cards in your hand into your deck. Draw 3 cards.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_938"],
+          "stance": "pirate_attack_scaling",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Whenever another friendly Pirate attacks, give it +1/+1.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
           "cards": ["GVG_075"],
           "stance": "pirate_tempo_damage",
           "runtime_block": "OnBoardBonus",
