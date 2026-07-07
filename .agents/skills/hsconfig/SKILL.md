@@ -5,7 +5,7 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 # HSConfig
 
-Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. Keep HSConfig lean and separate from HSTuner.
+Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 
@@ -17,7 +17,6 @@ Inputs:
 - short source evidence rows from current guide research
 - researched `source_documents.json`
 - normalized guide sources from `hsconfig research-deck`
-- optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir`
 
 Normal workflow:
 
@@ -47,17 +46,21 @@ Fixture stage meaning:
 Rules:
 
 - Build direct guide-aligned configs only.
-- Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
-- Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
+- Prefer researched guide sources over legacy claim inputs when live guide research was performed.
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Runtime apply is allowed after validation only through the enforced apply gate; runtime writes remain only when requested by the user or task.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
-- HSConfig does not parse replays, inspect winrate, analyze runtime logs, promote post-run candidates, or tune after games.
-- Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
+- HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.
+- Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 
-References:
+## Expert Paths
+
+Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs.
+Use `--allow-placeholder` only for deterministic fixture or preview tests.
+
+## References
 
 - `references/workflow.md`
 - `references/visionai-surfaces.md`

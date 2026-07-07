@@ -2,7 +2,7 @@
 
 HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from a Hearthstone deck name and deck code.
 
-HSConfig is a direct pre-game config authoring tool. It does not parse replays, evaluate winrate, inspect post-game evidence, or tune from runtime logs. Those are HSTuner concerns. `Presume.json` and `Concede.json` are not emitted in the normal path.
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those are HSTuner concerns. `Presume.json` and `Concede.json` are not emitted in the normal path.
 
 ## Normal Operator Path
 

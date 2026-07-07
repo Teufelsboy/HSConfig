@@ -139,3 +139,38 @@ def test_operator_docs_explain_hdt_as_identity_only():
                 missing.append(f"{path}:{phrase}")
 
     assert missing == []
+
+
+def test_active_docs_keep_hstuner_scope_as_negative_boundary():
+    active_docs = [
+        Path("README.md"),
+        Path("docs/operator/README.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_docs)
+
+    assert "does not parse replays" in combined
+    assert "HSTuner" in combined
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8").lower()
+    assert "candidate promotion" not in operator
+
+
+def test_active_docs_use_pre_run_boundary_wording():
+    active_docs = [
+        Path("README.md"),
+        Path("docs/operator/README.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    required = (
+        "HSConfig is pre-run only. It does not parse replays, inspect winrate, "
+        "analyze runtime logs, promote candidates, or tune after games."
+    )
+    missing = [
+        str(path)
+        for path in active_docs
+        if required not in path.read_text(encoding="utf-8")
+    ]
+
+    assert missing == []

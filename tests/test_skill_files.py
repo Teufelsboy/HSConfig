@@ -264,7 +264,10 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
     assert "SOURCE_BACKED_STRONG" in docs
     assert "guide_strength_summary" in docs
     assert "semantic_blockers" in docs
-    assert "HSConfig does not parse replays" in docs
+    assert (
+        "HSConfig is pre-run only. It does not parse replays, inspect winrate, "
+        "analyze runtime logs, promote candidates, or tune after games."
+    ) in docs
     assert "Presume.json" in docs
     assert "Concede.json" in docs
 
@@ -377,3 +380,33 @@ def test_operator_readme_is_single_normal_entry_point():
     assert "docs/operator/README.md" in root
     assert "docs/operator/README.md" in skill
     assert "docs/operator/README.md" in workflow
+
+
+def test_normal_docs_keep_expert_paths_in_expert_sections():
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    expert_index = operator.index("## Expert Paths")
+    normal_index = operator.index("## Normal Operator Path")
+
+    assert normal_index < expert_index
+    for token in (
+        "--cards-json",
+        "--claims-json",
+        "--plan-reports-dir",
+        "--allow-placeholder",
+    ):
+        assert operator.index(token) > expert_index
+
+
+def test_skill_doc_keeps_expert_paths_in_expert_section():
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+
+    assert "## Expert Paths" in skill
+    expert_index = skill.index("## Expert Paths")
+    for token in (
+        "--cards-json",
+        "--claims-json",
+        "--plan-reports-dir",
+        "--allow-placeholder",
+    ):
+        assert token not in skill[:expert_index]
+        assert skill.index(token) > expert_index

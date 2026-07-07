@@ -4,6 +4,8 @@ Normal flow: deck input -> `hsconfig source-manifest` -> short evidence rows -> 
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
+
 Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
 
 ## Research Normalization

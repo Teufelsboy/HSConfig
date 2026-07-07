@@ -2,7 +2,7 @@
 
 HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a deck name, deck code, and source-backed guide evidence.
 
-HSConfig does not parse replays, inspect winrate, analyze runtime logs, promote post-run candidates, or tune after games. Those tasks belong to HSTuner.
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 ## Normal Operator Path
 
