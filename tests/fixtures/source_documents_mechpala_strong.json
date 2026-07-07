@@ -40,7 +40,7 @@
           "cards": ["BOT_020"],
           "stance": "magnetic_rush_support",
           "runtime_block": "BeforePlayCardBonus",
-          "evidence_text_short": "Magnetic. Rush.",
+          "evidence_text_short": "<b>Magnetic</b> <b>Rush</b>",
           "source_confidence": "high"
         },
         {
