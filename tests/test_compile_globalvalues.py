@@ -66,6 +66,31 @@ def test_validate_package_rejects_globalvalues_missing_baseline_keys(tmp_path: P
     assert any("GlobalValues missing baseline key" in error for error in report["errors"])
 
 
+def test_validate_package_rejects_globalvalues_rows_missing_condition_or_value(
+    tmp_path: Path,
+):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    payload = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Fixture",
+        "FirstTurnValueWeight": {"values": [{"value": "1.00"}]},
+        "SecondTurnValueWeight": {"values": [{"condition": "*"}]},
+    }
+    write_json(deck_dir / "GlobalValues.json", payload)
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any(
+        "GlobalValues block FirstTurnValueWeight row 0 missing condition" in error
+        for error in report["errors"]
+    )
+    assert any(
+        "GlobalValues block SecondTurnValueWeight row 0 missing value" in error
+        for error in report["errors"]
+    )
+
+
 def test_compile_globalvalues_scales_simple_numeric_expressions():
     default_values = {
         "GameCardId": "GlobalValues",

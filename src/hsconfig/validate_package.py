@@ -154,6 +154,31 @@ def _validate_values_blocks(path: Path, data: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _validate_globalvalues_rows(path: Path, data: dict[str, Any]) -> list[str]:
+    errors = []
+    for key, block in data.items():
+        if key in {"GameCardId", "ConfigComment"}:
+            continue
+        if not isinstance(block, dict):
+            continue
+        values = block.get("values")
+        if not isinstance(values, list):
+            continue
+        for index, row in enumerate(values):
+            if not isinstance(row, dict):
+                errors.append(
+                    f"{path}: GlobalValues block {key} row {index} must be an object"
+                )
+                continue
+            if "condition" not in row:
+                errors.append(
+                    f"{path}: GlobalValues block {key} row {index} missing condition"
+                )
+            if "value" not in row:
+                errors.append(f"{path}: GlobalValues block {key} row {index} missing value")
+    return errors
+
+
 def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
     errors = _validate_named_values_blocks(path, data, {"Mulligan"})
     block = data.get("Mulligan", {})
@@ -205,6 +230,7 @@ def _validate_globalvalues(
     profile: dict[str, Any] | None,
 ) -> list[str]:
     errors = _validate_values_blocks(path, data)
+    errors.extend(_validate_globalvalues_rows(path, data))
     if baseline is not None:
         generated_overlay_keys = set()
         if profile is not None:
