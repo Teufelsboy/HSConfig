@@ -177,6 +177,9 @@ def route_card_behavior_surfaces(
                     rows.append(row)
             continue
 
+        if claim_kind == "combo_sequence":
+            continue
+
         suppressed.append(
             _suppressed_row(claim, claim_kind, cards, "no_documented_card_behavior_surface")
         )

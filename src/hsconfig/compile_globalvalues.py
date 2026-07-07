@@ -83,6 +83,7 @@ def compile_globalvalues(
                 "authority_category": key_authority["category"],
                 "board_value_component": key_authority["board_value_component"],
                 "decision": "baseline_confirmed",
+                "status": "baseline_confirmed",
                 "reason": "Required top-level metadata key.",
             }
             unchanged_keys.append(key)
@@ -95,6 +96,7 @@ def compile_globalvalues(
             "board_value_component": key_authority["board_value_component"],
             "baseline_value": before,
             "decision": "baseline_confirmed",
+            "status": "baseline_confirmed",
             "reason": "No deck-specific overlay required.",
         }
         if key in generated_overlay_keys:
@@ -106,6 +108,7 @@ def compile_globalvalues(
             decision.update(
                 {
                     "decision": "overlay_changed" if after != before else "baseline_confirmed",
+                    "status": "overlay_changed" if after != before else "baseline_confirmed",
                     "new_value": after,
                     "reason": overlay_reasons.get(key, _overlay_reason(key, overlay)),
                 }

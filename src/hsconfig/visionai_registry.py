@@ -31,7 +31,7 @@ SPECIAL_SURFACES = {
     "Concede.json": "Concede",
 }
 
-CARD_ID_SURFACE_RE = re.compile(r"^(?=.*\d)[A-Za-z0-9_]+\.json$")
+CARD_ID_SURFACE_RE = re.compile(r"^(?:(?=.*\d)|(?=.*_)(?=.*[A-Z]))[A-Za-z0-9_]+\.json$")
 
 RESERVED_NON_RUNTIME_SURFACES = frozenset(
     {
