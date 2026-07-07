@@ -1,0 +1,35 @@
+{
+  "source_summary": "As of 2026-07-07, the official HearthRanger VisionAI help pages still document deck-local CustomConfig activation through CustomConfig\\\\deck_config.ini and the following runtime file families: per-card <CARDID>.json, Mulligan.json, Combo.json, GlobalValues.json, Concede.json, and Presume.json. The documented CARDID behavior registry relevant to HSConfig includes InHandBonus, OnBoardBonus, BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, BeforeOverkilledBonus, BeforeEndTurnBonus, OnDiscoverCardBonus, OnChooseOneCardBonus, OnAdaptCardBonus, BeforeUpgradeCardBonus, InHandPlayPriority, and OnBoardPlayPriority. Mulligan rows use Mulligan.values entries with mulligan, condition, and value hold or discard; Combo rows use ComboList.values entries with explicit same-turn >> or cross-turn >-> sequencing and matching value segments; GlobalValues is a baseline-copy board-value surface; Presume depends on SecondTurnValueWeight being non-zero; and Concede uses ExtraConcdeSettings values matched from top to bottom.",
+  "current_truth": "For HSConfig's normal lean path, the authoritative runtime surfaces should be GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only when a concrete exact CardID sequence exists. Presume.json and Concede.json are still officially documented by HearthRanger, but the current local contract should keep them outside the normal HSConfig runtime package. That matches the HSranger-side allowed surfaces and Step 2 no-write boundaries, and it matches HSConfig's current README, CLI behavior, lean July 7 plan, and preview tests.",
+  "repo_alignment": "HSConfig is partly aligned and partly not. It is aligned in the active path: the CLI writes GlobalValues.json, Mulligan.json, per-card CARDID files, and Combo.json only when compile_combo returns a concrete payload; the README says Presume.json and Concede.json are not emitted in the normal path; the July 7 lean plan explicitly limits runtime surfaces to GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json; and preview tests assert Presume.json and Concede.json do not exist. It is not fully aligned in older broad design material that still lists Presume.json and Concede.json as optional emitted files, so those documents should not be treated as the current normal-path contract.",
+  "gaps_or_risks": [
+    "Live official VisionAI pages were reachable with HTTP 200 on 2026-07-07, but their raw HTML hashes differed from the repo cache captured on 2026-06-04, so unchanged semantics were sampled rather than fully diff-proven [uncertain].",
+    "The official docs name more CARDID behavior blocks than they illustrate with equally detailed worked examples, so exact lowering policy for blocks such as OnAdaptCardBonus, BeforeUseHeroPowerBonus, BeforeEndTurnBonus, and some ownership or version-floor details is not equally explicit in first-party samples [uncertain].",
+    "If HSConfig continues to keep older design docs that advertise Presume.json and Concede.json as normal optional outputs, contributors can reintroduce those surfaces into the main workflow despite the newer lean-path boundary.",
+    "GlobalValues.json remains the highest-blast-radius surface in this set; any drift away from baseline-copy profiling and full-key coverage would conflict with both the official HearthRanger recommendation and HSConfig's current baseline-first validation posture."
+  ],
+  "recommended_action": "Promote one repo-wide runtime surface contract and treat it as authoritative for HSConfig: normal output is baseline-complete GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only for concrete exact sequences; Presume.json and Concede.json stay documented-but-non-normal surfaces behind explicit future support gates. Keep the documented CARDID block registry available, but emit only blocks that HSConfig can validate with exact file ownership, strict JSON shape, and any known version-floor requirement.",
+  "confidence": "medium",
+  "citations": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/config_surface_intent_map.schema.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/config_patch.schema.json",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/step2_context.schema.json",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_e2e_preview.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-backed-depth-closure-v2.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_08_CardID_Behavior_Compiler_Architecture.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-05-hsconfig-step-architecture/results/Step_09_Combo_Presume_And_Concede_Surface_Architecture.json"
+  ],
+  "uncertain": [
+    "gaps_or_risks"
+  ]
+}

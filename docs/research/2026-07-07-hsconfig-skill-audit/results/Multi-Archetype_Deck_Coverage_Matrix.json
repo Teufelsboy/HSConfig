@@ -1,0 +1,30 @@
+{
+  "source_summary": "The proposed deck-family matrix is broad enough for a lean HSConfig breadth audit because it spans the main Step 1 strategy and semantics surfaces: proactive aggro burn, Paladin-style board flood with Call to Arms follow-up, pirate tribal pressure, big or recruit or deathrattle cheat lines, discard-driven hand mutation, token-board snowballing, Imbue and spell-generation choice handling, Mech and Magnetic board scaling, weapon-centric sequencing such as Kingslayer or Kingsbane, explicit combo or control planning, and Pirate Demon Hunter as a tribe-plus-class-pressure variant. Local HSConfig fixtures already prove multi-archetype intent through ShadowPriest, MechPala, and BigShaman, while repo plans and workflow tests extend the target set toward PirateRogue, Kingslayer, Discolock, and other representative breadth decks.",
+  "current_truth": "Treat the listed family set as sufficient for a lean breadth coverage matrix, provided each family is represented by at least one explicit source-backed deck bundle and one repeatable test path. The set covers the main HSConfig-relevant decision surfaces: face-versus-trade pressure, wide-board preservation, recruit and deathrattle sequencing, discard state changes, Discover or generated-card handling, Imbue hero-power mutation, Magnetic Mech scaling, weapon upkeep, and ordered combo logic. It should not be treated as exhaustive coverage for every Hearthstone mechanic or every class-specific edge case.",
+  "repo_alignment": "Alignment is partial but directionally strong. HSConfig already carries fixture-backed multi-archetype evidence for ShadowPriest as aggro burn, MechPala as token-board Mech pressure, and BigShaman as big recruit or deathrattle cheat, and `test_autonomous_guide_workflow_e2e.py` already keeps PirateRogue in the autonomous workflow set. Repo planning for the next breadth wave explicitly names representative deck codes for ShadowPriest, MechPala, BigShaman, Kingslayer, TreantDruid, Discolock, and Boarlock, which is consistent with the proposed matrix. The adjacent HSranger repo also retains CtAPaladin board-flood logic and PirateRogue or CtAPaladin runtime identities, so the matrix matches the workflow's existing regression vocabulary. The remaining mismatch is that several target buckets are still plan-level or name-level coverage rather than first-class source-document fixtures with dedicated end-to-end assertions.",
+  "gaps_or_risks": [
+    "The `combo/control` bucket is too wide to trust as a single representative deck. A lean matrix should keep at least one explicit combo-sequence deck and one slower control-style deck or source bundle, otherwise ordered lethal logic and long-horizon resource posture can collapse into one vague label.",
+    "The `imbue/spell generation` bucket combines at least three distinct behaviors: hero-power replacement, Discover or option-choice handling, and generated-card lineage. One deck may not stress all three strongly enough.",
+    "Pirates and Pirate Demon Hunter overlap on tribe pressure, but they do not test the same class posture. If only one pirate deck survives, HSConfig can miss Demon Hunter specific weapon, outcast-tempo, or hero-attack pressure patterns.",
+    "Call-to-Arms board flood and generic token-board decks overlap, but CtA specifically adds recruit-from-deck tempo and flood-follow-up sequencing that a generic token list may not reproduce.",
+    "Current local evidence for Kingslayer, Discolock, and some other proposed breadth decks is stronger in plans and named workflow inputs than in completed fixture-backed source documents, so the matrix is strategically sound before it is fully implemented."
+  ],
+  "recommended_action": "Freeze this family list as the lean breadth target, then close the implementation gap by promoting each missing bucket into an explicit source-backed representative deck and multideck test row. In practice that means keeping ShadowPriest, MechPala, BigShaman, and PirateRogue or CtAPaladin, then adding concrete source bundles for Kingslayer or Kingsbane weapon play, Discolock discard play, one Imbue or Discover-heavy generation deck, and one explicit combo-sequence deck. That gives HSConfig enough archetype diversity for skill audits without pretending to prove full mechanic exhaustiveness.",
+  "confidence": "medium",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_multiarchetype.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_depth_matrix_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_autonomous_guide_workflow_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-backed-config-depth-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-06-hsconfig-autonomous-guide-source-builder.md",
+    "C:/Users/darbo/Documents/HS/docs/operator/new-deck-checklist.md",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/gameplan_profiles.py",
+    "https://www.hearthstonetopdecks.com/deck-type/aggro-demon-hunter/page/8/",
+    "https://www.hearthstonetopdecks.com/decks/discard-warlock-204-legend-yangzhitian-wild-s138/",
+    "https://hearthstone.wiki.gg/wiki/Recruit",
+    "https://hearthstone.wiki.gg/wiki/Imbue",
+    "https://hearthstone.wiki.gg/wiki/Magnetic",
+    "https://www.hearthpwn.com/decks/1455242-kingsbane-rogue"
+  ],
+  "uncertain": []
+}

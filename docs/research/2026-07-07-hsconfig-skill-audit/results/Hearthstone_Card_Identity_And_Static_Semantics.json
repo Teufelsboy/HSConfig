@@ -1,0 +1,25 @@
+{
+  "source_summary": "As of 2026-07-07, HearthSim deckstrings is an appropriate primary source for exact deckstring decode because the spec and reference implementation losslessly decode hero DBF IDs, card DBF/count pairs, format, and sideboards. HearthstoneJSON `cards.json` is an appropriate primary source for DBF-to-CardID mapping, card text, and broad static mechanics because it publishes unique `id`, `dbfId`, localized `text`, `mechanics`, and hero-card `heroPowerDbfId`, and it includes non-collectible cards. However, a live 2026-07-07 probe of `https://api.hearthstonejson.com/v1/latest/enUS/cards.json` showed `heroPowerDbfId` on 2,988 rows and `questReward` on 9 rows, but `entourage` on 0 rows and `playRequirements` on 0 rows, so HearthstoneJSON alone is not a complete current source for generated-entity closure or Shadowform-style hero-power transform identity.",
+  "current_truth": "Treat HearthSim/deckstrings as the decode authority and treat HearthstoneJSON `cards.json` as the normalized registry for `dbfId` <-> `CardID`, localized text, card type, and most mechanic tags. Do not treat HearthstoneJSON alone as sufficient for all generated entities or hero-power transform identity. For HSConfig, the lean correct design on 2026-07-07 is: decode deck codes with HearthSim/deckstrings, map DBF IDs to CardIDs with HearthstoneJSON or another full card registry, and add a deterministic supplement layer for generated links and Shadowform-style hero-power replacement when the live JSON payload does not expose a structured link.",
+  "repo_alignment": "HSConfig already aligns with the safe parts of this conclusion. `README.md` states that `hsconfig prepare` decodes deck codes through HearthSim deckstrings and enriches static card semantics. `src/hsconfig/deckstring_decode.py` already uses `hearthstone.deckstrings.parse_deckstring`, but it resolves DBF IDs through `hearthstone.cardxml.load_dbf()` rather than HearthstoneJSON. `src/hsconfig/hearthstonejson.py` already normalizes HearthstoneJSON fields such as `id`, `dbfId`, `text`, `mechanics`, `referencedTags`, `heroPowerDbfId`, `questReward`, `playRequirements`, and `entourage`. `src/hsconfig/semantic_enrichment.py` also already encodes the key risk: it carries a built-in `Mind Spike` fallback because Shadowform and Darkbishop Benedictus do not arrive as a clean structured hero-power-transform link from the source data alone.",
+  "gaps_or_risks": [
+    "If HSConfig treats HearthstoneJSON as the only source of generated-entity relationships, it will currently miss links that are not exposed through `heroPowerDbfId` or `questReward`; the live 2026-07-07 `cards.json` probe returned zero `entourage` and zero `playRequirements` rows.",
+    "HearthSim/deckstrings is not a DBF-to-CardID mapper; it yields DBF-based deck identity, not normalized CardIDs or text. A second registry layer is mandatory after decode.",
+    "Shadowform-style hero-power replacement is only textually visible in current HearthstoneJSON rows such as `EX1_625` and `SW_448`; there is no direct structured field on those rows that names `EX1_625t` or `EX1_625t2` as the replacement hero powers.",
+    "Generated-entity closure from plain text is unsafe for runtime writes because text describes effects but does not reliably encode the exact emitted CardID, pool, branch, or upgrade target.",
+    "HearthstoneJSON documentation still describes fields like `entourage` and `playRequirements`, so HSConfig should explicitly guard against documentation-versus-payload drift instead of assuming every documented field family is populated in the current live feed."
+  ],
+  "recommended_action": "Keep HearthSim/deckstrings for deck decode. Use HearthstoneJSON `cards.json` as the first normalized card registry for `dbfId`/`CardID`, text, type, and mechanics. Preserve the current supplement strategy for hero-power transform and generated-link gaps, but formalize it: add an explicit deterministic linkage layer for required non-deck entities such as transformed hero powers, quest rewards, and generated cards, and fail closed when a required exact CardID cannot be proven from structured source data.",
+  "confidence": "high",
+  "citations": [
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://github.com/HearthSim/python-hearthstone/blob/master/hearthstone/deckstrings.py",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/deckstring_decode.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/hearthstonejson.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/semantic_enrichment.py"
+  ],
+  "uncertain": []
+}

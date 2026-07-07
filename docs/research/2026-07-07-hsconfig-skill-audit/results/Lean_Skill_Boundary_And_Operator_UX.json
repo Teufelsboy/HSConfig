@@ -1,0 +1,29 @@
+{
+  "source_summary": "HSConfig currently enforces a lean pre-game boundary in both code and active operator docs: the normal path is researched source documents -> `hsconfig research-deck` -> `hsconfig prepare` -> inspect `reports/operator_summary.json` -> optional `hsconfig apply` only when requested. The CLI and tests keep HSTuner-style replay analysis, winrate work, runtime-log tuning, and post-game loops out of scope. Operator UX is competent because `operator_summary.json` cleanly separates technical validity from semantic/source strength through `technical_status`, `semantic_status`, `next_action`, `apply_policy`, `guide_strength_summary`, and `semantic_blockers`. The main non-lean area is documentation duplication: active tests intentionally require the same readiness language and operator flow text across `README.md`, `.agents/skills/hsconfig/SKILL.md`, and `.agents/skills/hsconfig/references/workflow.md`.",
+  "current_truth": "Treat HSConfig as a deck-input-to-initial-CustomConfig tool only. `prepare` is the main one-shot package command, `research-deck` is the normal pre-build normalization step, `research-contract` and `build` are diagnostic or lower-level paths, and `apply` remains separate and optional. `operator_summary.json` is the canonical gate for handoff versus apply readiness: `VALID_PACKAGE` means load-safe structure, `SOURCE_BACKED_STRONG` means strong initial source coverage, and weaker semantic states are explicit warning or research states rather than post-game proof. HSTuner or any runtime-evidence workflow still owns replay parsing, winrate evaluation, runtime-log analysis, and post-run tuning.",
+  "repo_alignment": "The repository is well aligned with the intended lean boundary. `AGENTS.md` explicitly forbids replay parsing, HDT parsing, winrate validation, candidate promotion, and post-run tuning. `src/hsconfig/cli.py` exposes a small command surface centered on `prepare`, `research-deck`, `research-contract`, `validate`, and optional `apply`, and it writes report artifacts before any runtime write. `src/hsconfig/operator_summary.py` implements the operator gate model with explicit strong, warning, research-needed, and blocked states. `docs/operator/guide-research-policy.md`, `README.md`, and the hsconfig skill files all reinforce that HSConfig creates the best available initial config from current sources and static semantics, not gameplay proof. The repo is less aligned with the \"minimal duplicated docs\" goal because `tests/test_skill_files.py` deliberately locks repeated wording and repeated flow expectations across multiple active docs.",
+  "gaps_or_risks": [
+    "Documentation is not minimal today because active tests require verbatim readiness language and repeated operator-flow content in `README.md`, `.agents/skills/hsconfig/SKILL.md`, and `.agents/skills/hsconfig/references/workflow.md`.",
+    "There is some doc drift risk between active operator docs and older design/spec material: the design spec still describes optional `Presume.json` and `Concede.json` compilation, while current active docs say those surfaces are legacy or gated and not part of the normal path.",
+    "The CLI remains lean, but the public surface is slightly broader than the simplest operator story because `build`, `research-contract`, `--claims-json`, `--cards-json`, and `--plan-reports-dir` are still exposed alongside the canonical `research-deck` plus `prepare` flow.",
+    "Operator autonomy still depends on good upstream source documents or guide sources from Codex; HSConfig itself compiles and validates well, but it does not independently solve source quality.",
+    "Because `apply` is available in the same CLI, downstream callers could bypass the intended operator-summary review if they ignore the documented gate, even though the active docs and tests clearly tell them not to."
+  ],
+  "recommended_action": "Make `operator_summary.json` plus the normal `research-deck` -> `prepare` flow the single canonical operator contract, then trim duplicated prose by relaxing `tests/test_skill_files.py` so it checks for shared concepts rather than verbatim repeated paragraphs across README, skill, and workflow docs.",
+  "confidence": "high",
+  "citations": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\AGENTS.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\guide-research-policy.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\workflow.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\visionai-surfaces.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_prepare_cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_files.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\superpowers\\specs\\2026-07-05-hsconfig-design.md"
+  ],
+  "uncertain": []
+}

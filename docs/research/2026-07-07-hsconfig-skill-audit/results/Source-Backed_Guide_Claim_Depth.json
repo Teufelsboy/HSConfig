@@ -1,0 +1,32 @@
+{
+  "source_summary": "HSConfig's current policy is to accept current, structured, card-scoped source documents and convert them into normalized atomic claims, while vague, off-deck, unsupported, or low-confidence advice stays visible in unsupported or suppression reports instead of being treated as strong runtime input.",
+  "current_truth": "Treat `C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md`, `C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py`, and `C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py` as the controlling rule set: source documents must carry required source metadata plus atomic claims; non-card-specific or unsupported claims are rejected into `unsupported_claims_report.json`; `explicit_low_confidence`, `generic_low_confidence`, `contract_gap`, and `trust_ceiling=report_only` claims cannot lower to runtime; only `guide_backed` and `source_backed_static_semantics` claims are runtime-lowerable. That guard is applied before Mulligan, CardID behavior, Combo, and GlobalValues lowering.",
+  "repo_alignment": "Alignment is strong. The operator policy document states the rule, `build_source_document_bundle()` assigns `claim_readiness`, `specificity_status`, and `trust_ceiling`, `claim_can_lower_to_runtime()` blocks report-only or low-confidence claims, and the runtime planners for Mulligan, CardID behavior, Combo, and GlobalValues all filter through that guard. The CLI also persists `unsupported_claims_report.json`, `guide_source_depth_report.json`, `per_card_config_readiness_report.json`, and `operator_summary.json` so vague or low-confidence advice remains report-visible instead of silently lowering into runtime JSON.",
+  "gaps_or_risks": [
+    "The repo still contains a legacy normalization helper in `C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_claim_builder.py` that is no longer the main strict path. It appears unused, but its presence is a maintenance drift risk because the enforced policy now lives in `source_document_builder.py`.",
+    "The `build_guide_sources()` status label can look more positive than the full readiness picture, because low-confidence claims still count toward source-level claim totals. The stronger truth is in `operator_summary.json` plus `guide_strength_summary` and `semantic_blockers`, not in `source_depth_status` alone.",
+    "Current policy clearly blocks vague or low-confidence claims from runtime lowering, but it still allows them to remain visible as source-backed report artifacts. Downstream tooling must continue to respect `claim_can_lower_to_runtime()` and not shortcut directly from raw claims to runtime compilers."
+  ],
+  "recommended_action": "Keep `--source-documents-json` as the authoritative guide input, treat `claim_can_lower_to_runtime()` as the mandatory gate for every runtime compiler, and tighten reporting by making `guide_source_depth` distinguish strong guide-backed claims from report-only low-confidence claims so the source-depth label matches the stricter operator verdict.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/combo_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/globalvalues_authority.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_claim_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_shadowpriest_depth_e2e.py"
+  ],
+  "uncertain": []
+}

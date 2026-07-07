@@ -1,0 +1,27 @@
+field_categories:
+  - category: hsconfig_skill_audit
+    fields:
+      - name: source_summary
+        required: true
+        description: Concise source-backed summary of the researched area.
+      - name: current_truth
+        required: true
+        description: What should be treated as currently true for HSConfig design decisions.
+      - name: repo_alignment
+        required: true
+        description: How the current HSConfig repository aligns with the researched area.
+      - name: gaps_or_risks
+        required: true
+        description: Concrete gaps, risks, or uncertain assumptions.
+      - name: recommended_action
+        required: true
+        description: The most useful next action for a lean HSConfig workflow.
+      - name: confidence
+        required: true
+        description: high, medium, low, or [uncertain].
+      - name: citations
+        required: true
+        description: URLs or local source paths used.
+      - name: uncertain
+        required: true
+        description: Field names whose values remain uncertain.
