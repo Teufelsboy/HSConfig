@@ -1,0 +1,53 @@
+from hsconfig.strong_promotion_report import build_strong_promotion_report
+
+
+def test_report_marks_source_backed_strong_as_promotable():
+    report = build_strong_promotion_report(
+        deck_name="ShadowPriest",
+        fixture_stage="core_source_backed_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "semantic_blockers": [],
+            "guide_strength_summary": {"generic_low_confidence_cards": 0},
+        },
+        source_claim_gap_report={"summary": {"blocked_cards": 0}, "cards": {}},
+    )
+
+    assert report["promotion_ready"] is True
+    assert report["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
+    assert report["next_action"] == "fixture_can_be_core_source_backed"
+
+
+def test_report_explains_first_missing_chain_for_non_strong_deck():
+    report = build_strong_promotion_report(
+        deck_name="MechPala",
+        fixture_stage="source_informed_valid_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 4}],
+            "guide_strength_summary": {"generic_low_confidence_cards": 4},
+        },
+        source_claim_gap_report={
+            "summary": {"blocked_cards": 4},
+            "cards": {
+                "CARD_A": {
+                    "first_missing_link": "needs_guide_claim",
+                    "recommended_source_claim_kind": "card_role",
+                    "next_action": "add_card_specific_source_claim",
+                }
+            },
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["first_missing_chain"] == {
+        "card_id": "CARD_A",
+        "first_missing_link": "needs_guide_claim",
+        "recommended_source_claim_kind": "card_role",
+        "next_action": "add_card_specific_source_claim",
+    }
