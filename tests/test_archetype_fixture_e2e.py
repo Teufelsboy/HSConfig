@@ -13,6 +13,16 @@ DECKS = [
         Path("tests/fixtures/source_documents_shadowpriest_strong.json"),
     ),
     (
+        "CtAPaladin",
+        "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
+        Path("tests/fixtures/source_documents_ctapaladin_strong.json"),
+    ),
+    (
+        "PirateRogue",
+        "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==",
+        Path("tests/fixtures/source_documents_piraterogue_strong.json"),
+    ),
+    (
         "BigShaman",
         "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
         Path("tests/fixtures/source_documents_bigshaman_strong.json"),
@@ -23,6 +33,11 @@ DECKS = [
         Path("tests/fixtures/source_documents_discolock_strong.json"),
     ),
     (
+        "TreantDruid",
+        "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==",
+        Path("tests/fixtures/source_documents_treantdruid_strong.json"),
+    ),
+    (
         "Kingslayer",
         "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=",
         Path("tests/fixtures/source_documents_kingslayer_strong.json"),
@@ -31,6 +46,21 @@ DECKS = [
         "ImbueMage",
         "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=",
         Path("tests/fixtures/source_documents_imbuemage_strong.json"),
+    ),
+    (
+        "MechPala",
+        "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+        Path("tests/fixtures/source_documents_mechpala_strong.json"),
+    ),
+    (
+        "Boarlock",
+        "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA",
+        Path("tests/fixtures/source_documents_boarlock_strong.json"),
+    ),
+    (
+        "PirateDH",
+        "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==",
+        Path("tests/fixtures/source_documents_piratedh_strong.json"),
     ),
 ]
 

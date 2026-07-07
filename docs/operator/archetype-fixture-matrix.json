@@ -20,7 +20,7 @@
       "archetype_bucket": "recruit_board_flood",
       "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "PirateRogue",
@@ -30,7 +30,7 @@
       "archetype_bucket": "pirate_tempo_weapon_pressure",
       "primary_mechanics": ["pirate", "tempo", "weapon_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "BigShaman",
@@ -60,7 +60,7 @@
       "archetype_bucket": "token_board_snowball",
       "primary_mechanics": ["token_board", "treant", "board_buff"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "ImbueMage",
@@ -80,7 +80,7 @@
       "archetype_bucket": "mech_board_scaling",
       "primary_mechanics": ["mech", "magnetic", "board_scaling"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "Kingslayer",
@@ -100,7 +100,7 @@
       "archetype_bucket": "combo_control_resource",
       "primary_mechanics": ["combo", "control", "resource_setup"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json", "Combo.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "PirateDH",
@@ -110,7 +110,7 @@
       "archetype_bucket": "pirate_hero_attack_pressure",
       "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "second_wave_source_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     }
   ]
 }

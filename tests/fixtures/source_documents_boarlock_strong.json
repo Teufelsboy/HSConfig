@@ -1,0 +1,84 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+      "source_title": "How are you supposed to beat Boarlock? : r/wildhearthstone",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Boarlock",
+      "archetype": "combo_control_resource",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "boar_resource_setup",
+          "evidence_text_short": "Boarlock cannot consistently kill on turn 4, that requires a near perfect draw and 5 exact cards. It typically combos on turn 6 or 5 with the coin.",
+          "source_confidence": "medium"
+        }
+      ]
+    },
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+      "source_title": "Mulligan advice for Boarlock? : r/wildhearthstone",
+      "source_family": "mulligan_guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Boarlock",
+      "archetype": "combo_control_resource",
+      "claims": [
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["WW_092"],
+          "selector": "WW_092",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Depending on the deck youll see more cards and have more chance of finding the remaining pieces if you mull for card draw.",
+          "source_confidence": "low"
+        }
+      ]
+    },
+    {
+      "source_url": "https://www.hearthpwn.com/decks/1417451-introducing-boarlock-the-best-combo-of-maw-and",
+      "source_title": "Introducing BOARLOCK! The BEST COMBO of Maw and Disorder! - Hearthstone Decks",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Boarlock",
+      "archetype": "combo_control_resource",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_075"],
+          "stance": "boar_win_condition",
+          "evidence_text_short": "If you're a fan of Elwynn Boar, Sword of a Thousand Truths, or discounting mana with Runed Mithril Rod, this combo is a ton of fun to achieve.",
+          "source_confidence": "medium"
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Boarlock",
+      "archetype": "combo_control_resource",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_075"],
+          "stance": "boar_win_condition",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Deathrattle: If you had 7 Elwynn Boars die this game, equip a 15/3 Sword of a Thousand Truths.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TLC_451"],
+          "stance": "resource_setup",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Discover another card from your deck. Make it Temporary.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

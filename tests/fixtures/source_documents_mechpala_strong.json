@@ -1,0 +1,57 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://www.hearthpwn.com/decks/1408850-legend-hyper-mech-paladin-asia-server",
+      "source_title": "Legend hyper mech paladin (Asia server) - Hearthstone Decks",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "mech_board_scaling",
+          "evidence_text_short": "The main point of this deck is overwhelm as fast as u can your opponent with your mechs.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["TSC_632"],
+          "selector": "TSC_632",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Mulligan: Click-Clocker (always), Galvanizer or Mechwarper, Radar Detector, Crystology (If mulligan is bad)",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_020"],
+          "stance": "magnetic_rush_support",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Magnetic. Rush.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_928"],
+          "stance": "board_scaling",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a Mech, gain +1/+1.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

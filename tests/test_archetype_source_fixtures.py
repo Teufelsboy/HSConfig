@@ -14,10 +14,16 @@ from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
 FIXTURES = {
     "ShadowPriest": Path("tests/fixtures/source_documents_shadowpriest_strong.json"),
+    "CtAPaladin": Path("tests/fixtures/source_documents_ctapaladin_strong.json"),
+    "PirateRogue": Path("tests/fixtures/source_documents_piraterogue_strong.json"),
     "BigShaman": Path("tests/fixtures/source_documents_bigshaman_strong.json"),
     "Discolock": Path("tests/fixtures/source_documents_discolock_strong.json"),
+    "TreantDruid": Path("tests/fixtures/source_documents_treantdruid_strong.json"),
     "Kingslayer": Path("tests/fixtures/source_documents_kingslayer_strong.json"),
     "ImbueMage": Path("tests/fixtures/source_documents_imbuemage_strong.json"),
+    "MechPala": Path("tests/fixtures/source_documents_mechpala_strong.json"),
+    "Boarlock": Path("tests/fixtures/source_documents_boarlock_strong.json"),
+    "PirateDH": Path("tests/fixtures/source_documents_piratedh_strong.json"),
 }
 MATRIX_PATH = Path("docs/operator/archetype-fixture-matrix.json")
 LOCAL_REF_SCHEMES = {"claim", "evidence", "guide", "source"}
@@ -70,6 +76,14 @@ def _source_bundle_for_fixture(deck_name: str) -> dict:
         source_documents=_documents(FIXTURES[row["deck_name"]]),
         current_date="2026-07-07",
     )
+
+
+def _claims(deck_name: str) -> list[dict]:
+    return [
+        claim
+        for document in _documents(FIXTURES[deck_name])
+        for claim in document["claims"]
+    ]
 
 
 def _is_url_like_source_ref(value: object) -> bool:
@@ -259,11 +273,7 @@ def test_shadowpriest_fixture_closes_known_audit_gaps():
 
 
 def test_bigshaman_fixture_covers_big_cheat_and_bad_target_patterns():
-    claims = [
-        claim
-        for document in _documents(FIXTURES["BigShaman"])
-        for claim in document["claims"]
-    ]
+    claims = _claims("BigShaman")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     kinds = {claim["claim_kind"] for claim in claims}
     assert {"card_role", "known_bad_pattern"} & kinds
@@ -272,22 +282,14 @@ def test_bigshaman_fixture_covers_big_cheat_and_bad_target_patterns():
 
 
 def test_discolock_fixture_covers_discard_and_hand_mutation():
-    claims = [
-        claim
-        for document in _documents(FIXTURES["Discolock"])
-        for claim in document["claims"]
-    ]
+    claims = _claims("Discolock")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     assert "discard" in text
     assert any(claim["claim_kind"] in {"mechanic_usage", "known_bad_pattern"} for claim in claims)
 
 
 def test_kingslayer_fixture_covers_weapon_sequence_pressure():
-    claims = [
-        claim
-        for document in _documents(FIXTURES["Kingslayer"])
-        for claim in document["claims"]
-    ]
+    claims = _claims("Kingslayer")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     assert any(marker in text for marker in ("weapon", "attack", "kingsbane", "kingslayer"))
     assert any(
@@ -328,11 +330,7 @@ def test_kingslayer_unsupported_quick_pick_mulligan_claim_does_not_lower():
 
 
 def test_imbuemage_fixture_covers_hero_power_and_generation():
-    claims = [
-        claim
-        for document in _documents(FIXTURES["ImbueMage"])
-        for claim in document["claims"]
-    ]
+    claims = _claims("ImbueMage")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     kinds = {claim["claim_kind"] for claim in claims}
     assert any(marker in text for marker in ("imbue", "hero power", "spell", "generate", "discover"))
@@ -356,3 +354,44 @@ def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
     assert source_claim_holds
     assert source_claim_holds <= source_named_imbue_enablers
     assert "BAR_546" not in source_claim_holds
+
+
+def test_ctapaladin_fixture_covers_recruit_board_flood():
+    claims = _claims("CtAPaladin")
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert any(marker in text for marker in ("recruit", "call to arms", "board", "flood"))
+
+
+def test_piraterogue_fixture_covers_pirate_weapon_pressure():
+    claims = _claims("PirateRogue")
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert "pirate" in text
+    assert any(marker in text for marker in ("weapon", "face", "tempo", "pressure"))
+
+
+def test_treantdruid_fixture_covers_token_board_snowball():
+    claims = _claims("TreantDruid")
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert any(marker in text for marker in ("treant", "token", "wide board", "board buff"))
+
+
+def test_mechpala_fixture_covers_mech_board_scaling():
+    claims = _claims("MechPala")
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert "mech" in text
+    assert any(marker in text for marker in ("magnetic", "board", "scaling", "buff"))
+
+
+def test_boarlock_fixture_covers_combo_resource_setup():
+    claims = _claims("Boarlock")
+    kinds = {claim["claim_kind"] for claim in claims}
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert any(marker in text for marker in ("combo", "resource", "setup", "boar"))
+    assert {"card_role", "gameplan_posture"} <= kinds
+
+
+def test_piratedh_fixture_covers_pirate_hero_attack_pressure():
+    claims = _claims("PirateDH")
+    text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
+    assert "pirate" in text
+    assert any(marker in text for marker in ("hero attack", "weapon", "face", "tempo"))

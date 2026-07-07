@@ -1,0 +1,75 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+      "source_title": "Two Tier Lists - High Legend and The Climb : r/wildhearthstone",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "aggro_board_flood",
+          "evidence_text_short": "Boogie Down Paladin is the second best aggro deck in the format.",
+          "source_confidence": "medium"
+        }
+      ]
+    },
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+      "source_title": "Any help with cta paladin mulligan : r/wildhearthstone",
+      "source_family": "mulligan_guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "claims": [
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["ETC_318"],
+          "selector": "ETC_318",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "The more accurate title of the deck is Boogie Down Paladin (which tells you what card to actually mulligan for).",
+          "source_confidence": "medium"
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "CtAPaladin",
+      "archetype": "recruit_board_flood",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["LOOT_093"],
+          "stance": "recruit_board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Recruit 3 minions that cost (2) or less.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["LEG_TTN_908"],
+          "stance": "aura_pressure",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Whenever a friendly minion attacks, give it +2/+1. Lasts 3 turns.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["ETC_318"],
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Summon two 1-Cost minions from your deck. Finale: Summon another.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

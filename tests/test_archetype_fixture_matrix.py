@@ -16,7 +16,19 @@ EXPECTED_DECKS = {
     "Boarlock",
     "PirateDH",
 }
-CORE_FIXTURES = {"ShadowPriest", "BigShaman", "Discolock", "Kingslayer", "ImbueMage"}
+CORE_FIXTURES = {
+    "ShadowPriest",
+    "CtAPaladin",
+    "PirateRogue",
+    "BigShaman",
+    "Discolock",
+    "TreantDruid",
+    "ImbueMage",
+    "MechPala",
+    "Kingslayer",
+    "Boarlock",
+    "PirateDH",
+}
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {
         "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",

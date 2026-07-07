@@ -1,0 +1,57 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://hs.cardsrealm.com/en-us/articles/deck-guide-pirate-rogue-surprise-your-opponents",
+      "source_title": "Deck Guide: Pirate Rogue - Surprise your opponents!",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "PirateRogue",
+      "archetype": "pirate_tempo_weapon_pressure",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "pirate_tempo_board",
+          "evidence_text_short": "The purpose of the deck is to be a midrange, where you want to play the pirates and build a consistent board.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["TSC_086"],
+          "selector": "TSC_086",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "If you're facing slow decks, try to propose your game on the curve, look for Swashburglar for the first turn, Tuskarrrr Trawler for the second and some other pirate or weapon Swordfish for the third round.",
+          "source_confidence": "medium"
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "PirateRogue",
+      "archetype": "pirate_tempo_weapon_pressure",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_086"],
+          "stance": "weapon_pressure",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Battlecry: Dredge. If it's a Pirate, give this weapon and the Pirate +2 Attack.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_075"],
+          "stance": "pirate_tempo_damage",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a Pirate, deal 2 damage to a random enemy.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

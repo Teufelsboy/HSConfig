@@ -1,0 +1,57 @@
+{
+  "source_documents": [
+    {
+      "source_url": "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend",
+      "source_title": "Titans: Top 3 Best Decks to reach Legend!",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "TreantDruid",
+      "archetype": "token_board_snowball",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "token_treant_aggro",
+          "evidence_text_short": "Like any aggressive deck, your goal is to kill your enemy as fast as possible. We'll do that with a huge number of minions, particularly, the Treant, which gave this deck its name!",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["JAM_028"],
+          "selector": "JAM_028",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep all Blood Treant you see, and other 1-cost cards, with Vicious Slitherspear, Living Roots and Forest Seedlings, preferably.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "TreantDruid",
+      "archetype": "token_board_snowball",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_420"],
+          "stance": "treant_generator",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Summon two 2/2 Treants.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TTN_954"],
+          "stance": "board_buff_finisher",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Give your minions +2/+2. Costs (1) less for each Treant you've summoned this game.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}
