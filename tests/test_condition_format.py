@@ -94,6 +94,16 @@ def test_structured_opponent_classes_scalar_fails_closed_with_coin():
     assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
 
 
+def test_structured_opponent_classes_scalar_string_fails_closed():
+    condition = {"opponent_classes": "warrior"}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
 def test_structured_opponent_class_unknown_value_fails_closed():
     condition = {"opponent_class": "banana"}
 

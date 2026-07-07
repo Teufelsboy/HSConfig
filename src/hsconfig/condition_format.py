@@ -131,9 +131,7 @@ def _atoms_from_structured_condition(
 
 
 def _normalize_opponent_classes(value: Any) -> list[str] | None:
-    if isinstance(value, str):
-        classes = [value]
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)):
         classes = list(value)
     else:
         return None
