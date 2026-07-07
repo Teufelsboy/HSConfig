@@ -355,6 +355,61 @@ def test_unmapped_mechanic_claim_with_explicit_documented_block_lowers():
     assert row["meaningful_runtime_surface"] is True
 
 
+def test_recruit_claim_can_lower_to_before_play_when_explicit_block_is_supported():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_recruit",
+                "claim_kind": "mechanic_usage",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "cards": ["CARD_RECRUIT"],
+                "mechanic": "recruit",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "9",
+                "condition": "*",
+                "source_claim_ids": ["claim_recruit"],
+            }
+        ]
+    )
+
+    assert result["suppressed"] == []
+    assert result["rows"][0]["card_id"] == "CARD_RECRUIT"
+    assert result["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+    assert result["rows"][0]["meaningful_runtime_surface"] is True
+
+
+def test_deathrattle_claim_can_lower_to_on_board_when_explicit_block_is_supported():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_deathrattle",
+                "claim_kind": "mechanic_usage",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "cards": ["CARD_DEATHRATTLE"],
+                "mechanic": "deathrattle",
+                "runtime_block": "OnBoardBonus",
+                "runtime_value": "7",
+                "condition": "*",
+                "source_claim_ids": ["claim_deathrattle"],
+            }
+        ]
+    )
+
+    assert result["suppressed"] == []
+    assert result["rows"][0]["card_id"] == "CARD_DEATHRATTLE"
+    assert result["rows"][0]["behavior_block"] == "OnBoardBonus"
+
+
 def test_unmapped_mechanic_claim_with_unsupported_explicit_block_stays_report_only():
     routed = route_card_behavior_claims(
         [

@@ -40,7 +40,7 @@
       "archetype_bucket": "big_recruit_deathrattle_cheat",
       "primary_mechanics": ["big_minion", "recruit", "deathrattle", "cheat"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture"
+      "fixture_stage": "core_source_backed_fixture"
     },
     {
       "deck_name": "Discolock",

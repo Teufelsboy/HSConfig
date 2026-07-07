@@ -66,6 +66,80 @@
           ]
         }
       ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "BigShaman",
+      "claims": [
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["CFM_696"],
+          "stance": "prefer_enemy_minion",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Transform all enemy minions into random ones that cost (1) less.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["CS2_038"],
+          "stance": "prefer_friendly_minion",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Choose a minion. When it dies, resummon it.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["EDR_031"],
+          "stance": "repeatable_big_pressure",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "At the end of your turn, play the top 3 cards in your deck. Return any that can't be played.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_029"],
+          "stance": "threat_cheat",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Put a random minion from each player's hand into the battlefield.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TID_712"],
+          "stance": "colossal_payoff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Colossal +2, Rush, Windfury. Whenever Neptulon attacks, if you control any Hands, they attack instead.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_877"],
+          "stance": "board_scaling",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Give +2/+3 to all minions in your hand, deck, and battlefield.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["WON_335"],
+          "stance": "prefer_friendly_minion",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Destroy a minion, then return it to life with full Health.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["WW_440"],
+          "mechanic": "deathrattle",
+          "stance": "deck_recruit_deathrattle_payoff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Taunt. Deathrattle: Summon an Elemental and Beast from your deck.",
+          "source_confidence": "high"
+        }
+      ]
     }
   ]
 }
