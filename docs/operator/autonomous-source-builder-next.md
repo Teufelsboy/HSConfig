@@ -20,7 +20,7 @@ The source builder must emit `source_documents.json` with:
 - `targeting_rule` claims for cards whose expected target can be source-backed
 - `mechanic_usage` claims only when the mechanic and runtime block are documented and source-supported
 - `combo_sequence` claims only for exact sequence evidence
-- `globalvalue_*` claims only when they are pre-game posture claims, not runtime performance tuning
+- `gameplan_posture` claims for GlobalValues posture intent only when they are pre-game posture claims, not runtime performance tuning
 
 ## Fail-Closed Rules
 

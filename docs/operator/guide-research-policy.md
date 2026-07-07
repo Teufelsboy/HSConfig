@@ -108,6 +108,7 @@ GlobalValues key authority:
 
 - `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
 - `global_values_key_profile_report.json` records every key with `authority_category` and `board_value_component`.
+- Source documents must not use `globalvalue_*` as `claim_kind`; express GlobalValues posture as `gameplan_posture` with deck or archetype scope and optional context fields.
 - `copy_baseline` keys are copied and profiled, not tuned.
 - `step1_posture_overlay_allowed` keys may change only when source posture supports them.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
