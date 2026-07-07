@@ -1,0 +1,55 @@
+{
+  "source_summary": "HSConfig is practically autonomous today for producing a valid pre-game HearthRanger `CustomConfig` package from deck input, and it can reach a strong aggressive guide-backed state when current structured guide sources are available for promoted decks. It is not yet fully optimal for the stricter promise \"I give a deck, HSConfig creates an aggressive guide-aligned config\" because deck-only runs still degrade to static-semantics or valid-but-not-guide-strong states, live guide research remains an upstream Codex responsibility, and `hsconfig apply` still depends on operator discipline instead of enforcing the documented operator gate.",
+  "current_truth": [
+    "The normal autonomous repo path is `research-deck` or direct `prepare` from deck input, then inspect `reports/operator_summary.json`, then run `apply` only when requested.",
+    "Deck-only `prepare` is already practical for generating a structurally valid package without manual file authoring, but current tests show its default semantic outcome is `VALID_BUT_NOT_GUIDE_STRONG`, not guaranteed aggressive guide-aligned strength.",
+    "When strong source documents are supplied for promoted fixtures, HSConfig can produce `SOURCE_BACKED_STRONG` and a promotion-ready report without crossing into replay parsing, runtime tuning, or unsupported gameplay-proof claims.",
+    "The repository and installed skill consistently define HSConfig as a pre-game config authoring tool, not a runtime evidence or optimization tool.",
+    "The practical autonomy ceiling is still limited by two remaining gaps: live guide-source acquisition is external to HSConfig itself, and runtime apply does not yet hard-enforce `operator_summary.json` gate decisions."
+  ],
+  "repo_alignment": [
+    "The repo is well aligned with a lean autonomous operator workflow. `README.md`, `AGENTS.md`, and the installed `hsconfig` skill all keep HSConfig scoped to direct config generation from deck identity plus current sources.",
+    "The code path supports practical autonomy better than the older design state because `prepare` can run from deck input alone, generate research and readiness reports automatically, and emit a complete validated package.",
+    "The tests clearly model the intended truth boundary: valid package generation is separate from guide strength, and source-backed strength is separate from gameplay proof.",
+    "Post-promotion evidence is internally consistent: promoted strong fixtures exist, but multi-archetype and partial-source tests still preserve `VALID_BUT_NOT_GUIDE_STRONG` whenever guide claims or runtime-surface lowering remain incomplete."
+  ],
+  "concrete_evidence_to_check": [
+    "Read `C:/Users/darbo/Documents/HSConfig/README.md` for the normal operator path, scope boundary, and `operator_summary.json` gate model.",
+    "Read `C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md` for the accepted source model and the rule that HSConfig creates the best available initial config without proving gameplay improvement.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py` for `prepare`, `research-deck`, and `apply`, especially the automatic research fallback and the current lack of `operator_summary.json` enforcement in `_apply`.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_builder.py` and `C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py` for the `static_semantics_only`, `source_backed`, `VALID_BUT_NOT_GUIDE_STRONG`, and `SOURCE_BACKED_STRONG` state transitions.",
+    "Check `C:/Users/darbo/Documents/HSConfig/tests/test_autonomous_guide_workflow_e2e.py`, which proves deck-only `research-deck` plus `prepare` builds valid packages for ShadowPriest, BigShaman, and PirateRogue.",
+    "Check `C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py`, especially `test_prepare_builds_valid_package_with_research_artifacts`, `test_prepare_accepts_source_documents_json_and_writes_generated_guide_builder_artifacts`, and `test_prepare_writes_source_gap_and_promotion_reports`.",
+    "Check `C:/Users/darbo/Documents/HSConfig/tests/test_multideck_source_backed_e2e.py`, which proves source-backed prepare can still remain `VALID_BUT_NOT_GUIDE_STRONG` when runtime-surface gaps remain.",
+    "Check `C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py` and `C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py` for the exact readiness and promotion semantics.",
+    "Run `python scripts/sync_installed_skill.py --check` in `C:/Users/darbo/Documents/HSConfig` to verify skill parity.",
+    "Run `python -m pytest tests/test_autonomous_guide_workflow_e2e.py tests/test_operator_summary.py tests/test_strong_promotion_report.py tests/test_skill_sync.py -q` and the targeted `test_prepare_cli.py` slice used in this audit."
+  ],
+  "gaps_or_risks": [
+    "The deck-only workflow is autonomous, but not fully guide-autonomous: without current structured guide sources it produces a valid initial package rather than a confidently aggressive guide-aligned one.",
+    "HSConfig still depends on Codex or another upstream step to research, browse, and write strong current source documents; that source acquisition layer is not internal to the tool.",
+    "Practical autonomy is asymmetric across decks. The promoted strong fixtures prove the path works, but the representative matrix still contains several `source_informed_valid_fixture` decks with guide-claim or runtime-surface gaps.",
+    "The apply gate is documented but not enforced in code. A downstream caller can apply a valid-but-not-guide-strong package if they ignore the intended `operator_summary.json` review step.",
+    "Because HSConfig correctly avoids unsupported gameplay-proof claims, it should not claim that a generated aggressive config is confirmed optimal, only that it is the strongest current source-backed initial config available."
+  ],
+  "recommended_action": "The next best improvement is to add a first-class live guide-source acquisition and normalization layer that can start from deck input and current public sources, emit strong structured source documents automatically, and feed the existing `research-deck` plus `prepare` pipeline. This improvement increases true deck-only autonomy more than any smaller polish. Immediately after that, `hsconfig apply` should fail closed unless `reports/operator_summary.json` explicitly allows apply.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_autonomous_guide_workflow_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_multideck_source_backed_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-06-hsconfig-guide-claim-depth/results/Autonomous_Guide_Claim_Builder.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-07-hsconfig-post-promotion-skill-audit/results/Lean_Skill_Boundary_And_Operator_Gate.json"
+  ],
+  "uncertain": []
+}

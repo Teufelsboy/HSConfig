@@ -1,0 +1,48 @@
+{
+  "source_summary": "Current HSConfig evidence shows a narrowed normal-path VisionAI runtime contract: every package emits GlobalValues.json, Mulligan.json, and per-card <CARDID>.json, while Combo.json is emitted only when the contract contains a concrete combo sequence. Presume.json and Concede.json still exist in the registry, validator, and legacy compiler path, but current operator docs, skill references, promotion gates, and passing tests treat them as legacy or gated surfaces rather than normal-path outputs.",
+  "current_truth": "For current HSConfig design decisions after the post-promotion closure work, treat the normal runtime surface as GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only for exact sequences. Do not treat Presume.json or Concede.json as normal-path package outputs or operator handoff files, even though Concede.json is still publicly documented by HearthRanger and both files remain validator-recognized legacy surfaces inside HSConfig.",
+  "repo_alignment": "The current repository is aligned with that narrowed contract. src/hsconfig/surface_intent.py only adds Combo.json by default and only routes Presume.json or Concede.json when legacy_policy_surfaces_enabled is explicitly set. src/hsconfig/strong_promotion_report.py blocks Presume.json and Concede.json from normal-path promotion. docs/operator/source-backed-strong-closure.md and docs/operator/archetype-fixture-matrix.json define strong or representative fixtures around GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only where concrete combo coverage exists. The repo skill reference and the installed skill reference match byte-for-byte for visionai-surfaces.md and workflow.md, so the repository and installed skill are currently aligned. The main mismatch is narrower policy versus broader parser support: src/hsconfig/visionai_registry.py, src/hsconfig/validate_package.py, and src/hsconfig/compile_optional_surfaces.py still support Presume.json and Concede.json as legacy or gated surfaces.",
+  "concrete_evidence_to_check": [
+    "Inspect C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py for default required_surfaces and optional_surfaces routing.",
+    "Inspect C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py for the blocked normal-path surfaces set.",
+    "Inspect C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py, validate_package.py, and compile_optional_surfaces.py to confirm legacy validator support versus normal-path policy.",
+    "Inspect C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md and docs/operator/archetype-fixture-matrix.json for the operator-facing surface contract.",
+    "Inspect C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md and C:/Users/darbo/.codex/skills/hsconfig/references/visionai-surfaces.md to confirm repo-skill and installed-skill alignment.",
+    "Run python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py -q",
+    "Run python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_e2e_preview.py -q",
+    "Run python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_compile_optional_surfaces.py -q",
+    "Run python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_depth_matrix_e2e.py -q",
+    "Check official HearthRanger help pages for GlobalValues, Mulligan, card behavior, Combo, Concede, and config-set layout under https://www.hearthranger.com/onlinehelp/hs/visionai/."
+  ],
+  "gaps_or_risks": "[uncertain] HearthRanger public help still documents Concede.json as a valid VisionAI file, and the help index currently exposes Mulligan, Card Behavior, Combo, Global Values, and Concede pages. No public Presume help page was found at the expected URL during this audit. Because HSConfig still keeps Presume.json and Concede.json in registry and validator support, future maintenance could blur the distinction between validator-supported legacy surfaces and allowed normal-path outputs unless the current docs and tests stay in place.",
+  "recommended_action": "Keep the normal-path contract unchanged and make the legacy distinction harder to misread: preserve the current tests, keep the strong-promotion blocker on Presume.json and Concede.json, and if this area is touched again, update validator or operator wording so 'supported by validator' is explicitly separated from 'allowed in the normal path'.",
+  "confidence": "medium",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_optional_surfaces.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/references/visionai-surfaces.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_e2e_preview.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_optional_surfaces.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_depth_matrix_e2e.py",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_use_config_set_from_other_source.htm"
+  ],
+  "uncertain": [
+    "gaps_or_risks"
+  ]
+}

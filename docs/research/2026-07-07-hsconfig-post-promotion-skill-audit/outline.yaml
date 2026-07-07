@@ -1,0 +1,37 @@
+topic: hsconfig-post-promotion-skill-audit-2026-07-07
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-07-hsconfig-post-promotion-skill-audit\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Lean Skill Boundary And Operator Gate
+    category: Architecture
+    description: >
+      Audit whether HSConfig remains lean after the source-depth strong promotion wave:
+      deck input to initial HearthRanger CustomConfig only, no replay/HDT/winrate/post-run
+      tuning, operator_summary as the single gate, and lower-level reports as explanatory
+      evidence only.
+  - name: VisionAI Runtime Surface Coverage
+    category: HearthRanger
+    description: >
+      Verify whether the current HSConfig runtime surfaces match documented HearthRanger
+      VisionAI CustomConfig areas: GlobalValues.json, Mulligan.json, per-card CardID JSON,
+      Combo.json only for exact sequences, and no normal-path Presume.json or Concede.json.
+  - name: Source Depth And Strong Promotion Gate
+    category: Source-backed generation
+    description: >
+      Audit the new source_claim_gap_report and strong_promotion_report design:
+      card-level missing links, strict SOURCE_BACKED_STRONG gate, no Presume/Concede,
+      and correct next_action behavior for invalid versus valid-but-not-strong packages.
+  - name: Eleven Deck Fixture Breadth
+    category: Coverage matrix
+    description: >
+      Evaluate whether the provided 11 deck families are a useful lean fixture matrix:
+      ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid,
+      ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.
+  - name: Autonomous Guide Research Practicality
+    category: Operator workflow
+    description: >
+      Audit whether the workflow is practically autonomous for "I give a deck, HSConfig
+      creates an aggressive guide-aligned config" while still avoiding unsupported claims,
+      and identify the next best improvement if not fully optimal.

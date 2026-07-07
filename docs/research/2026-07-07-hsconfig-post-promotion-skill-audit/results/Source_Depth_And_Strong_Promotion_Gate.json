@@ -1,0 +1,49 @@
+{
+  "source_summary": "HSConfig now has a clear two-report explanation model for source-depth promotion. `reports/source_claim_gap_report.json` explains the first per-card missing link and card-local repair action, while `reports/strong_promotion_report.json` applies a strict strong gate on top of `operator_summary.json`: promotion requires `technical_status=VALID_PACKAGE`, `semantic_status=SOURCE_BACKED_STRONG`, `next_action=READY_TO_APPLY_OR_HANDOFF`, zero semantic blockers, zero blocked cards, and no normal-path `Presume.json` or `Concede.json`.",
+  "current_truth": [
+    "`src/hsconfig/source_claim_gap_report.py` builds one row per card from `per_card_config_readiness_report` and coverage data, preserves the card-level `first_missing_link`, maps that link to `recommended_source_claim_kind`, and emits a card-local `next_action` such as `add_card_specific_source_claim`, `add_runtime_lowerable_claim_or_router_support`, or `card_ready_for_strong_gate`.",
+    "`src/hsconfig/operator_summary.py` is the canonical semantic gate. `SOURCE_BACKED_STRONG` requires a valid package, source-backed depth, at least one claim, zero source-evidence warnings, zero low-confidence or uncovered cards, zero conflicts, and zero readiness-gap counts across guide, runtime-surface, mulligan, combo, condition-lowering, and mechanic-lowering lanes.",
+    "`src/hsconfig/strong_promotion_report.py` is intentionally stricter than a generic valid-package check. It only confirms promotion when `operator_summary` already says `SOURCE_BACKED_STRONG` and `READY_TO_APPLY_OR_HANDOFF`, `semantic_blockers` is empty, `source_claim_gap_report.summary.blocked_cards` is `0`, and no generated normal-path `Presume.json` or `Concede.json` file is present.",
+    "For invalid packages, `strong_promotion_report.next_action` keeps the canonical operator action from `operator_summary`, such as `FIX_PACKAGE_BEFORE_APPLY`, instead of hiding it behind a source-depth action.",
+    "For valid but not strong packages, `strong_promotion_report.next_action` intentionally becomes `close_first_missing_chain`. The exact card repair action then lives in `first_missing_chain.next_action`, while `operator_summary.next_action` remains the broader package-level action such as `IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY` or `RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG`.",
+    "Active operator docs and the current wave plan treat `Presume.json` and `Concede.json` as excluded from the normal HSConfig path, and the promotion report treats either file as a promotion blocker even when the rest of the package looks strong."
+  ],
+  "repo_alignment": [
+    "`C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py` and `C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py` align with the card-level audit goal: they produce explicit per-card missing-link rows, summary counts, recommended claim kinds, and repair actions.",
+    "`C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py` and `C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py` align with a strict `SOURCE_BACKED_STRONG` definition and with the valid-versus-invalid package split that drives the promotion gate.",
+    "`C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py` and `C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py` align with the requested strict gate: they block promotion for normal-path `Presume.json` or `Concede.json`, preserve canonical invalid-package `next_action`, and reduce valid-but-not-strong promotion follow-up to `close_first_missing_chain` plus card-local detail.",
+    "`C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py` proves `prepare` writes both `source_claim_gap_report.json` and `strong_promotion_report.json`, and the focused local pytest run passed.",
+    "`C:/Users/darbo/Documents/HSConfig/README.md`, `C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md`, `C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md`, and `C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-depth-strong-promotion-wave.md` all describe the same active operating model: inspect `source_claim_gap_report.json` first for the card-level blocker, then `strong_promotion_report.json` for promotion closure, and do not treat `Presume.json` or `Concede.json` as normal-path outputs."
+  ],
+  "concrete_evidence_to_check": [
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py` for `RECOMMENDED_CLAIM_KIND_BY_MISSING_LINK`, `NEXT_ACTION_BY_MISSING_LINK`, and the per-card `cards` payload.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py` for `SOURCE_BACKED_STRONG_REQUIREMENTS`, `_semantic_status(...)`, and `_next_action_and_policy(...)`.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py` for `_BLOCKED_NORMAL_PATH_SURFACES`, `promotion_ready`, `_report_next_action(...)`, and `_first_missing_chain(...)`.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py` for card-level missing-link expectations including the ready-card `none` case.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py` for the three critical semantics: strong confirmation, optional-surface blocking, and invalid-package `next_action` preservation.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py` for the semantic demotion cases that produce `VALID_BUT_NOT_GUIDE_STRONG` and package-level operator actions.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py:1289-1300` for the assertion that `prepare` writes both new reports and confirms a strong package through them.",
+    "Run `python -m pytest tests/test_source_claim_gap_report.py tests/test_strong_promotion_report.py tests/test_operator_summary.py tests/test_prepare_cli.py::test_prepare_writes_source_gap_and_promotion_reports -q` in `C:/Users/darbo/Documents/HSConfig`."
+  ],
+  "gaps_or_risks": [
+    "The valid-but-not-strong follow-up path is split across two artifacts by design. `strong_promotion_report.next_action` is generic (`close_first_missing_chain`), so any consumer that wants the exact repair step must also read `first_missing_chain.next_action` or `operator_summary.next_action`.",
+    "`strong_promotion_report._first_missing_chain(...)` selects the first blocked card by sorted CardID, not by source priority, severity, or report insertion order. That is deterministic, but it may not always point to the most strategically important blocked card when several cards remain open.",
+    "There is documentation drift risk between active operator docs and older architecture/spec material. Older spec files still describe optional or gated `Presume.json` and `Concede.json` compilation, while the active operator model and promotion gate treat them as non-normal-path outputs that must block strong promotion if present."
+  ],
+  "recommended_action": "Add one CLI or end-to-end regression that prepares a valid-but-not-strong fixture and asserts the full split explicitly: `operator_summary.next_action` stays package-level, `strong_promotion_report.next_action` equals `close_first_missing_chain`, and `first_missing_chain.next_action` carries the exact card repair step. That is the leanest way to lock this design contract before more decks depend on it.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-depth-strong-promotion-wave.md"
+  ],
+  "uncertain": []
+}

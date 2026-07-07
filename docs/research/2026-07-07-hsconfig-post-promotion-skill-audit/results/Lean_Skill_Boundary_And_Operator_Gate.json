@@ -1,0 +1,49 @@
+{
+  "source_summary": "HSConfig remains architecturally lean after the source-depth strong promotion wave. The repository still defines HSConfig as a pre-game HearthRanger CustomConfig generator from deck input and guide sources, explicitly excludes replay or HDT parsing, winrate analysis, post-run tuning, and HSTuner candidate promotion, and treats `reports/operator_summary.json` as the single operator-facing gate while `source_claim_gap_report.json` and `strong_promotion_report.json` explain why a package is or is not strong. The main audit finding is an enforcement gap: `hsconfig apply` validates the package and writes runtime files without reading `reports/operator_summary.json` or checking `next_action` and `apply_policy`.",
+  "current_truth": [
+    "HSConfig is still scoped to deck input plus source-backed pre-game config generation, not post-run optimization.",
+    "The source-depth strong promotion wave added clearer explanatory reports, especially `reports/source_claim_gap_report.json` and `reports/strong_promotion_report.json`, without adding replay, HDT, winrate, or tuning pipelines to HSConfig.",
+    "`reports/operator_summary.json` is still the documented single operator-facing gate for handoff and apply decisions.",
+    "`strong_promotion_report.json` is downstream of `operator_summary.json` and source-gap data; it produces a promotion verdict for fixture or source-depth closure work, not an independent apply permission.",
+    "Runtime apply enforcement is weaker than the documented gate model because `hsconfig apply` only reruns package validation and then applies the package."
+  ],
+  "repo_alignment": [
+    "Repository documentation aligns with the lean boundary. `README.md` states that HSConfig builds guide-aligned pre-game `CustomConfig` packages and does not parse replays, evaluate winrate, inspect post-game evidence, or tune from runtime logs.",
+    "The wave plan in `docs/superpowers/plans/2026-07-07-hsconfig-source-depth-strong-promotion-wave.md` explicitly says to keep `operator_summary.json` as the single gate and to avoid replay parsing, HDT parsing, winrate validation, candidate promotion, and post-run tuning.",
+    "The implementation aligns with the explanatory-report goal. `src/hsconfig/cli.py` writes `source_claim_gap_report.json`, builds `strong_promotion_report.json` from `operator_summary` plus gap data, then writes `operator_summary.json` as the operator-facing report.",
+    "The promotion report implementation in `src/hsconfig/strong_promotion_report.py` depends on `operator_summary` status and blocked-card evidence, and it blocks promotion when normal-path `Presume.json` or `Concede.json` appear. That keeps promotion logic subordinate to the main operator model.",
+    "The repo skill and installed skill are aligned. `.agents/skills/hsconfig/SKILL.md` and `C:/Users/darbo/.codex/skills/hsconfig/SKILL.md` both instruct operators to read `reports/operator_summary.json` first, treat it as the single operator gate, and keep replay or tuning work out of HSConfig. `python scripts/sync_installed_skill.py --check` passed."
+  ],
+  "concrete_evidence_to_check": [
+    "Read `C:/Users/darbo/Documents/HSConfig/README.md` for the canonical scope statement, normal operator path, and the statement that `reports/operator_summary.json` is the single operator gate.",
+    "Read `C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-depth-strong-promotion-wave.md` for the post-promotion architectural constraints.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py` around `_build` and `_apply` to compare report generation with runtime apply behavior.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py` for `technical_status`, `semantic_status`, `next_action`, and `apply_policy` generation.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py` to confirm that promotion reporting is derived from operator and source-gap evidence rather than acting as a second gate.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py`, `C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py`, and `C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py` for current expected behavior.",
+    "Run `python scripts/sync_installed_skill.py --check` in `C:/Users/darbo/Documents/HSConfig` to confirm repo skill and installed skill parity.",
+    "Run `python -m pytest tests/test_strong_promotion_report.py tests/test_operator_summary.py tests/test_skill_files.py -q` in `C:/Users/darbo/Documents/HSConfig` to confirm current report and skill expectations.",
+    "When auditing a generated package, check `reports/operator_summary.json` first and use `reports/source_claim_gap_report.json` and `reports/strong_promotion_report.json` only as explanatory evidence."
+  ],
+  "gaps_or_risks": [
+    "The largest gap is enforcement: `_apply` in `src/hsconfig/cli.py` does not read `reports/operator_summary.json` and does not enforce `next_action` or `apply_policy` before calling `apply_package(...)`.",
+    "Because `apply_policy` can be `ALLOWED_WITH_WARNINGS` and `next_action` can still request more source work, the repo currently depends on operator discipline and skill guidance rather than a hard runtime gate.",
+    "There is no evidence in the inspected tests that `hsconfig apply` is intentionally blocked when a package is valid but not guide-strong, so the single-gate rule is documented and modeled but not fully enforced in code.",
+    "This gap does not widen HSConfig into HSTuner territory, but it does weaken the claim that `operator_summary.json` is the actual single gate for autonomous operation."
+  ],
+  "recommended_action": "Make `hsconfig apply` consume `reports/operator_summary.json` and fail closed unless the package is in an explicitly allowed operator state defined by `next_action` and `apply_policy`, then add a regression test that proves a valid-but-not-guide-strong package cannot bypass that gate. Keep `strong_promotion_report.json` and the other lower-level reports explanatory only.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-07-hsconfig-source-depth-strong-promotion-wave.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/SKILL.md"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,56 @@
+{
+  "source_summary": "The provided 11 deck families are a useful lean HSConfig fixture matrix. In the current repo they span 11 distinct archetype buckets and cover the main pre-game Step1 decision families that HSConfig currently models: fast face pressure, token flood, recruit and big-cheat lines, weapon sequencing, hero-power posture, mech scaling, discard, and one explicit combo surface. The matrix is broad enough for lean regression and skill-audit work, but it is not a complete proxy for every HearthRanger behavior family.",
+  "current_truth": [
+    "The current HSConfig repository treats these 11 decks as the active proof matrix in `docs/operator/archetype-fixture-matrix.json`.",
+    "The matrix currently contains 11 rows, with 4 `core_source_backed_fixture` decks and 7 `source_informed_valid_fixture` decks.",
+    "Each row maps to a distinct `archetype_bucket`, which gives good breadth for Step1 package generation without inflating the fixture count.",
+    "The set covers the most important lean package families for HSConfig: aggro burn, board flood, recruit and cheat, weapon pressure, hero-power-driven posture, mech scaling, discard payoff, and combo-control resource setup.",
+    "Only `Boarlock` currently requires `Combo.json`, so the matrix proves combo support exists but only with one explicit combo archetype.",
+    "For lean HSConfig design decisions, this set is useful as the default breadth matrix, but it should not be treated as exhaustive coverage of reactive control, discover-heavy, or choice-heavy decision families."
+  ],
+  "repo_alignment": [
+    "Repo truth is explicit. `docs/operator/archetype-fixture-matrix.json` defines exactly these 11 decks, each with `archetype_bucket`, `primary_mechanics`, expected runtime surfaces, and fixture stage.",
+    "Fixture coverage is operational rather than aspirational. `tests/fixtures` contains a matching `source_documents_<deck>_strong.json` file for all 11 rows, so every matrix row has a concrete source-backed fixture input.",
+    "Fixture semantics are enforced in tests. `tests/test_fixture_stage_semantics.py` constrains fixture-stage values, and `tests/test_strong_fixture_closure.py` requires every `core_source_backed_fixture` row to prepare into `SOURCE_BACKED_STRONG` without `Presume.json` or `Concede.json`.",
+    "The current verification pass supports that alignment: `python -m pytest tests/test_fixture_stage_semantics.py tests/test_strong_fixture_closure.py -q` passed with 6 tests passing and 7 skips for non-core rows.",
+    "The repo naming aligns with public archetypes closely enough for audit work, but some labels are repo shorthand rather than the most common public names: `CtAPaladin` versus Call to Arms Paladin, `Discolock` versus Discardlock, `MechPala` versus Mech Paladin, `PirateDH` versus Pirate Demon Hunter, and `Kingslayer` versus the more common public `Kingsbane Rogue` label."
+  ],
+  "concrete_evidence_to_check": [
+    "Read `C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json` and verify that all 11 rows have distinct `archetype_bucket` values, expected runtime surfaces, and fixture stages.",
+    "List `C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_*_strong.json` and confirm there is one strong fixture source file for each matrix row.",
+    "Run `python -m pytest tests/test_fixture_stage_semantics.py tests/test_strong_fixture_closure.py -q` in `C:/Users/darbo/Documents/HSConfig` to confirm stage semantics and strong-closure expectations for core rows.",
+    "Inspect `C:/Users/darbo/Documents/HSConfig/tests/helpers/fixture_prepare.py` to see how each matrix row is prepared into `operator_summary.json`, `claim_coverage_report.json`, and `per_card_config_readiness_report.json`.",
+    "For deck-breadth reasoning, inspect the matrix rows for `ShadowPriest`, `BigShaman`, `Boarlock`, `ImbueMage`, `PirateRogue`, and `Kingslayer` first because they cover the clearest extremes: aggro burn, big-cheat, combo surface, hero-power posture, weapon tempo, and weapon sequence pressure.",
+    "If a future breadth audit claims the matrix is insufficient, compare failures against missing families rather than against deck popularity. The relevant evidence is missing decision-family coverage, not monthly meta share."
+  ],
+  "gaps_or_risks": [
+    "The biggest structural gap is reactive control coverage. The 11 rows do not give a clean dedicated fixture for long attrition, removal sequencing, discover chains, or Reno-style survival planning.",
+    "Combo breadth is intentionally thin. `Boarlock` proves that `Combo.json` exists in the matrix, but a single combo deck is a weak sample for broader exact-sequence or multi-branch combo behavior.",
+    "Target-selection and exception-handling coverage is limited. The matrix is stronger on posture and package shape than on dense reactive targeting logic.",
+    "External source matching is slightly noisy because several repo deck names are shorthand. That is manageable for audits, but it makes public-source lookup less direct than if every row used the dominant community label.",
+    "Because this matrix is designed for lean HSConfig Step1 coverage, it should not be misread as evidence that all HearthRanger runtime or post-run behavior families are represented."
+  ],
+  "recommended_action": "Keep the 11-deck matrix as the default lean fixture breadth set. Do not expand it just to mirror the live meta. Instead, add one new fixture only when an audit repeatedly fails on a decision family that the current 11 do not represent well; the strongest candidate category is a reactive control or discover-heavy deck. In the short term, the most useful improvement is to document, next to each row, the exact decision family it is intended to prove.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/helpers/fixture_prepare.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_fixture_stage_semantics.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_strong_fixture_closure.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_shadowpriest_strong.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_bigshaman_strong.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_boarlock_strong.json",
+    "https://www.hearthstonetopdecks.com/deck-type/shadow-priest/",
+    "https://hearthstone-decks.net/wild-decks/shaman-wild-decks/big-shaman-wild/",
+    "https://hearthstone-decks.net/standard-decks/druid/other-druid-decks/treant-druid/",
+    "https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
+    "https://www.hearthstonetopdecks.com/deck-type/kingsbane-rogue/",
+    "https://www.hsguru.com/deck/34297608",
+    "https://www.hearthpwn.com/decks/1451665-cta-pally-70-wr-to-legend-wild",
+    "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
+    "https://www.hearthpwn.com/decks/1453961-discolock",
+    "https://hearthstone-decks.net/wild-decks/demon-hunter-wild-decks/other-demon-hunter-decks-demon-hunter-wild-decks/pirate-demon-hunter-wild/"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,30 @@
+field_categories:
+  - category: hsconfig_post_promotion_skill_audit
+    fields:
+      - name: source_summary
+        required: true
+        description: Concise source-backed summary of the researched area.
+      - name: current_truth
+        required: true
+        description: What should be treated as currently true for HSConfig design decisions after the source-depth strong promotion wave.
+      - name: repo_alignment
+        required: true
+        description: How the current HSConfig repository and installed skill align with the researched area.
+      - name: concrete_evidence_to_check
+        required: true
+        description: Repo commands, files, or generated artifacts that should be checked during the audit.
+      - name: gaps_or_risks
+        required: true
+        description: Concrete gaps, risks, or uncertain assumptions.
+      - name: recommended_action
+        required: true
+        description: The most useful next action for a lean, autonomous HSConfig workflow.
+      - name: confidence
+        required: true
+        description: high, medium, low, or [uncertain].
+      - name: citations
+        required: true
+        description: URLs or local source paths used.
+      - name: uncertain
+        required: true
+        description: Field names whose values remain uncertain.
