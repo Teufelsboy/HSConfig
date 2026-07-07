@@ -10,12 +10,14 @@ STRUCTURED_RUNTIME_CONDITION_KEYS = {
     "coin",
     "nocoin",
     "opponent_class",
+    "opponent_classes",
     "hand_contains",
     "hand_contains_any",
     "combo_partner",
 }
 CARD_ID_PATTERN = r"[A-Za-z0-9_]+"
 CLASS_PATTERN = r"[a-z]+"
+CLASS_LIST_PATTERN = rf"{CLASS_PATTERN}(?:\s*\|\s*{CLASS_PATTERN})*"
 ALLOWED_ATOM_PATTERNS = [
     re.compile(r"^\*$"),
     re.compile(r"^coin$"),
@@ -23,6 +25,9 @@ ALLOWED_ATOM_PATTERNS = [
     re.compile(r"^my_hand\(count\(\)\)\s*==\s*\d+$"),
     re.compile(rf"^my_hand\(count\(\),cardid={CARD_ID_PATTERN}\)\s*>\s*0$"),
     re.compile(rf"^opp_hero\(count\(\),{CLASS_PATTERN}=true\)\s*>\s*0$"),
+    re.compile(
+        rf"^opp_hero\(count\(\),\s*hero_class\s*=\s*{CLASS_LIST_PATTERN}\s*\)\s*>\s*0$"
+    ),
     re.compile(r"^my_target\(count\(\),hero=true\)\s*>\s*0$"),
     re.compile(rf"^my_minion\(count\(\),cardid={CARD_ID_PATTERN}\)\s*>\s*0$"),
     re.compile(rf"^my_discover\(count\(\),cardid={CARD_ID_PATTERN}\)\s*>\s*0$"),
@@ -84,6 +89,15 @@ def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
         atoms.append("nocoin")
     if value.get("opponent_class"):
         atoms.append(f"opp_hero(count(),{str(value['opponent_class']).lower()}=true) > 0")
+    if value.get("opponent_classes"):
+        raw_classes = value["opponent_classes"]
+        classes = [raw_classes] if isinstance(raw_classes, str) else list(raw_classes)
+        clean_classes = [str(hero_class).lower() for hero_class in classes]
+        atoms.append(
+            "opp_hero(count(), hero_class="
+            + " | ".join(clean_classes)
+            + " ) > 0"
+        )
     if value.get("hand_contains"):
         atoms.append(f"my_hand(count(),cardid={value['hand_contains']}) > 0")
     if value.get("combo_partner"):
@@ -98,7 +112,7 @@ def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
 def _is_runtime_safe(condition: str) -> bool:
     condition = " ".join(condition.strip().split())
     if "|" in condition:
-        return False
+        return _is_atom_safe(condition)
     if any(joiner in condition for joiner in (" AND ", " OR ")):
         atoms = re.split(r"\s+(?:AND|OR)\s+", condition)
         return bool(atoms) and all(_is_atom_safe(atom) for atom in atoms)

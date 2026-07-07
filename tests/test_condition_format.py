@@ -27,6 +27,22 @@ def test_rejects_unknown_strings_and_top_level_pipe():
     assert classify_runtime_condition("coin | nocoin").status == "unsupported"
 
 
+def test_allows_documented_opponent_hero_class_list_condition():
+    condition = "opp_hero(count(), hero_class=warrior | rogue | paladin ) > 0"
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "runtime_safe"
+    assert lower_runtime_condition(condition) == (condition, None)
+
+
+def test_structured_opponent_classes_lower_to_documented_runtime_condition():
+    assert lower_runtime_condition({"opponent_classes": ["warrior", "rogue", "paladin"]}) == (
+        "opp_hero(count(), hero_class=warrior | rogue | paladin ) > 0",
+        None,
+    )
+
+
 def test_structured_conditions_lower_to_runtime_safe_atoms():
     assert lower_runtime_condition({"coin": True}) == ("coin", None)
     assert lower_runtime_condition({"nocoin": True}) == ("nocoin", None)
