@@ -5,58 +5,42 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 # HSConfig
 
-Use this skill to build direct guide-aligned HearthRanger VisionAI `CustomConfig` packages.
+Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. Keep HSConfig lean and separate from HSTuner.
 
 Inputs:
 
 - deck name
 - deck code
-- optional expert card JSON override
-- optional legacy source-backed guide claims JSON list
-- optional researched source documents JSON
-- optional normalized guide sources JSON from `hsconfig research-deck`
-- runtime root for `prepare` / `build` baseline profiling and for `apply`
+- runtime root for `prepare`, `build`, and `apply`
+- researched `source_documents.json`
+- normalized guide sources from `hsconfig research-deck`
+- optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir`
 
-Workflow:
+Normal workflow:
 
 1. Decode the deck code first, then resolve deck identity and card metadata.
-2. Research current guide/archetype/card-usage sources.
-3. Write `source_documents.json` with researched card-specific claims.
-4. Run `hsconfig research-deck --source-documents-json ...` when source documents exist, or run it without sources to create static-semantics fallback artifacts.
-5. Check that the normalized guide sources give every deck card a card role,
-   mulligan stance, usage expectation, mechanic expectation, combo relation, or
-   explicit low-confidence fallback.
-6. Run `hsconfig prepare --guide-sources-json ...`.
-7. Verify `operator_summary.json`, the research contract, and
-   `claim_coverage_report.json`,
-   `mulligan_plan_report.json`, `card_behavior_plan_report.json`,
-   `combo_plan_report.json`, `global_values_authority_matrix.json`,
-   `per_card_config_readiness_report.json`, and
-   `guide_source_depth_report.json`.
-   Use `reports/operator_summary.json` as the first readiness file. The fields
-   `guide_strength_summary` and `semantic_blockers` explain why a package is
-   `VALID_BUT_NOT_GUIDE_STRONG` and which source claims should be improved before
-   calling the config source-backed strong.
-8. Run `hsconfig apply ...` when `operator_summary.json` has `technical_status=VALID_PACKAGE`,
-   the user requested autonomous runtime apply, and the `next_action` does not
-   ask for more source work before strong apply.
+2. Research current guide, archetype, mulligan, and card-usage sources.
+3. Write `source_documents.json` with card-specific claims.
+4. Run `hsconfig research-deck --source-documents-json ...` to create normalized guide sources and the research contract inputs.
+5. Run `hsconfig prepare --guide-sources-json ...` to compile the package and reports.
+6. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
+7. Run `hsconfig apply ...` only when requested; runtime apply is allowed after validation only when `technical_status=VALID_PACKAGE`, the user requested runtime writes, and `next_action` / `apply_policy` do not ask for more source work before apply.
 
-HSConfig has two useful success levels.
+Status meaning:
 
-VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.
-SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverage and can be treated as a strong initial config.
-
-STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, not optimized-config claims.
+- `VALID_PACKAGE`: runtime JSON is structurally valid and load-safe.
+- `SOURCE_BACKED_STRONG`: current guide-backed per-card coverage supports a strong initial config.
+- `STATIC_SEMANTICS_USABLE`: static card semantics produced a valid package without enough live guide depth.
+- `VALID_BUT_NOT_GUIDE_STRONG`: the package is valid, but `guide_strength_summary` and `semantic_blockers` identify missing source depth, conflict resolution, runtime-surface gaps, or combo detail.
 
 Rules:
 
 - Build direct guide-aligned configs only.
-- Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
 - Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
+- Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
 - Use `operator_summary.json` as the operator-facing readiness file; do not confuse `semantic_status` with runtime validity.
-- Keep full `GlobalValues` coverage and write the profile report.
+- Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
-- Runtime apply is allowed after validation only when requested by the user or task.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 

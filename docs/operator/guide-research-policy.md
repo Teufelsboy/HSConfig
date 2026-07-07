@@ -114,6 +114,10 @@ GlobalValues key authority:
 
 ## Per-Card Depth Rule
 
+For representative archetype breadth, use `docs/operator/archetype-fixture-matrix.json`.
+Core source-backed fixtures should cover ShadowPriest, BigShaman, Discolock,
+Kingslayer, and ImbueMage before broadening to the second-wave decks.
+
 Before normal `hsconfig prepare`, Codex should try to give every deck card at
 least one structured expectation. The preferred order is card-specific guide
 claim, current card text/static semantics, archetype-inferred role, then

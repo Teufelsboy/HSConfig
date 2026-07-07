@@ -39,44 +39,30 @@ def test_skill_content_sets_direct_config_boundary():
     assert "--guide-sources-json" in text
 
 
-def test_operator_status_definitions_are_documented():
-    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-
-    required_lines = {
-        "HSConfig has two useful success levels.",
-        "VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.",
-        (
-            "SOURCE_BACKED_STRONG means the package has current guide-backed "
-            "per-card coverage and can be treated as a strong initial config."
+def test_skill_docs_preserve_hsconfig_boundaries_without_verbatim_duplication():
+    docs = [
+        Path("README.md").read_text(encoding="utf-8"),
+        Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+            encoding="utf-8"
         ),
-        (
-            "STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe "
-            "handoff states, not optimized-config claims."
-        ),
-    }
-    for text in (readme, skill):
-        for line in required_lines:
-            assert line in text
-
-
-def test_active_docs_use_source_backed_readiness_language():
-    expected = (
-        "HSConfig has two useful success levels.\n\n"
-        "VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.\n"
-        "SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverage "
-        "and can be treated as a strong initial config.\n\n"
-        "STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, "
-        "not optimized-config claims."
-    )
-    active_files = [
-        REPO_ROOT / "README.md",
-        SKILL_ROOT / "SKILL.md",
-        SKILL_ROOT / "references" / "workflow.md",
     ]
+    joined = "\n".join(docs)
+    required_terms = {
+        "research-deck",
+        "prepare",
+        "operator_summary.json",
+        "VALID_PACKAGE",
+        "SOURCE_BACKED_STRONG",
+        "STATIC_SEMANTICS_USABLE",
+        "VALID_BUT_NOT_GUIDE_STRONG",
+        "HSTuner",
+        "Presume.json",
+        "Concede.json",
+    }
 
-    for path in active_files:
-        assert expected in path.read_text(encoding="utf-8")
+    for term in required_terms:
+        assert term in joined
 
 
 def test_skill_docs_do_not_call_static_semantics_optimized():
