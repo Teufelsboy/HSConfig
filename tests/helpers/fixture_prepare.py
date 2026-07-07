@@ -10,8 +10,12 @@ from hsconfig.cli import main
 MATRIX = Path("docs/operator/archetype-fixture-matrix.json")
 
 
+def read_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def load_archetype_matrix() -> list[dict[str, Any]]:
-    payload = json.loads(MATRIX.read_text(encoding="utf-8"))
+    payload = read_json(MATRIX)
     return list(payload["decks"])
 
 
@@ -40,12 +44,11 @@ def prepare_fixture_deck(tmp_path: Path, deck: dict[str, Any]) -> dict[str, Any]
     )
 
     reports = out / "reports"
-    operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
-    readiness = json.loads(
-        (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
-    )
-    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
-    source_gap = json.loads((reports / "source_claim_gap_report.json").read_text(encoding="utf-8"))
+    operator = read_json(reports / "operator_summary.json")
+    readiness = read_json(reports / "per_card_config_readiness_report.json")
+    coverage = read_json(reports / "claim_coverage_report.json")
+    source_gap = read_json(reports / "source_claim_gap_report.json")
+    strong_promotion = read_json(reports / "strong_promotion_report.json")
     config_root = out / "CustomConfig"
     generated_files = sorted(path.name for path in config_root.rglob("*.json"))
     return {
@@ -55,5 +58,7 @@ def prepare_fixture_deck(tmp_path: Path, deck: dict[str, Any]) -> dict[str, Any]
         "readiness": readiness,
         "coverage": coverage,
         "source_gap": source_gap,
+        "source_claim_gap_report": source_gap,
+        "strong_promotion_report": strong_promotion,
         "generated_files": generated_files,
     }
