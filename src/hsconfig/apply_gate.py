@@ -35,7 +35,10 @@ def evaluate_apply_gate(
             },
         )
 
-    optional_surface_reasons = _optional_surface_reasons(summary)
+    optional_surface_reasons = [
+        *_summary_optional_surface_reasons(summary),
+        *_actual_optional_surface_reasons(package),
+    ]
     if optional_surface_reasons:
         return _blocked(operator_path, *optional_surface_reasons)
 
@@ -99,7 +102,7 @@ def evaluate_apply_gate(
     )
 
 
-def _optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str, str]]:
+def _summary_optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str, str]]:
     generated = summary.get("generated_files", [])
     if not isinstance(generated, list):
         return []
@@ -111,6 +114,22 @@ def _optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str, str]]:
                 {
                     "reason": "normal_path_optional_surface_present",
                     "generated_file": generated_file,
+                }
+            )
+    return reasons
+
+
+def _actual_optional_surface_reasons(package: Path) -> list[dict[str, str]]:
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return []
+    reasons: list[dict[str, str]] = []
+    for path in sorted(custom_config.glob("*/*.json")):
+        if path.name in OPTIONAL_NORMAL_PATH_SURFACES:
+            reasons.append(
+                {
+                    "reason": "normal_path_optional_surface_present",
+                    "generated_file": str(path),
                 }
             )
     return reasons
