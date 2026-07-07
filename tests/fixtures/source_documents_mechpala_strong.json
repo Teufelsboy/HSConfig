@@ -66,7 +66,7 @@
           "cards": ["BOT_906"],
           "stance": "magnetic_curve",
           "runtime_block": "BeforePlayCardBonus",
-          "evidence_text_short": "Glow-Tron is a Mech with Magnetic for early board development.",
+          "evidence_text_short": "Glow-Tron is a Mech with Magnetic.",
           "source_confidence": "high"
         }
       ]
