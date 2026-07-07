@@ -321,7 +321,7 @@ def _lane_and_missing_link(
     if card_id in mulligan_cards:
         return "mulligan_only", "needs_runtime_surface"
     if card_id in globalvalue_cards:
-        if is_guide_backed and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
+        if is_guide_backed and roles and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
             return "globalvalues_only", "none"
         return "globalvalues_only", "needs_runtime_surface"
     if card_id in uncovered or coverage == "generic_low_confidence":

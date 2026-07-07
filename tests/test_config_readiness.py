@@ -386,3 +386,34 @@ def test_source_backed_hero_power_transform_can_be_satisfied_by_globalvalues():
     row = report["cards"]["SW_448"]
     assert row["readiness_lane"] == "globalvalues_only"
     assert row["first_missing_link"] == "none"
+
+
+def test_globalvalues_card_with_empty_roles_still_needs_runtime_surface():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Deck",
+            "cards": [{"card_id": "SW_448", "name": "Darkbishop Benedictus"}],
+        },
+        claim_coverage={"uncovered_cards": []},
+        gameplan_contract={
+            "deck_name": "Deck",
+            "cards": {
+                "SW_448": {
+                    "card_id": "SW_448",
+                    "name": "Darkbishop Benedictus",
+                    "coverage_status": "source_backed_static_semantics",
+                    "roles": [],
+                }
+            },
+            "hero_power_expectations": [{"source_card_id": "SW_448"}],
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": [{"key": "MyHeroPowerValue"}]},
+        emitted_cardid_files=[],
+    )
+
+    row = report["cards"]["SW_448"]
+    assert row["readiness_lane"] == "globalvalues_only"
+    assert row["first_missing_link"] == "needs_runtime_surface"

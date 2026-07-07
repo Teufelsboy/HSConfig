@@ -184,6 +184,30 @@ def route_card_behavior_surfaces(
                     rows.append(row)
             continue
 
+        if claim_kind == "known_bad_pattern":
+            if explicit_block is not None:
+                intent = _claim_intent(claim, fallback=claim_kind)
+                rows.extend(
+                    _rows_for_cards(
+                        claim,
+                        cards,
+                        condition=condition,
+                        behavior_block=explicit_block,
+                        intent=intent,
+                        roles=[claim_kind],
+                    )
+                )
+            else:
+                suppressed.append(
+                    _suppressed_row(
+                        claim,
+                        claim_kind,
+                        cards,
+                        "no_documented_card_behavior_surface",
+                    )
+                )
+            continue
+
         if claim_kind == "combo_sequence":
             continue
 

@@ -207,6 +207,31 @@ def test_known_bad_pattern_stays_report_only_without_documented_block():
     assert plan["suppressed"][0]["reason"] == "no_documented_card_behavior_surface"
 
 
+def test_known_bad_pattern_routes_with_explicit_documented_block():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_bad",
+                "claim_kind": "known_bad_pattern",
+                "cards": ["CARD_A"],
+                "claim_readiness": "guide_backed",
+                "stance": "do_not_target_enemy_minion",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["rows"][0]["card_id"] == "CARD_A"
+    assert plan["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+    assert plan["rows"][0]["meaningful_runtime_surface"] is True
+
+
 def test_card_behavior_router_preserves_claim_row_order_across_cards():
     plan = route_card_behavior_claims(
         [
