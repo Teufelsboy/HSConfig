@@ -244,6 +244,11 @@ def test_shadowpriest_fixture_closes_known_audit_gaps():
         for claim in claims_by_card["NX2_019"]
     )
     assert any(
+        claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("stance") == "burn_followup_pressure"
+        for claim in claims_by_card["NX2_019"]
+    )
+    assert any(
         claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
         for claim in claims_by_card["SW_446"]
     )

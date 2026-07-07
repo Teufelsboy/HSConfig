@@ -212,6 +212,16 @@
           "condition": "*",
           "evidence_text_short": "Mind Sear deals 2 damage to a minion and deals 3 damage to the enemy hero if it dies.",
           "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["NX2_019"],
+          "stance": "burn_followup_pressure",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "condition": "*",
+          "evidence_text_short": "Mind Sear creates enemy hero damage as a follow-up when its minion damage kills the target.",
+          "source_confidence": "high"
         }
       ]
     },
