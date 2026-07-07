@@ -51,3 +51,63 @@ def test_report_explains_first_missing_chain_for_non_strong_deck():
         "recommended_source_claim_kind": "card_role",
         "next_action": "add_card_specific_source_claim",
     }
+
+
+def test_report_blocks_strong_promotion_when_normal_path_presume_or_concede_exists():
+    report = build_strong_promotion_report(
+        deck_name="PirateDH",
+        fixture_stage="core_source_backed_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig/piratedh/GlobalValues.json",
+                "CustomConfig/piratedh/Presume.json",
+            ],
+        },
+        source_claim_gap_report={"summary": {"blocked_cards": 0}, "cards": {}},
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["next_action"] == "close_first_missing_chain"
+    assert {
+        "reason": "normal_path_optional_surface_present",
+        "generated_file": "CustomConfig/piratedh/Presume.json",
+    } in report["semantic_blockers"]
+
+
+def test_report_keeps_canonical_next_action_for_invalid_package():
+    report = build_strong_promotion_report(
+        deck_name="Boarlock",
+        fixture_stage="source_informed_valid_fixture",
+        operator_summary={
+            "technical_status": "INVALID_PACKAGE",
+            "semantic_status": "INVALID_PACKAGE",
+            "next_action": "FIX_PACKAGE_BEFORE_APPLY",
+            "semantic_blockers": [],
+            "generated_files": [],
+        },
+        source_claim_gap_report={
+            "summary": {"blocked_cards": 3},
+            "cards": {
+                "CARD_A": {
+                    "first_missing_link": "needs_guide_claim",
+                    "recommended_source_claim_kind": "card_role",
+                    "next_action": "add_card_specific_source_claim",
+                }
+            },
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert report["first_missing_chain"] == {
+        "card_id": "CARD_A",
+        "first_missing_link": "needs_guide_claim",
+        "recommended_source_claim_kind": "card_role",
+        "next_action": "add_card_specific_source_claim",
+    }
