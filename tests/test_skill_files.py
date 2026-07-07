@@ -84,8 +84,9 @@ def test_skill_docs_do_not_call_static_semantics_optimized():
 
 
 def test_active_docs_show_normal_source_document_operator_path():
-    active_files = [
-        REPO_ROOT / "README.md",
+    root_readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    operator_path_files = [
+        REPO_ROOT / "docs" / "operator" / "README.md",
         SKILL_ROOT / "SKILL.md",
         SKILL_ROOT / "references" / "workflow.md",
     ]
@@ -95,10 +96,13 @@ def test_active_docs_show_normal_source_document_operator_path():
         "hsconfig prepare --guide-sources-json",
         "operator_summary.json",
         "hsconfig apply",
-        "only when requested",
     }
 
-    for path in active_files:
+    assert "docs/operator/README.md" in root_readme
+    assert "hsconfig source-manifest" in root_readme
+    assert "only when requested" in root_readme
+
+    for path in operator_path_files:
         text = path.read_text(encoding="utf-8")
         for term in required_terms:
             assert term in text
@@ -267,9 +271,10 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
 
 def test_readme_documents_installed_skill_sync():
     text = Path("README.md").read_text(encoding="utf-8")
+    normalized = text.replace("\\", "/")
 
-    assert "scripts/sync_installed_skill.py --check" in text
-    assert "scripts/sync_installed_skill.py" in text
+    assert "scripts/sync_installed_skill.py --check" in normalized
+    assert "scripts/sync_installed_skill.py" in normalized
 
 
 def test_docs_make_operator_summary_the_single_normal_gate():
@@ -353,3 +358,22 @@ def test_current_skill_audit_is_marked_as_research_evidence():
     assert "not runtime input" in readme
     assert (root / "fields.yaml").exists()
     assert len(list((root / "results").glob("*.json"))) == 5
+
+
+def test_operator_readme_is_single_normal_entry_point():
+    readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    root = Path("README.md").read_text(encoding="utf-8")
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(encoding="utf-8")
+
+    assert "Normal Operator Path" in readme
+    assert "reports/operator_summary.json" in readme
+    assert "source-manifest" in readme
+    assert "draft-source-documents" in readme
+    assert "research-deck" in readme
+    assert "prepare" in readme
+    assert "apply" in readme
+    assert "HSTuner" in readme
+    assert "docs/operator/README.md" in root
+    assert "docs/operator/README.md" in skill
+    assert "docs/operator/README.md" in workflow

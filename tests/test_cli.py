@@ -27,12 +27,17 @@ def test_pyproject_exposes_hsconfig_entrypoint():
 
 
 def test_readme_documents_prepare_as_normal_path():
-    text = Path("README.md").read_text(encoding="utf-8")
+    root_readme = Path("README.md").read_text(encoding="utf-8")
+    operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
 
-    assert "hsconfig prepare" in text
-    assert "reports/research" in text
-    assert "hsconfig build" in text
-    assert "hsconfig apply" in text
+    assert "docs/operator/README.md" in root_readme
+    assert "hsconfig prepare" in root_readme
+    assert "hsconfig apply" in root_readme
+    assert "hsconfig build" in operator_readme
+    assert "reports/research" in workflow
 
 
 def test_build_accepts_cards_json_object(tmp_path: Path, capsys):

@@ -1,0 +1,41 @@
+# HSConfig Operator Guide
+
+HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a deck name, deck code, and source-backed guide evidence.
+
+HSConfig does not parse replays, inspect winrate, analyze runtime logs, promote post-run candidates, or tune after games. Those tasks belong to HSTuner.
+
+## Normal Operator Path
+
+1. Run `hsconfig source-manifest` to get aliases, card targets, and research questions.
+2. Write short source evidence rows from current guide, archetype, mulligan, card-text, and metadata sources.
+3. Run `hsconfig draft-source-documents` to turn evidence rows into strict `source_documents.json`.
+4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
+5. Run `hsconfig prepare --guide-sources-json ...` to compile and validate the package.
+6. Open `reports/operator_summary.json` first.
+7. Run `hsconfig apply` only when the operator summary allows it.
+
+## Single Gate
+
+Use `reports/operator_summary.json` as the normal operator gate.
+
+- `technical_status=VALID_PACKAGE` means the runtime JSON shape is load-safe.
+- `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
+- `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work.
+- `apply_policy=ALLOWED` is required for normal apply.
+
+Lower-level reports explain the gate. They do not grant independent apply permission.
+
+## Important Reports
+
+- `reports/operator_summary.json`
+- `reports/source_claim_gap_report.json`
+- `reports/strong_promotion_report.json`
+- `reports/per_card_config_readiness_report.json`
+- `reports/guide_source_depth_report.json`
+- `reports/global_values_authority_matrix.json`
+
+## Expert Paths
+
+Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
+
+Use `--allow-source-informed` only when intentionally applying a technically valid package before it reaches `SOURCE_BACKED_STRONG`.

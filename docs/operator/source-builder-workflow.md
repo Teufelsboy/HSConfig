@@ -2,6 +2,8 @@
 
 HSConfig builds pre-game HearthRanger VisionAI CustomConfig packages. It does not parse replays, inspect winrate, or tune from post-game logs.
 
+For the normal operator entry point, start at `docs/operator/README.md`.
+
 Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
 
 Normal path:

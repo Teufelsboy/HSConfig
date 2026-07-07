@@ -2,6 +2,8 @@
 
 HSConfig compiles structured source claims. Codex performs the live guide research before running HSConfig, then normalizes that research with `hsconfig research-deck`.
 
+For the normal operator entry point, start at `docs/operator/README.md`.
+
 ## Accepted Sources
 
 - official card text

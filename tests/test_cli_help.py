@@ -12,6 +12,14 @@ def test_root_help_names_normal_and_expert_paths():
     assert "build, --claims-json, --cards-json, --plan-reports-dir" in help_text
 
 
+def test_root_help_points_to_operator_docs():
+    help_text = _build_parser().format_help()
+
+    assert "docs/operator/README.md" in help_text
+    assert "Normal path:" in help_text
+    assert "Expert and legacy path:" in help_text
+
+
 def _subcommand_help(command: str, capsys) -> str:
     parser = _build_parser()
     with pytest.raises(SystemExit):

@@ -89,6 +89,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="hsconfig",
         description="HSConfig builds lean HearthRanger VisionAI CustomConfig packages before games are played.",
         epilog=(
+            "Normal operator docs: docs/operator/README.md\n"
             "Normal path: source-manifest -> draft-source-documents -> research-deck -> "
             "prepare -> apply. Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
