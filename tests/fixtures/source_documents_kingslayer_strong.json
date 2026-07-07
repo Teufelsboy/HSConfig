@@ -1,8 +1,8 @@
 {
   "source_documents": [
     {
-      "source_url": "fixture://hsconfig/archetype-fixtures/kingslayer-guide",
-      "source_title": "Kingslayer Source-Backed Fixture Guide",
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+      "source_title": "Legend 1478 Kingsbane Rogue",
       "source_family": "guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "Kingslayer",
@@ -13,7 +13,12 @@
           "cards": [],
           "stance": "weapon_pressure",
           "evidence_text_short": "Kingslayer plays for weapon pressure, pirate tempo, and repeated hero attack turns.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+            "https://www.hsguru.com/deck/10391393"
+          ]
         },
         {
           "claim_kind": "mechanic_usage",
@@ -21,7 +26,11 @@
           "mechanic": "weapon",
           "stance": "weapon_sequence",
           "evidence_text_short": "Quick Pick, Swarthy Swordshiner, and The Kingslayers define the weapon sequencing package.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://www.hsguru.com/deck/10391393"
+          ]
         },
         {
           "claim_kind": "mulligan_keep",
@@ -30,7 +39,11 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "Keep Quick Pick as the early weapon and attack engine.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://www.hsguru.com/deck/10391393"
+          ]
         },
         {
           "claim_kind": "targeting_rule",
@@ -40,14 +53,22 @@
           "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
           "runtime_value": "8",
           "evidence_text_short": "Weapon and charge attack pressure should prefer enemy hero damage when survival trades are not required.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue"
+          ]
         },
         {
           "claim_kind": "known_bad_pattern",
           "cards": ["VAC_701", "CS2_073"],
           "stance": "avoid_empty_weapon_buff",
           "evidence_text_short": "Do not spend weapon attack sequencing pieces before a useful weapon or attack line is available.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue"
+          ]
         }
       ]
     }

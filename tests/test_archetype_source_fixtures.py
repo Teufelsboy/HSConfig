@@ -53,6 +53,13 @@ def test_core_source_fixtures_have_required_source_fields():
             assert document["claims"]
 
 
+def test_core_source_fixtures_use_public_source_urls():
+    for deck_name, path in FIXTURES.items():
+        for document in _documents(path):
+            source_url = document["source_url"]
+            assert not source_url.startswith("fixture://"), deck_name
+
+
 def test_core_source_fixtures_use_supported_atomic_claims():
     for deck_name, path in FIXTURES.items():
         claim_kinds = {

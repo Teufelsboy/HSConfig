@@ -1,9 +1,9 @@
 {
   "source_documents": [
     {
-      "source_url": "fixture://hsconfig/archetype-fixtures/shadowpriest-guide",
-      "source_title": "ShadowPriest Source-Backed Fixture Guide",
-      "source_family": "guide",
+      "source_url": "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+      "source_title": "Top 25 Legend Burn Shadow Priest In-Depth Mulligan",
+      "source_family": "mulligan_guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "ShadowPriest",
       "claims": [
@@ -13,14 +13,23 @@
           "cards": [],
           "stance": "aggro_burn",
           "evidence_text_short": "ShadowPriest plays proactive burn pressure and closes with direct face damage.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
+          ]
         },
         {
           "claim_kind": "hero_power_transform",
           "cards": ["SW_448"],
           "stance": "shadowform_mind_spike",
           "evidence_text_short": "Darkbishop Benedictus enables Shadowform so the Hero Power becomes Mind Spike pressure.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "source_refs": [
+            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
+          ]
         },
         {
           "claim_kind": "mulligan_keep",
@@ -29,7 +38,10 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "Keep Voidtouched Attendant as an early pressure and burn amplifier.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "source_refs": [
+            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/"
+          ]
         },
         {
           "claim_kind": "targeting_rule",
@@ -39,7 +51,11 @@
           "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
           "runtime_value": "12",
           "evidence_text_short": "Direct burn such as Mind Blast and Acupuncture should prefer the enemy hero in the pressure plan.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/"
+          ]
         },
         {
           "claim_kind": "mechanic_usage",
@@ -47,7 +63,11 @@
           "mechanic": "burn",
           "stance": "face_pressure",
           "evidence_text_short": "Shadowbomber, Mind Sear, and Acupuncture form the burn-pressure package.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
+          ]
         }
       ]
     }
