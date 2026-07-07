@@ -102,6 +102,7 @@ def test_research_deck_accepts_source_documents_json(tmp_path: Path, capsys):
     assert payload["source_depth_status"] == "source_backed"
     assert guide_sources["sources"][0]["claims"][0]["claim_id"].startswith("claim_")
     assert len(guide_sources["sources"][0]["claims"]) == 2
+    assert (out / "source_evidence_verification_report.json").exists()
 
 
 def test_research_deck_rejects_malformed_source_documents_json(tmp_path: Path, capsys):

@@ -44,6 +44,7 @@ from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
 
@@ -271,6 +272,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_archetypes": candidate_archetypes,
         "identity_graph_report": identity_graph_report,
         "identity_gap_report": build_identity_gap_report(identity_graph_report),
+        "source_evidence_report": verify_source_documents(source_documents),
     }
 
 
@@ -420,6 +422,10 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "guide_builder_receipt.json", context["guide_builder_receipt"])
     write_json(reports_dir / "identity_graph_report.json", context["identity_graph_report"])
     write_json(reports_dir / "identity_gap_report.json", context["identity_gap_report"])
+    write_json(
+        reports_dir / "source_evidence_verification_report.json",
+        context["source_evidence_report"],
+    )
     write_json(reports_dir / "guide_claim_bundle.json", guide_claim_bundle)
     write_json(reports_dir / "source_evidence_index.json", guide_claim_bundle["source_evidence_index"])
     write_json(
@@ -526,6 +532,7 @@ def _research_deck(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(out / "guide_builder_receipt.json", context["guide_builder_receipt"])
     write_json(out / "identity_graph_report.json", context["identity_graph_report"])
     write_json(out / "identity_gap_report.json", context["identity_gap_report"])
+    write_json(out / "source_evidence_verification_report.json", context["source_evidence_report"])
 
     written_files = [
         str(path)

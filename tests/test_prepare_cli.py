@@ -340,6 +340,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
+    assert (reports / "source_evidence_verification_report.json").exists()
 
 
 def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
