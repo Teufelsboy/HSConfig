@@ -216,6 +216,42 @@ def test_shadowpriest_fixture_covers_hero_power_and_face_pressure():
     assert "prefer_enemy_hero" in stances
 
 
+def test_shadowpriest_fixture_closes_known_audit_gaps():
+    bundle = _source_bundle_for_fixture("ShadowPriest")
+    claims_by_card = {}
+    for claim in bundle["claims"]:
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {
+        "CFM_637",
+        "DRG_056",
+        "REV_290",
+        "SCH_514",
+        "TOY_381",
+        "TOY_518",
+        "VAC_512",
+        "WON_065",
+        "YOD_032",
+        "NX2_019",
+        "SW_446",
+        "SW_448",
+    }
+    assert expected_cards <= set(claims_by_card)
+    assert any(
+        claim.get("runtime_block") == "BeforePlayCardBonus"
+        for claim in claims_by_card["NX2_019"]
+    )
+    assert any(
+        claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
+        for claim in claims_by_card["SW_446"]
+    )
+    assert any(
+        claim["claim_kind"] == "hero_power_transform"
+        for claim in claims_by_card["SW_448"]
+    )
+
+
 def test_bigshaman_fixture_covers_big_cheat_and_bad_target_patterns():
     claims = [
         claim

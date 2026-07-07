@@ -1,73 +1,304 @@
 {
   "source_documents": [
     {
-      "source_url": "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
-      "source_title": "Top 25 Legend Burn Shadow Priest In-Depth Mulligan",
-      "source_family": "mulligan_guide",
+      "source_url": "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+      "source_title": "Shadowburst Priest - Wild Hearthstone Full Deck & Guide on the Wildest of Thursdays - Out of Games",
+      "source_family": "guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "ShadowPriest",
+      "archetype": "aggro_burn_hero_power_transform",
       "claims": [
         {
           "claim_kind": "gameplan_posture",
           "scope": "deck",
           "cards": [],
-          "stance": "aggro_burn",
-          "evidence_text_short": "ShadowPriest plays proactive burn pressure and closes with direct face damage.",
-          "source_confidence": "medium",
-          "source_refs": [
-            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
-            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
-            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
-          ]
+          "stance": "aggro_burn_hero_power_transform",
+          "evidence_text_short": "Shadow Priest uses Darkbishop Benedictus, Shadowform, and direct damage as a hyper aggro burst plan.",
+          "source_confidence": "high"
         },
         {
           "claim_kind": "hero_power_transform",
           "cards": ["SW_448"],
           "stance": "shadowform_mind_spike",
-          "evidence_text_short": "Darkbishop Benedictus enables Shadowform so the Hero Power becomes Mind Spike pressure.",
-          "source_confidence": "high",
-          "source_refs": [
-            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
-            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
-          ]
-        },
-        {
-          "claim_kind": "mulligan_keep",
-          "cards": ["SW_446"],
-          "selector": "SW_446",
-          "selector_kind": "card",
-          "stance": "keep",
-          "evidence_text_short": "Keep Voidtouched Attendant as an early pressure and burn amplifier.",
-          "source_confidence": "high",
-          "source_refs": [
-            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/"
-          ]
-        },
+          "evidence_text_short": "Shadow Priest uses Darkbishop Benedictus for the Shadowform hero power as part of its burst plan.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/545-mind-blast/",
+      "source_title": "Mind Blast - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
         {
           "claim_kind": "targeting_rule",
-          "cards": ["DS1_233", "VAC_419"],
+          "cards": ["DS1_233"],
           "stance": "prefer_enemy_hero",
           "runtime_block": "BeforePlayCardBonus",
-          "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
           "runtime_value": "12",
-          "evidence_text_short": "Direct burn such as Mind Blast and Acupuncture should prefer the enemy hero in the pressure plan.",
-          "source_confidence": "medium",
-          "source_refs": [
-            "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
-            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/"
-          ]
-        },
+          "condition": "*",
+          "evidence_text_short": "Mind Blast deals 5 damage to the enemy hero.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/1937-shadowbomber/",
+      "source_title": "Shadowbomber - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
         {
-          "claim_kind": "mechanic_usage",
-          "cards": ["GVG_009", "NX2_019", "VAC_419"],
-          "mechanic": "burn",
-          "stance": "face_pressure",
-          "evidence_text_short": "Shadowbomber, Mind Sear, and Acupuncture form the burn-pressure package.",
-          "source_confidence": "medium",
-          "source_refs": [
-            "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
-            "https://www.hearthpwn.com/decks/1394063-82-wr-aggro-shadow-priest-top-10-legend"
-          ]
+          "claim_kind": "card_role",
+          "cards": ["GVG_009"],
+          "stance": "battlecry_damage",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Shadowbomber deals 3 damage to each hero with its Battlecry.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/40465-patches-the-pirate/",
+      "source_title": "Patches the Pirate - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["CFM_637"],
+          "stance": "pirate_followup",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you play a Pirate, Patches the Pirate summons itself from your deck.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/55401-parachute-brigand/",
+      "source_title": "Parachute Brigand - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_056"],
+          "stance": "pirate_followup",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you play a Pirate, Parachute Brigand summons itself from your hand.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/56122-frenzied-felwing/",
+      "source_title": "Frenzied Felwing - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["YOD_032"],
+          "stance": "damage_discount",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Frenzied Felwing costs less for each damage dealt to your opponent this turn.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/59223-raise-dead/",
+      "source_title": "Raise Dead - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["SCH_514"],
+          "stance": "minion_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Raise Dead returns two friendly minions that died this game to your hand.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/64419-twilight-deceptor/",
+      "source_title": "Twilight Deceptor - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_444"],
+          "stance": "shadow_draw",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "If any hero took damage this turn, Twilight Deceptor draws a Shadow spell.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/64429-voidtouched-attendant/",
+      "source_title": "Voidtouched Attendant - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_446"],
+          "stance": "damage_amplifier",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Voidtouched Attendant makes both heroes take one extra damage from all sources.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/64443-darkbishop-benedictus/",
+      "source_title": "Darkbishop Benedictus - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "hero_power_transform",
+          "cards": ["SW_448"],
+          "stance": "shadowform_mind_spike",
+          "evidence_text_short": "Darkbishop Benedictus enters Shadowform at the start of the game if every spell in your deck is Shadow.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/82310-cathedral-of-atonement/",
+      "source_title": "Cathedral of Atonement - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["REV_290"],
+          "stance": "location_draw",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Cathedral of Atonement gives a minion +2/+1 and draws a card.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/86621-mind-sear/",
+      "source_title": "Mind Sear - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["NX2_019"],
+          "stance": "prefer_enemy_hero",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "12",
+          "condition": "*",
+          "evidence_text_short": "Mind Sear deals 2 damage to a minion and deals 3 damage to the enemy hero if it dies.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/102600-ships-chirurgeon/",
+      "source_title": "Ship's Chirurgeon - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["WON_065"],
+          "stance": "summon_buff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a minion, Ship's Chirurgeon gives it +1 Health.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/103492-papercraft-angel/",
+      "source_title": "Papercraft Angel - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_381"],
+          "stance": "hero_power_support",
+          "runtime_block": "BeforeUseHeroPowerBonus",
+          "evidence_text_short": "Papercraft Angel makes your Hero Power cost (0).",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/103548-treasure-distributor/",
+      "source_title": "Treasure Distributor - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_518"],
+          "stance": "pirate_buff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "After you summon a Pirate, Treasure Distributor gives it +1 Attack.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/105815-brain-masseuse/",
+      "source_title": "Brain Masseuse - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_512"],
+          "stance": "self_damage_trigger",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Whenever Brain Masseuse takes damage, it also deals that amount to your hero.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/106709-acupuncture/",
+      "source_title": "Acupuncture - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["VAC_419"],
+          "stance": "prefer_enemy_hero",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "12",
+          "condition": "*",
+          "evidence_text_short": "Acupuncture deals 4 damage to both heroes.",
+          "source_confidence": "high"
         }
       ]
     }

@@ -93,3 +93,41 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
     assert card_behavior["rows"] or mulligan["rules"]
     assert "allowed_step1_overlays" in globalvalues
     assert "blocked_until_runtime_evidence" in globalvalues
+
+
+def test_shadowpriest_fixture_reaches_source_backed_strong(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    out = tmp_path / "ShadowPriest"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    operator = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
+    readiness = json.loads(
+        (out / "reports" / "per_card_config_readiness_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert readiness["summary"]["generic_low_confidence"] == 0
+    assert readiness["summary"]["cards_needing_guide_claims"] == 0
+    assert readiness["summary"]["cards_needing_runtime_surface"] == 0
