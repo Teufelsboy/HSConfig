@@ -62,7 +62,11 @@ Representative fixture decks in `docs/operator/archetype-fixture-matrix.json` ar
 - `reports/global_values_authority_matrix.json`
 - `reports/per_card_config_readiness_report.json`
 - `reports/guide_source_depth_report.json`
+- `reports/source_claim_gap_report.json`
+- `reports/strong_promotion_report.json`
 - `reports/research/*`
+
+Use `source_claim_gap_report.json` and `strong_promotion_report.json` to see the first concrete source or lowering link that prevents a valid package from becoming `SOURCE_BACKED_STRONG`.
 
 ## Expert Paths
 

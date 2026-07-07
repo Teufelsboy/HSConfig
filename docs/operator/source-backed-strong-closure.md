@@ -2,6 +2,8 @@
 
 This file tracks which representative HSConfig deck fixtures are truly strong.
 
+For the promotion wave, check `reports/source_claim_gap_report.json` first for the first missing source or lowering link, then `reports/strong_promotion_report.json` for the promotion verdict.
+
 `core_source_backed_fixture` means the fixture must produce:
 
 - `technical_status=VALID_PACKAGE`

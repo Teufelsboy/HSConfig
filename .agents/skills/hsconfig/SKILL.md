@@ -23,7 +23,7 @@ Normal workflow:
 3. Write `source_documents.json` with card-specific claims.
 4. Run `hsconfig research-deck --source-documents-json ...` to create normalized guide sources and the research contract inputs.
 5. Run `hsconfig prepare --guide-sources-json ...` to compile the package and reports.
-6. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
+6. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
 7. Run `hsconfig apply ...` only when requested; runtime apply is allowed after validation only when `technical_status=VALID_PACKAGE`, the user requested runtime writes, and `next_action` / `apply_policy` do not ask for more source work before apply.
 8. Use `reports/operator_summary.json` as the single operator gate. Detail reports are evidence, not independent apply permissions.
 
