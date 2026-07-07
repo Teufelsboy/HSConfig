@@ -103,29 +103,29 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
         "hsconfig.cli.fetch_latest_cards",
         lambda timeout=10.0: [
             {
-                "id": "DISCOVER_CARD",
+                "id": "EX1_001",
                 "dbf_id": 1,
                 "name": "Discover Card",
                 "type": "MINION",
                 "text": "Discover a spell.",
-                "entourage": ["OPTION_ALPHA"],
+                "entourage": ["EX1_002"],
             },
             {
-                "id": "OPTION_ALPHA",
+                "id": "EX1_002",
                 "dbf_id": 2,
                 "name": "Option Alpha",
                 "type": "SPELL",
                 "text": "Deal damage.",
             },
             {
-                "id": "COMBO_A",
+                "id": "EX1_003",
                 "dbf_id": 3,
                 "name": "Combo A",
                 "type": "SPELL",
                 "text": "First combo card.",
             },
             {
-                "id": "COMBO_B",
+                "id": "EX1_004",
                 "dbf_id": 4,
                 "name": "Second combo card.",
                 "type": "SPELL",
@@ -139,13 +139,13 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
         {
             "cards": [
                 {
-                    "card_id": "DISCOVER_CARD",
+                    "card_id": "EX1_001",
                     "dbf_id": 1,
                     "count": 2,
                     "name": "Discover Card",
                 },
-                {"card_id": "COMBO_A", "dbf_id": 3, "count": 2, "name": "Combo A"},
-                {"card_id": "COMBO_B", "dbf_id": 4, "count": 2, "name": "Combo B"},
+                {"card_id": "EX1_003", "dbf_id": 3, "count": 2, "name": "Combo A"},
+                {"card_id": "EX1_004", "dbf_id": 4, "count": 2, "name": "Combo B"},
             ]
         },
     )
@@ -162,16 +162,16 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
                     "claims": [
                         {
                             "claim_kind": "discover_choice",
-                            "cards": ["DISCOVER_CARD"],
-                            "option_card_id": "OPTION_ALPHA",
+                            "cards": ["EX1_001"],
+                            "option_card_id": "EX1_002",
                             "stance": "pick_option_alpha",
                             "evidence_text_short": "Prefer Option Alpha from this discover pool.",
                             "source_confidence": "high",
                         },
                         {
                             "claim_kind": "combo_sequence",
-                            "cards": ["COMBO_A", "COMBO_B"],
-                            "sequence": ["COMBO_A", "COMBO_B"],
+                            "cards": ["EX1_003", "EX1_004"],
+                            "sequence": ["EX1_003", "EX1_004"],
                             "timing_kind": "same_turn",
                             "operator": ">>",
                             "values": ["8", "14"],
@@ -209,10 +209,10 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
     combo = read_json(deck_dir / "Combo.json")
     card_behavior = read_json(reports / "card_behavior_plan_report.json")
     suppression = read_json(reports / "card_behavior_suppression_report.json")
-    discover = read_json(deck_dir / "DISCOVER_CARD.json")
+    discover = read_json(deck_dir / "EX1_001.json")
 
     assert code == 0
-    assert combo["ComboList"]["values"][0]["combo"] == "COMBO_A>>COMBO_B"
+    assert combo["ComboList"]["values"][0]["combo"] == "EX1_003>>EX1_004"
     assert combo["ComboList"]["values"][0]["value"] == "8>>14"
     assert card_behavior["option_resolution"][0]["status"] == "resolved"
     assert suppression == []

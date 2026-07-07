@@ -99,3 +99,28 @@ Outcome:
 ## Concerns
 
 - None blocking.
+
+---
+
+## Review Fix: Runtime Surface Validation Narrowed Back
+
+Status: DONE
+
+- Restored the CardID runtime-surface guard in `src/hsconfig/visionai_registry.py` so supported per-card filenames once again require at least one digit.
+- Added regression coverage in `tests/test_validate_package.py` proving generic placeholder filenames such as `DISCOVER_CARD.json` and `CARD_A.json` are not supported surfaces.
+- Kept the Task 4 depth matrix intact by updating the synthetic resolved-option micro-fixture in `tests/test_depth_matrix_e2e.py` to use digit-bearing CardID-like IDs (`EX1_001`..`EX1_004`) instead of relying on placeholder uppercase identifiers.
+- Preserved the valid resolved-option path and did not broaden unresolved option identity handling.
+
+### Verification
+
+```powershell
+python -m pytest tests/test_validate_package.py -q
+python -m pytest tests/test_prepare_cli.py -q
+python -m pytest tests/test_depth_matrix_e2e.py tests/test_shadowpriest_depth_e2e.py tests/test_multideck_source_backed_e2e.py -q
+```
+
+Observed:
+
+- `17 passed` in `tests/test_validate_package.py`
+- `17 passed` in `tests/test_prepare_cli.py`
+- `10 passed` across the required depth/source-backed E2E suite

@@ -25,6 +25,8 @@ def test_supported_surface_rejects_non_json_and_invalid_cardid_names():
     assert not supported_surface("EX1_001.txt")
     assert not supported_surface("notes_EX1_001")
     assert not supported_surface("EX1-001.json")
+    assert not supported_surface("DISCOVER_CARD.json")
+    assert not supported_surface("CARD_A.json")
     assert not supported_surface("notes.json")
     assert not supported_surface("CardBehavior.json")
     assert not supported_surface(".json")
