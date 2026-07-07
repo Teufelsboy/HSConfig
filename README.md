@@ -10,13 +10,17 @@ HSConfig does not parse replays, evaluate winrate, inspect post-game evidence, o
 
 ## Commands
 
-Normalize researched guide inputs first. This is the normal pre-build path.
+Normalize researched guide inputs first. This is the normal pre-build path:
+research current guides with Codex, write `source_documents.json`, run
+`hsconfig research-deck --source-documents-json ...`, run
+`hsconfig prepare --guide-sources-json ...`, inspect `operator_summary.json`,
+and run `hsconfig apply ...` only when requested.
 It writes `deck_fingerprint.json`, `candidate_archetypes.json`,
 `guide_sources.json`, `guide_builder_receipt.json`, and identity reports without
 writing `CustomConfig` runtime files.
 
 ```powershell
-hsconfig research-deck --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\research" --json
+hsconfig research-deck --source-documents-json ".\source_documents.json" --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\research" --json
 ```
 
 Prepare a complete validated package from normalized guide input.
@@ -96,10 +100,12 @@ technical package validity from semantic source strength through
 `technical_status`, `semantic_status`, `next_action`, and `apply_policy`.
 Status meanings:
 
-- VALID_PACKAGE means the JSON package loads structurally.
-- SOURCE_BACKED_STRONG means HSConfig has enough current guide-backed coverage for strong initial config.
-- STATIC_SEMANTICS_USABLE means the package is safe but not guide-depth.
-- VALID_BUT_NOT_GUIDE_STRONG means Codex should improve source documents before calling the package optimized.
+HSConfig has two useful success levels.
+
+VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.
+SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverage and can be treated as a strong initial config.
+
+STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, not optimized-config claims.
 
 The readiness and depth reports are quality checks for guide-backed config
 generation, not postgame proof. A valid package may still contain

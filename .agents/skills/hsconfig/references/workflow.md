@@ -1,14 +1,24 @@
 # Workflow
 
 Normal flow: deck input -> guide research -> researched source documents for
-every deck card -> `hsconfig research-deck` -> normalized guide sources ->
+every deck card in `source_documents.json` ->
+`hsconfig research-deck --source-documents-json ...` ->
+normalized guide sources ->
 `hsconfig prepare --guide-sources-json ...` ->
 HearthSim deckstring decode -> exact identity -> card metadata ->
 guide/static research contract -> guide-backed gameplan -> plan reports ->
 operator summary -> readiness/depth reports -> compilers -> validation ->
 optional runtime apply.
 
-Use `hsconfig research-deck` to normalize source documents before compilation.
+HSConfig has two useful success levels.
+
+VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.
+SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverage and can be treated as a strong initial config.
+
+STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, not optimized-config claims.
+
+Use `hsconfig research-deck --source-documents-json ...` to normalize source
+documents before compilation.
 It writes `deck_fingerprint.json`, `candidate_archetypes.json`,
 `guide_sources.json`, `guide_builder_receipt.json`, and identity reports, but no
 runtime package.
@@ -19,4 +29,4 @@ Use `hsconfig research-contract` only when the research bundle should be inspect
 
 Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. It still writes `reports/research/*`. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
-Use `hsconfig validate` before handoff or apply. Use `operator_summary.json` for next action and semantic depth. Use `hsconfig apply` when the user explicitly asks or has requested autonomous runtime apply; apply copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
+Use `hsconfig validate` before handoff or apply. Use `operator_summary.json` for next action and semantic depth. Use `hsconfig apply` only when requested by the user or task; apply copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.

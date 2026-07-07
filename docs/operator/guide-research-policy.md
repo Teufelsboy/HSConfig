@@ -29,10 +29,14 @@ Pass researched source documents with `--source-documents-json`, or pass normali
     "source_title": "Deck Guide",
     "source_family": "guide",
     "retrieved_at": "2026-07-06T12:00:00Z",
+    "deck_name": "Example Deck",
+    "archetype": "aggro_burn",
     "claims": [
       {
         "claim_kind": "mulligan_keep",
         "cards": ["CARD_ID"],
+        "selector": "CARD_ID",
+        "selector_kind": "card",
         "stance": "keep",
         "evidence_text_short": "Keep this card because it enables the deck plan.",
         "source_confidence": "high"
@@ -41,6 +45,26 @@ Pass researched source documents with `--source-documents-json`, or pass normali
   }
 ]
 ```
+
+Accepted source document fields:
+
+- `source_url`: stable URL or local source identifier.
+- `source_title`: human-readable title for operator reports.
+- `source_family`: source type such as `guide`, `mulligan_guide`, `card_text`, or `metadata`.
+- `retrieved_at`: ISO timestamp used for claim freshness checks.
+- `deck_name`: optional deck label used for candidate archetype matching.
+- `archetype`: optional source-stated archetype or posture.
+- `claims`: list of atomic claims.
+
+Accepted atomic claim fields:
+
+- `claim_kind`: one of the supported atomic claim kinds below.
+- `cards`: concrete CardIDs affected by the claim.
+- `scope`, `stance`, `selector`, `selector_kind`, `condition`, and `reason`: optional claim context.
+- `evidence_text_short`: short source quote or paraphrase for reports.
+- `source_confidence`: `high`, `medium`, or `low`.
+- `runtime_block`, `runtime_value`: optional CardID behavior lowering hints.
+- `sequence`, `timing_kind`, `operator`, and `values`: optional Combo timing fields.
 
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
@@ -55,12 +79,49 @@ or card text clearly maps to a documented VisionAI block. Examples:
 Do not request undocumented blocks. Unsupported blocks are suppressed into
 reports and do not become runtime JSON.
 
+Supported `claim_kind` values are `archetype`, `mulligan_keep`,
+`mulligan_discard`, `card_role`, `targeting_rule`, `combo_sequence`,
+`gameplan_posture`, `hero_power_transform`, `mechanic_usage`,
+`known_bad_pattern`, `tech_slot`, and `replacement_option`.
+
+Claim freshness and conflicts:
+
+- Treat `retrieved_at` as the claim freshness anchor. Prefer current guide claims over older guide claims when both map to the same card and behavior.
+- Do not use stale claims that contradict current card text or HearthstoneJSON metadata.
+- Opposing atomic claims, such as keep versus discard for the same selector, must be reported in `claim_conflict_report.json`.
+- Conflict reports block strong readiness until the operator resolves the source documents.
+
+Mulligan selector support:
+
+- Use concrete CardIDs for direct keeps or discards.
+- Use `DROPn` selectors for documented curve or cost-based keeps.
+- Use plus-combo selectors when the source says a keep depends on a partner card.
+- Use wildcard selectors only when the source applies broadly to a known hand class.
+- Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
+
+Combo timing support:
+
+- `combo_sequence` claims must include explicit `sequence`, `timing_kind`, `operator`, and `values` before runtime `Combo.json` emission.
+- Claims without explicit order or timing stay in reports and do not become runtime rows.
+
+GlobalValues key authority:
+
+- `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
+- `global_values_key_profile_report.json` records every key with `authority_category` and `board_value_component`.
+- `copy_baseline` keys are copied and profiled, not tuned.
+- `step1_posture_overlay_allowed` keys may change only when source posture supports them.
+- `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
+
 ## Per-Card Depth Rule
 
 Before normal `hsconfig prepare`, Codex should try to give every deck card at
 least one structured expectation. The preferred order is card-specific guide
 claim, current card text/static semantics, archetype-inferred role, then
 `generic_low_confidence` as the last visible fallback.
+
+The every-card coverage rule is: every card must land in a visible lane, and
+only guide-backed or source-backed static semantics can support strong guide
+depth.
 
 For each card, prefer claims that answer at least one of these questions:
 
@@ -69,8 +130,6 @@ For each card, prefer claims that answer at least one of these questions:
 - combo sequence or synergy partner
 - board-value posture or GlobalValues effect
 - known bad pattern
-
-Supported `claim_kind` values are `mulligan_keep`, `mulligan_discard`, `card_role`, `targeting_rule`, `combo_sequence`, `gameplan_posture`, `hero_power_transform`, and `mechanic_usage`.
 
 ## Reports
 

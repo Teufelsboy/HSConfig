@@ -44,20 +44,127 @@ def test_operator_status_definitions_are_documented():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
     required_lines = {
-        "VALID_PACKAGE means the JSON package loads structurally.",
+        "HSConfig has two useful success levels.",
+        "VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.",
         (
-            "SOURCE_BACKED_STRONG means HSConfig has enough current guide-backed "
-            "coverage for strong initial config."
+            "SOURCE_BACKED_STRONG means the package has current guide-backed "
+            "per-card coverage and can be treated as a strong initial config."
         ),
-        "STATIC_SEMANTICS_USABLE means the package is safe but not guide-depth.",
         (
-            "VALID_BUT_NOT_GUIDE_STRONG means Codex should improve source "
-            "documents before calling the package optimized."
+            "STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe "
+            "handoff states, not optimized-config claims."
         ),
     }
     for text in (readme, skill):
         for line in required_lines:
             assert line in text
+
+
+def test_active_docs_use_source_backed_readiness_language():
+    expected = (
+        "HSConfig has two useful success levels.\n\n"
+        "VALID_PACKAGE means the runtime JSON package is structurally valid and load-safe.\n"
+        "SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverage "
+        "and can be treated as a strong initial config.\n\n"
+        "STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, "
+        "not optimized-config claims."
+    )
+    active_files = [
+        REPO_ROOT / "README.md",
+        SKILL_ROOT / "SKILL.md",
+        SKILL_ROOT / "references" / "workflow.md",
+    ]
+
+    for path in active_files:
+        assert expected in path.read_text(encoding="utf-8")
+
+
+def test_skill_docs_do_not_call_static_semantics_optimized():
+    active_files = [
+        REPO_ROOT / "README.md",
+        SKILL_ROOT / "SKILL.md",
+        SKILL_ROOT / "references" / "workflow.md",
+    ]
+    forbidden = [
+        "static semantics are optimized",
+        "valid package means optimized",
+        "no guide research needed",
+    ]
+
+    for path in active_files:
+        text = path.read_text(encoding="utf-8").lower()
+        for phrase in forbidden:
+            assert phrase not in text
+
+
+def test_active_docs_show_normal_source_document_operator_path():
+    active_files = [
+        REPO_ROOT / "README.md",
+        SKILL_ROOT / "SKILL.md",
+        SKILL_ROOT / "references" / "workflow.md",
+    ]
+    required_terms = {
+        "source_documents.json",
+        "hsconfig research-deck --source-documents-json",
+        "hsconfig prepare --guide-sources-json",
+        "operator_summary.json",
+        "hsconfig apply",
+        "only when requested",
+    }
+
+    for path in active_files:
+        text = path.read_text(encoding="utf-8")
+        for term in required_terms:
+            assert term in text
+
+
+def test_guide_policy_documents_source_depth_contract():
+    skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    operator_policy = Path("docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    required_terms = {
+        "source_url",
+        "source_title",
+        "source_family",
+        "retrieved_at",
+        "deck_name",
+        "archetype",
+        "claim_kind",
+        "evidence_text_short",
+        "source_confidence",
+        "archetype",
+        "mulligan_keep",
+        "mulligan_discard",
+        "card_role",
+        "targeting_rule",
+        "combo_sequence",
+        "gameplan_posture",
+        "hero_power_transform",
+        "mechanic_usage",
+        "known_bad_pattern",
+        "tech_slot",
+        "replacement_option",
+        "claim freshness",
+        "claim_conflict_report.json",
+        "every-card coverage",
+        "DROPn",
+        "plus-combo",
+        "wildcard",
+        "explicit discard",
+        "runtime_block",
+        "BeforePlayCardBonus",
+        "OnDiscoverCardBonus",
+        "timing_kind",
+        "global_values_key_profile_report.json",
+        "authority_category",
+    }
+
+    for text in (skill_policy, operator_policy):
+        for term in required_terms:
+            assert term in text
 
 
 def test_skill_documents_guide_depth_closure_reports():

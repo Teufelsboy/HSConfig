@@ -25,11 +25,19 @@ Prefer the most specific documented block:
 Guide claims may request a specific `runtime_block` only when the block is part
 of the documented CardID behavior registry. Unsupported blocks stay in reports.
 
+CardID behavior block support is source-backed and block-specific:
+
+- `targeting_rule` claims may lower to target, play, attack, overkill, Discover, Choose One, or Hero Power blocks when the source names a matching behavior.
+- `mechanic_usage` and `card_role` claims may create runtime rows only when static card text or guide text gives a clear behavior.
+- `known_bad_pattern` claims stay report-only unless they map to a documented negative value row.
+- `tech_slot` and `replacement_option` claims are operator context and do not become CardID runtime rows by default.
+
 `meaningful_runtime_surface=true` means the row expresses specific guide-backed
 runtime behavior. Generic generated CardID fallback files stay visible, but they
 do not prove deep card-specific lowering.
 
-If a claim cannot be lowered safely, keep it in reports instead of inventing
-unsupported runtime syntax.
+If a claim cannot be lowered safely, keep it in
+`card_behavior_suppression_report.json` instead of inventing unsupported runtime
+syntax.
 
 Do not emit `Presume.json` or `Concede.json` in the normal HSConfig path.
