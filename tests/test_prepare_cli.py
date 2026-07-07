@@ -1298,3 +1298,42 @@ def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys,
     assert source_gap["summary"]["blocked_cards"] == 0
     assert promotion["promotion_ready"] is True
     assert promotion["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
+
+
+def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    package = tmp_path / "package"
+    reports = package / "reports"
+    reports.mkdir(parents=True)
+    stale_report = reports / "stale_report.json"
+    stale_report.write_text('{"stale": true}', encoding="utf-8")
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    generated = {path.replace("\\", "/") for path in operator_summary["generated_files"]}
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert not stale_report.exists()
+    assert "reports/stale_report.json" not in generated

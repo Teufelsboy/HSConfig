@@ -420,8 +420,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     baseline_receipt = load_globalvalues_baseline(args.runtime_root)
     baseline = baseline_receipt["baseline"]
     globalvalues = compile_globalvalues(baseline, gameplan_contract)
-    if deck_dir.exists():
-        shutil.rmtree(deck_dir)
+    _reset_generated_package_dirs(deck_dir, reports_dir)
     write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
     write_json(deck_dir / "Mulligan.json", compile_mulligan(gameplan_contract))
     for filename, payload in cardid_behavior_files.items():
@@ -741,6 +740,12 @@ def _generated_package_files(out: Path, deck_dir: Path, reports_dir: Path) -> li
         reports_dir / "operator_summary.json",
     ]
     return sorted({str(path.relative_to(out)) for path in files})
+
+
+def _reset_generated_package_dirs(deck_dir: Path, reports_dir: Path) -> None:
+    for target in (deck_dir, reports_dir):
+        if target.exists():
+            shutil.rmtree(target)
 
 
 def _research_contract(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
