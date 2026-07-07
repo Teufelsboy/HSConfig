@@ -18,6 +18,19 @@ EXPECTED_DECKS = {
 }
 CORE_FIXTURES = {"BigShaman", "MechPala", "PirateRogue", "ShadowPriest"}
 SOURCE_INFORMED_VALID_FIXTURES = EXPECTED_DECKS - CORE_FIXTURES
+EXPECTED_STRONGNESS_GAPS = {
+    "ShadowPriest": "none",
+    "CtAPaladin": "needs_recruit_aura_runtime_surface_closure",
+    "PirateRogue": "none",
+    "BigShaman": "none",
+    "Discolock": "needs_discard_hand_mutation_runtime_surface_closure",
+    "TreantDruid": "needs_token_board_buff_runtime_surface_closure",
+    "ImbueMage": "needs_hero_power_spell_generation_runtime_surface_closure",
+    "MechPala": "none",
+    "Kingslayer": "needs_weapon_sequence_runtime_surface_closure",
+    "Boarlock": "needs_exact_combo_sequence_closure",
+    "PirateDH": "needs_hero_attack_runtime_surface_closure",
+}
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {
         "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
@@ -155,3 +168,15 @@ def test_each_fixture_row_documents_decision_family_and_limits():
         assert families >= expected_families[deck_name]
         assert deck.get("known_coverage_limits"), deck_name
         assert all(isinstance(item, str) and item for item in deck["known_coverage_limits"])
+
+
+def test_each_fixture_row_documents_strongness_visibility():
+    for row in _matrix()["decks"]:
+        deck_name = row["deck_name"]
+        visibility = row["strongness_visibility"]
+        assert visibility["current_stage"] == row["fixture_stage"]
+        assert visibility["first_strongness_gap"] == EXPECTED_STRONGNESS_GAPS[deck_name]
+        if row["fixture_stage"] == "core_source_backed_fixture":
+            assert visibility["operator_action"] == "keep_as_core_control_fixture"
+        else:
+            assert visibility["operator_action"] == "close_existing_source_informed_fixture"

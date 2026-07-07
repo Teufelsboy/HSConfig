@@ -39,3 +39,9 @@ Lower-level reports explain the gate. They do not grant independent apply permis
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
 
 Use `--allow-source-informed` only when intentionally applying a technically valid package before it reaches `SOURCE_BACKED_STRONG`.
+
+## Fixture Matrix
+
+`docs/operator/archetype-fixture-matrix.json` is the representative 11-deck HSConfig proof set.
+
+Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family. Improve the seven `source_informed_valid_fixture` rows before widening the matrix.

@@ -11,6 +11,11 @@
       "primary_mechanics": ["aggro", "burn", "shadow_hero_power"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
       "decision_families_proven": ["aggro_burn_targeting", "hero_power_transform"],
       "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_discover_chains"]
     },
@@ -23,6 +28,11 @@
       "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_recruit_aura_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["recruit_board_flood", "aura_pressure"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
     },
@@ -35,6 +45,11 @@
       "primary_mechanics": ["pirate", "tempo", "weapon_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
       "decision_families_proven": ["pirate_tempo", "weapon_pressure"],
       "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_exact_combo"]
     },
@@ -47,6 +62,11 @@
       "primary_mechanics": ["big_minion", "recruit", "deathrattle", "cheat"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
       "decision_families_proven": ["big_minion_cheat", "recruit", "deathrattle"],
       "known_coverage_limits": ["does_not_cover_discover_chains", "does_not_cover_reactive_control"]
     },
@@ -59,6 +79,11 @@
       "primary_mechanics": ["discard", "hand_mutation", "payoff_summon"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_discard_hand_mutation_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["discard_payoff", "hand_mutation"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_exact_combo"]
     },
@@ -71,6 +96,11 @@
       "primary_mechanics": ["token_board", "treant", "board_buff"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_token_board_buff_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["token_board", "board_buff"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_single_target_removal"]
     },
@@ -83,6 +113,11 @@
       "primary_mechanics": ["hero_power", "imbue", "spell_generation"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_hero_power_spell_generation_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["hero_power", "spell_generation"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_discover_chains"]
     },
@@ -95,6 +130,11 @@
       "primary_mechanics": ["mech", "magnetic", "board_scaling"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "strongness_visibility": {
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
+      },
       "decision_families_proven": ["mech_board_scaling", "magnetic"],
       "known_coverage_limits": ["does_not_cover_reactive_control", "does_not_cover_exact_combo"]
     },
@@ -107,6 +147,11 @@
       "primary_mechanics": ["weapon", "pirate", "attack_sequence"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_weapon_sequence_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["weapon_sequence", "attack_pressure"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
     },
@@ -119,6 +164,11 @@
       "primary_mechanics": ["combo", "control", "resource_setup"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json", "Combo.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_exact_combo_sequence_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["combo_control", "resource_setup"],
       "known_coverage_limits": ["still_source_informed_not_strong", "single_combo_fixture_only"]
     },
@@ -131,6 +181,11 @@
       "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "strongness_visibility": {
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_hero_attack_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
       "decision_families_proven": ["pirate_tempo", "hero_attack"],
       "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
     }
