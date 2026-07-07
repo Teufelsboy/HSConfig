@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.card_metadata import hydrate_card_metadata
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.compile_cardid import compile_cardid_behaviors
@@ -135,6 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     apply = subparsers.add_parser("apply")
     apply.add_argument("--package", required=True)
     apply.add_argument("--runtime-root", required=True)
+    apply.add_argument("--allow-source-informed", action="store_true")
     apply.add_argument("--json", action="store_true")
     return parser
 
@@ -662,8 +664,20 @@ def _apply(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if report["status"] != "passed":
         return {"status": "failed", "errors": report["errors"], "validation_report": report}, 1
 
+    apply_gate = evaluate_apply_gate(
+        package,
+        allow_source_informed=bool(getattr(args, "allow_source_informed", False)),
+    )
+    if apply_gate["status"] != "allowed":
+        return {
+            "status": "blocked",
+            "errors": ["Operator summary does not allow runtime apply."],
+            "validation_report": report,
+            "apply_gate": apply_gate,
+        }, 1
+
     receipt = apply_package(package_root=package, runtime_root=args.runtime_root)
-    return {"status": "applied", "receipt": receipt}, 0
+    return {"status": "applied", "apply_gate": apply_gate, "receipt": receipt}, 0
 
 
 def _load_cards(

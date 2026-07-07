@@ -7,6 +7,54 @@ from hsconfig.io import write_json
 from hsconfig.runtime_apply import apply_package
 
 
+def _complete_package(
+    tmp_path: Path, *, semantic_status: str, next_action: str, apply_policy: str
+):
+    package = tmp_path / "package"
+    deck = package / "CustomConfig" / "deck"
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(deck / "GlobalValues.json", globalvalues)
+    write_json(
+        deck / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    write_json(
+        deck / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        package / "reports" / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+        },
+    )
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": semantic_status,
+            "next_action": next_action,
+            "apply_policy": apply_policy,
+            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 1}]
+            if semantic_status != "SOURCE_BACKED_STRONG"
+            else [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+    return package
+
+
 def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
     package = tmp_path / "package"
     package_deck = package / "CustomConfig" / "deck"
@@ -86,6 +134,115 @@ def test_apply_cli_rejects_incomplete_package_without_deleting_runtime(tmp_path:
     assert (runtime_deck / "Mulligan.json").exists()
 
 
+def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
+    tmp_path: Path, capsys
+):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+        apply_policy="ALLOWED_WITH_WARNINGS",
+    )
+    runtime = tmp_path / "runtime"
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert payload["status"] == "blocked"
+    assert payload["apply_gate"]["status"] == "blocked"
+    assert payload["apply_gate"]["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_cli_allows_valid_but_not_guide_strong_only_with_explicit_escape_hatch(
+    tmp_path: Path, capsys
+):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+        apply_policy="ALLOWED_WITH_WARNINGS",
+    )
+    runtime = tmp_path / "runtime"
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--allow-source-informed",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["status"] == "applied"
+    assert payload["apply_gate"]["mode"] == "source_informed_with_warnings"
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+
+
+def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
+    from hsconfig.cli import main
+
+    package = tmp_path / "package"
+    deck = package / "CustomConfig" / "deck"
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(deck / "GlobalValues.json", globalvalues)
+    write_json(
+        deck / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    write_json(
+        deck / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        package / "reports" / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+        },
+    )
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert payload["status"] == "blocked"
+    assert payload["apply_gate"]["reasons"][0]["reason"] == "missing_operator_summary"
+
+
 def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys):
     from hsconfig.cli import main
 
@@ -109,6 +266,22 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
     )
     capsys.readouterr()
     assert build_code == 0
+
+    generated_files = [
+        str(path.relative_to(package)).replace("/", "\\")
+        for path in sorted((package / "CustomConfig" / "apply_deck").glob("*.json"))
+    ]
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": generated_files,
+        },
+    )
 
     code = main(
         [
