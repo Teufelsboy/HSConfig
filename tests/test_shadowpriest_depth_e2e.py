@@ -10,6 +10,33 @@ SHADOWPRIEST_CODE = (
 )
 
 
+def test_shadowpriest_source_documents_reach_source_backed_strong(tmp_path: Path):
+    out = tmp_path / "shadowpriest"
+    source_docs = Path("tests/fixtures/source_documents_shadowpriest_depth.json")
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            str(source_docs),
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    summary = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+
+
 def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_path: Path, capsys):
     cards_json = tmp_path / "shadow_cards.json"
     cards_json.write_text(

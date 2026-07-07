@@ -1,0 +1,151 @@
+[
+  {
+    "source_url": "https://example.invalid/shadowpriest-guide",
+    "source_title": "ShadowPriest Fixture Guide",
+    "source_family": "guide_fixture",
+    "retrieved_at": "2026-07-07T00:00:00Z",
+    "deck_name": "ShadowPriest",
+    "archetype": "aggro_burn",
+    "claims": [
+      {
+        "claim_kind": "gameplan_posture",
+        "scope": "deck",
+        "cards": [],
+        "stance": "aggro_burn",
+        "evidence_text_short": "ShadowPriest fixture plays proactive burn pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["DS1_233"],
+        "stance": "burn_reach",
+        "evidence_text_short": "Mind Blast is burn reach for the face-pressure plan.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["GVG_009"],
+        "stance": "early_burn_pressure",
+        "evidence_text_short": "Shadowbomber adds early burn pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["CFM_637"],
+        "stance": "pirate_pressure",
+        "evidence_text_short": "Patches supports early Pirate pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["DRG_056"],
+        "stance": "pirate_pressure",
+        "evidence_text_short": "Parachute Brigand builds early Pirate pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["YOD_032"],
+        "stance": "damage_payoff_pressure",
+        "evidence_text_short": "Frenzied Felwing converts early damage into pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["SCH_514"],
+        "stance": "pressure_refill",
+        "evidence_text_short": "Raise Dead refills pressure minions.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["SW_444"],
+        "stance": "tempo_draw",
+        "evidence_text_short": "Twilight Deceptor supports damage turns with draw.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["SW_446"],
+        "stance": "damage_amplifier",
+        "evidence_text_short": "Voidtouched Attendant amplifies burn pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["SW_448"],
+        "stance": "hero_power_enabler",
+        "evidence_text_short": "Darkbishop Benedictus enables Shadowform pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["REV_290"],
+        "stance": "tempo_draw",
+        "evidence_text_short": "Cathedral of Atonement turns board presence into tempo draw.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["NX2_019"],
+        "stance": "burn_reach",
+        "evidence_text_short": "Mind Sear converts minion pressure into extra face damage.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["WON_065"],
+        "stance": "board_refill_pressure",
+        "evidence_text_short": "Ship's Chirurgeon supports early pressure and board refill.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["TOY_381"],
+        "stance": "hero_power_pressure",
+        "evidence_text_short": "Papercraft Angel supports repeated Hero Power pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["TOY_518"],
+        "stance": "early_board_pressure",
+        "evidence_text_short": "Treasure Distributor starts early board pressure.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["VAC_512"],
+        "stance": "self_damage_pressure",
+        "evidence_text_short": "Brain Masseuse adds pressure while enabling damage turns.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "card_role",
+        "cards": ["VAC_419"],
+        "stance": "burn_reach",
+        "evidence_text_short": "Acupuncture is direct burn reach.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "mulligan_keep",
+        "cards": ["SW_446"],
+        "selector": "SW_446",
+        "selector_kind": "card",
+        "stance": "keep",
+        "evidence_text_short": "Fixture guide keeps the pressure opener.",
+        "source_confidence": "high"
+      },
+      {
+        "claim_kind": "targeting_rule",
+        "cards": ["DS1_233"],
+        "stance": "prefer_enemy_hero",
+        "runtime_block": "BeforePlayCardBonus",
+        "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
+        "runtime_value": "12",
+        "evidence_text_short": "Fixture guide points direct damage face.",
+        "source_confidence": "high"
+      }
+    ]
+  }
+]
