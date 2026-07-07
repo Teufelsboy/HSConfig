@@ -85,7 +85,7 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
         warnings.append({"reason": "unsupported_claim_kind", "claim_kind": claim_kind})
     if not cards and claim_kind not in {"archetype", "gameplan_posture"}:
         warnings.append({"reason": "claim_missing_cards", "claim_kind": claim_kind})
-    if not str(claim.get("evidence_text_short", "")).strip():
+    if not _claim_evidence_text(claim):
         warnings.append({"reason": "claim_missing_evidence_text_short", "claim_kind": claim_kind})
     runtime_block = claim.get("runtime_block")
     if runtime_block is not None and str(runtime_block) not in CARD_BEHAVIOR_BLOCKS:
@@ -117,3 +117,7 @@ def _cards(claim: dict[str, Any]) -> list[str]:
     if not isinstance(cards, list):
         return []
     return [str(card) for card in cards if str(card)]
+
+
+def _claim_evidence_text(claim: dict[str, Any]) -> str:
+    return str(claim.get("evidence_text_short", claim.get("claim", claim.get("reason", "")))).strip()

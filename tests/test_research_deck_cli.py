@@ -97,12 +97,16 @@ def test_research_deck_accepts_source_documents_json(tmp_path: Path, capsys):
 
     payload = json.loads(capsys.readouterr().out)
     guide_sources = json.loads((out / "guide_sources.json").read_text(encoding="utf-8"))
+    source_report = json.loads(
+        (out / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["source_depth_status"] == "source_backed"
     assert guide_sources["sources"][0]["claims"][0]["claim_id"].startswith("claim_")
     assert len(guide_sources["sources"][0]["claims"]) == 2
-    assert (out / "source_evidence_verification_report.json").exists()
+    assert source_report["status"] == "passed"
+    assert source_report["warnings"] == []
 
 
 def test_research_deck_rejects_malformed_source_documents_json(tmp_path: Path, capsys):

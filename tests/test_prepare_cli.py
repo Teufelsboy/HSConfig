@@ -330,6 +330,9 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     guide_sources = json.loads((reports / "guide_sources.json").read_text(encoding="utf-8"))
     receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    source_report = json.loads(
+        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -340,7 +343,8 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
-    assert (reports / "source_evidence_verification_report.json").exists()
+    assert source_report["status"] == "passed"
+    assert source_report["warnings"] == []
 
 
 def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(

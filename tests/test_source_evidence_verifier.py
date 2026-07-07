@@ -40,6 +40,32 @@ def test_verifier_accepts_specific_public_source_document():
     assert report["warnings"] == []
 
 
+def test_verifier_accepts_reason_only_source_document():
+    report = verify_source_documents(
+        [
+            {
+                "source_url": "https://example.com/shadowpriest-guide",
+                "source_title": "ShadowPriest Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T10:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "card_role",
+                        "cards": ["SW_446"],
+                        "reason": "Voidtouched Attendant increases hero damage pressure.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ]
+    )
+
+    assert report["status"] == "passed"
+    assert report["summary"]["claim_count"] == 1
+    assert report["warnings"] == []
+    assert report["claims"][0]["status"] == "passed"
+
+
 def test_verifier_flags_weak_runtime_lowering_claim():
     document = {
         "source_url": "https://example.com/weak-guide",

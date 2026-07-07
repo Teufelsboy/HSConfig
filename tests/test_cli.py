@@ -258,6 +258,78 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert combo_suppressions[0]["reason"] == "missing_timing"
 
 
+def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/deck-guide",
+                        "source_title": "Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "card_role",
+                                "cards": ["EX1_001"],
+                                "reason": "Pressure One supports the early board plan.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Guide Cards",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = out / "reports"
+    source_report = json.loads(
+        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert source_report["status"] == "passed"
+    assert source_report["summary"]["claim_count"] == 1
+    assert source_report["warnings"] == []
+
+
 def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
