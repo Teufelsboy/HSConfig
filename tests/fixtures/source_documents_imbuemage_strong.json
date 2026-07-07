@@ -46,15 +46,14 @@
         },
         {
           "claim_kind": "mulligan_keep",
-          "cards": ["BAR_546"],
-          "selector": "BAR_546",
+          "cards": ["EDR_852"],
+          "selector": "EDR_852",
           "selector_kind": "card",
           "stance": "keep",
-          "evidence_text_short": "Keep Wildfire as an early Hero Power scaling engine card.",
+          "evidence_text_short": "Keep Bitterbloom Knight as a key Imbue enabler named by the guide's mulligan strategy.",
           "source_confidence": "medium",
           "source_refs": [
-            "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
-            "https://www.hsguru.com/deck/28773511"
+            "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage"
           ]
         },
         {

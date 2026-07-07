@@ -38,11 +38,10 @@
           "selector": "DEEP_014",
           "selector_kind": "card",
           "stance": "keep",
-          "evidence_text_short": "Keep Quick Pick as the early weapon and attack engine.",
-          "source_confidence": "medium",
+          "evidence_text_short": "Report-only gap: the linked Kingsbane mulligan text supports Kingsbane, Kingsbane tutors, and Silverleaf Poison, not Quick Pick.",
+          "source_confidence": "low",
           "source_refs": [
-            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
-            "https://www.hsguru.com/deck/10391393"
+            "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/"
           ]
         },
         {

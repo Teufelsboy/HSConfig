@@ -7,6 +7,7 @@ import pytest
 
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
@@ -50,6 +51,25 @@ def _core_matrix_rows() -> list[dict]:
     ]
     assert {row["deck_name"] for row in rows} == set(FIXTURES)
     return rows
+
+
+def _source_bundle_for_fixture(deck_name: str) -> dict:
+    row = next(row for row in _core_matrix_rows() if row["deck_name"] == deck_name)
+    decoded_deck = decode_deck_code(row["deck_code"])
+    deck_identity = build_deck_identity(
+        deck_name=row["deck_name"],
+        deck_code=row["deck_code"],
+        cards=decoded_deck["cards"],
+        hero_dbf_id=decoded_deck["hero_dbf_id"],
+        format=decoded_deck["format"],
+        sideboards=decoded_deck["sideboards"],
+    )
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": decoded_deck["cards"]},
+        source_documents=_documents(FIXTURES[row["deck_name"]]),
+        current_date="2026-07-07",
+    )
 
 
 def _is_url_like_source_ref(value: object) -> bool:
@@ -164,22 +184,7 @@ def test_core_source_fixtures_use_supported_atomic_claims():
 
 def test_core_source_fixtures_build_bundles_against_real_deck_identities():
     for row in _core_matrix_rows():
-        decoded_deck = decode_deck_code(row["deck_code"])
-        deck_identity = build_deck_identity(
-            deck_name=row["deck_name"],
-            deck_code=row["deck_code"],
-            cards=decoded_deck["cards"],
-            hero_dbf_id=decoded_deck["hero_dbf_id"],
-            format=decoded_deck["format"],
-            sideboards=decoded_deck["sideboards"],
-        )
-
-        bundle = build_source_document_bundle(
-            deck_identity=deck_identity,
-            card_metadata={"cards": decoded_deck["cards"]},
-            source_documents=_documents(FIXTURES[row["deck_name"]]),
-            current_date="2026-07-07",
-        )
+        bundle = _source_bundle_for_fixture(row["deck_name"])
 
         assert bundle["claims"], row["deck_name"]
         assert bundle["unsupported_claims"] == [], row["deck_name"]
@@ -249,6 +254,37 @@ def test_kingslayer_fixture_covers_weapon_sequence_pressure():
     )
 
 
+def test_kingslayer_unsupported_quick_pick_mulligan_claim_does_not_lower():
+    bundle = _source_bundle_for_fixture("Kingslayer")
+    quick_pick_claims = [
+        claim
+        for claim in bundle["claims"]
+        if claim["claim_kind"] == "mulligan_keep" and claim["cards"] == ["DEEP_014"]
+    ]
+    assert quick_pick_claims
+    assert {claim["claim_readiness"] for claim in quick_pick_claims} == {
+        "explicit_low_confidence"
+    }
+    assert {claim["trust_ceiling"] for claim in quick_pick_claims} == {"report_only"}
+
+    plan = build_mulligan_plan(
+        deck_name="Kingslayer",
+        claims=bundle["claims"],
+        card_roles={},
+    )
+
+    assert not any(
+        rule.get("card") == "DEEP_014" and rule.get("action") == "hold"
+        for rule in plan["rules"]
+    )
+    assert any(
+        rule.get("card") == "DEEP_014"
+        and rule.get("action") == "hold"
+        and rule.get("reason") == "claim_not_runtime_lowerable"
+        for rule in plan["suppressed_rules"]
+    )
+
+
 def test_imbuemage_fixture_covers_hero_power_and_generation():
     claims = [
         claim
@@ -259,3 +295,22 @@ def test_imbuemage_fixture_covers_hero_power_and_generation():
     kinds = {claim["claim_kind"] for claim in claims}
     assert any(marker in text for marker in ("imbue", "hero power", "spell", "generate", "discover"))
     assert {"hero_power_transform", "mechanic_usage", "discover_choice"} & kinds
+
+
+def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
+    source_named_imbue_enablers = {"EDR_800", "EDR_852", "EDR_871"}
+    bundle = _source_bundle_for_fixture("ImbueMage")
+    plan = build_mulligan_plan(
+        deck_name="ImbueMage",
+        claims=bundle["claims"],
+        card_roles={},
+    )
+    source_claim_holds = {
+        rule.get("card")
+        for rule in plan["rules"]
+        if rule.get("action") == "hold" and rule.get("source_type") == "source_claim"
+    }
+
+    assert source_claim_holds
+    assert source_claim_holds <= source_named_imbue_enablers
+    assert "BAR_546" not in source_claim_holds
