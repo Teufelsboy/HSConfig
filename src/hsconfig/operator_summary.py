@@ -4,6 +4,8 @@ from collections import Counter
 import hashlib
 from typing import Any
 
+from hsconfig.operator_guidance import build_operator_guidance
+
 
 VALID_STATUSES = {"passed", "pass", "valid", "ok", "success"}
 SOURCE_BACKED_STRONG_REQUIREMENTS = [
@@ -93,7 +95,7 @@ def build_operator_summary(
         semantic_status=semantic_status,
         primary_blockers=primary_blockers,
     )
-    return {
+    summary = {
         "schema_version": 1,
         "deck": {
             "name": deck_name,
@@ -109,6 +111,8 @@ def build_operator_summary(
         "semantic_blockers": semantic_blockers,
         "generated_files": sorted(str(path) for path in generated_files),
     }
+    summary["operator_guidance"] = build_operator_guidance(summary)
+    return summary
 
 
 def _technical_status(report: dict[str, Any]) -> str:

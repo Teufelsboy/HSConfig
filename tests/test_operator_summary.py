@@ -19,6 +19,8 @@ def test_source_backed_valid_package_is_ready_to_apply():
     assert summary["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert summary["apply_policy"] == "ALLOWED"
     assert summary["primary_blockers"] == []
+    assert summary["operator_guidance"]["safe_to_apply"] is True
+    assert summary["operator_guidance"]["normal_next_step"] == "apply_or_handoff"
 
 
 def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
