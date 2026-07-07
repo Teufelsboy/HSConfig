@@ -364,6 +364,8 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
         "generic_low_confidence_cards": 2,
         "uncovered_cards": 2,
         "claim_conflicts": 0,
+        "lowerable_claims": 0,
+        "report_only_claims": 0,
         "runtime_emitted_cards": 1,
         "cards_needing_guide_claims": 2,
         "cards_needing_runtime_surface": 1,
@@ -493,3 +495,45 @@ def test_operator_summary_uses_readiness_summary_when_per_card_report_is_omitted
         "report": "reports/per_card_config_readiness_report.json",
         "affected_cards": [],
     } in summary["semantic_blockers"]
+
+
+def test_operator_summary_exposes_lowerable_and_report_only_claim_counts():
+    summary = build_operator_summary(
+        deck_name="Fixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "summary": {
+                "lowerable_claims": 1,
+                "report_only_claims": 1,
+            },
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=[],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 1,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 1,
+            },
+            "uncovered_cards": ["CARD_B"],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "generic_low_confidence": 1,
+            "cards_needing_guide_claims": 1,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+    )
+
+    assert summary["guide_strength_summary"]["lowerable_claims"] == 1
+    assert summary["guide_strength_summary"]["report_only_claims"] == 1
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"

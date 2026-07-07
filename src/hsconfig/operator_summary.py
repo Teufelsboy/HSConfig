@@ -235,6 +235,9 @@ def _guide_strength_summary(
     coverage_summary = claim_coverage_report.get("summary", {})
     if not isinstance(coverage_summary, dict):
         coverage_summary = {}
+    depth_summary = guide_source_depth.get("summary", {})
+    if not isinstance(depth_summary, dict):
+        depth_summary = {}
     uncovered_cards = _uncovered_cards(claim_coverage_report)
     return {
         "total_cards": _int_value(
@@ -256,6 +259,8 @@ def _guide_strength_summary(
         ),
         "uncovered_cards": len(uncovered_cards),
         "claim_conflicts": _int_value(claim_conflict_report.get("conflict_count", 0)),
+        "lowerable_claims": _int_value(depth_summary.get("lowerable_claims", 0)),
+        "report_only_claims": _int_value(depth_summary.get("report_only_claims", 0)),
         "runtime_emitted_cards": _int_value(config_readiness_summary.get("runtime_emitted", 0)),
         "cards_needing_guide_claims": _int_value(
             config_readiness_summary.get("cards_needing_guide_claims", 0)

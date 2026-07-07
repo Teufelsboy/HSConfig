@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from hsconfig.source_document_model import claim_can_lower_to_runtime
+
 
 SUPPORTED_READINESS_LANES = {
     "runtime_emitted",
@@ -23,6 +25,14 @@ def build_guide_source_depth_report(
     ]
     source_families = Counter(_claim_source_family(claim) for claim in claims)
     claim_kinds = Counter(_claim_kind(claim) for claim in claims)
+    lowerable_claims = sum(1 for claim in claims if claim_can_lower_to_runtime(claim))
+    report_only_claims = sum(
+        1
+        for claim in claims
+        if str(claim.get("trust_ceiling", "")).lower() == "report_only"
+        or str(claim.get("claim_readiness", "")).lower()
+        in {"explicit_low_confidence", "generic_low_confidence", "contract_gap"}
+    )
 
     cards = _cards(config_readiness_report)
     warnings: list[dict[str, str]] = []
@@ -66,6 +76,8 @@ def build_guide_source_depth_report(
         "summary": {
             "claim_count": len(claims),
             "unsupported_claim_count": len(unsupported_claims),
+            "lowerable_claims": lowerable_claims,
+            "report_only_claims": report_only_claims,
             "total_cards": total_cards,
             "supported_cards": supported_cards,
             "cards_needing_guide_claims": cards_needing_guide_claims,

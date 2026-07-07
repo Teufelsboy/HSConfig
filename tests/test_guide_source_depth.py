@@ -176,3 +176,49 @@ def test_depth_report_surfaces_claim_conflicts_and_low_confidence_coverage():
     assert {"reason": "claim_conflicts_present", "conflict_count": 1} in report["warnings"]
     assert {"reason": "cards_still_low_confidence", "card_count": 2} in report["warnings"]
     assert report["summary"]["warnings_count"] == 2
+
+
+def test_depth_report_separates_lowerable_and_report_only_claims():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "claim_good",
+                    "claim_kind": "targeting_rule",
+                    "source_family": "guide",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "guide",
+                    "cards": ["CARD_A"],
+                },
+                {
+                    "claim_id": "claim_low",
+                    "claim_kind": "card_role",
+                    "source_family": "guide",
+                    "claim_readiness": "explicit_low_confidence",
+                    "trust_ceiling": "report_only",
+                    "cards": ["CARD_B"],
+                },
+            ],
+            "unsupported_claims": [],
+            "claim_coverage_report": {
+                "total_cards": 2,
+                "cards": {
+                    "CARD_A": {"coverage_status": "guide_backed"},
+                    "CARD_B": {"coverage_status": "uncovered_low_confidence"},
+                },
+                "summary": {
+                    "guide_backed": 1,
+                    "static_semantics_backfilled": 0,
+                    "uncovered_low_confidence": 1,
+                },
+            },
+        },
+        config_readiness_report={
+            "summary": {
+                "cards_needing_guide_claims": 1,
+            }
+        },
+    )
+
+    assert report["summary"]["lowerable_claims"] == 1
+    assert report["summary"]["report_only_claims"] == 1
