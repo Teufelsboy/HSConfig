@@ -1,0 +1,439 @@
+{
+  "ShadowPriest": [
+    {
+      "source_url": "https://example.invalid/shadowpriest",
+      "source_title": "ShadowPriest Fixture",
+      "source_family": "guide_fixture",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "archetype": "aggro_burn",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "aggro_burn",
+          "evidence_text_short": "ShadowPriest fixture plays proactive burn pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DS1_233"],
+          "stance": "burn_reach",
+          "evidence_text_short": "Mind Blast is burn reach for the pressure plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_009"],
+          "stance": "early_burn_pressure",
+          "evidence_text_short": "Shadowbomber adds early burn pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CFM_637"],
+          "stance": "pirate_pressure",
+          "evidence_text_short": "Patches supports early Pirate pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_056"],
+          "stance": "pirate_pressure",
+          "evidence_text_short": "Parachute Brigand builds early Pirate pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["YOD_032"],
+          "stance": "damage_payoff_pressure",
+          "evidence_text_short": "Frenzied Felwing converts early damage into pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SCH_514"],
+          "stance": "pressure_refill",
+          "evidence_text_short": "Raise Dead refills pressure minions.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_444"],
+          "stance": "tempo_draw",
+          "evidence_text_short": "Twilight Deceptor supports damage turns with draw.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_446"],
+          "stance": "damage_amplifier",
+          "evidence_text_short": "Voidtouched Attendant amplifies burn pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_448"],
+          "stance": "hero_power_enabler",
+          "evidence_text_short": "Darkbishop Benedictus enables Shadowform pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["REV_290"],
+          "stance": "tempo_draw",
+          "evidence_text_short": "Cathedral of Atonement turns board presence into draw.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["NX2_019"],
+          "stance": "burn_reach",
+          "evidence_text_short": "Mind Sear converts pressure into extra face damage.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WON_065"],
+          "stance": "board_refill_pressure",
+          "evidence_text_short": "Ship's Chirurgeon supports early board refill.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_381"],
+          "stance": "hero_power_pressure",
+          "evidence_text_short": "Papercraft Angel supports repeated Hero Power pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_518"],
+          "stance": "early_board_pressure",
+          "evidence_text_short": "Treasure Distributor starts early board pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_512"],
+          "stance": "self_damage_pressure",
+          "evidence_text_short": "Brain Masseuse adds pressure while enabling damage turns.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_419"],
+          "stance": "burn_reach",
+          "evidence_text_short": "Acupuncture is direct burn reach.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["SW_446"],
+          "selector": "SW_446",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Voidtouched Attendant for early pressure.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ],
+  "MechPala": [
+    {
+      "source_url": "https://example.invalid/mechpala",
+      "source_title": "MechPala Fixture",
+      "source_family": "guide_fixture",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "token_board",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "token_board",
+          "evidence_text_short": "MechPala fixture builds a wide Magnetic board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_020"],
+          "stance": "magnetic_curve",
+          "evidence_text_short": "Skaterbot adds early Magnetic pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_906"],
+          "stance": "early_mech_curve",
+          "evidence_text_short": "Glow-Tron starts the early Mech curve.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_907"],
+          "stance": "mech_discount",
+          "evidence_text_short": "Galvanizer discounts Mechs for tempo turns.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_225"],
+          "stance": "token_board",
+          "evidence_text_short": "Sky Claw creates a wide Mech board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_928"],
+          "stance": "snowball_threat",
+          "evidence_text_short": "Security Automaton snowballs from Mech development.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_632"],
+          "stance": "early_mech_curve",
+          "evidence_text_short": "Click-Clocker is an early Mech opener.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_059"],
+          "stance": "board_protection",
+          "evidence_text_short": "Bubblebot protects the developed Mech board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_079"],
+          "stance": "mech_refill",
+          "evidence_text_short": "Radar Detector refills Mech resources.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["ETC_106"],
+          "stance": "mech_discount",
+          "evidence_text_short": "Frequency Oscillator enables discounted Mech turns.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TTN_860"],
+          "stance": "token_board",
+          "evidence_text_short": "Drone Deconstructor adds Mechs for board scaling.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_330"],
+          "stance": "modular_finisher",
+          "evidence_text_short": "Zilliax Deluxe 3000 is the modular Mech payoff.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WORK_002"],
+          "stance": "mech_pressure",
+          "evidence_text_short": "Busy-Bot adds Mech pressure to the board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SC_401"],
+          "stance": "token_board",
+          "evidence_text_short": "SCV supports the wide board plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SC_405"],
+          "stance": "buff_payoff",
+          "evidence_text_short": "Ultra-Capacitor turns the Mech board into burst.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TLC_438"],
+          "stance": "board_payoff",
+          "evidence_text_short": "Violet Treasuregill rewards developed boards.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["LEG_TTN_908"],
+          "stance": "board_buff",
+          "evidence_text_short": "Crusader Aura buffs the wide board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["TSC_632"],
+          "selector": "TSC_632",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Click-Clocker as an early Mech opener.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ],
+  "BigShaman": [
+    {
+      "source_url": "https://example.invalid/bigshaman",
+      "source_title": "BigShaman Fixture",
+      "source_family": "guide_fixture",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "BigShaman",
+      "archetype": "big_cheat",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "big_cheat",
+          "evidence_text_short": "BigShaman fixture cheats large threats ahead of curve.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CS2_038"],
+          "stance": "deathrattle_replay",
+          "evidence_text_short": "Ancestral Spirit extends cheated threats.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_029"],
+          "stance": "threat_cheat",
+          "evidence_text_short": "Ancestor's Call cheats large threats early.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["AT_053"],
+          "stance": "overload_draw",
+          "evidence_text_short": "Ancestral Knowledge refills combo pieces.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CFM_696"],
+          "stance": "board_disruption",
+          "evidence_text_short": "Devolve disrupts opposing boards.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DAL_052"],
+          "stance": "big_threat_cheat",
+          "evidence_text_short": "Muckmorpher turns the deck into a cheated threat.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["YOD_041"],
+          "stance": "stabilizing_threat",
+          "evidence_text_short": "Eye of the Storm stabilizes with taunt pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_025"],
+          "stance": "spell_discount",
+          "evidence_text_short": "Auctionhouse Gavel discounts key battlecries.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_637"],
+          "stance": "early_filter",
+          "evidence_text_short": "Scalding Geyser filters for key pieces.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TID_712"],
+          "stance": "colossal_payoff",
+          "evidence_text_short": "Neptulon is a primary cheated threat.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["JAM_013"],
+          "stance": "spell_damage_buff",
+          "evidence_text_short": "Jam Session supports removal and pressure turns.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_382"],
+          "stance": "large_threat",
+          "evidence_text_short": "Walking Mountain is a large stabilization threat.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_440"],
+          "stance": "deck_threat_cheat",
+          "evidence_text_short": "Thunderbringer recruits major threats.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WON_335"],
+          "stance": "deathrattle_replay",
+          "evidence_text_short": "Reincarnate reuses cheated minions.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_507"],
+          "stance": "deck_filter",
+          "evidence_text_short": "Fairy Tale Forest helps find the cheat package.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_877"],
+          "stance": "board_scaling",
+          "evidence_text_short": "Wish Upon a Star scales the threat board.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GDB_451"],
+          "stance": "spell_discovery",
+          "evidence_text_short": "Triangulate finds key spells for the cheat plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["EDR_031"],
+          "stance": "large_threat",
+          "evidence_text_short": "Ohn'ahra is a large pressure payoff.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GDB_479"],
+          "stance": "late_threat",
+          "evidence_text_short": "Nebula provides late threat pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["GVG_029"],
+          "selector": "GVG_029",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Ancestor's Call for early threat cheating.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}
