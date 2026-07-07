@@ -21,6 +21,49 @@ def test_source_backed_valid_package_is_ready_to_apply():
     assert summary["primary_blockers"] == []
 
 
+def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="deck-code",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "source_backed", "source_count": 2, "claim_count": 12},
+        unsupported_conditions=[],
+        globalvalue_authority={
+            "blocked_until_runtime_evidence": [
+                {"key": "LowHpBoardValuePenalty"},
+                {"key": "EnemySecretValue"},
+            ]
+        },
+        generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+    )
+
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_blockers"] == []
+    assert {
+        "reason": "globalvalue_runtime_evidence_required",
+        "key": "LowHpBoardValuePenalty",
+    } in summary["warnings"]
+
+
 def test_static_semantics_valid_package_is_ready_with_warnings():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

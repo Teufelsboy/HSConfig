@@ -2,6 +2,7 @@ from hsconfig.guide_source_builder import build_guide_sources
 from hsconfig.source_document_model import (
     SUPPORTED_CLAIM_READINESS,
     SUPPORTED_SPECIFICITY_STATUSES,
+    claim_can_lower_to_runtime,
 )
 from hsconfig.source_document_builder import build_source_document_bundle
 
@@ -551,6 +552,23 @@ def test_low_confidence_source_claim_is_visible_but_not_strong():
         "static_semantics_backfilled": 0,
         "uncovered_low_confidence": 2,
     }
+
+
+def test_runtime_lowering_guard_blocks_legacy_low_confidence_claims_without_readiness():
+    assert not claim_can_lower_to_runtime(
+        {
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_A"],
+            "confidence": "low",
+        }
+    )
+    assert claim_can_lower_to_runtime(
+        {
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_A"],
+            "confidence": "source_backed",
+        }
+    )
 
 
 def test_source_document_claim_fields_use_supported_vocabularies():

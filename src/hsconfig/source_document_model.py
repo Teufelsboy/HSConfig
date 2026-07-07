@@ -51,6 +51,15 @@ RUNTIME_LOWERABLE_CLAIM_READINESS = frozenset(
 RUNTIME_BLOCKED_CLAIM_READINESS = (
     SUPPORTED_CLAIM_READINESS - RUNTIME_LOWERABLE_CLAIM_READINESS
 )
+RUNTIME_BLOCKED_CONFIDENCE_LABELS = frozenset(
+    {
+        "low",
+        "report_only",
+        "explicit_low_confidence",
+        "generic_low_confidence",
+        "contract_gap",
+    }
+)
 
 
 def claim_can_lower_to_runtime(claim: dict) -> bool:
@@ -69,4 +78,7 @@ def claim_can_lower_to_runtime(claim: dict) -> bool:
             claim.get("claim_confidence", claim.get("source_confidence", "")),
         )
     ).strip().lower()
-    return confidence not in RUNTIME_BLOCKED_CLAIM_READINESS
+    return (
+        confidence not in RUNTIME_BLOCKED_CLAIM_READINESS
+        and confidence not in RUNTIME_BLOCKED_CONFIDENCE_LABELS
+    )

@@ -778,8 +778,10 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
         "cards": cards,
         "stance": _legacy_stance(claim_kind, text),
         "evidence_text_short": text,
-        "source_confidence": "high" if claim.get("source") == "guide" else "medium",
+        "source_confidence": _legacy_claim_confidence(claim),
     }
+    if str(claim.get("claim_confidence", "")).strip():
+        converted["claim_confidence"] = str(claim["claim_confidence"]).strip()
     if claim_kind == "combo_sequence":
         converted["sequence"] = cards
         for optional_key in ("values", "operator", "timing_kind"):
@@ -789,6 +791,14 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
         if optional_key in claim:
             converted[optional_key] = claim[optional_key]
     return converted
+
+
+def _legacy_claim_confidence(claim: dict[str, Any]) -> str:
+    for key in ("source_confidence", "claim_confidence", "confidence"):
+        value = str(claim.get(key, "")).strip()
+        if value:
+            return value
+    return "high" if claim.get("source") == "guide" else "medium"
 
 
 def _legacy_stance(claim_kind: str, text: str) -> str:

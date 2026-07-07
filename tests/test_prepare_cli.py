@@ -459,6 +459,100 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
 
 
+def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Card A"},
+                    {"card_id": "EX1_002", "dbf_id": 2, "count": 2, "name": "Card B"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    claims_json = tmp_path / "claims.json"
+    claims_json.write_text(
+        json.dumps(
+            [
+                {
+                    "source": "guide",
+                    "url": "https://example.invalid/weak-legacy-guide",
+                    "claim": "Always keep Card A.",
+                    "cards": ["EX1_001"],
+                    "claim_type": "mulligan",
+                    "confidence": "low",
+                },
+                {
+                    "source": "guide",
+                    "url": "https://example.invalid/weak-legacy-guide",
+                    "claim": "Target the enemy hero with Card B.",
+                    "cards": ["EX1_002"],
+                    "claim_type": "targeting_rule",
+                    "confidence": "low",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "WeakLegacyDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--claims-json",
+            str(claims_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    mulligan_plan = json.loads((reports / "mulligan_plan_report.json").read_text(encoding="utf-8"))
+    readiness = json.loads(
+        (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    source_claims = [
+        claim for claim in guide_bundle["claims"] if claim["source_family"] == "guide"
+    ]
+    source_claim_ids = {claim["claim_id"] for claim in source_claims}
+    assert {claim["source_confidence"] for claim in source_claims} == {"low"}
+    assert {claim["claim_readiness"] for claim in source_claims} == {"explicit_low_confidence"}
+    assert {claim["trust_ceiling"] for claim in source_claims} == {"report_only"}
+    assert card_behavior["rows"] == []
+    assert not any(
+        source_claim_ids & set(row.get("source_claim_ids", []))
+        for row in mulligan_plan["rules"]
+    )
+    assert readiness["summary"]["runtime_emitted"] == 0
+    assert readiness["summary"]["mulligan_only"] == 0
+    assert readiness["summary"]["generic_low_confidence"] == 2
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+
+
 def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(

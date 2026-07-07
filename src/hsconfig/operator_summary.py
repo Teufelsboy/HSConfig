@@ -333,21 +333,6 @@ def _semantic_blockers(
                 "affected_cards": _affected_cards_from_conditions(unsupported_conditions)[:5],
             }
         )
-    blocked_globalvalues = [
-        row
-        for row in globalvalue_authority.get("blocked_until_runtime_evidence", [])
-        if isinstance(row, dict)
-    ]
-    if blocked_globalvalues:
-        blockers.append(
-            {
-                "reason": "globalvalues_runtime_evidence_required",
-                "count": len(blocked_globalvalues),
-                "blocking_strength": "runtime_evidence_required",
-                "report": "reports/global_values_authority_matrix.json",
-                "affected_cards": [],
-            }
-        )
     return blockers
 
 
