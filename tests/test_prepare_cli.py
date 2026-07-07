@@ -512,6 +512,12 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
             encoding="utf-8"
         )
     )
+    globalvalues_profile = json.loads(
+        (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
+    )
+    key_profile_report = json.loads(
+        (reports / "global_values_key_profile_report.json").read_text(encoding="utf-8")
+    )
     card_behavior = json.loads(
         (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
     )
@@ -524,9 +530,14 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert authority["posture"] == "weapon_pressure"
     assert "MyWeaponValue" in allowed
     assert "MyHeroPowerValue" not in allowed
+    assert key_profile_report == globalvalues_profile
+    assert key_profile_report["keys"]["MyWeaponValue"]["authority_category"] == (
+        "step1_posture_overlay_allowed"
+    )
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()
+    assert (reports / "global_values_key_profile_report.json").exists()
     assert card_behavior_suppressions == card_behavior.get("suppressed", [])
 
 

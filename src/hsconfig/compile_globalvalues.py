@@ -5,6 +5,8 @@ from copy import deepcopy
 import operator
 from typing import Any
 
+from hsconfig.globalvalues_key_authority import authority_for_key
+
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
 KNOWN_GENERATED_OVERLAY_DEFAULTS = {
@@ -38,6 +40,7 @@ def compile_globalvalues(
     overlays = dict(aggression_profile.get("global_value_overlays", {}))
     overlays.update(aggression_profile.get("mechanic_priorities", {}))
     authority_matrix = contract.get("global_values_authority_matrix", {})
+    key_authorities = _key_authorities_from_matrix(authority_matrix)
     if isinstance(authority_matrix, dict) and authority_matrix.get("allowed_step1_overlays"):
         allowed_overlays = {
             str(row["key"]): _overlay_from_authority_row(row)
@@ -73,9 +76,12 @@ def compile_globalvalues(
     profile_keys = [*default_values, *generated_overlay_keys]
 
     for key in profile_keys:
+        key_authority = key_authorities.get(key, authority_for_key(key))
         if key in TOP_LEVEL_KEYS:
             key_profiles[key] = {
                 "category": "metadata",
+                "authority_category": key_authority["category"],
+                "board_value_component": key_authority["board_value_component"],
                 "decision": "baseline_confirmed",
                 "reason": "Required top-level metadata key.",
             }
@@ -85,6 +91,8 @@ def compile_globalvalues(
         before = _first_value(config[key])
         decision = {
             "category": _classify_key(key),
+            "authority_category": key_authority["category"],
+            "board_value_component": key_authority["board_value_component"],
             "baseline_value": before,
             "decision": "baseline_confirmed",
             "reason": "No deck-specific overlay required.",
@@ -171,6 +179,36 @@ def _overlay_from_authority_row(row: dict[str, Any]) -> str:
     if operation in {"increase", "decrease"}:
         return operation
     return str(row.get("value", "none"))
+
+
+def _key_authorities_from_matrix(authority_matrix: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(authority_matrix, dict):
+        return {}
+    key_authorities: dict[str, dict[str, str]] = {}
+    for section in ("allowed_step1_overlays", "blocked_until_runtime_evidence"):
+        rows = authority_matrix.get(section, [])
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict) or row.get("key") is None:
+                continue
+            key = str(row["key"])
+            key_authority = row.get("key_authority")
+            fallback = authority_for_key(key)
+            if isinstance(key_authority, dict):
+                key_authorities[key] = {
+                    "key": str(key_authority.get("key", key)),
+                    "category": str(key_authority.get("category", fallback["category"])),
+                    "board_value_component": str(
+                        key_authority.get(
+                            "board_value_component",
+                            fallback["board_value_component"],
+                        )
+                    ),
+                }
+            else:
+                key_authorities[key] = fallback
+    return key_authorities
 
 
 def _apply_overlay(block: dict[str, Any], overlay: str) -> str:

@@ -444,6 +444,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "globalvalues_baseline.json", baseline)
     write_json(reports_dir / "globalvalues_baseline_receipt.json", baseline_receipt)
     write_json(reports_dir / "globalvalues_profile.json", globalvalues["profile"])
+    write_json(reports_dir / "global_values_key_profile_report.json", globalvalues["profile"])
 
     report = validate_config_package(
         out,

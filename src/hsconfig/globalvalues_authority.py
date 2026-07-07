@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
+
 
 POSTURE_OVERLAYS = {
     "aggro": {
@@ -44,11 +46,6 @@ POSTURE_ALIASES = {
     "aggressive": "aggro",
     "tempo": "aggro",
 }
-RUNTIME_EVIDENCE_KEYS = {
-    "LowHpBoardValuePenalty",
-    "OpponentSpecificMatchupTuning",
-    "PostApplyRegressionTuning",
-}
 
 
 def build_globalvalues_authority_matrix(
@@ -78,6 +75,7 @@ def build_globalvalues_authority_matrix(
                 "operation": "none",
                 "value": None,
                 "authority": "baseline_default",
+                "key_authority": authority_for_key("baseline"),
                 "claim_refs": [],
                 "reason": "no_source_backed_posture_overlay",
             }
@@ -87,6 +85,7 @@ def build_globalvalues_authority_matrix(
         {
             "key": key,
             "authority": "runtime_evidence_required",
+            "key_authority": authority_for_key(key),
             "claim_refs": claim_refs,
             "reason": "requires_runtime_evidence",
             "blocked_reason": "requires_runtime_evidence",
@@ -99,6 +98,9 @@ def build_globalvalues_authority_matrix(
                 {
                     "key": str(claim.get("key", "runtime_numeric_tuning")),
                     "authority": "runtime_evidence_required",
+                    "key_authority": authority_for_key(
+                        str(claim.get("key", "runtime_numeric_tuning"))
+                    ),
                     "claim_refs": _claim_refs([claim]),
                     "reason": "requires_runtime_evidence",
                     "blocked_reason": "requires_runtime_evidence",
@@ -126,6 +128,7 @@ def _allowed_row(
         "operation": operation,
         "value": value,
         "authority": "step1_source_backed_posture",
+        "key_authority": authority_for_key(key),
         "claim_refs": claim_refs,
         "reason": reason,
     }

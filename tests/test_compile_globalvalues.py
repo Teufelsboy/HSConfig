@@ -148,6 +148,38 @@ def test_compile_globalvalues_adds_known_overlay_key_missing_from_runtime_baseli
     )
 
 
+def test_compile_globalvalues_profile_includes_key_authority_fields():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1.00"}]},
+        "OpponentSpecificMatchupTuning": {"values": [{"condition": "*", "value": "1.00"}]},
+        "GlobalTaunt": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "global_values_authority_matrix": {
+            "allowed_step1_overlays": [
+                {
+                    "key": "FirstTurnValueWeight",
+                    "operation": "set",
+                    "value": "0.75",
+                    "reason": "aggressive deck values first turns.",
+                }
+            ]
+        }
+    }
+
+    result = compile_globalvalues(baseline, contract)
+    profiles = result["profile"]["keys"]
+
+    assert profiles["FirstTurnValueWeight"]["authority_category"] == "step1_posture_overlay_allowed"
+    assert profiles["FirstTurnValueWeight"]["board_value_component"] == "turn_weight"
+    assert profiles["OpponentSpecificMatchupTuning"]["authority_category"] == "runtime_evidence_required"
+    assert profiles["OpponentSpecificMatchupTuning"]["board_value_component"] == "matchup_runtime"
+    assert profiles["GlobalTaunt"]["authority_category"] == "copy_baseline"
+    assert profiles["GlobalTaunt"]["board_value_component"] == "baseline"
+
+
 def test_compile_globalvalues_accepts_operation_value_authority_rows():
     baseline = {
         "GameCardId": "GlobalValues",

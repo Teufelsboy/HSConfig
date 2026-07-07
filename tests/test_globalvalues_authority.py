@@ -1,4 +1,12 @@
+from hsconfig.globalvalues_key_authority import authority_for_key
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
+
+
+def test_globalvalues_key_authority_classifies_core_keys():
+    assert authority_for_key("FirstTurnValueWeight")["category"] == "step1_posture_overlay_allowed"
+    assert authority_for_key("SecondTurnValueWeight")["category"] == "step1_posture_overlay_allowed"
+    assert authority_for_key("MyHeroPowerValue")["category"] == "step1_posture_overlay_allowed"
+    assert authority_for_key("OpponentSpecificMatchupTuning")["category"] == "runtime_evidence_required"
 
 
 def test_aggressive_posture_allows_selected_step1_keys():
@@ -12,6 +20,22 @@ def test_aggressive_posture_allows_selected_step1_keys():
     assert "FirstTurnValueWeight" in allowed
     assert "SecondTurnValueWeight" in allowed
     assert "LowHpBoardValuePenalty" in blocked
+
+
+def test_globalvalues_authority_matrix_embeds_per_key_authority():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggressive",
+        claims=[{"claim_kind": "gameplan_posture", "stance": "aggressive", "claim_confidence": "high"}],
+    )
+
+    allowed = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
+    blocked = {row["key"]: row for row in matrix["blocked_until_runtime_evidence"]}
+
+    assert allowed["FirstTurnValueWeight"]["key_authority"] == authority_for_key("FirstTurnValueWeight")
+    assert allowed["MyHeroPowerValue"]["key_authority"] == authority_for_key("MyHeroPowerValue")
+    assert blocked["OpponentSpecificMatchupTuning"]["key_authority"] == authority_for_key(
+        "OpponentSpecificMatchupTuning"
+    )
 
 
 def test_runtime_only_numeric_tuning_is_reported_not_applied():
@@ -74,6 +98,7 @@ def test_unknown_posture_keeps_baseline_default():
             "operation": "none",
             "value": None,
             "authority": "baseline_default",
+            "key_authority": authority_for_key("baseline"),
             "claim_refs": [],
             "reason": "no_source_backed_posture_overlay",
         }
