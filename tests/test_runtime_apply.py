@@ -243,6 +243,43 @@ def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
     assert payload["apply_gate"]["reasons"][0]["reason"] == "missing_operator_summary"
 
 
+def test_apply_cli_blocks_empty_operator_summary_runtime_files(tmp_path: Path, capsys):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    operator_path = package / "reports" / "operator_summary.json"
+    summary = json.loads(operator_path.read_text(encoding="utf-8"))
+    summary["generated_files"] = []
+    write_json(operator_path, summary)
+    runtime = tmp_path / "runtime"
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 1
+    assert payload["status"] == "blocked"
+    assert (
+        payload["apply_gate"]["reasons"][0]["reason"]
+        == "operator_summary_runtime_files_missing"
+    )
+    assert not runtime.exists()
+
+
 def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys):
     from hsconfig.cli import main
 

@@ -153,15 +153,23 @@ def _actual_files_missing_from_summary_reasons(
         return []
 
     summary_files = _summary_generated_file_set(summary)
-    if not summary_files:
-        return []
-
     reasons: list[dict[str, str]] = []
-    for path in sorted(path for path in custom_config.rglob("*") if path.is_file()):
+    actual_files = [
+        path
+        for path in sorted(path for path in custom_config.rglob("*") if path.is_file())
+        if len(path.relative_to(custom_config).parts) == 2
+        and path.name not in OPTIONAL_NORMAL_PATH_SURFACES
+    ]
+    if actual_files and not summary_files:
+        return [
+            {
+                "reason": "operator_summary_runtime_files_missing",
+                "generated_file": str(actual_files[0]),
+            }
+        ]
+    for path in actual_files:
         relative_parts = path.relative_to(custom_config).parts
         if len(relative_parts) != 2:
-            continue
-        if path.name in OPTIONAL_NORMAL_PATH_SURFACES:
             continue
         summary_key = _normalize_generated_file_path(path.relative_to(package))
         if summary_key not in summary_files:

@@ -245,6 +245,42 @@ def test_apply_gate_blocks_actual_runtime_file_missing_from_summary(tmp_path: Pa
     ]
 
 
+@pytest.mark.parametrize(
+    "generated_files",
+    [
+        [],
+        None,
+        "CustomConfig\\deck\\GlobalValues.json",
+        ["reports\\operator_summary.json"],
+    ],
+)
+def test_apply_gate_blocks_actual_runtime_files_when_summary_runtime_entries_missing(
+    tmp_path: Path, generated_files
+):
+    package = tmp_path / "package"
+    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
+    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
+    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    summary = {
+        "technical_status": "VALID_PACKAGE",
+        "semantic_status": "SOURCE_BACKED_STRONG",
+        "next_action": "READY_TO_APPLY_OR_HANDOFF",
+        "apply_policy": "ALLOWED",
+        "semantic_blockers": [],
+    }
+    if generated_files is not None:
+        summary["generated_files"] = generated_files
+    _write_operator_summary(package, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0] == {
+        "reason": "operator_summary_runtime_files_missing",
+        "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
+    }
+
+
 def test_apply_gate_blocks_missing_operator_summary(tmp_path: Path):
     gate = evaluate_apply_gate(tmp_path / "package")
 
