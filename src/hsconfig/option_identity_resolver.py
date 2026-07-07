@@ -6,6 +6,8 @@ from typing import Any
 def resolve_linked_entities(
     cards: list[dict[str, Any]],
     card_index: dict[str, dict[str, Any]],
+    *,
+    supplement_links: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     links: dict[str, list[dict[str, Any]]] = {}
     for card in cards:
@@ -21,9 +23,25 @@ def resolve_linked_entities(
         for entourage_id in card.get("entourage", []) or []:
             if str(entourage_id) in card_index:
                 rows.append(_link("entourage", card_index[str(entourage_id)], "hearthstonejson.entourage"))
+        for supplement in (supplement_links or {}).get(card_id, []):
+            if not isinstance(supplement, dict):
+                continue
+            if _has_equivalent_link(rows, supplement):
+                continue
+            rows.append(dict(supplement))
         if card_id and rows:
             links[card_id] = rows
     return links
+
+
+def _has_equivalent_link(rows: list[dict[str, Any]], candidate: dict[str, Any]) -> bool:
+    candidate_kind = str(candidate.get("link_kind", ""))
+    candidate_card = str(candidate.get("card_id", ""))
+    return any(
+        str(row.get("link_kind", "")) == candidate_kind
+        and str(row.get("card_id", "")) == candidate_card
+        for row in rows
+    )
 
 
 def _link(kind: str, target: dict[str, Any], source: str) -> dict[str, Any]:

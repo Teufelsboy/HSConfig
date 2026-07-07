@@ -40,3 +40,77 @@ def test_resolve_linked_entities_from_static_identity_fields():
     ]
     assert links["HERO_09"][0]["card_id"] == "CS1h_001"
     assert links["HERO_09"][0]["source"] == "hearthstonejson.heroPowerDbfId"
+
+
+def test_curated_supplement_adds_missing_link_source_last():
+    cards = [{"id": "CARD_PARENT", "name": "Parent"}]
+    index = {
+        "CARD_CHILD": {
+            "id": "CARD_CHILD",
+            "dbf_id": 101,
+            "name": "Child",
+            "type": "SPELL",
+        }
+    }
+    supplement = {
+        "CARD_PARENT": [
+            {
+                "link_kind": "option_identity",
+                "card_id": "CARD_CHILD",
+                "dbf_id": 101,
+                "name": "Child",
+                "type": "SPELL",
+                "source": "curated_linked_entity_supplement",
+            }
+        ]
+    }
+
+    links = resolve_linked_entities(cards, index, supplement_links=supplement)
+
+    assert links["CARD_PARENT"] == [
+        {
+            "link_kind": "option_identity",
+            "card_id": "CARD_CHILD",
+            "dbf_id": 101,
+            "name": "Child",
+            "type": "SPELL",
+            "source": "curated_linked_entity_supplement",
+        }
+    ]
+
+
+def test_upstream_link_wins_over_curated_duplicate():
+    cards = [{"id": "CARD_PARENT", "entourage": ["CARD_CHILD"]}]
+    index = {
+        "CARD_CHILD": {
+            "id": "CARD_CHILD",
+            "dbf_id": 101,
+            "name": "Child",
+            "type": "SPELL",
+        }
+    }
+    supplement = {
+        "CARD_PARENT": [
+            {
+                "link_kind": "entourage",
+                "card_id": "CARD_CHILD",
+                "dbf_id": 101,
+                "name": "Child",
+                "type": "SPELL",
+                "source": "curated_linked_entity_supplement",
+            }
+        ]
+    }
+
+    links = resolve_linked_entities(cards, index, supplement_links=supplement)
+
+    assert links["CARD_PARENT"] == [
+        {
+            "link_kind": "entourage",
+            "card_id": "CARD_CHILD",
+            "dbf_id": 101,
+            "name": "Child",
+            "type": "SPELL",
+            "source": "hearthstonejson.entourage",
+        }
+    ]

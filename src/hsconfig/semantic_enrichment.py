@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from hsconfig.hearthstonejson import index_cards_by_id
+from hsconfig.linked_entity_supplement import curated_link_map_for
 from hsconfig.option_identity_resolver import resolve_linked_entities
 
 
@@ -27,6 +28,12 @@ def enrich_card_metadata(
     warnings: list[dict[str, Any]] = []
     deckwide_effects: list[dict[str, Any]] = []
     enriched_cards = []
+    card_ids = [
+        str(card.get("card_id") or card.get("id") or "")
+        for card in card_metadata.get("cards", [])
+        if str(card.get("card_id") or card.get("id") or "")
+    ]
+    curated_supplement = curated_link_map_for(card_ids)
 
     for card in card_metadata.get("cards", []):
         enriched = dict(card)
@@ -37,7 +44,11 @@ def enrich_card_metadata(
         semantic_families = {str(item) for item in enriched.get("mechanic_families", [])}
         semantic_families.update(_semantic_families_from_card(enriched))
         card_id = str(enriched.get("card_id") or enriched.get("id") or "")
-        resolved_links = resolve_linked_entities([enriched], hjson_index).get(card_id, [])
+        resolved_links = resolve_linked_entities(
+            [enriched],
+            hjson_index,
+            supplement_links=curated_supplement,
+        ).get(card_id, [])
         linked_entities = _merge_linked_entities(enriched.get("linked_entities", []), resolved_links)
 
         if "shadowform" in semantic_families and "start_of_game" in semantic_families:
@@ -170,6 +181,6 @@ def _merge_linked_entities(existing: Any, additions: list[dict[str, Any]]) -> li
 
 def _starting_hero_power_link(linked_entities: list[dict[str, Any]]) -> dict[str, Any] | None:
     for row in linked_entities:
-        if row.get("link_kind") == "starting_hero_power":
+        if row.get("link_kind") in {"starting_hero_power", "hero_power_transform"}:
             return row
     return None

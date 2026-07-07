@@ -34,7 +34,7 @@ def test_enrich_darkbishop_links_shadowform_and_mind_spike():
     assert "hero_power_pressure" in card["semantic_families"]
     assert card["linked_entities"][0]["card_id"] == "EX1_625t"
     assert card["linked_entities"][0]["type"] == "HERO_POWER"
-    assert card["linked_entities"][0]["source"] == "builtin_shadowform_fallback"
+    assert card["linked_entities"][0]["source"] == "curated_linked_entity_supplement"
     assert enriched["deckwide_effects"][0]["effect"] == "replace_starting_hero_power"
 
 
@@ -104,8 +104,8 @@ def test_enrichment_uses_fallback_mind_spike_when_json_rows_are_missing():
 
     card = enriched["cards"][0]
     assert card["linked_entities"][0]["card_id"] == "EX1_625t"
-    assert enriched["semantic_enrichment_status"] == "partial"
-    assert enriched["semantic_enrichment_warnings"]
+    assert enriched["semantic_enrichment_status"] == "complete"
+    assert enriched["semantic_enrichment_warnings"] == []
 
 
 def test_enrichment_hydrates_sparse_darkbishop_from_hearthstonejson():
@@ -174,3 +174,27 @@ def test_non_shadowform_cards_keep_existing_mechanic_families():
 
     assert enriched["cards"][0]["semantic_families"] == ["battlecry"]
     assert enriched["deckwide_effects"] == []
+
+
+def test_shadowpriest_hero_power_transform_uses_curated_supplement_before_builtin_warning():
+    report = enrich_card_metadata(
+        {
+            "cards": [
+                {
+                    "card_id": "SW_448",
+                    "dbf_id": 101,
+                    "name": "Darkbishop Benedictus",
+                    "type": "MINION",
+                    "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
+                    "referenced_tags": ["START_OF_GAME_KEYWORD"],
+                }
+            ]
+        },
+        hearthstonejson_cards=[],
+    )
+
+    effect = report["deckwide_effects"][0]
+    assert effect["source_card_id"] == "SW_448"
+    assert effect["target_card_id"] == "EX1_625t"
+    assert report["semantic_enrichment_warnings"] == []
+    assert report["cards"][0]["linked_entities"][0]["source"] == "curated_linked_entity_supplement"
