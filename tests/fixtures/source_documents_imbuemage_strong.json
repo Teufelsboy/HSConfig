@@ -1,0 +1,52 @@
+{
+  "source_documents": [
+    {
+      "source_url": "fixture://hsconfig/archetype-fixtures/imbuemage-guide",
+      "source_title": "ImbueMage Source-Backed Fixture Guide",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ImbueMage",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "hero_power_pressure",
+          "evidence_text_short": "ImbueMage builds around Hero Power pressure, spell support, and generated Wisp resources.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["EDR_800", "EDR_519", "EDR_852", "EDR_871"],
+          "mechanic": "imbue",
+          "stance": "imbue_hero_power",
+          "evidence_text_short": "Flutterwing Guardian, Wisprider, Bitterbloom Knight, and Spirit Gatherer Imbue the Hero Power.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "hero_power_transform",
+          "cards": ["EDR_800", "EDR_519", "EDR_852"],
+          "stance": "imbued_hero_power",
+          "evidence_text_short": "Imbue cards transform the Mage Hero Power plan into the deck's main pressure engine.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["BAR_546"],
+          "selector": "BAR_546",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Wildfire as an early Hero Power scaling engine card.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SCH_312", "TOY_528", "BAR_544"],
+          "stance": "hero_power_support",
+          "evidence_text_short": "Tour Guide, Sing-Along Buddy, and Reckless Apprentice support repeated Hero Power use.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

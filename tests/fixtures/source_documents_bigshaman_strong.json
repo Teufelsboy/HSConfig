@@ -1,0 +1,52 @@
+{
+  "source_documents": [
+    {
+      "source_url": "fixture://hsconfig/archetype-fixtures/bigshaman-guide",
+      "source_title": "BigShaman Source-Backed Fixture Guide",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "BigShaman",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "deathrattle_recruit",
+          "evidence_text_short": "BigShaman sets up big minion cheat, recruit, and deathrattle pressure instead of small minion tempo.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["GVG_029"],
+          "selector": "GVG_029",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Ancestor's Call as the early enabler for cheating big threats.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DAL_052", "WW_440", "TID_712"],
+          "stance": "big_recruit_payoff",
+          "evidence_text_short": "Muckmorpher, Thunderbringer, and Neptulon are the big cheat or recruit payoff class.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["WW_440", "CS2_038", "WON_335"],
+          "mechanic": "deathrattle",
+          "stance": "reuse_own_threat",
+          "evidence_text_short": "Deathrattle and resummon effects reuse friendly big threats after they are cheated into play.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "known_bad_pattern",
+          "cards": ["CS2_038", "JAM_013", "WON_335"],
+          "stance": "not_enemy",
+          "evidence_text_short": "Beneficial friendly effects such as Ancestral Spirit, Jam Session, and Reincarnate should target an own minion, not enemy minions.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}

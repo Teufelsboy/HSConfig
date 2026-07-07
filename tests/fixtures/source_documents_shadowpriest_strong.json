@@ -1,0 +1,55 @@
+{
+  "source_documents": [
+    {
+      "source_url": "fixture://hsconfig/archetype-fixtures/shadowpriest-guide",
+      "source_title": "ShadowPriest Source-Backed Fixture Guide",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ShadowPriest",
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "cards": [],
+          "stance": "aggro_burn",
+          "evidence_text_short": "ShadowPriest plays proactive burn pressure and closes with direct face damage.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "hero_power_transform",
+          "cards": ["SW_448"],
+          "stance": "shadowform_mind_spike",
+          "evidence_text_short": "Darkbishop Benedictus enables Shadowform so the Hero Power becomes Mind Spike pressure.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["SW_446"],
+          "selector": "SW_446",
+          "selector_kind": "card",
+          "stance": "keep",
+          "evidence_text_short": "Keep Voidtouched Attendant as an early pressure and burn amplifier.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["DS1_233", "VAC_419"],
+          "stance": "prefer_enemy_hero",
+          "runtime_block": "BeforePlayCardBonus",
+          "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
+          "runtime_value": "12",
+          "evidence_text_short": "Direct burn such as Mind Blast and Acupuncture should prefer the enemy hero in the pressure plan.",
+          "source_confidence": "medium"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["GVG_009", "NX2_019", "VAC_419"],
+          "mechanic": "burn",
+          "stance": "face_pressure",
+          "evidence_text_short": "Shadowbomber, Mind Sear, and Acupuncture form the burn-pressure package.",
+          "source_confidence": "medium"
+        }
+      ]
+    }
+  ]
+}
