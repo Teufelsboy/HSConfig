@@ -34,6 +34,14 @@ def build_guide_source_depth_report(
         or str(claim.get("claim_readiness", "")).lower()
         in {"explicit_low_confidence", "generic_low_confidence", "contract_gap"}
     )
+    strong_lowerable_claims = sum(
+        1
+        for claim in claims
+        if claim_can_lower_to_runtime(claim)
+        and str(claim.get("claim_readiness", "")).lower()
+        in {"guide_backed", "source_backed_static_semantics"}
+    )
+    blocked_runtime_claims = sum(1 for claim in claims if not claim_can_lower_to_runtime(claim))
 
     cards = _cards(config_readiness_report)
     warnings: list[dict[str, str]] = []
@@ -84,7 +92,9 @@ def build_guide_source_depth_report(
             "claim_count": len(claims),
             "unsupported_claim_count": len(unsupported_claims),
             "lowerable_claims": lowerable_claims,
+            "strong_lowerable_claims": strong_lowerable_claims,
             "report_only_claims": report_only_claims,
+            "blocked_runtime_claims": blocked_runtime_claims,
             "total_cards": total_cards,
             "supported_cards": supported_cards,
             "cards_needing_guide_claims": cards_needing_guide_claims,

@@ -252,3 +252,40 @@ def test_report_only_claims_do_not_produce_source_backed_depth():
     assert report["summary"]["lowerable_claims"] == 0
     assert report["summary"]["report_only_claims"] == 1
     assert report["source_depth_status"] == "needs_more_research"
+
+
+def test_guide_source_depth_separates_strong_lowerable_from_report_only():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_kind": "card_role",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "guide",
+                    "cards": ["CARD_A"],
+                    "source_family": "guide",
+                },
+                {
+                    "claim_kind": "card_role",
+                    "claim_readiness": "explicit_low_confidence",
+                    "trust_ceiling": "report_only",
+                    "cards": ["CARD_B"],
+                    "source_family": "guide",
+                },
+            ],
+            "unsupported_claims": [],
+            "claim_coverage_report": {"cards": {}},
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 2},
+            "cards": {
+                "CARD_A": {"readiness_lane": "runtime_emitted", "first_missing_link": "none"},
+                "CARD_B": {"readiness_lane": "generic_low_confidence", "first_missing_link": "needs_guide_claim"},
+            },
+        },
+    )
+
+    assert report["summary"]["strong_lowerable_claims"] == 1
+    assert report["summary"]["report_only_claims"] == 1
+    assert report["summary"]["blocked_runtime_claims"] == 1
+    assert report["source_depth_status"] == "needs_more_research"
