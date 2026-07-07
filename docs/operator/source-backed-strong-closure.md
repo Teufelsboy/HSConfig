@@ -16,6 +16,8 @@ For the promotion wave, check `reports/source_claim_gap_report.json` first for t
 but it still needs guide claims, runtime-surface lowering, condition lowering,
 mechanic lowering, or combo sequence detail before it can be called strong.
 
+The fixture matrix also documents `decision_families_proven` and `known_coverage_limits`. These fields describe what a fixture proves for HSConfig's pre-game config compiler. They are not gameplay-quality claims and they do not imply post-run optimization coverage.
+
 ## Current Closure Targets
 
 | Deck | Fixture stage | Required work before promotion |

@@ -130,3 +130,28 @@ def test_archetype_fixture_matrix_marks_source_informed_valid_wave():
         if row["fixture_stage"] == "source_informed_valid_fixture"
     }
     assert source_informed == SOURCE_INFORMED_VALID_FIXTURES
+
+
+def test_each_fixture_row_documents_decision_family_and_limits():
+    matrix = _matrix()
+
+    expected_families = {
+        "ShadowPriest": {"aggro_burn_targeting", "hero_power_transform"},
+        "CtAPaladin": {"recruit_board_flood", "aura_pressure"},
+        "PirateRogue": {"pirate_tempo", "weapon_pressure"},
+        "BigShaman": {"big_minion_cheat", "recruit", "deathrattle"},
+        "Discolock": {"discard_payoff", "hand_mutation"},
+        "TreantDruid": {"token_board", "board_buff"},
+        "ImbueMage": {"hero_power", "spell_generation"},
+        "MechPala": {"mech_board_scaling", "magnetic"},
+        "Kingslayer": {"weapon_sequence", "attack_pressure"},
+        "Boarlock": {"combo_control", "resource_setup"},
+        "PirateDH": {"pirate_tempo", "hero_attack"},
+    }
+
+    for deck in matrix["decks"]:
+        deck_name = deck["deck_name"]
+        families = set(deck.get("decision_families_proven", []))
+        assert families >= expected_families[deck_name]
+        assert deck.get("known_coverage_limits"), deck_name
+        assert all(isinstance(item, str) and item for item in deck["known_coverage_limits"])
