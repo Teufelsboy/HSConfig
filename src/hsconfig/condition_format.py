@@ -18,6 +18,7 @@ STRUCTURED_RUNTIME_CONDITION_KEYS = {
 CARD_ID_PATTERN = r"[A-Za-z0-9_]+"
 CLASS_PATTERN = r"[a-z]+"
 CLASS_LIST_PATTERN = rf"{CLASS_PATTERN}(?:\s*\|\s*{CLASS_PATTERN})*"
+CLASS_RE = re.compile(rf"^{CLASS_PATTERN}$")
 ALLOWED_ATOM_PATTERNS = [
     re.compile(r"^\*$"),
     re.compile(r"^coin$"),
@@ -73,7 +74,9 @@ def _lower(value: Any) -> tuple[str, str | None]:
             return "*", "unsupported_condition"
         if "hand_contains_any" in keys and len(keys & STRUCTURED_RUNTIME_CONDITION_KEYS) > 1:
             return "*", "unsupported_condition"
-        atoms = _atoms_from_structured_condition(value)
+        atoms, reason = _atoms_from_structured_condition(value)
+        if reason is not None:
+            return "*", reason
         if atoms:
             joiner = " OR " if "hand_contains_any" in value else " AND "
             return joiner.join(atoms), None
@@ -81,7 +84,9 @@ def _lower(value: Any) -> tuple[str, str | None]:
     return "*", "unsupported_condition"
 
 
-def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
+def _atoms_from_structured_condition(
+    value: dict[str, Any],
+) -> tuple[list[str], str | None]:
     atoms: list[str] = []
     if value.get("coin") is True:
         atoms.append("coin")
@@ -89,10 +94,10 @@ def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
         atoms.append("nocoin")
     if value.get("opponent_class"):
         atoms.append(f"opp_hero(count(),{str(value['opponent_class']).lower()}=true) > 0")
-    if value.get("opponent_classes"):
-        raw_classes = value["opponent_classes"]
-        classes = [raw_classes] if isinstance(raw_classes, str) else list(raw_classes)
-        clean_classes = [str(hero_class).lower() for hero_class in classes]
+    if "opponent_classes" in value:
+        clean_classes = _normalize_opponent_classes(value["opponent_classes"])
+        if clean_classes is None:
+            return [], "unsupported_condition"
         atoms.append(
             "opp_hero(count(), hero_class="
             + " | ".join(clean_classes)
@@ -106,7 +111,27 @@ def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
         raw_cards = value["hand_contains_any"]
         cards = [raw_cards] if isinstance(raw_cards, str) else list(raw_cards)
         atoms.extend(f"my_hand(count(),cardid={card}) > 0" for card in cards)
-    return [atom for atom in atoms if _is_atom_safe(atom)]
+    return [atom for atom in atoms if _is_atom_safe(atom)], None
+
+
+def _normalize_opponent_classes(value: Any) -> list[str] | None:
+    if isinstance(value, str):
+        classes = [value]
+    elif isinstance(value, (list, tuple)):
+        classes = list(value)
+    else:
+        return None
+    if not classes:
+        return None
+    clean_classes: list[str] = []
+    for hero_class in classes:
+        if not isinstance(hero_class, str):
+            return None
+        clean_class = hero_class.lower()
+        if not CLASS_RE.match(clean_class):
+            return None
+        clean_classes.append(clean_class)
+    return clean_classes
 
 
 def _is_runtime_safe(condition: str) -> bool:

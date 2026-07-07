@@ -2,7 +2,7 @@
 
 Normal flow: deck input -> `hsconfig source-manifest` -> short evidence rows -> `hsconfig draft-source-documents` -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
 
-Identity fields such as `hs_id` and `hdt_deck_id` are identity-only metadata in HSConfig. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source. HSConfig uses these identifiers to keep deck rows and examples unambiguous before games are played.
+Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
 
 ## Research Normalization
 

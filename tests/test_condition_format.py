@@ -54,6 +54,26 @@ def test_structured_coin_and_opponent_classes_remain_runtime_safe():
     assert lower_runtime_condition(condition) == (expected, None)
 
 
+def test_structured_opponent_classes_mixed_invalid_list_fails_closed_with_coin():
+    condition = {"coin": True, "opponent_classes": ["warrior", "bad class"]}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
+def test_structured_opponent_classes_scalar_fails_closed_with_coin():
+    condition = {"coin": True, "opponent_classes": 123}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
 def test_structured_conditions_lower_to_runtime_safe_atoms():
     assert lower_runtime_condition({"coin": True}) == ("coin", None)
     assert lower_runtime_condition({"nocoin": True}) == ("nocoin", None)

@@ -10,21 +10,21 @@ FORBIDDEN_SRC_CONCEPTS = (
     (
         "HDT parsing",
         re.compile(
-            r"\bhdt[\s_-]*(?:parsing|parser|replay)\b|\bparse_hdt_replay\b|\bhdt_replay\b",
+            r"\bhdt[\s_-]*(?:parsing|parser|replay)\b|\bhsreplay\b|\bparse_hdt_replay\b|\bhdt_replay\b",
             re.I,
         ),
     ),
     (
         "Power.log parsing",
         re.compile(
-            r"\bpower(?:\.|[\s_-]*)log[\s_-]*(?:parsing|parser)\b|\bparse_power_log\b",
+            r"\bpower(?:\.|[\s_-]*)log(?=\b|parsing\b|parser\b|[\s_-])(?:[\s_-]*(?:parsing|parser))?|\bparse_power_log\b",
             re.I,
         ),
     ),
     (
         "winrate validation",
         re.compile(
-            r"\bwinrate[\s_-]*(?:validation|validator|analysis|analyzer)\b",
+            r"\bwinrate(?=\b|validation\b|validator\b|analysis\b|analyzer\b|[\s_-])(?:[\s_-]*(?:validation|validator|analysis|analyzer))?",
             re.I,
         ),
     ),
@@ -67,15 +67,18 @@ def test_scope_guard_terms_cover_likely_source_spellings():
         "HDT parsing": [
             "HDT parsing",
             "HDT parser",
+            "hsreplay",
             "parse_hdt_replay",
             "hdt_replay",
         ],
         "Power.log parsing": [
+            "Power.log",
             "Power.log parsing",
             "PowerLogParser",
             "parse_power_log",
         ],
         "winrate validation": [
+            "winrate",
             "winrate validation",
             "winrate analyzer",
         ],
