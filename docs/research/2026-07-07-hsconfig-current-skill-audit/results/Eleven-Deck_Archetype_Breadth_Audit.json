@@ -1,0 +1,39 @@
+{
+  "scope_question": "Does the current 11-deck HSConfig fixture matrix provide enough archetype and mechanic breadth to audit the current skill without expanding the skill into a bloated exhaustive catalog?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HS/docs/research/2026-07-07-hsconfig-current-skill-audit/fields.yaml",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/README.md"
+  ],
+  "confirmed_facts": [
+    "The repo defines an explicit 11-deck representative fixture matrix in docs/operator/archetype-fixture-matrix.json, and the matrix purpose is stated as lean pre-game CustomConfig coverage.",
+    "The enforced deck set is ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.",
+    "The matrix spans these distinct buckets: aggro burn with hero power transform, recruit board flood, pirate tempo with weapon pressure, big recruit deathrattle cheat, discard hand mutation, token board snowball, hero power plus spell generation, mech plus Magnetic board scaling, weapon sequence pressure, combo control resource setup, and pirate hero attack pressure.",
+    "The matrix also encodes the mechanic families each row proves, including aggro burn targeting, hero power transform, aura pressure, pirate tempo, weapon pressure, recruit, deathrattle, discard payoff, hand mutation, token board buffs, spell generation, Magnetic scaling, combo control, resource setup, and hero attack.",
+    "README.md states that future_fixture is reserved for rows that are not part of the current 11-deck proof, which means the repo already treats 11 decks as the current breadth boundary rather than an open-ended expansion target.",
+    "The guide research policy explicitly points representative archetype breadth work to docs/operator/archetype-fixture-matrix.json and says the repo should strengthen core source-backed fixtures before broadening to second-wave decks.",
+    "Current closure data shows four core_source_backed_fixture rows already strong: ShadowPriest, PirateRogue, BigShaman, and MechPala. The remaining seven rows are intentionally source_informed_valid_fixture breadth rows that still expose guide-depth or lowering gaps.",
+    "Known coverage limits are documented per row, and repeated limits include missing reactive control coverage, incomplete discover-chain coverage, and incomplete exact-combo or single-target-removal coverage."
+  ],
+  "implementation_implications": [
+    "For a current skill audit, the 11 decks are broad enough because they exercise the major pre-game HSConfig surfaces without forcing the skill to carry every Hearthstone mechanic as a first-class example.",
+    "The current matrix supports a lean audit model: keep a small number of strong control fixtures, then use the source-informed rows to reveal missing guide-depth, runtime-surface, mechanic-lowering, and combo-detail gaps.",
+    "Breadth improvements should happen inside the existing seven source-informed decks first, because those rows already represent the intended uncovered families and can be promoted without adding more skill complexity.",
+    "A new deck should be added only when a genuinely new source-drafting or runtime-lowering behavior is absent from all 11 current rows. Otherwise, extra decks would mostly duplicate coverage and bloat the audit surface.",
+    "The matrix is suitable for auditing the current skill contract, but it should not be described as exhaustive proof for every gameplay family or post-game tuning need."
+  ],
+  "current_repo_alignment": "Aligned for the current audit goal. The repo explicitly defines this exact 11-deck matrix, enforces it in tests, distinguishes four promoted strong fixtures from seven source-informed breadth fixtures, and documents that HSConfig is a lean pre-game authoring tool rather than a full gameplay or HSTuner system.",
+  "risks_or_gaps": [
+    "The matrix is representative, not exhaustive, so it does not fully cover reactive control, discover-heavy chains, or a broad set of exact combo timing cases.",
+    "Only one explicit combo-control row exists through Boarlock, so combo-specific lowering breadth remains narrower than aggro, recruit, weapon, or board-centric families.",
+    "Several second-wave decks still have open guide gaps or runtime-surface gaps, which means breadth is present conceptually but not yet uniformly strong in source-backed depth.",
+    "Some families overlap by design, such as PirateRogue and PirateDH or CtAPaladin and MechPala, so adding more decks from the same family would likely increase maintenance more than coverage.",
+    "The matrix proves pre-game config breadth only. It does not prove metagame optimality, matchup exhaustiveness, or post-run tuning quality."
+  ],
+  "recommendation": "Keep the 11-deck matrix as the current archetype-breadth audit boundary for HSConfig. It is broad enough to audit the current skill without bloat because it covers the main pre-game archetype and mechanic families already encoded by the repo. Do not expand the skill with more representative decks until one of two triggers appears: a missing mechanic family changes source-document lowering behavior, or an uncovered runtime surface cannot be exercised by any of the existing 11 rows. Until then, the better next improvement is to close strongness gaps inside Discolock, TreantDruid, ImbueMage, Kingslayer, Boarlock, PirateDH, and CtAPaladin rather than widen the matrix.",
+  "uncertain": []
+}

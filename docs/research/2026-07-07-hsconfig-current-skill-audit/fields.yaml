@@ -1,0 +1,27 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: scope_question
+        required: true
+        description: The precise audit question being researched.
+      - name: primary_sources
+        required: true
+        description: Source URLs, local docs, or repository files used as evidence.
+      - name: confirmed_facts
+        required: true
+        description: Source-backed facts relevant to HSConfig architecture or workflow.
+      - name: implementation_implications
+        required: true
+        description: What the facts imply for HSConfig code, reports, docs, or skill instructions.
+      - name: current_repo_alignment
+        required: true
+        description: Whether the current repo appears aligned, partially aligned, or not aligned.
+      - name: risks_or_gaps
+        required: true
+        description: Remaining risks, gaps, or unknowns that should influence the audit.
+      - name: recommendation
+        required: true
+        description: Practical recommendation for the next HSConfig improvement, if any.
+      - name: uncertain
+        required: true
+        description: Field names where source-backed certainty is not available.

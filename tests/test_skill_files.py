@@ -342,3 +342,14 @@ def test_skill_documents_source_builder_lite_workflow():
     assert "operator_summary.json" in combined
     assert "Presume.json" not in operator
     assert "Concede.json" not in operator
+
+
+def test_current_skill_audit_is_marked_as_research_evidence():
+    root = Path("docs/research/2026-07-07-hsconfig-current-skill-audit")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+
+    assert "research evidence" in readme
+    assert "not operator guidance" in readme
+    assert "not runtime input" in readme
+    assert (root / "fields.yaml").exists()
+    assert len(list((root / "results").glob("*.json"))) == 5

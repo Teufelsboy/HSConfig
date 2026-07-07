@@ -1,0 +1,62 @@
+{
+  "scope_question": "Verify whether HSConfig's normal runtime surfaces, fail-closed runtime condition stance, GlobalValues handling, Mulligan handling, per-card CardID behavior files, and Combo boundaries match documented HearthRanger VisionAI expectations.",
+  "primary_sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "C:/Users/darbo/Documents/HS/skills/hearthranger-config/references/visionai-authoring.md",
+    "C:/Users/darbo/Documents/HS/skills/hearthranger-config/references/visionai-syntax-contract.md",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/condition_format.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_condition_format.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_e2e_preview.py"
+  ],
+  "confirmed_facts": [
+    "Official HearthRanger docs still use CustomConfig\\\\deck_config.ini to map a deck to a deck-local config directory.",
+    "Official docs still describe GlobalValues.json, Mulligan.json, Combo.json, Concede.json, and per-card CARDID.json files as VisionAI runtime surfaces.",
+    "Official docs describe per-card behavior files as concrete card-id filenames whose GameCardId must match the filename stem.",
+    "Official docs describe Mulligan.json as a Mulligan.values array with mulligan, condition, and value fields, where hold and discard are the operative values and row order matters.",
+    "Official docs describe Combo.json as ComboList.values rows using >> for same-turn sequencing and >-> for cross-turn sequencing, with card and value segment counts that must match.",
+    "Official docs strongly recommend copying GlobalValues.json from the default directory and preserving the values-block structure rather than inventing a short scalar form.",
+    "HSConfig surface_intent always requires GlobalValues.json, Mulligan.json, and per-card CARDID surfaces, adds Combo.json only when combos exist, and only routes Presume.json or Concede.json when legacy_policy_surfaces_enabled is explicitly enabled.",
+    "HSConfig condition_format lowers only an allowlisted subset of runtime-safe conditions and fails closed to * with unsupported_condition when input is outside that subset.",
+    "HSConfig compile_globalvalues preserves the full baseline key set and validator checks reject missing baseline keys, unexpected extra keys, or missing key profiles.",
+    "HSConfig compile_mulligan emits the documented Mulligan.values row shape and validator checks reject unsupported selectors, lone wildcard discard, and wildcard discard before any non-wildcard hold.",
+    "HSConfig compile_combo returns no file when no combos exist and validator checks reject combo rows with fewer than two cards, mismatched segment counts, or unsupported row keys.",
+    "HSConfig compile_cardid emits per-card files with GameCardId ownership and supported behavior blocks, while visionai_registry carries the broader documented block registry.",
+    "HSConfig strong_promotion_report and apply_gate block Presume.json and Concede.json from the normal path even though validate_package and visionai_registry still recognize them as valid VisionAI surfaces.",
+    "Targeted tests passed on 2026-07-07: test_surface_intent.py, test_condition_format.py, and test_e2e_preview.py."
+  ],
+  "implementation_implications": [
+    "HSConfig matches HearthRanger VisionAI at the boundary level for the normal surfaces it actively supports: GlobalValues.json, Mulligan.json, per-card CARDID.json, and exact-sequence Combo.json.",
+    "The repo is intentionally stricter than the public docs on runtime conditions. That is a conservative fail-closed design choice, not a syntax bug, and it reduces the chance of emitting undocumented or weakly understood expressions.",
+    "GlobalValues handling is aligned with the documented baseline-copy expectation and adds stronger safety than the public docs through baseline completeness and profile checks.",
+    "Mulligan handling is aligned with the documented row shape and adds stronger safety through selector validation and hold-before-wildcard-discard checks.",
+    "Combo handling is aligned with the documented operators and segment-count rule and narrows normal emission to exact known sequences only.",
+    "Per-card CardID handling is aligned on filename ownership and supported block families, but automatic lowering is only partial unless upstream claims provide explicit behavior_block rows.",
+    "Presume.json and Concede.json should continue to be treated as legacy or gated surfaces rather than normal-path outputs, because current apply and promotion gates depend on that distinction."
+  ],
+  "current_repo_alignment": "Partially aligned in breadth, strongly aligned in the chosen normal path. HSConfig matches the documented file families, JSON ownership rules, GlobalValues baseline expectation, Mulligan row structure, and Combo boundary rules for the surfaces it actively supports. It is intentionally narrower than the public docs on condition syntax and on legacy surfaces such as Presume.json and Concede.json. That narrower stance is coherent with the repo's fail-closed design, promotion gates, and preview tests.",
+  "risks_or_gaps": [
+    "[uncertain] HearthRanger's public condition language is broader than the allowlist in src/hsconfig/condition_format.py, so full syntax parity is not proven and does not appear to be the current design goal.",
+    "Automatic CardID lowering is not fully equivalent to the full documented behavior-block space. The validator and registry know more blocks than compile_cardid maps from roles by default.",
+    "Because validate_package.py and visionai_registry.py still accept Presume.json and Concede.json, future changes could blur the difference between validator-supported legacy surfaces and allowed normal-path outputs unless the existing gates remain in place."
+  ],
+  "recommendation": "Keep the current normal-path contract and document it as an explicit policy boundary: HSConfig normal output is GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only for exact sequences, with fail-closed condition lowering. If support is expanded later, add new condition atoms or CardID block lowering only together with validator coverage, tests, and apply-gate policy updates.",
+  "uncertain": [
+    "risks_or_gaps"
+  ]
+}

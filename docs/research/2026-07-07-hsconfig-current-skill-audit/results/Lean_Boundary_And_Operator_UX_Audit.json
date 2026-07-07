@@ -1,0 +1,41 @@
+{
+  "scope_question": "Should HSConfig stay a pre-run-only tool, keep HSTuner and post-run tuning concerns out of scope, and simplify operator-facing docs and command framing while still producing competent initial HearthRanger config packages?",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\AGENTS.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-builder-workflow.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\guide-research-policy.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\workflow.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_prepare_cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_files.py"
+  ],
+  "confirmed_facts": [
+    "HSConfig is explicitly defined as a pre-game config authoring tool, and both the repo rules and the README say replay parsing, winrate evaluation, post-game evidence inspection, and runtime-log tuning belong to HSTuner instead.",
+    "The documented normal path is source research input -> `hsconfig source-manifest` -> `hsconfig draft-source-documents` -> `hsconfig research-deck` -> `hsconfig prepare` -> inspect `reports/operator_summary.json` -> optional `hsconfig apply` only when intended.",
+    "The operator model is deliberately split into technical validity and semantic or source strength through `technical_status`, `semantic_status`, `next_action`, `apply_policy`, `guide_strength_summary`, and `semantic_blockers` in `operator_summary.json`.",
+    "Runtime apply is now enforced in code, not only documented: `src/hsconfig/cli.py` calls `evaluate_apply_gate(...)`, and `src/hsconfig/apply_gate.py` blocks apply unless the package is structurally complete and the operator summary is either `SOURCE_BACKED_STRONG` and allowed or an explicit `--allow-source-informed` escape hatch is used.",
+    "The normal path is guarded against scope creep: `apply_gate.py` blocks normal-path optional surfaces such as `Presume.json` and `Concede.json`, and the skill/docs keep those surfaces out of the normal operator workflow.",
+    "The current tests show HSConfig can already produce competent initial packages without pretending they are tuned: default `prepare` outputs a `VALID_PACKAGE` with `VALID_BUT_NOT_GUIDE_STRONG` when source depth is incomplete, while strong source-document fixtures can reach `SOURCE_BACKED_STRONG_CONFIRMED`."
+  ],
+  "implementation_implications": [
+    "HSConfig should remain a pre-run compiler and validator with optional gated runtime apply, not a post-run optimization or replay-analysis system.",
+    "HSTuner concerns should stay out of this repo, because the current code, docs, and tests already use a clean architectural split: HSConfig creates the best available initial package, and HSTuner owns runtime evidence and tuning.",
+    "The single operator decision point should stay `reports/operator_summary.json`, with lower-level reports such as `source_claim_gap_report.json` and `strong_promotion_report.json` treated as explanatory evidence rather than separate gates.",
+    "Operator UX can be simplified without widening scope by making one canonical story dominant in the docs: source documents or evidence in, `research-deck`, `prepare`, read `operator_summary.json`, then optional `apply` only through the gate.",
+    "Expert and diagnostic commands such as `build`, `research-contract`, `--cards-json`, `--claims-json`, and `--plan-reports-dir` should remain available for advanced or fixture workflows, but they should be framed as non-default paths so operators do not confuse them with the main workflow."
+  ],
+  "current_repo_alignment": "Aligned with a minor UX simplification opportunity. The current repo preserves the lean HSConfig boundary, keeps HSTuner concerns out, enforces the apply gate in code, and documents `operator_summary.json` as the normal operator gate. The remaining issue is not scope drift but operator-surface breadth: the command set and repeated docs are coherent, yet still broader than the simplest story an operator needs.",
+  "risks_or_gaps": [
+    "The normal source-builder path still spans several commands before package apply, which is correct but not minimal for an operator who already has usable source documents or guide sources.",
+    "The CLI exposes expert and legacy-adjacent inputs on normal commands, including `--cards-json`, `--claims-json`, and `--plan-reports-dir`, which can blur the simple operator story even if the documentation labels them as expert paths.",
+    "Active documentation is intentionally synchronized across the README, the repo skill, and the workflow reference, so any simplification requires coordinated edits across multiple files and tests rather than a one-file cleanup.",
+    "The explicit `--allow-source-informed` escape hatch is useful and bounded, but it still depends on operator discipline when someone intentionally applies a valid package before it reaches guide-strong depth."
+  ],
+  "recommendation": "Keep HSConfig pre-run only and keep HSTuner concerns out. Do not add replay parsing, winrate logic, runtime-evidence loops, or post-run tuning to HSConfig. Simplify operator UX by tightening the documentation around one canonical path: source evidence or source documents -> `hsconfig research-deck` -> `hsconfig prepare` -> inspect `reports/operator_summary.json` -> `hsconfig apply` only through the enforced gate. Keep `build`, `research-contract`, and advanced flags, but move them clearly under an expert or diagnostic section instead of letting them compete with the main operator story.",
+  "uncertain": []
+}

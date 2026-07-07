@@ -1,0 +1,48 @@
+{
+  "scope_question": "Should a non-conservative, guide-aligned HSConfig skill require every deck card to resolve into a visible per-card lane before package readiness, and does that requirement mean visible coverage only or full strong runtime-lowerable coverage for every card?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_validate_package.py"
+  ],
+  "confirmed_facts": [
+    "The active operator policy already states the every-card rule explicitly: before normal `hsconfig prepare`, Codex should try to give every deck card at least one structured expectation in this order: card-specific guide claim, current card text or static semantics, archetype-inferred role, then `generic_low_confidence` as the last visible fallback. The same document says every card must land in a visible lane, while only `guide_backed` and `source_backed_static_semantics` count toward strong guide depth.",
+    "The strict runtime-lowering gate matches that policy. `claim_can_lower_to_runtime()` only allows `guide_backed` and `source_backed_static_semantics` claims to affect generated runtime config, and blocks `explicit_low_confidence`, `generic_low_confidence`, `contract_gap`, and `trust_ceiling=report_only` claims.",
+    "Guide-source normalization preserves per-card coverage accounting. `build_source_document_bundle()` assigns `claim_readiness`, `specificity_status`, and `trust_ceiling`, and its coverage report marks each deck card as `guide_backed`, `static_semantics_backfilled`, or `uncovered_low_confidence`.",
+    "The gameplan contract is every-card by construction. `build_gameplan_contract()` iterates the full deck list, emits one card record per deck card, and falls back to `deck_card` plus a coverage status such as `archetype_inferred` or `generic_low_confidence` when stronger evidence is absent.",
+    "Per-card readiness is also every-card by construction. `build_config_readiness_report()` assigns every deck card a lane from `runtime_emitted`, `mulligan_only`, `globalvalues_only`, `report_only_supported`, `archetype_inferred`, or `generic_low_confidence`, plus a `first_missing_link` such as `needs_guide_claim`, `needs_runtime_surface`, `needs_mulligan_claim`, `needs_combo_sequence`, `needs_condition_lowering`, or `needs_mechanic_lowering`.",
+    "Tests prove that visible coverage is not the same as strong closure. A guide-backed mulligan anchor without a mulligan rule is still only `report_only_supported` with `needs_mulligan_claim`; a guide-backed combo piece without an exact combo stays `report_only_supported` with `needs_combo_sequence`; uncovered cards become `generic_low_confidence` with `needs_guide_claim`.",
+    "The canonical strong gate is stricter than package validity. `build_operator_summary()` only returns `SOURCE_BACKED_STRONG` when the package is technically valid, source depth is `source_backed`, claim count is positive, source-evidence warnings are zero, generic-low-confidence cards are zero, uncovered cards are zero, claim conflicts are zero, and every readiness-gap counter is zero.",
+    "Technical package validation is intentionally looser than semantic strongness. `validate_config_package(require_complete_package=True)` requires `GlobalValues.json`, `Mulligan.json`, and at least one per-card CardID file, but it does not require every deck card to have a concrete runtime file. That means a package can be technically valid before every card is strongly closed.",
+    "The repo also exposes the every-card closure state directly through `source_claim_gap_report.json`, which emits one row per card, preserves the card-level `first_missing_link`, and marks a card as `card_ready_for_strong_gate` only when its missing link is `none`."
+  ],
+  "implementation_implications": [
+    "A non-conservative, guide-aligned HSConfig skill should keep the every-card visible-lane rule as mandatory. Every submitted deck card should appear in a card-level audit row with an explicit lane, even when the lane is only `archetype_inferred`, `report_only_supported`, or `generic_low_confidence`.",
+    "The skill should not treat visible coverage alone as equivalent to strong readiness. Visible low-confidence or report-only lanes are acceptable as audit output, but they must continue to block `SOURCE_BACKED_STRONG` until the card has either a guide-backed or static-semantics-backed path with no missing link.",
+    "The clean contract is two-tiered: baseline package validity may still exist with warnings, while strong guide-aligned readiness requires zero uncovered cards, zero generic-low-confidence cards, and zero per-card readiness gaps across guide, runtime, mulligan, combo, condition, and mechanic lanes.",
+    "Downstream code and operator UX should keep reading `per_card_config_readiness_report.json`, `source_claim_gap_report.json`, and `operator_summary.json` together. That combination explains both whether every card is visible and whether every card is strong enough for non-conservative handoff or apply decisions."
+  ],
+  "current_repo_alignment": "Partially aligned. The repo already enforces the core every-card audit idea in policy, per-card coverage, per-card readiness, and strong-promotion logic. However, the term `package readiness` is split into at least two levels: technical `VALID_PACKAGE` can still exist while some cards remain `report_only_supported`, `archetype_inferred`, or `generic_low_confidence`, whereas semantic `SOURCE_BACKED_STRONG` already behaves like the stricter every-card closure gate.",
+  "risks_or_gaps": [
+    "The main ambiguity is terminology, not missing logic. If people say `package ready` when they mean technical validity, they may wrongly assume every card is already strongly closed. The current codebase distinguishes technical validity from semantic strongness, but the phrase itself can still be read too loosely.",
+    "A visible lane can still be weak. `archetype_inferred`, `report_only_supported`, and `generic_low_confidence` satisfy visibility, but they do not prove non-conservative runtime competence for that card.",
+    "Technical validation still allows a complete package with only one per-card CardID runtime file. That is correct for package-shape validation, but it means external consumers must not treat validator success as proof of full every-card semantic readiness.",
+    "There is a maintenance risk if future compilers bypass `claim_can_lower_to_runtime()` and lower report-only claims directly. The current architecture is safe, but the contract depends on keeping that gate mandatory everywhere."
+  ],
+  "recommendation": "Keep the current every-card visible-lane contract, but document it as a two-level rule. For any non-conservative guide-aligned skill: `package audit ready` should mean every deck card lands in a visible lane and appears in the per-card reports; `source-backed strong ready` should mean every deck card is closed by guide-backed or static-semantics-backed evidence with zero remaining readiness gaps. If one label must be hardened, harden the operator wording around `VALID_PACKAGE` so it is never mistaken for full every-card strong closure.",
+  "uncertain": []
+}
