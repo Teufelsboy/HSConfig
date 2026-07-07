@@ -165,3 +165,57 @@ def test_shadowpriest_fixture_reaches_source_backed_strong(
     assert readiness["summary"]["generic_low_confidence"] == 0
     assert readiness["summary"]["cards_needing_guide_claims"] == 0
     assert readiness["summary"]["cards_needing_runtime_surface"] == 0
+
+
+def test_bigshaman_fixture_uses_explicit_recruit_and_deathrattle_values(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    out = tmp_path / "BigShaman"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "BigShaman",
+            "--deck-code",
+            "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_bigshaman_strong.json",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    gvg_029 = json.loads(
+        (out / "CustomConfig" / "bigshaman" / "GVG_029.json").read_text(encoding="utf-8")
+    )
+    ww_440 = json.loads(
+        (out / "CustomConfig" / "bigshaman" / "WW_440.json").read_text(encoding="utf-8")
+    )
+
+    assert gvg_029["BeforePlayCardBonus"]["values"] == [
+        {
+            "comment": "BigShaman: GVG_029_summon_hand_minion",
+            "condition": "*",
+            "value": "9",
+        }
+    ]
+    assert ww_440["BeforePlayCardBonus"]["values"] == [
+        {
+            "comment": "BigShaman: WW_440_summon_from_deck",
+            "condition": "*",
+            "value": "9",
+        }
+    ]
+    assert ww_440["OnBoardBonus"]["values"] == [
+        {
+            "comment": "BigShaman: WW_440_deathrattle_summon_from_deck",
+            "condition": "*",
+            "value": "7",
+        }
+    ]

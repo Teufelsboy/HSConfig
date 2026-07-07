@@ -16,7 +16,7 @@ EXPECTED_DECKS = {
     "Boarlock",
     "PirateDH",
 }
-CORE_FIXTURES = {"MechPala", "PirateRogue", "ShadowPriest"}
+CORE_FIXTURES = {"BigShaman", "MechPala", "PirateRogue", "ShadowPriest"}
 SOURCE_INFORMED_VALID_FIXTURES = EXPECTED_DECKS - CORE_FIXTURES
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {

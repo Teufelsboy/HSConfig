@@ -93,7 +93,7 @@
         {
           "claim_kind": "card_role",
           "cards": ["EDR_031"],
-          "stance": "repeatable_big_pressure",
+          "stance": "end_of_turn_deck_play",
           "runtime_block": "OnBoardBonus",
           "evidence_text_short": "At the end of your turn, play the top 3 cards in your deck. Return any that can't be played.",
           "source_confidence": "high"
@@ -101,15 +101,16 @@
         {
           "claim_kind": "card_role",
           "cards": ["GVG_029"],
-          "stance": "threat_cheat",
+          "stance": "summon_hand_minion",
           "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "9",
           "evidence_text_short": "Put a random minion from each player's hand into the battlefield.",
           "source_confidence": "high"
         },
         {
           "claim_kind": "card_role",
           "cards": ["TID_712"],
-          "stance": "colossal_payoff",
+          "stance": "colossal_attack_trigger",
           "runtime_block": "OnBoardBonus",
           "evidence_text_short": "Colossal +2, Rush, Windfury. Whenever Neptulon attacks, if you control any Hands, they attack instead.",
           "source_confidence": "high"
@@ -117,7 +118,7 @@
         {
           "claim_kind": "card_role",
           "cards": ["TOY_877"],
-          "stance": "board_scaling",
+          "stance": "all_zone_minion_buff",
           "runtime_block": "OnBoardBonus",
           "evidence_text_short": "Give +2/+3 to all minions in your hand, deck, and battlefield.",
           "source_confidence": "high"
@@ -133,9 +134,20 @@
         {
           "claim_kind": "mechanic_usage",
           "cards": ["WW_440"],
+          "mechanic": "recruit",
+          "stance": "summon_from_deck",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "9",
+          "evidence_text_short": "Taunt. Deathrattle: Summon an Elemental and Beast from your deck.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["WW_440"],
           "mechanic": "deathrattle",
-          "stance": "deck_recruit_deathrattle_payoff",
+          "stance": "deathrattle_summon_from_deck",
           "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
           "evidence_text_short": "Taunt. Deathrattle: Summon an Elemental and Beast from your deck.",
           "source_confidence": "high"
         }

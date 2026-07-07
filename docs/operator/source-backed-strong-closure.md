@@ -22,7 +22,7 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
 | PirateRogue | `core_source_backed_fixture` | Already strong. Preserve this as the third promoted fixture. |
 | CtAPaladin | `source_informed_valid_fixture` | Close guide-claim and recruit/board-flood runtime-surface gaps. |
-| BigShaman | `core_source_backed_fixture` | Already strong. Preserve this as the fourth promoted fixture. |
+| BigShaman | `core_source_backed_fixture` | Already strong. Preserve the source-faithful recruit and deathrattle claim set, including explicit `9` recruit/big-cheat and `7` deathrattle runtime values. |
 | Discolock | `source_informed_valid_fixture` | Close guide-claim, discard runtime-surface, and mechanic-lowering gaps. |
 | Kingslayer | `source_informed_valid_fixture` | Close guide-claim, weapon runtime-surface, and unsupported-condition gaps. |
 | TreantDruid | `source_informed_valid_fixture` | Close guide-claim and token-board runtime-surface gaps. |

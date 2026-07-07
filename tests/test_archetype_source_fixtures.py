@@ -292,6 +292,38 @@ def test_bigshaman_fixture_covers_big_cheat_and_bad_target_patterns():
     assert any(marker in text for marker in ("friendly", "own minion", "not enemy"))
 
 
+def test_bigshaman_fixture_keeps_metadata_claims_static_and_explicit():
+    metadata_claims = [
+        claim
+        for document in _documents(FIXTURES["BigShaman"])
+        if document["source_family"] == "metadata"
+        for claim in document["claims"]
+    ]
+    banned_stances = {
+        "repeatable_big_pressure",
+        "threat_cheat",
+        "colossal_payoff",
+        "board_scaling",
+        "deck_recruit_deathrattle_payoff",
+    }
+
+    assert not {claim.get("stance") for claim in metadata_claims} & banned_stances
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "recruit"
+        and claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("runtime_value") == "9"
+        for claim in metadata_claims
+    )
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "deathrattle"
+        and claim.get("runtime_block") == "OnBoardBonus"
+        and claim.get("runtime_value") == "7"
+        for claim in metadata_claims
+    )
+
+
 def test_discolock_fixture_covers_discard_and_hand_mutation():
     claims = _claims("Discolock")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()

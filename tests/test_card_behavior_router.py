@@ -380,6 +380,7 @@ def test_recruit_claim_can_lower_to_before_play_when_explicit_block_is_supported
     assert result["suppressed"] == []
     assert result["rows"][0]["card_id"] == "CARD_RECRUIT"
     assert result["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+    assert result["rows"][0]["value"] == "9"
     assert result["rows"][0]["meaningful_runtime_surface"] is True
 
 
@@ -408,6 +409,7 @@ def test_deathrattle_claim_can_lower_to_on_board_when_explicit_block_is_supporte
     assert result["suppressed"] == []
     assert result["rows"][0]["card_id"] == "CARD_DEATHRATTLE"
     assert result["rows"][0]["behavior_block"] == "OnBoardBonus"
+    assert result["rows"][0]["value"] == "7"
 
 
 def test_unmapped_mechanic_claim_with_unsupported_explicit_block_stays_report_only():
