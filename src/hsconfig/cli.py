@@ -480,6 +480,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         generated_files=generated_files,
         claim_coverage_report=guide_claim_bundle.get("claim_coverage_report", guide_claim_bundle["coverage"]),
         config_readiness_summary=config_readiness_report["summary"],
+        config_readiness_report=config_readiness_report,
         claim_conflict_report=guide_claim_bundle.get("claim_conflict_report"),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
@@ -495,6 +496,8 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "uncovered_cards_count": len(guide_claim_bundle["coverage"]["uncovered_cards"]),
             "config_readiness_summary": config_readiness_report["summary"],
             "guide_source_depth_status": guide_source_depth_report["depth_status"],
+            "guide_strength_summary": operator_summary["guide_strength_summary"],
+            "semantic_blockers": operator_summary["semantic_blockers"],
             "operator_summary": operator_summary,
             "next_action": operator_summary["next_action"],
         },

@@ -1012,3 +1012,34 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
             "status": "resolved",
         }
     ]
+
+
+def test_prepare_json_mirrors_operator_summary_guide_strength_fields(
+    tmp_path: Path, capsys
+):
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    operator_summary = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["guide_strength_summary"] == operator_summary["guide_strength_summary"]
+    assert payload["semantic_blockers"] == operator_summary["semantic_blockers"]
+    assert operator_summary["guide_strength_summary"]["source_backed_strong_requires"]

@@ -5,6 +5,14 @@ from typing import Any
 
 
 VALID_STATUSES = {"passed", "pass", "valid", "ok", "success"}
+SOURCE_BACKED_STRONG_REQUIREMENTS = [
+    "technical_status=VALID_PACKAGE",
+    "source_depth_status=source_backed",
+    "claim_count>0",
+    "generic_low_confidence_cards=0",
+    "uncovered_cards=0",
+    "claim_conflicts=0",
+]
 
 
 def build_operator_summary(
@@ -18,6 +26,7 @@ def build_operator_summary(
     generated_files: list[str],
     claim_coverage_report: dict[str, Any] | None = None,
     config_readiness_summary: dict[str, Any] | None = None,
+    config_readiness_report: dict[str, Any] | None = None,
     claim_conflict_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     technical_status = _technical_status(technical_validation)
@@ -37,6 +46,20 @@ def build_operator_summary(
         claim_conflict_report=claim_conflict_report or {},
         claim_coverage_report=claim_coverage_report or {},
     )
+    guide_strength_summary = _guide_strength_summary(
+        guide_source_depth=guide_source_depth or {},
+        claim_coverage_report=claim_coverage_report or {},
+        config_readiness_summary=config_readiness_summary or {},
+        claim_conflict_report=claim_conflict_report or {},
+    )
+    semantic_blockers = _semantic_blockers(
+        claim_coverage_report=claim_coverage_report or {},
+        config_readiness_summary=config_readiness_summary or {},
+        config_readiness_report=config_readiness_report or {},
+        claim_conflict_report=claim_conflict_report or {},
+        globalvalue_authority=globalvalue_authority or {},
+        unsupported_conditions=unsupported_conditions or [],
+    )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
@@ -54,6 +77,8 @@ def build_operator_summary(
         "apply_policy": apply_policy,
         "primary_blockers": primary_blockers,
         "warnings": warnings,
+        "guide_strength_summary": guide_strength_summary,
+        "semantic_blockers": semantic_blockers,
         "generated_files": sorted(str(path) for path in generated_files),
     }
 
@@ -169,6 +194,165 @@ def _low_confidence_card_count(report: dict[str, Any]) -> int:
         for row in cards.values()
         if isinstance(row, dict) and row.get("coverage_status") == "uncovered_low_confidence"
     )
+
+
+def _guide_strength_summary(
+    *,
+    guide_source_depth: dict[str, Any],
+    claim_coverage_report: dict[str, Any],
+    config_readiness_summary: dict[str, Any],
+    claim_conflict_report: dict[str, Any],
+) -> dict[str, Any]:
+    coverage_summary = claim_coverage_report.get("summary", {})
+    if not isinstance(coverage_summary, dict):
+        coverage_summary = {}
+    uncovered_cards = _uncovered_cards(claim_coverage_report)
+    return {
+        "total_cards": _int_value(
+            config_readiness_summary.get(
+                "total_cards",
+                claim_coverage_report.get("total_cards", 0),
+            )
+        ),
+        "guide_backed_cards": _int_value(
+            coverage_summary.get(
+                "guide_backed",
+                claim_coverage_report.get("guide_backed_cards", 0),
+            )
+        ),
+        "static_semantics_cards": _int_value(coverage_summary.get("static_semantics_backfilled", 0)),
+        "generic_low_confidence_cards": _generic_low_confidence_count(
+            config_readiness_summary=config_readiness_summary,
+            claim_coverage_report=claim_coverage_report,
+        ),
+        "uncovered_cards": len(uncovered_cards),
+        "claim_conflicts": _int_value(claim_conflict_report.get("conflict_count", 0)),
+        "runtime_emitted_cards": _int_value(config_readiness_summary.get("runtime_emitted", 0)),
+        "cards_needing_guide_claims": _int_value(
+            config_readiness_summary.get("cards_needing_guide_claims", 0)
+        ),
+        "cards_needing_runtime_surface": _int_value(
+            config_readiness_summary.get("cards_needing_runtime_surface", 0)
+        ),
+        "cards_needing_mulligan_claims": _int_value(
+            config_readiness_summary.get("cards_needing_mulligan_claims", 0)
+        ),
+        "cards_needing_combo_sequence": _int_value(
+            config_readiness_summary.get("cards_needing_combo_sequence", 0)
+        ),
+        "cards_needing_condition_lowering": _int_value(
+            config_readiness_summary.get("cards_needing_condition_lowering", 0)
+        ),
+        "cards_needing_mechanic_lowering": _int_value(
+            config_readiness_summary.get("cards_needing_mechanic_lowering", 0)
+        ),
+        "source_backed_strong_requires": SOURCE_BACKED_STRONG_REQUIREMENTS,
+    }
+
+
+def _semantic_blockers(
+    *,
+    claim_coverage_report: dict[str, Any],
+    config_readiness_summary: dict[str, Any],
+    config_readiness_report: dict[str, Any],
+    claim_conflict_report: dict[str, Any],
+    globalvalue_authority: dict[str, Any],
+    unsupported_conditions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    missing_link_reasons = {
+        "needs_guide_claim": ("cards_need_guide_claims", "blocks_source_backed_strong"),
+        "needs_runtime_surface": ("cards_need_runtime_surface", "report_visible_gap"),
+        "needs_mulligan_claim": ("cards_need_mulligan_claims", "report_visible_gap"),
+        "needs_combo_sequence": ("cards_need_combo_sequence", "report_visible_gap"),
+        "needs_condition_lowering": ("cards_need_condition_lowering", "report_visible_gap"),
+        "needs_mechanic_lowering": ("cards_need_mechanic_lowering", "report_visible_gap"),
+    }
+    for missing_link, (reason, strength) in missing_link_reasons.items():
+        affected = _affected_cards_by_missing_link(config_readiness_report, missing_link)
+        count = len(affected) or _int_value(config_readiness_summary.get(reason, 0))
+        if count:
+            blockers.append(
+                {
+                    "reason": reason,
+                    "count": count,
+                    "blocking_strength": strength,
+                    "report": "reports/per_card_config_readiness_report.json",
+                    "affected_cards": affected[:5],
+                }
+            )
+    conflicts = claim_conflict_report.get("conflicts", [])
+    conflict_count = _int_value(claim_conflict_report.get("conflict_count", 0))
+    if conflict_count:
+        blockers.append(
+            {
+                "reason": "claim_conflicts_present",
+                "count": conflict_count,
+                "blocking_strength": "blocks_source_backed_strong",
+                "report": "reports/claim_conflict_report.json",
+                "affected_cards": _affected_cards_from_conflicts(conflicts)[:5],
+            }
+        )
+    if unsupported_conditions:
+        blockers.append(
+            {
+                "reason": "unsupported_conditions_present",
+                "count": len(unsupported_conditions),
+                "blocking_strength": "report_visible_gap",
+                "report": "reports/mulligan_plan_report.json",
+                "affected_cards": _affected_cards_from_conditions(unsupported_conditions)[:5],
+            }
+        )
+    blocked_globalvalues = [
+        row
+        for row in globalvalue_authority.get("blocked_until_runtime_evidence", [])
+        if isinstance(row, dict)
+    ]
+    if blocked_globalvalues:
+        blockers.append(
+            {
+                "reason": "globalvalues_runtime_evidence_required",
+                "count": len(blocked_globalvalues),
+                "blocking_strength": "runtime_evidence_required",
+                "report": "reports/global_values_authority_matrix.json",
+                "affected_cards": [],
+            }
+        )
+    return blockers
+
+
+def _affected_cards_by_missing_link(
+    config_readiness_report: dict[str, Any],
+    missing_link: str,
+) -> list[dict[str, str]]:
+    cards = config_readiness_report.get("cards", {})
+    if not isinstance(cards, dict):
+        return []
+    rows = []
+    for card_id, row in sorted(cards.items()):
+        if not isinstance(row, dict) or row.get("first_missing_link") != missing_link:
+            continue
+        rows.append({"card_id": str(card_id), "name": str(row.get("name", card_id))})
+    return rows
+
+
+def _affected_cards_from_conflicts(conflicts: Any) -> list[dict[str, str]]:
+    if not isinstance(conflicts, list):
+        return []
+    rows = []
+    for conflict in conflicts:
+        if isinstance(conflict, dict) and conflict.get("card_id"):
+            rows.append({"card_id": str(conflict["card_id"]), "name": str(conflict["card_id"])})
+    return rows
+
+
+def _affected_cards_from_conditions(conditions: list[dict[str, Any]]) -> list[dict[str, str]]:
+    rows = []
+    for condition in conditions:
+        card_id = condition.get("card_id") or condition.get("card")
+        if card_id:
+            rows.append({"card_id": str(card_id), "name": str(card_id)})
+    return rows
 
 
 def _int_value(value: Any) -> int:
