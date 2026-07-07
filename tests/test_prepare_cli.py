@@ -1261,3 +1261,40 @@ def test_prepare_json_mirrors_operator_summary_guide_strength_fields(
     assert payload["guide_strength_summary"] == operator_summary["guide_strength_summary"]
     assert payload["semantic_blockers"] == operator_summary["semantic_blockers"]
     assert operator_summary["guide_strength_summary"]["source_backed_strong_requires"]
+
+
+def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    source_gap = json.loads(
+        (reports / "source_claim_gap_report.json").read_text(encoding="utf-8")
+    )
+    promotion = json.loads(
+        (reports / "strong_promotion_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert source_gap["summary"]["blocked_cards"] == 0
+    assert promotion["promotion_ready"] is True
+    assert promotion["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"

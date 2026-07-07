@@ -43,8 +43,10 @@ from hsconfig.research_contract import (
 from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
+from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.source_evidence_verifier import verify_source_documents
+from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
 
@@ -460,6 +462,15 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
     write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)
+    source_claim_gap_report = build_source_claim_gap_report(
+        deck_name=args.deck_name,
+        config_readiness_report=config_readiness_report,
+        claim_coverage_report=guide_claim_bundle.get("claim_coverage_report", guide_claim_bundle["coverage"]),
+        card_behavior_plan=card_behavior_plan,
+        mulligan_plan=mulligan_plan,
+        combo_plan=combo_plan,
+    )
+    write_json(reports_dir / "source_claim_gap_report.json", source_claim_gap_report)
     write_json(
         reports_dir / "global_values_blocked_changes.json",
         global_values_authority_matrix["blocked_until_runtime_evidence"],
@@ -477,19 +488,36 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         require_globalvalues_profile=True,
     )
     write_json(reports_dir / "validation_report.json", report)
+    operator_summary_kwargs = {
+        "deck_name": args.deck_name,
+        "deck_code": args.deck_code,
+        "technical_validation": report,
+        "guide_source_depth": guide_source_depth_report,
+        "unsupported_conditions": mulligan_plan.get("suppressed_rules", []),
+        "globalvalue_authority": global_values_authority_matrix,
+        "claim_coverage_report": guide_claim_bundle.get(
+            "claim_coverage_report", guide_claim_bundle["coverage"]
+        ),
+        "config_readiness_summary": config_readiness_report["summary"],
+        "config_readiness_report": config_readiness_report,
+        "claim_conflict_report": guide_claim_bundle.get("claim_conflict_report"),
+    }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        technical_validation=report,
-        guide_source_depth=guide_source_depth_report,
-        unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
-        globalvalue_authority=global_values_authority_matrix,
         generated_files=generated_files,
-        claim_coverage_report=guide_claim_bundle.get("claim_coverage_report", guide_claim_bundle["coverage"]),
-        config_readiness_summary=config_readiness_report["summary"],
-        config_readiness_report=config_readiness_report,
-        claim_conflict_report=guide_claim_bundle.get("claim_conflict_report"),
+        **operator_summary_kwargs,
+    )
+    strong_promotion_report = build_strong_promotion_report(
+        deck_name=args.deck_name,
+        fixture_stage="runtime_prepare",
+        operator_summary=operator_summary,
+        source_claim_gap_report=source_claim_gap_report,
+    )
+    write_json(reports_dir / "strong_promotion_report.json", strong_promotion_report)
+    generated_files = _generated_package_files(out, deck_dir, reports_dir)
+    operator_summary = build_operator_summary(
+        generated_files=generated_files,
+        **operator_summary_kwargs,
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1
