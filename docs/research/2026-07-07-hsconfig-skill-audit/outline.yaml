@@ -1,0 +1,38 @@
+topic: hsconfig-skill-audit-2026-07-07
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-07-hsconfig-skill-audit\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: HearthRanger VisionAI Runtime Surface Contract
+    category: HearthRanger
+    description: >
+      Verify the current documented VisionAI CustomConfig surfaces relevant to HSConfig:
+      GlobalValues.json, Mulligan.json, per-card CardID JSON, Combo.json, documented
+      CardID behavior blocks, and whether Presume/Concede should stay outside the
+      normal lean path.
+  - name: Hearthstone Card Identity And Static Semantics
+    category: Hearthstone data
+    description: >
+      Verify whether HearthstoneJSON and HearthSim/deckstrings are appropriate sources
+      for deckstring decode, DBF-to-CardID mapping, card text, mechanics, generated
+      entities, and hero-power transform identity.
+  - name: Source-Backed Guide Claim Depth
+    category: Guide research
+    description: >
+      Audit the policy that current guide/card-specific claims should produce
+      structured source documents, while low-confidence or vague advice remains
+      report-only and must not lower to runtime config.
+  - name: Multi-Archetype Deck Coverage Matrix
+    category: Workflow breadth
+    description: >
+      Evaluate whether the listed deck family set covers enough Hearthstone archetype
+      diversity for HSConfig tests and audits: aggro burn, call-to-arms board flood,
+      pirates, big/recruit/deathrattle, discard, token board, imbue/spell generation,
+      mech, weapon/kingslayer, combo/control, and pirate demon hunter.
+  - name: Lean Skill Boundary And Operator UX
+    category: Architecture
+    description: >
+      Audit whether HSConfig remains lean, simple, autonomous, and competent:
+      deck input to initial CustomConfig only, with HSTuner/post-game analysis kept out,
+      clear operator_summary gates, and minimal duplicated docs.
