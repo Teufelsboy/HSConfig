@@ -422,6 +422,12 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
             encoding="utf-8"
         )
     )
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    card_behavior_suppressions = json.loads(
+        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
+    )
     allowed = {row["key"] for row in authority["allowed_step1_overlays"]}
 
     assert code == 0
@@ -431,6 +437,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()
+    assert card_behavior_suppressions == card_behavior.get("suppressed", [])
 
 
 def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):

@@ -1,4 +1,137 @@
+import importlib.util
+
 from hsconfig.card_behavior_router import route_card_behavior_claims
+
+
+def test_card_behavior_router_routes_specific_runtime_blocks():
+    claims = [
+        {
+            "claim_id": "claim_target",
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_A"],
+            "stance": "prefer_enemy_hero",
+            "runtime_block": "BeforePlayCardBonus",
+            "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
+            "runtime_value": "12",
+        },
+        {
+            "claim_id": "claim_discover",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_B"],
+            "mechanic": "discover",
+            "runtime_block": "OnDiscoverCardBonus",
+            "condition": {"runtime_condition": "my_discover(count(),cardid=CARD_C) > 0"},
+            "runtime_value": "10",
+        },
+    ]
+
+    plan = route_card_behavior_claims(claims)
+
+    assert plan["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+    assert plan["rows"][0]["condition"] == "my_target(count(),hero=true) > 0"
+    assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
+    assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
+
+
+def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    claims = [
+        {
+            "claim_id": "claim_choose_one",
+            "claim_kind": "choose_one_choice",
+            "cards": ["CARD_Z"],
+            "runtime_value": "9",
+        },
+        {
+            "claim_id": "claim_in_hand",
+            "claim_kind": "in_hand_value",
+            "cards": ["CARD_A"],
+            "runtime_value": "4",
+        },
+        {
+            "claim_id": "claim_target",
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_B"],
+            "stance": "prefer_enemy_minion",
+            "runtime_value": "8",
+        },
+    ]
+
+    plan = route_card_behavior_surfaces(claims)
+
+    assert [row["claim_id"] for row in plan["rows"]] == [
+        "claim_choose_one",
+        "claim_in_hand",
+        "claim_target",
+    ]
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_Z", "CARD_A", "CARD_B"]
+    assert [row["behavior_block"] for row in plan["rows"]] == [
+        "OnChooseOneCardBonus",
+        "InHandBonus",
+        "BeforeBattlecryTargetBonus",
+    ]
+    assert plan["option_resolution"] == []
+    assert plan["suppressed"] == []
+
+
+def test_card_behavior_surface_router_suppresses_unresolved_option_identity():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_discover_option",
+                "claim_kind": "discover_choice",
+                "cards": ["CARD_A"],
+                "option_card_id": "CARD_MISSING",
+            }
+        ],
+        identity_links={"CARD_A": [{"link_kind": "entourage", "card_id": "CARD_PRESENT"}]},
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_discover_option",
+            "claim_kind": "discover_choice",
+            "cards": ["CARD_A"],
+            "reason": "unresolved_option_identity",
+        }
+    ]
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_discover_option",
+            "card_id": "CARD_A",
+            "option_card_id": "CARD_MISSING",
+            "status": "unresolved",
+        }
+    ]
+
+
+def test_card_behavior_router_preserves_claim_row_order_across_cards():
+    plan = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_z",
+                "claim_kind": "card_role",
+                "cards": ["CARD_Z"],
+                "runtime_block": "OnBoardBonus",
+            },
+            {
+                "claim_id": "claim_a",
+                "claim_kind": "card_role",
+                "cards": ["CARD_A"],
+                "runtime_block": "InHandBonus",
+            },
+        ]
+    )
+
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_Z", "CARD_A"]
 
 
 def test_routes_targeting_claim_to_cardid_surface():

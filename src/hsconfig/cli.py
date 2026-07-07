@@ -428,6 +428,10 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(reports_dir / "surface_intent.json", surface_intent)
     write_json(reports_dir / "mulligan_plan_report.json", mulligan_plan)
     write_json(reports_dir / "card_behavior_plan_report.json", card_behavior_plan)
+    write_json(
+        reports_dir / "card_behavior_suppression_report.json",
+        card_behavior_plan.get("suppressed", []),
+    )
     write_json(reports_dir / "combo_plan_report.json", combo_plan)
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)

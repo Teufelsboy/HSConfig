@@ -230,3 +230,53 @@ def test_compile_cardid_does_not_duplicate_pressure_fallbacks_for_explicit_befor
     assert len(before_play_values) == 1
     assert before_play_values[0]["condition"] == "my_hero(count(),damaged=true) > 0"
     assert before_play_values[0]["value"] == "15"
+
+
+def test_compile_cardid_preserves_explicit_behavior_row_order_with_same_block():
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_ORDER",
+            "behavior_block": "OnDiscoverCardBonus",
+            "rule_id_suffix": "second_source_claim",
+            "condition": "my_discover(count(),cardid=CARD_B) > 0",
+            "value": "8",
+            "roles": ["discover"],
+            "source_claim_ids": ["claim_second"],
+            "confidence": "guide_backed",
+        },
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_ORDER",
+            "behavior_block": "OnDiscoverCardBonus",
+            "rule_id_suffix": "first_source_claim",
+            "condition": "my_discover(count(),cardid=CARD_A) > 0",
+            "value": "12",
+            "roles": ["discover"],
+            "source_claim_ids": ["claim_first"],
+            "confidence": "guide_backed",
+        },
+    ]
+
+    files = compile_cardid_behaviors(
+        {
+            "deck_name": "Fixture",
+            "cards": {
+                "EX1_ORDER": {
+                    "roles": ["discover"],
+                    "source_claim_ids": [],
+                    "confidence": "source_backed",
+                }
+            },
+        },
+        rows=rows,
+    )
+
+    discover_values = files["EX1_ORDER.json"]["OnDiscoverCardBonus"]["values"]
+    assert [row["comment"] for row in discover_values] == [
+        "Fixture: EX1_ORDER_second_source_claim",
+        "Fixture: EX1_ORDER_first_source_claim",
+    ]
+    assert [row["value"] for row in discover_values] == ["8", "12"]
