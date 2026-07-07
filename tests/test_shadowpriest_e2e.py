@@ -33,7 +33,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     validate_code = main(["validate", "--package", str(package), "--json"])
     validate_out = json.loads(capsys.readouterr().out)
 
-    apply_code = main(
+    blocked_apply_code = main(
         [
             "apply",
             "--package",
@@ -43,15 +43,17 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
             "--json",
         ]
     )
-    apply_out = json.loads(capsys.readouterr().out)
+    blocked_apply_out = json.loads(capsys.readouterr().out)
 
     reports = package / "reports"
     deck_dir = package / "CustomConfig" / "shadowpriest"
     runtime_deck_dir = runtime / "CustomConfig" / "shadowpriest"
+    runtime_deck_config = runtime / "CustomConfig" / "deck_config.ini"
     deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
     receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
@@ -66,14 +68,41 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
-    deck_config = (runtime / "CustomConfig" / "deck_config.ini").read_text(encoding="utf-8")
     darkbishop_contract = contract["cards"]["SW_448"]
 
     assert build_code == 0
     assert validate_code == 0
-    assert apply_code == 0
     assert validate_out["status"] == "passed"
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert blocked_apply_code == 1
+    assert blocked_apply_out["status"] == "blocked"
+    assert blocked_apply_out["apply_gate"]["status"] == "blocked"
+    assert (
+        blocked_apply_out["apply_gate"]["reasons"][0]["reason"]
+        == "operator_summary_not_ready_to_apply"
+    )
+    assert not runtime_deck_dir.exists()
+    assert not runtime_deck_config.exists()
+
+    apply_code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--allow-source-informed",
+            "--json",
+        ]
+    )
+    apply_out = json.loads(capsys.readouterr().out)
+
+    assert apply_code == 0
     assert apply_out["status"] == "applied"
+    assert apply_out["apply_gate"]["mode"] == "source_informed_with_warnings"
     assert apply_out["receipt"]["mapped_deck_name"] == "ShadowPriest"
     assert deck_identity["deck_name"] == "ShadowPriest"
     assert deck_identity["deck_slug"] == "shadowpriest"
@@ -109,4 +138,5 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
     assert (runtime_deck_dir / "DS1_233.json").exists()
+    deck_config = runtime_deck_config.read_text(encoding="utf-8")
     assert "ShadowPriest = shadowpriest" in deck_config
