@@ -44,6 +44,75 @@ def test_guidance_for_valid_but_not_guide_strong_package():
     assert guidance["requires_expert_flag"] is True
 
 
+def test_guidance_opens_first_semantic_blocker_report_for_claim_conflicts():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [
+                {"reason": "claim_conflicts_present", "report": "reports/claim_conflict_report.json"}
+            ],
+        }
+    )
+
+    assert guidance["next_report_to_open"] == "reports/claim_conflict_report.json"
+    assert guidance["requires_expert_flag"] is True
+
+
+def test_guidance_opens_first_semantic_blocker_report_for_unsupported_conditions():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [
+                {
+                    "reason": "unsupported_conditions_present",
+                    "report": "reports/mulligan_plan_report.json",
+                }
+            ],
+        }
+    )
+
+    assert guidance["next_report_to_open"] == "reports/mulligan_plan_report.json"
+    assert guidance["requires_expert_flag"] is True
+
+
+def test_guidance_for_needs_more_research_does_not_offer_expert_flag():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "NEEDS_MORE_RESEARCH",
+            "next_action": "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["next_report_to_open"] == "reports/guide_source_depth_report.json"
+    assert guidance["safe_to_apply"] is False
+    assert guidance["requires_expert_flag"] is False
+
+
+def test_guidance_for_static_semantics_usable_offers_expert_flag():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "STATIC_SEMANTICS_USABLE",
+            "next_action": "READY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["next_report_to_open"] == "reports/guide_source_depth_report.json"
+    assert guidance["safe_to_apply"] is False
+    assert guidance["requires_expert_flag"] is True
+
+
 def test_guidance_for_invalid_package():
     guidance = build_operator_guidance(
         {

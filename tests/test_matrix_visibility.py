@@ -28,3 +28,22 @@ def test_each_matrix_row_exposes_first_strongness_link():
         else:
             assert visibility["first_strongness_gap"] != "none"
             assert visibility["operator_action"].startswith("close_existing_")
+
+
+def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
+    matrix = json.loads(Path("docs/operator/archetype-fixture-matrix.json").read_text(encoding="utf-8"))
+    report = build_matrix_visibility(matrix)
+
+    assert len(report["deck_visibility"]) == 11
+    assert report["deck_visibility"][0] == {
+        "deck_name": "ShadowPriest",
+        "fixture_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture",
+    }
+    assert {
+        "deck_name": "CtAPaladin",
+        "fixture_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_recruit_aura_runtime_surface_closure",
+        "operator_action": "close_existing_source_informed_fixture",
+    } in report["deck_visibility"]
