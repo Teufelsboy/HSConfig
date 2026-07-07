@@ -206,9 +206,9 @@
         {
           "claim_kind": "targeting_rule",
           "cards": ["NX2_019"],
-          "stance": "prefer_enemy_hero",
-          "runtime_block": "BeforePlayCardBonus",
-          "runtime_value": "12",
+          "stance": "prefer_enemy_minion",
+          "runtime_block": "BeforeBattlecryTargetBonus",
+          "runtime_value": "8",
           "condition": "*",
           "evidence_text_short": "Mind Sear deals 2 damage to a minion and deals 3 damage to the enemy hero if it dies.",
           "source_confidence": "high"

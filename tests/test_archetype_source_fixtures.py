@@ -239,7 +239,8 @@ def test_shadowpriest_fixture_closes_known_audit_gaps():
     }
     assert expected_cards <= set(claims_by_card)
     assert any(
-        claim.get("runtime_block") == "BeforePlayCardBonus"
+        claim.get("runtime_block") == "BeforeBattlecryTargetBonus"
+        and claim.get("stance") == "prefer_enemy_minion"
         for claim in claims_by_card["NX2_019"]
     )
     assert any(
