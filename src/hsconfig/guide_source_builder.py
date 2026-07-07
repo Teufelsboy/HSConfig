@@ -3,11 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from datetime import datetime, timezone
 from typing import Any
 
-
-STALE_SOURCE_DAYS = 365
+from hsconfig.source_freshness import is_stale_source
 
 
 def build_deck_fingerprint(deck_identity: dict[str, Any], cards: list[dict[str, Any]]) -> dict[str, Any]:
@@ -80,12 +78,13 @@ def build_guide_sources(
     deck_identity: dict[str, Any],
     card_roles: dict[str, Any] | list[dict[str, Any]],
     source_documents: list[dict[str, Any]],
+    current_date: Any = None,
 ) -> dict[str, Any]:
     normalized_sources: list[dict[str, Any]] = []
     stale_count = 0
     downgraded_count = 0
     for index, document in enumerate(source_documents, start=1):
-        warnings = _source_warnings(deck_name, document)
+        warnings = _source_warnings(deck_name, document, current_date=current_date)
         stale_count += int(any(warning["reason"] == "stale_source" for warning in warnings))
         downgraded_count += int(bool(warnings))
         claims = [
@@ -153,7 +152,6 @@ def _normalize_claim(claim: dict[str, Any], *, source_index: int, claim_index: i
     if "reason" in normalized and "evidence_text_short" not in normalized:
         normalized["evidence_text_short"] = normalized["reason"]
     normalized.setdefault("confidence", normalized.get("claim_confidence", "source_backed"))
-    normalized.setdefault("source_confidence", "high")
     normalized["claim_id"] = str(normalized.get("claim_id") or _claim_id(normalized, source_index, claim_index))
     normalized["source_claim_ids"] = [normalized["claim_id"]]
     return normalized
@@ -171,9 +169,14 @@ def _claim_id(claim: dict[str, Any], source_index: int, claim_index: int) -> str
     return f"claim_{digest}"
 
 
-def _source_warnings(deck_name: str, document: dict[str, Any]) -> list[dict[str, str]]:
+def _source_warnings(
+    deck_name: str,
+    document: dict[str, Any],
+    *,
+    current_date: Any = None,
+) -> list[dict[str, str]]:
     warnings: list[dict[str, str]] = []
-    if _is_stale(document.get("retrieved_at")):
+    if _is_stale(document.get("retrieved_at"), current_date=current_date):
         warnings.append({"reason": "stale_source"})
     source_deck_name = str(document.get("deck_name", "")).strip()
     if source_deck_name and source_deck_name.lower() != deck_name.lower():
@@ -181,17 +184,8 @@ def _source_warnings(deck_name: str, document: dict[str, Any]) -> list[dict[str,
     return warnings
 
 
-def _is_stale(value: Any) -> bool:
-    if not value:
-        return False
-    try:
-        retrieved = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    if retrieved.tzinfo is None:
-        retrieved = retrieved.replace(tzinfo=timezone.utc)
-    age = datetime(2026, 7, 6, tzinfo=timezone.utc) - retrieved.astimezone(timezone.utc)
-    return age.days > STALE_SOURCE_DAYS
+def _is_stale(value: Any, *, current_date: Any = None) -> bool:
+    return is_stale_source(str(value or ""), current_date=current_date)
 
 
 def _role_map(card_roles: dict[str, Any] | list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

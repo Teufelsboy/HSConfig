@@ -1,3 +1,4 @@
+from hsconfig.guide_source_builder import build_guide_sources
 from hsconfig.source_document_builder import build_source_document_bundle
 
 
@@ -297,10 +298,50 @@ def test_source_document_builder_downgrades_stale_sources():
                 ],
             }
         ],
+        current_date="2026-07-07",
     )
 
     assert bundle["claims"][0]["freshness_status"] == "stale"
     assert bundle["claims"][0]["claim_confidence"] == "medium"
+
+
+def test_freshness_uses_injected_current_date_in_source_document_and_guide_source_paths():
+    deck_identity = {"deck_name": "Fixture", "deck_code_hash": "abc", "cards": [{"card_id": "CARD_A", "count": 2}]}
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/current",
+            "source_title": "Current Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "stance": "keep",
+                    "evidence_text_short": "Keep Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+        current_date="2026-07-07",
+    )
+    guide_sources = build_guide_sources(
+        deck_name="Fixture",
+        deck_identity=deck_identity,
+        card_roles={},
+        source_documents=source_documents,
+        current_date="2026-07-07",
+    )
+
+    assert bundle["claims"][0]["freshness_status"] == "current"
+    assert bundle["claims"][0]["claim_confidence"] == "high"
+    assert guide_sources["sources"][0]["warnings"] == []
 
 
 def test_source_document_builder_reports_conflicting_mulligan_claims():
@@ -372,6 +413,7 @@ def test_source_document_builder_preserves_low_claim_confidence_from_current_hig
                 ],
             }
         ],
+        current_date="2026-07-07",
     )
 
     assert bundle["claims"][0]["source_confidence"] == "high"
@@ -403,6 +445,7 @@ def test_source_document_builder_preserves_low_claim_confidence_from_stale_mediu
                 ],
             }
         ],
+        current_date="2026-07-07",
     )
 
     assert bundle["claims"][0]["source_confidence"] == "medium"

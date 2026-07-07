@@ -178,6 +178,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         semantic_report["semantic_enrichment_status"] = "partial"
     enriched_card_metadata = {"cards": semantic_report["cards"]}
     generated_guide_sources = None
+    strict_source_documents = guide_sources
     if source_documents_input:
         generated_guide_sources = build_guide_sources(
             deck_name=args.deck_name,
@@ -186,6 +187,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
             source_documents=source_documents_input,
         )
         guide_sources = generated_guide_sources["sources"]
+        strict_source_documents = source_documents_input
     elif not guide_sources and getattr(args, "auto_research_fallback", True):
         generated_guide_sources = build_guide_sources(
             deck_name=args.deck_name,
@@ -193,9 +195,11 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
             card_roles={},
             source_documents=[],
         )
+        strict_source_documents = []
     elif not guide_sources:
         generated_guide_sources = _research_required_guide_sources(args.deck_name, deck_identity)
-    source_documents = [*guide_sources, *_guide_documents_from_legacy_claims(claims)]
+        strict_source_documents = []
+    source_documents = [*strict_source_documents, *_guide_documents_from_legacy_claims(claims)]
     guide_claim_bundle = build_guide_claim_bundle(
         deck_identity=deck_identity,
         card_metadata=enriched_card_metadata,
@@ -307,7 +311,10 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         claims=plan_claims,
         card_roles=research_bundle.get("card_role_map", {}),
     )
-    card_behavior_plan = route_card_behavior_claims(plan_claims)
+    card_behavior_plan = route_card_behavior_claims(
+        plan_claims,
+        identity_links=_card_behavior_identity_links(gameplan_contract),
+    )
     combo_plan = build_combo_plan(
         deck_cards=set(gameplan_contract.get("cards", {})),
         claims=plan_claims,
@@ -455,15 +462,22 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     )
     write_json(reports_dir / "validation_report.json", report)
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
+    operator_guide_source_depth = {
+        **guide_source_depth_report,
+        "source_depth_status": context["guide_builder_receipt"].get(
+            "source_depth_status",
+            guide_source_depth_report.get("depth_status", ""),
+        ),
+    }
     operator_summary = build_operator_summary(
         deck_name=args.deck_name,
         deck_code=args.deck_code,
         technical_validation=report,
-        guide_source_depth=context["guide_builder_receipt"],
+        guide_source_depth=operator_guide_source_depth,
         unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
         globalvalue_authority=global_values_authority_matrix,
         generated_files=generated_files,
-        claim_coverage_report=guide_claim_bundle["coverage"],
+        claim_coverage_report=guide_claim_bundle.get("claim_coverage_report", guide_claim_bundle["coverage"]),
         config_readiness_summary=config_readiness_report["summary"],
         claim_conflict_report=guide_claim_bundle.get("claim_conflict_report"),
     )
@@ -833,6 +847,17 @@ def _source_records_from_cards(cards: list[dict[str, Any]]) -> dict[str, dict[st
         if source:
             records[str(card["card_id"])] = source
     return records
+
+
+def _card_behavior_identity_links(gameplan_contract: dict[str, Any]) -> dict[str, Any]:
+    cards = gameplan_contract.get("cards", {})
+    if not isinstance(cards, dict):
+        return {}
+    return {
+        str(card_id): list(row.get("linked_entities", []))
+        for card_id, row in cards.items()
+        if isinstance(row, dict)
+    }
 
 
 def _read_optional_profile(package: Path) -> dict[str, Any] | None:

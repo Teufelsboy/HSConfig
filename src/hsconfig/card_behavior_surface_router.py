@@ -301,25 +301,20 @@ def _option_resolution_rows(
     cards: list[str],
     identity_links: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    if claim_kind not in OPTION_CLAIM_KINDS or identity_links is None:
+    if claim_kind not in OPTION_CLAIM_KINDS:
         return []
 
     option_card_id = _claim_option_card_id(claim)
-    if option_card_id is None:
-        return []
-
     rows: list[dict[str, Any]] = []
+    identity_links = identity_links or {}
     for card_id in cards:
-        status = (
-            "resolved"
-            if option_card_id in _linked_card_ids(identity_links.get(card_id, []))
-            else "unresolved"
-        )
+        linked_ids = _linked_card_ids(identity_links.get(card_id, []))
+        status = "resolved" if option_card_id and option_card_id in linked_ids else "unresolved"
         rows.append(
             {
                 "claim_id": claim.get("claim_id"),
                 "card_id": card_id,
-                "option_card_id": option_card_id,
+                "option_card_id": option_card_id or "",
                 "status": status,
             }
         )

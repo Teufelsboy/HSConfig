@@ -14,6 +14,8 @@ SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
         "known_bad_pattern",
         "tech_slot",
         "replacement_option",
+        "discover_choice",
+        "choose_one_choice",
     }
 )
 

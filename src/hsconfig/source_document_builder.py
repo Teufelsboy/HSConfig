@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import date, datetime
 from hashlib import sha256
 import json
 from typing import Any
 
+from hsconfig.source_freshness import classify_freshness as _classify_freshness
 from hsconfig.source_document_model import (
     REQUIRED_CLAIM_KEYS,
     REQUIRED_SOURCE_KEYS,
@@ -15,15 +15,12 @@ from hsconfig.source_document_model import (
 DECK_SCOPED_CLAIM_KINDS = {"archetype", "gameplan_posture"}
 
 
-def classify_freshness(retrieved_at: str, *, current_date: str = "2026-07-07") -> str:
-    if not retrieved_at:
-        return "unknown"
-    try:
-        retrieved = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00")).date()
-        current = date.fromisoformat(current_date)
-    except ValueError:
-        return "unknown"
-    return "stale" if (current - retrieved).days > 365 else "current"
+def classify_freshness(
+    retrieved_at: str,
+    *,
+    current_date: Any = None,
+) -> str:
+    return _classify_freshness(retrieved_at, current_date=current_date)
 
 
 def build_source_document_bundle(
@@ -31,6 +28,7 @@ def build_source_document_bundle(
     deck_identity: dict[str, Any],
     card_metadata: dict[str, Any],
     source_documents: list[dict[str, Any]],
+    current_date: Any = None,
 ) -> dict[str, Any]:
     cards = _card_metadata_by_id(card_metadata)
     _merge_deck_identity_cards(cards, deck_identity)
@@ -116,6 +114,7 @@ def build_source_document_bundle(
                 source_ref=source_ref,
                 claim_index=claim_index,
                 known_card_ids=deck_card_ids,
+                current_date=current_date,
             )
             if unsupported is not None:
                 unsupported_claims.append(unsupported)
@@ -158,6 +157,7 @@ def _normalize_source_claim(
     source_ref: str,
     claim_index: int,
     known_card_ids: set[str],
+    current_date: Any = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     claim_kind = _clean_text(raw_claim.get("claim_kind", raw_claim.get("claim_type", "")))
     cards = _normalize_cards(raw_claim.get("cards", []))
@@ -193,7 +193,10 @@ def _normalize_source_claim(
 
     evidence = _claim_evidence(raw_claim)
     source_confidence = _clean_text(raw_claim.get("source_confidence", ""))
-    freshness_status = classify_freshness(str(document.get("retrieved_at", "")))
+    freshness_status = classify_freshness(
+        str(document.get("retrieved_at", "")),
+        current_date=current_date,
+    )
     claim_confidence = _clean_text(raw_claim.get("claim_confidence", "")) or source_confidence
     if freshness_status == "stale" and claim_confidence == "high":
         claim_confidence = "medium"
@@ -245,6 +248,9 @@ def _normalize_source_claim(
         claim["selector_kind"] = _clean_text(raw_claim["selector_kind"])
     if "selector" in raw_claim:
         claim["selector"] = _clean_text(raw_claim["selector"])
+    for key in ("option_card_id", "option_card", "choice_card_id", "choice_card"):
+        if key in raw_claim:
+            claim[key] = _clean_text(raw_claim[key])
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
     claim["claim_id"] = _claim_id(claim)
@@ -414,6 +420,8 @@ def _legacy_claim_type(claim_kind: str) -> str:
         "tech_slot": "tech_slot",
         "replacement_option": "replacement_option",
         "archetype": "archetype",
+        "discover_choice": "discover_choice",
+        "choose_one_choice": "choose_one_choice",
     }.get(claim_kind, "general")
 
 

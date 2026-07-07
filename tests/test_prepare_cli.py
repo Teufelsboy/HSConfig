@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from hsconfig.cli import main
@@ -8,6 +9,10 @@ SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+
+
+def _today_utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def test_research_contract_command_writes_contract_only(tmp_path: Path, capsys):
@@ -281,7 +286,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
                         "source_url": "https://example.invalid/shadow-priest",
                         "source_title": "Shadow Priest Guide",
                         "source_family": "guide",
-                        "retrieved_at": "2026-07-06T00:00:00Z",
+                        "retrieved_at": _today_utc_iso(),
                         "deck_name": "ShadowPriest",
                         "archetype": "aggro_burn",
                         "claims": [
@@ -332,6 +337,86 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
+
+
+def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Card A"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/missing-confidence",
+                        "source_title": "Missing Confidence Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["EX1_001"],
+                                "evidence_text_short": "Keep Card A.",
+                            },
+                            {
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["EX1_001"],
+                                "evidence_text_short": "Keep Card A when on the coin.",
+                                "source_confidence": "   ",
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Fixture",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert payload["guide_claims_count"] == 0
+    assert guide_bundle["claims"] == []
+    assert [row["missing_claim_keys"] for row in unsupported] == [
+        ["source_confidence"],
+        ["source_confidence"],
+    ]
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
 
 
 def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
@@ -478,6 +563,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
                                 "scope": "deck",
                                 "stance": "weapon_pressure",
                                 "reason": "Prioritize weapon pressure.",
+                                "source_confidence": "high",
                             }
                         ],
                     }
@@ -727,3 +813,194 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
     assert conflicts["conflicts"][0]["card_id"] == "CARD_A"
     assert {"reason": "claim_conflicts_present", "conflict_count": 1} in operator_summary["warnings"]
     assert {"reason": "cards_still_low_confidence", "card_count": 1} in operator_summary["warnings"]
+
+
+def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "DISCOVER_CARD", "dbf_id": 1, "count": 2, "name": "Discover Card"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/discover-guide",
+                        "source_title": "Discover Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "discover_choice",
+                                "cards": ["DISCOVER_CARD"],
+                                "option_card_id": "OPTION_ALPHA",
+                                "stance": "pick_option_alpha",
+                                "evidence_text_short": "Prefer Option Alpha from this discover pool.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Discover Deck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    suppressions = json.loads(
+        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert card_behavior["rows"] == []
+    assert card_behavior["option_resolution"] == [
+        {
+            "claim_id": card_behavior["suppressed"][0]["claim_id"],
+            "card_id": "DISCOVER_CARD",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "unresolved",
+        }
+    ]
+    assert suppressions == [
+        {
+            "claim_id": card_behavior["suppressed"][0]["claim_id"],
+            "claim_kind": "discover_choice",
+            "cards": ["DISCOVER_CARD"],
+            "reason": "unresolved_option_identity",
+        }
+    ]
+
+
+def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys, monkeypatch):
+    monkeypatch.setattr(
+        "hsconfig.cli.fetch_latest_cards",
+        lambda timeout=10.0: [
+            {
+                "id": "DISCOVER_CARD",
+                "dbf_id": 1,
+                "name": "Discover Card",
+                "type": "MINION",
+                "text": "Discover a spell.",
+                "entourage": ["OPTION_ALPHA"],
+            },
+            {
+                "id": "OPTION_ALPHA",
+                "dbf_id": 2,
+                "name": "Option Alpha",
+                "type": "SPELL",
+                "text": "Deal damage.",
+            },
+        ],
+    )
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "DISCOVER_CARD", "dbf_id": 1, "count": 2, "name": "Discover Card"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/discover-guide",
+                        "source_title": "Discover Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "discover_choice",
+                                "cards": ["DISCOVER_CARD"],
+                                "option_card_id": "OPTION_ALPHA",
+                                "stance": "pick_option_alpha",
+                                "evidence_text_short": "Prefer Option Alpha from this discover pool.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Discover Deck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    discover_claim = next(
+        claim for claim in guide_bundle["claims"] if claim["claim_kind"] == "discover_choice"
+    )
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert any(row["claim_id"] == discover_claim["claim_id"] for row in card_behavior["rows"])
+    assert card_behavior["suppressed"] == []
+    assert card_behavior["option_resolution"] == [
+        {
+            "claim_id": discover_claim["claim_id"],
+            "card_id": "DISCOVER_CARD",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "resolved",
+        }
+    ]

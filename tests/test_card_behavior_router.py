@@ -43,6 +43,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "claim_id": "claim_choose_one",
             "claim_kind": "choose_one_choice",
             "cards": ["CARD_Z"],
+            "choice_card_id": "CHOICE_ALPHA",
             "runtime_value": "9",
         },
         {
@@ -60,7 +61,10 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
         },
     ]
 
-    plan = route_card_behavior_surfaces(claims)
+    plan = route_card_behavior_surfaces(
+        claims,
+        identity_links={"CARD_Z": [{"link_kind": "entourage", "card_id": "CHOICE_ALPHA"}]},
+    )
 
     assert [row["claim_id"] for row in plan["rows"]] == [
         "claim_choose_one",
@@ -73,7 +77,14 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
         "InHandBonus",
         "BeforeBattlecryTargetBonus",
     ]
-    assert plan["option_resolution"] == []
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_choose_one",
+            "card_id": "CARD_Z",
+            "option_card_id": "CHOICE_ALPHA",
+            "status": "resolved",
+        }
+    ]
     assert plan["suppressed"] == []
 
 
@@ -108,6 +119,41 @@ def test_card_behavior_surface_router_suppresses_unresolved_option_identity():
             "claim_id": "claim_discover_option",
             "card_id": "CARD_A",
             "option_card_id": "CARD_MISSING",
+            "status": "unresolved",
+        }
+    ]
+
+
+def test_card_behavior_surface_router_suppresses_option_claim_without_identity_links():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_choose_one",
+                "claim_kind": "choose_one_choice",
+                "cards": ["CARD_A"],
+                "choice_card_id": "CARD_OPTION",
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_choose_one",
+            "claim_kind": "choose_one_choice",
+            "cards": ["CARD_A"],
+            "reason": "unresolved_option_identity",
+        }
+    ]
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_choose_one",
+            "card_id": "CARD_A",
+            "option_card_id": "CARD_OPTION",
             "status": "unresolved",
         }
     ]
