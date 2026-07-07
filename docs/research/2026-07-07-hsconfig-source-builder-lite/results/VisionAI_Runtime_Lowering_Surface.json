@@ -1,0 +1,22 @@
+{
+  "source_summary": "The lean HSConfig runtime lowering surface remains GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only when exact source-backed sequences exist.",
+  "current_truth": "HearthRanger VisionAI supports multiple CustomConfig files, but HSConfig normal path should only emit surfaces it can validate and explain from source claims before games are played.",
+  "repo_alignment": "The compiler modules map source-backed plans into GlobalValues, Mulligan, CardID behavior, and Combo files while README and skill docs keep replay and post-game tuning outside HSConfig.",
+  "implementation_implication": "source_documents.json may include broader semantics, but unsupported or ambiguous claims should remain in reports until HSConfig has a documented lowering route.",
+  "gaps_or_risks": [
+    "Some CardID behavior blocks are less exercised by fixtures than the common play, target, discover, and attack surfaces.",
+    "GlobalValues changes have high blast radius and should stay posture-based, not arbitrary key tuning."
+  ],
+  "recommended_action": "Continue using claim_can_lower_to_runtime and source_claim_gap_report to separate source-builder research work from runtime write eligibility.",
+  "confidence": "medium",
+  "citations": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py"
+  ],
+  "uncertain": [
+    "full coverage of every documented CardID behavior block"
+  ]
+}

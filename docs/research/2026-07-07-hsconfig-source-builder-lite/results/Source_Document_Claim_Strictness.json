@@ -1,0 +1,18 @@
+{
+  "source_summary": "Strict source documents must carry explicit source metadata and atomic claims. Runtime lowering is gated by supported claim kinds and claim_can_lower_to_runtime rather than by source enthusiasm alone.",
+  "current_truth": "Source-backed claims can drive Mulligan, CardID behavior, Combo, and GlobalValues posture only when the claim kind, cards, confidence, and optional runtime hints are valid for that surface.",
+  "repo_alignment": "source_document_builder.py validates source_documents.json, source_document_model.py defines lowering support, and source_claim_gap_report.py now exposes the first missing source-builder chain.",
+  "implementation_implication": "Do not relax runtime lowering just because evidence collection is more aggressive. Convert weak evidence into visible gaps or report-only support instead.",
+  "gaps_or_risks": [
+    "Claim confidence can be overstated if Codex compresses multiple guide statements into one row.",
+    "Combo emission remains intentionally narrow because exact sequence data is required."
+  ],
+  "recommended_action": "Keep strict validation in source_document_builder and use source_claim_gap_report priority to decide which missing claim to research next.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py"
+  ],
+  "uncertain": []
+}

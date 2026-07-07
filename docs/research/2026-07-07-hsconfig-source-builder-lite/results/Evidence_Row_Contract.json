@@ -1,0 +1,17 @@
+{
+  "source_summary": "Short evidence rows are the lean boundary between Codex research and deterministic HSConfig generation: each row identifies one source, one claim kind, card mentions, stance, short evidence text, and source confidence.",
+  "current_truth": "HSConfig should not store long guide prose in runtime packages or fixtures. The source-builder layer can be aggressive in collecting evidence, but the deterministic drafter must resolve every card mention to exact deck CardIDs before the claim can support source-backed readiness.",
+  "repo_alignment": "The repository now has a draft-source-documents command and source_document_drafter module that convert evidence_rows into source_documents.json and report unresolved mentions.",
+  "implementation_implication": "Keep evidence rows intentionally small and append-only. Use source_document_draft_report.json as the first operator check when a guide mention cannot be resolved to a deck card.",
+  "gaps_or_risks": [
+    "Evidence rows still depend on Codex/research quality; bad guide interpretation can create a structured but wrong claim.",
+    "Unresolved card names must never be silently lowered to runtime config."
+  ],
+  "recommended_action": "Use hsconfig source-manifest before research, collect short evidence rows, and run hsconfig draft-source-documents before research-deck.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_drafter.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md"
+  ],
+  "uncertain": []
+}

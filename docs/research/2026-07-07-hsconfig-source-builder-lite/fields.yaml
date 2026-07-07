@@ -1,0 +1,21 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: source_summary
+        required: true
+      - name: current_truth
+        required: true
+      - name: repo_alignment
+        required: true
+      - name: implementation_implication
+        required: true
+      - name: gaps_or_risks
+        required: true
+      - name: recommended_action
+        required: true
+      - name: confidence
+        required: true
+      - name: citations
+        required: true
+      - name: uncertain
+        required: true

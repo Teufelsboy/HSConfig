@@ -1,0 +1,18 @@
+{
+  "source_summary": "The 11-deck matrix covers aggro, recruit, weapon, deathrattle, discard, token, hero power, mech, combo, and hero attack families as regression examples for pre-game source-backed package generation.",
+  "current_truth": "The matrix is representative, not exhaustive. core_source_backed_fixture rows should prove SOURCE_BACKED_STRONG; source_informed_valid_fixture rows should remain valid packages while exposing their missing strongness chain.",
+  "repo_alignment": "docs/operator/archetype-fixture-matrix.json defines the 11 decks and tests/fixtures/source_documents_*_strong.json provides one source fixture per row.",
+  "implementation_implication": "Use matrix_closure.py to summarize closure without claiming that every deck family is fully solved. The summary should show valid packages, strong rows, source-informed rows, and blocked card counts.",
+  "gaps_or_risks": [
+    "Future mechanics such as discover-heavy chains or reactive control lines can still need additional source fixtures.",
+    "A fixture can prove package shape without proving metagame optimality."
+  ],
+  "recommended_action": "Keep the matrix lean and add new rows only when a new mechanism changes source drafting or runtime lowering behavior.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/matrix_closure.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_builder_matrix_closure.py"
+  ],
+  "uncertain": []
+}

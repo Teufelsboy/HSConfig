@@ -133,3 +133,60 @@ def test_research_deck_rejects_malformed_source_documents_json(tmp_path: Path, c
     assert code == 1
     assert payload["status"] == "failed"
     assert "--source-documents-json" in payload["errors"][0]
+
+
+def test_research_deck_accepts_source_evidence_json(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps({"cards": [{"card_id": "SW_448", "name": "Darkbishop Benedictus", "count": 1}]}),
+        encoding="utf-8",
+    )
+    evidence_json = tmp_path / "source_evidence.json"
+    evidence_json.write_text(
+        json.dumps(
+            {
+                "evidence_rows": [
+                    {
+                        "source_url": "https://example.invalid/shadow-priest",
+                        "source_title": "Shadow Priest Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T12:00:00Z",
+                        "claim_kind": "mulligan_keep",
+                        "card_mentions": ["Darkbishop Benedictus"],
+                        "condition": {"opponent_speed": "any"},
+                        "stance": "mulligan_anchor",
+                        "evidence_text_short": "Keep Darkbishop Benedictus to enable the gameplan.",
+                        "source_confidence": "high",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "research"
+
+    code = main(
+        [
+            "research-deck",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "TEST",
+            "--cards-json",
+            str(cards_json),
+            "--out",
+            str(out),
+            "--source-evidence-json",
+            str(evidence_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    draft_report = json.loads((out / "source_document_draft_report.json").read_text(encoding="utf-8"))
+    guide_sources = json.loads((out / "guide_sources.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["source_depth_status"] == "source_backed"
+    assert draft_report["draft_summary"]["resolved_claims"] == 1
+    assert guide_sources["sources"][0]["claims"][0]["cards"] == ["SW_448"]

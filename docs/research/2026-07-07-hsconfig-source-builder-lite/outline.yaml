@@ -1,0 +1,26 @@
+topic: hsconfig-source-builder-lite-2026-07-07
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-07-hsconfig-source-builder-lite\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Evidence Row Contract
+    category: HSConfig source builder
+    description: >
+      Audit whether short evidence rows are the right boundary between Codex online research and deterministic HSConfig source_documents generation.
+  - name: Source Document Claim Strictness
+    category: Runtime safety
+    description: >
+      Audit claim_kind, card resolution, claim confidence, freshness, and report-only handling before runtime lowering.
+  - name: Eleven Deck Strongness Closure
+    category: Fixture matrix
+    description: >
+      Audit whether the 11-deck matrix is sufficient for source-builder closure and which families remain weak.
+  - name: VisionAI Runtime Lowering Surface
+    category: HearthRanger VisionAI
+    description: >
+      Audit documented CardID, Mulligan, Combo, and GlobalValues surfaces that source claims may lower into.
+  - name: Lean Skill Workflow
+    category: Operator UX
+    description: >
+      Audit whether the new source-builder workflow remains simple enough for the local hsconfig skill.

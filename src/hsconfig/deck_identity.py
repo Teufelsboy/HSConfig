@@ -57,11 +57,15 @@ def _normalize_card(card: dict[str, Any]) -> dict[str, Any]:
     card_id = str(card.get("card_id") or "").strip()
     if not card_id:
         raise ValueError("card_id is required for every deck card")
-    return {
+    normalized = {
         "card_id": card_id,
         "dbf_id": int(dbf_id) if dbf_id is not None else None,
         "count": int(card.get("count", 1)),
     }
+    name = str(card.get("name", "")).strip()
+    if name:
+        normalized["name"] = name
+    return normalized
 
 
 def _normalize_sideboards(sideboards: list[dict[str, Any]]) -> list[dict[str, Any]]:

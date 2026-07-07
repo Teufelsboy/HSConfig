@@ -1,10 +1,12 @@
 # Workflow
 
-Normal flow: deck input -> guide research -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
+Normal flow: deck input -> `hsconfig source-manifest` -> short evidence rows -> `hsconfig draft-source-documents` -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
 
 ## Research Normalization
 
-Use `hsconfig research-deck --source-documents-json ...` after Codex has collected guide, archetype, mulligan, card-text, and metadata evidence. It writes `deck_fingerprint.json`, `candidate_archetypes.json`, `guide_sources.json`, `guide_builder_receipt.json`, and identity reports, but no runtime package.
+Use `hsconfig source-manifest` first to get aliases, card targets, and research questions. Codex then writes short evidence rows. Use `hsconfig draft-source-documents` to turn those rows into strict `source_documents.json`.
+
+Use `hsconfig research-deck --source-documents-json ...` after Codex has collected guide, archetype, mulligan, card-text, and metadata evidence. It writes `deck_fingerprint.json`, `candidate_archetypes.json`, `guide_sources.json`, `guide_builder_receipt.json`, `source_evidence_verification_report.json`, and identity reports, but no runtime package.
 
 Every card should land in a visible source-depth lane before preparation: guide-backed claim, source-backed static semantics, archetype-inferred role, explicit low confidence, generic low confidence, or contract gap.
 

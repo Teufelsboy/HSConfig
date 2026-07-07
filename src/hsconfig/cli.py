@@ -45,8 +45,10 @@ from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
+from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.source_evidence_verifier import verify_source_documents
+from hsconfig.source_research_manifest import build_source_research_manifest
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
@@ -63,6 +65,10 @@ def main(argv: list[str] | None = None) -> int:
             payload, code = _prepare(args)
         elif args.command == "build":
             payload, code = _build(args)
+        elif args.command == "source-manifest":
+            payload, code = _source_manifest(args)
+        elif args.command == "draft-source-documents":
+            payload, code = _draft_source_documents(args)
         elif args.command == "research-contract":
             payload, code = _research_contract(args)
         elif args.command == "research-deck":
@@ -120,12 +126,30 @@ def _build_parser() -> argparse.ArgumentParser:
     research_contract.add_argument("--allow-placeholder", action="store_true")
     research_contract.add_argument("--json", action="store_true")
 
+    source_manifest = subparsers.add_parser("source-manifest")
+    source_manifest.add_argument("--deck-name", required=True)
+    source_manifest.add_argument("--deck-code", required=True)
+    source_manifest.add_argument("--out", required=True)
+    source_manifest.add_argument("--cards-json")
+    source_manifest.add_argument("--allow-placeholder", action="store_true")
+    source_manifest.add_argument("--json", action="store_true")
+
+    draft_source_documents = subparsers.add_parser("draft-source-documents")
+    draft_source_documents.add_argument("--deck-name", required=True)
+    draft_source_documents.add_argument("--deck-code", required=True)
+    draft_source_documents.add_argument("--source-evidence-json", required=True)
+    draft_source_documents.add_argument("--out", required=True)
+    draft_source_documents.add_argument("--cards-json")
+    draft_source_documents.add_argument("--allow-placeholder", action="store_true")
+    draft_source_documents.add_argument("--json", action="store_true")
+
     research_deck = subparsers.add_parser("research-deck")
     research_deck.add_argument("--deck-name", required=True)
     research_deck.add_argument("--deck-code", required=True)
     research_deck.add_argument("--out", required=True)
     research_deck.add_argument("--cards-json")
     research_deck.add_argument("--source-documents-json")
+    research_deck.add_argument("--source-evidence-json")
     research_deck.add_argument("--allow-placeholder", action="store_true")
     research_deck.add_argument("--json", action="store_true")
 
@@ -151,6 +175,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     cards = cards_payload["cards"]
     claims = _load_claims(getattr(args, "claims_json", None))
     source_documents_input = _load_source_documents(getattr(args, "source_documents_json", None))
+    source_evidence_rows = _load_source_evidence(getattr(args, "source_evidence_json", None))
     guide_sources = _load_guide_sources(getattr(args, "guide_sources_json", None))
     source_records = _source_records_from_cards(cards)
     deck_identity = build_deck_identity(
@@ -183,6 +208,17 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         )
         semantic_report["semantic_enrichment_status"] = "partial"
     enriched_card_metadata = {"cards": semantic_report["cards"]}
+    source_document_draft_report = None
+    if source_evidence_rows:
+        source_document_draft_report = draft_source_documents(
+            deck_name=args.deck_name,
+            deck_identity=deck_identity,
+            evidence_rows=source_evidence_rows,
+        )
+        source_documents_input = [
+            *source_documents_input,
+            *source_document_draft_report["source_documents"],
+        ]
     generated_guide_sources = None
     strict_source_documents = guide_sources
     if source_documents_input:
@@ -277,6 +313,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         "identity_graph_report": identity_graph_report,
         "identity_gap_report": build_identity_gap_report(identity_graph_report),
         "source_evidence_report": verify_source_documents(source_documents),
+        "source_document_draft_report": source_document_draft_report,
     }
 
 
@@ -543,6 +580,100 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     )
 
 
+def _source_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    _prepare_research_output_dir(out)
+
+    cards_payload = _load_cards(
+        args.cards_json,
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        allow_placeholder=args.allow_placeholder,
+    )
+    deck_identity = build_deck_identity(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        cards=cards_payload["cards"],
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
+    )
+    candidate_archetypes = build_candidate_archetypes(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        card_roles={},
+        source_documents=[],
+    )
+    manifest = build_source_research_manifest(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        candidate_archetypes=candidate_archetypes,
+        fixture_row=_fixture_row_for(args.deck_name),
+    )
+    output_path = out / "source_research_manifest.json"
+    write_json(output_path, manifest)
+    return (
+        {
+            "status": "OK",
+            "deck_name": args.deck_name,
+            "deck_slug": deck_identity["deck_slug"],
+            "written_files": [str(output_path)],
+        },
+        0,
+    )
+
+
+def _draft_source_documents(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    _prepare_research_output_dir(out)
+
+    cards_payload = _load_cards(
+        args.cards_json,
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        allow_placeholder=args.allow_placeholder,
+    )
+    deck_identity = build_deck_identity(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        cards=cards_payload["cards"],
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
+    )
+    draft = draft_source_documents(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        evidence_rows=_load_source_evidence(args.source_evidence_json),
+    )
+    source_documents_payload = {
+        "schema_version": 1,
+        "deck_name": args.deck_name,
+        "source_documents": draft["source_documents"],
+    }
+    report = {
+        "schema_version": 1,
+        "deck_name": args.deck_name,
+        "draft_summary": draft["draft_summary"],
+        "unresolved_mentions": draft["unresolved_mentions"],
+        "source_evidence_report": verify_source_documents(draft["source_documents"]),
+    }
+    source_path = out / "source_documents.json"
+    report_path = out / "source_document_draft_report.json"
+    write_json(source_path, source_documents_payload)
+    write_json(report_path, report)
+    return (
+        {
+            "status": "OK",
+            "deck_name": args.deck_name,
+            "deck_slug": deck_identity["deck_slug"],
+            "written_files": [str(source_path), str(report_path)],
+            "draft_summary": draft["draft_summary"],
+        },
+        0,
+    )
+
+
 def _research_deck(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     _prepare_research_output_dir(out)
@@ -557,6 +688,18 @@ def _research_deck(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     write_json(out / "identity_graph_report.json", context["identity_graph_report"])
     write_json(out / "identity_gap_report.json", context["identity_gap_report"])
     write_json(out / "source_evidence_verification_report.json", context["source_evidence_report"])
+    if context.get("source_document_draft_report") is not None:
+        report = context["source_document_draft_report"]
+        write_json(
+            out / "source_document_draft_report.json",
+            {
+                "schema_version": 1,
+                "deck_name": args.deck_name,
+                "draft_summary": report["draft_summary"],
+                "unresolved_mentions": report["unresolved_mentions"],
+                "source_evidence_report": verify_source_documents(report["source_documents"]),
+            },
+        )
 
     written_files = [
         str(path)
@@ -773,6 +916,34 @@ def _load_source_documents(source_documents_json: str | None) -> list[dict[str, 
             raise ValueError("Every source document row must be an object")
         documents.append(dict(document))
     return documents
+
+
+def _load_source_evidence(source_evidence_json: str | None) -> list[dict[str, Any]]:
+    if source_evidence_json is None:
+        return []
+    payload = read_json(source_evidence_json)
+    if isinstance(payload, dict):
+        payload = payload.get("evidence_rows", payload.get("rows", payload.get("source_evidence")))
+    if not isinstance(payload, list):
+        raise ValueError("--source-evidence-json must contain a list or an object with an evidence_rows list")
+    rows = []
+    for row in payload:
+        if not isinstance(row, dict):
+            raise ValueError("Every source evidence row must be an object")
+        rows.append(dict(row))
+    return rows
+
+
+def _fixture_row_for(deck_name: str) -> dict[str, Any] | None:
+    matrix_path = Path(__file__).resolve().parents[2] / "docs" / "operator" / "archetype-fixture-matrix.json"
+    if not matrix_path.exists():
+        return None
+    payload = read_json(matrix_path)
+    rows = payload.get("decks", []) if isinstance(payload, dict) else []
+    for row in rows:
+        if isinstance(row, dict) and str(row.get("deck_name", "")) == deck_name:
+            return dict(row)
+    return None
 
 
 def _guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:

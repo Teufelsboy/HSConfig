@@ -48,7 +48,7 @@ def test_report_explains_each_first_missing_link():
     )
 
     assert report["deck_name"] == "Example"
-    assert report["summary"] == {
+    for key, value in {
         "total_cards": 3,
         "blocked_cards": 3,
         "needs_guide_claim": 1,
@@ -57,10 +57,22 @@ def test_report_explains_each_first_missing_link():
         "needs_mulligan_claim": 0,
         "needs_condition_lowering": 0,
         "needs_mechanic_lowering": 0,
-    }
+    }.items():
+        assert report["summary"][key] == value
     assert report["cards"]["CARD_A"]["recommended_source_claim_kind"] == "card_role"
     assert report["cards"]["CARD_B"]["recommended_source_claim_kind"] == "targeting_rule"
     assert report["cards"]["CARD_C"]["recommended_source_claim_kind"] == "combo_sequence"
+    assert report["cards"]["CARD_B"]["priority_score"] > report["cards"]["CARD_A"]["priority_score"]
+    assert report["summary"]["first_missing_chain"] == {
+        "card_id": "CARD_B",
+        "name": "Needs Runtime",
+        "first_missing_link": "needs_runtime_surface",
+        "recommended_source_claim_kind": "targeting_rule",
+        "next_action": "add_runtime_lowerable_claim_or_router_support",
+        "priority_score": report["cards"]["CARD_B"]["priority_score"],
+        "priority_reason": report["cards"]["CARD_B"]["priority_reason"],
+    }
+    assert report["summary"]["next_source_builder_action"] == "add_runtime_lowerable_claim_or_router_support"
 
 
 def test_report_uses_none_when_card_is_ready():
@@ -85,5 +97,7 @@ def test_report_uses_none_when_card_is_ready():
     )
 
     assert report["summary"]["blocked_cards"] == 0
+    assert report["summary"]["first_missing_chain"] is None
+    assert report["summary"]["next_source_builder_action"] == "card_ready_for_strong_gate"
     assert report["cards"]["CARD_READY"]["recommended_source_claim_kind"] == "none"
     assert report["cards"]["CARD_READY"]["next_action"] == "card_ready_for_strong_gate"

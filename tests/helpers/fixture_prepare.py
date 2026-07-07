@@ -45,6 +45,7 @@ def prepare_fixture_deck(tmp_path: Path, deck: dict[str, Any]) -> dict[str, Any]
         (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
     )
     coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    source_gap = json.loads((reports / "source_claim_gap_report.json").read_text(encoding="utf-8"))
     config_root = out / "CustomConfig"
     generated_files = sorted(path.name for path in config_root.rglob("*.json"))
     return {
@@ -53,5 +54,6 @@ def prepare_fixture_deck(tmp_path: Path, deck: dict[str, Any]) -> dict[str, Any]
         "operator": operator,
         "readiness": readiness,
         "coverage": coverage,
+        "source_gap": source_gap,
         "generated_files": generated_files,
     }

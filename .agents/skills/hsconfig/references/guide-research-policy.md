@@ -2,7 +2,7 @@
 
 Use current deck guides and data sources as strategic priors when live research is part of the request.
 
-Every source document should be written as structured JSON and normalized with `hsconfig research-deck`. Runtime files stay clean; provenance and confidence stay in reports.
+Every source document should be written as structured JSON and normalized with `hsconfig research-deck`. Prefer the source-builder path: `hsconfig source-manifest`, short evidence rows, `hsconfig draft-source-documents`, then `hsconfig research-deck --source-documents-json`. Runtime files stay clean; provenance and confidence stay in reports.
 
 Accepted source types:
 
@@ -19,6 +19,27 @@ Rejected source types:
 - non-card-specific advice
 - stale claims that contradict current card text
 - advice that cannot be mapped to Mulligan, CardID behavior, Combo, or GlobalValues posture
+
+Short evidence row shape for `--source-evidence-json`:
+
+```json
+[
+  {
+    "source_url": "https://example.invalid/deck-guide",
+    "source_title": "Deck Guide",
+    "source_family": "guide",
+    "retrieved_at": "2026-07-07T12:00:00Z",
+    "archetype": "aggro_burn",
+    "claim_kind": "mulligan_keep",
+    "card_mentions": ["Example Card"],
+    "stance": "keep",
+    "evidence_text_short": "Keep this card because it enables the deck plan.",
+    "source_confidence": "high"
+  }
+]
+```
+
+`hsconfig draft-source-documents` resolves `card_mentions` to exact deck CardIDs and writes `source_documents.json` plus `source_document_draft_report.json`. Unresolved mentions must be fixed before the source can support strong readiness.
 
 Structured source document shape for `--source-documents-json`:
 

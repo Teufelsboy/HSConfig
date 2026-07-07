@@ -1,0 +1,19 @@
+{
+  "source_summary": "The hsconfig skill should expose one normal path: source-manifest, research evidence rows, draft-source-documents, research-deck, prepare, operator_summary.json, and apply through the gate.",
+  "current_truth": "HSConfig is pre-game config generation only. It should stay separate from HSTuner, replays, winrate analysis, and runtime log tuning.",
+  "repo_alignment": "README.md, docs/operator/source-builder-workflow.md, and the hsconfig skill references now describe the same source-builder-lite path and keep operator_summary.json as the single gate.",
+  "implementation_implication": "Skill docs should be short and command-oriented; deeper policy belongs in references/guide-research-policy.md and docs/operator/source-builder-workflow.md.",
+  "gaps_or_risks": [
+    "If older docs keep describing manual source_documents.json as the only path, future runs may skip the manifest and drafter checks.",
+    "Too much orchestration language would make HSConfig resemble HSTuner again."
+  ],
+  "recommended_action": "Keep the skill lean and sync it after every repo-side skill edit with scripts/sync_installed_skill.py.",
+  "confidence": "high",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md"
+  ],
+  "uncertain": []
+}

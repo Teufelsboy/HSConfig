@@ -65,3 +65,24 @@ def test_skill_audit_results_pass_existing_research_validator():
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "Total fields: 8" in completed.stdout
     assert "Validation passed: 5/5" in completed.stdout
+
+
+def test_source_builder_lite_research_results_validate():
+    audit_dir = Path("docs/research/2026-07-07-hsconfig-source-builder-lite")
+    fields = audit_dir / "fields.yaml"
+    results = audit_dir / "results"
+    result_files = sorted(results.glob("*.json"))
+    assert len(result_files) == 5
+
+    command = [
+        sys.executable,
+        str(Path.home() / ".codex/skills/research/validate_json.py"),
+        "-f",
+        str(fields),
+        "-j",
+        *[str(path) for path in result_files],
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "Validation passed: 5/5" in completed.stdout

@@ -326,3 +326,19 @@ def test_skill_docs_explain_strong_fixture_truth_contract():
     assert "Presume.json" in docs
     assert "Concede.json" in docs
     assert "not emit" in docs.lower() or "not part of the normal path" in docs.lower()
+
+
+def test_skill_documents_source_builder_lite_workflow():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    operator = (REPO_ROOT / "docs" / "operator" / "source-builder-workflow.md").read_text(
+        encoding="utf-8"
+    )
+
+    combined = "\n".join([skill, workflow, operator])
+    assert "source-manifest" in combined
+    assert "draft-source-documents" in combined
+    assert "source_documents.json" in combined
+    assert "operator_summary.json" in combined
+    assert "Presume.json" not in operator
+    assert "Concede.json" not in operator

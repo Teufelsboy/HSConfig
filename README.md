@@ -2,18 +2,22 @@
 
 HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from a Hearthstone deck name and deck code.
 
-HSConfig is a direct pre-game config authoring tool. Codex researches current guide and card sources, `research-deck` normalizes them, and `prepare` compiles a validated initial package.
+HSConfig is a direct pre-game config authoring tool. Codex researches current guide and card sources, `draft-source-documents` turns short evidence rows into strict source documents, `research-deck` normalizes them, and `prepare` compiles a validated initial package.
 
 HSConfig does not parse replays, evaluate winrate, inspect post-game evidence, or tune from runtime logs. Those are HSTuner concerns. `Presume.json` and `Concede.json` are not emitted in the normal path.
 
 ## Normal Operator Path
 
-Normal command path: write `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> `hsconfig prepare --guide-sources-json ...` -> inspect `reports/operator_summary.json` -> `hsconfig apply ...` only when requested.
+Normal command path: `hsconfig source-manifest ...` -> write short evidence rows -> `hsconfig draft-source-documents ...` -> `hsconfig research-deck --source-documents-json ...` -> `hsconfig prepare --guide-sources-json ...` -> inspect `reports/operator_summary.json` -> `hsconfig apply ...` only when requested.
+
+The source-builder workflow is documented in `docs/operator/source-builder-workflow.md`.
 
 Maintainer sync: after changing `.agents/skills/hsconfig`, run `python scripts/sync_installed_skill.py --check`; if drift is expected, run `python scripts/sync_installed_skill.py`.
 
 ```powershell
-hsconfig research-deck --source-documents-json ".\source_documents.json" --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\research" --json
+hsconfig source-manifest --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\manifest" --json
+hsconfig draft-source-documents --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --source-evidence-json ".\source_evidence.json" --out ".\outputs\shadowpriest\source" --json
+hsconfig research-deck --source-documents-json ".\outputs\shadowpriest\source\source_documents.json" --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --out ".\outputs\shadowpriest\research" --json
 ```
 
 ```powershell
