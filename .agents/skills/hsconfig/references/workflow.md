@@ -17,6 +17,13 @@ SOURCE_BACKED_STRONG means the package has current guide-backed per-card coverag
 
 STATIC_SEMANTICS_USABLE and VALID_BUT_NOT_GUIDE_STRONG are safe handoff states, not optimized-config claims.
 
+Readiness interpretation:
+
+1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
+2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage is strong enough for a high-confidence initial config.
+3. If `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`, open `semantic_blockers` first. Each blocker has `reason`, `count`, `blocking_strength`, `report`, and top affected cards.
+4. Improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`.
+
 Use `hsconfig research-deck --source-documents-json ...` to normalize source
 documents before compilation.
 It writes `deck_fingerprint.json`, `candidate_archetypes.json`,

@@ -33,6 +33,10 @@ Workflow:
    `combo_plan_report.json`, `global_values_authority_matrix.json`,
    `per_card_config_readiness_report.json`, and
    `guide_source_depth_report.json`.
+   Use `reports/operator_summary.json` as the first readiness file. The fields
+   `guide_strength_summary` and `semantic_blockers` explain why a package is
+   `VALID_BUT_NOT_GUIDE_STRONG` and which source claims should be improved before
+   calling the config source-backed strong.
 8. Run `hsconfig apply ...` when `operator_summary.json` has `technical_status=VALID_PACKAGE`,
    the user requested autonomous runtime apply, and the `next_action` does not
    ask for more source work before strong apply.

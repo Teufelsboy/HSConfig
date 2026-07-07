@@ -257,3 +257,23 @@ def test_skill_scripts_delegate_to_cli():
         text = (SKILL_ROOT / "scripts" / script_name).read_text(encoding="utf-8")
         assert "from hsconfig.cli import main" in text
         assert command in text
+
+
+def test_skill_docs_explain_valid_package_vs_source_backed_strong():
+    docs = "\n".join(
+        [
+            Path("README.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "VALID_PACKAGE" in docs
+    assert "SOURCE_BACKED_STRONG" in docs
+    assert "guide_strength_summary" in docs
+    assert "semantic_blockers" in docs
+    assert "HSConfig does not parse replays" in docs
+    assert "Presume.json" in docs
+    assert "Concede.json" in docs

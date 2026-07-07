@@ -145,6 +145,8 @@ For each card, prefer claims that answer at least one of these questions:
 ## Reports
 
 - `operator_summary.json`: operator-facing technical and semantic readiness.
+- `operator_summary.json.guide_strength_summary`: compact counts for why a valid package is or is not guide-strong.
+- `operator_summary.json.semantic_blockers`: grouped blocker reasons such as missing guide claims, runtime-surface gaps, combo-sequence gaps, or conflicts that keep a package at `VALID_BUT_NOT_GUIDE_STRONG`.
 - `guide_builder_receipt.json`: guide-source normalization status and source counts.
 - `candidate_archetypes.json`: primary and fallback archetype candidates.
 - `deck_fingerprint.json`: deck multiset identity used by research normalization.
