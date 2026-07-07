@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 
 
@@ -53,7 +55,8 @@ def test_report_explains_first_missing_chain_for_non_strong_deck():
     }
 
 
-def test_report_blocks_strong_promotion_when_normal_path_presume_or_concede_exists():
+@pytest.mark.parametrize("surface_name", ["Presume.json", "Concede.json"])
+def test_report_blocks_strong_promotion_when_normal_path_optional_surface_exists(surface_name):
     report = build_strong_promotion_report(
         deck_name="PirateDH",
         fixture_stage="core_source_backed_fixture",
@@ -62,10 +65,7 @@ def test_report_blocks_strong_promotion_when_normal_path_presume_or_concede_exis
             "semantic_status": "SOURCE_BACKED_STRONG",
             "next_action": "READY_TO_APPLY_OR_HANDOFF",
             "semantic_blockers": [],
-            "generated_files": [
-                "CustomConfig/piratedh/GlobalValues.json",
-                "CustomConfig/piratedh/Presume.json",
-            ],
+            "generated_files": [f"CustomConfig/piratedh/{surface_name}"],
         },
         source_claim_gap_report={"summary": {"blocked_cards": 0}, "cards": {}},
     )
@@ -75,7 +75,7 @@ def test_report_blocks_strong_promotion_when_normal_path_presume_or_concede_exis
     assert report["next_action"] == "close_first_missing_chain"
     assert {
         "reason": "normal_path_optional_surface_present",
-        "generated_file": "CustomConfig/piratedh/Presume.json",
+        "generated_file": f"CustomConfig/piratedh/{surface_name}",
     } in report["semantic_blockers"]
 
 
@@ -105,6 +105,7 @@ def test_report_keeps_canonical_next_action_for_invalid_package():
     assert report["promotion_ready"] is False
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert report["operator_status"]["operator_next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
     assert report["first_missing_chain"] == {
         "card_id": "CARD_A",
         "first_missing_link": "needs_guide_claim",
