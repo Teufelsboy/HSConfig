@@ -26,6 +26,10 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 
+## Fixture Stage Semantics
+
+`core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.
+
 ## Diagnostic And Expert Paths
 
 Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. It writes no `CustomConfig` runtime package.

@@ -305,3 +305,24 @@ def test_docs_do_not_advertise_presume_concede_as_normal_outputs():
         text = path.read_text(encoding="utf-8")
         for phrase in forbidden:
             assert phrase not in text
+
+
+def test_skill_docs_explain_strong_fixture_truth_contract():
+    docs = "\n".join(
+        [
+            Path("README.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "SOURCE_BACKED_STRONG" in docs
+    assert "operator_summary.json" in docs
+    assert "single operator gate" in docs.lower()
+    assert "core_source_backed_fixture" in docs
+    assert "source_informed_valid_fixture" in docs
+    assert "Presume.json" in docs
+    assert "Concede.json" in docs
+    assert "not emit" in docs.lower() or "not part of the normal path" in docs.lower()

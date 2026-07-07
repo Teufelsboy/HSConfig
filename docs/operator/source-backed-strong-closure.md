@@ -29,3 +29,21 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 | ImbueMage | `source_informed_valid_fixture` | Close guide-claim, hero-power/spell-generation runtime-surface, and mechanic-lowering gaps. |
 | Boarlock | `source_informed_valid_fixture` | Close guide-claim, combo/resource runtime-surface, and unsupported-condition gaps. |
 | PirateDH | `source_informed_valid_fixture` | Close guide-claim and pirate/hero-attack runtime-surface gaps. |
+
+## Current Blocker Snapshot
+
+Fresh local prepare runs after the strict stage split show:
+
+| Deck | Semantic status | Guide gaps | Runtime-surface gaps | Mechanic-lowering gaps |
+|---|---|---:|---:|---:|
+| ShadowPriest | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
+| CtAPaladin | `VALID_BUT_NOT_GUIDE_STRONG` | 4 | 4 | 0 |
+| PirateRogue | `VALID_BUT_NOT_GUIDE_STRONG` | 10 | 0 | 0 |
+| BigShaman | `VALID_BUT_NOT_GUIDE_STRONG` | 2 | 6 | 0 |
+| Discolock | `VALID_BUT_NOT_GUIDE_STRONG` | 2 | 9 | 2 |
+| TreantDruid | `VALID_BUT_NOT_GUIDE_STRONG` | 9 | 3 | 0 |
+| ImbueMage | `VALID_BUT_NOT_GUIDE_STRONG` | 3 | 3 | 1 |
+| MechPala | `VALID_BUT_NOT_GUIDE_STRONG` | 4 | 0 | 0 |
+| Kingslayer | `VALID_BUT_NOT_GUIDE_STRONG` | 7 | 2 | 0 |
+| Boarlock | `VALID_BUT_NOT_GUIDE_STRONG` | 7 | 5 | 0 |
+| PirateDH | `VALID_BUT_NOT_GUIDE_STRONG` | 10 | 2 | 0 |

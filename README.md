@@ -39,6 +39,14 @@ Run `apply` only when the user or task requests runtime writes and `operator_sum
 | `STATIC_SEMANTICS_USABLE` | Static card semantics produced a valid package without enough live guide depth. | Safe baseline only; improve sources before calling it guide-strong. |
 | `VALID_BUT_NOT_GUIDE_STRONG` | Package is valid, but guide claims, runtime surfaces, combo details, or conflicts still need work. | Read `guide_strength_summary` and `semantic_blockers`. |
 
+## Fixture Stage Truth
+
+Representative fixture decks in `docs/operator/archetype-fixture-matrix.json` are examples, not all strong-contract authorities.
+
+- `core_source_backed_fixture` means the fixture must produce `SOURCE_BACKED_STRONG` through `operator_summary.json`.
+- `source_informed_valid_fixture` means the fixture produces a valid source-informed package, but still has source-depth, runtime-surface, mechanic-lowering, condition-lowering, or combo-detail gaps before it can be called strong.
+- `future_fixture` is reserved for matrix rows that are not part of the current 11-deck proof.
+
 ## Key Reports
 
 - `reports/operator_summary.json`

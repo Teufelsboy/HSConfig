@@ -34,6 +34,12 @@ Status meaning:
 - `STATIC_SEMANTICS_USABLE`: static card semantics produced a valid package without enough live guide depth.
 - `VALID_BUT_NOT_GUIDE_STRONG`: the package is valid, but `guide_strength_summary` and `semantic_blockers` identify missing source depth, conflict resolution, runtime-surface gaps, or combo detail.
 
+Fixture stage meaning:
+
+- `core_source_backed_fixture`: the fixture must produce `SOURCE_BACKED_STRONG` in `operator_summary.json`.
+- `source_informed_valid_fixture`: the fixture produces a valid package, but still has source-depth or lowering gaps before it can be called strong.
+- `future_fixture`: reserved for examples outside the current proof set.
+
 Rules:
 
 - Build direct guide-aligned configs only.

@@ -328,6 +328,33 @@ def test_unimplemented_mechanic_claim_is_suppressed():
     assert routed["suppressed"][0]["reason"] == "no_documented_card_behavior_surface"
 
 
+def test_unmapped_mechanic_claim_with_explicit_documented_block_lowers():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_discard_payoff",
+                "claim_kind": "mechanic_usage",
+                "cards": ["DISCARD_PAYOFF"],
+                "mechanic": "discard",
+                "stance": "convert_discard_pressure",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "10",
+                "condition": "*",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+            }
+        ]
+    )
+
+    row = routed["card_rows"]["DISCARD_PAYOFF"][0]
+
+    assert routed["suppressed"] == []
+    assert row["behavior_block"] == "BeforePlayCardBonus"
+    assert row["intent"] == "convert_discard_pressure"
+    assert row["roles"] == ["discard"]
+    assert row["meaningful_runtime_surface"] is True
+
+
 def test_unsupported_structured_condition_is_suppressed():
     routed = route_card_behavior_claims(
         [

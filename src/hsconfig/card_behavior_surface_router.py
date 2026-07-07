@@ -144,6 +144,19 @@ def route_card_behavior_surfaces(
                     )
                 )
                 continue
+            if explicit_block is not None:
+                intent = _claim_intent(claim, fallback=f"use_{mechanic}_according_to_card_text")
+                rows.extend(
+                    _rows_for_cards(
+                        claim,
+                        cards,
+                        condition=condition,
+                        behavior_block=explicit_block,
+                        intent=intent,
+                        roles=[mechanic or claim_kind],
+                    )
+                )
+                continue
 
         if claim_kind in INTENT_BLOCKS:
             intent = _claim_intent(claim, fallback=claim_kind)
