@@ -1,6 +1,15 @@
 import pytest
 
 from hsconfig.cli import _build_parser
+from hsconfig.cli_parser import build_parser
+
+
+def test_cli_parser_module_builds_same_root_help():
+    help_text = build_parser().format_help()
+
+    assert "HSConfig builds lean HearthRanger VisionAI CustomConfig packages" in help_text
+    assert "docs/operator/README.md" in help_text
+    assert "source-manifest -> draft-source-documents -> research-deck -> prepare -> apply" in help_text
 
 
 def test_root_help_names_normal_and_expert_paths():
