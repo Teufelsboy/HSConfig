@@ -52,6 +52,78 @@
           "source_confidence": "high"
         }
       ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-gb/cards/48982/",
+      "source_title": "Glow-Tron - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_906"],
+          "stance": "magnetic_curve",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Glow-Tron is a Mech with Magnetic for early board development.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/130586-crusader-aura/",
+      "source_title": "Crusader Aura - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["LEG_TTN_908"],
+          "stance": "board_buff",
+          "runtime_block": "OnBoardBonus",
+          "evidence_text_short": "Crusader Aura buffs attacking friendly minions for three turns.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/76250/",
+      "source_title": "Radar Detector - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TSC_079"],
+          "stance": "mech_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Radar Detector scans the bottom five cards and draws any Mechs found.",
+          "source_confidence": "high"
+        }
+      ]
+    },
+    {
+      "source_url": "https://playhearthstone.com/en-us/cards/110444/",
+      "source_title": "Zilliax Deluxe 3000 - Hearthstone Card Library",
+      "source_family": "card_text",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "MechPala",
+      "archetype": "mech_board_scaling",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_330"],
+          "stance": "modular_mech",
+          "runtime_block": "BeforePlayCardBonus",
+          "evidence_text_short": "Zilliax Deluxe 3000 is a customizable Mech built during deckbuilding.",
+          "source_confidence": "high"
+        }
+      ]
     }
   ]
 }
