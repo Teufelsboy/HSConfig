@@ -42,6 +42,7 @@ GUIDE_BACKED_COVERAGE_STATUSES = {
     "source_backed",
     "source_backed_static_semantics",
 }
+GLOBALVALUES_SUFFICIENT_ROLES = {"hero_power_transform"}
 
 
 def build_config_readiness_report(
@@ -320,6 +321,8 @@ def _lane_and_missing_link(
     if card_id in mulligan_cards:
         return "mulligan_only", "needs_runtime_surface"
     if card_id in globalvalue_cards:
+        if is_guide_backed and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
+            return "globalvalues_only", "none"
         return "globalvalues_only", "needs_runtime_surface"
     if card_id in uncovered or coverage == "generic_low_confidence":
         return "generic_low_confidence", "needs_guide_claim"

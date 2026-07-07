@@ -159,6 +159,54 @@ def test_card_behavior_surface_router_suppresses_option_claim_without_identity_l
     ]
 
 
+def test_hero_power_transform_claim_routes_to_hero_power_surface():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "cards": ["SW_448"],
+                "claim_readiness": "source_backed_static_semantics",
+                "stance": "shadow_hero_power_pressure",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "runtime_value": "8",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["rows"][0]["card_id"] == "SW_448"
+    assert plan["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
+    assert plan["rows"][0]["meaningful_runtime_surface"] is True
+
+
+def test_known_bad_pattern_stays_report_only_without_documented_block():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_bad",
+                "claim_kind": "known_bad_pattern",
+                "cards": ["CARD_A"],
+                "claim_readiness": "guide_backed",
+                "stance": "do_not_target_enemy_minion",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "no_documented_card_behavior_surface"
+
+
 def test_card_behavior_router_preserves_claim_row_order_across_cards():
     plan = route_card_behavior_claims(
         [

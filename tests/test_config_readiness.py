@@ -355,3 +355,34 @@ def test_readiness_counts_only_meaningful_cardid_rows_as_runtime_emitted():
     assert report["cards"]["EX1_DEEP"]["first_missing_link"] == "none"
     assert report["cards"]["EX1_GENERIC"]["readiness_lane"] == "report_only_supported"
     assert report["cards"]["EX1_GENERIC"]["first_missing_link"] == "needs_runtime_surface"
+
+
+def test_source_backed_hero_power_transform_can_be_satisfied_by_globalvalues():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Deck",
+            "cards": [{"card_id": "SW_448", "name": "Darkbishop Benedictus"}],
+        },
+        claim_coverage={"uncovered_cards": []},
+        gameplan_contract={
+            "deck_name": "Deck",
+            "cards": {
+                "SW_448": {
+                    "card_id": "SW_448",
+                    "name": "Darkbishop Benedictus",
+                    "coverage_status": "source_backed_static_semantics",
+                    "roles": ["hero_power_transform"],
+                }
+            },
+            "hero_power_expectations": [{"source_card_id": "SW_448"}],
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": [{"key": "MyHeroPowerValue"}]},
+        emitted_cardid_files=[],
+    )
+
+    row = report["cards"]["SW_448"]
+    assert row["readiness_lane"] == "globalvalues_only"
+    assert row["first_missing_link"] == "none"

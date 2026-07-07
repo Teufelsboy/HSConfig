@@ -20,6 +20,7 @@ INTENT_BLOCKS = {
     "play_timing": "BeforePlayCardBonus",
     "targeting_rule": "BeforeBattlecryTargetBonus",
     "hero_power_use": "BeforeUseHeroPowerBonus",
+    "hero_power_transform": "BeforeUseHeroPowerBonus",
     "attack_posture": "BeforePhysicalAttackBonus",
     "discover_choice": "OnDiscoverCardBonus",
     "choose_one_choice": "OnChooseOneCardBonus",
