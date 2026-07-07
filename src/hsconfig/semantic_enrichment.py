@@ -167,11 +167,11 @@ def _dedupe_deckwide_effects(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _merge_linked_entities(existing: Any, additions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = [dict(row) for row in existing if isinstance(row, dict)] if isinstance(existing, list) else []
     seen = {
-        (str(row.get("link_kind", "")), str(row.get("card_id", "")), str(row.get("source", "")))
+        (str(row.get("link_kind", "")), str(row.get("card_id", "")))
         for row in rows
     }
     for row in additions:
-        key = (str(row.get("link_kind", "")), str(row.get("card_id", "")), str(row.get("source", "")))
+        key = (str(row.get("link_kind", "")), str(row.get("card_id", "")))
         if key in seen:
             continue
         seen.add(key)

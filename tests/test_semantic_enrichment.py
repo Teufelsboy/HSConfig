@@ -198,3 +198,42 @@ def test_shadowpriest_hero_power_transform_uses_curated_supplement_before_builti
     assert effect["target_card_id"] == "EX1_625t"
     assert report["semantic_enrichment_warnings"] == []
     assert report["cards"][0]["linked_entities"][0]["source"] == "curated_linked_entity_supplement"
+
+
+def test_existing_upstream_hero_power_transform_suppresses_curated_duplicate():
+    report = enrich_card_metadata(
+        {
+            "cards": [
+                {
+                    "card_id": "SW_448",
+                    "dbf_id": 64443,
+                    "name": "Darkbishop Benedictus",
+                    "type": "MINION",
+                    "text": "At the start of the game, if the spells in your deck are all Shadow, enter Shadowform.",
+                    "referenced_tags": ["START_OF_GAME_KEYWORD"],
+                    "linked_entities": [
+                        {
+                            "link_kind": "hero_power_transform",
+                            "card_id": "EX1_625t",
+                            "dbf_id": 1622,
+                            "name": "Mind Spike",
+                            "type": "HERO_POWER",
+                            "source": "upstream.semantic_fixture",
+                        }
+                    ],
+                }
+            ]
+        },
+        hearthstonejson_cards=[],
+    )
+
+    assert report["cards"][0]["linked_entities"] == [
+        {
+            "link_kind": "hero_power_transform",
+            "card_id": "EX1_625t",
+            "dbf_id": 1622,
+            "name": "Mind Spike",
+            "type": "HERO_POWER",
+            "source": "upstream.semantic_fixture",
+        }
+    ]
