@@ -1,0 +1,54 @@
+{
+  "audit_question": "Do the eleven representative decks provide enough archetype and mechanic diversity for HSConfig's current lean pre-run CustomConfig purpose, while keeping fixture stages, strongness visibility, expected runtime surfaces, and known coverage limits explicit and actionable?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/matrix_visibility.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_visibility.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_closure.py"
+  ],
+  "confirmed_facts": [
+    "HSConfig defines itself as a pre-run-only deck-to-CustomConfig compiler and explicitly excludes replay parsing, winrate inspection, runtime log analysis, candidate promotion, and post-run tuning from its normal purpose.",
+    "The operator guide names docs/operator/archetype-fixture-matrix.json as the representative 11-deck proof set and says the normal next action is to close existing source_informed rows before adding more decks.",
+    "The matrix contains exactly 11 enforced rows: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.",
+    "The current stage split is 4 core_source_backed_fixture decks and 7 source_informed_valid_fixture decks.",
+    "The four core strong control fixtures are ShadowPriest, PirateRogue, BigShaman, and MechPala. The seven breadth fixtures are CtAPaladin, Discolock, TreantDruid, ImbueMage, Kingslayer, Boarlock, and PirateDH.",
+    "Across the 11 rows, the matrix covers 11 distinct archetype buckets, 31 distinct primary mechanic tags, and 22 distinct decision families.",
+    "All 11 rows expect GlobalValues.json, Mulligan.json, and deck-local <CARDID>.json files. Only Boarlock currently expects Combo.json, which keeps exact combo support visible but intentionally narrow.",
+    "Strongness visibility is explicit for every row through current_stage, first_strongness_gap, and operator_action, and tests enforce the expected gap label for each deck.",
+    "The closure document records the current blocker snapshot as 0 guide gaps, 0 runtime-surface gaps, and 0 mechanic-lowering gaps for ShadowPriest, PirateRogue, BigShaman, and MechPala, while the seven source_informed decks still expose deck-specific guide-depth or lowering work.",
+    "Known limits are documented per row. Repeated limits include missing reactive control coverage, incomplete discover-chain coverage, narrow exact-combo coverage, and only one single_combo_fixture_only row.",
+    "Fresh repo verification passed on 2026-07-08: python -m pytest tests/test_archetype_fixture_matrix.py tests/test_archetype_source_fixtures.py tests/test_archetype_fixture_e2e.py tests/test_matrix_visibility.py tests/test_matrix_closure.py -q returned 52 passed in 11.89s."
+  ],
+  "current_repo_alignment": "partially_aligned",
+  "strengths": [
+    "The 11-deck matrix is broad enough for HSConfig's current purpose because it spans fast face pressure, recruit board flood, pirate tempo, big-cheat recruit, discard, token snowball, hero-power spell generation, mech scaling, weapon sequencing, combo-resource setup, and hero-attack pressure without turning the repo into a large template catalog.",
+    "Breadth is operational, not aspirational: each matrix row has a matching source_documents_<deck>_strong.json fixture and passes through current tests that build source bundles or prepare valid packages.",
+    "The matrix keeps scope discipline. It proves pre-game package generation breadth instead of drifting into HSTuner or runtime-tuning concerns.",
+    "Fixture-stage visibility is strong. Operators can see which rows are already core controls, which rows still need closure, and what the first missing strongness link is for each deck.",
+    "Expected runtime surfaces are intentionally lean and consistent. GlobalValues.json, Mulligan.json, and per-card CardID files are universal, while Combo.json appears only where the repo has an explicit exact-sequence case."
+  ],
+  "gaps_or_risks": [
+    "Breadth is adequate for current pre-run auditing, but it is not exhaustive. Seven of the eleven rows are still source_informed_valid_fixture rather than source_backed_strong.",
+    "Reactive control remains the clearest structural blind spot. Seven rows explicitly record does_not_cover_reactive_control, so the matrix is weaker on long attrition, removal sequencing, and defensive stabilization than on proactive tempo and board plans.",
+    "Discover-heavy and choice-heavy behavior is still underrepresented at the deck-matrix level. Three rows explicitly record does_not_cover_discover_chains.",
+    "Exact combo breadth is intentionally narrow. Boarlock is the only row that expects Combo.json, and its known limit is single_combo_fixture_only.",
+    "Some families overlap by design, which is good for a lean matrix but means adding more pirate, weapon, or board-centric decks would likely increase maintenance more than coverage.",
+    "The matrix should not be read as proof of gameplay optimality or post-run tuning quality. It is a coverage and operability proof set for HSConfig's pre-run compiler."
+  ],
+  "eleven_deck_implications": [
+    "For HSConfig's current purpose, the answer is yes with an important boundary: the eleven decks are diverse enough to act as the representative proof matrix for lean pre-run package generation, but they are not diverse enough to claim exhaustive mechanic closure.",
+    "The current matrix already captures the main proactive decision families HSConfig needs to compile today, so the immediate priority is not widening the deck list.",
+    "The most useful work is to promote the seven source_informed_valid_fixture rows by closing their first strongness gaps: recruit and aura runtime surfaces for CtAPaladin, discard and hand mutation for Discolock, token board buffing for TreantDruid, hero-power spell generation for ImbueMage, weapon sequencing for Kingslayer, exact combo sequencing for Boarlock, and hero-attack runtime surfaces for PirateDH.",
+    "If a future audit keeps failing on a family the matrix does not represent well, the best next candidate is a reactive control or discover-heavy deck rather than another proactive tempo deck.",
+    "Because the matrix already encodes decision_families_proven and known_coverage_limits per row, it is suitable for ongoing fixture-breadth auditing without adding more decks immediately."
+  ],
+  "recommendation": "Keep the current eleven-deck matrix as HSConfig's default fixture-breadth boundary. Treat it as sufficient for present pre-run operability audits, but not as full mechanic closure. Do not expand the deck set now. First close the seven existing source_informed_valid_fixture rows until more of the matrix reaches SOURCE_BACKED_STRONG. Add one new representative deck only if repeated audits show a real missing family that none of the current eleven can exercise, with reactive control or discover-heavy behavior as the strongest next candidate.",
+  "confidence": "high",
+  "uncertain": []
+}

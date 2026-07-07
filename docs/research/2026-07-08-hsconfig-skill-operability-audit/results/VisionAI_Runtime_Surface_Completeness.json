@@ -1,0 +1,61 @@
+{
+  "audit_question": "Are the supported normal HearthRanger VisionAI runtime surfaces complete and appropriately bounded for direct initial HSConfig generation as GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only when exact valid sequence data exists, while Presume.json and Concede.json stay blocked on the normal path?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/card-behavior-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_optional_surfaces.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_optional_surfaces.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_shadowpriest_e2e.py"
+  ],
+  "confirmed_facts": [
+    "HSConfig operator docs and workflow docs define the normal package flow as source-manifest to draft-source-documents to research-deck to prepare to operator_summary to apply, and they describe HSConfig as pre-run only.",
+    "The normal surface policy document limits normal HSConfig runtime output to GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only when a concrete valid combo exists.",
+    "surface_intent.py always includes GlobalValues.json and Mulligan.json as required surfaces, adds one per-card file for every card in the contract, and adds Combo.json only when contract combos exist.",
+    "surface_intent.py does not route Presume.json or Concede.json on the default path; those surfaces appear only when legacy_policy_surfaces_enabled is explicitly set.",
+    "guide-research-policy.md requires combo_sequence claims to include explicit sequence, timing_kind, operator, and values before Combo.json emission; otherwise combo claims remain report-only.",
+    "card-behavior-policy.md and card_behavior_surface_router.py route guide-backed card behavior into documented CardID blocks and suppress unsupported or unresolved claims instead of inventing runtime syntax.",
+    "apply_gate.py blocks normal-path packages when Presume.json or Concede.json appear either in generated_files or in the actual CustomConfig deck folder.",
+    "compile_optional_surfaces.py returns None for Presume.json and Concede.json unless the relevant policy rows exist and the surface is explicitly enabled.",
+    "validate_package.py and visionai_registry.py still recognize Presume.json and Concede.json as validator-supported or registry-known surfaces, but that support is broader than the normal operator path.",
+    "The fixture matrix requires GlobalValues.json, Mulligan.json, and <CARDID>.json for all eleven representative decks, and only Boarlock lists Combo.json in expected_runtime_surfaces.",
+    "ShadowPriest end-to-end tests confirm normal package generation includes GlobalValues.json, Mulligan.json, and per-card files while Presume.json and Concede.json are absent."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "Docs, code, and tests consistently agree on the narrowed normal-path surface set.",
+    "The boundary between normal outputs and legacy optional surfaces is enforced both at compile time and at apply time.",
+    "CardID behavior lowering is explicit, block-scoped, and fail-closed when a claim cannot map to documented VisionAI syntax.",
+    "Combo emission is bounded by exact sequence requirements instead of vague strategy prose.",
+    "The eleven-deck matrix makes the normal surface expectation concrete and auditable across representative archetypes."
+  ],
+  "gaps_or_risks": [
+    "Validator and registry support is intentionally broader than the normal path, so future contributors could misread 'supported surface' as 'normal output surface' unless the current docs and tests stay in place.",
+    "Seven of the eleven representative fixtures are still source_informed_valid_fixture rows, so the surface contract is bounded correctly but not all decision families have reached source-backed strong closure.",
+    "GlobalValues.json is structurally required on the normal path, but meaningful key-level overlays still depend on posture authority and should not be confused with unrestricted pre-run tuning."
+  ],
+  "eleven_deck_implications": [
+    "The matrix supports the conclusion that the normal initial package is intentionally centered on GlobalValues.json, Mulligan.json, and per-card <CARDID>.json for every representative deck.",
+    "Boarlock is the only matrix deck that currently expects Combo.json, which matches the policy that Combo.json belongs only to exact documented sequencing rather than general synergy.",
+    "The core source-backed control fixtures ShadowPriest, PirateRogue, BigShaman, and MechPala already fit this bounded surface contract without needing Presume.json or Concede.json.",
+    "The source-informed fixtures mostly reflect missing lowering depth inside the allowed surfaces, not evidence that extra normal-path surfaces are required.",
+    "The matrix therefore supports the claim that the normal surface family is complete enough for direct initial generation, while remaining strongness gaps belong to source depth and claim-lowering closure rather than missing runtime file categories."
+  ],
+  "recommendation": "Keep the normal-path contract unchanged: generate GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only for exact valid sequences; keep Presume.json and Concede.json outside the normal path and preserve the existing compile, apply-gate, and test protections that distinguish validator support from operator-approved output.",
+  "confidence": "high",
+  "uncertain": []
+}

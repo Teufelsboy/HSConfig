@@ -1,0 +1,52 @@
+{
+  "audit_question": "Is the current HSConfig implementation still lean, efficient, maintainable, and operator-friendly after the latest operator UX and CLI slimming work?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/matrix_visibility.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_cli_help.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_visibility.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-08-hsconfig-skill-operability-audit/outline.yaml"
+  ],
+  "confirmed_facts": [
+    "The root README is short and points normal operators to docs/operator/README.md rather than duplicating the full workflow.",
+    "The installable hsconfig skill is intentionally thin and points to docs/operator/README.md as the normal operator entry point.",
+    "HSConfig explicitly stays pre-run only and excludes replay parsing, winrate analysis, runtime log analysis, candidate promotion, and after-game tuning.",
+    "The CLI parser was split into src/hsconfig/cli_parser.py while src/hsconfig/cli.py keeps dispatch and the _build_parser compatibility wrapper.",
+    "operator_guidance.py is a small pure helper that converts operator_summary fields into one compact next-action guidance object.",
+    "matrix_visibility.py is a small pure helper that summarizes the eleven-deck matrix and exposes per-deck first strongness gaps.",
+    "The eleven-deck matrix stays fixed at eleven representative decks with four core_source_backed_fixture rows and seven source_informed_valid_fixture rows.",
+    "Tests cover CLI help, operator guidance, matrix visibility, scope boundaries, and skill sync.",
+    "python scripts/sync_installed_skill.py --check was run in the current audit and reports the installed HSConfig skill is in sync.",
+    "A focused CLI and skill sync test run passed during this audit."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The normal path is easy to find: README.md -> docs/operator/README.md -> reports/operator_summary.json.",
+    "The skill boundary is clean because post-run analysis remains assigned to HSTuner rather than creeping into HSConfig.",
+    "The newest helper split improves maintainability without inventing a large framework or new dependency.",
+    "operator_summary.json remains the single normal gate, while lower-level reports explain the gate instead of competing with it.",
+    "The research and plan history is available for provenance, but the normal operator path does not require reading historical plans.",
+    "The 11-deck matrix is broad enough for the current pre-run purpose and now exposes exactly which source-informed rows need closure before widening."
+  ],
+  "gaps_or_risks": [
+    "There are many historical docs/research/plans files, so broad repository search can still create noise for an agent that ignores the normal operator path.",
+    "Seven of the eleven matrix rows are still source_informed_valid_fixture rather than SOURCE_BACKED_STRONG controls, so the matrix is broad but not fully strong.",
+    "The normal workflow still depends on Codex or an operator writing good source evidence rows before draft-source-documents; this is simple, but it remains the most human/agent-quality-sensitive step.",
+    "The skill is optimized for initial config generation, not proof that the config improves games. That is correct by boundary, but users must understand the HSTuner handoff.",
+    "Source-backed strength can be conservative when public guides do not provide enough card-specific claims; this is a source-depth limitation, not a runtime parser issue."
+  ],
+  "eleven_deck_implications": "The matrix is appropriate for HSConfig's current lean pre-run goal. ShadowPriest, PirateRogue, BigShaman, and MechPala act as core source-backed controls, while CtAPaladin, Discolock, TreantDruid, ImbueMage, Kingslayer, Boarlock, and PirateDH are visible source-informed rows with explicit first strongness gaps. The next high-value work is to close those seven existing rows rather than adding more decks.",
+  "recommendation": "Keep the architecture. Do not broaden HSConfig into post-run tuning. The next improvement should be a source-depth closure wave for the seven source_informed_valid_fixture rows, with one operator-facing command or report that shows, per deck, the first missing source claim or runtime lowering link needed to reach SOURCE_BACKED_STRONG.",
+  "confidence": "high",
+  "uncertain": []
+}

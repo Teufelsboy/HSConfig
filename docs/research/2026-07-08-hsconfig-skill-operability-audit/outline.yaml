@@ -1,0 +1,45 @@
+topic: hsconfig-skill-operability-audit-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-skill-operability-audit\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Lean Operator UX And Skill Boundary
+    category: Architecture
+    description: >
+      Audit whether HSConfig remains a narrow, competent, pre-run-only skill:
+      deck input to source-backed CustomConfig package, with HSTuner concerns
+      such as replays, winrate, candidate promotion, and post-run tuning excluded.
+      Check README.md, docs/operator/README.md, the installed hsconfig skill,
+      CLI help, operator_summary guidance, and scope tests.
+  - name: VisionAI Runtime Surface Completeness
+    category: HearthRanger VisionAI
+    description: >
+      Verify whether the supported normal runtime surfaces are complete and
+      appropriately bounded for direct initial config generation: GlobalValues.json,
+      Mulligan.json, per-card CardID JSON, and Combo.json when exact valid sequence
+      data exists. Check documented HearthRanger VisionAI concepts, local
+      visionai-surfaces policy, CardID behavior policy, and normal-path blocking
+      for Presume.json and Concede.json.
+  - name: Every Card Guide Contract And Source Depth
+    category: Guide research
+    description: >
+      Audit whether the workflow can make every card visible against its gameplan
+      without becoming bloated: source-manifest, source evidence rows,
+      draft-source-documents, research-deck, guide-source-depth, per-card readiness,
+      source-claim gaps, strong promotion, and operator_summary guidance.
+  - name: Eleven Deck Matrix Coverage
+    category: Fixture breadth
+    description: >
+      Audit whether the provided eleven decks cover enough archetype and mechanic
+      diversity for HSConfig's current purpose: ShadowPriest, CtAPaladin,
+      PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala,
+      Kingslayer, Boarlock, and PirateDH. Check fixture stages, strongness
+      visibility, expected runtime surfaces, and known coverage limits.
+  - name: Simplicity Efficiency And Maintainability
+    category: Repo quality
+    description: >
+      Audit whether the current implementation is still lean and maintainable:
+      CLI parser split, operator_guidance helper, matrix_visibility helper,
+      docs layout, test coverage, skill sync, dependency footprint, and whether
+      older plans/research create operator noise or remain safely separated.

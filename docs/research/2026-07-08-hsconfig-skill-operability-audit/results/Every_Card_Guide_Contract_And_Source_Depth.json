@@ -1,0 +1,65 @@
+{
+  "audit_question": "Can the current HSConfig workflow make every deck card visible against its gameplan without turning the operator flow into artifact bloat, across source-manifest, short evidence rows, draft-source-documents, research-deck, guide_source_depth, per-card readiness, source-claim gaps, strong promotion, and operator_summary guidance?",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/strong_promotion_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_manifest_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_draft_source_documents_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_research_deck_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_shadowpriest_depth_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_strong_promotion_report.py"
+  ],
+  "confirmed_facts": [
+    "The normal operator path is intentionally staged and documented consistently: `source-manifest` -> short source evidence rows -> `draft-source-documents` -> `research-deck` -> `prepare` -> inspect `reports/operator_summary.json` first -> `apply` only through the gate.",
+    "The early workflow is constrained rather than bloated. `source-manifest` emits deck aliases, mechanic focus, and research questions; `draft-source-documents` converts short evidence rows into strict `source_documents.json` plus a draft report; partially resolved card mentions are dropped instead of silently creating ambiguous claims.",
+    "The research stage stays pre-runtime. `research-deck` writes source normalization artifacts such as `guide_sources.json`, `guide_builder_receipt.json`, `deck_fingerprint.json`, and identity reports, and the tests confirm it does not create `CustomConfig` output.",
+    "Every-card visibility is enforced through separate but connected layers. `build_source_document_bundle()` produces claim coverage with `guide_backed`, `static_semantics_backfilled`, or `uncovered_low_confidence`; `build_config_readiness_report()` then assigns every deck card a readiness lane and a first missing link.",
+    "Per-card readiness is explicit, not implicit. Each card is classified into `runtime_emitted`, `mulligan_only`, `globalvalues_only`, `report_only_supported`, `archetype_inferred`, or `generic_low_confidence`, with actionable missing links such as `needs_guide_claim`, `needs_runtime_surface`, `needs_combo_sequence`, `needs_condition_lowering`, or `needs_mechanic_lowering`.",
+    "Guide depth is summarized without hiding the gaps. `build_guide_source_depth_report()` counts lowerable claims, report-only claims, blocked runtime claims, supported cards, cards needing guide claims, cards needing runtime surfaces, and warnings from conflicts or low-confidence coverage.",
+    "The workflow uses card-local repair reports instead of forcing operators to infer the next step. `source_claim_gap_report.json` emits one row per card, maps the first missing link to a recommended claim kind, and chooses a first missing chain for the next repair action.",
+    "Strong promotion is a strict confirmation layer, not another general-purpose workflow. `strong_promotion_report.json` only confirms promotion when the package is technically valid, semantically `SOURCE_BACKED_STRONG`, has no semantic blockers, has zero blocked cards, and contains no normal-path `Presume.json` or `Concede.json`.",
+    "The operator UX is deliberately collapsed back to one gate. `operator_summary.json` is the single normal operator gate, and the docs explicitly state that lower-level reports explain the gate but do not grant independent apply permission.",
+    "The current implementation was verified locally on 2026-07-08 with a focused pytest run covering the source-manifest, draft-source-documents, research-deck, depth, readiness, source-gap, operator-summary, and strong-promotion contracts; 61 tests passed."
+  ],
+  "current_repo_alignment": "Aligned with a controlled-breadth design and one minor simplification opportunity. The repository uses several narrow artifacts, but each artifact owns a different boundary: source intake, source normalization, per-card closure, card-local repair, strict promotion, and final operator gating. That keeps every-card visibility strong without pushing raw research or confidence metadata into runtime files. The remaining weakness is conceptual overlap between adjacent reports and status labels, not missing coverage logic.",
+  "strengths": [
+    "The workflow is narrow by phase. Research intake, source normalization, compile-time readiness, gap explanation, and final operator gating are separated cleanly, which prevents one oversized all-purpose contract.",
+    "Every deck card stays visible. Coverage, readiness, missing-link, and strong-promotion layers all preserve card-level rows rather than collapsing uncertainty into one deck-wide verdict.",
+    "Ambiguity is handled conservatively. Partial mention resolution, unsupported claims, stale or downgraded sources, and non-lowerable claims remain visible in reports instead of becoming guessed runtime rows.",
+    "Runtime output stays clean. Provenance, confidence, unsupported-claim detail, and source-depth analysis live in reports, while emitted `CustomConfig` JSON remains syntactically clean and free of research metadata noise.",
+    "Operator flow is protected from report sprawl by a single gate. `operator_summary.json` and `operator_guidance` tell the operator which report to open next, so the extra artifacts do not all become mandatory reading in the normal path.",
+    "The 11-deck fixture system already exercises this model in a lean way by distinguishing core strong fixtures from source-informed valid fixtures instead of adding a new representative deck for every gap."
+  ],
+  "gaps_or_risks": [
+    "There is still report adjacency risk. `guide_source_depth_report.json`, `per_card_config_readiness_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, and `operator_summary.json` each expose related counts, so new contributors can misread them as redundant if the ownership of each file is not kept explicit.",
+    "Status vocabulary is precise but dense. `depth_status`, `source_depth_status`, readiness lanes, missing-link labels, `semantic_status`, and promotion verdicts are coherent in code, yet the model can feel heavier than it is because several layers describe neighboring states.",
+    "Some packages can be technically valid before they are semantically strong. That is by design, but it means any consumer that reads validator success or `VALID_PACKAGE` alone can overestimate every-card closure.",
+    "The workflow depends on keeping research artifacts out of runtime outputs and on preserving `operator_summary.json` as the only normal gate. If future work allows lower-level reports or optional surfaces to bypass that gate, the operator story will become bloated quickly."
+  ],
+  "eleven_deck_implications": [
+    "The current 11-deck matrix supports this workflow shape well because it already uses the distinction between `core_source_backed_fixture` and `source_informed_valid_fixture` to show where every-card visibility exists but strong closure still does not.",
+    "The matrix should improve the seven existing source-informed fixtures before it grows wider. That matches the docs and avoids using more decks to compensate for unresolved runtime-surface or guide-depth gaps that are already represented.",
+    "Because the workflow has per-card readiness and source-gap reports, each fixture can show exactly which family is still missing without needing a dedicated new fixture for every open mechanic.",
+    "The matrix remains lean as long as deck additions are reserved for new runtime-surface or mechanic families that the current eleven do not cover, not for repeating the same source-depth problem in another archetype."
+  ],
+  "recommendation": "Keep the current staged workflow and single-gate operator model. Do not remove the intermediate reports, because they each carry a distinct card-closure function. Instead, tighten the naming and handoff story around them: preserve `operator_summary.json` as the only normal gate, and add one short canonical mapping in active docs or the summary itself that states which question each lower-level report answers. That is the simplest way to preserve every-card visibility without letting the workflow feel bloated.",
+  "confidence": "high",
+  "uncertain": []
+}

@@ -1,0 +1,58 @@
+{
+  "audit_question": "Does HSConfig still operate as a lean, competent, pre-run-only skill that turns deck input into a source-backed HearthRanger CustomConfig package while excluding HSTuner responsibilities such as replay parsing, runtime-log analysis, winrate review, candidate promotion, and post-run tuning?",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HS\\README.md",
+    "C:\\Users\\darbo\\Documents\\HS\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-builder-workflow.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\workflow.md",
+    "C:\\Users\\darbo\\.codex\\skills\\hsconfig\\SKILL.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_guidance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_scope_boundaries.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_cli_help.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_operator_guidance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_files.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_sync.py",
+    "python -m hsconfig --help with PYTHONPATH=src in C:\\Users\\darbo\\Documents\\HSConfig on 2026-07-08",
+    "pytest -q tests/test_scope_boundaries.py tests/test_cli_help.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_skill_sync.py tests/test_skill_files.py in C:\\Users\\darbo\\Documents\\HSConfig on 2026-07-08",
+    "python scripts\\sync_installed_skill.py --check in C:\\Users\\darbo\\Documents\\HSConfig on 2026-07-08"
+  ],
+  "confirmed_facts": [
+    "The HS repo separates responsibilities at the operator level: Step 1 is deck-to-config creation, while Step 2 is `analyze-step2` and read-only post-run evidence work in HSranger, not HSConfig.",
+    "HSConfig active docs, the repo skill, the installed skill copy, and the workflow reference all repeat the same explicit boundary sentence: HSConfig is pre-run only and does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.",
+    "The live CLI root help presents only pre-run surfaces: `build`, `prepare`, `research-contract`, `source-manifest`, `draft-source-documents`, `research-deck`, `validate`, and `apply`, and it frames the normal path as `source-manifest -> draft-source-documents -> research-deck -> prepare -> apply` before games are played.",
+    "Operator-facing readiness is centralized in `reports/operator_summary.json`: `operator_summary.py` builds the technical and semantic gate, `operator_guidance.py` tells the operator which report to open next and whether apply is safe, and `apply_gate.py` blocks runtime apply unless the package is `SOURCE_BACKED_STRONG` or the operator intentionally uses the source-informed escape hatch.",
+    "The apply gate also preserves the narrow normal path by blocking optional normal-path surfaces such as `Presume.json` and `Concede.json` and by requiring a single generated deck runtime directory with required runtime files and matching operator-summary evidence.",
+    "Scope-boundary tests are active and passed in the current checkout: they scan `src/hsconfig` for forbidden post-run concepts, require the identity-only wording for `hdt_deck_id`, require the shared pre-run boundary text across active docs, and ensure the operator README does not advertise Step 2 candidate-promotion language.",
+    "The installed `hsconfig` skill is in sync with the repo skill, so the boundary the operator sees locally matches the audited repo copy.",
+    "The 11-deck archetype fixture matrix is still a pre-run proof set, not a tuning loop: it contains 4 `core_source_backed_fixture` rows and 7 `source_informed_valid_fixture` rows, and the operator guide tells maintainers to improve those seven existing source-informed rows before widening the matrix."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The architectural split is explicit in both repositories: HSConfig owns source-backed initial package authoring, while HSranger or HSTuner owns post-run evidence and tuning.",
+    "The operator UX has a clear single gate in `reports/operator_summary.json`, which reduces the chance that lower-level reports are mistaken for independent apply authority.",
+    "The CLI help, operator docs, skill docs, and installed skill copy tell the same pre-run story and keep expert paths labeled as expert or diagnostic paths.",
+    "The boundary is enforced by code and tests, not only by prose: apply gating, doc sync checks, and scope-guard tests all support the narrow contract.",
+    "The fixture matrix expresses competence without claiming tuning: it proves breadth of pre-run config authoring across eleven archetype families while still surfacing which rows are strong and which still need source-depth closure."
+  ],
+  "gaps_or_risks": [
+    "HSConfig still includes `apply`, so the tool is broader than a pure package generator; that is acceptable for a pre-run deployment step, but it means the boundary depends on the apply gate and operator framing rather than total runtime isolation.",
+    "The root help still exposes expert and legacy-adjacent paths alongside the normal path, which can slightly dilute the lean operator story even though the docs mark those surfaces as expert-only.",
+    "The report name `strong_promotion_report.json` is pre-run strongness vocabulary, not Step 2 candidate promotion, but the shared word `promotion` can still create mild operator ambiguity across the HSConfig and HSranger ecosystems.",
+    "Boundary wording is intentionally synchronized across multiple docs and skill copies, so any future simplification must be kept coordinated or tests and installed-skill sync will drift."
+  ],
+  "eleven_deck_implications": [
+    "The current 11-deck matrix supports the lean boundary because it measures pre-run source-depth and runtime-surface closure rather than replay-derived tuning outcomes.",
+    "The split of 4 `core_source_backed_fixture` decks and 7 `source_informed_valid_fixture` decks gives HSConfig a credible pre-run competence story without requiring any HSTuner evidence to justify package strength.",
+    "The next matrix move should be to close the seven existing source-informed gaps, not to add more decks or import post-run metrics, candidate promotion, or replay evidence into HSConfig."
+  ],
+  "recommendation": "Keep HSConfig pre-run only and do not absorb HSTuner or HSranger Step 2 responsibilities. Preserve `reports/operator_summary.json` as the single operator gate, keep `apply` framed as an optional pre-run deployment step, and tighten UX by further de-emphasizing expert paths in operator-facing help and by clarifying that `strong_promotion_report.json` is a pre-run strongness report, not Step 2 candidate-promotion logic.",
+  "confidence": "high",
+  "uncertain": []
+}
