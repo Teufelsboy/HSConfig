@@ -200,6 +200,12 @@ def _normalize_source_claim(
     claim_confidence = _clean_text(raw_claim.get("claim_confidence", "")) or source_confidence
     if freshness_status == "stale" and claim_confidence == "high":
         claim_confidence = "medium"
+    readiness = _claim_readiness(
+        claim_confidence=claim_confidence,
+        source_family=str(document.get("source_family", "guide")),
+        cards=cards,
+        scope=scope,
+    )
     source_refs = [source_ref, *[str(item) for item in raw_claim.get("source_refs", [])]]
     if document.get("source_url"):
         source_refs.append(str(document["source_url"]))
@@ -221,6 +227,12 @@ def _normalize_source_claim(
         "evidence_text_short": evidence,
         "source_confidence": source_confidence,
         "claim_confidence": claim_confidence,
+        "claim_readiness": readiness,
+        "specificity_status": _specificity_status(cards=cards, scope=scope),
+        "trust_ceiling": _trust_ceiling(
+            claim_readiness=readiness,
+            source_family=str(document.get("source_family", "guide")),
+        ),
         "confidence": "guide_backed",
         "support_status": "source_backed",
         "source_refs": list(dict.fromkeys(source_refs)),
@@ -423,6 +435,46 @@ def _legacy_claim_type(claim_kind: str) -> str:
         "discover_choice": "discover_choice",
         "choose_one_choice": "choose_one_choice",
     }.get(claim_kind, "general")
+
+
+def _claim_readiness(
+    *,
+    claim_confidence: str,
+    source_family: str,
+    cards: list[str],
+    scope: str,
+) -> str:
+    confidence = claim_confidence.lower()
+    family = source_family.lower()
+    if confidence == "low":
+        return "explicit_low_confidence"
+    if family in {"card_text", "metadata", "hearthstonejson", "static_semantics"}:
+        return "source_backed_static_semantics"
+    if cards:
+        return "guide_backed"
+    if scope in {"deck", "archetype"}:
+        return "archetype_inferred"
+    return "contract_gap"
+
+
+def _specificity_status(*, cards: list[str], scope: str) -> str:
+    if len(cards) > 1:
+        return "multi_card_specific"
+    if len(cards) == 1:
+        return "card_specific"
+    if scope in {"deck", "archetype"}:
+        return "deck_scoped"
+    return "not_card_specific"
+
+
+def _trust_ceiling(*, claim_readiness: str, source_family: str) -> str:
+    if claim_readiness == "explicit_low_confidence":
+        return "report_only"
+    if claim_readiness == "source_backed_static_semantics":
+        return "static_semantics"
+    if source_family.lower() in {"guide", "mulligan_guide", "matchup_guide"}:
+        return "guide"
+    return "source"
 
 
 def _claim_id(claim: dict[str, Any]) -> str:

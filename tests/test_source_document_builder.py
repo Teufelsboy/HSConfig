@@ -460,3 +460,77 @@ def test_source_document_builder_preserves_low_claim_confidence_from_stale_mediu
     assert bundle["claims"][0]["source_confidence"] == "medium"
     assert bundle["claims"][0]["freshness_status"] == "stale"
     assert bundle["claims"][0]["claim_confidence"] == "low"
+
+
+DECK_IDENTITY = {
+    "deck_name": "Fixture",
+    "cards": [
+        {"card_id": "CARD_A", "name": "Card A", "count": 2},
+        {"card_id": "CARD_B", "name": "Card B", "count": 2},
+    ],
+}
+
+CARD_METADATA = {
+    "cards": [
+        {"card_id": "CARD_A", "name": "Card A", "count": 2},
+        {"card_id": "CARD_B", "name": "Card B", "count": 2},
+    ]
+}
+
+
+def test_source_claims_get_readiness_and_specificity_fields():
+    bundle = build_source_document_bundle(
+        deck_identity=DECK_IDENTITY,
+        card_metadata=CARD_METADATA,
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_A"],
+                        "stance": "prefer_enemy_hero",
+                        "evidence_text_short": "Use Card A as face damage.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["claim_readiness"] == "guide_backed"
+    assert claim["specificity_status"] == "card_specific"
+    assert claim["trust_ceiling"] == "guide"
+
+
+def test_low_confidence_source_claim_is_visible_but_not_strong():
+    bundle = build_source_document_bundle(
+        deck_identity=DECK_IDENTITY,
+        card_metadata=CARD_METADATA,
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/weak-guide",
+                "source_title": "Weak Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "card_role",
+                        "cards": ["CARD_B"],
+                        "stance": "maybe_synergy",
+                        "evidence_text_short": "Card B is sometimes used with the deck plan.",
+                        "source_confidence": "low",
+                    }
+                ],
+            }
+        ],
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["claim_readiness"] == "explicit_low_confidence"
+    assert claim["specificity_status"] == "card_specific"
+    assert claim["trust_ceiling"] == "report_only"

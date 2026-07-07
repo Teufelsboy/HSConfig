@@ -123,6 +123,17 @@ The every-card coverage rule is: every card must land in a visible lane, and
 only guide-backed or source-backed static semantics can support strong guide
 depth.
 
+Claim readiness lanes:
+
+- `guide_backed`: current source claim maps to one or more concrete deck cards.
+- `source_backed_static_semantics`: card text or metadata supports a deterministic static expectation.
+- `archetype_inferred`: deck-scoped posture without card-specific source support.
+- `explicit_low_confidence`: source is current but weak or low confidence.
+- `generic_low_confidence`: no useful source or static semantic support exists.
+- `contract_gap`: the claim could not be made specific enough for the config contract.
+
+Only `guide_backed` and `source_backed_static_semantics` can contribute toward strong guide-depth readiness.
+
 For each card, prefer claims that answer at least one of these questions:
 
 - keep, discard, or situational mulligan
