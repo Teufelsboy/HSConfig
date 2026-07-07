@@ -388,6 +388,8 @@ def _confidence_label(card_map: dict[str, dict[str, Any]], claims: list[dict[str
 
 def _coverage_status(claims: list[dict[str, Any]], semantic_families: list[str]) -> str:
     if claims:
+        if all(_is_report_only_claim(claim) for claim in claims):
+            return "generic_low_confidence"
         if any(_is_guide_claim(claim) for claim in claims):
             return "guide_backed"
         if all(_is_static_semantic_claim(claim) for claim in claims):
@@ -403,12 +405,26 @@ def _coverage_status(claims: list[dict[str, Any]], semantic_families: list[str])
 
 
 def _is_guide_claim(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    if readiness:
+        return readiness == "guide_backed"
+    if _is_report_only_claim(claim):
+        return False
     if str(claim.get("confidence")) == "guide_backed":
         return True
     source = str(claim.get("source", "")).lower()
     url = str(claim.get("url", "")).lower()
     source_title = str(claim.get("source_title", "")).lower()
     return "guide" in source or "guide" in url or "guide" in source_title
+
+
+def _is_report_only_claim(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    return readiness in {
+        "explicit_low_confidence",
+        "generic_low_confidence",
+        "contract_gap",
+    } or str(claim.get("trust_ceiling", "")).lower() == "report_only"
 
 
 def _is_static_semantic_claim(claim: dict[str, Any]) -> bool:

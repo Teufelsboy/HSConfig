@@ -42,7 +42,9 @@ def test_depth_matrix_shadowpriest_primary_surface_contract(tmp_path: Path):
 
     assert code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
+    assert operator["semantic_blockers"]
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert any(path.name.endswith(".json") for path in deck_dir.glob("SW_*.json"))
@@ -89,7 +91,8 @@ def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
 
     assert code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
     assert authority["posture"] == "token_board"
     assert allowed & {
         "GlobalMinionAttack",

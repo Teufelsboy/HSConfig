@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.operator_summary import build_operator_summary
 
 
@@ -119,6 +121,46 @@ def test_operator_summary_marks_valid_package_not_guide_strong_when_claims_confl
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+
+
+@pytest.mark.parametrize(
+    "summary_key",
+    [
+        "cards_needing_guide_claims",
+        "cards_needing_runtime_surface",
+        "cards_needing_mulligan_claims",
+        "cards_needing_combo_sequence",
+        "cards_needing_condition_lowering",
+        "cards_needing_mechanic_lowering",
+    ],
+)
+def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
+    summary = build_operator_summary(
+        deck_name="Fixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "source_backed", "claim_count": 12},
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 3,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 3,
+            "generic_low_confidence": 0,
+            summary_key: 1,
+        },
+    )
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["guide_strength_summary"][summary_key] == 1
 
 
 def test_invalid_package_blocks_apply():
@@ -254,6 +296,12 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
             "generic_low_confidence_cards=0",
             "uncovered_cards=0",
             "claim_conflicts=0",
+            "cards_needing_guide_claims=0",
+            "cards_needing_runtime_surface=0",
+            "cards_needing_mulligan_claims=0",
+            "cards_needing_combo_sequence=0",
+            "cards_needing_condition_lowering=0",
+            "cards_needing_mechanic_lowering=0",
         ],
     }
     assert summary["semantic_blockers"][0] == {

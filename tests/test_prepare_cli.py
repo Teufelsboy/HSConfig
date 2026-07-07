@@ -270,7 +270,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert guide_bundle["claims"]
     assert source_index[0]["claim_count"] >= 12
     assert unsupported == []
-    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
+    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] > 0
     assert (reports / "mulligan_plan_report.json").exists()
 
 
@@ -338,6 +340,92 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
+
+
+def test_prepare_low_confidence_source_documents_do_not_report_source_backed_strong(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "CARD_001", "dbf_id": 1, "count": 2, "name": "Card A"},
+                    {"card_id": "CARD_002", "dbf_id": 2, "count": 2, "name": "Card B"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/weak-guide",
+                        "source_title": "Weak Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "card_role",
+                                "cards": ["CARD_001"],
+                                "stance": "maybe_core",
+                                "evidence_text_short": "Card A might be part of the plan.",
+                                "source_confidence": "low",
+                            },
+                            {
+                                "claim_kind": "targeting_rule",
+                                "cards": ["CARD_002"],
+                                "stance": "maybe_face",
+                                "evidence_text_short": "Card B might go face.",
+                                "source_confidence": "low",
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "WeakDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
+    coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    source_claims = [
+        claim for claim in guide_bundle["claims"] if claim["source_family"] == "guide"
+    ]
+    assert {claim["claim_readiness"] for claim in source_claims} == {"explicit_low_confidence"}
+    assert coverage["summary"]["guide_backed"] == 0
+    assert coverage["summary"]["uncovered_low_confidence"] == 2
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
 
 
 def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):

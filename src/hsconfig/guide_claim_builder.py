@@ -76,7 +76,7 @@ def build_guide_claim_bundle(
     guide_backed_cards = {
         card
         for claim in claims
-        if claim.get("support_status") == "source_backed"
+        if _claim_counts_as_guide_backed(claim)
         for card in claim.get("cards", [])
     }
 
@@ -86,7 +86,7 @@ def build_guide_claim_bundle(
     static_semantic_cards = {
         card
         for claim in claims
-        if claim.get("source_family") == "hearthstonejson_static_semantics"
+        if _claim_counts_as_static_semantics(claim)
         for card in claim.get("cards", [])
     }
     uncovered_cards = sorted(set(cards) - guide_backed_cards - static_semantic_cards)
@@ -326,6 +326,9 @@ def _static_claim(
         "evidence_text_short": evidence,
         "source_confidence": "medium",
         "claim_confidence": "medium",
+        "claim_readiness": "source_backed_static_semantics",
+        "specificity_status": "card_specific",
+        "trust_ceiling": "static_semantics",
         "confidence": "source_backed_static_semantics",
         "support_status": "static_semantics",
         "mechanic": mechanic,
@@ -388,6 +391,28 @@ def _claim_id(claim: dict[str, Any]) -> str:
     }
     canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     return f"claim_{sha256(canonical.encode('utf-8')).hexdigest()[:12]}"
+
+
+def _claim_counts_as_guide_backed(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    if readiness:
+        return readiness == "guide_backed"
+    return (
+        str(claim.get("support_status", "")).lower() == "source_backed"
+        and str(claim.get("confidence", "guide_backed")).lower()
+        in {"guide_backed", "source_backed"}
+    )
+
+
+def _claim_counts_as_static_semantics(claim: dict[str, Any]) -> bool:
+    readiness = str(claim.get("claim_readiness", "")).lower()
+    if readiness:
+        return readiness == "source_backed_static_semantics"
+    return (
+        str(claim.get("source_family", "")) == "hearthstonejson_static_semantics"
+        or str(claim.get("support_status", "")).lower() == "static_semantics"
+        or str(claim.get("confidence", "")).lower() == "source_backed_static_semantics"
+    )
 
 
 def _normalize_cards(cards: Any) -> list[str]:

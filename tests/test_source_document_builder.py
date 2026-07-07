@@ -1,4 +1,8 @@
 from hsconfig.guide_source_builder import build_guide_sources
+from hsconfig.source_document_model import (
+    SUPPORTED_CLAIM_READINESS,
+    SUPPORTED_SPECIFICITY_STATUSES,
+)
 from hsconfig.source_document_builder import build_source_document_bundle
 
 
@@ -534,3 +538,52 @@ def test_low_confidence_source_claim_is_visible_but_not_strong():
     assert claim["claim_readiness"] == "explicit_low_confidence"
     assert claim["specificity_status"] == "card_specific"
     assert claim["trust_ceiling"] == "report_only"
+    assert claim["claim_readiness"] in SUPPORTED_CLAIM_READINESS
+    assert claim["specificity_status"] in SUPPORTED_SPECIFICITY_STATUSES
+    assert bundle["claim_coverage_report"]["cards"]["CARD_B"]["coverage_status"] == (
+        "uncovered_low_confidence"
+    )
+    assert bundle["claim_coverage_report"]["cards"]["CARD_B"]["source_claim_ids"] == [
+        claim["claim_id"]
+    ]
+    assert bundle["claim_coverage_report"]["summary"] == {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 0,
+        "uncovered_low_confidence": 2,
+    }
+
+
+def test_source_document_claim_fields_use_supported_vocabularies():
+    bundle = build_source_document_bundle(
+        deck_identity=DECK_IDENTITY,
+        card_metadata=CARD_METADATA,
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_A"],
+                        "stance": "prefer_enemy_hero",
+                        "evidence_text_short": "Use Card A as face damage.",
+                        "source_confidence": "high",
+                    },
+                    {
+                        "claim_kind": "card_role",
+                        "cards": ["CARD_B"],
+                        "stance": "maybe_synergy",
+                        "evidence_text_short": "Card B is a speculative synergy card.",
+                        "source_confidence": "low",
+                    },
+                ],
+            }
+        ],
+    )
+
+    assert {claim["claim_readiness"] for claim in bundle["claims"]} <= SUPPORTED_CLAIM_READINESS
+    assert {
+        claim["specificity_status"] for claim in bundle["claims"]
+    } <= SUPPORTED_SPECIFICITY_STATUSES

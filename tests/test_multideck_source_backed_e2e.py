@@ -45,4 +45,6 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
     assert code == 0
     summary = read_json(out / "reports" / "operator_summary.json")
     assert summary["technical_status"] == "VALID_PACKAGE"
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
+    assert summary["semantic_blockers"]

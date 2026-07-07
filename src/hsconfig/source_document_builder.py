@@ -233,8 +233,8 @@ def _normalize_source_claim(
             claim_readiness=readiness,
             source_family=str(document.get("source_family", "guide")),
         ),
-        "confidence": "guide_backed",
-        "support_status": "source_backed",
+        "confidence": _confidence_for_readiness(readiness),
+        "support_status": _support_status_for_readiness(readiness),
         "source_refs": list(dict.fromkeys(source_refs)),
     }
     if "sequence" in raw_claim:
@@ -277,9 +277,17 @@ def _build_claim_coverage_report(
     claims: list[dict[str, Any]],
 ) -> dict[str, Any]:
     source_claim_ids_by_card: dict[str, list[str]] = {card_id: [] for card_id in cards}
+    guide_claim_ids_by_card: dict[str, list[str]] = {card_id: [] for card_id in cards}
+    static_claim_ids_by_card: dict[str, list[str]] = {card_id: [] for card_id in cards}
     for claim in claims:
         for card_id in claim.get("cards", []):
-            source_claim_ids_by_card.setdefault(str(card_id), []).append(str(claim["claim_id"]))
+            normalized_card_id = str(card_id)
+            claim_id = str(claim["claim_id"])
+            source_claim_ids_by_card.setdefault(normalized_card_id, []).append(claim_id)
+            if _claim_counts_as_guide_backed(claim):
+                guide_claim_ids_by_card.setdefault(normalized_card_id, []).append(claim_id)
+            elif _claim_counts_as_static_semantics(claim):
+                static_claim_ids_by_card.setdefault(normalized_card_id, []).append(claim_id)
 
     rows: dict[str, dict[str, Any]] = {}
     status_counts = {
@@ -289,8 +297,12 @@ def _build_claim_coverage_report(
     }
     for card_id, card in sorted(cards.items()):
         source_claim_ids = list(dict.fromkeys(source_claim_ids_by_card.get(card_id, [])))
-        if source_claim_ids:
+        guide_claim_ids = list(dict.fromkeys(guide_claim_ids_by_card.get(card_id, [])))
+        static_claim_ids = list(dict.fromkeys(static_claim_ids_by_card.get(card_id, [])))
+        if guide_claim_ids:
             coverage_status = "guide_backed"
+        elif static_claim_ids:
+            coverage_status = "static_semantics_backfilled"
         else:
             coverage_status = "uncovered_low_confidence"
         status_counts[coverage_status] += 1
@@ -475,6 +487,30 @@ def _trust_ceiling(*, claim_readiness: str, source_family: str) -> str:
     if source_family.lower() in {"guide", "mulligan_guide", "matchup_guide"}:
         return "guide"
     return "source"
+
+
+def _confidence_for_readiness(readiness: str) -> str:
+    if readiness == "guide_backed":
+        return "guide_backed"
+    if readiness == "source_backed_static_semantics":
+        return "source_backed_static_semantics"
+    if readiness == "archetype_inferred":
+        return "archetype_inferred"
+    return "generic_low_confidence"
+
+
+def _support_status_for_readiness(readiness: str) -> str:
+    if readiness == "source_backed_static_semantics":
+        return "static_semantics"
+    return "source_backed"
+
+
+def _claim_counts_as_guide_backed(claim: dict[str, Any]) -> bool:
+    return str(claim.get("claim_readiness", "")).lower() == "guide_backed"
+
+
+def _claim_counts_as_static_semantics(claim: dict[str, Any]) -> bool:
+    return str(claim.get("claim_readiness", "")).lower() == "source_backed_static_semantics"
 
 
 def _claim_id(claim: dict[str, Any]) -> str:

@@ -10,7 +10,7 @@ SHADOWPRIEST_CODE = (
 )
 
 
-def test_shadowpriest_source_documents_reach_source_backed_strong(tmp_path: Path):
+def test_shadowpriest_source_documents_surface_readiness_gaps(tmp_path: Path):
     out = tmp_path / "shadowpriest"
     source_docs = Path("tests/fixtures/source_documents_shadowpriest_depth.json")
 
@@ -34,7 +34,9 @@ def test_shadowpriest_source_documents_reach_source_backed_strong(tmp_path: Path
     assert code == 0
     summary = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
     assert summary["technical_status"] == "VALID_PACKAGE"
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
+    assert summary["semantic_blockers"]
 
 
 def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_path: Path, capsys):

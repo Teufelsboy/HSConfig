@@ -12,7 +12,21 @@ SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "generic_low_confidence_cards=0",
     "uncovered_cards=0",
     "claim_conflicts=0",
+    "cards_needing_guide_claims=0",
+    "cards_needing_runtime_surface=0",
+    "cards_needing_mulligan_claims=0",
+    "cards_needing_combo_sequence=0",
+    "cards_needing_condition_lowering=0",
+    "cards_needing_mechanic_lowering=0",
 ]
+READINESS_GAP_SUMMARY_KEYS = (
+    "cards_needing_guide_claims",
+    "cards_needing_runtime_surface",
+    "cards_needing_mulligan_claims",
+    "cards_needing_combo_sequence",
+    "cards_needing_condition_lowering",
+    "cards_needing_mechanic_lowering",
+)
 READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
     "cards_need_guide_claims": "cards_needing_guide_claims",
     "cards_need_runtime_surface": "cards_needing_runtime_surface",
@@ -116,16 +130,18 @@ def _semantic_status(
     )
     uncovered_cards = _uncovered_cards(claim_coverage_report or {})
     conflict_count = _int_value((claim_conflict_report or {}).get("conflict_count", 0))
+    readiness_gap_count = _readiness_gap_count(config_readiness_summary or {})
 
     if (
         source_depth_status == "source_backed"
         and claim_count > 0
         and generic_low_confidence == 0
         and conflict_count == 0
+        and readiness_gap_count == 0
         and not uncovered_cards
     ):
         return "SOURCE_BACKED_STRONG"
-    if generic_low_confidence > 0 or uncovered_cards or conflict_count > 0:
+    if generic_low_confidence > 0 or uncovered_cards or conflict_count > 0 or readiness_gap_count > 0:
         return "VALID_BUT_NOT_GUIDE_STRONG"
     if source_depth_status == "static_semantics_only":
         return "STATIC_SEMANTICS_USABLE"
@@ -402,6 +418,12 @@ def _generic_low_confidence_count(
     if isinstance(config_readiness_summary, dict):
         return _int_value(config_readiness_summary.get("generic_low_confidence", 0))
     return _low_confidence_card_count(claim_coverage_report or {})
+
+
+def _readiness_gap_count(config_readiness_summary: dict[str, Any]) -> int:
+    if not isinstance(config_readiness_summary, dict):
+        return 0
+    return sum(_int_value(config_readiness_summary.get(key, 0)) for key in READINESS_GAP_SUMMARY_KEYS)
 
 
 def _uncovered_cards(report: dict[str, Any]) -> list[str]:

@@ -120,6 +120,62 @@ def test_vague_source_text_is_reported_not_promoted():
     assert bundle["unsupported_claims"][0]["reason"] == "not_card_specific"
 
 
+def test_low_confidence_source_claims_do_not_count_as_guide_backed_coverage():
+    bundle = build_guide_claim_bundle(
+        deck_identity={
+            "deck_name": "WeakDeck",
+            "cards": [
+                {"card_id": "CARD_001", "count": 2},
+                {"card_id": "CARD_002", "count": 2},
+            ],
+        },
+        card_metadata={
+            "CARD_001": {"name": "Weak Card One", "text": "Fixture card."},
+            "CARD_002": {"name": "Weak Card Two", "text": "Fixture card."},
+        },
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/weak-guide",
+                "source_title": "Weak Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "card_role",
+                        "cards": ["CARD_001"],
+                        "stance": "maybe_core",
+                        "evidence_text_short": "Card one might be part of the plan.",
+                        "source_confidence": "low",
+                    },
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_002"],
+                        "stance": "maybe_face",
+                        "evidence_text_short": "Card two might go face.",
+                        "source_confidence": "low",
+                    },
+                ],
+            }
+        ],
+    )
+
+    low_claim_ids = [claim["claim_id"] for claim in bundle["claims"]]
+
+    assert bundle["coverage"]["guide_backed_cards"] == 0
+    assert bundle["coverage"]["uncovered_cards"] == ["CARD_001", "CARD_002"]
+    assert bundle["claim_coverage_report"]["summary"] == {
+        "guide_backed": 0,
+        "static_semantics_backfilled": 0,
+        "uncovered_low_confidence": 2,
+    }
+    assert bundle["claim_coverage_report"]["cards"]["CARD_001"]["source_claim_ids"] == [
+        low_claim_ids[0]
+    ]
+    assert bundle["claim_coverage_report"]["cards"]["CARD_002"]["source_claim_ids"] == [
+        low_claim_ids[1]
+    ]
+
+
 def test_static_semantics_cover_mechanic_text_without_guide_sources():
     bundle = build_guide_claim_bundle(
         deck_identity={"deck_name": "MechanicDeck"},
