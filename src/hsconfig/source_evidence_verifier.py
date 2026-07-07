@@ -10,6 +10,34 @@ from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 PUBLIC_URL_SCHEMES = {"https"}
 RUNTIME_HINT_KEYS = {"runtime_block", "runtime_value"}
+SUPPORTED_SOURCE_FAMILIES = {
+    "guide",
+    "guide_fixture",
+    "mulligan_guide",
+    "matchup_guide",
+    "card_text",
+    "metadata",
+    "hearthstonejson",
+    "static_semantics",
+}
+ACTIONABLE_SPECIFICITY_KEYS = (
+    "stance",
+    "condition",
+    "conditions",
+    "runtime_value",
+    "target",
+    "target_name",
+    "target_card_id",
+    "role",
+    "mechanic",
+    "selector",
+    "selector_kind",
+    "sequence",
+    "values",
+    "timing_kind",
+    "operator",
+    "option_card_id",
+)
 
 
 def source_ref_is_public_https(value: object) -> bool:
@@ -46,6 +74,37 @@ def verify_source_documents(source_documents: list[dict[str, Any]]) -> dict[str,
                     "reason": "source_url_not_public_https",
                     "document_index": document_index,
                     "source_url": str(document.get("source_url", "")),
+                }
+            )
+        source_title = _text(document.get("source_title", ""))
+        if not source_title:
+            warnings.append(
+                {
+                    "reason": "source_title_missing",
+                    "document_index": document_index,
+                }
+            )
+        source_family = _text(document.get("source_family", ""))
+        if not source_family:
+            warnings.append(
+                {
+                    "reason": "source_family_missing",
+                    "document_index": document_index,
+                }
+            )
+        elif source_family.lower() not in SUPPORTED_SOURCE_FAMILIES:
+            warnings.append(
+                {
+                    "reason": "unsupported_source_family",
+                    "document_index": document_index,
+                    "source_family": source_family,
+                }
+            )
+        if not _text(document.get("retrieved_at", "")):
+            warnings.append(
+                {
+                    "reason": "retrieved_at_missing",
+                    "document_index": document_index,
                 }
             )
         claims = document.get("claims", [])
@@ -98,6 +157,22 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
         )
     if has_runtime_lowering_hint and str(claim.get("source_confidence", "")).lower() == "low":
         warnings.append({"reason": "low_confidence_runtime_lowering", "claim_kind": claim_kind})
+    for source_ref in _source_refs(claim):
+        if not source_ref_is_public_https(source_ref):
+            warnings.append(
+                {
+                    "reason": "claim_source_ref_not_public_https",
+                    "claim_kind": claim_kind,
+                    "source_ref": source_ref,
+                }
+            )
+    if has_runtime_lowering_hint and not _has_actionable_specificity(claim):
+        warnings.append(
+            {
+                "reason": "runtime_lowering_claim_lacks_actionable_specificity",
+                "claim_kind": claim_kind,
+            }
+        )
 
     return {
         "claim_kind": claim_kind,
@@ -121,3 +196,34 @@ def _cards(claim: dict[str, Any]) -> list[str]:
 
 def _claim_evidence_text(claim: dict[str, Any]) -> str:
     return str(claim.get("evidence_text_short", claim.get("claim", claim.get("reason", "")))).strip()
+
+
+def _source_refs(claim: dict[str, Any]) -> list[str]:
+    source_refs = claim.get("source_refs", [])
+    if isinstance(source_refs, str):
+        source_refs = [source_refs]
+    if not isinstance(source_refs, list):
+        return []
+    return [_text(source_ref) for source_ref in source_refs if _text(source_ref)]
+
+
+def _has_actionable_specificity(claim: dict[str, Any]) -> bool:
+    for key in ACTIONABLE_SPECIFICITY_KEYS:
+        value = claim.get(key)
+        if _has_meaningful_value(value):
+            return True
+    return False
+
+
+def _has_meaningful_value(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set)):
+        return any(_has_meaningful_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_meaningful_value(item) for item in value.values())
+    return value is not None
+
+
+def _text(value: object) -> str:
+    return str(value).strip()
