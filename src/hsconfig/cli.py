@@ -372,6 +372,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     guide_source_depth_report = build_guide_source_depth_report(
         guide_claim_bundle=guide_claim_bundle,
         config_readiness_report=config_readiness_report,
+        source_evidence_verification_report=context["source_evidence_report"],
     )
     surface_intent = build_surface_intent(gameplan_contract)
 
@@ -477,18 +478,11 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     )
     write_json(reports_dir / "validation_report.json", report)
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
-    operator_guide_source_depth = {
-        **guide_source_depth_report,
-        "source_depth_status": context["guide_builder_receipt"].get(
-            "source_depth_status",
-            guide_source_depth_report.get("depth_status", ""),
-        ),
-    }
     operator_summary = build_operator_summary(
         deck_name=args.deck_name,
         deck_code=args.deck_code,
         technical_validation=report,
-        guide_source_depth=operator_guide_source_depth,
+        guide_source_depth=guide_source_depth_report,
         unsupported_conditions=mulligan_plan.get("suppressed_rules", []),
         globalvalue_authority=global_values_authority_matrix,
         generated_files=generated_files,

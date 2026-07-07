@@ -330,6 +330,252 @@ def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
     assert source_report["warnings"] == []
 
 
+def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://localhost/guide",
+                        "source_title": "Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "targeting_rule",
+                                "cards": ["EX1_001"],
+                                "stance": "prefer_enemy_hero",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "12",
+                                "evidence_text_short": "Pressure One should go face.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "PressureDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = out / "reports"
+    depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    source_report = json.loads(
+        (reports / "source_evidence_verification_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert source_report["summary"]["warnings_count"] == 1
+    assert depth["source_evidence"]["warnings_count"] == 1
+    assert operator_summary["guide_strength_summary"]["source_evidence_warnings"] == 1
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+
+
+def test_build_uses_computed_source_depth_status_for_operator_gating(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/guide",
+                        "source_title": "Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "targeting_rule",
+                                "cards": ["EX1_001"],
+                                "stance": "prefer_enemy_hero",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "12",
+                                "evidence_text_short": "Pressure One should go face.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    plan_reports = tmp_path / "plan_reports"
+    plan_reports.mkdir()
+    (plan_reports / "guide_claim_bundle.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "claim_report_only_runtime",
+                        "claim_kind": "targeting_rule",
+                        "cards": ["EX1_001"],
+                        "claim_readiness": "explicit_low_confidence",
+                        "trust_ceiling": "report_only",
+                        "source_family": "guide",
+                    }
+                ],
+                "unsupported_claims": [],
+                "source_evidence_index": [],
+                "coverage": {
+                    "guide_backed_cards": 1,
+                    "uncovered_cards": [],
+                    "summary": {
+                        "guide_backed": 1,
+                        "static_semantics_backfilled": 0,
+                        "uncovered_low_confidence": 0,
+                    },
+                    "cards": {
+                        "EX1_001": {
+                            "coverage_status": "guide_backed",
+                        }
+                    },
+                },
+                "claim_coverage_report": {
+                    "guide_backed_cards": 1,
+                    "uncovered_cards": [],
+                    "summary": {
+                        "guide_backed": 1,
+                        "static_semantics_backfilled": 0,
+                        "uncovered_low_confidence": 0,
+                    },
+                    "cards": {
+                        "EX1_001": {
+                            "coverage_status": "guide_backed",
+                        }
+                    },
+                },
+                "claim_conflict_report": {"conflict_count": 0, "conflicts": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plan_reports / "mulligan_plan_report.json").write_text(
+        json.dumps({"rules": [], "suppressed_rules": []}),
+        encoding="utf-8",
+    )
+    (plan_reports / "card_behavior_plan_report.json").write_text(
+        json.dumps(
+            {
+                "card_rows": {
+                    "EX1_001": [
+                        {
+                            "card_id": "EX1_001",
+                            "surface_family": "CARDID.json",
+                            "surface": "CardID.json",
+                            "behavior_block": "BeforePlayCardBonus",
+                            "meaningful_runtime_surface": True,
+                            "source_claim_ids": ["claim_report_only_runtime"],
+                        }
+                    ]
+                },
+                "rows": [
+                    {
+                        "card_id": "EX1_001",
+                        "surface_family": "CARDID.json",
+                        "surface": "CardID.json",
+                        "behavior_block": "BeforePlayCardBonus",
+                        "meaningful_runtime_surface": True,
+                        "source_claim_ids": ["claim_report_only_runtime"],
+                    }
+                ],
+                "suppressed": [],
+                "option_resolution": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plan_reports / "combo_plan_report.json").write_text(
+        json.dumps({"combos": [], "suppressed": []}),
+        encoding="utf-8",
+    )
+    (plan_reports / "global_values_authority_matrix.json").write_text(
+        json.dumps({"allowed_step1_overlays": [], "blocked_until_runtime_evidence": []}),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "PressureDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = out / "reports"
+    receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
+    depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert receipt["source_depth_status"] == "source_backed"
+    assert depth["summary"]["report_only_claims"] == 1
+    assert depth["source_depth_status"] == "needs_more_research"
+    assert operator_summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
+    assert operator_summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+
+
 def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
