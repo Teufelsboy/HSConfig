@@ -238,9 +238,11 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert coverage["guide_backed_cards"] >= 8
     assert len(coverage["uncovered_cards"]) <= 4
     assert depth["depth_status"] in {"usable", "usable_with_runtime_gaps"}
-    assert depth["summary"]["cards_needing_runtime_surface"] == 8
+    assert depth["summary"]["cards_needing_runtime_surface"] == 7
+    assert depth["summary"]["warnings_count"] == 9
     assert readiness["summary"]["generic_low_confidence"] <= 4
     assert readiness["summary"]["runtime_emitted"] >= 4
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 2
     assert len(mulligan["Mulligan"]["values"]) >= 4
     assert any(
         row["value"] == "12" and "prefer_enemy_hero" in row.get("comment", "")
