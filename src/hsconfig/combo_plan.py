@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.combo_sequence_contract import build_combo_sequence_contract
 
 
 def build_combo_plan(
@@ -13,51 +14,43 @@ def build_combo_plan(
     combos: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
 
-    for index, claim in enumerate(claims, start=1):
+    for claim in claims:
         claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
         if claim_kind != "combo_sequence":
             continue
-        sequence = [str(card) for card in claim.get("sequence", []) if str(card)]
-        cards = [str(card) for card in claim.get("cards", []) if str(card)]
-        if len(sequence) < 2:
-            suppressed.append(_suppression(claim, cards, "missing_ordered_sequence"))
-            continue
-        missing_cards = [card for card in sequence if card not in deck_cards]
-        if missing_cards:
-            row = _suppression(claim, sequence, "sequence_card_not_in_deck")
-            row["missing_cards"] = missing_cards
+
+        contract = build_combo_sequence_contract(claim, deck_cards)
+        if contract.get("emittable") is not True:
+            row = _suppression(
+                claim,
+                [str(card) for card in contract.get("cards", [])],
+                str(contract.get("reason", "not_emittable")),
+            )
+            if "missing_cards" in contract:
+                row["missing_cards"] = [str(card) for card in contract["missing_cards"]]
             suppressed.append(row)
             continue
-        values = _combo_values(claim, sequence)
-        value = int(values[0]) if values else 10
-        combos.append(
-            {
-                "rule_id": str(claim.get("claim_id", f"combo_sequence_{index}")),
-                "cards": sequence,
-                "values": values,
-                "operator": ">>",
-                "combo": ">>".join(sequence),
-                "value": value,
-                "condition": _condition(claim),
-                "source_claim_ids": _source_claim_ids(claim),
-                "confidence": str(claim.get("claim_confidence", claim.get("confidence", "source_backed"))),
-                "source_refs": [str(item) for item in claim.get("source_refs", [])],
-            }
+
+        row = {key: value for key, value in contract.items() if key != "emittable"}
+        row["condition"] = _condition(claim)
+        row["source_claim_ids"] = _source_claim_ids(claim)
+        row["confidence"] = str(
+            claim.get("claim_confidence", claim.get("confidence", "source_backed"))
         )
+        row["source_refs"] = [str(item) for item in claim.get("source_refs", [])]
+        row["combo"] = str(row["operator"]).join(row["cards"])
+        row["value"] = _combo_row_value(row["values"])
+        combos.append(row)
 
     return {"combos": combos, "suppressed": suppressed}
 
 
-def _combo_values(claim: dict[str, Any], sequence: list[str]) -> list[str]:
-    raw_values = claim.get("values")
-    if isinstance(raw_values, list) and len(raw_values) == len(sequence):
-        return [str(value) for value in raw_values]
-    value = claim.get("value", claim.get("combo_value", 10))
+def _combo_row_value(values: list[str]) -> int:
+    value = values[0] if values else 10
     try:
-        numeric = int(value)
+        return int(value)
     except (TypeError, ValueError):
-        numeric = 10
-    return [str(numeric) for _ in sequence]
+        return 10
 
 
 def _suppression(claim: dict[str, Any], cards: list[str], reason: str) -> dict[str, Any]:

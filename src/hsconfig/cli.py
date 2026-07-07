@@ -433,6 +433,7 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         card_behavior_plan.get("suppressed", []),
     )
     write_json(reports_dir / "combo_plan_report.json", combo_plan)
+    write_json(reports_dir / "combo_suppression_report.json", combo_plan.get("suppressed", []))
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
     write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)

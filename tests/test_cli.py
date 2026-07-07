@@ -238,8 +238,12 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
         (research_dir / "globalvalue_intent.json").read_text(encoding="utf-8")
     )
     deck_dir = out / "CustomConfig" / "guide_cards"
+    reports = out / "reports"
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
-    combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_suppressions = json.loads(
+        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -248,7 +252,10 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
     assert globalvalue_intent["pressure_bias"] == "high"
     assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
-    assert combo["ComboList"]["values"][0]["combo"] == "EX1_001>>EX1_002"
+    assert not (deck_dir / "Combo.json").exists()
+    assert combo_plan["combos"] == []
+    assert combo_suppressions == combo_plan["suppressed"]
+    assert combo_suppressions[0]["reason"] == "missing_timing"
 
 
 def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
