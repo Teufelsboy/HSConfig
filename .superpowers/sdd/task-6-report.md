@@ -67,3 +67,43 @@ GREEN:
 ## Concerns
 
 - None.
+
+## Review Fix: Selector Identity And Readiness Coverage
+
+Status: DONE
+
+Changed files:
+
+- `src/hsconfig/mulligan_selector.py`
+- `src/hsconfig/mulligan_plan.py`
+- `src/hsconfig/config_readiness.py`
+- `tests/test_mulligan_plan.py`
+- `tests/test_config_readiness.py`
+- `.superpowers/sdd/task-6-report.md`
+
+RED:
+
+- `python -m pytest tests/test_mulligan_plan.py::test_mulligan_plan_preserves_source_claim_selector_depth tests/test_mulligan_plan.py::test_mulligan_plan_suppresses_selector_cards_not_in_claim_before_runtime tests/test_config_readiness.py::test_multi_card_mulligan_selectors_credit_every_selector_card -q`
+  - Outcome before implementation: 3 failed.
+  - Failures covered missing `selector_cards`, off-deck selector emission, and readiness crediting only `row["card"]`.
+
+GREEN:
+
+- `python -m pytest tests/test_mulligan_plan.py::test_mulligan_plan_preserves_source_claim_selector_depth tests/test_mulligan_plan.py::test_mulligan_plan_suppresses_selector_cards_not_in_claim_before_runtime tests/test_config_readiness.py::test_multi_card_mulligan_selectors_credit_every_selector_card -q`
+  - Outcome: 3 passed.
+- `python -m pytest tests/test_mulligan_plan.py tests/test_config_readiness.py tests/test_compile_mulligan.py tests/test_validate_package.py -q`
+  - Outcome: 42 passed.
+- `python -m pytest -q`
+  - Outcome: 221 passed.
+
+Implementation summary:
+
+- `normalize_mulligan_selector` now extracts selector card IDs for `card`, `card_list`, and `plus_combo`.
+- `build_mulligan_plan` suppresses explicit selectors whose selector cards are not a subset of the claim's `cards`, using `selector_cards_not_in_claim`.
+- Mulligan plan rows now carry `selector_cards` for selector-backed rows.
+- Config readiness now uses `selector_cards` when present so every card in a multi-card Mulligan selector receives the `Mulligan.json` runtime surface.
+- `source_document_builder.py`, `compile_mulligan.py`, and `validate_package.py` were not changed for this review fix.
+
+Concerns:
+
+- None.

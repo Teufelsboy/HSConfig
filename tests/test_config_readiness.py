@@ -1,6 +1,42 @@
 from hsconfig.config_readiness import build_config_readiness_report
 
 
+def _two_card_readiness_report(*, mulligan_rule: dict) -> dict:
+    return build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Fixture",
+            "deck_slug": "fixture",
+            "cards": [
+                {"card_id": "CARD_A", "name": "CARD_A", "count": 1},
+                {"card_id": "CARD_B", "name": "CARD_B", "count": 1},
+            ],
+        },
+        claim_coverage={"uncovered_cards": [], "total_cards": 2},
+        gameplan_contract={
+            "cards": {
+                "CARD_A": {
+                    "card_id": "CARD_A",
+                    "name": "CARD_A",
+                    "count": 1,
+                    "coverage_status": "guide_backed",
+                    "roles": ["mulligan_anchor"],
+                },
+                "CARD_B": {
+                    "card_id": "CARD_B",
+                    "name": "CARD_B",
+                    "count": 1,
+                    "coverage_status": "guide_backed",
+                    "roles": ["mulligan_anchor"],
+                },
+            }
+        },
+        mulligan_plan={"rules": [mulligan_rule]},
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+    )
+
+
 def _report_for_card(
     *,
     card_id: str,
@@ -108,6 +144,25 @@ def test_mulligan_only_card_gets_specific_lane():
     row = report["cards"]["CARD_002"]
     assert row["readiness_lane"] == "mulligan_only"
     assert row["first_missing_link"] == "needs_runtime_surface"
+
+
+def test_multi_card_mulligan_selectors_credit_every_selector_card():
+    for selector_kind, selector in (
+        ("plus_combo", "CARD_A + CARD_B"),
+        ("card_list", "CARD_A, CARD_B"),
+    ):
+        report = _two_card_readiness_report(
+            mulligan_rule={
+                "card": "CARD_A",
+                "selector_kind": selector_kind,
+                "selector": selector,
+                "selector_cards": ["CARD_A", "CARD_B"],
+                "action": "hold",
+            }
+        )
+
+        assert report["cards"]["CARD_A"]["runtime_surfaces"] == ["Mulligan.json"]
+        assert report["cards"]["CARD_B"]["runtime_surfaces"] == ["Mulligan.json"]
 
 
 def test_uncovered_card_gets_guide_claim_missing_link():

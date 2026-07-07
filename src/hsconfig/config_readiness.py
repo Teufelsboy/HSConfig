@@ -229,11 +229,25 @@ def _cards_from_unsupported_condition_suppression(
 
 
 def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
-    return {
-        str(row["card"])
-        for row in mulligan_plan.get("rules", [])
-        if isinstance(row, dict) and row.get("card") and str(row["card"]) != "*"
-    }
+    cards: set[str] = set()
+    for row in mulligan_plan.get("rules", []):
+        if not isinstance(row, dict):
+            continue
+        selector_cards = _normalize_card_list(row.get("selector_cards", row.get("cards", [])))
+        if selector_cards:
+            cards.update(card for card in selector_cards if card != "*")
+            continue
+        if row.get("card") and str(row["card"]) != "*":
+            cards.add(str(row["card"]))
+    return cards
+
+
+def _normalize_card_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return []
+    return [str(card) for card in value if str(card)]
 
 
 def _cards_from_combos(combo_plan: dict[str, Any]) -> set[str]:

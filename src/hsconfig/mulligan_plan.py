@@ -29,7 +29,9 @@ def build_mulligan_plan(
         condition, unsupported_reason = lower_runtime_condition(
             claim.get("conditions", claim.get("condition", "*"))
         )
-        for card_id, selector_seed in _selector_rows_from_claim(claim, claim_cards):
+        for card_id, selector_seed, explicit_selector in _selector_rows_from_claim(
+            claim, claim_cards
+        ):
             selector_info = normalize_mulligan_selector(
                 {
                     "card": card_id,
@@ -48,6 +50,27 @@ def build_mulligan_plan(
                     }
                 )
                 continue
+            selector_cards = [str(card) for card in selector_info.get("selector_cards", [])]
+            if (
+                explicit_selector
+                and selector_cards
+                and not set(selector_cards).issubset(set(claim_cards))
+            ):
+                suppressed_rules.append(
+                    {
+                        "card": card_id,
+                        "selector_kind": selector_info["selector_kind"],
+                        "selector": selector_info["selector"],
+                        "selector_cards": selector_cards,
+                        "claim_cards": claim_cards,
+                        "action": action,
+                        "reason": "selector_cards_not_in_claim",
+                        "source_claim_ids": _source_claim_ids(claim),
+                    }
+                )
+                continue
+            if explicit_selector and selector_cards:
+                card_id = selector_cards[0]
             if unsupported_reason is not None:
                 suppressed_rules.append(
                     {
@@ -76,6 +99,8 @@ def build_mulligan_plan(
                 "source_claim_ids": _source_claim_ids(claim),
                 "source_type": "source_claim",
             }
+            if selector_cards:
+                rule["selector_cards"] = selector_cards
             key = mulligan_rule_key(rule)
             if key in seen_rule_keys:
                 continue
@@ -93,6 +118,7 @@ def build_mulligan_plan(
             "card": str(card_id),
             "selector_kind": "card",
             "selector": str(card_id),
+            "selector_cards": [str(card_id)],
             "action": "hold",
             "condition": "*",
             "reason": "early_curve_role_fallback",
@@ -139,6 +165,7 @@ def mulligan_rule_key(rule: dict[str, Any]) -> tuple[Any, ...]:
         rule.get("card"),
         rule.get("selector_kind"),
         rule.get("selector"),
+        tuple(str(item) for item in rule.get("selector_cards", [])),
         rule.get("action"),
         rule.get("condition", "*"),
         tuple(sorted(str(item) for item in rule.get("source_claim_ids", []))),
@@ -172,12 +199,12 @@ def _claim_cards(claim: dict[str, Any]) -> list[str]:
 def _selector_rows_from_claim(
     claim: dict[str, Any],
     claim_cards: list[str],
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, bool]]:
     if claim.get("selector") is not None:
         selector = str(claim.get("selector", "")).strip()
         card_id = "*" if selector == "*" else (claim_cards[0] if claim_cards else selector)
-        return [(card_id, selector)]
-    return [(card_id, card_id) for card_id in claim_cards]
+        return [(card_id, selector, True)]
+    return [(card_id, card_id, False) for card_id in claim_cards]
 
 
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:

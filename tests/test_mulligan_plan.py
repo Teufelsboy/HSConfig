@@ -1,3 +1,4 @@
+from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.mulligan_plan import build_mulligan_plan
 
 
@@ -167,7 +168,31 @@ def test_mulligan_plan_preserves_source_claim_selector_depth():
     rule = plan["rules"][0]
     assert rule["selector_kind"] == "plus_combo"
     assert rule["selector"] == "CARD_A + CARD_B"
+    assert rule["selector_cards"] == ["CARD_A", "CARD_B"]
     assert rule["condition"] == "coin"
+
+
+def test_mulligan_plan_suppresses_selector_cards_not_in_claim_before_runtime():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "selector_kind": "plus_combo",
+                "selector": "CARD_A + OFF_DECK",
+                "claim_id": "off_deck_selector",
+            }
+        ],
+        card_roles={},
+    )
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"][0]["reason"] == "selector_cards_not_in_claim"
+    assert plan["suppressed_rules"][0]["selector"] == "CARD_A + OFF_DECK"
+
+    runtime = compile_mulligan({"deck_name": "Deck", "mulligan_plan": plan})
+    assert runtime["Mulligan"]["values"] == []
 
 
 def test_mulligan_plan_suppresses_unsupported_selectors():

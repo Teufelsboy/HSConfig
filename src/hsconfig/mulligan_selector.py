@@ -32,7 +32,12 @@ def normalize_mulligan_selector(rule: dict[str, Any]) -> dict[str, Any]:
         selector_kind = explicit_kind
     else:
         selector_kind = inferred_kind
-    return {"supported": True, "selector_kind": selector_kind, "selector": selector}
+    return {
+        "supported": True,
+        "selector_kind": selector_kind,
+        "selector": selector,
+        "selector_cards": _selector_cards(selector, selector_kind),
+    }
 
 
 def _infer_selector_kind(selector: str) -> str | None:
@@ -49,6 +54,20 @@ def _infer_selector_kind(selector: str) -> str | None:
     return None
 
 
+def _selector_cards(selector: str, selector_kind: str) -> list[str]:
+    if selector_kind == "card":
+        return [selector]
+    if selector_kind == "card_list":
+        return _card_segments(selector, ",")
+    if selector_kind == "plus_combo":
+        return _card_segments(selector, "+")
+    return []
+
+
 def _all_card_segments(selector: str, separator: str) -> bool:
     parts = [part.strip() for part in selector.split(separator)]
     return len(parts) >= 2 and all(CARD_RE.fullmatch(part) for part in parts)
+
+
+def _card_segments(selector: str, separator: str) -> list[str]:
+    return [part.strip() for part in selector.split(separator) if part.strip()]
