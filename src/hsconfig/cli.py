@@ -43,6 +43,7 @@ from hsconfig.research_contract import (
 from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
 
@@ -298,19 +299,26 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     card_metadata = context["card_metadata"]
     semantic_report = context["semantic_report"]
     guide_claim_bundle = context["guide_claim_bundle"]
-    source_claims = context["source_claims"]
     research_bundle = context["research_bundle"]
+    plan_claims = list(guide_claim_bundle.get("claims", []))
+    runtime_claims = [claim for claim in plan_claims if claim_can_lower_to_runtime(claim)]
+    runtime_source_claims = {"claims": runtime_claims, "claim_count": len(runtime_claims)}
+    runtime_research_bundle = build_research_contract_bundle(
+        deck_identity=deck_identity,
+        card_metadata=card_metadata,
+        source_claims=runtime_source_claims,
+        guide_claim_bundle=guide_claim_bundle,
+    )
     gameplan_contract = build_gameplan_contract(
         deck_identity=deck_identity,
         card_metadata=card_metadata,
-        source_claims=source_claims,
-        research_bundle=research_bundle,
+        source_claims=runtime_source_claims,
+        research_bundle=runtime_research_bundle,
     )
-    plan_claims = list(guide_claim_bundle.get("claims", []))
     mulligan_plan = build_mulligan_plan(
         deck_name=args.deck_name,
         claims=plan_claims,
-        card_roles=research_bundle.get("card_role_map", {}),
+        card_roles=runtime_research_bundle.get("card_role_map", {}),
     )
     card_behavior_plan = route_card_behavior_claims(
         plan_claims,

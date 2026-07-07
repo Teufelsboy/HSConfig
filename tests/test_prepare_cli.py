@@ -342,9 +342,11 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     }
 
 
-def test_prepare_low_confidence_source_documents_do_not_report_source_backed_strong(
-    tmp_path: Path, capsys
+def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
+    tmp_path: Path, capsys, monkeypatch
 ):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
@@ -352,6 +354,7 @@ def test_prepare_low_confidence_source_documents_do_not_report_source_backed_str
                 "cards": [
                     {"card_id": "CARD_001", "dbf_id": 1, "count": 2, "name": "Card A"},
                     {"card_id": "CARD_002", "dbf_id": 2, "count": 2, "name": "Card B"},
+                    {"card_id": "CARD_003", "dbf_id": 3, "count": 2, "name": "Card C"},
                 ]
             }
         ),
@@ -369,17 +372,24 @@ def test_prepare_low_confidence_source_documents_do_not_report_source_backed_str
                         "retrieved_at": _today_utc_iso(),
                         "claims": [
                             {
-                                "claim_kind": "card_role",
+                                "claim_kind": "mulligan_keep",
                                 "cards": ["CARD_001"],
-                                "stance": "maybe_core",
-                                "evidence_text_short": "Card A might be part of the plan.",
+                                "stance": "keep",
+                                "evidence_text_short": "Card A might be a keep.",
                                 "source_confidence": "low",
                             },
                             {
                                 "claim_kind": "targeting_rule",
                                 "cards": ["CARD_002"],
-                                "stance": "maybe_face",
+                                "stance": "prefer_enemy_hero",
                                 "evidence_text_short": "Card B might go face.",
+                                "source_confidence": "low",
+                            },
+                            {
+                                "claim_kind": "card_role",
+                                "cards": ["CARD_003"],
+                                "stance": "maybe_core",
+                                "evidence_text_short": "Card C might be part of the plan.",
                                 "source_confidence": "low",
                             },
                         ],
@@ -414,6 +424,13 @@ def test_prepare_low_confidence_source_documents_do_not_report_source_backed_str
     reports = package / "reports"
     guide_bundle = json.loads((reports / "guide_claim_bundle.json").read_text(encoding="utf-8"))
     coverage = json.loads((reports / "claim_coverage_report.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    mulligan_plan = json.loads((reports / "mulligan_plan_report.json").read_text(encoding="utf-8"))
+    readiness = json.loads(
+        (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
+    )
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
 
     assert code == 0
@@ -421,9 +438,23 @@ def test_prepare_low_confidence_source_documents_do_not_report_source_backed_str
     source_claims = [
         claim for claim in guide_bundle["claims"] if claim["source_family"] == "guide"
     ]
+    source_claim_ids = {claim["claim_id"] for claim in source_claims}
     assert {claim["claim_readiness"] for claim in source_claims} == {"explicit_low_confidence"}
+    assert {claim["trust_ceiling"] for claim in source_claims} == {"report_only"}
     assert coverage["summary"]["guide_backed"] == 0
-    assert coverage["summary"]["uncovered_low_confidence"] == 2
+    assert coverage["summary"]["uncovered_low_confidence"] == 3
+    assert card_behavior["rows"] == []
+    assert not any(
+        source_claim_ids & set(row.get("source_claim_ids", []))
+        for row in mulligan_plan["rules"]
+    )
+    assert not any(
+        source_claim_ids & set(row.get("source_claim_ids", []))
+        for row in card_behavior["rows"]
+    )
+    assert readiness["summary"]["runtime_emitted"] == 0
+    assert readiness["summary"]["mulligan_only"] == 0
+    assert readiness["summary"]["generic_low_confidence"] == 3
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
 

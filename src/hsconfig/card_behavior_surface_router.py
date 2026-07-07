@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -72,6 +73,11 @@ def route_card_behavior_surfaces(
     for claim in claims:
         claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
         cards = _claim_cards(claim)
+        if not claim_can_lower_to_runtime(claim):
+            suppressed.append(
+                _suppressed_row(claim, claim_kind, cards, "claim_not_runtime_lowerable")
+            )
+            continue
         condition, condition_error = _condition(claim)
         if condition_error is not None:
             suppressed.append(_suppressed_row(claim, claim_kind, cards, condition_error))

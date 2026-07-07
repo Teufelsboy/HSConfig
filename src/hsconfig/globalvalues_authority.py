@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 
 
 POSTURE_OVERLAYS = {
@@ -53,8 +54,9 @@ def build_globalvalues_authority_matrix(
     aggression_profile: str,
     claims: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    claim_refs = _claim_refs(claims)
-    posture = _resolve_posture(aggression_profile, claims)
+    lowerable_claims = [claim for claim in claims if claim_can_lower_to_runtime(claim)]
+    claim_refs = _claim_refs(lowerable_claims)
+    posture = _resolve_posture(aggression_profile, lowerable_claims)
     overlays = POSTURE_OVERLAYS.get(posture or "", {})
     if overlays:
         allowed = [
@@ -92,7 +94,7 @@ def build_globalvalues_authority_matrix(
         }
         for key in sorted(RUNTIME_EVIDENCE_KEYS)
     ]
-    for claim in claims:
+    for claim in lowerable_claims:
         if str(claim.get("claim_kind", claim.get("claim_type", ""))) == "globalvalue_numeric_tuning":
             blocked.append(
                 {

@@ -201,6 +201,7 @@ def _normalize_source_claim(
     if freshness_status == "stale" and claim_confidence == "high":
         claim_confidence = "medium"
     readiness = _claim_readiness(
+        claim_kind=claim_kind,
         claim_confidence=claim_confidence,
         source_family=str(document.get("source_family", "guide")),
         cards=cards,
@@ -451,6 +452,7 @@ def _legacy_claim_type(claim_kind: str) -> str:
 
 def _claim_readiness(
     *,
+    claim_kind: str,
     claim_confidence: str,
     source_family: str,
     cards: list[str],
@@ -463,6 +465,8 @@ def _claim_readiness(
     if family in {"card_text", "metadata", "hearthstonejson", "static_semantics"}:
         return "source_backed_static_semantics"
     if cards:
+        return "guide_backed"
+    if claim_kind == "gameplan_posture" and scope in {"deck", "archetype"}:
         return "guide_backed"
     if scope in {"deck", "archetype"}:
         return "archetype_inferred"

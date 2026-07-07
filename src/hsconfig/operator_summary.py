@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import hashlib
 from typing import Any
 
@@ -52,11 +53,15 @@ def build_operator_summary(
     claim_conflict_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     technical_status = _technical_status(technical_validation)
+    effective_config_readiness_summary = _effective_config_readiness_summary(
+        config_readiness_summary,
+        config_readiness_report,
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
         claim_coverage_report=claim_coverage_report,
-        config_readiness_summary=config_readiness_summary,
+        config_readiness_summary=effective_config_readiness_summary,
         claim_conflict_report=claim_conflict_report,
     )
     primary_blockers = _primary_blockers(technical_validation, technical_status)
@@ -71,12 +76,12 @@ def build_operator_summary(
     guide_strength_summary = _guide_strength_summary(
         guide_source_depth=guide_source_depth or {},
         claim_coverage_report=claim_coverage_report or {},
-        config_readiness_summary=config_readiness_summary or {},
+        config_readiness_summary=effective_config_readiness_summary,
         claim_conflict_report=claim_conflict_report or {},
     )
     semantic_blockers = _semantic_blockers(
         claim_coverage_report=claim_coverage_report or {},
-        config_readiness_summary=config_readiness_summary or {},
+        config_readiness_summary=effective_config_readiness_summary,
         config_readiness_report=config_readiness_report or {},
         claim_conflict_report=claim_conflict_report or {},
         globalvalue_authority=globalvalue_authority or {},
@@ -424,6 +429,47 @@ def _readiness_gap_count(config_readiness_summary: dict[str, Any]) -> int:
     if not isinstance(config_readiness_summary, dict):
         return 0
     return sum(_int_value(config_readiness_summary.get(key, 0)) for key in READINESS_GAP_SUMMARY_KEYS)
+
+
+def _effective_config_readiness_summary(
+    config_readiness_summary: dict[str, Any] | None,
+    config_readiness_report: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if isinstance(config_readiness_summary, dict) and config_readiness_summary:
+        return config_readiness_summary
+    if not isinstance(config_readiness_report, dict):
+        return {}
+    cards = config_readiness_report.get("cards", {})
+    if not isinstance(cards, dict):
+        return {}
+
+    lanes: Counter[str] = Counter()
+    missing_links: Counter[str] = Counter()
+    for row in cards.values():
+        if not isinstance(row, dict):
+            continue
+        lane = str(row.get("readiness_lane", "")).strip()
+        if lane:
+            lanes[lane] += 1
+        missing_link = str(row.get("first_missing_link", "")).strip()
+        if missing_link and missing_link != "none":
+            missing_links[missing_link] += 1
+
+    return {
+        "total_cards": len(cards),
+        "runtime_emitted": lanes["runtime_emitted"],
+        "mulligan_only": lanes["mulligan_only"],
+        "globalvalues_only": lanes["globalvalues_only"],
+        "report_only_supported": lanes["report_only_supported"],
+        "archetype_inferred": lanes["archetype_inferred"],
+        "generic_low_confidence": lanes["generic_low_confidence"],
+        "cards_needing_guide_claims": missing_links["needs_guide_claim"],
+        "cards_needing_runtime_surface": missing_links["needs_runtime_surface"],
+        "cards_needing_mulligan_claims": missing_links["needs_mulligan_claim"],
+        "cards_needing_combo_sequence": missing_links["needs_combo_sequence"],
+        "cards_needing_condition_lowering": missing_links["needs_condition_lowering"],
+        "cards_needing_mechanic_lowering": missing_links["needs_mechanic_lowering"],
+    }
 
 
 def _uncovered_cards(report: dict[str, Any]) -> list[str]:

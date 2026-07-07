@@ -41,3 +41,32 @@ SUPPORTED_SPECIFICITY_STATUSES = frozenset(
         "not_card_specific",
     }
 )
+
+RUNTIME_LOWERABLE_CLAIM_READINESS = frozenset(
+    {
+        "guide_backed",
+        "source_backed_static_semantics",
+    }
+)
+RUNTIME_BLOCKED_CLAIM_READINESS = (
+    SUPPORTED_CLAIM_READINESS - RUNTIME_LOWERABLE_CLAIM_READINESS
+)
+
+
+def claim_can_lower_to_runtime(claim: dict) -> bool:
+    """Return whether a source claim is allowed to affect generated runtime config."""
+    trust_ceiling = str(claim.get("trust_ceiling", "")).strip().lower()
+    if trust_ceiling == "report_only":
+        return False
+
+    readiness = str(claim.get("claim_readiness", "")).strip().lower()
+    if readiness:
+        return readiness in RUNTIME_LOWERABLE_CLAIM_READINESS
+
+    confidence = str(
+        claim.get(
+            "confidence",
+            claim.get("claim_confidence", claim.get("source_confidence", "")),
+        )
+    ).strip().lower()
+    return confidence not in RUNTIME_BLOCKED_CLAIM_READINESS

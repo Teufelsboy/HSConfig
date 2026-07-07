@@ -163,6 +163,45 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
     assert summary["guide_strength_summary"][summary_key] == 1
 
 
+def test_operator_summary_demotes_from_per_card_report_when_summary_is_omitted():
+    summary = build_operator_summary(
+        deck_name="Fixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "source_backed", "claim_count": 12},
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_A": {
+                    "name": "Card A",
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_runtime_surface",
+                }
+            }
+        },
+    )
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert {
+        "reason": "cards_need_runtime_surface",
+        "count": 1,
+        "blocking_strength": "report_visible_gap",
+        "report": "reports/per_card_config_readiness_report.json",
+        "affected_cards": [{"card_id": "CARD_A", "name": "Card A"}],
+    } in summary["semantic_blockers"]
+
+
 def test_invalid_package_blocks_apply():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

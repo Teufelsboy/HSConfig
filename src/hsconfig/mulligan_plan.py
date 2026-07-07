@@ -4,6 +4,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 
 
 EARLY_HOLD_ROLES = {"one_drop", "early_pressure", "early_curve", "mulligan_anchor"}
@@ -26,6 +27,16 @@ def build_mulligan_plan(
             continue
         action = "hold" if claim_kind == "mulligan_keep" else "discard"
         claim_cards = _claim_cards(claim)
+        if not claim_can_lower_to_runtime(claim):
+            suppressed_rules.append(
+                {
+                    "card": claim_cards[0] if claim_cards else "*",
+                    "action": action,
+                    "reason": "claim_not_runtime_lowerable",
+                    "source_claim_ids": _source_claim_ids(claim),
+                }
+            )
+            continue
         condition, unsupported_reason = lower_runtime_condition(
             claim.get("conditions", claim.get("condition", "*"))
         )

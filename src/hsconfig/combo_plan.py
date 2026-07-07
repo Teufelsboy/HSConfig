@@ -4,6 +4,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.combo_sequence_contract import build_combo_sequence_contract
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 
 
 def build_combo_plan(
@@ -17,6 +18,15 @@ def build_combo_plan(
     for claim in claims:
         claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
         if claim_kind != "combo_sequence":
+            continue
+        if not claim_can_lower_to_runtime(claim):
+            suppressed.append(
+                _suppression(
+                    claim,
+                    _claim_cards(claim),
+                    "claim_not_runtime_lowerable",
+                )
+            )
             continue
 
         contract = build_combo_sequence_contract(claim, deck_cards)
@@ -59,6 +69,13 @@ def _suppression(claim: dict[str, Any], cards: list[str], reason: str) -> dict[s
         "cards": cards,
         "reason": reason,
     }
+
+
+def _claim_cards(claim: dict[str, Any]) -> list[str]:
+    cards = claim.get("cards", [])
+    if isinstance(cards, str):
+        cards = [cards]
+    return [str(card) for card in cards if str(card)]
 
 
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
