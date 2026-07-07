@@ -16,19 +16,8 @@ EXPECTED_DECKS = {
     "Boarlock",
     "PirateDH",
 }
-CORE_FIXTURES = {
-    "ShadowPriest",
-    "CtAPaladin",
-    "PirateRogue",
-    "BigShaman",
-    "Discolock",
-    "TreantDruid",
-    "ImbueMage",
-    "MechPala",
-    "Kingslayer",
-    "Boarlock",
-    "PirateDH",
-}
+CORE_FIXTURES = {"ShadowPriest"}
+SOURCE_INFORMED_VALID_FIXTURES = EXPECTED_DECKS - CORE_FIXTURES
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {
         "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
@@ -111,7 +100,8 @@ def test_archetype_fixture_matrix_has_actionable_rows():
         assert "<CARDID>.json" in row["expected_runtime_surfaces"]
         assert row["fixture_stage"] in {
             "core_source_backed_fixture",
-            "second_wave_source_fixture",
+            "source_informed_valid_fixture",
+            "future_fixture",
         }
 
 
@@ -131,3 +121,12 @@ def test_archetype_fixture_matrix_marks_core_wave():
         if row["fixture_stage"] == "core_source_backed_fixture"
     }
     assert core == CORE_FIXTURES
+
+
+def test_archetype_fixture_matrix_marks_source_informed_valid_wave():
+    source_informed = {
+        row["deck_name"]
+        for row in _matrix()["decks"]
+        if row["fixture_stage"] == "source_informed_valid_fixture"
+    }
+    assert source_informed == SOURCE_INFORMED_VALID_FIXTURES

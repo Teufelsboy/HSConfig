@@ -55,12 +55,12 @@ def _core_matrix_rows() -> list[dict]:
         for row in _matrix()["decks"]
         if row["fixture_stage"] == "core_source_backed_fixture"
     ]
-    assert {row["deck_name"] for row in rows} == set(FIXTURES)
+    assert {row["deck_name"] for row in rows} <= set(FIXTURES)
     return rows
 
 
 def _source_bundle_for_fixture(deck_name: str) -> dict:
-    row = next(row for row in _core_matrix_rows() if row["deck_name"] == deck_name)
+    row = next(row for row in _matrix()["decks"] if row["deck_name"] == deck_name)
     decoded_deck = decode_deck_code(row["deck_code"])
     deck_identity = build_deck_identity(
         deck_name=row["deck_name"],
