@@ -53,6 +53,13 @@ MECHANIC_ROLE_MAP = {
     "secret": "secret",
     "location": "location",
 }
+EXPLICIT_MECHANIC_RUNTIME_BLOCKS = {
+    "discard": {"BeforePlayCardBonus"},
+    "recruit": {"BeforePlayCardBonus", "OnBoardBonus"},
+    "deathrattle": {"BeforePlayCardBonus", "OnBoardBonus"},
+    "treant": {"BeforePlayCardBonus", "OnBoardBonus"},
+    "hero_attack": {"BeforePhysicalAttackBonus"},
+}
 OPTION_CLAIM_KINDS = {"discover_choice", "choose_one_choice"}
 OPTION_CARD_KEYS = (
     "option_card_id",
@@ -132,6 +139,23 @@ def route_card_behavior_surfaces(
         if claim_kind == "mechanic_usage":
             mechanic = str(claim.get("mechanic", claim.get("stance", ""))).lower()
             role = MECHANIC_ROLE_MAP.get(mechanic)
+            if explicit_block is not None and not _mechanic_runtime_block_allowed(
+                mechanic,
+                explicit_block,
+            ):
+                suppressed.append(
+                    {
+                        **_suppressed_row(
+                            claim,
+                            claim_kind,
+                            cards,
+                            "unsupported_mechanic_runtime_block",
+                        ),
+                        "mechanic": mechanic,
+                        "runtime_block": explicit_block,
+                    }
+                )
+                continue
             if role is not None:
                 rows.extend(
                     _rows_for_cards(
@@ -322,6 +346,13 @@ def _explicit_runtime_block(claim: dict[str, Any]) -> tuple[str | None, dict[str
 
 def _runtime_value(claim: dict[str, Any], default: str = DEFAULT_ROW_VALUE) -> str:
     return str(claim.get("runtime_value", claim.get("value", default)))
+
+
+def _mechanic_runtime_block_allowed(mechanic: str, runtime_block: str) -> bool:
+    role = MECHANIC_ROLE_MAP.get(mechanic)
+    if role is not None:
+        return runtime_block == ROLE_BLOCKS[role]
+    return runtime_block in EXPLICIT_MECHANIC_RUNTIME_BLOCKS.get(mechanic, set())
 
 
 def _attach_behavior_fields(

@@ -207,6 +207,17 @@ def test_core_source_fixtures_build_bundles_against_real_deck_identities():
         } <= SUPPORTED_ATOMIC_CLAIM_KINDS
 
 
+def test_all_source_fixtures_build_bundles_against_real_deck_identities():
+    for deck_name in FIXTURES:
+        bundle = _source_bundle_for_fixture(deck_name)
+
+        assert bundle["claims"], deck_name
+        assert bundle["unsupported_claims"] == [], deck_name
+        assert {
+            claim["claim_kind"] for claim in bundle["claims"]
+        } <= SUPPORTED_ATOMIC_CLAIM_KINDS
+
+
 def test_core_source_fixtures_do_not_mark_every_claim_low_confidence():
     for deck_name, path in FIXTURES.items():
         confidences = [

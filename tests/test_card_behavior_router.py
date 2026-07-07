@@ -355,6 +355,64 @@ def test_unmapped_mechanic_claim_with_explicit_documented_block_lowers():
     assert row["meaningful_runtime_surface"] is True
 
 
+def test_unmapped_mechanic_claim_with_unsupported_explicit_block_stays_report_only():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_unknown",
+                "claim_kind": "mechanic_usage",
+                "cards": ["UNKNOWN_MECHANIC_CARD"],
+                "mechanic": "unknown_combo_window",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_unknown",
+            "claim_kind": "mechanic_usage",
+            "cards": ["UNKNOWN_MECHANIC_CARD"],
+            "reason": "unsupported_mechanic_runtime_block",
+            "mechanic": "unknown_combo_window",
+            "runtime_block": "BeforePlayCardBonus",
+        }
+    ]
+
+
+def test_mapped_mechanic_claim_rejects_wrong_explicit_runtime_block():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_weapon_wrong_block",
+                "claim_kind": "mechanic_usage",
+                "cards": ["WEAPON_CARD"],
+                "mechanic": "weapon",
+                "runtime_block": "OnBoardBonus",
+                "condition": "*",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_weapon_wrong_block",
+            "claim_kind": "mechanic_usage",
+            "cards": ["WEAPON_CARD"],
+            "reason": "unsupported_mechanic_runtime_block",
+            "mechanic": "weapon",
+            "runtime_block": "OnBoardBonus",
+        }
+    ]
+
+
 def test_unsupported_structured_condition_is_suppressed():
     routed = route_card_behavior_claims(
         [
