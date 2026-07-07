@@ -84,6 +84,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         blocked_apply_out["apply_gate"]["reasons"][0]["reason"]
         == "operator_summary_not_ready_to_apply"
     )
+    assert not runtime.exists()
     assert not (runtime / "CustomConfig").exists()
     assert not runtime_deck_dir.exists()
     assert not runtime_deck_config.exists()
