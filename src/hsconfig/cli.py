@@ -85,10 +85,23 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="hsconfig")
+    parser = argparse.ArgumentParser(
+        prog="hsconfig",
+        description="HSConfig builds lean HearthRanger VisionAI CustomConfig packages before games are played.",
+        epilog=(
+            "Normal path: source-manifest -> draft-source-documents -> research-deck -> "
+            "prepare -> apply. Expert and legacy path: build, --claims-json, "
+            "--cards-json, --plan-reports-dir."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    build = subparsers.add_parser("build")
+    build = subparsers.add_parser(
+        "build",
+        help="expert lower-level package builder",
+        description="Expert lower-level package builder.",
+    )
     build.add_argument("--deck-name", required=True)
     build.add_argument("--deck-code", required=True)
     build.add_argument("--out", required=True)
@@ -101,7 +114,11 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--allow-placeholder", action="store_true")
     build.add_argument("--json", action="store_true")
 
-    prepare = subparsers.add_parser("prepare")
+    prepare = subparsers.add_parser(
+        "prepare",
+        help="normal package creation path",
+        description="Normal package creation path.",
+    )
     prepare.add_argument("--deck-name", required=True)
     prepare.add_argument("--deck-code", required=True)
     prepare.add_argument("--out", required=True)
@@ -126,7 +143,10 @@ def _build_parser() -> argparse.ArgumentParser:
     research_contract.add_argument("--allow-placeholder", action="store_true")
     research_contract.add_argument("--json", action="store_true")
 
-    source_manifest = subparsers.add_parser("source-manifest")
+    source_manifest = subparsers.add_parser(
+        "source-manifest",
+        help="normal path source research manifest",
+    )
     source_manifest.add_argument("--deck-name", required=True)
     source_manifest.add_argument("--deck-code", required=True)
     source_manifest.add_argument("--out", required=True)
@@ -134,7 +154,10 @@ def _build_parser() -> argparse.ArgumentParser:
     source_manifest.add_argument("--allow-placeholder", action="store_true")
     source_manifest.add_argument("--json", action="store_true")
 
-    draft_source_documents = subparsers.add_parser("draft-source-documents")
+    draft_source_documents = subparsers.add_parser(
+        "draft-source-documents",
+        help="normal path source document drafting",
+    )
     draft_source_documents.add_argument("--deck-name", required=True)
     draft_source_documents.add_argument("--deck-code", required=True)
     draft_source_documents.add_argument("--source-evidence-json", required=True)
@@ -143,7 +166,10 @@ def _build_parser() -> argparse.ArgumentParser:
     draft_source_documents.add_argument("--allow-placeholder", action="store_true")
     draft_source_documents.add_argument("--json", action="store_true")
 
-    research_deck = subparsers.add_parser("research-deck")
+    research_deck = subparsers.add_parser(
+        "research-deck",
+        help="normal path source document normalization",
+    )
     research_deck.add_argument("--deck-name", required=True)
     research_deck.add_argument("--deck-code", required=True)
     research_deck.add_argument("--out", required=True)
