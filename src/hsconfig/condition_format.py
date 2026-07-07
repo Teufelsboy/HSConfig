@@ -111,11 +111,11 @@ def _atoms_from_structured_condition(value: dict[str, Any]) -> list[str]:
 
 def _is_runtime_safe(condition: str) -> bool:
     condition = " ".join(condition.strip().split())
-    if "|" in condition:
-        return _is_atom_safe(condition)
     if any(joiner in condition for joiner in (" AND ", " OR ")):
         atoms = re.split(r"\s+(?:AND|OR)\s+", condition)
         return bool(atoms) and all(_is_atom_safe(atom) for atom in atoms)
+    if "|" in condition:
+        return _is_atom_safe(condition)
     return _is_atom_safe(condition)
 
 

@@ -43,6 +43,17 @@ def test_structured_opponent_classes_lower_to_documented_runtime_condition():
     )
 
 
+def test_structured_coin_and_opponent_classes_remain_runtime_safe():
+    condition = {"coin": True, "opponent_classes": ["warrior", "rogue"]}
+    expected = "coin AND opp_hero(count(), hero_class=warrior | rogue ) > 0"
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "runtime_safe"
+    assert lowered.value == expected
+    assert lower_runtime_condition(condition) == (expected, None)
+
+
 def test_structured_conditions_lower_to_runtime_safe_atoms():
     assert lower_runtime_condition({"coin": True}) == ("coin", None)
     assert lower_runtime_condition({"nocoin": True}) == ("nocoin", None)
