@@ -18,6 +18,7 @@ def build_guide_source_depth_report(
     *,
     guide_claim_bundle: dict[str, Any],
     config_readiness_report: dict[str, Any],
+    source_evidence_verification_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     claims = [claim for claim in guide_claim_bundle.get("claims", []) if isinstance(claim, dict)]
     unsupported_claims = [
@@ -70,9 +71,15 @@ def build_guide_source_depth_report(
         depth_status = "usable_with_runtime_gaps"
     if total_cards > 0 and cards_needing_guide_claims > 0:
         depth_status = "needs_more_research"
+    source_depth_status = depth_status
+    if lowerable_claims > 0 and report_only_claims == 0 and not warnings:
+        source_depth_status = "source_backed"
+    if lowerable_claims == 0 or cards_needing_guide_claims > 0:
+        source_depth_status = "needs_more_research"
 
     return {
         "depth_status": depth_status,
+        "source_depth_status": source_depth_status,
         "summary": {
             "claim_count": len(claims),
             "unsupported_claim_count": len(unsupported_claims),
@@ -86,6 +93,7 @@ def build_guide_source_depth_report(
         },
         "source_families": dict(sorted(source_families.items())),
         "claim_kinds": dict(sorted(claim_kinds.items())),
+        "source_evidence": _source_evidence_summary(source_evidence_verification_report),
         "warnings": warnings,
     }
 
@@ -130,6 +138,22 @@ def _claim_gate_warnings(guide_claim_bundle: dict[str, Any]) -> list[dict[str, A
                 }
             )
     return warnings
+
+
+def _source_evidence_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {"warnings_count": 0}
+
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    return {
+        "status": str(report.get("status", "")),
+        "document_count": _int_value(summary.get("document_count", 0)),
+        "claim_count": _int_value(summary.get("claim_count", 0)),
+        "runtime_lowering_claims": _int_value(summary.get("runtime_lowering_claims", 0)),
+        "warnings_count": _int_value(summary.get("warnings_count", 0)),
+    }
 
 
 def _low_confidence_card_count(report: dict[str, Any]) -> int:

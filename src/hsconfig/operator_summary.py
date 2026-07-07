@@ -10,6 +10,7 @@ SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "technical_status=VALID_PACKAGE",
     "source_depth_status=source_backed",
     "claim_count>0",
+    "source_evidence_warnings=0",
     "generic_low_confidence_cards=0",
     "uncovered_cards=0",
     "claim_conflicts=0",
@@ -136,6 +137,8 @@ def _semantic_status(
     uncovered_cards = _uncovered_cards(claim_coverage_report or {})
     conflict_count = _int_value((claim_conflict_report or {}).get("conflict_count", 0))
     readiness_gap_count = _readiness_gap_count(config_readiness_summary or {})
+    source_evidence = guide_source_depth.get("source_evidence", {}) if isinstance(guide_source_depth, dict) else {}
+    source_evidence_warnings = _int_value(source_evidence.get("warnings_count", 0))
 
     if (
         source_depth_status == "source_backed"
@@ -143,10 +146,17 @@ def _semantic_status(
         and generic_low_confidence == 0
         and conflict_count == 0
         and readiness_gap_count == 0
+        and source_evidence_warnings == 0
         and not uncovered_cards
     ):
         return "SOURCE_BACKED_STRONG"
-    if generic_low_confidence > 0 or uncovered_cards or conflict_count > 0 or readiness_gap_count > 0:
+    if (
+        generic_low_confidence > 0
+        or uncovered_cards
+        or conflict_count > 0
+        or readiness_gap_count > 0
+        or source_evidence_warnings > 0
+    ):
         return "VALID_BUT_NOT_GUIDE_STRONG"
     if source_depth_status == "static_semantics_only":
         return "STATIC_SEMANTICS_USABLE"
@@ -238,6 +248,9 @@ def _guide_strength_summary(
     depth_summary = guide_source_depth.get("summary", {})
     if not isinstance(depth_summary, dict):
         depth_summary = {}
+    source_evidence = guide_source_depth.get("source_evidence", {})
+    if not isinstance(source_evidence, dict):
+        source_evidence = {}
     uncovered_cards = _uncovered_cards(claim_coverage_report)
     return {
         "total_cards": _int_value(
@@ -261,6 +274,7 @@ def _guide_strength_summary(
         "claim_conflicts": _int_value(claim_conflict_report.get("conflict_count", 0)),
         "lowerable_claims": _int_value(depth_summary.get("lowerable_claims", 0)),
         "report_only_claims": _int_value(depth_summary.get("report_only_claims", 0)),
+        "source_evidence_warnings": _int_value(source_evidence.get("warnings_count", 0)),
         "runtime_emitted_cards": _int_value(config_readiness_summary.get("runtime_emitted", 0)),
         "cards_needing_guide_claims": _int_value(
             config_readiness_summary.get("cards_needing_guide_claims", 0)

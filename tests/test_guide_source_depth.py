@@ -222,3 +222,33 @@ def test_depth_report_separates_lowerable_and_report_only_claims():
 
     assert report["summary"]["lowerable_claims"] == 1
     assert report["summary"]["report_only_claims"] == 1
+
+
+def test_report_only_claims_do_not_produce_source_backed_depth():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "claim_readiness": "explicit_low_confidence",
+                    "trust_ceiling": "report_only",
+                    "source_family": "guide",
+                }
+            ],
+            "unsupported_claims": [],
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 1, "runtime_emitted": 0, "generic_low_confidence": 1},
+            "cards": {
+                "CARD_A": {
+                    "readiness_lane": "generic_low_confidence",
+                    "first_missing_link": "needs_guide_claim",
+                }
+            },
+        },
+    )
+
+    assert report["summary"]["lowerable_claims"] == 0
+    assert report["summary"]["report_only_claims"] == 1
+    assert report["source_depth_status"] == "needs_more_research"
