@@ -148,7 +148,7 @@ Confidence lanes:
 - `archetype_inferred`: mechanics imply a reasonable deck-plan role, but no direct guide claim exists.
 - `generic_low_confidence`: HSConfig can only cover the card generically.
 
-`operator_summary.json` is the main readiness file. The research contract lives under `reports/research/` and includes archetype, claims, card roles, mulligan anchors, usage expectations, known bad patterns, and GlobalValues intent.
+`operator_summary.json` is the main readiness file and single operator gate. The research contract lives under `reports/research/` and includes archetype, claims, card roles, mulligan anchors, usage expectations, known bad patterns, and GlobalValues intent.
 
 Unsupported claims appear in `unsupported_claims_report.json`. Uncovered cards appear in `claim_coverage_report.json`.
 

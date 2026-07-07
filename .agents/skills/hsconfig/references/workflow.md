@@ -17,6 +17,7 @@ Important outputs include `operator_summary.json`, `deckstring_decode_receipt.js
 ## Readiness Interpretation
 
 Read `reports/operator_summary.json` before handoff or runtime apply.
+`reports/operator_summary.json` is the single operator gate for normal handoff or apply decisions. Lower-level reports explain why the package is strong, warning-only, or still needs source work.
 
 1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.

@@ -270,3 +270,38 @@ def test_readme_documents_installed_skill_sync():
 
     assert "scripts/sync_installed_skill.py --check" in text
     assert "scripts/sync_installed_skill.py" in text
+
+
+def test_docs_make_operator_summary_the_single_normal_gate():
+    docs = "\n".join(
+        [
+            Path("README.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert docs.count("operator_summary.json") >= 3
+    assert "single operator gate" in docs.lower()
+    assert "replay" in docs.lower()
+    assert "does not parse replays" in docs
+
+
+def test_docs_do_not_advertise_presume_concede_as_normal_outputs():
+    active_docs = [
+        Path("README.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    forbidden = [
+        "emit Presume.json",
+        "emit Concede.json",
+        "normal output includes Presume",
+        "normal output includes Concede",
+    ]
+    for path in active_docs:
+        text = path.read_text(encoding="utf-8")
+        for phrase in forbidden:
+            assert phrase not in text

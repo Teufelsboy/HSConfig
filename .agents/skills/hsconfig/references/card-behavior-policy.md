@@ -40,4 +40,5 @@ If a claim cannot be lowered safely, keep it in
 `card_behavior_suppression_report.json` instead of inventing unsupported runtime
 syntax.
 
+Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
 Do not emit `Presume.json` or `Concede.json` in the normal HSConfig path.

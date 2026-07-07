@@ -25,6 +25,7 @@ Normal workflow:
 5. Run `hsconfig prepare --guide-sources-json ...` to compile the package and reports.
 6. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
 7. Run `hsconfig apply ...` only when requested; runtime apply is allowed after validation only when `technical_status=VALID_PACKAGE`, the user requested runtime writes, and `next_action` / `apply_policy` do not ask for more source work before apply.
+8. Use `reports/operator_summary.json` as the single operator gate. Detail reports are evidence, not independent apply permissions.
 
 Status meaning:
 
@@ -38,7 +39,7 @@ Rules:
 - Build direct guide-aligned configs only.
 - Prefer `--guide-sources-json` over legacy `--claims-json` when live guide research was performed.
 - Use `--cards-json` only as an expert override, and `--allow-placeholder` only for fixture/test previews.
-- Use `operator_summary.json` as the operator-facing readiness file; do not confuse `semantic_status` with runtime validity.
+- Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Do no replay analysis, winrate analysis, postgame tuning, HSTuner candidate promotion, or runtime log parsing.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.

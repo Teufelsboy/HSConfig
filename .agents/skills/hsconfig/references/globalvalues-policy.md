@@ -18,4 +18,5 @@ Rules:
 - Use `copy_baseline` for keys that HSConfig must preserve unchanged.
 - Use `step1_posture_overlay_allowed` only for source-backed Step1 posture keys.
 - Use `runtime_evidence_required` for keys that require HSTuner or other runtime evidence before changing.
+- Treat GlobalValues reports as supporting evidence for `operator_summary.json`, not as a separate apply gate.
 - Validate with both baseline and profile before apply.

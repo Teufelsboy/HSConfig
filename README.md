@@ -30,6 +30,7 @@ Run `apply` only when the user or task requests runtime writes and `operator_sum
 ## Status Model
 
 `operator_summary.json` is the operator-facing readiness file. It separates technical package validity from source depth through `technical_status`, `semantic_status`, `next_action`, `apply_policy`, `guide_strength_summary`, and `semantic_blockers`.
+`reports/operator_summary.json` is the single operator gate. Use the detail reports to explain the gate, but do not make apply or handoff decisions from a lower-level report alone.
 
 | Status | Meaning | Normal action |
 | --- | --- | --- |
