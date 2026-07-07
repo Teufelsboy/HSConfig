@@ -54,6 +54,16 @@ def test_structured_coin_and_opponent_classes_remain_runtime_safe():
     assert lower_runtime_condition(condition) == (expected, None)
 
 
+def test_structured_opponent_classes_unknown_single_value_fails_closed():
+    condition = {"opponent_classes": ["banana"]}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
 def test_structured_opponent_classes_mixed_invalid_list_fails_closed_with_coin():
     condition = {"coin": True, "opponent_classes": ["warrior", "bad class"]}
 
@@ -64,8 +74,28 @@ def test_structured_opponent_classes_mixed_invalid_list_fails_closed_with_coin()
     assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
 
 
+def test_structured_opponent_classes_mixed_supported_and_unknown_fail_closed():
+    condition = {"opponent_classes": ["warrior", "banana"]}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
 def test_structured_opponent_classes_scalar_fails_closed_with_coin():
     condition = {"coin": True, "opponent_classes": 123}
+
+    lowered = classify_runtime_condition(condition)
+
+    assert lowered.status == "unsupported"
+    assert lowered.reason == "unsupported_condition"
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
+def test_structured_opponent_class_unknown_value_fails_closed():
+    condition = {"opponent_class": "banana"}
 
     lowered = classify_runtime_condition(condition)
 
@@ -98,3 +128,17 @@ def test_report_only_and_unsupported_dicts_do_not_emit_runtime_conditions():
         "*",
         "unsupported_condition",
     )
+
+
+def test_direct_string_opponent_hero_conditions_with_unknown_classes_are_unsupported():
+    unsupported = [
+        "opp_hero(count(), hero_class=banana ) > 0",
+        "opp_hero(count(),banana=true) > 0",
+    ]
+
+    for condition in unsupported:
+        lowered = classify_runtime_condition(condition)
+
+        assert lowered.status == "unsupported", condition
+        assert lowered.reason == "unsupported_condition", condition
+        assert lower_runtime_condition(condition) == ("*", "unsupported_condition")

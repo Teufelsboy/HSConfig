@@ -16,7 +16,20 @@ STRUCTURED_RUNTIME_CONDITION_KEYS = {
     "combo_partner",
 }
 CARD_ID_PATTERN = r"[A-Za-z0-9_]+"
-CLASS_PATTERN = r"[a-z]+"
+ALLOWED_HERO_CLASSES = (
+    "demonhunter",
+    "deathknight",
+    "druid",
+    "hunter",
+    "mage",
+    "paladin",
+    "priest",
+    "rogue",
+    "shaman",
+    "warlock",
+    "warrior",
+)
+CLASS_PATTERN = "(?:" + "|".join(ALLOWED_HERO_CLASSES) + ")"
 CLASS_LIST_PATTERN = rf"{CLASS_PATTERN}(?:\s*\|\s*{CLASS_PATTERN})*"
 CLASS_RE = re.compile(rf"^{CLASS_PATTERN}$")
 ALLOWED_ATOM_PATTERNS = [
@@ -93,7 +106,10 @@ def _atoms_from_structured_condition(
     if value.get("nocoin") is True:
         atoms.append("nocoin")
     if value.get("opponent_class"):
-        atoms.append(f"opp_hero(count(),{str(value['opponent_class']).lower()}=true) > 0")
+        clean_class = _normalize_hero_class(value["opponent_class"])
+        if clean_class is None:
+            return [], "unsupported_condition"
+        atoms.append(f"opp_hero(count(),{clean_class}=true) > 0")
     if "opponent_classes" in value:
         clean_classes = _normalize_opponent_classes(value["opponent_classes"])
         if clean_classes is None:
@@ -125,13 +141,20 @@ def _normalize_opponent_classes(value: Any) -> list[str] | None:
         return None
     clean_classes: list[str] = []
     for hero_class in classes:
-        if not isinstance(hero_class, str):
-            return None
-        clean_class = hero_class.lower()
-        if not CLASS_RE.match(clean_class):
+        clean_class = _normalize_hero_class(hero_class)
+        if clean_class is None:
             return None
         clean_classes.append(clean_class)
     return clean_classes
+
+
+def _normalize_hero_class(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    clean_class = value.lower()
+    if not CLASS_RE.match(clean_class):
+        return None
+    return clean_class
 
 
 def _is_runtime_safe(condition: str) -> bool:
