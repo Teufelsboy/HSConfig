@@ -78,6 +78,48 @@ def test_source_document_builder_preserves_mulligan_selectors():
     assert bundle["claims"][0]["selector"] == "CARD_A + CARD_B"
 
 
+def test_source_document_builder_preserves_combo_timing_metadata_and_provenance():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "count": 2, "name": "Card A"},
+            {"card_id": "CARD_B", "count": 2, "name": "Card B"},
+        ],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/guide",
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "combo_sequence",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "sequence": ["CARD_A", "CARD_B"],
+                    "timing_kind": "same_turn",
+                    "operator": ">>",
+                    "values": ["8", "14"],
+                    "evidence_text_short": "Play Card A into Card B on the same turn.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["timing_kind"] == "same_turn"
+    assert claim["operator"] == ">>"
+    assert claim["source_refs"] == ["source:1", "https://example.invalid/guide"]
+    assert claim["source_claim_ids"] == [claim["claim_id"]]
+
+
 def test_source_document_builder_reports_unsupported_and_off_deck_claims():
     deck_identity = {
         "deck_name": "Fixture",

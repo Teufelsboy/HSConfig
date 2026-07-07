@@ -226,6 +226,10 @@ def _normalize_source_claim(
         claim["sequence"] = _normalize_cards(raw_claim["sequence"])
     if "values" in raw_claim:
         claim["values"] = _normalize_optional(raw_claim["values"])
+    if claim_kind == "combo_sequence":
+        for key in ("timing_kind", "operator"):
+            if key in raw_claim:
+                claim[key] = _clean_text(raw_claim[key])
     if "condition" in raw_claim:
         condition = _normalize_optional(raw_claim["condition"])
         claim["condition"] = condition

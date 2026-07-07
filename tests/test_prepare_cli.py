@@ -334,6 +334,96 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     }
 
 
+def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Card A"},
+                    {"card_id": "EX1_002", "dbf_id": 2, "count": 2, "name": "Card B"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/timed-combo",
+                        "source_title": "Timed Combo Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-06T00:00:00Z",
+                        "deck_name": "Timed Combo",
+                        "claims": [
+                            {
+                                "claim_kind": "combo_sequence",
+                                "cards": ["EX1_001", "EX1_002"],
+                                "sequence": ["EX1_001", "EX1_002"],
+                                "timing_kind": "same_turn",
+                                "operator": ">>",
+                                "values": ["8", "14"],
+                                "evidence_text_short": "Play Card A into Card B on the same turn.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Timed Combo",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    deck_dir = package / "CustomConfig" / "timed_combo"
+    reports = package / "reports"
+    combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_suppressions = json.loads(
+        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert combo["ComboList"]["values"] == [
+        {
+            "comment": "Timed Combo: " + combo_plan["combos"][0]["rule_id"],
+            "condition": "*",
+            "combo": "EX1_001>>EX1_002",
+            "value": "8>>14",
+        }
+    ]
+    assert combo_plan["combos"][0]["operator"] == ">>"
+    assert combo_plan["combos"][0]["source_refs"] == [
+        "source:1",
+        "https://example.invalid/timed-combo",
+    ]
+    assert combo_suppressions == []
+
+
 def test_prepare_no_auto_research_fallback_requests_research_before_strong_config(
     tmp_path: Path, capsys
 ):

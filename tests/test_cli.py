@@ -258,6 +258,75 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert combo_suppressions[0]["reason"] == "missing_timing"
 
 
+def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
+                    {"card_id": "EX1_002", "dbf_id": 2, "count": 1, "name": "Burst Two"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    claims_json = tmp_path / "claims.json"
+    claims_json.write_text(
+        json.dumps(
+            [
+                {
+                    "source": "guide",
+                    "url": "https://example.invalid/deck-guide",
+                    "claim": "Use Pressure One with Burst Two for a same-turn combo burst.",
+                    "cards": ["EX1_001", "EX1_002"],
+                    "claim_type": "combo",
+                    "timing_kind": "same_turn",
+                    "operator": ">>",
+                    "values": ["8", "14"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Guide Cards",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--claims-json",
+            str(claims_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    deck_dir = out / "CustomConfig" / "guide_cards"
+    reports = out / "reports"
+    combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
+    combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
+    combo_suppressions = json.loads(
+        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert combo_plan["combos"][0]["operator"] == ">>"
+    assert combo["ComboList"]["values"][0]["combo"] == "EX1_001>>EX1_002"
+    assert combo["ComboList"]["values"][0]["value"] == "8>>14"
+    assert combo_suppressions == []
+
+
 def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(

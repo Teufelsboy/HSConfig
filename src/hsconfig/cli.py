@@ -755,8 +755,9 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     }
     if claim_kind == "combo_sequence":
         converted["sequence"] = cards
-        if "values" in claim:
-            converted["values"] = claim["values"]
+        for optional_key in ("values", "operator", "timing_kind"):
+            if optional_key in claim:
+                converted[optional_key] = claim[optional_key]
     for optional_key in ("condition", "conditions"):
         if optional_key in claim:
             converted[optional_key] = claim[optional_key]
