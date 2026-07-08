@@ -60,6 +60,10 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 
 The next closure implementation target remains Boarlock because it is the only current representative row that proves exact `Combo.json` emission; Kingslayer remains the second source-informed closure target because its blocker stack is narrower.
 
+Current closure order is Boarlock first, Kingslayer second. Boarlock stays first
+because it is the only representative Combo.json control row. Kingslayer follows
+because its remaining gap is narrower and tied to `DEEP_014` / `Quick Pick`.
+
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 
 Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` and do not change the representative matrix count.

@@ -53,6 +53,11 @@ Direct Python runtime writes use the same gate. `hsconfig.runtime_apply.apply_pa
 
 Open `reports/operator_summary.json` first. Lower-level reports explain the gate. They do not grant independent apply permission.
 
+`source_depth_lane` is a readable alias for the first missing source/runtime link:
+`closed`, `source_claim_gap`, `mulligan_claim_gap`, `runtime_surface_gap`,
+`combo_sequence_gap`, `condition_lowering_gap`, or `mechanic_lowering_gap`.
+It does not grant apply permission. Use `reports/operator_summary.json` as the gate.
+
 | File | Authority | Answers |
 | --- | --- | --- |
 | `reports/operator_summary.json` | normal operator gate | what to do next |
