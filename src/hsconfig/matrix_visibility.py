@@ -26,17 +26,38 @@ def build_matrix_visibility(matrix: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _deck_visibility(row: dict[str, Any]) -> dict[str, str]:
+def _deck_visibility(row: dict[str, Any]) -> dict[str, Any]:
     visibility = row.get("strongness_visibility", {})
     if not isinstance(visibility, dict):
         visibility = {}
+    fixture_stage = str(row.get("fixture_stage", ""))
+    blocking_reasons = visibility.get("source_informed_blocking_reasons", [])
+    if not isinstance(blocking_reasons, list):
+        blocking_reasons = []
+    blocking_reasons = [str(reason) for reason in blocking_reasons]
+    first_gap = str(
+        visibility.get("first_strongness_gap", "missing_strongness_visibility")
+    )
+    operator_action = str(
+        visibility.get("operator_action", "add_strongness_visibility")
+    )
+
+    closure_state = "core_strong"
+    if fixture_stage == "source_informed_valid_fixture":
+        closure_state = (
+            "source_informed_blocked" if blocking_reasons else "source_informed_gap_only"
+        )
+
+    closure_priority = 0
+    if closure_state == "source_informed_blocked":
+        closure_priority = 1 if len(blocking_reasons) > 1 else 2
+
     return {
         "deck_name": str(row.get("deck_name", "")),
-        "fixture_stage": str(row.get("fixture_stage", "")),
-        "first_strongness_gap": str(
-            visibility.get("first_strongness_gap", "missing_strongness_visibility")
-        ),
-        "operator_action": str(
-            visibility.get("operator_action", "add_strongness_visibility")
-        ),
+        "fixture_stage": fixture_stage,
+        "first_strongness_gap": first_gap,
+        "operator_action": operator_action,
+        "closure_state": closure_state,
+        "source_informed_blocking_reasons": blocking_reasons,
+        "closure_priority": closure_priority,
     }

@@ -40,10 +40,38 @@ def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
         "fixture_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
         "operator_action": "keep_as_core_control_fixture",
+        "closure_state": "core_strong",
+        "source_informed_blocking_reasons": [],
+        "closure_priority": 0,
     }
     assert {
         "deck_name": "CtAPaladin",
         "fixture_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
         "operator_action": "keep_as_core_control_fixture",
+        "closure_state": "core_strong",
+        "source_informed_blocking_reasons": [],
+        "closure_priority": 0,
     } in report["deck_visibility"]
+
+
+def test_matrix_visibility_exposes_source_informed_blockers_and_priority():
+    matrix = json.loads(Path("docs/operator/archetype-fixture-matrix.json").read_text(encoding="utf-8"))
+    report = build_matrix_visibility(matrix)
+
+    by_name = {row["deck_name"]: row for row in report["deck_visibility"]}
+
+    assert by_name["Kingslayer"]["closure_state"] == "source_informed_blocked"
+    assert by_name["Kingslayer"]["source_informed_blocking_reasons"] == [
+        "unsupported_conditions_present"
+    ]
+    assert by_name["Kingslayer"]["closure_priority"] == 2
+
+    assert by_name["Boarlock"]["closure_state"] == "source_informed_blocked"
+    assert by_name["Boarlock"]["source_informed_blocking_reasons"] == [
+        "cards_need_runtime_surface",
+        "generic_low_confidence_cards",
+        "uncovered_cards",
+        "unsupported_conditions_present",
+    ]
+    assert by_name["Boarlock"]["closure_priority"] == 1
