@@ -22,14 +22,35 @@ def test_active_matrix_has_only_kingslayer_and_boarlock_source_informed():
 
 def test_source_informed_rows_are_expected_current_candidates():
     source_informed = {
-        row["deck_name"]: row["strongness_visibility"]["first_strongness_gap"]
+        row["deck_name"]: {
+            "first_strongness_gap": row["strongness_visibility"]["first_strongness_gap"],
+            "source_informed_apply_readiness": row["strongness_visibility"][
+                "source_informed_apply_readiness"
+            ],
+            "source_informed_blocking_reasons": row["strongness_visibility"][
+                "source_informed_blocking_reasons"
+            ],
+        }
         for row in _matrix_rows()
         if row["fixture_stage"] == "source_informed_valid_fixture"
     }
 
     assert source_informed == {
-        "Kingslayer": "needs_mulligan_claim_for_quick_pick",
-        "Boarlock": "needs_mulligan_claim_for_fracking",
+        "Kingslayer": {
+            "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
+            "source_informed_apply_readiness": "blocked",
+            "source_informed_blocking_reasons": ["unsupported_conditions_present"],
+        },
+        "Boarlock": {
+            "first_strongness_gap": "needs_mulligan_claim_for_fracking",
+            "source_informed_apply_readiness": "blocked",
+            "source_informed_blocking_reasons": [
+                "cards_need_runtime_surface",
+                "generic_low_confidence_cards",
+                "uncovered_cards",
+                "unsupported_conditions_present",
+            ],
+        },
     }
 
 

@@ -150,6 +150,8 @@
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
         "operator_action": "close_existing_source_informed_fixture"
       },
       "decision_families_proven": ["weapon_sequence", "attack_pressure"],
@@ -167,6 +169,13 @@
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_mulligan_claim_for_fracking",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": [
+          "cards_need_runtime_surface",
+          "generic_low_confidence_cards",
+          "uncovered_cards",
+          "unsupported_conditions_present"
+        ],
         "operator_action": "close_existing_source_informed_fixture"
       },
       "decision_families_proven": ["combo_control", "resource_setup"],

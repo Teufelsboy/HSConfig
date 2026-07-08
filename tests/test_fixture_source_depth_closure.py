@@ -13,17 +13,6 @@ def _source_informed_rows():
     ]
 
 
-EXPECTED_SOURCE_INFORMED_BLOCKERS = {
-    "Kingslayer": {"unsupported_conditions_present"},
-    "Boarlock": {
-        "cards_need_runtime_surface",
-        "generic_low_confidence_cards",
-        "uncovered_cards",
-        "unsupported_conditions_present",
-    },
-}
-
-
 @pytest.mark.parametrize(
     "deck",
     _source_informed_rows(),
@@ -60,9 +49,11 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
             assert operator["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
             assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
             assert readiness["status"] == "blocked"
-            assert set(readiness["blocking_reasons"]) == EXPECTED_SOURCE_INFORMED_BLOCKERS[
-                deck["deck_name"]
-            ]
+            visibility = deck["strongness_visibility"]
+            assert visibility["source_informed_apply_readiness"] == "blocked"
+            assert set(readiness["blocking_reasons"]) == set(
+                visibility["source_informed_blocking_reasons"]
+            )
             assert promotion["next_action"] == "close_first_missing_chain"
         assert readiness["source_gap_count"] > 0
         assert (
