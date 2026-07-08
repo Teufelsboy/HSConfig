@@ -31,6 +31,26 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "requires_expert_flag": False,
         }
 
+    if (
+        semantic_status == "VALID_BUT_NOT_GUIDE_STRONG"
+        and apply_policy == "ALLOWED_SOURCE_INFORMED"
+        and str(summary.get("next_action", "")) == "SOURCE_INFORMED_APPLY_READY"
+        and isinstance(summary.get("source_informed_apply_readiness"), dict)
+        and summary["source_informed_apply_readiness"].get("status") == "ready"
+    ):
+        return {
+            "first_report_to_open": "reports/operator_summary.json",
+            "next_report_to_open": _first_semantic_blocker_report(summary)
+            or "reports/source_claim_gap_report.json",
+            "normal_next_step": "apply_source_informed",
+            "normal_next_command": (
+                "hsconfig apply --package <package> --runtime-root <runtime-root> "
+                "--allow-source-informed --json"
+            ),
+            "safe_to_apply": True,
+            "requires_expert_flag": True,
+        }
+
     if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
         return {
             "first_report_to_open": "reports/operator_summary.json",
