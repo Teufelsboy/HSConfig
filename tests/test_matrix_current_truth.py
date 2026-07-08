@@ -92,3 +92,21 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     assert boarlock["source_informed_apply_readiness"] == "blocked"
     assert boarlock["operator_action"] == "preserve_source_informed_with_explicit_stop_condition"
     assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
+
+
+def test_operator_docs_name_boarlock_preservation_and_next_actionable_target():
+    operator_text = OPERATOR_README.read_text(encoding="utf-8")
+    closure_text = Path("docs/operator/source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+
+    expected = (
+        "Next actionable closure target after durable Boarlock preservation: "
+        "`Kingslayer`."
+    )
+    assert expected in operator_text
+    assert expected in closure_text
+    assert (
+        "Do not treat Boarlock's low-confidence Fracking row as SOURCE_BACKED_STRONG."
+        in closure_text
+    )

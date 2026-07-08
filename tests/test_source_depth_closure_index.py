@@ -45,6 +45,48 @@ def test_index_exposes_ordered_source_informed_closure_targets():
     assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
 
 
+def test_index_skips_durably_preserved_rows_for_next_actionable_target():
+    matrix = {
+        "decks": [
+            {
+                "deck_name": "Boarlock",
+                "fixture_stage": "source_informed_valid_fixture",
+                "strongness_visibility": {
+                    "closure_priority": 1,
+                    "operator_action": (
+                        "preserve_source_informed_with_explicit_stop_condition"
+                    ),
+                    "stop_condition": (
+                        "exact_boarlock_fracking_mulligan_source_unavailable"
+                    ),
+                    "source_informed_blocking_reasons": [
+                        "cards_need_runtime_surface",
+                        "generic_low_confidence_cards",
+                    ],
+                },
+            },
+            {
+                "deck_name": "Kingslayer",
+                "fixture_stage": "source_informed_valid_fixture",
+                "strongness_visibility": {
+                    "closure_priority": 2,
+                    "operator_action": "close_existing_source_informed_fixture",
+                    "source_informed_blocking_reasons": [
+                        "unsupported_conditions_present"
+                    ],
+                },
+            },
+        ]
+    }
+
+    report = build_source_depth_closure_index(matrix, {})
+
+    assert report["summary"]["next_closure_target"] == "Boarlock"
+    assert report["summary"]["closure_sequence"] == ["Boarlock", "Kingslayer"]
+    assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
+    assert report["summary"]["next_actionable_closure_target"] == "Kingslayer"
+
+
 def test_index_reports_first_missing_link_for_source_informed_rows():
     matrix = {
         "decks": [
@@ -118,6 +160,7 @@ def test_index_reports_first_missing_link_for_source_informed_rows():
         "promotion_ready": 1,
         "promotion_blocked": 1,
         "next_closure_target": None,
+        "next_actionable_closure_target": None,
         "closure_sequence": [],
         "preserved_source_informed_targets": [],
     }

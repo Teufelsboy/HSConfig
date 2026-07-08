@@ -26,6 +26,18 @@ def _source_informed_closure_sequence(rows: list[dict[str, Any]]) -> list[str]:
     return [str(row["deck_name"]) for row in targets if row.get("deck_name")]
 
 
+def _has_durable_preservation_stop(row: dict[str, Any]) -> bool:
+    visibility = row.get("strongness_visibility", {})
+    if not isinstance(visibility, dict):
+        return False
+    return (
+        visibility.get("operator_action")
+        == "preserve_source_informed_with_explicit_stop_condition"
+        and isinstance(visibility.get("stop_condition"), str)
+        and bool(visibility.get("stop_condition"))
+    )
+
+
 def _preserved_source_informed_targets(rows: list[dict[str, Any]]) -> list[str]:
     names: list[str] = []
     for row in rows:
@@ -33,14 +45,27 @@ def _preserved_source_informed_targets(rows: list[dict[str, Any]]) -> list[str]:
             continue
         if row.get("fixture_stage") != "source_informed_valid_fixture":
             continue
-        visibility = row.get("strongness_visibility", {})
-        if not isinstance(visibility, dict):
-            continue
-        if visibility.get("operator_action") == (
-            "preserve_source_informed_with_explicit_stop_condition"
-        ):
+        if _has_durable_preservation_stop(row):
             names.append(str(row.get("deck_name", "")))
     return [name for name in names if name]
+
+
+def _next_actionable_closure_target(rows: list[dict[str, Any]]) -> str | None:
+    targets = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("fixture_stage") == "source_informed_valid_fixture"
+        and _closure_priority(row) > 0
+    ]
+    targets.sort(key=lambda row: (_closure_priority(row), str(row.get("deck_name", ""))))
+    for row in targets:
+        if _has_durable_preservation_stop(row):
+            continue
+        deck_name = row.get("deck_name")
+        if deck_name:
+            return str(deck_name)
+    return None
 
 
 def build_source_depth_closure_index(
@@ -52,6 +77,7 @@ def build_source_depth_closure_index(
         rows = []
     closure_sequence = _source_informed_closure_sequence(rows)
     preserved_targets = _preserved_source_informed_targets(rows)
+    next_actionable_target = _next_actionable_closure_target(rows)
 
     summary: Counter[str] = Counter()
     decks: dict[str, dict[str, Any]] = {}
@@ -135,6 +161,7 @@ def build_source_depth_closure_index(
             "promotion_ready": summary["promotion_ready"],
             "promotion_blocked": summary["promotion_blocked"],
             "next_closure_target": closure_sequence[0] if closure_sequence else None,
+            "next_actionable_closure_target": next_actionable_target,
             "closure_sequence": closure_sequence,
             "preserved_source_informed_targets": preserved_targets,
         },

@@ -89,6 +89,11 @@ When a source-informed row cannot be promoted honestly, keep it visible with an 
 
 Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family. Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows before widening the matrix.
 
+Boarlock remains the first closure-truth row because it is the representative
+`Combo.json` control. Its current Fracking row is durably preserved as
+source-informed until exact Boarlock-relevant Fracking mulligan evidence exists.
+Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
+
 ## Supplemental Proof Decks
 
 `docs/operator/supplemental-proof-decks.json` lists decks that prove narrow command,

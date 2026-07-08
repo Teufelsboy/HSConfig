@@ -58,11 +58,16 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | Kingslayer | Preserve as source-informed until blockers close | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present` |
 | Boarlock | Preserve as source-informed until blockers close | `WW_092` / Fracking needs explicit mulligan claim | `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, `unsupported_conditions_present` |
 
-The next closure implementation target remains Boarlock because it is the only current representative row that proves exact `Combo.json` emission; Kingslayer remains the second source-informed closure target because its blocker stack is narrower.
+Boarlock's current low-confidence `WW_092` / `Fracking` mulligan row documents
+generic card-draw advice only. Do not treat Boarlock's low-confidence Fracking row as SOURCE_BACKED_STRONG.
 
 Current closure order is Boarlock first, Kingslayer second. Boarlock stays first
-because it is the only representative Combo.json control row. Kingslayer follows
-because its remaining gap is narrower and tied to `DEEP_014` / `Quick Pick`.
+because it is the only representative `Combo.json` control row, but this row is
+durably preserved as source-informed until exact Boarlock-relevant Fracking
+mulligan evidence exists. Kingslayer follows because its remaining gap is
+narrower and tied to `DEEP_014` / `Quick Pick`.
+
+Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
 
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 

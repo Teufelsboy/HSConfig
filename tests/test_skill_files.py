@@ -499,3 +499,17 @@ def test_docs_explain_source_informed_apply_ready_lane():
     assert "cards_need_mulligan_claims" in docs
     assert "cards_need_runtime_surface" in docs
     assert "source-informed apply is still not `SOURCE_BACKED_STRONG`" in docs
+
+
+def test_skill_names_boarlock_preservation_and_next_actionable_target():
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+
+    expected = (
+        "Next actionable closure target after durable Boarlock preservation: "
+        "`Kingslayer`."
+    )
+    assert expected in skill
+    assert expected in workflow

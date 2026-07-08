@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
@@ -49,6 +50,7 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
     assert report["summary"]["next_closure_target"] == "Boarlock"
     assert report["summary"]["closure_sequence"] == ["Boarlock", "Kingslayer"]
     assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
+    assert report["summary"]["next_actionable_closure_target"] == "Kingslayer"
 
     boarlock = report["decks"]["Boarlock"]
     assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
@@ -145,6 +147,44 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
         assert operator["source_informed_apply_readiness"]["status"] == "blocked"
         assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
         assert promotion["next_action"] == "close_first_missing_chain"
+
+
+def test_low_confidence_fracking_mulligan_row_does_not_satisfy_missing_chain(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
+    deck = next(
+        row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
+    )
+
+    fixture = json.loads(
+        Path("tests/fixtures/source_documents_boarlock_strong.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    fracking_mulligan_claims = [
+        claim
+        for source in fixture["source_documents"]
+        for claim in source["claims"]
+        if claim.get("claim_kind") == "mulligan_keep"
+        and "WW_092" in claim.get("cards", [])
+    ]
+    assert len(fracking_mulligan_claims) == 1
+    assert fracking_mulligan_claims[0]["source_confidence"] == "low"
+
+    result = prepare_fixture_deck(tmp_path, deck)
+    operator = result["operator"]
+    gap_report = result["source_claim_gap_report"]
+
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
+    assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
+    assert gap_report["summary"]["first_missing_chain"]["first_missing_link"] == (
+        "needs_mulligan_claim"
+    )
 
 
 def test_boarlock_closure_does_not_widen_runtime_surfaces(tmp_path, monkeypatch):

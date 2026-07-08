@@ -50,7 +50,11 @@ Use fake apply for receipt-bound previews before any requested runtime write.
 
 `core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks.
-Current closure order is Boarlock first, Kingslayer second. Boarlock stays first because it is the only representative `Combo.json` control row. Kingslayer follows because its remaining gap is narrower and tied to `DEEP_014` / `Quick Pick`.
+Current closure truth is Boarlock first, Kingslayer second. Boarlock stays first
+because it is the only representative `Combo.json` control row, but its current
+Fracking source is durably preserved as source-informed unless exact
+Boarlock-relevant Fracking mulligan evidence appears.
+Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
 
 ## Diagnostic And Expert Paths
 
