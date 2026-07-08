@@ -144,3 +144,50 @@ def test_report_keeps_canonical_next_action_for_invalid_package():
         "recommended_source_claim_kind": "card_role",
         "next_action": "add_card_specific_source_claim",
     }
+
+
+def test_report_reuses_source_gap_summary_first_missing_chain_priority_order():
+    canonical = {
+        "card_id": "ZZZ_HIGH_PRIORITY",
+        "name": "High Priority Card",
+        "first_missing_link": "needs_runtime_surface",
+        "recommended_source_claim_kind": "targeting_rule",
+        "next_action": "add_runtime_lowerable_claim_or_router_support",
+        "priority_score": 85,
+        "priority_reason": "runtime surface gap outranks guide claim gap",
+    }
+
+    report = build_strong_promotion_report(
+        deck_name="CuteWarrior",
+        fixture_stage="runtime_prepare",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "semantic_blockers": [{"reason": "cards_need_runtime_surface", "count": 1}],
+            "generated_files": [],
+        },
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 2,
+                "first_missing_chain": canonical,
+            },
+            "cards": {
+                "AAA_LOW_PRIORITY": {
+                    "first_missing_link": "needs_guide_claim",
+                    "recommended_source_claim_kind": "card_role",
+                    "next_action": "add_card_specific_source_claim",
+                },
+                "ZZZ_HIGH_PRIORITY": {
+                    "first_missing_link": "needs_runtime_surface",
+                    "recommended_source_claim_kind": "targeting_rule",
+                    "next_action": "add_runtime_lowerable_claim_or_router_support",
+                },
+            },
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["next_action"] == "close_first_missing_chain"
+    assert report["first_missing_chain"] == canonical

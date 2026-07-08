@@ -74,7 +74,7 @@ def _report_next_action(
     *,
     promotion_ready: bool,
     operator_summary: dict[str, Any],
-    first_missing_chain: dict[str, str] | None,
+    first_missing_chain: dict[str, Any] | None,
 ) -> str:
     if promotion_ready:
         return "fixture_can_be_core_source_backed"
@@ -89,7 +89,13 @@ def _report_next_action(
     return "close_first_missing_chain"
 
 
-def _first_missing_chain(source_claim_gap_report: dict[str, Any]) -> dict[str, str] | None:
+def _first_missing_chain(source_claim_gap_report: dict[str, Any]) -> dict[str, Any] | None:
+    summary = source_claim_gap_report.get("summary", {})
+    if isinstance(summary, dict):
+        canonical = summary.get("first_missing_chain")
+        if isinstance(canonical, dict):
+            return dict(canonical)
+
     cards = source_claim_gap_report.get("cards", {})
     if not isinstance(cards, dict):
         return None
