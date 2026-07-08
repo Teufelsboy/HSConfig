@@ -30,7 +30,9 @@ def test_skill_content_sets_direct_config_boundary():
     assert "GlobalValues" in text
     assert "no replay analysis" in text.lower()
     assert "validate" in text.lower()
-    assert "runtime apply is allowed after validation" in text.lower()
+    assert "runtime apply is guarded" in text.lower()
+    assert "guarded apply" in text.lower()
+    assert "runtime writes remain only when requested" in text
     assert "--allow-placeholder" in text
     assert "hsconfig prepare" in text
     assert "hsconfig research-deck" in text
@@ -176,6 +178,7 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
 
     assert "HearthSim deckstring decode" in text
     assert "deckstring_decode_receipt.json" in text
+    assert "fake apply" in text.lower()
     assert "card_id_map.json" in text
     assert "CustomConfig/deck_config.ini" in text
     assert "--allow-placeholder" in text

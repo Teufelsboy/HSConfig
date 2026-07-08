@@ -41,6 +41,9 @@ For blockers, improve `source_documents.json` for `cards_need_guide_claims`; imp
 
 Source-informed apply remains pre-run only. It is not replay analysis, winrate validation, HSTuner candidate promotion, or post-run tuning.
 
+Guarded apply is still pre-run. It protects the write step with fake receipts, package hashes, snapshots, rollback evidence, and write history; it does not inspect games or tune from logs.
+Use fake apply for receipt-bound previews before any requested runtime write.
+
 ## Fixture Stage Semantics
 
 `core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.

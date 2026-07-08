@@ -23,6 +23,12 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 
 Use `reports/operator_summary.json` as the normal operator gate.
 
+`hsconfig apply --fake --json` creates a receipt-bound preview without runtime mutation.
+Normal `hsconfig apply --json` remains autonomous when the gate allows it: it creates
+and verifies the fake receipt in the same invocation, then writes the runtime package.
+`--from-fake-receipt` can be used when an operator wants to apply a previously generated
+matching fake receipt.
+
 - `technical_status=VALID_PACKAGE` means the runtime JSON shape is load-safe.
 - `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work.

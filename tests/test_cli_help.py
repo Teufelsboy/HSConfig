@@ -76,5 +76,7 @@ def test_apply_help_keeps_source_informed_pre_run_scope(capsys):
         parser.parse_args(["apply", "--help"])
     help_text = capsys.readouterr().out
 
+    assert "--fake" in help_text
+    assert "--from-fake-receipt" in help_text
     assert "--allow-source-informed" in help_text
     assert "source-informed apply remains pre-run only" in help_text
