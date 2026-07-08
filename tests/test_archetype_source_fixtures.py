@@ -7,6 +7,7 @@ import pytest
 
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.combo_plan import build_combo_plan
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
@@ -624,6 +625,39 @@ def test_boarlock_fixture_covers_combo_resource_setup():
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     assert any(marker in text for marker in ("combo", "resource", "setup", "boar"))
     assert {"card_role", "gameplan_posture"} <= kinds
+
+
+def test_boarlock_fixture_has_exact_runtime_lowerable_combo_sequence():
+    bundle = _source_bundle_for_fixture("Boarlock")
+    combo_claims = [
+        claim for claim in bundle["claims"] if claim["claim_kind"] == "combo_sequence"
+    ]
+
+    assert any(
+        claim.get("sequence") == ["SW_075", "UNG_832", "DINO_402", "ULD_717"]
+        and claim.get("timing_kind") == "same_turn"
+        and claim.get("operator") == ">>"
+        and claim.get("values") == ["1", "4", "8", "1"]
+        and claim.get("claim_readiness") == "guide_backed"
+        for claim in combo_claims
+    )
+
+    deck_cards = {
+        str(card["card_id"])
+        for card in decode_deck_code(
+            next(row for row in _matrix()["decks"] if row["deck_name"] == "Boarlock")[
+                "deck_code"
+            ]
+        )["cards"]
+    }
+    combo_plan = build_combo_plan(deck_cards=deck_cards, claims=combo_claims)
+
+    assert any(
+        combo.get("combo") == "SW_075>>UNG_832>>DINO_402>>ULD_717"
+        and combo.get("value") == 1
+        and combo.get("source_refs")
+        for combo in combo_plan["combos"]
+    )
 
 
 def test_piratedh_fixture_covers_pirate_hero_attack_pressure():

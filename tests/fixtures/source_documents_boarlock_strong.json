@@ -55,6 +55,28 @@
       ]
     },
     {
+      "source_url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+      "source_title": "Elwynn Boar Sneak Attack OTK - Hearthstone Decks",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-08T00:00:00Z",
+      "deck_name": "Boarlock",
+      "archetype": "combo_control_resource",
+      "claims": [
+        {
+          "claim_kind": "combo_sequence",
+          "cards": ["SW_075", "UNG_832", "DINO_402", "ULD_717"],
+          "sequence": ["SW_075", "UNG_832", "DINO_402", "ULD_717"],
+          "timing_kind": "same_turn",
+          "operator": ">>",
+          "values": ["1", "4", "8", "1"],
+          "stance": "boar_otk_same_turn",
+          "evidence_text_short": "Ideally, you can play Boar (1), Bloom (4), Bat Mask (8 Health), and Plague of Flames (1) all on turn 6.",
+          "source_confidence": "medium",
+          "source_refs": ["https://www.hsguru.com/deck/34322767"]
+        }
+      ]
+    },
+    {
       "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
       "source_title": "cards.json",
       "source_family": "metadata",
