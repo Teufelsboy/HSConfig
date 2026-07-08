@@ -218,6 +218,13 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
     assert combo["ComboList"]["values"][0]["combo"] == "EX1_003>>EX1_004"
     assert combo["ComboList"]["values"][0]["value"] == "8>>14"
     assert card_behavior["option_resolution"][0]["status"] == "resolved"
-    assert suppression == []
+    assert suppression == [
+        {
+            "claim_id": suppression[0]["claim_id"],
+            "claim_kind": "mechanic_usage",
+            "cards": ["EX1_001"],
+            "reason": "covered_by_resolved_choice_surface",
+        }
+    ]
     assert "OnDiscoverCardBonus" in discover
     assert "source_claim_ids" not in json.dumps(discover)
