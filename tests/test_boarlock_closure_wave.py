@@ -107,3 +107,29 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert summary["cards_needing_mulligan_claims"] >= 1
     assert summary["cards_needing_runtime_surface"] >= 1
     assert summary["generic_low_confidence"] >= 1
+
+
+def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    deck = next(
+        row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
+    )
+
+    result = prepare_fixture_deck(tmp_path, deck)
+    operator = result["operator"]
+    gap_report = result["source_claim_gap_report"]
+    promotion = result["strong_promotion_report"]
+
+    if promotion["promotion_ready"]:
+        assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+        assert operator["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
+        assert gap_report["summary"]["blocked_cards"] == 0
+        assert gap_report["summary"]["first_missing_chain"] is None
+    else:
+        assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+        assert operator["source_informed_apply_readiness"]["status"] == "blocked"
+        assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
+        assert promotion["next_action"] == "close_first_missing_chain"
