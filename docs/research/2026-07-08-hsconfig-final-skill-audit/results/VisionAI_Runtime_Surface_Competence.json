@@ -1,0 +1,174 @@
+{
+  "audit_question": "Does the current HSConfig implementation cover the right pre-run HearthRanger VisionAI runtime surfaces as GlobalValues.json, Mulligan.json, per-card CardID JSON, and Combo.json only when an exact justified sequence exists, while handling unsupported syntax conservatively instead of inventing extra runtime surfaces or broadening into unsupported VisionAI grammar?",
+  "primary_sources": [
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+      "evidence": "Fetched on 2026-07-08. The live help index still lists How to Understand JSON Config, How to Customize Mulligan, How to Customize Card Behavior, How to Customize Combo, How to Customize Concede, and How to Customize Global Values."
+    },
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+      "evidence": "Fetched on 2026-07-08. The page still documents per-card CARDID ownership, GameCardId matching the file name, documented card-behavior blocks, AND/OR condition syntax, my_target(...), my_discover(...), and Choose One option ownership through CardIDa and CardIDb."
+    },
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+      "evidence": "Fetched on 2026-07-08. The page still documents Mulligan.json, hold and discard values, wildcard discard, DROP selectors, plus-combo selectors, coin and nocoin conditions, and hero_class opponent filtering."
+    },
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+      "evidence": "Fetched on 2026-07-08. The page still documents per-card CARDID.json, OnDiscoverCardBonus discover-source usage, and BeforePhysicalAttackBonus target preference with my_target(count(),hero=true) > 0."
+    },
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+      "evidence": "Fetched on 2026-07-08. The page still documents Combo.json, same-turn operator >>, cross-turn operator >->, and combo/value segment parity."
+    },
+    {
+      "type": "official_doc",
+      "path": "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+      "evidence": "Fetched on 2026-07-08. The page still recommends copying the default GlobalValues.json, explains FirstTurnValueWeight and SecondTurnValueWeight, and treats GlobalValues as full board-value posture rather than a tiny override."
+    },
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+      "evidence": "The README defines HSConfig as pre-run only and states that Presume.json and Concede.json are not emitted in the normal path."
+    },
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\guide-research-policy.md",
+      "evidence": "The policy file defines supported mulligan selector families, requires explicit sequence/timing/operator/values before Combo.json emission, and limits GlobalValues changes to authority-backed posture overlays."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli.py",
+      "evidence": "The prepare pipeline writes GlobalValues.json, Mulligan.json, per-card files, and Combo.json only when compile_combo(...) returns a payload."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\surface_intent.py",
+      "evidence": "The surface-intent layer always requires GlobalValues.json and Mulligan.json, adds one per-card surface for every contract card, and adds Combo.json only when combos exist. Presume.json and Concede.json appear only when legacy_policy_surfaces_enabled is explicitly set."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\compile_optional_surfaces.py",
+      "evidence": "compile_presume(...) and compile_concede(...) return None unless policy rows exist and the caller explicitly enables those surfaces."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+      "evidence": "The apply gate blocks normal-path packages when Presume.json or Concede.json appear either in operator_summary generated_files or in the actual CustomConfig deck directory."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\visionai_registry.py",
+      "evidence": "The registry recognizes GlobalValues.json, Mulligan.json, Combo.json, Presume.json, and Concede.json and defines the documented card-behavior block family."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\validate_package.py",
+      "evidence": "The validator requires GlobalValues.json, Mulligan.json, and at least one per-card CardID file for complete packages, validates combo segment parity, and rejects unsupported card-behavior blocks."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\condition_format.py",
+      "evidence": "The condition lowerer accepts only a documented-safe subset such as wildcard, coin, nocoin, my_hand(...), opp_hero(...), my_target(...), my_minion(...), and my_discover(...), and otherwise fails closed with unsupported_condition."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py",
+      "evidence": "The router lowers claim-backed behavior into documented CardID blocks such as BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, OnDiscoverCardBonus, and OnChooseOneCardBonus, and suppresses unresolved or unsupported rows instead of guessing runtime syntax."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\compile_cardid.py",
+      "evidence": "The card compiler emits one per-card file whose GameCardId matches the filename stem and preserves explicit routed rows for targeting, discover, hero-power, attack, and choose-one behavior."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mulligan_plan.py",
+      "evidence": "The mulligan planner lowers supported selectors and runtime-safe conditions, suppresses unsupported selectors or unsupported conditions, and only adds wildcard discard after concrete keeps exist."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\combo_plan.py",
+      "evidence": "The combo planner emits rows only for exact lowerable combo_sequence claims and suppresses vague or non-emittable combo claims."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\compile_globalvalues.py",
+      "evidence": "The GlobalValues compiler copies a full baseline, preserves full-key coverage, profiles every key, and applies only known or authority-backed overlays."
+    },
+    {
+      "type": "repo_code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\config_readiness.py",
+      "evidence": "The readiness report tracks needs_runtime_surface, needs_mulligan_claim, needs_combo_sequence, and needs_condition_lowering, so suppressed or unlowered guidance remains visible without creating unsupported runtime JSON."
+    },
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "The live eleven-deck matrix expects GlobalValues.json, Mulligan.json, and per-card CardID JSON for all eleven representative decks, and expects Combo.json only for Boarlock."
+    },
+    {
+      "type": "tests",
+      "command": "python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_compile_mulligan.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_compile_combo.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_compile_globalvalues.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_condition_format.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_config_readiness.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_card_behavior_router.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_compile_cardid.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_surface_intent.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_compile_optional_surfaces.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_gate.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_fixture_matrix.py -q",
+      "evidence": "Run on 2026-07-08 in C:\\Users\\darbo\\Documents\\HSConfig. Result: 106 passed in 1.20s."
+    }
+  ],
+  "confirmed_facts": [
+    "The live official HearthRanger help still presents the relevant pre-run runtime files as per-card CARDID JSON, Mulligan.json, Combo.json, and GlobalValues.json, with Concede documented separately rather than as part of the minimal normal package.",
+    "HSConfig's current prepare path writes exactly the surfaces this audit expects on the normal path: GlobalValues.json, Mulligan.json, per-card CardID JSON, and Combo.json only when compile_combo(...) receives an exact emittable sequence.",
+    "surface_intent.py keeps GlobalValues.json and Mulligan.json required for every package and treats Combo.json as optional, not mandatory.",
+    "surface_intent.py does not route Presume.json or Concede.json on the default path. Those surfaces appear only when legacy_policy_surfaces_enabled is explicitly enabled.",
+    "compile_optional_surfaces.py returns None for Presume.json and Concede.json unless both policy rows exist and the caller explicitly enables those surfaces.",
+    "apply_gate.py blocks normal-path packages when Presume.json or Concede.json show up in the package, so optional legacy policy surfaces cannot silently leak into the normal operator workflow.",
+    "validate_package.py requires GlobalValues.json, Mulligan.json, and at least one per-card CardID file for complete packages, validates combo segment parity, and rejects unsupported card-behavior blocks.",
+    "visionai_registry.py still recognizes Presume.json and Concede.json as supported surface names, so raw registry awareness is broader than the approved normal-path surface contract.",
+    "The official JSON documentation still says GameCardId should match the json file name for per-card files and still documents CardID blocks including BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, OnDiscoverCardBonus, and OnChooseOneCardBonus.",
+    "The official docs still document my_target(...), my_discover(...), wildcard conditions, AND/OR syntax, DROP mulligan selectors, plus-combo mulligan selectors, coin and nocoin conditions, hero_class opponent filtering, and exact combo operators >> and >->.",
+    "HSConfig's condition_format.py intentionally supports only a documented-safe subset of the full VisionAI grammar and fails closed with unsupported_condition for expressions outside that subset.",
+    "HSConfig's card-behavior routing remains explicit rather than free-form. It lowers guide-backed behavior into documented CardID blocks and suppresses unresolved or unsupported rows instead of guessing custom syntax.",
+    "The eleven-deck matrix still expects GlobalValues.json, Mulligan.json, and per-card CardID JSON for all eleven representative decks, and only Boarlock currently expects Combo.json.",
+    "The focused runtime-surface and validation suite passed on 2026-07-08 with 106 tests, which is current evidence that docs, routing, validators, apply gating, and matrix expectations remain aligned."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The repo keeps the normal pre-run runtime contract narrow and explicit: GlobalValues.json, Mulligan.json, per-card CardID JSON, and Combo.json only when exact combo evidence exists.",
+    "The boundary between approved normal-path surfaces and legacy optional policy surfaces is enforced in multiple places: surface intent, optional compilers, and apply gating.",
+    "Card behavior is visible through documented VisionAI blocks instead of ad hoc custom JSON, which keeps the generated package close to official HearthRanger semantics.",
+    "Unsupported syntax handling is conservative. The condition lowerer, mulligan planner, combo planner, and card-behavior router fail closed and keep missing lowering visible through suppression or readiness reporting.",
+    "GlobalValues handling is stronger than a stub because HSConfig copies a full baseline, preserves full-key coverage, and profiles every key before applying deck-specific overlays.",
+    "The eleven-deck fixture matrix makes the intended runtime surface family concrete and auditable across representative archetypes."
+  ],
+  "gaps_or_risks": [
+    "The official HearthRanger JSON grammar is broader than HSConfig's current supported-safe subset, so some legitimately documentable VisionAI expressions still remain suppressed as unsupported_condition rather than becoming runtime rows.",
+    "The registry and validator still recognize Presume.json and Concede.json, which is broader than the approved normal-path contract and creates a maintenance-drift risk if contributors equate registry-known with normal-output-approved.",
+    "Only Boarlock currently proves Combo.json in the representative matrix, so exact combo coverage is intentionally narrow and depends on strong sequence evidence rather than general synergy prose.",
+    "Discover and Choose One lowering still depends on exact option identity. When that identity is missing, HSConfig safely suppresses the row, but that still leaves some source-backed decision depth unlowered.",
+    "compile_cardid.py still uses fallback priority and role-based rows when richer routed claims are unavailable, which is acceptable for package shape but weaker than fully claim-specific lowering."
+  ],
+  "eleven_deck_implications": {
+    "all_eleven_use_core_surfaces": true,
+    "combo_json_required_decks": [
+      "Boarlock"
+    ],
+    "non_combo_decks": [
+      "ShadowPriest",
+      "CtAPaladin",
+      "PirateRogue",
+      "BigShaman",
+      "Discolock",
+      "TreantDruid",
+      "ImbueMage",
+      "MechPala",
+      "Kingslayer",
+      "PirateDH"
+    ],
+    "meaning": "For the eleven representative decks, the current competence problem is not missing runtime file categories. The remaining work is deeper lowering and stronger guide-backed closure inside the allowed surfaces, especially for Kingslayer and Boarlock, rather than expanding the normal path beyond GlobalValues.json, Mulligan.json, per-card CardID JSON, and exact justified Combo.json."
+  },
+  "recommendation": "Keep the current normal-path runtime surface set unchanged. The next improvement should stay inside the same boundary: expand documented-safe condition lowering, option identity resolution, and claim-specific CardID lowering where evidence supports it, while preserving the exact-combo-only rule and the current fail-closed handling for unsupported syntax.",
+  "confidence": "high",
+  "uncertain": []
+}

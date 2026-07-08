@@ -1,0 +1,62 @@
+{
+  "audit_question": "Audit whether the implementation is still maintainable and efficient: command handler boundaries, tests, research archive noise, installed skill sync, dependency footprint, and whether further refactoring would reduce or add complexity.",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\pyproject.toml (runtime and dev dependency footprint; entrypoint wiring)",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md (normal path, boundary statement, installed skill sync check)",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli.py (main dispatch and orchestration concentration)",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli_parser.py (public command surface and pre-run scope wording)",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\prepare.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\source_workflow.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\scripts\\sync_installed_skill.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_cli_help.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_scope_boundaries.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_files.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_sync.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_research_audit_schema.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.gitignore",
+    "Command: python -m pytest -q -> 498 passed, 2 skipped in 123.21s (0:02:03)",
+    "Command: python scripts\\sync_installed_skill.py --check -> HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig",
+    "Command: git ls-files -> 285 tracked files total; 124 under docs/; 94 under docs/research; 88 under tests/; 60 under src/; 8 under .agents/",
+    "Command: directory metrics -> src 120 files and 906.39 KiB; tests 248 files and 3288.65 KiB; docs 127 files and 1637.95 KiB; docs/research 97 files and 621.38 KiB; .agents 8 files and 24.15 KiB",
+    "Command: parser and handler metrics -> src/hsconfig/cli.py 1105 lines; cli_parser.py 130 lines; commands/apply.py 9 lines; commands/prepare.py 9 lines; commands/source_workflow.py 21 lines"
+  ],
+  "confirmed_facts": [
+    "The dependency footprint is still very small. `pyproject.toml` declares one runtime dependency, `hearthstone>=9.0.0`, and one explicit dev dependency group with `pytest>=8.0`.",
+    "The public command surface is narrow and clearly named in `cli_parser.py`: `source-manifest`, `draft-source-documents`, `research-deck`, `prepare`, `build`, `validate`, and `apply`.",
+    "The command boundary package exists, but it is currently a facade rather than a true handler split. `src/hsconfig/commands/apply.py`, `prepare.py`, and `source_workflow.py` only forward back into helper functions in `hsconfig.cli`.",
+    "The main orchestration logic remains concentrated in `src/hsconfig/cli.py`, which is currently 1105 lines and owns both top-level dispatch and the heavy build, prepare, research, validate, and apply flows.",
+    "The repository has strong regression coverage today. The full local suite passed with `498 passed, 2 skipped`.",
+    "Installed skill maintenance is operationalized instead of manual. The repo has a dedicated sync script, tests for clean sync and drift failure, and the live `--check` command currently reports the installed skill is in sync.",
+    "Archive growth is real but partly controlled. `docs/research/README.md` explicitly marks research folders as evidence rather than operator instructions, and `.gitignore` excludes generated `outputs/`, `tmp/`, and `.superpowers/` so runtime noise does not become tracked repo bulk.",
+    "Tracked repository weight is documentation-heavy rather than dependency-heavy: 285 tracked files total, with 124 under `docs/`, 94 under `docs/research`, 88 under `tests/`, and 60 under `src/`.",
+    "The research archive is larger than the active source tree by file count, but it is not spilling into operator guidance by default because the repo documents the normal path separately and tests boundary wording in active docs.",
+    "The current maintainability risk is architectural concentration, not package sprawl: the repo remains lean in dependencies and scope, but orchestration, reports, and evidence surfaces are now broader than the original 'small tool' feel."
+  ],
+  "current_repo_alignment": "partially_aligned",
+  "strengths": [
+    "Scope discipline is strong. Active docs, parser help, and tests keep HSConfig in the pre-run configuration lane and out of replay analysis, winrate validation, and HSTuner-style post-run work.",
+    "The dependency footprint is excellent for maintainability. There is no framework-heavy stack or broad package surface to update and secure.",
+    "Tests are not superficial. The passing suite covers CLI behavior, help text, scope boundaries, skill file consistency, research-result validation, sync behavior, and many end-to-end config paths.",
+    "Installed-skill drift is treated as a first-class maintenance concern, with both executable sync tooling and tests that verify the happy path and a drift failure path.",
+    "Research archive noise is at least intentionally labeled. The repo distinguishes operator docs from research evidence instead of letting old audits silently become live guidance."
+  ],
+  "gaps_or_risks": [
+    "The command handler boundary is still thin. The `commands/` package does not yet own command behavior, so future command growth will continue to accumulate in `hsconfig.cli` unless logic is extracted for real.",
+    "A 1105-line `cli.py` is the clearest maintainability hotspot in the repo. It centralizes dispatch, orchestration, file lifecycle rules, and multiple workflow variants in one module.",
+    "Tracked research material is now a substantial share of the repository. With 94 tracked files under `docs/research`, navigation cost and stale-audit noise will keep rising unless older runs are consolidated or indexed more aggressively.",
+    "The repo is test-rich, but there is no current line or branch coverage number in the evidence reviewed here. Confidence comes from breadth and green status, not from a quantified coverage threshold.",
+    "Local non-tracked bulk still exists in working directories such as `tmp`, `outputs`, and `.superpowers`. Git ignores this correctly, but it can still make the workspace feel heavier during day-to-day development."
+  ],
+  "eleven_deck_implications": [
+    "For the eleven representative decks, the current maintainability profile is still good enough to preserve confidence in matrix-driven work because the regression suite is broad and the repo keeps operator and research boundaries explicit.",
+    "The main threat to the eleven-deck workflow is not missing dependencies or missing sync tooling; it is the cognitive cost of tracing failures through a large central orchestrator and a growing archive of audits and plans.",
+    "Further deck-matrix expansion would add complexity faster than value if it happens before the `cli.py` concentration point is reduced and the archive is kept easier to navigate.",
+    "A targeted maintainability pass would benefit all eleven decks indirectly by making source-depth, prepare, and apply failures easier to localize without changing the deck-level contract itself."
+  ],
+  "recommendation": "Do not do a broad architectural rewrite. Keep the current lean dependency and scope model, but make one focused maintainability reduction pass: extract real command-specific handler modules out of `hsconfig.cli` for the source workflow, prepare/build flow, and apply/validate flow, and add a lightweight index or pruning rule for historical `docs/research` folders so research evidence remains searchable without dominating the repo. That should reduce complexity; a larger refactor would likely add more churn than value right now.",
+  "confidence": "high",
+  "uncertain": []
+}

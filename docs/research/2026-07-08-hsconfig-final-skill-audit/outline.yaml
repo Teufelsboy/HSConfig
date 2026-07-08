@@ -1,0 +1,53 @@
+topic: hsconfig-final-skill-audit-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-final-skill-audit\results
+  batch_size: 6
+  items_per_agent: 1
+items:
+  - name: Lean Operator Boundary And UX
+    category: Skill architecture
+    description: >
+      Audit whether the current HSConfig skill is still narrow, simple,
+      efficient, and operator-friendly. Check README, docs/operator/README.md,
+      installed skill text, CLI help, report ownership, and whether replay,
+      winrate, HSTuner, Presume.json, and Concede.json concerns are excluded
+      from the normal path.
+  - name: Eleven Deck Matrix And Source Depth Truth
+    category: Fixture breadth
+    description: >
+      Audit the eleven decks from the user prompt against the active archetype
+      fixture matrix, source-depth closure index, source-backed closure doc,
+      tests, and current local command outputs. Verify which rows are
+      SOURCE_BACKED_STRONG, which rows are intentionally source-informed
+      blocked, and whether the next work should close existing rows or widen
+      the matrix.
+  - name: VisionAI Runtime Surface Competence
+    category: HearthRanger VisionAI
+    description: >
+      Audit whether HSConfig covers the right pre-run VisionAI runtime
+      surfaces: GlobalValues.json, Mulligan.json, per-card CardID JSON, and
+      exact Combo.json only when justified. Check official HearthRanger
+      VisionAI documentation when needed, local compiler modules, validators,
+      and tests for unsupported syntax handling.
+  - name: Every Card Contract And Source Evidence
+    category: Guide research
+    description: >
+      Audit whether every card can receive a visible role, source-depth lane,
+      guide/static/archetype claim, missing-link explanation, and operator
+      recommendation without pretending low-confidence cards are optimized.
+      Include implications for ShadowPriest, CtAPaladin, PirateRogue,
+      BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer,
+      Boarlock, and PirateDH.
+  - name: Apply Gate And Source Informed Safety
+    category: Runtime handoff
+    description: >
+      Audit whether source-backed apply, source-informed apply, hard blockers,
+      operator_summary.json, report ownership, and runtime write boundaries are
+      aligned and not too conservative for a pre-run direct-config skill.
+  - name: Maintainability Tests And Repo Size
+    category: Repo quality
+    description: >
+      Audit whether the implementation is still maintainable and efficient:
+      command handler boundaries, tests, research archive noise, installed
+      skill sync, dependency footprint, and whether further refactoring would
+      reduce or add complexity.

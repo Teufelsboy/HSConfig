@@ -1,0 +1,65 @@
+{
+  "audit_question": "Audit whether the current HSConfig skill is still narrow, simple, efficient, and operator-friendly across the root README, docs/operator/README.md, installed skill text, CLI help, report ownership, and the normal-path exclusion of replay, winrate, HSTuner, Presume.json, and Concede.json concerns.",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+    "C:\\Users\\darbo\\.codex\\skills\\hsconfig\\SKILL.md",
+    "Command output: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "Command output: `python -m hsconfig.cli --help` in `C:\\Users\\darbo\\Documents\\HSConfig`.",
+    "Command output: `python -m hsconfig.cli prepare --help` in `C:\\Users\\darbo\\Documents\\HSConfig`.",
+    "Command output: `python -m hsconfig.cli apply --help` in `C:\\Users\\darbo\\Documents\\HSConfig`.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\report_ownership.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_guidance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\runtime_apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_report_ownership.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_operator_guidance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_current_truth.py",
+    "Command output: `python -m pytest tests/test_apply_gate.py tests/test_report_ownership.py tests/test_matrix_current_truth.py tests/test_operator_guidance.py -q` returned `32 passed in 2.80s`."
+  ],
+  "confirmed_facts": [
+    "The root README states that HSConfig is pre-run only, starts from `docs/operator/README.md`, uses the normal path `source-manifest -> prepare -> apply`, excludes replay parsing, winrate, runtime-log analysis, candidate promotion, and post-game tuning, and says `Presume.json` and `Concede.json` are not emitted in the normal path.",
+    "The operator README keeps the normal path short and operator-friendly: `source-manifest`, source evidence rows, `draft-source-documents`, `research-deck`, `prepare`, open `reports/operator_summary.json` first, and `apply` only when the gate allows it.",
+    "The repo skill source and the installed skill both repeat the same pre-run-only boundary, route the operator to `docs/operator/README.md`, keep `reports/operator_summary.json` as the single operator gate, exclude replay and HSTuner concerns, and forbid `Presume.json` and `Concede.json` in the normal path.",
+    "The installed skill is currently synchronized with the repo copy according to `python scripts/sync_installed_skill.py --check`, so the live operator-facing skill text matches the audited repo text.",
+    "Root CLI help says HSConfig builds lean packages before games are played, presents `prepare` as the normal package creation path, and separates expert and legacy surfaces from the normal path.",
+    "Apply help is narrow: it only exposes `--package`, `--runtime-root`, `--allow-source-informed`, and `--json`, and it explicitly repeats that source-informed apply remains pre-run only and still requires `reports/operator_summary.json` to allow it.",
+    "`report_ownership.py` defines one open-first authority file, `reports/operator_summary.json`, followed by explanatory reports in a fixed order. `tests/test_report_ownership.py` confirms that `reports/operator_summary.json` is the only file with open order `1`.",
+    "`operator_summary.py` keeps the normal boundary narrow by separating technical validity from semantic strength, allowing `SOURCE_INFORMED_APPLY_READY` only when the package is valid and the remaining blockers are limited to `cards_need_guide_claims` or `cards_need_mulligan_claims`.",
+    "`apply_gate.py` enforces the operator boundary instead of trusting wording alone: it requires `reports/operator_summary.json`, requires a valid single-deck package structure, requires `GlobalValues.json`, `Mulligan.json`, and at least one per-card file, blocks stale or hidden runtime files, and rejects `Presume.json` and `Concede.json` whether they appear in the summary or in the actual package tree.",
+    "`operator_guidance.py` keeps the operator UX focused on `reports/operator_summary.json` first, offers a single next command, and only points to deeper reports as diagnostic follow-ups.",
+    "`runtime_apply.py` is a low-level write layer that copies one prepared deck directory into the runtime root and updates `deck_config.ini`; it does not add replay, winrate, or HSTuner behavior to the normal HSConfig path.",
+    "The eleven-deck matrix still fits a lean pre-run proof model: nine decks are `core_source_backed_fixture`, while only `Kingslayer` and `Boarlock` remain `source_informed_valid_fixture`, and both are still blocked today for pre-run reasons rather than post-run tuning needs."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The same narrow contract is repeated consistently across README, operator docs, repo skill text, installed skill text, CLI help, gate code, and targeted tests.",
+    "Operator UX is simple: one normal documentation entry point, one short normal command path, one first report to open, and one gate that answers whether the package is ready to apply or still needs source work.",
+    "Report ownership is explicit instead of implied, which reduces the chance that operators treat lower-level reports as competing apply authorities.",
+    "The source-informed apply lane remains intentionally narrow and pre-run only rather than becoming a broad warning-based write escape hatch.",
+    "Normal-path runtime scope stays lean by blocking `Presume.json` and `Concede.json` and by keeping replay, winrate, and HSTuner work outside HSConfig."
+  ],
+  "gaps_or_risks": [
+    "The CLI still exposes expert and legacy surfaces in the same binary, so maintaining a lean operator experience depends on keeping the wording and help text disciplined.",
+    "The low-level `apply_package(...)` writer in `runtime_apply.py` does not enforce the operator gate by itself; the safe boundary exists in the normal CLI path and must stay that way for future callers.",
+    "No current representative deck demonstrates a live `SOURCE_INFORMED_APPLY_READY` row in the eleven-deck matrix, so that lane is covered by code and tests but not yet by a real matrix example.",
+    "If future changes let `operator_summary.json`, skill wording, CLI help, and apply-gate enforcement drift apart, the current lean boundary could weaken even though it is coherent today."
+  ],
+  "eleven_deck_implications": {
+    "total_representative_decks": 11,
+    "core_source_backed_fixture_count": 9,
+    "source_informed_valid_fixture_count": 2,
+    "source_informed_valid_fixture_decks": [
+      "Kingslayer",
+      "Boarlock"
+    ],
+    "summary": "The current eleven-deck proof set supports keeping HSConfig narrow. Most representative decks already prove the normal strong pre-run path, while Kingslayer and Boarlock remain visible pre-run gap rows that should close source-to-runtime links instead of pulling replay analysis, winrate evaluation, HSTuner follow-up, Presume.json, or Concede.json into the normal operator path."
+  },
+  "recommendation": "Keep the current boundary and UX unchanged as the normal operator contract. The next small hardening step should be to preserve the new `apply --help` negative-scope sentence and add one real matrix fixture that reaches `SOURCE_INFORMED_APPLY_READY`, so the exception lane stays tested by both code and a representative operator example without widening scope.",
+  "confidence": "high",
+  "uncertain": []
+}

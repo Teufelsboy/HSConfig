@@ -1,0 +1,57 @@
+{
+  "audit_question": "Do the eleven representative HSConfig decks currently match the active archetype fixture matrix, source-depth closure index, source-backed strong closure doc, focused tests, and fresh local command outputs, and should the next work close existing rows or widen the matrix?",
+  "primary_sources": [
+    "Local file: C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "Local file: C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "Local file: C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "Local file: C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_depth_closure_index.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/src/hsconfig/matrix_visibility.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_matrix_visibility.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_matrix_current_truth.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_fixture_source_depth_closure.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_source_depth_closure_index.py",
+    "Local file: C:/Users/darbo/Documents/HSConfig/tests/test_strong_fixture_closure.py",
+    "Command output on 2026-07-08: `$env:PYTHONPATH='src'; python -m pytest tests/test_archetype_fixture_matrix.py tests/test_matrix_visibility.py tests/test_matrix_current_truth.py tests/test_fixture_source_depth_closure.py tests/test_source_depth_closure_index.py tests/test_strong_fixture_closure.py -q` -> `30 passed, 2 skipped in 14.69s`",
+    "Command output on 2026-07-08: fresh all-eleven fixture prepare audit using `tests.helpers.fixture_prepare.prepare_fixture_deck()` plus `hsconfig.source_depth_closure_index.build_source_depth_closure_index()` and `hsconfig.matrix_visibility.build_matrix_visibility()`"
+  ],
+  "confirmed_facts": [
+    "The live matrix defines exactly eleven representative decks: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.",
+    "The live matrix split is nine `core_source_backed_fixture` rows and two `source_informed_valid_fixture` rows.",
+    "The nine current `SOURCE_BACKED_STRONG` rows are ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH.",
+    "The two intentionally source-informed blocked rows are Kingslayer and Boarlock.",
+    "Fresh local prepare runs still produce `technical_status=VALID_PACKAGE`, `semantic_status=SOURCE_BACKED_STRONG`, `next_action=READY_TO_APPLY_OR_HANDOFF`, and `promotion_ready=true` for all nine core rows.",
+    "Fresh local prepare runs still produce `technical_status=VALID_PACKAGE`, `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`, `next_action=IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY`, and `promotion_ready=false` for Kingslayer and Boarlock.",
+    "Kingslayer remains blocked on `needs_mulligan_claim_for_quick_pick`; its first missing chain is `DEEP_014` Quick Pick with `first_missing_link=needs_mulligan_claim`, while the matrix still records `unsupported_conditions_present` as the blocking reason.",
+    "Boarlock remains blocked on `needs_mulligan_claim_for_fracking`; its first missing chain is `WW_092` Fracking with `first_missing_link=needs_mulligan_claim`, and the matrix still records `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, and `unsupported_conditions_present` as blocking reasons.",
+    "The fresh closure index summary is `total_decks=11`, `core_source_backed_fixture=9`, `source_informed_valid_fixture=2`, `promotion_ready=9`, and `promotion_blocked=2`.",
+    "The fresh matrix visibility summary is `total_decks=11`, `core_source_backed_fixture_count=9`, `source_informed_valid_fixture_count=2`, `decks_missing_visibility=[]`, and `normal_next_action=close_existing_source_informed_rows_before_adding_more_decks`.",
+    "The source-backed strong closure doc explicitly says not to widen the matrix to avoid Kingslayer or Boarlock. It says to close the first missing chain or preserve the row as a visible source-informed control.",
+    "The operator README explicitly says source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and it explicitly tells operators to close Kingslayer and Boarlock before widening the matrix."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The active matrix, matrix visibility helper, closure index helper, closure doc, operator guide, and focused tests all agree on the same current eleven-deck truth.",
+    "The matrix is already broad for HSConfig's pre-run scope and covers aggro burn, recruit board flood, pirate tempo, big cheat, discard, token board, hero power generation, mech scaling, weapon sequence, combo control, and pirate hero attack families.",
+    "Strong rows are not only documented; they are confirmed by fresh local prepare outputs and promotion reports, which makes the nine core rows operationally trustworthy.",
+    "Blocked rows are visible and explicit instead of vague. Kingslayer and Boarlock each expose a first missing chain, blocking reasons, and a closure decision rather than being misreported as strong.",
+    "Boarlock keeps the combo-control and `Combo.json` lane present in the proof set without overstating current closure depth."
+  ],
+  "gaps_or_risks": [
+    "The remaining closure work is concentrated in two rows, so widening the matrix now would add maintenance before resolving the known blocker chains already exposed by the current set.",
+    "Kingslayer is not blocked only by a missing mulligan sentence; the live matrix still records `unsupported_conditions_present`, so it is not ready for early promotion.",
+    "Boarlock carries the deepest residual blocker stack because the visible Fracking mulligan gap sits alongside runtime-surface, uncovered-card, generic-low-confidence, and unsupported-condition blockers.",
+    "Combo breadth is still concentrated in one row because Boarlock is the only current `Combo.json` representative and it is not yet strong.",
+    "The matrix still does not claim exhaustive proof for reactive control or discover-heavy chains, but the repo treats those as future widening triggers rather than evidence that the current eleven-deck audit boundary is wrong."
+  ],
+  "eleven_deck_implications": [
+    "ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH are the current stable `SOURCE_BACKED_STRONG` proof rows for HSConfig.",
+    "Kingslayer is intentionally source-informed blocked and should remain the visible weapon-sequence closure row until the Quick Pick mulligan claim and unsupported-condition blockers are resolved.",
+    "Boarlock is intentionally source-informed blocked and is the highest-priority closure row because it carries the combo-control lane plus the heaviest blocker stack.",
+    "The next work should close existing rows, not widen the matrix, because the live matrix already covers the current HSConfig scope and the unresolved work is deck-local closure rather than missing breadth.",
+    "A twelfth deck would only be justified after Kingslayer and Boarlock are resolved or deliberately stabilized and there is concrete evidence that a genuinely new pre-run family still lacks representation."
+  ],
+  "recommendation": "Keep the matrix at eleven decks for now. Close Kingslayer and Boarlock first by following their first missing chains and blocker stacks, preserve their visible source-informed truth until that work is done, and only consider widening the matrix after those two rows are resolved or intentionally stabilized and a genuinely new pre-run family remains uncovered.",
+  "confidence": "high",
+  "uncertain": []
+}

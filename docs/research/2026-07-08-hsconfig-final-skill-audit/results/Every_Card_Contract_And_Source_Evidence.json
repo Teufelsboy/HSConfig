@@ -1,0 +1,152 @@
+{
+  "audit_question": "Audit whether every card can receive a visible role, source-depth lane, guide/static/archetype claim, missing-link explanation, and operator recommendation without pretending low-confidence cards are optimized. Include implications for ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.",
+  "primary_sources": [
+    {
+      "type": "policy",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\guide-research-policy.md",
+      "evidence": "The active guide policy says every card must land in a visible lane, with preferred order card-specific guide claim, static semantics, archetype inference, then generic_low_confidence as the final visible fallback. It also defines the claim readiness lanes and says only guide_backed and source_backed_static_semantics can contribute to strong guide-depth readiness."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\guide_claim_builder.py",
+      "evidence": "build_guide_claim_bundle() gives each known deck card explicit claim coverage visibility through guide_backed, static_semantics_backfilled, or uncovered_low_confidence, and preserves unsupported claims instead of silently dropping them."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+      "evidence": "build_research_contract_bundle() iterates every deck card and emits card_role_map, mulligan_anchor_map, card_usage_expectations, known_bad_patterns, and coverage_summary rows, including generic_low_confidence and source_backed_static_semantics when stronger guide evidence is absent."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+      "evidence": "build_gameplan_contract() emits one contract record per deck card into cards and card_role_map, merges guide claims with research roles, preserves confidence and source_claim_ids, and falls back to archetype_inferred or generic_low_confidence instead of pretending every card is optimized."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\config_readiness.py",
+      "evidence": "build_config_readiness_report() assigns every card a readiness lane and a first_missing_link. The implemented lanes are runtime_emitted, mulligan_only, globalvalues_only, report_only_supported, archetype_inferred, and generic_low_confidence. The implemented missing-link reasons are none, needs_guide_claim, needs_runtime_surface, needs_mulligan_claim, needs_combo_sequence, needs_condition_lowering, and needs_mechanic_lowering."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\guide_source_depth.py",
+      "evidence": "build_guide_source_depth_report() makes source-depth truth visible with lowerable_claims, report_only_claims, blocked_runtime_claims, supported_cards, warnings_count, cards_needing_guide_claims, and cards_needing_runtime_surface. It only returns source_backed when lowerable claims exist and warnings are absent."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_gap_report.py",
+      "evidence": "build_source_claim_gap_report() turns first_missing_link into a per-card recommendation with recommended_source_claim_kind, next_action, priority_score, and a first_missing_chain summary so weak cards stay actionable rather than hidden."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+      "evidence": "build_operator_summary() promotes to SOURCE_BACKED_STRONG only when technical validity, source-backed depth, positive claim count, zero source-evidence warnings, zero generic-low-confidence cards, zero uncovered cards, zero claim conflicts, and zero readiness-gap counters all hold at once. Otherwise it preserves weaker semantic states such as VALID_BUT_NOT_GUIDE_STRONG or STATIC_SEMANTICS_USABLE."
+    },
+    {
+      "type": "fixture_matrix",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "The active eleven-deck matrix explicitly marks nine rows as core_source_backed_fixture and two rows, Kingslayer and Boarlock, as source_informed_valid_fixture with named first strongness gaps and blocking reasons."
+    },
+    {
+      "type": "operator_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-backed-strong-closure.md",
+      "evidence": "The current closure document says the two blocked rows must stay source-informed until their first missing chain closes, and it explicitly warns not to widen the matrix to avoid Kingslayer or Boarlock."
+    },
+    {
+      "type": "research_result",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\\results\\Kingslayer_Quick_Pick_Mulligan_Closure.json",
+      "evidence": "The current Kingslayer closure result records the exact missing card, DEEP_014 Quick Pick, and says no deck-specific source explicitly supports the target mulligan choice for the provided Kingslayer list, so promotion remains blocked rather than guessed."
+    },
+    {
+      "type": "research_result",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\\results\\Boarlock_Fracking_Mulligan_Closure.json",
+      "evidence": "The current Boarlock closure result records the exact missing card, WW_092 Fracking, and says no deck-specific source explicitly supports the target mulligan choice for the provided Boarlock list, so promotion remains blocked rather than guessed."
+    },
+    {
+      "type": "tests",
+      "command": "python -m pytest -q tests/test_research_contract.py tests/test_gameplan_contract.py tests/test_config_readiness.py tests/test_archetype_fixture_matrix.py tests/test_fixture_source_depth_closure.py tests/test_archetype_fixture_e2e.py tests/test_boarlock_closure_wave.py",
+      "evidence": "Focused verification passed on 2026-07-08 with 57 passed in 16.78s. This confirms the current every-card research contract, gameplan contract, readiness lanes, missing-link mapping, eleven-deck matrix truth, source-depth closure behavior, and the preserved Boarlock blocker stack."
+    }
+  ],
+  "confirmed_facts": [
+    "The repository has an explicit every-card visibility rule. It is documented in guide-research-policy.md and implemented across the claim bundle, research contract, gameplan contract, and per-card readiness reports.",
+    "Visible role assignment is already implemented for every deck card. research_contract.py and gameplan_contract.py both iterate the full deck and emit roles, semantic_families, confidence, and expected use for each card.",
+    "Visible claim-state assignment is already implemented. Cards can land in guide_backed, source_backed, source_backed_static_semantics, archetype_inferred, or generic_low_confidence instead of being silently omitted.",
+    "Visible source-depth or readiness lanes are already implemented. config_readiness.py assigns every card one of runtime_emitted, mulligan_only, globalvalues_only, report_only_supported, archetype_inferred, or generic_low_confidence.",
+    "Visible missing-link explanations are already implemented. Every non-ready card receives a first_missing_link, and source_claim_gap_report.py translates that into a concrete repair action rather than a vague warning.",
+    "Visible operator recommendation is already implemented. operator_summary.py converts card-level weakness into semantic_status, semantic_blockers, source_informed_apply_readiness, next_action, and apply_policy, so low-confidence cards do not masquerade as strong apply candidates.",
+    "Low-confidence cards are not presented as optimized. generic_low_confidence, uncovered cards, claim conflicts, unsupported conditions, and any remaining readiness-gap counters all block SOURCE_BACKED_STRONG.",
+    "Static semantics are treated as useful but bounded. source_backed_static_semantics can give a card a visible role and expectation, especially for cases like ShadowPriest hero-power transform, but static semantics are not treated as gameplay proof.",
+    "The eleven-deck matrix is honest about closure depth. Nine representative decks currently satisfy the strong fixture bar, while Kingslayer and Boarlock remain explicitly source-informed and blocked with named first gaps and blocking reasons.",
+    "The current blocker handling for Kingslayer and Boarlock is evidence-first rather than convenience-first. The repo preserves both rows as visible controls and tells the operator exactly what is missing instead of widening the deck matrix to hide the unresolved work."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The current design cleanly separates five questions per card: what the card is for, how strong the evidence is, what runtime surface exists, what the first missing link is, and what the operator should do next.",
+    "The repository prefers explicit weak states over silent failure. archetype_inferred, generic_low_confidence, report_only_supported, and source-informed blocked states keep uncertainty visible without overstating certainty.",
+    "The strong gate is strict and defensible. SOURCE_BACKED_STRONG needs zero low-confidence cards, zero uncovered cards, zero conflicts, zero readiness gaps, and zero source-evidence warnings, which prevents accidental over-promotion.",
+    "The operator reports are actionable rather than descriptive only. source_claim_gap_report.json and operator_summary.json expose a concrete next repair step for each blocked card or deck.",
+    "The representative matrix is broad enough to prove multiple mechanic families while still retaining two deliberately unresolved rows that demonstrate honest source-depth discipline."
+  ],
+  "gaps_or_risks": [
+    "Visible coverage is not the same as optimized coverage. A card can already be visible and auditable while still sitting in archetype_inferred, generic_low_confidence, or report_only_supported and therefore not yet deserving strong apply treatment.",
+    "Technical VALID_PACKAGE remains weaker than semantic strength. Operators still need semantic_status, semantic_blockers, and source_informed_apply_readiness rather than relying on technical validity alone.",
+    "The remaining source-informed rows are real closure risks if their blockers are ignored. Kingslayer still lacks a deck-specific Quick Pick mulligan claim, and Boarlock still carries a wider blocker stack around Fracking, runtime surface gaps, and low-confidence coverage.",
+    "Widening the fixture matrix before closing the existing source-informed rows would increase breadth faster than truth and would weaken the value of the every-card contract as an honest audit surface."
+  ],
+  "eleven_deck_implications": {
+    "total_representative_decks": 11,
+    "core_source_backed_fixture_count": 9,
+    "source_informed_valid_fixture_count": 2,
+    "matrix_rule": "Keep the current eleven-deck matrix narrow until the existing source-informed rows close. Do not add a twelfth deck to avoid Kingslayer or Boarlock.",
+    "per_deck": {
+      "ShadowPriest": {
+        "stage": "core_source_backed_fixture",
+        "implication": "ShadowPriest proves that a card can receive a visible strong role and expectation from static semantics when the card text deterministically changes the gameplan, especially the hero-power transform path around Darkbishop Benedictus."
+      },
+      "CtAPaladin": {
+        "stage": "core_source_backed_fixture",
+        "implication": "CtAPaladin proves the normal strong path for recruit, board flood, aura pressure, and per-card lowering without leaving hidden contract gaps."
+      },
+      "PirateRogue": {
+        "stage": "core_source_backed_fixture",
+        "implication": "PirateRogue proves that weapon-pressure and pirate-tempo cards can receive visible roles, strong claim states, and no unresolved first missing chain in the current matrix."
+      },
+      "BigShaman": {
+        "stage": "core_source_backed_fixture",
+        "implication": "BigShaman proves that source-faithful cheat, recruit, and deathrattle semantics can become explicit card-level expectations and strong runtime values rather than generic archetype guesses."
+      },
+      "Discolock": {
+        "stage": "core_source_backed_fixture",
+        "implication": "Discolock proves that discard payoff and hand-mutation cards can be source-backed strongly, which matters because those cards would otherwise be easy to overgeneralize."
+      },
+      "TreantDruid": {
+        "stage": "core_source_backed_fixture",
+        "implication": "TreantDruid proves that token-board and board-buff cards can stay explicit and strong across the full contract stack without pretending broader control semantics."
+      },
+      "ImbueMage": {
+        "stage": "core_source_backed_fixture",
+        "implication": "ImbueMage proves that hero-power and spell-generation cards can remain visible and strong even when the deck family could otherwise drift into vague posture-only claims."
+      },
+      "MechPala": {
+        "stage": "core_source_backed_fixture",
+        "implication": "MechPala proves that magnetic and mech-scaling cards can receive exact visible contract treatment, which is important for generated or exact-ID-sensitive rows."
+      },
+      "Kingslayer": {
+        "stage": "source_informed_valid_fixture",
+        "implication": "Kingslayer is the clean proof that the system does not fake certainty. The deck is still valid and visible, but Quick Pick remains blocked at needs_mulligan_claim, so the operator recommendation is to close the exact missing claim instead of promoting the row."
+      },
+      "Boarlock": {
+        "stage": "source_informed_valid_fixture",
+        "implication": "Boarlock is the strongest proof that weak cards stay explicit. Fracking remains the first missing chain, and the deck keeps a visible blocker stack around mulligan, runtime-surface, uncovered, and low-confidence gaps rather than being mislabeled as optimized."
+      },
+      "PirateDH": {
+        "stage": "core_source_backed_fixture",
+        "implication": "PirateDH proves the strong path for pirate-tempo and hero-attack cards and confirms that the matrix already covers another aggressive weapon-adjacent family without needing Kingslayer to be over-promoted."
+      }
+    },
+    "summary": "Across the active eleven-deck proof set, the repository already supports visible roles, claim states, readiness lanes, missing-link explanations, and operator recommendations for every represented card family. The nine core rows prove the strong happy path. Kingslayer and Boarlock prove the equally important truth path: incomplete cards stay visible, named, and actionable without being presented as optimized."
+  },
+  "recommendation": "Keep the current every-card contract and strong-gate logic unchanged. Do not relax generic_low_confidence, uncovered-card, or readiness-gap demotions. The next improvement should stay narrow: preserve the current reports, keep Kingslayer and Boarlock as visible source-informed controls, and close those exact missing chains before widening fixture breadth. That preserves honest per-card visibility without pretending unfinished cards are optimized.",
+  "confidence": "high",
+  "uncertain": []
+}
