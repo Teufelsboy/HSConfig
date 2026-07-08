@@ -20,6 +20,7 @@ from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
     run_research_deck_command,
     run_source_manifest_command,
+    prepare_research_output_dir,
 )
 from hsconfig.config_readiness import build_config_readiness_report
 from hsconfig.deck_identity import build_deck_identity
@@ -47,7 +48,6 @@ from hsconfig.research_contract import (
     write_research_contract_bundle_to_dir,
 )
 from hsconfig.input_loading import (
-    fixture_row_for,
     guide_documents_from_legacy_claims,
     load_cards,
     load_claims,
@@ -62,7 +62,6 @@ from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.source_evidence_verifier import verify_source_documents
-from hsconfig.source_research_manifest import build_source_research_manifest
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
@@ -104,30 +103,6 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_prepare_command(args: argparse.Namespace, *, expert_mode: bool) -> int:
     try:
         payload, code = _build(args) if expert_mode else _prepare(args)
-    except Exception as exc:
-        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
-    return _emit(payload, args.json, code)
-
-
-def _run_source_manifest_command(args: argparse.Namespace) -> int:
-    try:
-        payload, code = _source_manifest(args)
-    except Exception as exc:
-        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
-    return _emit(payload, args.json, code)
-
-
-def _run_draft_source_documents_command(args: argparse.Namespace) -> int:
-    try:
-        payload, code = _draft_source_documents(args)
-    except Exception as exc:
-        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
-    return _emit(payload, args.json, code)
-
-
-def _run_research_deck_command(args: argparse.Namespace) -> int:
-    try:
-        payload, code = _research_deck(args)
     except Exception as exc:
         payload, code = {"status": "failed", "errors": [str(exc)]}, 1
     return _emit(payload, args.json, code)
@@ -545,162 +520,6 @@ def _build(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         code,
     )
-
-
-def _source_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    out = Path(args.out)
-    _prepare_research_output_dir(out)
-
-    cards_payload = load_cards(
-        args.cards_json,
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        allow_placeholder=args.allow_placeholder,
-    )
-    deck_identity = build_deck_identity(
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        cards=cards_payload["cards"],
-        hero_dbf_id=cards_payload.get("hero_dbf_id"),
-        format=cards_payload.get("format"),
-        sideboards=cards_payload.get("sideboards", []),
-    )
-    candidate_archetypes = build_candidate_archetypes(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        card_roles={},
-        source_documents=[],
-    )
-    manifest = build_source_research_manifest(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        candidate_archetypes=candidate_archetypes,
-        fixture_row=fixture_row_for(args.deck_name),
-    )
-    output_path = out / "source_research_manifest.json"
-    write_json(output_path, manifest)
-    return (
-        {
-            "status": "OK",
-            "deck_name": args.deck_name,
-            "deck_slug": deck_identity["deck_slug"],
-            "written_files": [str(output_path)],
-        },
-        0,
-    )
-
-
-def _draft_source_documents(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    out = Path(args.out)
-    _prepare_research_output_dir(out)
-
-    cards_payload = load_cards(
-        args.cards_json,
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        allow_placeholder=args.allow_placeholder,
-    )
-    deck_identity = build_deck_identity(
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        cards=cards_payload["cards"],
-        hero_dbf_id=cards_payload.get("hero_dbf_id"),
-        format=cards_payload.get("format"),
-        sideboards=cards_payload.get("sideboards", []),
-    )
-    draft = draft_source_documents(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        evidence_rows=load_source_evidence(args.source_evidence_json),
-    )
-    source_documents_payload = {
-        "schema_version": 1,
-        "deck_name": args.deck_name,
-        "source_documents": draft["source_documents"],
-    }
-    report = {
-        "schema_version": 1,
-        "deck_name": args.deck_name,
-        "draft_summary": draft["draft_summary"],
-        "unresolved_mentions": draft["unresolved_mentions"],
-        "source_evidence_report": verify_source_documents(draft["source_documents"]),
-    }
-    source_path = out / "source_documents.json"
-    report_path = out / "source_document_draft_report.json"
-    write_json(source_path, source_documents_payload)
-    write_json(report_path, report)
-    return (
-        {
-            "status": "OK",
-            "deck_name": args.deck_name,
-            "deck_slug": deck_identity["deck_slug"],
-            "written_files": [str(source_path), str(report_path)],
-            "draft_summary": draft["draft_summary"],
-        },
-        0,
-    )
-
-
-def _research_deck(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    out = Path(args.out)
-    _prepare_research_output_dir(out)
-    args.skip_semantic_fetch = True
-
-    context = _build_preconfig_context(args)
-    deck_identity = context["deck_identity"]
-    write_json(out / "deck_fingerprint.json", context["deck_fingerprint"])
-    write_json(out / "candidate_archetypes.json", context["candidate_archetypes"])
-    write_json(out / "guide_sources.json", context["guide_sources_generated"])
-    write_json(out / "guide_builder_receipt.json", context["guide_builder_receipt"])
-    write_json(out / "identity_graph_report.json", context["identity_graph_report"])
-    write_json(out / "identity_gap_report.json", context["identity_gap_report"])
-    write_json(out / "source_evidence_verification_report.json", context["source_evidence_report"])
-    if context.get("source_document_draft_report") is not None:
-        report = context["source_document_draft_report"]
-        write_json(
-            out / "source_document_draft_report.json",
-            {
-                "schema_version": 1,
-                "deck_name": args.deck_name,
-                "draft_summary": report["draft_summary"],
-                "unresolved_mentions": report["unresolved_mentions"],
-                "source_evidence_report": verify_source_documents(report["source_documents"]),
-            },
-        )
-
-    written_files = [
-        str(path)
-        for path in sorted(out.glob("*.json"))
-    ]
-    return (
-        {
-            "status": "OK",
-            "deck_name": args.deck_name,
-            "deck_slug": deck_identity["deck_slug"],
-            "source_depth_status": context["guide_builder_receipt"]["source_depth_status"],
-            "written_files": written_files,
-        },
-        0,
-    )
-
-
-def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "deck_name": deck_name,
-        "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
-        "source_depth_status": "needs_more_research",
-        "sources": [],
-        "summary": {
-            "source_count": 0,
-            "claim_count": 0,
-            "stale_source_count": 0,
-            "downgraded_source_count": 0,
-            "static_card_semantics_used": False,
-        },
-    }
-
-
 def _generated_package_files(out: Path, deck_dir: Path, reports_dir: Path) -> list[str]:
     files = [
         *sorted(deck_dir.glob("*.json")),
@@ -718,7 +537,7 @@ def _reset_generated_package_dirs(deck_dir: Path, reports_dir: Path) -> None:
 
 def _research_contract(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
-    _prepare_research_output_dir(out)
+    prepare_research_output_dir(out)
 
     context = _build_preconfig_context(args)
     deck_identity = context["deck_identity"]
@@ -734,17 +553,6 @@ def _research_contract(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         },
         0,
     )
-
-
-def _prepare_research_output_dir(out: Path) -> None:
-    if not out.exists():
-        return
-    if not out.is_dir():
-        raise ValueError(f"Research output path exists and is not a directory: {out}")
-    children = list(out.iterdir())
-    if not children:
-        return
-    raise ValueError(f"Refusing to overwrite non-empty research output directory: {out}")
 
 
 def _read_plan_report(plan_dir: Path, filename: str, fallback: dict[str, Any]) -> dict[str, Any]:

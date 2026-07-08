@@ -824,3 +824,9 @@ def test_apply_command_module_no_longer_imports_hsconfig_cli():
     text = Path("src/hsconfig/commands/apply.py").read_text(encoding="utf-8")
 
     assert "from hsconfig.cli import" not in text
+
+
+def test_source_workflow_command_module_no_longer_imports_hsconfig_cli():
+    text = Path("src/hsconfig/commands/source_workflow.py").read_text(encoding="utf-8")
+
+    assert "from hsconfig.cli import" not in text
