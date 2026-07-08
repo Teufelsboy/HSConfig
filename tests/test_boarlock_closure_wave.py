@@ -106,6 +106,7 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
         "card_id": "WW_092",
         "name": "Fracking",
         "first_missing_link": "needs_mulligan_claim",
+        "source_depth_lane": "mulligan_claim_gap",
         "recommended_source_claim_kind": "mulligan_keep",
         "next_action": "add_mulligan_keep_or_discard_claim",
         "priority_score": 85,
