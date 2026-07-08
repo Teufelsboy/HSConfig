@@ -19,6 +19,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "run hsconfig validate --package <package> --json and fix reported JSON/package errors",
             "safe_to_apply": False,
             "requires_expert_flag": False,
+            **_runtime_apply_fields(summary),
         }
 
     if semantic_status == "SOURCE_BACKED_STRONG" and apply_policy == "ALLOWED":
@@ -29,6 +30,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
             "safe_to_apply": True,
             "requires_expert_flag": False,
+            **_runtime_apply_fields(summary),
         }
 
     if (
@@ -49,6 +51,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             ),
             "safe_to_apply": True,
             "requires_expert_flag": True,
+            **_runtime_apply_fields(summary),
         }
 
     if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
@@ -60,6 +63,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "update source_documents.json, rerun hsconfig research-deck, then rerun hsconfig prepare",
             "safe_to_apply": False,
             "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
+            **_runtime_apply_fields(summary),
         }
 
     return {
@@ -69,6 +73,37 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         "normal_next_command": "read reports/operator_summary.json and follow next_action",
         "safe_to_apply": False,
         "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
+        **_runtime_apply_fields(summary),
+    }
+
+
+def _runtime_apply_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    next_action = str(summary.get("next_action", ""))
+    apply_policy = str(summary.get("apply_policy", ""))
+    source_informed_apply_readiness = summary.get("source_informed_apply_readiness", {})
+    if not isinstance(source_informed_apply_readiness, dict):
+        source_informed_apply_readiness = {}
+
+    if next_action == "READY_TO_APPLY_OR_HANDOFF" and apply_policy == "ALLOWED":
+        return {
+            "runtime_apply_mode": "normal_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+        }
+    if (
+        next_action == "SOURCE_INFORMED_APPLY_READY"
+        and apply_policy == "ALLOWED_SOURCE_INFORMED"
+        and source_informed_apply_readiness.get("status") == "ready"
+    ):
+        return {
+            "runtime_apply_mode": "source_informed_apply_requires_flag",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": "--allow-source-informed",
+        }
+    return {
+        "runtime_apply_mode": "blocked",
+        "runtime_apply_allowed": False,
+        "runtime_apply_requires_flag": None,
     }
 
 

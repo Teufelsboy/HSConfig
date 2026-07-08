@@ -53,6 +53,7 @@ def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
 
     assert gate == {
         "status": "allowed",
+        "allowed": True,
         "operator_summary_path": str(package / "reports" / "operator_summary.json"),
         "mode": "source_backed_strong",
         "reasons": [],
@@ -160,6 +161,7 @@ def test_apply_gate_allows_source_informed_apply_ready_only_with_flag(tmp_path: 
     assert blocked["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
     assert allowed == {
         "status": "allowed",
+        "allowed": True,
         "operator_summary_path": str(package / "reports" / "operator_summary.json"),
         "mode": "source_informed_apply_ready",
         "reasons": [
@@ -203,6 +205,34 @@ def test_apply_gate_blocks_source_informed_policy_when_readiness_is_not_ready(tm
 
     assert gate["status"] == "blocked"
     assert gate["mode"] == "blocked"
+    assert gate["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
+
+
+def test_apply_gate_ignores_forged_runtime_apply_allowed_field(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "normal_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 3}],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
     assert gate["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
 
 

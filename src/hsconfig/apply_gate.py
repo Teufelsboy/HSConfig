@@ -294,6 +294,7 @@ def _allowed(
 ) -> dict[str, Any]:
     return {
         "status": "allowed",
+        "allowed": True,
         "operator_summary_path": str(operator_path),
         "mode": mode,
         "reasons": reasons,
@@ -303,6 +304,7 @@ def _allowed(
 def _blocked(operator_path: Path, *reasons: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "blocked",
+        "allowed": False,
         "operator_summary_path": str(operator_path),
         "mode": "blocked",
         "reasons": list(reasons),

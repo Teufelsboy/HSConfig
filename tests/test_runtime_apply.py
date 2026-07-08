@@ -138,6 +138,38 @@ def test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summar
     assert not (runtime / "CustomConfig" / "deck").exists()
 
 
+def test_apply_package_rejects_forged_runtime_apply_fields_in_allowed_gate(
+    tmp_path: Path,
+):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+        apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate={
+                "status": "allowed",
+                "allowed": True,
+                "operator_summary_path": str(
+                    package / "reports" / "operator_summary.json"
+                ),
+                "mode": "source_backed_strong",
+                "reasons": [],
+                "runtime_apply_mode": "normal_apply",
+                "runtime_apply_allowed": True,
+                "runtime_apply_requires_flag": None,
+            },
+        )
+
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
 def test_apply_package_direct_source_informed_requires_explicit_flag(tmp_path: Path):
     package = _complete_package(
         tmp_path,
