@@ -94,3 +94,35 @@ def test_source_builder_lite_research_results_validate():
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "Validation passed: 5/5" in completed.stdout
+
+
+def test_latest_guarded_apply_matrix_audit_is_curated_markdown():
+    path = Path("docs/research/2026-07-08-hsconfig-guarded-apply-matrix-audit.md")
+    text = path.read_text(encoding="utf-8")
+
+    assert "Guarded Apply" in text
+    assert "Matrix Governance" in text
+    assert "VisionAI Registry Micro-Wave" in text
+    assert "Research artifacts are evidence, not operator instructions." in text
+
+
+def test_new_research_fields_are_not_empty_contracts():
+    research_dirs = [
+        path
+        for path in Path("docs/research").iterdir()
+        if path.is_dir() and path.name >= "2026-07-08-hsconfig-guarded"
+    ]
+    for folder in research_dirs:
+        fields = folder / "fields.yaml"
+        if not fields.exists():
+            continue
+        payload = yaml.safe_load(fields.read_text(encoding="utf-8"))
+        categories = payload.get("field_categories", [])
+        names = [
+            field["name"]
+            for category in categories
+            for field in category.get("fields", [])
+        ]
+        if not names:
+            names = list(payload.get("fields", {}))
+        assert names, f"{fields} must define required research fields"
