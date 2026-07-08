@@ -139,6 +139,13 @@ def build_operator_summary(
         primary_blockers=primary_blockers,
         source_informed_apply_ready=source_informed_apply_readiness["status"] == "ready",
     )
+    runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = (
+        _runtime_apply_contract(
+            next_action=next_action,
+            apply_policy=apply_policy,
+            source_informed_apply_readiness=source_informed_apply_readiness,
+        )
+    )
     summary = {
         "schema_version": 1,
         "deck": {
@@ -149,6 +156,9 @@ def build_operator_summary(
         "semantic_status": semantic_status,
         "next_action": next_action,
         "apply_policy": apply_policy,
+        "runtime_apply_mode": runtime_apply_mode,
+        "runtime_apply_allowed": runtime_apply_allowed,
+        "runtime_apply_requires_flag": runtime_apply_requires_flag,
         "primary_blockers": primary_blockers,
         "warnings": warnings,
         "guide_strength_summary": guide_strength_summary,
@@ -718,3 +728,20 @@ def _next_action_and_policy(
     if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
         return "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY", "ALLOWED_WITH_WARNINGS"
     return "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG", "ALLOWED_WITH_WARNINGS"
+
+
+def _runtime_apply_contract(
+    *,
+    next_action: str,
+    apply_policy: str,
+    source_informed_apply_readiness: dict[str, Any],
+) -> tuple[str, bool, str | None]:
+    if next_action == "READY_TO_APPLY_OR_HANDOFF" and apply_policy == "ALLOWED":
+        return "normal_apply", True, None
+    if (
+        next_action == "SOURCE_INFORMED_APPLY_READY"
+        and apply_policy == "ALLOWED_SOURCE_INFORMED"
+        and source_informed_apply_readiness.get("status") == "ready"
+    ):
+        return "source_informed_apply_requires_flag", True, "--allow-source-informed"
+    return "blocked", False, None
