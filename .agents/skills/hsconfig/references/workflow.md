@@ -24,6 +24,7 @@ Use `hsconfig prepare --guide-sources-json ...` for normal package creation. It 
 Important outputs include `operator_summary.json`, `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_builder_receipt.json`, `candidate_archetypes.json`, `identity_graph_report.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
 
 For source-informed packages, open `source_claim_gap_report.json` first to see the card-level missing link, then open `strong_promotion_report.json` for the promotion verdict.
+`source_depth_lane` is the readable alias for the first missing source-to-runtime link in those source-informed reports. It does not grant apply permission; `reports/operator_summary.json` remains the single operator gate.
 
 ## Readiness Interpretation
 
@@ -49,6 +50,7 @@ Use fake apply for receipt-bound previews before any requested runtime write.
 
 `core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks.
+Current closure order is Boarlock first, Kingslayer second. Boarlock stays first because it is the only representative `Combo.json` control row. Kingslayer follows because its remaining gap is narrower and tied to `DEEP_014` / `Quick Pick`.
 
 ## Diagnostic And Expert Paths
 

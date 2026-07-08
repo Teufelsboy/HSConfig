@@ -47,6 +47,8 @@ Fixture stage meaning:
 - `future_fixture`: reserved for examples outside the current proof set.
 
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks.
+`source_depth_lane` is the readable alias for that first missing source-to-runtime link. It helps operators read closure depth, but it is not an apply permission; keep `reports/operator_summary.json` as the single operator gate.
+Current closure order is Boarlock first, Kingslayer second. Boarlock stays first because it is the only representative `Combo.json` control row. Kingslayer follows because its remaining gap is narrower and tied to `DEEP_014` / `Quick Pick`.
 
 Rules:
 
