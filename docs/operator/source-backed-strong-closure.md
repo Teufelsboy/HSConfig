@@ -43,13 +43,13 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | TreantDruid | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | ImbueMage | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
-| Kingslayer | `source_informed_valid_fixture` | First missing chain stays explicit: `DEEP_014` `Quick Pick` still needs a mulligan keep/discard claim. |
-| Boarlock | `source_informed_valid_fixture` | First missing chain stays explicit: `WW_092` `Fracking` still needs a mulligan keep/discard claim. |
+| Kingslayer | `source_informed_valid_fixture` | Promotion stays blocked: the exact provided Kingslayer deck page publicly lists `Quick Pick` but does not expose an explicit card-level mulligan instruction. The checked Kingsbane-specific mulligan post is for a different list without `Quick Pick`, and the only explicit `Quick Pick` mulligan statement found was for adjacent weapon rogue rather than the provided deck. |
+| Boarlock | `source_informed_valid_fixture` | Promotion stays blocked: the exact provided Boarlock deck page publicly lists `Fracking` but does not expose an explicit card-level mulligan instruction. The Boarlock-specific mulligan thread checked discusses combo pieces, early clears, and draw in general but never explicitly says to keep or discard `Fracking`, and the only explicit `Fracking` mulligan statement found was for Sludgelock. |
 | PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
 ## Current Blocker Snapshot
 
-Fresh local prepare runs for the Task 7 matrix state show:
+Fresh local prepare runs for the Task 5 matrix state show:
 
 | Deck | Semantic status | First missing chain | Next action |
 |---|---|---|---|
