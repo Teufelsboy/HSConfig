@@ -45,20 +45,34 @@ def build_parser() -> argparse.ArgumentParser:
     prepare = subparsers.add_parser(
         "prepare",
         help="normal package creation path",
-        description="Normal package creation path.",
+        description=(
+            "Normal package creation path. Use deck identity, source-backed guide "
+            "documents, and a runtime root to compile a pre-run CustomConfig package."
+        ),
     )
-    prepare.add_argument("--deck-name", required=True)
-    prepare.add_argument("--deck-code", required=True)
-    prepare.add_argument("--out", required=True)
-    prepare.add_argument("--runtime-root", required=True)
-    prepare.add_argument("--cards-json")
-    prepare.add_argument("--claims-json")
-    prepare.add_argument("--guide-sources-json")
-    prepare.add_argument("--source-documents-json")
-    prepare.add_argument("--auto-research-fallback", action=argparse.BooleanOptionalAction, default=True)
-    prepare.add_argument("--plan-reports-dir")
-    prepare.add_argument("--allow-placeholder", action="store_true")
-    prepare.add_argument("--json", action="store_true")
+    prepare_normal = prepare.add_argument_group("normal required inputs")
+    prepare_normal.add_argument("--deck-name", required=True)
+    prepare_normal.add_argument("--deck-code", required=True)
+    prepare_normal.add_argument("--out", required=True)
+    prepare_normal.add_argument("--runtime-root", required=True)
+
+    prepare_source = prepare.add_argument_group("normal source inputs")
+    prepare_source.add_argument("--guide-sources-json")
+    prepare_source.add_argument("--source-documents-json")
+
+    prepare_execution = prepare.add_argument_group("execution modifiers")
+    prepare_execution.add_argument(
+        "--auto-research-fallback",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    prepare_execution.add_argument("--json", action="store_true")
+
+    prepare_expert = prepare.add_argument_group("expert/fixture inputs")
+    prepare_expert.add_argument("--cards-json")
+    prepare_expert.add_argument("--claims-json")
+    prepare_expert.add_argument("--plan-reports-dir")
+    prepare_expert.add_argument("--allow-placeholder", action="store_true")
 
     research_contract = subparsers.add_parser("research-contract")
     research_contract.add_argument("--deck-name", required=True)

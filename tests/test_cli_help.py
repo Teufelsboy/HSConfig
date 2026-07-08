@@ -42,6 +42,21 @@ def test_prepare_help_is_marked_normal_path(capsys):
     assert "Normal package creation path" in help_text
 
 
+def test_prepare_help_groups_normal_inputs_before_expert_fixture_inputs(capsys):
+    help_text = _subcommand_help("prepare", capsys)
+
+    assert "normal required inputs" in help_text.lower()
+    assert "expert/fixture inputs" in help_text.lower()
+    assert help_text.lower().index("normal required inputs") < help_text.lower().index(
+        "expert/fixture inputs"
+    )
+    assert "--deck-name" in help_text
+    assert "--deck-code" in help_text
+    assert "--guide-sources-json" in help_text
+    assert "--cards-json" in help_text
+    assert "--claims-json" in help_text
+
+
 def test_build_help_is_marked_expert_path(capsys):
     help_text = _subcommand_help("build", capsys)
 

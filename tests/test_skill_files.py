@@ -213,6 +213,19 @@ def test_skill_docs_describe_cardid_runtime_block_lowering():
     assert "Concede.json" in card_policy
 
 
+def test_skill_docs_use_per_card_cardid_json_wording():
+    docs = {
+        "docs/operator/README.md": "`per-card <CARDID>.json`",
+        ".agents/skills/hsconfig/SKILL.md": "`per-card <CARDID>.json`",
+        ".agents/skills/hsconfig/references/workflow.md": "`per-card <CARDID>.json`",
+        ".agents/skills/hsconfig/references/card-behavior-policy.md": "`per-card <CARDID>.json`",
+    }
+
+    for relative_path, phrase in docs.items():
+        text = Path(relative_path).read_text(encoding="utf-8")
+        assert phrase in text
+
+
 def test_guide_research_policy_documents_structured_source_flow():
     skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
         encoding="utf-8"

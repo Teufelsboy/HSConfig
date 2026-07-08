@@ -2,7 +2,7 @@
 
 Every deck card must be represented in the gameplan contract.
 
-Emit `<CARDID>.json` when documented VisionAI syntax can express a guide-backed
+Emit `per-card <CARDID>.json` when documented VisionAI syntax can express a guide-backed
 behavior, priority, target, discover, choice, attack, hero-power, overkill,
 end-turn, upgrade, or timing rule.
 
@@ -33,7 +33,7 @@ CardID behavior block support is source-backed and block-specific:
 - `tech_slot` and `replacement_option` claims are operator context and do not become CardID runtime rows by default.
 
 `meaningful_runtime_surface=true` means the row expresses specific guide-backed
-runtime behavior. Generic generated CardID fallback files stay visible, but they
+runtime behavior. Generic generated `per-card <CARDID>.json` fallback files stay visible, but they
 do not prove deep card-specific lowering.
 
 If a claim cannot be lowered safely, keep it in

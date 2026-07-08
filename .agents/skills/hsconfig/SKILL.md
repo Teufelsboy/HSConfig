@@ -1,6 +1,6 @@
 ---
 name: hsconfig
-description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages from a Hearthstone deck name and deck code. Use when Codex must build or validate direct Mulligan, GlobalValues, per-card CardID, or Combo runtime config before games are played.
+description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages from a Hearthstone deck name and deck code. Use when Codex must build or validate direct Mulligan, GlobalValues, `per-card <CARDID>.json`, or Combo runtime config before games are played.
 ---
 
 # HSConfig
