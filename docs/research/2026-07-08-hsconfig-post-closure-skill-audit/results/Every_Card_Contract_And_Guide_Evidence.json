@@ -1,0 +1,99 @@
+{
+  "audit_question": "Does the current HSConfig repository ensure that every deck card receives a visible role, a source-depth or readiness lane, a guide/static/archetype-backed claim state, a first missing-link explanation, and an operator-facing recommendation, while preventing low-confidence cards from being presented as optimized or strong?",
+  "primary_sources": [
+    {
+      "type": "design_spec",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\superpowers\\specs\\2026-07-05-hsconfig-design.md",
+      "evidence": "The current design spec says every decoded card must receive at least one visible outcome, no card may disappear silently, gameplan_contract.json must include per-card roles and usage expectations, every deck card must appear in gameplan_contract.json, and suppressed guide claims must remain visible."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+      "evidence": "build_gameplan_contract() iterates the full decoded deck, emits one card record per card into cards and card_role_map, merges guide claims and research roles, and falls back to role deck_card plus coverage states such as archetype_inferred or generic_low_confidence when stronger evidence is absent."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\guide_claim_builder.py",
+      "evidence": "build_guide_claim_bundle() gives each card explicit coverage visibility through guide_backed, static_semantics_backfilled, or uncovered_low_confidence and preserves unsupported claims separately instead of silently dropping them."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\config_readiness.py",
+      "evidence": "build_config_readiness_report() assigns every card a readiness lane and first_missing_link, with explicit weak lanes such as archetype_inferred and generic_low_confidence and explicit gap reasons such as needs_guide_claim, needs_runtime_surface, needs_mulligan_claim, needs_combo_sequence, needs_condition_lowering, and needs_mechanic_lowering."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_gap_report.py",
+      "evidence": "build_source_claim_gap_report() turns each missing-link state into a per-card recommendation, including recommended_source_claim_kind, next_action, priority_score, and a first_missing_chain summary for the next repair target."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\guide_source_depth.py",
+      "evidence": "build_guide_source_depth_report() keeps source-depth truth visible by counting lowerable claims, report-only claims, blocked runtime claims, supported cards, cards needing guide claims, cards needing runtime surfaces, and warnings for low-confidence or conflicting coverage."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+      "evidence": "build_operator_summary() only promotes packages to SOURCE_BACKED_STRONG when there are zero generic-low-confidence cards, zero uncovered cards, zero claim conflicts, zero readiness gaps, and zero source-evidence warnings; otherwise it demotes to VALID_BUT_NOT_GUIDE_STRONG, STATIC_SEMANTICS_USABLE, or NEEDS_MORE_RESEARCH."
+    },
+    {
+      "type": "fixture_matrix",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "The live eleven-deck matrix explicitly distinguishes nine core source-backed rows from two source-informed blocked rows and preserves known coverage limits instead of pretending all represented mechanics are already strong."
+    },
+    {
+      "type": "tests",
+      "command": "pytest tests/test_source_claim_gap_report.py tests/test_operator_summary.py tests/test_shadowpriest_depth_e2e.py tests/test_archetype_fixture_matrix.py -q",
+      "evidence": "Focused verification passed on 2026-07-08 with 39 passed in 16.18s, confirming the current per-card gap explanations, semantic status demotion rules, ShadowPriest depth reporting behavior, and eleven-deck matrix truth."
+    }
+  ],
+  "confirmed_facts": [
+    "The active design and implementation both enforce the every-card visibility rule. The design spec says no decoded card may disappear silently, and build_gameplan_contract() iterates the full deck and emits one card record per deck card.",
+    "Visible role assignment is already implemented. For each card, gameplan_contract.py merges mechanic families, semantic families, guide-backed claim cues, and research roles, then falls back to deck_card when nothing stronger is available.",
+    "Visible source-backed versus weak-evidence states are already implemented. guide_claim_builder.py marks each card as guide_backed, static_semantics_backfilled, or uncovered_low_confidence, and gameplan_contract.py further distinguishes guide_backed, source_backed, source_backed_static_semantics, archetype_inferred, and generic_low_confidence coverage states.",
+    "Visible source-depth or readiness lanes are already implemented. config_readiness.py assigns every card one of runtime_emitted, mulligan_only, globalvalues_only, report_only_supported, archetype_inferred, or generic_low_confidence.",
+    "Visible missing-link explanations are already implemented. config_readiness.py assigns first_missing_link per card, and source_claim_gap_report.py converts that into recommended_source_claim_kind, next_action, and first_missing_chain repair guidance.",
+    "Visible operator recommendation is already implemented. operator_summary.py and operator_guidance.py translate weak or blocked card states into package-level next_action, apply_policy, semantic_blockers, and a next report to open, instead of letting operators infer the repair path themselves.",
+    "Low-confidence cards are not presented as optimized. uncovered_low_confidence, generic_low_confidence, report_only_supported, claim conflicts, and remaining readiness gaps all prevent SOURCE_BACKED_STRONG and therefore prevent normal strong apply claims.",
+    "The current implementation keeps weak evidence visible without polluting runtime JSON. Research metadata, claim IDs, confidence, unsupported-claim details, and gap analysis remain in reports rather than being injected into emitted CustomConfig files.",
+    "The eleven-deck matrix reflects this truth operationally: nine representative decks are already core source-backed rows, while Kingslayer and Boarlock remain explicitly source-informed blocked rows with named first gaps and blocking reasons instead of being misrepresented as strong."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "Every-card coverage is implemented through multiple connected layers that each answer a distinct question: role assignment, coverage status, readiness lane, first missing link, source-depth truth, and operator next action.",
+    "Weak evidence remains explicit rather than hidden. The repo prefers visible archetype_inferred or generic_low_confidence states over omission, which is the right behavior for an audit-oriented pre-run skill.",
+    "The strong gate is genuinely strict. SOURCE_BACKED_STRONG requires technical validity plus zero uncovered cards, zero generic-low-confidence cards, zero conflicts, zero readiness gaps, and zero source-evidence warnings.",
+    "The operator story is actionable. source_claim_gap_report.json and operator_summary.json give a concrete next repair path instead of only stating that a deck is not yet strong.",
+    "The matrix keeps breadth honest. Kingslayer and Boarlock still contribute representative mechanic coverage, but they remain visibly blocked rather than being promoted prematurely."
+  ],
+  "gaps_or_risks": [
+    "Technical VALID_PACKAGE is still weaker than full every-card strong closure. Operators must continue to read semantic_status and semantic_blockers, not validation success alone, when judging whether low-confidence or weakly surfaced cards remain.",
+    "Visible coverage is not equal to strong closure. A card can already be visible in archetype_inferred or report_only_supported while still needing source claims, runtime lowering, mulligan specificity, combo sequencing, or mechanic lowering before it is genuinely strong.",
+    "The current ShadowPriest depth fixture deliberately proves that honest visibility can still coexist with unresolved depth gaps: the focused test expects cards_needing_runtime_surface greater than zero and cards_needing_mechanic_lowering greater than zero while the package stays technically valid.",
+    "Kingslayer and Boarlock remain the clearest residual proof that the repo does not pretend universal optimization. They are visible and actionable, but not yet strong, and widening the matrix before closing those rows would add breadth faster than truth."
+  ],
+  "eleven_deck_implications": {
+    "total_representative_decks": 11,
+    "core_source_backed_fixture_count": 9,
+    "source_informed_valid_fixture_count": 2,
+    "core_source_backed_fixture_decks": [
+      "ShadowPriest",
+      "CtAPaladin",
+      "PirateRogue",
+      "BigShaman",
+      "Discolock",
+      "TreantDruid",
+      "ImbueMage",
+      "MechPala",
+      "PirateDH"
+    ],
+    "source_informed_valid_fixture_decks": [
+      "Kingslayer",
+      "Boarlock"
+    ],
+    "summary": "Across the current eleven-deck proof set, the repository already supports visible per-card roles, coverage states, readiness lanes, missing-link explanations, and operator recommendations without overstating low-confidence cards. The nine core rows show the happy path. Kingslayer remains the visible weapon-sequence closure row, and Boarlock remains the visible combo-control closure row. Both blocked rows strengthen this audit because they prove the system exposes weak or incomplete per-card truth instead of collapsing it into fake strongness."
+  },
+  "recommendation": "Keep the current every-card contract unchanged. Do not relax the low-confidence and readiness-gap demotion logic. The next improvement should be narrow and operator-facing: preserve operator_summary.json as the decisive gate, preserve source_claim_gap_report.json as the per-card repair map, and close Kingslayer and Boarlock before adding more fixture breadth. That keeps every-card visibility strong without pretending unfinished cards are optimized.",
+  "confidence": "high",
+  "uncertain": []
+}

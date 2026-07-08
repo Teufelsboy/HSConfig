@@ -1,0 +1,49 @@
+topic: hsconfig-post-closure-skill-audit-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-post-closure-skill-audit\results
+  batch_size: 6
+  items_per_agent: 1
+items:
+  - name: Lean Boundary And Normal Operator UX
+    category: Skill architecture
+    description: >
+      Audit whether the current HSConfig skill remains narrow, simple, and
+      operator-friendly after the latest closure and polish work. Check the root
+      README, docs/operator/README.md, installed skill, CLI help, report
+      ownership, and whether replay, winrate, HSTuner, Presume, and Concede
+      concerns are excluded from the normal path.
+  - name: Eleven Deck Source Depth Matrix Truth
+    category: Fixture breadth
+    description: >
+      Audit the eleven representative decks from the user prompt against the
+      active archetype fixture matrix, source-depth closure index, matrix tests,
+      and operator reports. Verify which decks are source-backed strong, which
+      are intentionally source-informed blocked, and whether the matrix should
+      be widened or closed first.
+  - name: Runtime Surface Competence
+    category: HearthRanger VisionAI
+    description: >
+      Audit whether HSConfig covers the right pre-run VisionAI runtime surfaces:
+      GlobalValues.json, Mulligan.json, per-card CardID JSON, and exact
+      Combo.json only when justified. Check whether CardID behavior, mulligan,
+      combo, hero power, targeting, weapon, discover, and GlobalValues posture
+      are visible without unsupported syntax.
+  - name: Every Card Contract And Guide Evidence
+    category: Guide research
+    description: >
+      Audit whether every card can receive a visible role, source-depth lane,
+      guide/static/archetype claim, missing-link explanation, and operator
+      recommendation without pretending low-confidence cards are optimized.
+  - name: Apply Gate And Source Informed Safety
+    category: Runtime handoff
+    description: >
+      Audit whether source-backed apply, source-informed apply, hard blockers,
+      operator_summary.json, report ownership, and runtime write boundaries are
+      aligned and not too conservative for a pre-run direct-config skill.
+  - name: Maintainability Test Confidence And Repo Size
+    category: Repo quality
+    description: >
+      Audit whether the implementation is still maintainable and efficient:
+      command handler boundaries, tests, research archive noise, skill sync,
+      dependency footprint, and whether further refactoring would reduce or add
+      complexity.

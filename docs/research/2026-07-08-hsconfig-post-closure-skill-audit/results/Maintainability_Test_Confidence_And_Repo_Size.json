@@ -1,0 +1,68 @@
+{
+  "audit_question": "Does the current HSConfig implementation remain maintainable and efficient after the closure work, especially around command handler boundaries, tests, research archive noise, skill synchronization, dependency footprint, and whether more refactoring would reduce or add complexity?",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\AGENTS.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\pyproject.toml",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli_parser.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\prepare.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\source_workflow.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\scripts\\sync_installed_skill.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_cli.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_cli_help.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_docs_active_path.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_files.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_skill_sync.py",
+    "Command: python -m pytest -q -> 494 passed, 2 skipped in 74.50s (0:01:14)",
+    "Command: python scripts\\sync_installed_skill.py --check -> HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig",
+    "Command: repo metrics over src/tests/docs -> src 60 Python files and 10,289 lines; tests 71 Python files and 14,040 lines; docs 111 files and 34,381 lines; docs/research 82 files and 5,208 lines",
+    "Command: source size distribution -> 30 source modules under 100 lines, 20 between 100 and 299 lines, 10 at 300+ lines; median 100 lines; mean 171.5 lines",
+    "Command: cli AST scan -> src/hsconfig/cli.py is 1,106 lines, defines 39 top-level functions, and imports 40 internal hsconfig modules",
+    "Command: research archive scan -> 12 research folders and 59 result JSON files under docs/research",
+    "Command: git ls-files docs -> 107 tracked docs files"
+  ],
+  "confirmed_facts": [
+    "HSConfig still keeps the correct product boundary: it is a pre-run CustomConfig generator and the live docs explicitly exclude replay parsing, winrate inspection, runtime log analysis, candidate promotion, and post-run tuning.",
+    "The dependency footprint is still lean. pyproject.toml declares one runtime dependency, hearthstone>=9.0.0, and pytest as the only declared development dependency.",
+    "The installed hsconfig skill is currently synchronized with the repo copy, and the repo contains both a sync script and dedicated drift tests.",
+    "The command surface is public-facingly separated, but the separation is not deep yet: commands/prepare.py, commands/apply.py, and commands/source_workflow.py are thin forwarders back into private helpers inside hsconfig.cli.",
+    "The main orchestration hotspot is hsconfig.cli. It is 1,106 lines long, defines 39 top-level functions, and imports 40 internal hsconfig modules.",
+    "The rest of the codebase is not uniformly oversized. Of 60 source Python files, 30 are under 100 lines, the median module size is 100 lines, and the mean module size is 171.5 lines.",
+    "There are still several large domain modules that increase local reading cost: operator_summary.py is 610 lines, gameplan_contract.py 572, source_document_builder.py 566, guide_claim_builder.py 453, and card_behavior_surface_router.py 424.",
+    "Test confidence is strong in current live evidence. The full suite passed with 494 passed and 2 skipped, and the test tree covers CLI behavior, documentation boundaries, matrix behavior, end-to-end flows, and skill synchronization.",
+    "Documentation volume is now larger than the implementation surface. docs contains 111 files and 34,381 lines, while src contains 60 Python files and 10,289 lines.",
+    "Research history is the main documentation noise source. docs/research contains 12 research folders, 82 files, and 59 result JSON files, while docs/research/README.md explicitly warns that historical research can be superseded and should not be used as current operator authority.",
+    "The representative proof set remains explicitly capped at 11 decks in docs/operator/archetype-fixture-matrix.json, with Kingslayer and Boarlock still called out as source-informed rows to close before widening the matrix."
+  ],
+  "current_repo_alignment": "partially_aligned",
+  "strengths": [
+    "Scope control is still good. The repo remains narrowly targeted at pre-run HSConfig generation instead of drifting into HSTuner responsibilities.",
+    "Dependency discipline is excellent. The runtime package surface is very small, which keeps install, review, and long-term maintenance cost low.",
+    "Most source modules are still short enough to reason about in isolation, so the codebase is not broadly monolithic even though a few files have grown large.",
+    "Test confidence is high because the current suite passes live and includes both behavior-level and documentation-boundary checks, not only small unit tests.",
+    "Skill maintenance is operationalized rather than tribal. There is a concrete sync script, a documented check command, and regression tests for skill file presence and drift.",
+    "The eleven-deck matrix still acts as a scope governor, which helps keep the repo focused on a bounded proof set instead of open-ended archetype expansion."
+  ],
+  "gaps_or_risks": [
+    "The repo is still lean in purpose, but not lean in orchestration. hsconfig.cli has become the main coupling hub and is the clearest maintainability pressure point.",
+    "The current command-handler split is only partial. Public command modules exist, but they mostly redirect into the same large orchestration file, so the boundary does not yet reduce much cognitive load.",
+    "Several large report and contract modules are approaching the point where additional feature work could make local changes harder to reason about and test.",
+    "Research archive growth is becoming a usability cost. Historical audit output now occupies a large share of the docs tree, which raises search noise and makes the repo feel heavier than the runtime product actually is.",
+    "Test confidence is strong from breadth and current passing status, but the evidence collected here does not include a current coverage percentage target or branch coverage budget.",
+    "Further broad refactoring across all domain modules would probably add churn faster than it removes complexity, because much of the lower-level code is still reasonably modular."
+  ],
+  "eleven_deck_implications": [
+    "The current structure is still good enough to protect the 11-deck proof set because the matrix is explicit, the suite passes live, and the operator docs keep the representative set bounded.",
+    "Nine decks already sit in the core control lane, so the present architecture is sufficient for a broad source-backed pre-run coverage baseline.",
+    "Kingslayer and Boarlock remain the important pressure rows. Their unresolved source-informed status means maintainability work should focus on understanding and closing the existing matrix before adding new representative decks.",
+    "The main risk to the 11-deck set is not missing test breadth today; it is that a growing orchestration hub and expanding research history will make future matrix failures slower to diagnose."
+  ],
+  "recommendation": "Keep HSConfig scoped exactly as a lean pre-run generator, but do one targeted maintainability refactor and one repository hygiene pass instead of a broad rewrite. First, move command-specific orchestration out of hsconfig.cli into real command modules or a small service layer so the public command boundaries become meaningful. Second, reduce research archive noise by freezing or pruning low-value historical audit churn and keeping docs/research clearly subordinate to docs/operator. Do not widen the 11-deck matrix until Kingslayer and Boarlock are closed. Avoid large-scale domain refactors unless one of the existing large modules starts failing frequent changes, because most of the lower-level module layout is still acceptable.",
+  "confidence": "high",
+  "uncertain": []
+}

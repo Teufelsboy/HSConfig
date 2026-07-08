@@ -1,0 +1,56 @@
+{
+  "audit_question": "Audit whether source-backed apply, source-informed apply, hard blockers, operator_summary.json, report ownership, and runtime write boundaries are aligned and not too conservative for a pre-run direct-config skill.",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_current_truth.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_fixture_source_depth_closure.py",
+    "Command output: `python -m pytest tests/test_apply_gate.py tests/test_operator_guidance.py tests/test_report_ownership.py tests/test_matrix_current_truth.py tests/test_fixture_source_depth_closure.py -q` in C:/Users/darbo/Documents/HSConfig returned `37 passed in 12.42s`."
+  ],
+  "confirmed_facts": [
+    "HSConfig is explicitly pre-run only in the root README and operator README, and the normal path is `source-manifest` -> evidence rows or source documents -> `research-deck` -> `prepare` -> inspect `reports/operator_summary.json` -> `apply` only when requested.",
+    "`reports/operator_summary.json` is the single normal operator gate, and `report_ownership.py` plus `tests/test_report_ownership.py` lock the open order so lower-level reports stay explanatory rather than becoming parallel apply authorities.",
+    "`operator_summary.py` separates technical validity from semantic strength and computes `SOURCE_INFORMED_APPLY_READY` only when the package is technically valid, semantically `VALID_BUT_NOT_GUIDE_STRONG`, and the remaining blocker reasons are limited to `cards_need_guide_claims` and or `cards_need_mulligan_claims`.",
+    "`operator_summary.py` keeps source-informed apply blocked when hard blockers remain, including `cards_need_runtime_surface`, combo-sequence gaps, condition-lowering gaps, mechanic-lowering gaps, claim conflicts, unsupported conditions, generic low-confidence cards, uncovered cards, or source-evidence warnings.",
+    "`apply_gate.py` enforces more than status labels: it requires `reports/operator_summary.json`, validates package structure, requires `input_manifest.json`, requires one deck runtime directory, requires `GlobalValues.json` and `Mulligan.json`, requires at least one CardID file, and cross-checks `generated_files` against the actual runtime files.",
+    "`apply_gate.py` blocks normal-path optional surfaces by summary or by actual files, so `Presume.json`, `Concede.json`, nested runtime files, stale summaries, or hidden runtime files cannot slip through the gate.",
+    "`cli.py` validates the package, runs `evaluate_apply_gate(...)`, and only then calls `apply_package(...)`, so the normal `hsconfig apply` path is fail-closed rather than relying on operator discipline.",
+    "`runtime_apply.py` is the write layer only: it copies the fenced deck directory into `runtime_root/CustomConfig`, updates `deck_config.ini`, writes `reports/runtime_apply_receipt.json`, and does not itself claim post-run proof or Step 2 style outcomes.",
+    "The active eleven-deck matrix currently has nine `core_source_backed_fixture` rows and exactly two `source_informed_valid_fixture` rows: `Kingslayer` and `Boarlock`.",
+    "The current matrix truth keeps both source-informed rows blocked today: `Kingslayer` is blocked by `unsupported_conditions_present`, and `Boarlock` is blocked by `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, and `unsupported_conditions_present`.",
+    "The source-informed lane is still proven by tests even though no current matrix deck is ready for it: `tests/test_apply_gate.py`, `tests/test_operator_guidance.py`, and `tests/test_runtime_apply.py` all cover a valid package that becomes applyable only with `--allow-source-informed`."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The apply authority is cleanly centralized. `operator_summary.json` answers the operator question, lower-level reports explain the gap, and the CLI enforces that same contract.",
+    "Source-informed apply is narrow rather than vague. The code allows a pre-run direct-config write when the remaining gaps are only source-depth or mulligan-depth issues, while still refusing runtime-surface, unsupported-condition, conflict, low-confidence, or uncovered-card cases.",
+    "Runtime write boundaries are competent for a pre-run tool. Mutation happens only in the explicit apply path, the copied scope is a single deck folder plus `deck_config.ini`, and the package must already be structurally complete before any runtime replacement happens.",
+    "The gate is resistant to stale or misleading artifacts because it checks both `operator_summary.json` and the actual `CustomConfig` tree before allowing writes.",
+    "The eleven-deck matrix supports the policy instead of weakening it: nine rows prove the normal strong path, and the two incomplete rows remain visibly blocked instead of being forced through with warning-based apply."
+  ],
+  "gaps_or_risks": [
+    "No active matrix row currently demonstrates a real deck in the `SOURCE_INFORMED_APPLY_READY` state. The mechanism is covered by tests, but the representative fixture set does not yet provide one live example.",
+    "`runtime_apply.py::apply_package(...)` is an intentionally low-level writer and does not enforce `operator_summary.json` on its own. The normal CLI path is safe, but any future direct library caller would need to preserve the same guard instead of treating `apply_package(...)` as a standalone safe entrypoint.",
+    "The report set is well owned but still somewhat dense. A new contributor could misread `strong_promotion_report.json` or `source_claim_gap_report.json` as parallel decision gates if the current ownership language drifts.",
+    "Current source-informed blockers for Kingslayer and Boarlock are real hard blockers, but they also mean the source-informed lane remains an exception path rather than a routinely exercised operator path."
+  ],
+  "eleven_deck_implications": [
+    "For the current eleven representative decks, the policy is not too conservative for the normal direct-config path: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH already satisfy the full `SOURCE_BACKED_STRONG` apply gate.",
+    "The two non-strong rows are not blocked merely for lacking perfect optimization. Kingslayer still has unsupported-condition blockers, and Boarlock still has runtime-surface plus low-confidence and uncovered-card blockers, so keeping them out of source-informed apply today is a safety decision rather than unnecessary conservatism.",
+    "The current matrix therefore supports a balanced pre-run handoff story: most representative decks can take the normal strong apply path, and the remaining edge rows stay visible until their missing links are actually closed."
+  ],
+  "recommendation": "Keep the current gate design and report ownership model. Do not broaden source-informed apply beyond guide-claim and mulligan-claim gaps. The next improvement should be small and evidence-oriented: add one real representative fixture that reaches `SOURCE_INFORMED_APPLY_READY` without any hard blockers, or explicitly document that the current matrix has zero live source-informed-ready rows while the path remains intentionally available for future decks. In parallel, keep `apply_package(...)` treated as a low-level helper and preserve the CLI gate as the only normal runtime-write entrypoint.",
+  "confidence": "high",
+  "uncertain": []
+}

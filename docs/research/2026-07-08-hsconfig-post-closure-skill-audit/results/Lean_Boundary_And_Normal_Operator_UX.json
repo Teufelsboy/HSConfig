@@ -1,0 +1,103 @@
+{
+  "audit_question": "After the latest closure and polish work, does HSConfig still remain a narrow, simple, operator-friendly pre-run skill, with the normal path centered on README.md, docs/operator/README.md, the installed skill, lean CLI help, clear report ownership, and explicit exclusion of replay, winrate, HSTuner, Presume, and Concede concerns from the normal operator flow?",
+  "primary_sources": [
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+      "evidence": "The root README says HSConfig is pre-run only, excludes replay, winrate, runtime-log, and after-game tuning concerns, points operators to docs/operator/README.md, and defines the normal path as source-manifest -> draft-source-documents -> research-deck -> prepare -> apply only when requested."
+    },
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+      "evidence": "The operator guide defines the normal operator path, names reports/operator_summary.json as the single gate, includes an explicit Report Ownership table, and says lower-level reports explain the gate without granting independent apply permission."
+    },
+    {
+      "type": "repo_skill_source",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+      "evidence": "The repo-local skill routes the normal operator to docs/operator/README.md, repeats the pre-run-only boundary, documents source-informed apply as a narrow exception, and says Presume.json and Concede.json are legacy or gated surfaces only."
+    },
+    {
+      "type": "installed_skill",
+      "path": "C:\\Users\\darbo\\.codex\\skills\\hsconfig\\SKILL.md",
+      "evidence": "The installed skill copy matches the repo skill wording and keeps the same pre-run boundary, operator-summary gate, and HSTuner exclusion."
+    },
+    {
+      "type": "repo_skill_reference",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\workflow.md",
+      "evidence": "The workflow reference keeps the normal path compact, treats hdt_deck_id as identity-only metadata, says source-informed apply is still not SOURCE_BACKED_STRONG, and repeats that HSConfig is pre-run only."
+    },
+    {
+      "type": "cli_help",
+      "command": "python -m hsconfig.cli --help",
+      "evidence": "The root CLI help exposes eight pre-run commands only, labels the normal path as source-manifest -> draft-source-documents -> research-deck -> prepare -> apply, and says HSConfig does not parse replays, inspect winrate, or tune after games."
+    },
+    {
+      "type": "sync_check",
+      "command": "python scripts\\sync_installed_skill.py --check",
+      "evidence": "The current check reported: HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig."
+    },
+    {
+      "type": "tests",
+      "command": "pytest tests/test_cli_help.py tests/test_skill_files.py tests/test_scope_boundaries.py tests/test_apply_gate.py tests/test_surface_intent.py -q",
+      "evidence": "The focused guardrail suite passed with 59 passed in 2.34s on 2026-07-08, confirming the current help text, skill docs, scope boundaries, apply gate, and surface intent behavior."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+      "evidence": "The apply gate allows runtime writes only for SOURCE_BACKED_STRONG packages or the explicit SOURCE_INFORMED_APPLY_READY lane with --allow-source-informed, and it blocks normal-path Presume.json and Concede.json surfaces."
+    },
+    {
+      "type": "fixture_matrix",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "The representative proof set contains eleven decks, with nine core_source_backed_fixture rows and two source_informed_valid_fixture rows, and the operator guidance says to close existing gaps before adding more representative decks."
+    }
+  ],
+  "confirmed_facts": [
+    "The current root README, operator guide, repo-local skill, installed skill, and workflow reference all describe the same narrow normal path: source-manifest -> draft-source-documents -> research-deck -> prepare -> operator_summary.json -> apply only when requested.",
+    "The latest closure and polish work did not broaden HSConfig into post-run territory. The active docs and skill text still say HSConfig is pre-run only and explicitly exclude replay parsing, winrate inspection, runtime-log analysis, candidate promotion, and after-game tuning, with those concerns assigned to HSTuner.",
+    "docs/operator/README.md remains the single normal operator entry point. The root README and both skill surfaces point operators back to that file instead of creating competing runbooks.",
+    "Report ownership is now clear and operator-friendly. docs/operator/README.md tells operators to open reports/operator_summary.json first, and its Report Ownership table assigns the lower-level reports to diagnostics, repair contracts, promotion confirmation, card-lane diagnostics, source-depth diagnostics, and GlobalValues diagnostics.",
+    "reports/operator_summary.json remains the single normal operator gate. Lower-level reports explain the decision but do not grant independent apply permission.",
+    "The root CLI help remains lean. It exposes only eight commands, labels prepare as the normal package creation path, and separates build and legacy inputs into an expert or legacy path instead of mixing them into the normal operator story.",
+    "The installed skill is synchronized with the repo-local skill, so the live skill the operator would actually invoke matches the audited repo boundary instead of drifting behind it.",
+    "Presume and Concede concerns are excluded from the normal path at both the documentation and enforcement layers. The skill docs say they are not emitted in the normal path, surface_intent tests keep them out unless legacy policy surfaces are explicitly enabled, and apply_gate tests block them if they appear in a normal-path package.",
+    "The source-informed apply lane remains narrow rather than becoming a general warning-based escape hatch. It is allowed only when operator_summary.json shows SOURCE_INFORMED_APPLY_READY, ALLOWED_SOURCE_INFORMED, and readiness status ready, while runtime-surface, combo, condition, mechanic, conflict, uncovered-card, and generic-low-confidence blockers still keep apply blocked."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The normal operator UX is compact and coherent: one entry doc, one command chain, one first report to open, and one normal gate.",
+    "Boundary wording is repeated consistently across README.md, docs/operator/README.md, the repo-local skill, the installed skill, workflow references, CLI help, and focused tests.",
+    "Report ownership is explicit instead of implied, which keeps operator_summary.json as the decisive file and reduces report-hunting overhead.",
+    "The normal path stays simple even after the source-informed apply addition because the exception is tightly constrained and still framed as pre-run only.",
+    "The enforcement layer matches the docs: apply_gate.py, test_apply_gate.py, test_scope_boundaries.py, and test_surface_intent.py all actively defend the lean boundary."
+  ],
+  "gaps_or_risks": [
+    "The CLI help is intentionally short, so the full negative-scope contract still depends on operators reaching docs/operator/README.md or the synced skill text when they need the detailed why behind the boundary.",
+    "The normal and expert paths still live in the same binary. The current labeling is clear, but that clarity depends on keeping help text and docs disciplined as new subcommands or flags are added.",
+    "The source-informed apply lane introduces a controlled valid-but-not-strong write path. If future edits let operator_summary semantics, apply_gate enforcement, and operator docs drift apart, the boundary could weaken without focused regression tests."
+  ],
+  "eleven_deck_implications": {
+    "total_representative_decks": 11,
+    "core_source_backed_fixture_count": 9,
+    "source_informed_valid_fixture_count": 2,
+    "core_source_backed_fixture_decks": [
+      "ShadowPriest",
+      "CtAPaladin",
+      "PirateRogue",
+      "BigShaman",
+      "Discolock",
+      "TreantDruid",
+      "ImbueMage",
+      "MechPala",
+      "PirateDH"
+    ],
+    "source_informed_valid_fixture_decks": [
+      "Kingslayer",
+      "Boarlock"
+    ],
+    "summary": "The eleven-deck representative set still supports a lean HSConfig boundary. Nine decks already prove the strong pre-run package path. Kingslayer and Boarlock are explicitly handled as pre-run source-depth or runtime-lowering closure rows, not as reasons to add replay analysis, winrate review, HSTuner follow-up, Presume generation, or Concede generation to the normal operator flow."
+  },
+  "recommendation": "Keep the current boundary and normal operator UX unchanged. The best next hardening step is a small no-scope-drift check in future help-text or doc edits: preserve docs/operator/README.md as the single normal entry point, preserve reports/operator_summary.json as the single normal gate, and keep Presume, Concede, replay, winrate, and HSTuner concerns outside the normal path.",
+  "confidence": "high",
+  "uncertain": []
+}
