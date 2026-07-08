@@ -1,11 +1,11 @@
-# HSConfig Research Artifacts
+# HSConfig Research Evidence
 
-Research artifacts are evidence, not operator instructions. Normal operator path starts at `docs/operator/README.md`.
+Research artifacts are evidence, not operator instructions.
 
-Use research folders to understand why a design or gate exists. Do not use an older research result as a newer runtime, matrix, or apply authority.
+The normal operator entrypoint is `docs/operator/README.md`. Normal operator path starts at `docs/operator/README.md`. docs/operator/README.md remains the normal operator entrypoint. Research folders explain why a workflow, matrix row, or source-depth decision exists; they do not grant runtime apply permission and they do not replace `reports/operator_summary.json`.
 
-Current high-signal audit:
+## Active Research Packages
 
-- `2026-07-08-hsconfig-current-skill-post-gate-audit/`
-
-Historical research folders may contain superseded matrix counts, older source-informed policy, or pre-closure assumptions. Prefer live code, tests, `docs/operator/archetype-fixture-matrix.json`, and `reports/operator_summary.json` over historical research text.
+| Package | Purpose | Operator Implication |
+| --- | --- | --- |
+| `2026-07-08-hsconfig-final-skill-audit` | Audits lean operator scope, 11-deck source-depth truth, VisionAI runtime surfaces, every-card contract visibility, apply-gate safety, and maintainability. | Keep HSConfig pre-run only, close Kingslayer and Boarlock before widening the matrix, and slim `hsconfig.cli` without changing public CLI behavior. |

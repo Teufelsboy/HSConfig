@@ -67,6 +67,14 @@ def test_skill_audit_results_pass_existing_research_validator():
     assert "Validation passed: 5/5" in completed.stdout
 
 
+def test_research_index_marks_research_as_evidence_not_operator_guidance():
+    text = Path("docs/research/README.md").read_text(encoding="utf-8")
+
+    assert "Research artifacts are evidence, not operator instructions." in text
+    assert "2026-07-08-hsconfig-final-skill-audit" in text
+    assert "docs/operator/README.md remains the normal operator entrypoint." in text
+
+
 def test_source_builder_lite_research_results_validate():
     audit_dir = Path("docs/research/2026-07-07-hsconfig-source-builder-lite")
     fields = audit_dir / "fields.yaml"
