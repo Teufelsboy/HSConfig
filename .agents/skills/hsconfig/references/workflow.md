@@ -34,6 +34,7 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.
 3. `semantic_status=STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline, not guide-depth confidence.
 4. `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but the operator should open `guide_strength_summary` and `semantic_blockers`.
+5. `runtime_apply_mode` is the human-readable write mode. It is descriptive; `hsconfig apply` and `apply_package()` still re-evaluate the operator gate before writing.
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 

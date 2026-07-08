@@ -36,6 +36,15 @@ matching fake receipt.
 - `next_action=SOURCE_INFORMED_APPLY_READY` plus `apply_policy=ALLOWED_SOURCE_INFORMED` means the only remaining blockers are source-depth gaps for `cards_need_guide_claims` or `cards_need_mulligan_claims`. `source_informed_apply_readiness.status=ready` documents that state.
 - `cards_need_runtime_surface`, combo, condition, mechanic, conflict, unsupported-condition, uncovered-card, and generic-low-confidence blockers keep source-informed apply blocked.
 
+Runtime apply readability fields:
+
+- `runtime_apply_mode=normal_apply` means normal `hsconfig apply --json` is allowed.
+- `runtime_apply_mode=source_informed_apply_requires_flag` means runtime apply is allowed only with `--allow-source-informed`.
+- `runtime_apply_mode=blocked` means no runtime write should happen.
+- `runtime_apply_allowed=true` is descriptive; the CLI and `apply_package()` still re-evaluate the gate before writing.
+- `apply_policy=ALLOWED_WITH_WARNINGS` is not runtime write permission.
+ALLOWED_WITH_WARNINGS is not runtime write permission.
+
 Lower-level reports explain the gate. They do not grant independent apply permission.
 
 Direct Python runtime writes use the same gate. `hsconfig.runtime_apply.apply_package()` resolves `reports/operator_summary.json` through `evaluate_apply_gate()` before any runtime mutation and rejects forged or missing gate dictionaries. Use the CLI for normal operation; direct imports are test and integration surfaces, not a second permission model.

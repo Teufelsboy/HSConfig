@@ -54,6 +54,7 @@ Rules:
 - Prefer researched guide sources over legacy claim inputs when live guide research was performed.
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Runtime apply is guarded.
+- Read `runtime_apply_mode`, `runtime_apply_allowed`, and `runtime_apply_requires_flag` in `operator_summary.json`; never treat `ALLOWED_WITH_WARNINGS` as runtime write permission.
 - Runtime apply is always governed by `reports/operator_summary.json`; `apply_package()` and `hsconfig apply` must reject missing, blocked, or forged apply gates before writing HearthRanger runtime files.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Keep the pre-run boundary visible in operator-facing copy and tests.

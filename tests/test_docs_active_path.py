@@ -19,3 +19,11 @@ def test_operator_docs_mark_research_artifacts_as_evidence():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
     assert "Research artifacts are evidence, not operator instructions." in text
+
+
+def test_operator_docs_explain_runtime_apply_mode_is_descriptive():
+    operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "runtime_apply_mode" in operator_docs
+    assert "runtime_apply_allowed" in operator_docs
+    assert "ALLOWED_WITH_WARNINGS is not runtime write permission" in operator_docs
