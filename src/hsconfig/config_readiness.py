@@ -29,6 +29,15 @@ MISSING_LINKS = (
     "needs_condition_lowering",
     "needs_mechanic_lowering",
 )
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
+    "none": "closed",
+    "needs_guide_claim": "source_claim_gap",
+    "needs_runtime_surface": "runtime_surface_gap",
+    "needs_mulligan_claim": "mulligan_claim_gap",
+    "needs_combo_sequence": "combo_sequence_gap",
+    "needs_condition_lowering": "condition_lowering_gap",
+    "needs_mechanic_lowering": "mechanic_lowering_gap",
+}
 MECHANIC_LOWERING_ROLES = {
     "battlecry",
     "discover",
@@ -115,6 +124,7 @@ def build_config_readiness_report(
             "runtime_surfaces": runtime_surfaces,
             "readiness_lane": lane,
             "first_missing_link": missing,
+            "source_depth_lane": _source_depth_lane(missing),
         }
 
     deck_name = str(deck_identity.get("deck_name", gameplan_contract.get("deck_name", "Deck")))
@@ -360,6 +370,10 @@ def _lane_and_missing_link(
     if card_id in emitted_cardid_cards:
         return "report_only_supported", "none"
     return "report_only_supported", "needs_runtime_surface"
+
+
+def _source_depth_lane(first_missing_link: str) -> str:
+    return SOURCE_DEPTH_LANE_BY_MISSING_LINK.get(first_missing_link, "inspect_card_gap")
 
 
 def _summary(

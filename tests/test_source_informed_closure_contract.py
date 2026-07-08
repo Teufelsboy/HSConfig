@@ -62,6 +62,7 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     assert first_chain["card_id"] == target["first_card_id"]
     assert first_chain["name"] == target["first_card_name"]
     assert first_chain["first_missing_link"] == "needs_mulligan_claim"
+    assert first_chain["source_depth_lane"] == "mulligan_claim_gap"
     assert first_chain["next_action"] == "add_mulligan_keep_or_discard_claim"
 
     card_surfaces = {f"{card['card_id']}.json" for card in deck_identity["cards"]}

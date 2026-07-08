@@ -34,6 +34,16 @@ BASE_PRIORITY_BY_MISSING_LINK = {
     "needs_guide_claim": 50,
 }
 
+SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
+    "none": "closed",
+    "needs_guide_claim": "source_claim_gap",
+    "needs_runtime_surface": "runtime_surface_gap",
+    "needs_mulligan_claim": "mulligan_claim_gap",
+    "needs_combo_sequence": "combo_sequence_gap",
+    "needs_condition_lowering": "condition_lowering_gap",
+    "needs_mechanic_lowering": "mechanic_lowering_gap",
+}
+
 
 def build_source_claim_gap_report(
     *,
@@ -57,6 +67,9 @@ def build_source_claim_gap_report(
         if not isinstance(row, dict):
             continue
         missing_link = str(row.get("first_missing_link", "needs_guide_claim"))
+        source_depth_lane = str(
+            row.get("source_depth_lane", _source_depth_lane_from_missing_link(missing_link))
+        )
         counts[missing_link] += 1
         coverage = coverage_cards.get(card_id, {})
         if not isinstance(coverage, dict):
@@ -71,6 +84,7 @@ def build_source_claim_gap_report(
             "name": str(row.get("name", card_id)),
             "readiness_lane": str(row.get("readiness_lane", "")),
             "first_missing_link": missing_link,
+            "source_depth_lane": source_depth_lane,
             "coverage_status": str(coverage.get("coverage_status", row.get("coverage_status", ""))),
             "source_claim_ids": [str(item) for item in coverage.get("source_claim_ids", row.get("source_claim_ids", []))],
             "runtime_surfaces": [str(item) for item in row.get("runtime_surfaces", [])],
@@ -130,6 +144,10 @@ def _priority_for_row(
     return score, ", ".join(reasons)
 
 
+def _source_depth_lane_from_missing_link(missing_link: str) -> str:
+    return SOURCE_DEPTH_LANE_BY_MISSING_LINK.get(missing_link, "inspect_card_gap")
+
+
 def _first_missing_chain(rows: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     blocked = [row for row in rows.values() if row["first_missing_link"] != "none"]
     if not blocked:
@@ -139,6 +157,7 @@ def _first_missing_chain(rows: dict[str, dict[str, Any]]) -> dict[str, Any] | No
         "card_id": selected["card_id"],
         "name": selected["name"],
         "first_missing_link": selected["first_missing_link"],
+        "source_depth_lane": selected["source_depth_lane"],
         "recommended_source_claim_kind": selected["recommended_source_claim_kind"],
         "next_action": selected["next_action"],
         "priority_score": selected["priority_score"],

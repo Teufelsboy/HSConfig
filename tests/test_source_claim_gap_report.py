@@ -67,6 +67,7 @@ def test_report_explains_each_first_missing_link():
         "card_id": "CARD_B",
         "name": "Needs Runtime",
         "first_missing_link": "needs_runtime_surface",
+        "source_depth_lane": "runtime_surface_gap",
         "recommended_source_claim_kind": "targeting_rule",
         "next_action": "add_runtime_lowerable_claim_or_router_support",
         "priority_score": report["cards"]["CARD_B"]["priority_score"],
@@ -101,3 +102,36 @@ def test_report_uses_none_when_card_is_ready():
     assert report["summary"]["next_source_builder_action"] == "card_ready_for_strong_gate"
     assert report["cards"]["CARD_READY"]["recommended_source_claim_kind"] == "none"
     assert report["cards"]["CARD_READY"]["next_action"] == "card_ready_for_strong_gate"
+
+
+def test_gap_report_threads_source_depth_lane_into_first_missing_chain():
+    report = build_source_claim_gap_report(
+        deck_name="Kingslayer",
+        config_readiness_report={
+            "cards": {
+                "DEEP_014": {
+                    "card_id": "DEEP_014",
+                    "name": "Quick Pick",
+                    "readiness_lane": "report_only_supported",
+                    "source_depth_lane": "mulligan_claim_gap",
+                    "first_missing_link": "needs_mulligan_claim",
+                    "runtime_surfaces": [],
+                }
+            }
+        },
+        claim_coverage_report={
+            "cards": {
+                "DEEP_014": {
+                    "coverage_status": "source_backed",
+                    "source_claim_ids": ["claim_quick_pick"],
+                }
+            }
+        },
+        card_behavior_plan={"rows": []},
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+    )
+
+    row = report["cards"]["DEEP_014"]
+    assert row["source_depth_lane"] == "mulligan_claim_gap"
+    assert report["summary"]["first_missing_chain"]["source_depth_lane"] == "mulligan_claim_gap"

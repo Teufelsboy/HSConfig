@@ -193,6 +193,7 @@ def test_uncovered_card_gets_guide_claim_missing_link():
     row = report["cards"]["CARD_003"]
     assert row["readiness_lane"] == "generic_low_confidence"
     assert row["first_missing_link"] == "needs_guide_claim"
+    assert row["source_depth_lane"] == "source_claim_gap"
     assert report["summary"]["cards_needing_guide_claims"] == 1
 
 
@@ -353,6 +354,7 @@ def test_guide_backed_suppressed_mulligan_claim_blocks_runtime_emitted_lane():
     assert row["runtime_surfaces"] == ["DEEP_014.json"]
     assert row["readiness_lane"] == "report_only_supported"
     assert row["first_missing_link"] == "needs_mulligan_claim"
+    assert row["source_depth_lane"] == "mulligan_claim_gap"
     assert report["summary"]["runtime_emitted"] == 0
     assert report["summary"]["cards_needing_mulligan_claims"] == 1
 
