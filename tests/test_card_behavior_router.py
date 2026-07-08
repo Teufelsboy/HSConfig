@@ -1,6 +1,7 @@
 import importlib.util
 
 from hsconfig.card_behavior_router import route_card_behavior_claims
+from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 
 
 def test_card_behavior_router_routes_specific_runtime_blocks():
@@ -31,6 +32,28 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
     assert plan["rows"][0]["condition"] == "my_target(count(),hero=true) > 0"
     assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
     assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
+
+
+def test_standalone_discover_mechanic_claim_routes_to_discover_surface():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_discover_standalone",
+                "claim_kind": "mechanic_usage",
+                "cards": ["DISCOVER_CARD"],
+                "mechanic": "discover",
+                "claim_readiness": "source_backed_static_semantics",
+                "runtime_value": "6",
+            }
+        ]
+    )
+
+    assert len(plan["rows"]) == 1
+    row = plan["rows"][0]
+    assert row["behavior_block"] == "OnDiscoverCardBonus"
+    assert row["condition"] == "*"
+    assert row["roles"] == ["discover"]
+    assert plan["suppressed"] == []
 
 
 def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():

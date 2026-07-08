@@ -59,3 +59,17 @@ Result:
 - Router tests: `25 passed`
 - Prepare target tests: `2 passed`
 - Compile/condition/prepare suite: `44 passed`
+## Task 4 Regression Coverage Addendum
+
+### Fix
+- Added a direct surface-router regression test in `tests/test_card_behavior_router.py`:
+  - `test_standalone_discover_mechanic_claim_routes_to_discover_surface`
+- The test calls `route_card_behavior_surfaces` directly with a single source-backed/static-semantics
+  `mechanic_usage` discover claim (`claim_readiness: source_backed_static_semantics`) and no
+  discover-choice/identity context.
+- It verifies exact routing behavior: one emitted row on `OnDiscoverCardBonus`, wildcard `condition`,
+  `roles == ["discover"]`, and no suppressed claims.
+
+### Test
+- Command: `python -m pytest tests/test_card_behavior_router.py -q`
+- Result: `26 passed`
