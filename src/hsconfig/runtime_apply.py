@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import file_sha256, read_json, write_json
 from hsconfig.runtime_apply_receipts import (
     build_fake_apply_receipt,
@@ -48,10 +49,16 @@ def apply_package(
     replace: bool = True,
     fake_receipt: dict[str, Any] | None = None,
     apply_gate: dict[str, Any] | None = None,
+    allow_source_informed: bool = False,
     write_history: bool = True,
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
+    resolved_apply_gate = _resolve_allowed_apply_gate(
+        package=package,
+        apply_gate=apply_gate,
+        allow_source_informed=allow_source_informed,
+    )
     deck_dir_name = config_dir or _single_config_dir(package)
     _validate_config_dir(deck_dir_name)
     mapped_deck_name = _deck_name_from_manifest(package, fallback=deck_dir_name)
@@ -73,7 +80,7 @@ def apply_package(
             package_root=package,
             runtime_root=runtime,
             config_dir=deck_dir_name,
-            apply_gate=apply_gate,
+            apply_gate=resolved_apply_gate,
         )
         fake_verification = verify_fake_apply_receipt(
             package_root=package,
@@ -133,6 +140,7 @@ def apply_package(
             "runtime_snapshot_after": runtime_snapshot(runtime, deck_dir_name),
             "rollback_snapshot_path": rollback_snapshot_path,
         }
+        receipt["apply_gate"] = resolved_apply_gate
         if write_history:
             history_path = write_runtime_write_history(
                 runtime,
@@ -179,6 +187,60 @@ def apply_package(
             except Exception as history_exc:
                 exc.add_note(f"runtime rollback history write failed: {history_exc}")
         raise
+
+
+def _resolve_allowed_apply_gate(
+    *,
+    package: Path,
+    apply_gate: dict[str, Any] | None,
+    allow_source_informed: bool,
+) -> dict[str, Any]:
+    resolved = apply_gate
+    if resolved is None:
+        resolved = evaluate_apply_gate(
+            package,
+            allow_source_informed=allow_source_informed,
+        )
+    if not _is_allowed_gate_for_package(package=package, apply_gate=resolved):
+        reason = _first_gate_reason(resolved)
+        raise ValueError(
+            "Runtime apply requires an allowed apply gate from "
+            f"reports/operator_summary.json; got {reason}"
+        )
+    return resolved
+
+
+def _is_allowed_gate_for_package(
+    *,
+    package: Path,
+    apply_gate: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(apply_gate, dict):
+        return False
+    if apply_gate.get("status") != "allowed":
+        return False
+    operator_summary_path = apply_gate.get("operator_summary_path")
+    if not operator_summary_path:
+        return False
+    expected = package / "reports" / "operator_summary.json"
+    try:
+        return Path(str(operator_summary_path)).resolve() == expected.resolve()
+    except OSError:
+        return False
+
+
+def _first_gate_reason(apply_gate: dict[str, Any] | None) -> str:
+    if not isinstance(apply_gate, dict):
+        return "missing_apply_gate"
+    reasons = apply_gate.get("reasons")
+    if isinstance(reasons, list) and reasons:
+        first = reasons[0]
+        if isinstance(first, dict):
+            return str(first.get("reason", "blocked"))
+        return str(first)
+    status = apply_gate.get("status", "missing_apply_gate")
+    mode = apply_gate.get("mode", "")
+    return f"{status}:{mode}" if mode else str(status)
 
 
 def _snapshot_existing_runtime_target(*, runtime: Path, config_dir: str) -> str | None:

@@ -60,14 +60,90 @@ def _complete_package(
     return package
 
 
-def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
-    package = tmp_path / "package"
-    package_deck = package / "CustomConfig" / "deck"
-    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
-    write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
+def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
+    package = tmp_path / "raw-package"
+    deck = package / "CustomConfig" / "deck"
+    write_json(deck / "GlobalValues.json", {"GameCardId": "GlobalValues"})
     write_json(
-        package_deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+        deck / "Mulligan.json",
+        {"GameCardId": "Mulligan", "Mulligan": {"values": []}},
+    )
+    write_json(
+        deck / "EX1_001.json",
+        {"GameCardId": "EX1_001", "InHandPlayPriority": {"values": []}},
+    )
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    return package
+
+
+def test_apply_package_blocks_direct_write_without_operator_summary(tmp_path: Path):
+    package = _raw_complete_package_without_operator_summary(tmp_path)
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path(
+    tmp_path: Path,
+):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+        apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate={"status": "allowed", "mode": "source_backed_strong"},
+        )
+
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_direct_source_informed_requires_explicit_flag(tmp_path: Path):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="SOURCE_INFORMED_APPLY_READY",
+        apply_policy="ALLOWED_SOURCE_INFORMED",
+        source_informed_apply_readiness={
+            "status": "ready",
+            "requires_flag": "--allow-source-informed",
+            "source_gap_count": 1,
+        },
+    )
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    receipt = apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        allow_source_informed=True,
+    )
+
+    assert receipt["status"] == "applied"
+    assert receipt["apply_gate"]["mode"] == "source_informed_apply_ready"
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+
+
+def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
     )
 
     runtime = tmp_path / "runtime"
@@ -87,8 +163,8 @@ def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
     assert not (runtime / "CustomConfig" / "deck" / "stale.json").exists()
     assert (runtime / "CustomConfig" / "other" / "keep.json").exists()
     assert "Other Deck = other" in deck_config.read_text(encoding="utf-8")
-    assert "deck = deck" in deck_config.read_text(encoding="utf-8")
-    assert receipt["mapped_deck_name"] == "deck"
+    assert "Gate Deck = deck" in deck_config.read_text(encoding="utf-8")
+    assert receipt["mapped_deck_name"] == "Gate Deck"
     assert receipt["deck_config_ini_updated"] is True
     receipt_path = package / "reports" / "runtime_apply_receipt.json"
     assert receipt_path.exists()
@@ -103,7 +179,19 @@ def test_apply_package_rejects_incomplete_source_before_replacing_runtime(tmp_pa
     write_json(runtime_deck / "Mulligan.json", {"old": True})
 
     with pytest.raises(ValueError, match="Incomplete package"):
-        apply_package(package_root=package, runtime_root=tmp_path / "runtime", config_dir="deck")
+        apply_package(
+            package_root=package,
+            runtime_root=tmp_path / "runtime",
+            config_dir="deck",
+            apply_gate={
+                "status": "allowed",
+                "operator_summary_path": str(
+                    package / "reports" / "operator_summary.json"
+                ),
+                "mode": "source_backed_strong",
+                "reasons": [],
+            },
+        )
 
     assert (runtime_deck / "Mulligan.json").exists()
 
@@ -377,6 +465,21 @@ def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section
         package / "reports" / "input_manifest.json",
         {"deck_name": "ShadowPriest", "deck_code": "fixture", "runtime_root": "unused"},
     )
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\shadowpriest\\GlobalValues.json",
+                "CustomConfig\\shadowpriest\\Mulligan.json",
+                "CustomConfig\\shadowpriest\\EX1_001.json",
+            ],
+        },
+    )
 
     runtime = tmp_path / "runtime"
     deck_config = runtime / "CustomConfig" / "deck_config.ini"
@@ -409,6 +512,21 @@ def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_pa
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Bad\nDeck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
     )
 
     with pytest.raises(ValueError, match="deck_config.ini"):
@@ -676,7 +794,12 @@ def test_apply_package_passes_apply_gate_to_generated_fake_receipt(tmp_path: Pat
         apply_policy="ALLOWED",
     )
     runtime = tmp_path / "runtime"
-    allowed_gate = {"status": "allowed", "mode": "source_backed_strong", "reasons": []}
+    allowed_gate = {
+        "status": "allowed",
+        "operator_summary_path": str(package / "reports" / "operator_summary.json"),
+        "mode": "source_backed_strong",
+        "reasons": [],
+    }
 
     apply_package(package_root=package, runtime_root=runtime, apply_gate=allowed_gate)
 
