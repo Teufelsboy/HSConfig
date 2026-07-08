@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 
 CARD_BEHAVIOR_BLOCKS = frozenset(
@@ -20,6 +21,30 @@ CARD_BEHAVIOR_BLOCKS = frozenset(
         "BeforeUpgradeCardBonus",
         "InHandPlayPriority",
         "OnBoardPlayPriority",
+    }
+)
+
+CARD_BEHAVIOR_BLOCK_REGISTRY: dict[str, dict[str, Any]] = {
+    block: {
+        "support": "supported",
+        "normal_path_runtime": True,
+        "surface_family": "card_behavior",
+    }
+    for block in CARD_BEHAVIOR_BLOCKS
+}
+
+CARD_BEHAVIOR_BLOCK_REGISTRY.update(
+    {
+        "Presume.json": {
+            "support": "known_non_normal_surface",
+            "normal_path_runtime": False,
+            "surface_family": "legacy_gated",
+        },
+        "Concede.json": {
+            "support": "known_non_normal_surface",
+            "normal_path_runtime": False,
+            "surface_family": "legacy_gated",
+        },
     }
 )
 
@@ -54,6 +79,21 @@ def supported_surface(filename: str | Path) -> bool:
     if not name.endswith(".json"):
         return False
     return bool(CARD_ID_SURFACE_RE.fullmatch(name)) and bool(name[:-5])
+
+
+def runtime_block_support(block_name: str) -> dict[str, Any]:
+    if block_name in CARD_BEHAVIOR_BLOCK_REGISTRY:
+        return dict(CARD_BEHAVIOR_BLOCK_REGISTRY[block_name])
+    return {
+        "support": "unsupported",
+        "normal_path_runtime": False,
+        "surface_family": "unknown",
+    }
+
+
+def is_supported_card_behavior_block(block_name: str) -> bool:
+    row = runtime_block_support(block_name)
+    return row["support"] == "supported" and row["normal_path_runtime"] is True
 
 
 def expected_game_card_id(filename: str | Path) -> str | None:
