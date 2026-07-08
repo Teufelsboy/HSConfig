@@ -195,19 +195,23 @@ def _resolve_allowed_apply_gate(
     apply_gate: dict[str, Any] | None,
     allow_source_informed: bool,
 ) -> dict[str, Any]:
-    resolved = apply_gate
-    if resolved is None:
-        resolved = evaluate_apply_gate(
-            package,
-            allow_source_informed=allow_source_informed,
+    evaluated = evaluate_apply_gate(
+        package,
+        allow_source_informed=allow_source_informed,
+    )
+    if apply_gate is not None and apply_gate != evaluated:
+        reason = _first_gate_reason(evaluated)
+        raise ValueError(
+            "Runtime apply requires an allowed apply gate from "
+            f"reports/operator_summary.json; got apply_gate_mismatch:{reason}"
         )
-    if not _is_allowed_gate_for_package(package=package, apply_gate=resolved):
-        reason = _first_gate_reason(resolved)
+    if not _is_allowed_gate_for_package(package=package, apply_gate=evaluated):
+        reason = _first_gate_reason(evaluated)
         raise ValueError(
             "Runtime apply requires an allowed apply gate from "
             f"reports/operator_summary.json; got {reason}"
         )
-    return resolved
+    return evaluated
 
 
 def _is_allowed_gate_for_package(

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import write_json
 from hsconfig.runtime_apply import apply_package
 
@@ -79,6 +80,10 @@ def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
     return package
 
 
+def _allowed_gate(package: Path) -> dict:
+    return evaluate_apply_gate(package)
+
+
 def test_apply_package_blocks_direct_write_without_operator_summary(tmp_path: Path):
     package = _raw_complete_package_without_operator_summary(tmp_path)
     runtime = tmp_path / "runtime"
@@ -105,6 +110,29 @@ def test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path
             package_root=package,
             runtime_root=runtime,
             apply_gate={"status": "allowed", "mode": "source_backed_strong"},
+        )
+
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summary_path(
+    tmp_path: Path,
+):
+    package = _raw_complete_package_without_operator_summary(tmp_path)
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+        apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate={
+                "status": "allowed",
+                "operator_summary_path": str(
+                    package / "reports" / "operator_summary.json"
+                ),
+                "mode": "source_backed_strong",
+                "reasons": [],
+            },
         )
 
     assert not (runtime / "CustomConfig" / "deck").exists()
@@ -175,22 +203,29 @@ def test_apply_package_rejects_incomplete_source_before_replacing_runtime(tmp_pa
     package = tmp_path / "package"
     package_deck = package / "CustomConfig" / "deck"
     write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": ["CustomConfig\\deck\\GlobalValues.json"],
+        },
+    )
     runtime_deck = tmp_path / "runtime" / "CustomConfig" / "deck"
     write_json(runtime_deck / "Mulligan.json", {"old": True})
 
-    with pytest.raises(ValueError, match="Incomplete package"):
+    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
         apply_package(
             package_root=package,
             runtime_root=tmp_path / "runtime",
             config_dir="deck",
-            apply_gate={
-                "status": "allowed",
-                "operator_summary_path": str(
-                    package / "reports" / "operator_summary.json"
-                ),
-                "mode": "source_backed_strong",
-                "reasons": [],
-            },
         )
 
     assert (runtime_deck / "Mulligan.json").exists()
@@ -549,7 +584,7 @@ def test_plan_apply_package_writes_fake_receipt_without_runtime_mutation(tmp_pat
     receipt = plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
 
     assert receipt["status"] == "fake_apply_ready"
@@ -719,7 +754,7 @@ def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_pa
     receipt = plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
     write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {"GameCardId": "EX1_001", "changed": True})
 
@@ -744,7 +779,7 @@ def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
     fake = plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
     receipt = apply_package(package_root=package, runtime_root=runtime, fake_receipt=fake)
 
@@ -773,7 +808,7 @@ def test_apply_package_rejects_runtime_drift_before_runtime_mutation(tmp_path: P
     fake = plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
     write_json(runtime / "CustomConfig" / "deck" / "drift.json", {"drift": True})
 
@@ -794,12 +829,7 @@ def test_apply_package_passes_apply_gate_to_generated_fake_receipt(tmp_path: Pat
         apply_policy="ALLOWED",
     )
     runtime = tmp_path / "runtime"
-    allowed_gate = {
-        "status": "allowed",
-        "operator_summary_path": str(package / "reports" / "operator_summary.json"),
-        "mode": "source_backed_strong",
-        "reasons": [],
-    }
+    allowed_gate = _allowed_gate(package)
 
     apply_package(package_root=package, runtime_root=runtime, apply_gate=allowed_gate)
 
@@ -862,7 +892,7 @@ def test_apply_package_restores_previous_runtime_when_mutation_fails(
     fake = runtime_apply.plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
 
     if failure_point == "copytree":
@@ -927,7 +957,7 @@ def test_apply_package_appends_rollback_history_when_final_receipt_write_fails(
     fake = runtime_apply.plan_apply_package(
         package_root=package,
         runtime_root=runtime,
-        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+        apply_gate=_allowed_gate(package),
     )
     original_write_json = runtime_apply.write_json
 

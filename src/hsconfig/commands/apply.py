@@ -93,5 +93,6 @@ def apply_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         runtime_root=args.runtime_root,
         fake_receipt=fake_receipt,
         apply_gate=apply_gate,
+        allow_source_informed=bool(getattr(args, "allow_source_informed", False)),
     )
     return {"status": "applied", "apply_gate": apply_gate, "receipt": receipt}, 0
