@@ -55,10 +55,11 @@ def test_root_help_states_negative_scope():
     assert "does not parse replays, inspect winrate, or tune after games" in help_text
 
 
-def test_apply_help_keeps_source_informed_pre_run_scope():
+def test_apply_help_keeps_source_informed_pre_run_scope(capsys):
     parser = build_parser()
-    apply_parser = parser._subparsers._actions[1].choices["apply"]
-    help_text = apply_parser.format_help()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["apply", "--help"])
+    help_text = capsys.readouterr().out
 
     assert "--allow-source-informed" in help_text
     assert "source-informed apply remains pre-run only" in help_text

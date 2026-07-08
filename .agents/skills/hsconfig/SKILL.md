@@ -7,7 +7,7 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
-HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.
+That pre-run boundary is repeated in the rules below for operators and tests.
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 
@@ -55,7 +55,7 @@ Rules:
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Runtime apply is allowed after validation only through the enforced apply gate; runtime writes remain only when requested by the user or task.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
-- HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.
+- Keep the pre-run boundary visible in operator-facing copy and tests.
 - Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
