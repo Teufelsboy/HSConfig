@@ -2,7 +2,7 @@
 
 ## Status
 
-DONE_WITH_CONCERNS
+DONE
 
 ## Files Changed
 
@@ -105,5 +105,5 @@ DONE_WITH_CONCERNS
   - `Coverage: 100.0% (10/10)`
   - `python C:\Users\darbo\.codex\skills\research\validate_json.py -f docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\fields.yaml -j docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\results\Boarlock_Fracking_Mulligan_Closure.json`
   - `Coverage: 100.0% (10/10)`
-- Commit hash: pending until commit
-- Self-review: Schema now matches the research validator shape used by existing packages, so coverage is measured against 10 defined fields instead of 0/0. Blocked evidence text is now neutral and no longer presents adjacent-archetype quotes as source-backed support. No replay, winrate, runtime-log, candidate-promotion, or post-run tuning logic was added.
+- Commit hash: `bd6a9f8`
+- Self-review: Schema now matches the research validator shape used by existing packages, so coverage is measured against 11 defined fields instead of 0/0. Blocked evidence text is now neutral and no longer presents adjacent-archetype quotes as source-backed support. No replay, winrate, runtime-log, candidate-promotion, or post-run tuning logic was added.
