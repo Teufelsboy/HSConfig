@@ -24,5 +24,11 @@ def test_active_operator_docs_do_not_claim_seven_source_informed_rows():
     text = OPERATOR_README.read_text(encoding="utf-8")
 
     assert "seven `source_informed_valid_fixture` rows" not in text
-    assert "Kingslayer" in text
-    assert "Boarlock" in text
+    assert (
+        "Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
+        "before widening the matrix."
+    ) in text
+    assert (
+        "Keep the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
+        "closed before widening the matrix."
+    ) not in text

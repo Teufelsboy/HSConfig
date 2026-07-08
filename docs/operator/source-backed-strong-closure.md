@@ -49,7 +49,7 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 
 ## Current Blocker Snapshot
 
-Fresh local prepare runs for the Task 5 matrix state show:
+Fresh local prepare runs for the current matrix state show:
 
 | Deck | Semantic status | First missing chain | Next action |
 |---|---|---|---|
