@@ -91,11 +91,11 @@ Output:
 - No normal-path `Presume.json` or `Concede.json` content was introduced.
 - Both research items stayed conservative: `promotion_allowed` is `false` because no public source explicitly supports a card-level keep/discard for the target card in the provided fixture deck.
 - I did not raise confidence without source evidence.
-- Concern: the brief required a flat `fields.yaml`, but the current `validate_json.py` implementation only extracts schema fields from `field_categories`. That means the required validator passes as `0/0` coverage rather than truly checking field presence. I left the file exactly as specified in the brief and documented the validation weakness instead of changing the schema.
+- The validator schema now matches the existing research package shape, so coverage is checked against 11 defined fields and no longer collapses to `0/0`.
 
 ## Final Status
 
-DONE_WITH_CONCERNS
+DONE
 
 ## Fix Report
 
