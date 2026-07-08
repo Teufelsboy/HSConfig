@@ -335,8 +335,6 @@ def _lane_and_missing_link(
     roles = {str(role).lower() for role in card.get("roles", [])}
     is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
 
-    if card_id in suppressed_mulligan_cards:
-        return "report_only_supported", "needs_mulligan_claim"
     if card_id in concrete_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
     if card_id in mulligan_cards:
@@ -349,6 +347,8 @@ def _lane_and_missing_link(
         return "generic_low_confidence", "needs_guide_claim"
     if coverage == "archetype_inferred":
         return "archetype_inferred", "needs_guide_claim"
+    if is_guide_backed and card_id in suppressed_mulligan_cards:
+        return "report_only_supported", "needs_mulligan_claim"
     if card_id in unsupported_condition_cards:
         return "report_only_supported", "needs_condition_lowering"
     if is_guide_backed and "mulligan_anchor" in roles:

@@ -296,6 +296,30 @@ def test_emitted_cardid_files_add_runtime_surface_without_marking_generic_card_r
     assert report["summary"]["cards_needing_guide_claims"] == 1
 
 
+def test_suppressed_mulligan_claim_does_not_hide_generic_low_confidence_gap():
+    report = _report_for_card(
+        card_id="CARD_008_SUPPRESSED",
+        roles=["mulligan_anchor"],
+        coverage_status="generic_low_confidence",
+        claim_coverage={"uncovered_cards": ["CARD_008_SUPPRESSED"], "total_cards": 1},
+        mulligan_plan={
+            "rules": [],
+            "suppressed_rules": [
+                {
+                    "card": "CARD_008_SUPPRESSED",
+                    "reason": "claim_not_runtime_lowerable",
+                }
+            ],
+        },
+    )
+
+    row = report["cards"]["CARD_008_SUPPRESSED"]
+    assert row["readiness_lane"] == "generic_low_confidence"
+    assert row["first_missing_link"] == "needs_guide_claim"
+    assert report["summary"]["generic_low_confidence"] == 1
+    assert report["summary"]["cards_needing_mulligan_claims"] == 0
+
+
 def test_readiness_counts_only_meaningful_cardid_rows_as_runtime_emitted():
     report = build_config_readiness_report(
         deck_identity={
