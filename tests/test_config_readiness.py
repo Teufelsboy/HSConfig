@@ -320,6 +320,43 @@ def test_suppressed_mulligan_claim_does_not_hide_generic_low_confidence_gap():
     assert report["summary"]["cards_needing_mulligan_claims"] == 0
 
 
+def test_guide_backed_suppressed_mulligan_claim_blocks_runtime_emitted_lane():
+    report = _report_for_card(
+        card_id="DEEP_014",
+        roles=["mulligan_anchor", "weapon"],
+        coverage_status="source_backed",
+        mulligan_plan={
+            "rules": [],
+            "suppressed_rules": [
+                {
+                    "card": "DEEP_014",
+                    "reason": "claim_not_runtime_lowerable",
+                }
+            ],
+        },
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "DEEP_014",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus = attack_pressure",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files=["DEEP_014.json"],
+    )
+
+    row = report["cards"]["DEEP_014"]
+    assert row["runtime_surfaces"] == ["DEEP_014.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_mulligan_claim"
+    assert report["summary"]["runtime_emitted"] == 0
+    assert report["summary"]["cards_needing_mulligan_claims"] == 1
+
+
 def test_readiness_counts_only_meaningful_cardid_rows_as_runtime_emitted():
     report = build_config_readiness_report(
         deck_identity={
