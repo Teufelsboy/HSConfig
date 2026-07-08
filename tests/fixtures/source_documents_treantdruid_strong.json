@@ -57,6 +57,19 @@
           "source_confidence": "high"
         },
         {
+          "claim_kind": "card_role",
+          "cards": ["CFM_614"],
+          "stance": "board_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "9",
+          "evidence_text_short": "Give your minions +1/+1.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
           "claim_kind": "mechanic_usage",
           "cards": ["DRG_311"],
           "mechanic": "treant",
@@ -67,6 +80,19 @@
           "source_confidence": "high",
           "source_refs": [
             "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_314"],
+          "stance": "treant_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Draw 2 cards. Costs (2) less for each Treant you control.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
           ]
         },
         {
@@ -91,6 +117,97 @@
           "source_confidence": "high",
           "source_refs": [
             "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["END_009"],
+          "stance": "token_board",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Summon two 2/2 Treants. They gain +1/+1 for each friendly Treant that died this game.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GDB_852"],
+          "stance": "spell_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "6",
+          "evidence_text_short": "Draw a card. If it's a spell, it costs (1) less.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GIL_663"],
+          "stance": "treant_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Add two 2/2 Treants to your hand.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["MIS_301"],
+          "stance": "token_board_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Summon a 2/2 Treant. Draw a card for each Treant you control.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["REV_307"],
+          "stance": "token_board_damage",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Deal 2 damage. Summon a 2/2 Treant.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SW_422"],
+          "stance": "board_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Choose One - Give your minions +1 Attack; or Summon a 2/2 Treant.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TTN_950"],
+          "stance": "token_board",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Summon two 1/1 Saplings. Blossoms in 2 turns.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
           ]
         },
         {

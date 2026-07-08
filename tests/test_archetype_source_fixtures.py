@@ -424,6 +424,24 @@ def test_ctapaladin_source_fixture_has_runtime_lowerable_recruit_and_aura_claims
     )
 
 
+def test_ctapaladin_fixture_closes_remaining_guide_claim_gaps():
+    bundle = _source_bundle_for_fixture("CtAPaladin")
+    claims_by_card = {}
+    for claim in bundle["claims"]:
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {"AV_137", "CATA_479", "WW_336", "WW_391"}
+    assert expected_cards <= set(claims_by_card)
+    for card_id in expected_cards:
+        assert any(
+            claim["claim_kind"] in {"card_role", "targeting_rule", "mechanic_usage"}
+            and claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
+            and claim.get("runtime_value")
+            for claim in claims_by_card[card_id]
+        ), card_id
+
+
 def test_piraterogue_fixture_covers_pirate_weapon_pressure():
     claims = _claims("PirateRogue")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
@@ -491,6 +509,34 @@ def test_treantdruid_source_fixture_has_runtime_lowerable_token_and_board_buff_c
         and claim.get("runtime_value")
         for claim in claims
     )
+
+
+def test_treantdruid_fixture_closes_remaining_guide_claim_gaps():
+    bundle = _source_bundle_for_fixture("TreantDruid")
+    claims_by_card = {}
+    for claim in bundle["claims"]:
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {
+        "CFM_614",
+        "DRG_314",
+        "END_009",
+        "GDB_852",
+        "GIL_663",
+        "MIS_301",
+        "REV_307",
+        "SW_422",
+        "TTN_950",
+    }
+    assert expected_cards <= set(claims_by_card)
+    for card_id in expected_cards:
+        assert any(
+            claim["claim_kind"] in {"card_role", "targeting_rule", "mechanic_usage"}
+            and claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
+            and claim.get("runtime_value")
+            for claim in claims_by_card[card_id]
+        ), card_id
 
 
 def test_mechpala_fixture_covers_mech_board_scaling():

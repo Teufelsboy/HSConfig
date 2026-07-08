@@ -106,6 +106,32 @@
         },
         {
           "claim_kind": "card_role",
+          "cards": ["AV_137"],
+          "stance": "early_board_pressure",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "After your opponent casts a spell, summon another Irondeep Trogg.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CATA_479"],
+          "stance": "board_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Shatter. Summon two 4/2 Drakes. Give your minions +1 Attack and Divine Shield.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
           "cards": ["RLK_924"],
           "stance": "aura_pressure",
           "runtime_block": "OnBoardBonus",
@@ -114,6 +140,32 @@
           "source_confidence": "high",
           "source_refs": [
             "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_336"],
+          "stance": "enemy_board_reset",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Deal 3 damage to all enemies. Costs (1) less for each enemy minion.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WW_391"],
+          "stance": "board_refill",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "6",
+          "evidence_text_short": "At the end of your turn, draw a card.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/"
           ]
         },
         {
