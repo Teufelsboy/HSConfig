@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
@@ -134,3 +136,30 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
         assert operator["source_informed_apply_readiness"]["status"] == "blocked"
         assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
         assert promotion["next_action"] == "close_first_missing_chain"
+
+
+def test_boarlock_closure_does_not_widen_runtime_surfaces(tmp_path, monkeypatch):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    deck = next(
+        row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
+    )
+
+    result = prepare_fixture_deck(tmp_path, deck)
+    deck_identity = json.loads(
+        (result["out"] / "reports" / "deck_identity.json").read_text(encoding="utf-8")
+    )
+
+    generated = set(result["generated_files"])
+    allowed_non_card_surfaces = {
+        "GlobalValues.json",
+        "Mulligan.json",
+        "Combo.json",
+    }
+    allowed_card_surfaces = {
+        f"{card['card_id']}.json" for card in deck_identity["cards"]
+    }
+    allowed_surfaces = allowed_non_card_surfaces | allowed_card_surfaces
+
+    assert generated == allowed_surfaces
+    assert "Presume.json" not in generated
+    assert "Concede.json" not in generated
