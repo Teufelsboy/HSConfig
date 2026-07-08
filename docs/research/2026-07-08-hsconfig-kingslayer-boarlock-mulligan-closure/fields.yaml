@@ -1,33 +1,36 @@
-source_urls:
-  type: list
-  description: Public URLs checked for this Mulligan claim.
-deck_name:
-  type: string
-  description: HSConfig fixture deck name.
-target_card_id:
-  type: string
-  description: Hearthstone card ID that currently blocks source-backed promotion.
-target_card_name:
-  type: string
-  description: Human-readable card name for the blocking card.
-claim_kind:
-  type: string
-  description: Expected HSConfig claim kind, usually mulligan_keep or mulligan_discard.
-recommended_claim:
-  type: object
-  description: Concrete claim fields to copy into source_documents when promotion is source-backed.
-evidence_text_short:
-  type: string
-  description: Short source-backed evidence sentence, not a paraphrase invented from deck intuition.
-source_confidence:
-  type: string
-  description: high, medium, low, or blocked.
-promotion_allowed:
-  type: boolean
-  description: True only when source evidence explicitly supports a keep or discard claim for the target card.
-block_reason:
-  type: string
-  description: Reason promotion is blocked when promotion_allowed is false.
-uncertain:
-  type: list
-  description: Field names whose values remain uncertain.
+field_categories:
+  - category: mulligan_closure
+    fields:
+      - name: source_urls
+        required: true
+        description: Public URLs checked for this Mulligan claim.
+      - name: deck_name
+        required: true
+        description: HSConfig fixture deck name.
+      - name: target_card_id
+        required: true
+        description: Hearthstone card ID that currently blocks source-backed promotion.
+      - name: target_card_name
+        required: true
+        description: Human-readable card name for the blocking card.
+      - name: claim_kind
+        required: true
+        description: Expected HSConfig claim kind, usually mulligan_keep or mulligan_discard.
+      - name: recommended_claim
+        required: true
+        description: Concrete claim fields to copy into source_documents when promotion is source-backed.
+      - name: evidence_text_short
+        required: true
+        description: Short source-backed evidence sentence, not a paraphrase invented from deck intuition.
+      - name: source_confidence
+        required: true
+        description: high, medium, low, or blocked.
+      - name: promotion_allowed
+        required: true
+        description: True only when source evidence explicitly supports a keep or discard claim for the target card.
+      - name: block_reason
+        required: true
+        description: Reason promotion is blocked when promotion_allowed is false.
+      - name: uncertain
+        required: true
+        description: Field names whose values remain uncertain.

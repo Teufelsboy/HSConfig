@@ -9,7 +9,7 @@
   "target_card_name": "Quick Pick",
   "claim_kind": "mulligan_keep",
   "recommended_claim": {},
-  "evidence_text_short": "If you don't find either a quick pick or the 1-mana tutor spell, you can go next.",
+  "evidence_text_short": "No deck-specific source explicitly supports the target mulligan choice.",
   "source_confidence": "blocked",
   "promotion_allowed": false,
   "block_reason": "The exact provided Kingslayer deck page publicly lists Quick Pick but does not expose an explicit card-level mulligan instruction. The current Kingsbane-specific mulligan post checked is for a different list without Quick Pick, and the only explicit Quick Pick mulligan statement found was for adjacent weapon rogue rather than the provided Kingslayer deck. That is not strong enough for HSConfig source-backed promotion.",
