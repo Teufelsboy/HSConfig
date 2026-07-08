@@ -1,7 +1,9 @@
+import argparse
 import json
 import tomllib
 from pathlib import Path
 
+from hsconfig.commands.common import emit_result, run_payload_command
 from hsconfig.cli import _guide_documents_from_legacy_claims, main
 
 
@@ -765,3 +767,23 @@ def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
     assert code == 0
     assert payload["status"] == "passed"
     assert mulligan["Mulligan"]["values"] == []
+
+
+def test_command_common_emit_result_prints_json(capsys):
+    code = emit_result({"status": "OK", "deck": "ShadowPriest"}, as_json=True, code=0)
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out) == {"deck": "ShadowPriest", "status": "OK"}
+
+
+def test_command_common_run_payload_command_wraps_exceptions(capsys):
+    def boom(args):
+        raise ValueError("broken command")
+
+    code = run_payload_command(argparse.Namespace(json=True), boom)
+
+    assert code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "errors": ["broken command"],
+        "status": "failed",
+    }
