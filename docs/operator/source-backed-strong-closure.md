@@ -44,7 +44,7 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | ImbueMage | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
 | Kingslayer | `source_informed_valid_fixture` | Promotion stays blocked: the exact provided Kingslayer deck page publicly lists `Quick Pick` but does not expose an explicit card-level mulligan instruction. The checked Kingsbane-specific mulligan post is for a different list without `Quick Pick`, and the only explicit `Quick Pick` mulligan statement found was for adjacent weapon rogue rather than the provided deck. |
-| Boarlock | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact deck-specific Fracking mulligan evidence remains unavailable. The fixture still proves valid Combo.json generation, but it cannot be promoted while WW_092 lacks a keep/discard claim and runtime-surface blockers remain. |
+| Boarlock | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Boarlock Fracking mulligan evidence remains unavailable or unresolved lowering blockers remain. Preserve this row as the combo-control source-informed control until those blockers close. |
 | PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
 ## Current Source-Informed Closure Decisions
