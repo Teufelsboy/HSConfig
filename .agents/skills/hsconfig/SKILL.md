@@ -27,7 +27,7 @@ Normal workflow:
 5. Run `hsconfig research-deck --source-documents-json ...` to create normalized guide sources and the research contract inputs.
 6. Run `hsconfig prepare --guide-sources-json ...` to compile the package and reports.
 7. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
-8. Run `hsconfig apply ...` only when runtime writes are intended. The CLI enforces `reports/operator_summary.json` and fails closed unless the package is source-backed ready; use `--allow-source-informed` only for an intentional valid-but-not-strong handoff.
+8. Run `hsconfig apply ...` only when runtime writes are intended. The CLI enforces `reports/operator_summary.json` and fails closed unless the package is source-backed ready. Use `--allow-source-informed` only when `operator_summary.json` says `SOURCE_INFORMED_APPLY_READY`, `ALLOWED_SOURCE_INFORMED`, and `source_informed_apply_readiness.status=ready`; the command is `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json`.
 9. Use `reports/operator_summary.json` as the single operator gate. Detail reports are evidence, not independent apply permissions.
 
 Status meaning:
@@ -36,6 +36,7 @@ Status meaning:
 - `SOURCE_BACKED_STRONG`: current guide-backed per-card coverage supports a strong initial config.
 - `STATIC_SEMANTICS_USABLE`: static card semantics produced a valid package without enough live guide depth.
 - `VALID_BUT_NOT_GUIDE_STRONG`: the package is valid, but `guide_strength_summary` and `semantic_blockers` identify missing source depth, conflict resolution, runtime-surface gaps, or combo detail.
+- `SOURCE_INFORMED_APPLY_READY`: a valid-but-not-strong package whose `source_informed_apply_readiness` shows only guide/mulligan source-depth gaps remain; source-informed apply is still not `SOURCE_BACKED_STRONG`.
 
 Fixture stage meaning:
 

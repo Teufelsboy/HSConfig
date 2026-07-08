@@ -444,3 +444,21 @@ def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
     assert second_clause in skill_lower
     assert closure_sentence in workflow_lower
     assert second_clause in workflow_lower
+
+
+def test_docs_explain_source_informed_apply_ready_lane():
+    docs = "\n".join(
+        [
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "SOURCE_INFORMED_APPLY_READY" in docs
+    assert "ALLOWED_SOURCE_INFORMED" in docs
+    assert "source_informed_apply_readiness" in docs
+    assert "--allow-source-informed --json" in docs
+    assert "source-informed apply is still not `SOURCE_BACKED_STRONG`" in docs

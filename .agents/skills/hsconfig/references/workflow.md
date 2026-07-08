@@ -36,6 +36,8 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 
+`SOURCE_INFORMED_APPLY_READY` with `ALLOWED_SOURCE_INFORMED` and `source_informed_apply_readiness.status=ready` is the only valid source-informed apply lane. It allows `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json` when the remaining blockers are only guide or mulligan source-depth gaps. Source-informed apply is still not `SOURCE_BACKED_STRONG`; use `source_claim_gap_report.json` and `strong_promotion_report.json` to close those links before promotion.
+
 ## Fixture Stage Semantics
 
 `core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.
@@ -48,4 +50,4 @@ Use `hsconfig research-contract` only when the research bundle should be inspect
 Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. It still writes `reports/research/*`. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
 When apply is allowed, it copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
-Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json` and blocks by default unless the package is source-backed ready. Use `--allow-source-informed` only for intentional valid-but-not-strong packages.
+Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json` and blocks by default unless the package is source-backed ready. Use `--allow-source-informed` only for `SOURCE_INFORMED_APPLY_READY` packages.

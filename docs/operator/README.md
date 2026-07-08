@@ -22,6 +22,7 @@ Use `reports/operator_summary.json` as the normal operator gate.
 - `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work.
 - `apply_policy=ALLOWED` is required for normal apply.
+- `next_action=SOURCE_INFORMED_APPLY_READY` plus `apply_policy=ALLOWED_SOURCE_INFORMED` means the only remaining blockers are source-depth gaps for guide or mulligan claims. `source_informed_apply_readiness.status=ready` documents that state.
 
 Lower-level reports explain the gate. They do not grant independent apply permission.
 
@@ -38,7 +39,13 @@ Lower-level reports explain the gate. They do not grant independent apply permis
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
 
-Use `--allow-source-informed` only when intentionally applying a technically valid package before it reaches `SOURCE_BACKED_STRONG`.
+Use `--allow-source-informed` only when `operator_summary.json` says `SOURCE_INFORMED_APPLY_READY`, `ALLOWED_SOURCE_INFORMED`, and `source_informed_apply_readiness.status=ready`. The normal command is:
+
+```powershell
+hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json
+```
+
+Source-informed apply is still not `SOURCE_BACKED_STRONG`; close the remaining `source_claim_gap_report.json` links before promoting the fixture or calling the package strong.
 
 ## Fixture Matrix
 
