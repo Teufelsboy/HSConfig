@@ -74,7 +74,7 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
     deck_code: str,
     source_documents: Path,
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     out = tmp_path / deck_name
 
     code = main(
@@ -132,7 +132,7 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
 def test_shadowpriest_fixture_reaches_source_backed_strong(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     out = tmp_path / "ShadowPriest"
 
     code = main(
@@ -170,7 +170,7 @@ def test_shadowpriest_fixture_reaches_source_backed_strong(
 def test_bigshaman_fixture_uses_explicit_recruit_and_deathrattle_values(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     out = tmp_path / "BigShaman"
 
     code = main(

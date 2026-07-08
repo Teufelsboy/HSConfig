@@ -830,3 +830,17 @@ def test_source_workflow_command_module_no_longer_imports_hsconfig_cli():
     text = Path("src/hsconfig/commands/source_workflow.py").read_text(encoding="utf-8")
 
     assert "from hsconfig.cli import" not in text
+
+
+def test_prepare_command_module_no_longer_imports_hsconfig_cli():
+    text = Path("src/hsconfig/commands/prepare.py").read_text(encoding="utf-8")
+
+    assert "from hsconfig.cli import" not in text
+
+
+def test_cli_no_longer_owns_package_builder():
+    text = Path("src/hsconfig/cli.py").read_text(encoding="utf-8")
+
+    assert "def _build_preconfig_context(" not in text
+    assert "def _prepare(" not in text
+    assert "def _build(" not in text

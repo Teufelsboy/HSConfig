@@ -350,7 +350,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
 def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
@@ -467,7 +467,7 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
 def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
@@ -740,7 +740,7 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
 ):
     package = tmp_path / "package"
 
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
     def _shared_fallback(deck_name: str, deck_identity: dict[str, object]) -> dict[str, object]:
         return {
@@ -759,7 +759,7 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
             "research_fallback_source": "shared_module",
         }
 
-    monkeypatch.setattr("hsconfig.cli.research_required_guide_sources", _shared_fallback)
+    monkeypatch.setattr("hsconfig.package_builder._research_required_guide_sources", _shared_fallback)
 
     code = main(
         [
@@ -1067,7 +1067,7 @@ def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, caps
 
 
 def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: Path, capsys, monkeypatch):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
@@ -1157,7 +1157,7 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
 
 def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys, monkeypatch):
     monkeypatch.setattr(
-        "hsconfig.cli.fetch_latest_cards",
+        "hsconfig.package_builder.fetch_latest_cards",
         lambda timeout=10.0: [
             {
                 "id": "DISCOVER_CARD",
@@ -1289,7 +1289,7 @@ def test_prepare_json_mirrors_operator_summary_guide_strength_fields(
 
 
 def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys, monkeypatch):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     package = tmp_path / "package"
 
     code = main(
@@ -1328,7 +1328,7 @@ def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys,
 def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
     tmp_path: Path, capsys, monkeypatch
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     package = tmp_path / "package"
     reports = package / "reports"
     reports.mkdir(parents=True)
