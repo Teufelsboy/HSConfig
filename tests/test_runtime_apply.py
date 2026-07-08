@@ -415,3 +415,76 @@ def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_pa
         apply_package(package_root=package, runtime_root=tmp_path / "runtime")
 
     assert not (tmp_path / "runtime" / "CustomConfig" / "deck").exists()
+
+
+def test_plan_apply_package_writes_fake_receipt_without_runtime_mutation(tmp_path: Path):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    receipt = plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+
+    assert receipt["status"] == "fake_apply_ready"
+    assert receipt["runtime_write_performed"] is False
+    assert (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_path: Path):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    receipt = plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {"GameCardId": "EX1_001", "changed": True})
+
+    with pytest.raises(ValueError, match="fake apply receipt does not match package"):
+        apply_package(package_root=package, runtime_root=runtime, fake_receipt=receipt)
+
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+
+    fake = plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    receipt = apply_package(package_root=package, runtime_root=runtime, fake_receipt=fake)
+
+    assert receipt["status"] == "applied"
+    assert receipt["runtime_write_performed"] is True
+    assert receipt["fake_receipt_verified"]["status"] == "verified"
+    assert receipt["rollback_snapshot_path"]
+    assert Path(receipt["rollback_snapshot_path"]).exists()
+    assert (runtime / "CustomConfig" / "hsconfig_write_history.jsonl").exists()

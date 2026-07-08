@@ -1,11 +1,43 @@
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
 from hsconfig.io import file_sha256, read_json, write_json
+from hsconfig.runtime_apply_receipts import (
+    build_fake_apply_receipt,
+    runtime_snapshot,
+    verify_fake_apply_receipt,
+    write_fake_apply_receipt,
+    write_runtime_write_history,
+)
 from hsconfig.validate_package import SPECIAL_SURFACE_NAMES, supported_surface
+
+
+def plan_apply_package(
+    *,
+    package_root: str | Path,
+    runtime_root: str | Path,
+    config_dir: str | None = None,
+    apply_gate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    package = Path(package_root)
+    deck_dir_name = config_dir or _single_config_dir(package)
+    _validate_config_dir(deck_dir_name)
+    source_dir = package / "CustomConfig" / deck_dir_name
+    if not source_dir.is_dir():
+        raise FileNotFoundError(f"Package deck config not found: {source_dir}")
+    _validate_complete_source_dir(source_dir)
+    receipt = build_fake_apply_receipt(
+        package_root=package,
+        runtime_root=runtime_root,
+        config_dir=deck_dir_name,
+        apply_gate=apply_gate or {"status": "not_checked"},
+    )
+    write_fake_apply_receipt(package, receipt)
+    return receipt
 
 
 def apply_package(
@@ -14,6 +46,8 @@ def apply_package(
     runtime_root: str | Path,
     config_dir: str | None = None,
     replace: bool = True,
+    fake_receipt: dict[str, Any] | None = None,
+    write_history: bool = True,
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
@@ -26,16 +60,42 @@ def apply_package(
         raise FileNotFoundError(f"Package deck config not found: {source_dir}")
     _validate_complete_source_dir(source_dir)
 
+    if fake_receipt is not None:
+        fake_verification = verify_fake_apply_receipt(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir=deck_dir_name,
+            receipt=fake_receipt,
+        )
+    else:
+        fake_receipt = plan_apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir=deck_dir_name,
+        )
+        fake_verification = verify_fake_apply_receipt(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir=deck_dir_name,
+            receipt=fake_receipt,
+        )
+
+    before_snapshot = runtime_snapshot(runtime, deck_dir_name)
     target_root = runtime / "CustomConfig"
     target_dir = target_root / deck_dir_name
-    target_root.mkdir(parents=True, exist_ok=True)
 
     replaced_existing = target_dir.exists()
+    if replaced_existing and not replace:
+        raise FileExistsError(f"Runtime deck config already exists: {target_dir}")
+
+    rollback_snapshot_path = _snapshot_existing_runtime_target(
+        runtime=runtime,
+        config_dir=deck_dir_name,
+    )
+    target_root.mkdir(parents=True, exist_ok=True)
     if replaced_existing and replace:
         _ensure_child_path(target_dir, target_root)
         shutil.rmtree(target_dir)
-    elif replaced_existing and not replace:
-        raise FileExistsError(f"Runtime deck config already exists: {target_dir}")
 
     shutil.copytree(source_dir, target_dir)
     deck_config_receipt = _update_deck_config_ini(
@@ -62,9 +122,43 @@ def apply_package(
         "deck_config_ini_updated": deck_config_receipt["updated"],
         "deck_config_ini_previous_sha256": deck_config_receipt["previous_sha256"],
         "deck_config_ini_current_sha256": deck_config_receipt["current_sha256"],
+        "fake_receipt_verified": fake_verification,
+        "runtime_snapshot_before": before_snapshot,
+        "runtime_snapshot_after": runtime_snapshot(runtime, deck_dir_name),
+        "rollback_snapshot_path": rollback_snapshot_path,
     }
+    if write_history:
+        history_path = write_runtime_write_history(
+            runtime,
+            {
+                "status": "applied",
+                "package_root": str(package),
+                "config_dir": deck_dir_name,
+                "target_path": str(target_dir),
+                "rollback_snapshot_path": rollback_snapshot_path,
+                "package_sha256": fake_verification["package_sha256"],
+            },
+        )
+        receipt["write_history_path"] = str(history_path)
     write_json(package / "reports" / "runtime_apply_receipt.json", receipt)
     return receipt
+
+
+def _snapshot_existing_runtime_target(*, runtime: Path, config_dir: str) -> str | None:
+    target = runtime / "CustomConfig" / config_dir
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    if not target.exists() and not deck_config.exists():
+        return None
+    snapshot_root = runtime / "CustomConfig" / ".hsconfig_backups"
+    snapshot_root.mkdir(parents=True, exist_ok=True)
+    stamp = str(int(time.time()))
+    backup = snapshot_root / f"{config_dir}-{stamp}"
+    backup.mkdir(parents=True, exist_ok=False)
+    if target.exists():
+        shutil.copytree(target, backup / config_dir)
+    if deck_config.exists():
+        shutil.copy2(deck_config, backup / "deck_config.ini")
+    return str(backup)
 
 
 def _deck_name_from_manifest(package_root: Path, *, fallback: str) -> str:
