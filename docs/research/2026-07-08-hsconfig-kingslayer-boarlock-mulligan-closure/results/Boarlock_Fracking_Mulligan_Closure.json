@@ -1,0 +1,17 @@
+{
+  "source_urls": [
+    "https://www.hsguru.com/deck/39985498",
+    "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+    "https://us.forums.blizzard.com/en/hearthstone/t/sludgelock-is-a-top-100-deck/133621"
+  ],
+  "deck_name": "Boarlock",
+  "target_card_id": "WW_092",
+  "target_card_name": "Fracking",
+  "claim_kind": "mulligan_keep",
+  "recommended_claim": {},
+  "evidence_text_short": "Fracking is almost always a good keep, unless you have miracle salesman already.",
+  "source_confidence": "blocked",
+  "promotion_allowed": false,
+  "block_reason": "The exact provided Boarlock deck page publicly lists Fracking but does not expose an explicit card-level mulligan instruction. The Boarlock-specific public mulligan thread checked discusses combo pieces, early clears, and card draw in general but never explicitly says to keep or discard Fracking. The only explicit Fracking mulligan statement found was for Sludgelock, which is not the provided Boarlock archetype, so promotion stays blocked.",
+  "uncertain": []
+}

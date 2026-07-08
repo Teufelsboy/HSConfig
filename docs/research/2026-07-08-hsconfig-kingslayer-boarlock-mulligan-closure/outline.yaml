@@ -1,0 +1,20 @@
+topic: hsconfig-kingslayer-boarlock-mulligan-closure-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\results
+  batch_size: 2
+  items_per_agent: 1
+items:
+  - name: Kingslayer Quick Pick Mulligan Closure
+    category: HSConfig source-depth closure
+    description: >
+      Research whether current public Kingsbane/Kingslayer Rogue guide, deck, mulligan,
+      or matchup sources explicitly support keeping or discarding Quick Pick (DEEP_014)
+      in the Mulligan for the provided Kingslayer deck. Promotion is allowed only if a
+      source explicitly supports the card-level Mulligan choice.
+  - name: Boarlock Fracking Mulligan Closure
+    category: HSConfig source-depth closure
+    description: >
+      Research whether current public Boarlock, Elwynn Boar Warlock, combo Warlock,
+      or mulligan sources explicitly support keeping or discarding Fracking (WW_092)
+      in the Mulligan for the provided Boarlock deck. Promotion is allowed only if a
+      source explicitly supports the card-level Mulligan choice.
