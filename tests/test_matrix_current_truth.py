@@ -66,3 +66,29 @@ def test_active_operator_docs_do_not_claim_seven_source_informed_rows():
         "Keep the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
         "closed before widening the matrix."
     ) not in text
+
+
+def test_active_matrix_stays_at_eleven_representative_decks():
+    rows = _matrix_rows()
+
+    assert len(rows) == 11
+    assert sum(row["fixture_stage"] == "core_source_backed_fixture" for row in rows) == 9
+    assert sum(row["fixture_stage"] == "source_informed_valid_fixture" for row in rows) == 2
+
+
+def test_source_informed_rows_have_explicit_closure_decisions():
+    by_name = {row["deck_name"]: row for row in _matrix_rows()}
+
+    kingslayer = by_name["Kingslayer"]["strongness_visibility"]
+    assert kingslayer["first_strongness_gap"] == "needs_mulligan_claim_for_quick_pick"
+    assert kingslayer["source_informed_apply_readiness"] == "blocked"
+    assert kingslayer["operator_action"] in {
+        "close_existing_source_informed_fixture",
+        "preserve_source_informed_with_explicit_stop_condition",
+    }
+
+    boarlock = by_name["Boarlock"]["strongness_visibility"]
+    assert boarlock["first_strongness_gap"] == "needs_mulligan_claim_for_fracking"
+    assert boarlock["source_informed_apply_readiness"] == "blocked"
+    assert boarlock["operator_action"] == "preserve_source_informed_with_explicit_stop_condition"
+    assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
