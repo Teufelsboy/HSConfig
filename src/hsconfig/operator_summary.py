@@ -5,6 +5,7 @@ import hashlib
 from typing import Any
 
 from hsconfig.operator_guidance import build_operator_guidance
+from hsconfig.report_ownership import build_report_ownership
 
 
 VALID_STATUSES = {"passed", "pass", "valid", "ok", "success"}
@@ -131,6 +132,7 @@ def build_operator_summary(
         "semantic_blockers": semantic_blockers,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "generated_files": sorted(str(path) for path in generated_files),
+        "report_ownership": build_report_ownership(),
     }
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary

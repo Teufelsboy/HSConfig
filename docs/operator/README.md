@@ -27,14 +27,18 @@ Use `reports/operator_summary.json` as the normal operator gate.
 
 Lower-level reports explain the gate. They do not grant independent apply permission.
 
-## Important Reports
+## Report Ownership
 
-- `reports/operator_summary.json`
-- `reports/source_claim_gap_report.json`
-- `reports/strong_promotion_report.json`
-- `reports/per_card_config_readiness_report.json`
-- `reports/guide_source_depth_report.json`
-- `reports/global_values_authority_matrix.json`
+Open `reports/operator_summary.json` first. Lower-level reports explain the gate. They do not grant independent apply permission.
+
+| File | Authority | Answers |
+| --- | --- | --- |
+| `reports/operator_summary.json` | normal operator gate | what to do next |
+| `reports/source_claim_gap_report.json` | repair contract | which card link is missing first |
+| `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |
+| `reports/per_card_config_readiness_report.json` | card lane diagnostics | which lane each card occupies |
+| `reports/guide_source_depth_report.json` | source-depth diagnostics | how strong the guide and source coverage is |
+| `reports/global_values_authority_matrix.json` | GlobalValues diagnostics | which GlobalValues keys are source-backed or archetype-inferred |
 
 ## Expert Paths
 
