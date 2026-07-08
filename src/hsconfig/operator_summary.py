@@ -56,18 +56,41 @@ READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
 
 def build_operator_summary(
     *,
-    deck_name: str,
-    deck_code: str,
-    technical_validation: dict[str, Any],
-    guide_source_depth: dict[str, Any] | None,
-    unsupported_conditions: list[dict[str, Any]] | None,
-    globalvalue_authority: dict[str, Any] | None,
-    generated_files: list[str],
+    deck_name: str | None = None,
+    deck_code: str | None = None,
+    technical_validation: dict[str, Any] | None = None,
+    guide_source_depth: dict[str, Any] | None = None,
+    unsupported_conditions: list[dict[str, Any]] | None = None,
+    globalvalue_authority: dict[str, Any] | None = None,
+    generated_files: list[str] | None = None,
     claim_coverage_report: dict[str, Any] | None = None,
     config_readiness_summary: dict[str, Any] | None = None,
     config_readiness_report: dict[str, Any] | None = None,
     claim_conflict_report: dict[str, Any] | None = None,
+    validation_report: dict[str, Any] | None = None,
+    guide_source_depth_report: dict[str, Any] | None = None,
+    source_claim_gap_report: dict[str, Any] | None = None,
+    strong_promotion_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    # Compatibility inputs for callers that use the task-brief naming.
+    if technical_validation is None:
+        technical_validation = validation_report or {"status": "unknown"}
+    if guide_source_depth is None:
+        guide_source_depth = guide_source_depth_report
+    if config_readiness_summary is None and config_readiness_report is not None:
+        config_readiness_summary = _normalize_readiness_summary_aliases(
+            config_readiness_report
+        )
+    _ = source_claim_gap_report
+    _ = strong_promotion_report
+
+    technical_validation = technical_validation or {"status": "unknown"}
+    unsupported_conditions = unsupported_conditions or []
+    globalvalue_authority = globalvalue_authority or {}
+    generated_files = generated_files or []
+    deck_name = deck_name or ""
+    deck_code = deck_code or ""
+
     technical_status = _technical_status(technical_validation)
     effective_config_readiness_summary = _effective_config_readiness_summary(
         config_readiness_summary,
@@ -247,6 +270,28 @@ def _warnings(
             }
         )
     return warnings
+
+
+def _normalize_readiness_summary_aliases(
+    config_readiness_report: dict[str, Any]
+) -> dict[str, Any] | None:
+    summary = config_readiness_report.get("summary", {})
+    if not isinstance(summary, dict):
+        return None
+    aliases = {
+        "cards_need_guide_claims": "cards_needing_guide_claims",
+        "cards_need_runtime_surface": "cards_needing_runtime_surface",
+        "cards_need_mulligan_claims": "cards_needing_mulligan_claims",
+        "cards_need_combo_sequence": "cards_needing_combo_sequence",
+        "cards_need_condition_lowering": "cards_needing_condition_lowering",
+        "cards_need_mechanic_lowering": "cards_needing_mechanic_lowering",
+    }
+    normalized = dict(summary)
+    for source_key, target_key in aliases.items():
+        if source_key in summary and target_key not in summary:
+            normalized[target_key] = summary[source_key]
+            normalized.pop(source_key, None)
+    return normalized
 
 
 def _low_confidence_card_count(report: dict[str, Any]) -> int:

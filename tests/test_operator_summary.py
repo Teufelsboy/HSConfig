@@ -600,6 +600,49 @@ def test_source_evidence_warnings_prevent_source_backed_strong():
     ]
 
 
+def test_operator_summary_can_mark_source_informed_ready_for_source_depth_only_gap():
+    summary = build_operator_summary(
+        validation_report={"status": "passed", "errors": []},
+        config_readiness_report={
+            "summary": {
+                "cards_needing_guide_claims": 1,
+                "cards_needing_mulligan_claims": 1,
+                "cards_need_runtime_surface": 0,
+                "generic_low_confidence_cards": 0,
+                "uncovered_cards": 0,
+                "unsupported_conditions_present": 0,
+                "combo_blockers": 0,
+                "mechanic_blockers": 0,
+            }
+        },
+        guide_source_depth_report={"depth_status": "source_informed"},
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 2,
+                "first_missing_chain": {
+                    "card_id": "EXAMPLE_001",
+                    "card_name": "Example Card",
+                    "first_missing_link": "needs_mulligan_claim",
+                    "next_action": "add_exact_mulligan_claim",
+                },
+            }
+        },
+        strong_promotion_report={"promotion_ready": False},
+        generated_files=[
+            "CustomConfig\\deck\\GlobalValues.json",
+            "CustomConfig\\deck\\Mulligan.json",
+            "CustomConfig\\deck\\EXAMPLE_001.json",
+        ],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
+    assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+    assert summary["source_informed_apply_readiness"]["status"] == "ready"
+    assert summary["source_informed_apply_readiness"]["blocking_reasons"] == []
+
+
 def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
     summary = build_operator_summary(
         deck_name="Kingslayer",
