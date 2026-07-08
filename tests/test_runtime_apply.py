@@ -488,3 +488,148 @@ def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
     assert receipt["rollback_snapshot_path"]
     assert Path(receipt["rollback_snapshot_path"]).exists()
     assert (runtime / "CustomConfig" / "hsconfig_write_history.jsonl").exists()
+
+
+def test_apply_package_rejects_runtime_drift_before_runtime_mutation(tmp_path: Path):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    deck_config.write_text("[CONFIGS]\nGate Deck = deck\n", encoding="utf-8")
+
+    fake = plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    write_json(runtime / "CustomConfig" / "deck" / "drift.json", {"drift": True})
+
+    with pytest.raises(ValueError, match="fake apply receipt does not match runtime"):
+        apply_package(package_root=package, runtime_root=runtime, fake_receipt=fake)
+
+    assert (runtime / "CustomConfig" / "deck" / "old.json").exists()
+    assert (runtime / "CustomConfig" / "deck" / "drift.json").exists()
+    assert not (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+    assert deck_config.read_text(encoding="utf-8") == "[CONFIGS]\nGate Deck = deck\n"
+
+
+def test_apply_package_passes_apply_gate_to_generated_fake_receipt(tmp_path: Path):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    allowed_gate = {"status": "allowed", "mode": "source_backed_strong", "reasons": []}
+
+    apply_package(package_root=package, runtime_root=runtime, apply_gate=allowed_gate)
+
+    fake_receipt = json.loads(
+        (package / "reports" / "runtime_apply_fake_receipt.json").read_text(encoding="utf-8")
+    )
+    assert fake_receipt["apply_gate"] == allowed_gate
+
+
+def test_apply_package_backup_snapshot_names_do_not_collide_within_same_second(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    monkeypatch.setattr("hsconfig.runtime_apply.time.time", lambda: 1_700_000_000)
+
+    first = apply_package(package_root=package, runtime_root=runtime)
+    second = apply_package(package_root=package, runtime_root=runtime)
+
+    assert first["rollback_snapshot_path"] != second["rollback_snapshot_path"]
+    assert Path(first["rollback_snapshot_path"]).exists()
+    assert Path(second["rollback_snapshot_path"]).exists()
+
+
+@pytest.mark.parametrize(
+    ("failure_point", "message"),
+    [
+        ("copytree", "copy failed"),
+        ("deck_config", "deck config failed"),
+        ("history", "history failed"),
+        ("receipt", "receipt failed"),
+    ],
+)
+def test_apply_package_restores_previous_runtime_when_mutation_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+    message: str,
+):
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\nOther Deck = other\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+
+    if failure_point == "copytree":
+        original_copytree = runtime_apply.shutil.copytree
+
+        def fail_runtime_copytree(src, dst, *args, **kwargs):
+            if (
+                Path(src) == package / "CustomConfig" / "deck"
+                and Path(dst) == runtime / "CustomConfig" / "deck"
+            ):
+                raise RuntimeError(message)
+            return original_copytree(src, dst, *args, **kwargs)
+
+        monkeypatch.setattr(runtime_apply.shutil, "copytree", fail_runtime_copytree)
+    elif failure_point == "deck_config":
+
+        def fail_deck_config(**kwargs):
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(runtime_apply, "_update_deck_config_ini", fail_deck_config)
+    elif failure_point == "history":
+
+        def fail_history(*args, **kwargs):
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(runtime_apply, "write_runtime_write_history", fail_history)
+    else:
+
+        def fail_receipt(*args, **kwargs):
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(runtime_apply, "write_json", fail_receipt)
+
+    with pytest.raises(RuntimeError, match=message):
+        apply_package(package_root=package, runtime_root=runtime, fake_receipt=fake)
+
+    old_json = (runtime / "CustomConfig" / "deck" / "old.json").read_text(
+        encoding="utf-8"
+    )
+    assert json.loads(old_json) == {"old": True}
+    assert not (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+    assert deck_config.read_text(encoding="utf-8") == old_deck_config_text

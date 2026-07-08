@@ -99,6 +99,27 @@ def test_fake_apply_verification_blocks_stale_package(tmp_path: Path):
         )
 
 
+def test_fake_apply_verification_blocks_runtime_drift(tmp_path: Path):
+    package = _package(tmp_path)
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    receipt = build_fake_apply_receipt(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir="deck",
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    write_json(runtime / "CustomConfig" / "deck" / "drift.json", {"drift": True})
+
+    with pytest.raises(ValueError, match="fake apply receipt does not match runtime"):
+        verify_fake_apply_receipt(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir="deck",
+            receipt=receipt,
+        )
+
+
 def test_runtime_snapshot_reports_existing_target_and_deck_config_hash(tmp_path: Path):
     runtime = tmp_path / "runtime"
     write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})

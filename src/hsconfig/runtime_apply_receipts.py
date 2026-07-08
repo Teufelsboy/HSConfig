@@ -120,6 +120,14 @@ def verify_fake_apply_receipt(
     expected = receipt.get("package_fingerprint", {})
     if current.get("package_sha256") != expected.get("package_sha256"):
         raise ValueError("fake apply receipt does not match package")
+    expected_runtime = receipt.get("runtime_snapshot_before")
+    if not isinstance(expected_runtime, dict):
+        raise ValueError("fake apply receipt does not include runtime snapshot")
+    current_runtime = runtime_snapshot(runtime, config_dir)
+    if _runtime_snapshot_contract(current_runtime) != _runtime_snapshot_contract(
+        expected_runtime
+    ):
+        raise ValueError("fake apply receipt does not match runtime")
     return {
         "status": "verified",
         "package_sha256": current["package_sha256"],
@@ -134,3 +142,13 @@ def write_runtime_write_history(runtime_root: str | Path, entry: dict[str, Any])
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(row, sort_keys=True) + "\n")
     return path
+
+
+def _runtime_snapshot_contract(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "target_exists": snapshot.get("target_exists"),
+        "target_file_count": snapshot.get("target_file_count"),
+        "target_files": snapshot.get("target_files"),
+        "deck_config_ini_exists": snapshot.get("deck_config_ini_exists"),
+        "deck_config_ini_sha256": snapshot.get("deck_config_ini_sha256"),
+    }
