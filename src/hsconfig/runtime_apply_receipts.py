@@ -108,8 +108,12 @@ def verify_fake_apply_receipt(
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
+    if receipt.get("schema_version") != 1:
+        raise ValueError("fake apply receipt schema_version is not supported")
     if receipt.get("status") != "fake_apply_ready":
         raise ValueError("fake apply receipt is not ready")
+    if receipt.get("runtime_write_performed") is not False:
+        raise ValueError("fake apply receipt must not record a runtime write")
     if str(package) != str(Path(str(receipt.get("package_root", "")))):
         raise ValueError("fake apply receipt package path does not match package")
     if str(runtime) != str(Path(str(receipt.get("runtime_root", "")))):

@@ -511,6 +511,50 @@ def test_apply_cli_from_fake_receipt_applies_matching_package(tmp_path: Path, ca
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
+def test_apply_cli_from_fake_receipt_rejects_runtime_mismatch(tmp_path: Path, capsys):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    other_runtime = tmp_path / "other-runtime"
+
+    fake_code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(runtime),
+        "--fake",
+        "--json",
+    ])
+    capsys.readouterr()
+    assert fake_code == 0
+
+    apply_code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(other_runtime),
+        "--from-fake-receipt",
+        str(package / "reports" / "runtime_apply_fake_receipt.json"),
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert apply_code == 1
+    assert payload["status"] == "failed"
+    assert payload["errors"] == [
+        "fake apply receipt runtime path does not match runtime"
+    ]
+    assert not (other_runtime / "CustomConfig" / "deck").exists()
+
+
 def test_apply_cli_normal_apply_persists_actual_apply_gate_in_fake_receipt(
     tmp_path: Path, capsys
 ):
@@ -653,7 +697,8 @@ def test_apply_package_backup_snapshot_names_do_not_collide_within_same_second(
     )
     runtime = tmp_path / "runtime"
     write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
-    monkeypatch.setattr("hsconfig.runtime_apply.time.time", lambda: 1_700_000_000)
+    stamps = iter([1_700_000_000_000_000_001, 1_700_000_000_000_000_002])
+    monkeypatch.setattr("hsconfig.runtime_apply.time.time_ns", lambda: next(stamps))
 
     first = apply_package(package_root=package, runtime_root=runtime)
     second = apply_package(package_root=package, runtime_root=runtime)

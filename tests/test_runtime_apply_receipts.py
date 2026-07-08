@@ -77,6 +77,35 @@ def test_fake_apply_receipt_is_hash_bound_and_verifiable(tmp_path: Path):
     assert verified["status"] == "verified"
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("schema_version", 999, "schema_version is not supported"),
+        ("runtime_write_performed", True, "must not record a runtime write"),
+    ],
+)
+def test_fake_apply_verification_blocks_malformed_receipts(
+    tmp_path: Path, field: str, value: object, message: str
+):
+    package = _package(tmp_path)
+    runtime = tmp_path / "runtime"
+    receipt = build_fake_apply_receipt(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir="deck",
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    receipt[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        verify_fake_apply_receipt(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir="deck",
+            receipt=receipt,
+        )
+
+
 def test_fake_apply_verification_blocks_stale_package(tmp_path: Path):
     package = _package(tmp_path)
     receipt = build_fake_apply_receipt(
