@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
 
@@ -95,3 +96,33 @@ def test_discolock_and_imbuemage_are_now_source_backed_strong(
     assert promotion["promotion_ready"] is True
     assert gap_report["summary"]["blocked_cards"] == 0
     assert gap_report["summary"]["first_missing_chain"] is None
+
+
+def test_source_informed_rows_explain_blocked_closure_decision_without_promotion():
+    matrix = {
+        "decks": [
+            {
+                "deck_name": "Boarlock",
+                "fixture_stage": "source_informed_valid_fixture",
+                "strongness_visibility": {
+                    "first_strongness_gap": "needs_mulligan_claim_for_fracking",
+                    "source_informed_apply_readiness": "blocked",
+                    "source_informed_blocking_reasons": [
+                        "cards_need_runtime_surface",
+                        "generic_low_confidence_cards",
+                    ],
+                    "operator_action": "close_existing_source_informed_fixture",
+                },
+            }
+        ]
+    }
+
+    report = build_source_depth_closure_index(matrix, {})
+
+    boarlock = report["decks"]["Boarlock"]
+    assert boarlock["next_action"] == "run_prepare_fixture_and_collect_reports"
+    assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
+    assert boarlock["first_blocking_reason"] == "cards_need_runtime_surface"
+    assert boarlock["preserve_reason"] == (
+        "source-informed row has hard blockers and cannot be promoted or applied as strong"
+    )

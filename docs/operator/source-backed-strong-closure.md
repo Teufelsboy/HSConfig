@@ -47,6 +47,15 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | Boarlock | `source_informed_valid_fixture` | Promotion stays blocked: the exact provided Boarlock deck page publicly lists `Fracking` but does not expose an explicit card-level mulligan instruction. The Boarlock-specific mulligan thread checked discusses combo pieces, early clears, and draw in general but never explicitly says to keep or discard `Fracking`, and the only explicit `Fracking` mulligan statement found was for Sludgelock. |
 | PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
+## Current Source-Informed Closure Decisions
+
+| Deck | Current decision | First missing link | Hard blocker reason |
+|---|---|---|---|
+| Kingslayer | Preserve as source-informed until blockers close | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present` |
+| Boarlock | Preserve as source-informed until blockers close | `WW_092` / Fracking needs explicit mulligan claim | `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, `unsupported_conditions_present` |
+
+Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
+
 ## Current Blocker Snapshot
 
 Fresh local prepare runs for the current matrix state show:

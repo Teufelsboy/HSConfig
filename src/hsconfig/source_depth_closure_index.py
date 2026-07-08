@@ -24,6 +24,10 @@ def build_source_depth_closure_index(
         visibility = row.get("strongness_visibility", {})
         if not isinstance(visibility, dict):
             visibility = {}
+        blocking_reasons = visibility.get("source_informed_blocking_reasons", [])
+        if not isinstance(blocking_reasons, list):
+            blocking_reasons = []
+        blocking_reasons = [str(reason) for reason in blocking_reasons]
 
         reports = deck_reports.get(deck_name, {})
         operator = reports.get("operator_summary", {}) if isinstance(reports, dict) else {}
@@ -33,6 +37,11 @@ def build_source_depth_closure_index(
         summary[fixture_stage] += 1
         first_missing_chain = _first_missing_chain(gap_report)
         promotion_ready = promotion.get("promotion_ready") is True
+        closure_decision = _closure_decision(
+            fixture_stage=fixture_stage,
+            promotion_ready=promotion_ready,
+            blocking_reasons=blocking_reasons,
+        )
         if promotion_ready:
             summary["promotion_ready"] += 1
         else:
@@ -46,8 +55,12 @@ def build_source_depth_closure_index(
             "technical_status": operator.get("technical_status"),
             "semantic_status": operator.get("semantic_status"),
             "first_matrix_gap": str(visibility.get("first_strongness_gap", "")),
+            "source_informed_blocking_reasons": blocking_reasons,
+            "first_blocking_reason": blocking_reasons[0] if blocking_reasons else None,
             "promotion_ready": promotion_ready,
             "first_missing_chain": first_missing_chain,
+            "closure_decision": closure_decision,
+            "preserve_reason": _preserve_reason(closure_decision),
             "next_action": _next_action(
                 fixture_stage=fixture_stage,
                 report_status=report_status,
@@ -95,3 +108,24 @@ def _next_action(
     if first_missing_chain is not None:
         return "close_first_missing_chain"
     return "inspect_operator_summary_and_gap_reports"
+
+
+def _closure_decision(
+    *,
+    fixture_stage: str,
+    promotion_ready: bool,
+    blocking_reasons: list[str],
+) -> str:
+    if promotion_ready:
+        return "promote_or_keep_core"
+    if fixture_stage == "source_informed_valid_fixture" and blocking_reasons:
+        return "preserve_source_informed_until_blockers_close"
+    if fixture_stage == "source_informed_valid_fixture":
+        return "close_first_missing_chain"
+    return "inspect_reports"
+
+
+def _preserve_reason(closure_decision: str) -> str | None:
+    if closure_decision == "preserve_source_informed_until_blockers_close":
+        return "source-informed row has hard blockers and cannot be promoted or applied as strong"
+    return None
