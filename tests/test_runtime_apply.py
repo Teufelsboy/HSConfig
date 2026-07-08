@@ -440,6 +440,110 @@ def test_plan_apply_package_writes_fake_receipt_without_runtime_mutation(tmp_pat
     assert not (runtime / "CustomConfig" / "deck").exists()
 
 
+def test_apply_cli_fake_mode_does_not_write_runtime(tmp_path: Path, capsys):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(runtime),
+        "--fake",
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["status"] == "fake_apply_ready"
+    assert payload["receipt"]["runtime_write_performed"] is False
+    assert (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_cli_from_fake_receipt_applies_matching_package(tmp_path: Path, capsys):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    fake_code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(runtime),
+        "--fake",
+        "--json",
+    ])
+    capsys.readouterr()
+    assert fake_code == 0
+
+    receipt_path = package / "reports" / "runtime_apply_fake_receipt.json"
+    apply_code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(runtime),
+        "--from-fake-receipt",
+        str(receipt_path),
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert apply_code == 0
+    assert payload["status"] == "applied"
+    assert payload["receipt"]["fake_receipt_verified"]["status"] == "verified"
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+
+
+def test_apply_cli_normal_apply_persists_actual_apply_gate_in_fake_receipt(
+    tmp_path: Path, capsys
+):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    code = main([
+        "apply",
+        "--package",
+        str(package),
+        "--runtime-root",
+        str(runtime),
+        "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    fake_receipt = json.loads(
+        (package / "reports" / "runtime_apply_fake_receipt.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert payload["status"] == "applied"
+    assert fake_receipt["apply_gate"] == payload["apply_gate"]
+    assert fake_receipt["apply_gate"]["status"] == "allowed"
+
+
 def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_path: Path):
     from hsconfig.runtime_apply import plan_apply_package
 

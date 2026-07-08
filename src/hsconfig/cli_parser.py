@@ -140,5 +140,14 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--package", required=True)
     apply.add_argument("--runtime-root", required=True)
     apply.add_argument("--allow-source-informed", action="store_true")
+    apply.add_argument(
+        "--fake",
+        action="store_true",
+        help="Create a receipt-bound fake apply without mutating runtime files.",
+    )
+    apply.add_argument(
+        "--from-fake-receipt",
+        help="Apply only if the package and runtime match this fake apply receipt.",
+    )
     apply.add_argument("--json", action="store_true")
     return parser
