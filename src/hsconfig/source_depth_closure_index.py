@@ -4,6 +4,43 @@ from collections import Counter
 from typing import Any
 
 
+def _closure_priority(row: dict[str, Any]) -> int:
+    visibility = row.get("strongness_visibility", {})
+    if not isinstance(visibility, dict):
+        return 0
+    try:
+        return int(visibility.get("closure_priority", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _source_informed_closure_sequence(rows: list[dict[str, Any]]) -> list[str]:
+    targets = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("fixture_stage") == "source_informed_valid_fixture"
+        and _closure_priority(row) > 0
+    ]
+    targets.sort(key=lambda row: (_closure_priority(row), str(row.get("deck_name", ""))))
+    return [str(row["deck_name"]) for row in targets if row.get("deck_name")]
+
+
+def _preserved_source_informed_targets(rows: list[dict[str, Any]]) -> list[str]:
+    names: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        visibility = row.get("strongness_visibility", {})
+        if not isinstance(visibility, dict):
+            continue
+        if visibility.get("operator_action") == (
+            "preserve_source_informed_with_explicit_stop_condition"
+        ):
+            names.append(str(row.get("deck_name", "")))
+    return [name for name in names if name]
+
+
 def build_source_depth_closure_index(
     matrix: dict[str, Any],
     deck_reports: dict[str, dict[str, Any]],
@@ -11,6 +48,8 @@ def build_source_depth_closure_index(
     rows = matrix.get("decks", [])
     if not isinstance(rows, list):
         rows = []
+    closure_sequence = _source_informed_closure_sequence(rows)
+    preserved_targets = _preserved_source_informed_targets(rows)
 
     summary: Counter[str] = Counter()
     decks: dict[str, dict[str, Any]] = {}
@@ -93,6 +132,9 @@ def build_source_depth_closure_index(
             "source_informed_valid_fixture": summary["source_informed_valid_fixture"],
             "promotion_ready": summary["promotion_ready"],
             "promotion_blocked": summary["promotion_blocked"],
+            "next_closure_target": closure_sequence[0] if closure_sequence else None,
+            "closure_sequence": closure_sequence,
+            "preserved_source_informed_targets": preserved_targets,
         },
         "decks": decks,
     }

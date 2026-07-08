@@ -46,6 +46,10 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
 
     report = build_source_depth_closure_index(matrix, {})
 
+    assert report["summary"]["next_closure_target"] == "Boarlock"
+    assert report["summary"]["closure_sequence"] == ["Boarlock", "Kingslayer"]
+    assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
+
     boarlock = report["decks"]["Boarlock"]
     assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
     assert boarlock["closure_blocker_stack"] == [
