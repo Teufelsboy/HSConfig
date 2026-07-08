@@ -11,7 +11,9 @@ def test_core_source_backed_fixture_stage_requires_source_backed_strong(
     monkeypatch,
     deck,
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     if deck["fixture_stage"] != "core_source_backed_fixture":
         pytest.skip(f"{deck['deck_name']} is not marked as a core source-backed fixture")
 

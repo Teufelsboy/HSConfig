@@ -65,7 +65,9 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
 
 
 def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     deck = next(
         row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
     )
@@ -116,7 +118,9 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
     tmp_path,
     monkeypatch,
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     deck = next(
         row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
     )
@@ -139,7 +143,9 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
 
 
 def test_boarlock_closure_does_not_widen_runtime_surfaces(tmp_path, monkeypatch):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
     deck = next(
         row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
     )

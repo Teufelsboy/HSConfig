@@ -103,7 +103,7 @@ def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
 
 def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(
-        "hsconfig.cli.fetch_latest_cards",
+        "hsconfig.package_builder.fetch_latest_cards",
         lambda timeout=10.0: [
             {
                 "id": "EX1_001",

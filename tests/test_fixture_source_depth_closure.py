@@ -20,7 +20,9 @@ def _source_informed_rows():
     ids=lambda row: row["deck_name"],
 )
 def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatch, deck):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     result = prepare_fixture_deck(tmp_path, deck)
     operator = result["operator"]
@@ -81,7 +83,9 @@ def test_discolock_and_imbuemage_are_now_source_backed_strong(
     monkeypatch,
     deck_name,
 ):
-    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
 
     deck = next(row for row in load_archetype_matrix() if row["deck_name"] == deck_name)
     result = prepare_fixture_deck(tmp_path, deck)
