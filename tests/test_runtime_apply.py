@@ -633,3 +633,52 @@ def test_apply_package_restores_previous_runtime_when_mutation_fails(
     assert json.loads(old_json) == {"old": True}
     assert not (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
     assert deck_config.read_text(encoding="utf-8") == old_deck_config_text
+
+
+def test_apply_package_appends_rollback_history_when_final_receipt_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "old.json", {"old": True})
+    deck_config = runtime / "CustomConfig" / "deck_config.ini"
+    old_deck_config_text = "[CONFIGS]\nGate Deck = old_deck\nOther Deck = other\n"
+    deck_config.write_text(old_deck_config_text, encoding="utf-8")
+    fake = runtime_apply.plan_apply_package(
+        package_root=package,
+        runtime_root=runtime,
+        apply_gate={"status": "allowed", "mode": "source_backed_strong", "reasons": []},
+    )
+    original_write_json = runtime_apply.write_json
+
+    def fail_final_receipt(path, data):
+        if Path(path).name == "runtime_apply_receipt.json":
+            raise RuntimeError("receipt failed")
+        return original_write_json(path, data)
+
+    monkeypatch.setattr(runtime_apply, "write_json", fail_final_receipt)
+
+    with pytest.raises(RuntimeError, match="receipt failed"):
+        apply_package(package_root=package, runtime_root=runtime, fake_receipt=fake)
+
+    history_path = runtime / "CustomConfig" / "hsconfig_write_history.jsonl"
+    history_rows = [
+        json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert history_rows[-1]["status"] == "rolled_back"
+    assert history_rows[-1]["failed_status"] == "applied"
+    assert history_rows[-1]["failure_type"] == "RuntimeError"
+    assert history_rows[-1]["rollback_restored"] is True
+    assert json.loads(
+        (runtime / "CustomConfig" / "deck" / "old.json").read_text(encoding="utf-8")
+    ) == {"old": True}
+    assert not (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+    assert deck_config.read_text(encoding="utf-8") == old_deck_config_text

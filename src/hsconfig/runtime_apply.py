@@ -94,6 +94,7 @@ def apply_package(
         runtime=runtime,
         config_dir=deck_dir_name,
     )
+    success_history_written = False
     try:
         target_root.mkdir(parents=True, exist_ok=True)
         if replaced_existing and replace:
@@ -144,18 +145,39 @@ def apply_package(
                     "package_sha256": fake_verification["package_sha256"],
                 },
             )
+            success_history_written = True
             receipt["write_history_path"] = str(history_path)
         write_json(package / "reports" / "runtime_apply_receipt.json", receipt)
         return receipt
     except Exception as exc:
+        rollback_restored = False
         try:
             _restore_runtime_target_snapshot(
                 runtime=runtime,
                 config_dir=deck_dir_name,
                 rollback_snapshot_path=rollback_snapshot_path,
             )
+            rollback_restored = True
         except Exception as restore_exc:
             exc.add_note(f"runtime rollback restore failed: {restore_exc}")
+        if write_history and success_history_written:
+            try:
+                write_runtime_write_history(
+                    runtime,
+                    {
+                        "status": "rolled_back",
+                        "failed_status": "applied",
+                        "package_root": str(package),
+                        "config_dir": deck_dir_name,
+                        "target_path": str(target_dir),
+                        "rollback_snapshot_path": rollback_snapshot_path,
+                        "rollback_restored": rollback_restored,
+                        "failure_type": type(exc).__name__,
+                        "failure_message": str(exc),
+                    },
+                )
+            except Exception as history_exc:
+                exc.add_note(f"runtime rollback history write failed: {history_exc}")
         raise
 
 
