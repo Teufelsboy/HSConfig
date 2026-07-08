@@ -66,6 +66,25 @@ def test_cli_main_dispatches_apply_without_changing_public_command_shape(
     }
 
 
+def test_cli_main_dispatches_validate_without_changing_public_command_shape(
+    tmp_path: Path, monkeypatch
+):
+    package = tmp_path / "package"
+    package.mkdir()
+
+    captured = {}
+
+    def fake_run_validate_command(args):
+        captured["package"] = args.package
+        captured["json"] = args.json
+        return 0
+
+    monkeypatch.setattr("hsconfig.cli.run_validate_command", fake_run_validate_command)
+
+    assert main(["validate", "--package", str(package), "--json"]) == 0
+    assert captured == {"package": str(package), "json": True}
+
+
 def test_readme_documents_prepare_as_normal_path():
     root_readme = Path("README.md").read_text(encoding="utf-8")
     operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
@@ -787,3 +806,9 @@ def test_command_common_run_payload_command_wraps_exceptions(capsys):
         "errors": ["broken command"],
         "status": "failed",
     }
+
+
+def test_apply_command_module_no_longer_imports_hsconfig_cli():
+    text = Path("src/hsconfig/commands/apply.py").read_text(encoding="utf-8")
+
+    assert "from hsconfig.cli import" not in text

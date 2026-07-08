@@ -4,6 +4,7 @@ import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import write_json
+from hsconfig.package_io import read_optional_profile, read_required_baseline
 
 
 def _write_operator_summary(package: Path, payload: dict) -> None:
@@ -474,3 +475,22 @@ def test_apply_gate_blocks_package_without_input_manifest(tmp_path: Path):
         "reason": "missing_input_manifest",
         "path": str(package / "reports" / "input_manifest.json"),
     }
+
+
+def test_package_io_reads_optional_profile_when_present(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "globalvalues_profile.json",
+        {"status": "present", "speed": "fast"},
+    )
+
+    assert read_optional_profile(package) == {"status": "present", "speed": "fast"}
+
+
+def test_package_io_returns_none_when_optional_profile_missing(tmp_path: Path):
+    assert read_optional_profile(tmp_path / "package") is None
+
+
+def test_package_io_requires_globalvalues_baseline(tmp_path: Path):
+    with pytest.raises(ValueError, match="Missing GlobalValues baseline report"):
+        read_required_baseline(tmp_path / "package")

@@ -7,7 +7,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli_parser import build_parser
 from hsconfig.card_metadata import hydrate_card_metadata
 from hsconfig.card_behavior_router import route_card_behavior_claims
@@ -16,7 +15,7 @@ from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.combo_plan import build_combo_plan
-from hsconfig.commands.apply import run_apply_command
+from hsconfig.commands.apply import run_apply_command, run_validate_command
 from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
@@ -49,7 +48,6 @@ from hsconfig.research_contract import (
     write_research_contract_bundle,
     write_research_contract_bundle_to_dir,
 )
-from hsconfig.runtime_apply import apply_package
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import enrich_card_metadata
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
@@ -60,7 +58,6 @@ from hsconfig.source_research_manifest import build_source_research_manifest
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
-
 LEGACY_CLAIMS_RETRIEVED_AT = "1970-01-01T00:00:00Z"
 
 
@@ -85,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "research-contract":
             payload, code = _research_contract(args)
         elif args.command == "validate":
-            payload, code = _validate(args)
+            return run_validate_command(args)
         else:
             payload, code = {"status": "failed", "errors": [f"Unknown command: {args.command}"]}, 1
     except Exception as exc:
@@ -124,14 +121,6 @@ def _run_draft_source_documents_command(args: argparse.Namespace) -> int:
 def _run_research_deck_command(args: argparse.Namespace) -> int:
     try:
         payload, code = _research_deck(args)
-    except Exception as exc:
-        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
-    return _emit(payload, args.json, code)
-
-
-def _run_apply_command(args: argparse.Namespace) -> int:
-    try:
-        payload, code = _apply(args)
     except Exception as exc:
         payload, code = {"status": "failed", "errors": [str(exc)]}, 1
     return _emit(payload, args.json, code)
@@ -751,55 +740,6 @@ def _prepare_research_output_dir(out: Path) -> None:
     raise ValueError(f"Refusing to overwrite non-empty research output directory: {out}")
 
 
-def _validate(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    package = Path(args.package)
-    if not package.exists():
-        return {"status": "failed", "errors": [f"Package not found: {package}"], "checked_files": 0}, 1
-    baseline = _read_required_baseline(package)
-    profile = _read_optional_profile(package)
-    report = validate_config_package(
-        package,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=profile,
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
-    return report, 0 if report["status"] == "passed" else 1
-
-
-def _apply(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    package = Path(args.package)
-    if not package.exists():
-        return {"status": "failed", "errors": [f"Package not found: {package}"]}, 1
-
-    baseline = _read_required_baseline(package)
-    profile = _read_optional_profile(package)
-    report = validate_config_package(
-        package,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=profile,
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
-    if report["status"] != "passed":
-        return {"status": "failed", "errors": report["errors"], "validation_report": report}, 1
-
-    apply_gate = evaluate_apply_gate(
-        package,
-        allow_source_informed=bool(getattr(args, "allow_source_informed", False)),
-    )
-    if apply_gate["status"] != "allowed":
-        return {
-            "status": "blocked",
-            "errors": ["Operator summary does not allow runtime apply."],
-            "validation_report": report,
-            "apply_gate": apply_gate,
-        }, 1
-
-    receipt = apply_package(package_root=package, runtime_root=args.runtime_root)
-    return {"status": "applied", "apply_gate": apply_gate, "receipt": receipt}, 0
-
-
 def _load_cards(
     cards_json: str | None,
     *,
@@ -1071,26 +1011,6 @@ def _card_behavior_identity_links(gameplan_contract: dict[str, Any]) -> dict[str
         for card_id, row in cards.items()
         if isinstance(row, dict)
     }
-
-
-def _read_optional_profile(package: Path) -> dict[str, Any] | None:
-    profile_path = package / "reports" / "globalvalues_profile.json"
-    if not profile_path.exists():
-        return None
-    profile = read_json(profile_path)
-    if not isinstance(profile, dict):
-        raise ValueError(f"GlobalValues profile must be an object: {profile_path}")
-    return profile
-
-
-def _read_required_baseline(package: Path) -> dict[str, Any]:
-    baseline_path = package / "reports" / "globalvalues_baseline.json"
-    if not baseline_path.exists():
-        raise ValueError(f"Missing GlobalValues baseline report: {baseline_path}")
-    baseline = read_json(baseline_path)
-    if not isinstance(baseline, dict):
-        raise ValueError(f"GlobalValues baseline must be an object: {baseline_path}")
-    return baseline
 
 
 def _emit(payload: dict[str, Any], as_json: bool, code: int) -> int:
