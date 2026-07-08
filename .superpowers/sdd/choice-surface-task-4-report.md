@@ -73,3 +73,22 @@ Result:
 ### Test
 - Command: `python -m pytest tests/test_card_behavior_router.py -q`
 - Result: `26 passed`
+
+## Task 4 Partial Resolution Edge Case
+
+### Fix
+- Adjusted `src/hsconfig/card_behavior_surface_router.py` so `_resolved_choice_cards()` now records resolved cards per row instead of requiring every card on a `discover_choice` claim to resolve.
+- This preserves the existing suppression of the unresolved `discover_choice` claim itself while still letting later generic discover fallback logic suppress the resolved subset only.
+
+### Regression Test
+- Added `test_partial_discover_choice_resolution_suppresses_only_resolved_cards` to `tests/test_card_behavior_router.py`.
+- The test covers a two-card `discover_choice` claim where only `CARD_RESOLVED` links to `OPTION_ALPHA`, then a later generic discover claim spanning both cards.
+- Expected outcome verified:
+  - the unresolved option claim remains suppressed,
+  - `CARD_RESOLVED` is covered by the resolved choice surface,
+  - `CARD_UNRESOLVED` still emits the generic discover fallback row,
+  - `option_resolution` records one resolved row and one unresolved row.
+
+### Verification
+- Command: `python -m pytest tests/test_card_behavior_router.py -q`
+- Result: `27 passed`

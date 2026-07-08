@@ -202,6 +202,71 @@ def test_resolved_discover_choice_suppresses_generic_discover_fallback():
     ]
 
 
+def test_partial_discover_choice_resolution_suppresses_only_resolved_cards():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_pick_option_alpha",
+                "claim_kind": "discover_choice",
+                "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
+                "option_card_id": "OPTION_ALPHA",
+                "stance": "pick_option_alpha",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "runtime_value": "11",
+            },
+            {
+                "claim_id": "claim_generic_discover",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
+                "mechanic": "discover",
+                "claim_readiness": "source_backed_static_semantics",
+                "runtime_value": "6",
+            },
+        ],
+        identity_links={
+            "CARD_RESOLVED": [
+                {"link_kind": "entourage", "card_id": "OPTION_ALPHA"},
+            ],
+            "CARD_UNRESOLVED": [
+                {"link_kind": "entourage", "card_id": "OPTION_BETA"},
+            ],
+        },
+    )
+
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_UNRESOLVED"]
+    assert plan["rows"][0]["claim_id"] == "claim_generic_discover"
+    assert plan["rows"][0]["behavior_block"] == "OnDiscoverCardBonus"
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_pick_option_alpha",
+            "claim_kind": "discover_choice",
+            "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
+            "reason": "unresolved_option_identity",
+        },
+        {
+            "claim_id": "claim_generic_discover",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_RESOLVED"],
+            "reason": "covered_by_resolved_choice_surface",
+        },
+    ]
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_pick_option_alpha",
+            "card_id": "CARD_RESOLVED",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "resolved",
+        },
+        {
+            "claim_id": "claim_pick_option_alpha",
+            "card_id": "CARD_UNRESOLVED",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "unresolved",
+        },
+    ]
+
+
 def test_choose_one_choice_with_resolved_option_lowers_to_choose_one_block():
     plan = route_card_behavior_claims(
         [

@@ -444,9 +444,11 @@ def _resolved_choice_cards(
             cards=cards,
             identity_links=identity_links,
         )
-        if not option_rows or any(row["status"] != "resolved" for row in option_rows):
+        if not option_rows:
             continue
-        resolved_cards.update(cards)
+        resolved_cards.update(
+            row["card_id"] for row in option_rows if row["status"] == "resolved"
+        )
     return resolved_cards
 
 
