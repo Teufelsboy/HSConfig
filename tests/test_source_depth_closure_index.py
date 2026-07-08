@@ -130,6 +130,41 @@ def test_index_reports_first_missing_link_for_source_informed_rows():
     assert shadow["next_action"] == "keep_as_core_control_fixture"
 
 
+def test_index_excludes_non_source_informed_rows_from_preserved_targets():
+    matrix = {
+        "decks": [
+            {
+                "deck_name": "Boarlock",
+                "fixture_stage": "source_informed_valid_fixture",
+                "strongness_visibility": {
+                    "closure_priority": 1,
+                    "source_informed_blocking_reasons": ["cards_need_runtime_surface"],
+                    "operator_action": (
+                        "preserve_source_informed_with_explicit_stop_condition"
+                    ),
+                    "stop_condition": (
+                        "exact_boarlock_fracking_mulligan_source_unavailable"
+                    ),
+                },
+            },
+            {
+                "deck_name": "ShadowPriest",
+                "fixture_stage": "core_source_backed_fixture",
+                "strongness_visibility": {
+                    "operator_action": (
+                        "preserve_source_informed_with_explicit_stop_condition"
+                    ),
+                    "stop_condition": "should_not_be_preserved",
+                },
+            },
+        ]
+    }
+
+    report = build_source_depth_closure_index(matrix, {})
+
+    assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
+
+
 def test_index_uses_matrix_gap_when_reports_are_missing():
     matrix = {
         "decks": [

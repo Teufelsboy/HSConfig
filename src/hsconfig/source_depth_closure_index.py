@@ -31,6 +31,8 @@ def _preserved_source_informed_targets(rows: list[dict[str, Any]]) -> list[str]:
     for row in rows:
         if not isinstance(row, dict):
             continue
+        if row.get("fixture_stage") != "source_informed_valid_fixture":
+            continue
         visibility = row.get("strongness_visibility", {})
         if not isinstance(visibility, dict):
             continue
