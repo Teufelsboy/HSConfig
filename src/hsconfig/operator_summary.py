@@ -78,6 +78,7 @@ def build_operator_summary(
         claim_coverage_report=claim_coverage_report,
         config_readiness_summary=effective_config_readiness_summary,
         claim_conflict_report=claim_conflict_report,
+        unsupported_conditions=unsupported_conditions,
     )
     primary_blockers = _primary_blockers(technical_validation, technical_status)
     warnings = _warnings(
@@ -147,6 +148,7 @@ def _semantic_status(
     claim_coverage_report: dict[str, Any] | None,
     config_readiness_summary: dict[str, Any] | None,
     claim_conflict_report: dict[str, Any] | None,
+    unsupported_conditions: list[dict[str, Any]] | None,
 ) -> str:
     if technical_status == "INVALID_PACKAGE":
         return "INVALID_PACKAGE"
@@ -158,9 +160,10 @@ def _semantic_status(
         config_readiness_summary=config_readiness_summary,
         claim_coverage_report=claim_coverage_report,
     )
-    uncovered_cards = _uncovered_cards(claim_coverage_report or {})
+    uncovered_card_count = _uncovered_card_count(claim_coverage_report or {})
     conflict_count = _int_value((claim_conflict_report or {}).get("conflict_count", 0))
     readiness_gap_count = _readiness_gap_count(config_readiness_summary or {})
+    unsupported_condition_count = len(unsupported_conditions or [])
     source_evidence = guide_source_depth.get("source_evidence", {}) if isinstance(guide_source_depth, dict) else {}
     source_evidence_warnings = _int_value(source_evidence.get("warnings_count", 0))
 
@@ -170,15 +173,17 @@ def _semantic_status(
         and generic_low_confidence == 0
         and conflict_count == 0
         and readiness_gap_count == 0
+        and unsupported_condition_count == 0
         and source_evidence_warnings == 0
-        and not uncovered_cards
+        and uncovered_card_count == 0
     ):
         return "SOURCE_BACKED_STRONG"
     if (
         generic_low_confidence > 0
-        or uncovered_cards
+        or uncovered_card_count > 0
         or conflict_count > 0
         or readiness_gap_count > 0
+        or unsupported_condition_count > 0
         or source_evidence_warnings > 0
     ):
         return "VALID_BUT_NOT_GUIDE_STRONG"
@@ -275,7 +280,6 @@ def _guide_strength_summary(
     source_evidence = guide_source_depth.get("source_evidence", {})
     if not isinstance(source_evidence, dict):
         source_evidence = {}
-    uncovered_cards = _uncovered_cards(claim_coverage_report)
     return {
         "total_cards": _int_value(
             config_readiness_summary.get(
@@ -294,7 +298,7 @@ def _guide_strength_summary(
             config_readiness_summary=config_readiness_summary,
             claim_coverage_report=claim_coverage_report,
         ),
-        "uncovered_cards": len(uncovered_cards),
+        "uncovered_cards": _uncovered_card_count(claim_coverage_report),
         "claim_conflicts": _int_value(claim_conflict_report.get("conflict_count", 0)),
         "lowerable_claims": _int_value(depth_summary.get("lowerable_claims", 0)),
         "report_only_claims": _int_value(depth_summary.get("report_only_claims", 0)),
@@ -574,6 +578,13 @@ def _uncovered_cards(report: dict[str, Any]) -> list[str]:
         for card_id, row in cards.items()
         if isinstance(row, dict) and row.get("coverage_status") == "uncovered_low_confidence"
     ]
+
+
+def _uncovered_card_count(report: dict[str, Any]) -> int:
+    summary = report.get("summary", {})
+    if isinstance(summary, dict) and "uncovered_low_confidence" in summary:
+        return _int_value(summary.get("uncovered_low_confidence", 0))
+    return len(_uncovered_cards(report))
 
 
 def _next_action_and_policy(
