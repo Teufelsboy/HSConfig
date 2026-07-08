@@ -102,8 +102,8 @@ DONE_WITH_CONCERNS
 - Files changed: `docs/research/2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure/fields.yaml`, `docs/research/2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure/results/Kingslayer_Quick_Pick_Mulligan_Closure.json`, `docs/research/2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure/results/Boarlock_Fracking_Mulligan_Closure.json`, `.superpowers/sdd/task-2-report.md`
 - Validation outputs:
   - `python C:\Users\darbo\.codex\skills\research\validate_json.py -f docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\fields.yaml -j docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\results\Kingslayer_Quick_Pick_Mulligan_Closure.json`
-  - `Coverage: 100.0% (10/10)`
+  - `Coverage: 100.0% (11/11)`
   - `python C:\Users\darbo\.codex\skills\research\validate_json.py -f docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\fields.yaml -j docs\research\2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure\results\Boarlock_Fracking_Mulligan_Closure.json`
-  - `Coverage: 100.0% (10/10)`
+  - `Coverage: 100.0% (11/11)`
 - Commit hash: `bd6a9f8`
 - Self-review: Schema now matches the research validator shape used by existing packages, so coverage is measured against 11 defined fields instead of 0/0. Blocked evidence text is now neutral and no longer presents adjacent-archetype quotes as source-backed support. No replay, winrate, runtime-log, candidate-promotion, or post-run tuning logic was added.
