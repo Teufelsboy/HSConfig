@@ -5,7 +5,7 @@ HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a d
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
-The normal path is: source-manifest -> draft-source-documents -> research-deck -> prepare -> apply.
+The normal path is: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
 
@@ -15,9 +15,10 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 2. Write short source evidence rows from current guide, archetype, mulligan, card-text, and metadata sources.
 3. Run `hsconfig draft-source-documents` to turn evidence rows into strict `source_documents.json`.
 4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
-5. Run `hsconfig prepare --guide-sources-json ...` to compile and validate the package.
-6. Open `reports/operator_summary.json` first.
-7. Run `hsconfig apply` only when the operator summary allows it.
+5. Run `hsconfig prepare --guide-sources-json ...` to compile the pre-run package and reports.
+6. Run `hsconfig validate --package <package> --json` before handoff or runtime apply.
+7. Open `reports/operator_summary.json` first.
+8. Run `hsconfig apply` only when the operator summary allows it.
 
 ## Single Gate
 

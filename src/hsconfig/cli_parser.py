@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
             "Normal path: source-manifest -> draft-source-documents -> research-deck -> "
-            f"prepare -> apply. {NEGATIVE_SCOPE_TEXT}\n"
+            f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
             "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
         ),
