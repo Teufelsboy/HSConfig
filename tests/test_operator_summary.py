@@ -592,7 +592,12 @@ def test_source_evidence_warnings_prevent_source_backed_strong():
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
     assert summary["guide_strength_summary"]["source_evidence_warnings"] == 1
+    assert summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
+        "source_evidence_warnings"
+    ]
 
 
 def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():

@@ -55,6 +55,38 @@ def test_report_explains_first_missing_chain_for_non_strong_deck():
     }
 
 
+def test_report_marks_source_informed_apply_ready_without_strong_promotion():
+    readiness = {
+        "status": "ready",
+        "requires_flag": "--allow-source-informed",
+        "allowed_blocker_reasons": [
+            "cards_need_guide_claims",
+            "cards_need_mulligan_claims",
+        ],
+        "blocking_reasons": [],
+        "source_gap_count": 2,
+    }
+    report = build_strong_promotion_report(
+        deck_name="Kingslayer",
+        fixture_stage="source_informed_valid_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "SOURCE_INFORMED_APPLY_READY",
+            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "source_informed_apply_readiness": readiness,
+            "semantic_blockers": [{"reason": "cards_need_mulligan_claims", "count": 2}],
+            "guide_strength_summary": {"generic_low_confidence_cards": 0},
+        },
+        source_claim_gap_report={"summary": {"blocked_cards": 2}, "cards": {}},
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["next_action"] == "source_informed_apply_ready_but_not_strong"
+    assert report["source_informed_apply_readiness"] == readiness
+
+
 @pytest.mark.parametrize("surface_name", ["Presume.json", "Concede.json"])
 def test_report_blocks_strong_promotion_when_normal_path_optional_surface_exists(surface_name):
     report = build_strong_promotion_report(

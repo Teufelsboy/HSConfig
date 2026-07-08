@@ -32,6 +32,10 @@ def build_strong_promotion_report(
         "fixture_stage": fixture_stage,
         "promotion_ready": promotion_ready,
         "verdict": "SOURCE_BACKED_STRONG_CONFIRMED" if promotion_ready else "PROMOTION_BLOCKED",
+        "source_informed_apply_readiness": operator_summary.get(
+            "source_informed_apply_readiness",
+            {},
+        ),
         "next_action": _report_next_action(
             promotion_ready=promotion_ready,
             operator_summary=operator_summary,
@@ -76,6 +80,12 @@ def _report_next_action(
         return "fixture_can_be_core_source_backed"
     if operator_summary.get("technical_status") != "VALID_PACKAGE":
         return str(operator_summary.get("next_action", ""))
+    if (
+        operator_summary.get("next_action") == "SOURCE_INFORMED_APPLY_READY"
+        and isinstance(operator_summary.get("source_informed_apply_readiness"), dict)
+        and operator_summary["source_informed_apply_readiness"].get("status") == "ready"
+    ):
+        return "source_informed_apply_ready_but_not_strong"
     return "close_first_missing_chain"
 
 
