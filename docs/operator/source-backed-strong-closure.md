@@ -47,8 +47,9 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | Boarlock | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Boarlock Fracking mulligan evidence remains unavailable or unresolved lowering blockers remain. Preserve this row as the combo-control source-informed control until those blockers close. |
 | PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
-- `Kingslayer` remains a source-informed closure target. The first missing link is `DEEP_014:Quick Pick:needs_mulligan_claim`; it must either receive an exact mulligan source claim or be preserved with an explicit stop condition in a later closure pass.
-- `Boarlock` remains source-informed with an explicit stop condition: `exact_boarlock_fracking_mulligan_source_unavailable`. Do not force a weak `Fracking` mulligan claim.
+- `Boarlock` remains source-informed with explicit stop condition `exact_boarlock_fracking_mulligan_source_unavailable` unless an exact Boarlock-relevant Fracking mulligan source is added.
+- `Kingslayer` remains source-informed until `DEEP_014` / `Quick Pick` receives an exact deck-specific keep or discard source claim.
+- Adjacent archetype advice is not source-backed evidence for these two rows.
 
 ## Current Source-Informed Closure Decisions
 

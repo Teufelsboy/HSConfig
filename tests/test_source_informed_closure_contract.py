@@ -11,6 +11,8 @@ TARGETS = {
     "Boarlock": {
         "first_card_id": "WW_092",
         "first_card_name": "Fracking",
+        "expected_source_depth_lane": "mulligan_claim_gap",
+        "expected_stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable",
         "expected_runtime_surfaces": {
             "GlobalValues.json",
             "Mulligan.json",
@@ -21,6 +23,8 @@ TARGETS = {
     "Kingslayer": {
         "first_card_id": "DEEP_014",
         "first_card_name": "Quick Pick",
+        "expected_source_depth_lane": "mulligan_claim_gap",
+        "expected_stop_condition": None,
         "expected_runtime_surfaces": {
             "GlobalValues.json",
             "Mulligan.json",
@@ -62,8 +66,15 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     assert first_chain["card_id"] == target["first_card_id"]
     assert first_chain["name"] == target["first_card_name"]
     assert first_chain["first_missing_link"] == "needs_mulligan_claim"
-    assert first_chain["source_depth_lane"] == "mulligan_claim_gap"
+    assert first_chain["source_depth_lane"] == target["expected_source_depth_lane"]
+    assert first_chain["recommended_source_claim_kind"] == "mulligan_keep"
     assert first_chain["next_action"] == "add_mulligan_keep_or_discard_claim"
+
+    visibility = deck["strongness_visibility"]
+    if target["expected_stop_condition"] is not None:
+        assert visibility["stop_condition"] == target["expected_stop_condition"]
+    assert visibility["closure_state"] == "source_informed_blocked"
+    assert visibility["source_informed_apply_readiness"] == "blocked"
 
     card_surfaces = {f"{card['card_id']}.json" for card in deck_identity["cards"]}
     assert target["expected_runtime_surfaces"] <= generated
