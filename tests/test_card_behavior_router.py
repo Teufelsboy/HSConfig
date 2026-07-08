@@ -126,6 +126,59 @@ def test_resolved_discover_choice_derives_my_discover_condition():
     assert row["meaningful_runtime_surface"] is True
 
 
+def test_resolved_discover_choice_suppresses_generic_discover_fallback():
+    spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
+    assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_pick_option_alpha",
+                "claim_kind": "discover_choice",
+                "cards": ["DISCOVER_CARD"],
+                "option_card_id": "OPTION_ALPHA",
+                "stance": "pick_option_alpha",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "runtime_value": "11",
+            },
+            {
+                "claim_id": "claim_generic_discover",
+                "claim_kind": "mechanic_usage",
+                "cards": ["DISCOVER_CARD"],
+                "mechanic": "discover",
+                "claim_readiness": "source_backed_static_semantics",
+                "runtime_value": "6",
+            },
+        ],
+        identity_links={
+            "DISCOVER_CARD": [
+                {"link_kind": "entourage", "card_id": "OPTION_ALPHA"},
+            ]
+        },
+    )
+
+    assert [row["claim_id"] for row in plan["rows"]] == ["claim_pick_option_alpha"]
+    assert plan["rows"][0]["condition"] == "my_discover(count(),cardid=OPTION_ALPHA) > 0"
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_generic_discover",
+            "claim_kind": "mechanic_usage",
+            "cards": ["DISCOVER_CARD"],
+            "reason": "covered_by_resolved_choice_surface",
+        }
+    ]
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_pick_option_alpha",
+            "card_id": "DISCOVER_CARD",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "resolved",
+        }
+    ]
+
+
 def test_choose_one_choice_with_resolved_option_lowers_to_choose_one_block():
     plan = route_card_behavior_claims(
         [

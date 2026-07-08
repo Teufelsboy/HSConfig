@@ -77,6 +77,7 @@ def route_card_behavior_surfaces(
     suppressed: list[dict[str, Any]] = []
     option_resolution: list[dict[str, Any]] = []
     strong_cards: set[str] = set()
+    resolved_discover_choice_cards = _resolved_choice_cards(claims, identity_links)
 
     for claim in claims:
         claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
@@ -158,10 +159,27 @@ def route_card_behavior_surfaces(
                 )
                 continue
             if role is not None:
+                covered_cards = (
+                    [card_id for card_id in cards if card_id in resolved_discover_choice_cards]
+                    if role == "discover" and explicit_block is None
+                    else []
+                )
+                uncovered_cards = [card_id for card_id in cards if card_id not in covered_cards]
+                if covered_cards:
+                    suppressed.append(
+                        _suppressed_row(
+                            claim,
+                            claim_kind,
+                            covered_cards,
+                            "covered_by_resolved_choice_surface",
+                        )
+                    )
+                if not uncovered_cards:
+                    continue
                 rows.extend(
                     _rows_for_cards(
                         claim,
-                        cards,
+                        uncovered_cards,
                         condition=condition,
                         behavior_block=explicit_block or ROLE_BLOCKS[role],
                         intent=f"use_{role}_according_to_card_text",
@@ -398,6 +416,38 @@ def _option_resolution_rows(
             }
         )
     return rows
+
+
+def _resolved_choice_cards(
+    claims: list[dict[str, Any]],
+    identity_links: dict[str, Any] | None,
+) -> set[str]:
+    resolved_cards: set[str] = set()
+    for claim in claims:
+        claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
+        if claim_kind != "discover_choice":
+            continue
+        if not claim_can_lower_to_runtime(claim):
+            continue
+        cards = _claim_cards(claim)
+        if not cards:
+            continue
+        _, condition_error = _condition(claim)
+        if condition_error is not None:
+            continue
+        _, explicit_error = _explicit_runtime_block(claim)
+        if explicit_error is not None:
+            continue
+        option_rows = _option_resolution_rows(
+            claim=claim,
+            claim_kind=claim_kind,
+            cards=cards,
+            identity_links=identity_links,
+        )
+        if not option_rows or any(row["status"] != "resolved" for row in option_rows):
+            continue
+        resolved_cards.update(cards)
+    return resolved_cards
 
 
 def _claim_option_card_id(claim: dict[str, Any]) -> str | None:

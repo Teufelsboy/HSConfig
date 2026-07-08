@@ -1247,12 +1247,18 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
             encoding="utf-8"
         )
     )
-    discover_values = discover_config["OnDiscoverCardBonus"]["values"]
 
     assert code == 1
     assert payload["status"] == "failed"
-    assert any(row["claim_id"] == discover_claim["claim_id"] for row in card_behavior["rows"])
-    assert card_behavior["suppressed"] == []
+    assert [row["claim_id"] for row in card_behavior["rows"]] == [discover_claim["claim_id"]]
+    assert card_behavior["suppressed"] == [
+        {
+            "claim_id": card_behavior["suppressed"][0]["claim_id"],
+            "claim_kind": "mechanic_usage",
+            "cards": ["DISCOVER_CARD"],
+            "reason": "covered_by_resolved_choice_surface",
+        }
+    ]
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": discover_claim["claim_id"],
@@ -1261,11 +1267,13 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
             "status": "resolved",
         }
     ]
-    assert {
-        "comment": "Discover Deck: DISCOVER_CARD_pick_option_alpha",
-        "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
-        "value": "6",
-    } in discover_values
+    assert discover_config["OnDiscoverCardBonus"]["values"] == [
+        {
+            "comment": "Discover Deck: DISCOVER_CARD_pick_option_alpha",
+            "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+            "value": "6",
+        }
+    ]
 
 
 def test_prepare_routes_choose_one_claim_with_identity_links(
