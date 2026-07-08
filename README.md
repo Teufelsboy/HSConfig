@@ -10,7 +10,7 @@ python -m pip install -e .
 
 Start with `docs/operator/README.md`.
 
-Normal path starts with `hsconfig source-manifest`; runtime apply happens only when requested through `hsconfig apply`.
+Normal path starts with `hsconfig source-manifest`, continues through `hsconfig prepare`, and runtime apply happens only when requested through `hsconfig apply`.
 
 Keep the installed skill synchronized with:
 
