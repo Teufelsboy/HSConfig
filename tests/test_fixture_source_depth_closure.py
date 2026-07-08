@@ -13,6 +13,17 @@ def _source_informed_rows():
     ]
 
 
+EXPECTED_SOURCE_INFORMED_BLOCKERS = {
+    "Kingslayer": {"unsupported_conditions_present"},
+    "Boarlock": {
+        "cards_need_runtime_surface",
+        "generic_low_confidence_cards",
+        "uncovered_cards",
+        "unsupported_conditions_present",
+    },
+}
+
+
 @pytest.mark.parametrize(
     "deck",
     _source_informed_rows(),
@@ -39,6 +50,25 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
     else:
         chain = gap_report["summary"]["first_missing_chain"]
         assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+        readiness = operator["source_informed_apply_readiness"]
+        if readiness["status"] == "ready":
+            assert operator["next_action"] == "SOURCE_INFORMED_APPLY_READY"
+            assert operator["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+            assert readiness["blocking_reasons"] == []
+            assert promotion["next_action"] == "source_informed_apply_ready_but_not_strong"
+        else:
+            assert operator["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+            assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+            assert readiness["status"] == "blocked"
+            assert set(readiness["blocking_reasons"]) == EXPECTED_SOURCE_INFORMED_BLOCKERS[
+                deck["deck_name"]
+            ]
+            assert promotion["next_action"] == "close_first_missing_chain"
+        assert readiness["source_gap_count"] > 0
+        assert (
+            promotion["source_informed_apply_readiness"]
+            == readiness
+        )
         assert gap_report["summary"]["blocked_cards"] > 0
         assert isinstance(chain, dict)
         assert chain["card_id"]
