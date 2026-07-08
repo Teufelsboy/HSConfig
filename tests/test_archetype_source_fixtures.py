@@ -159,6 +159,7 @@ def test_core_source_fixtures_have_required_source_fields():
                 "matchup_guide",
                 "card_text",
                 "metadata",
+                "static_semantics",
             }
             assert document["retrieved_at"]
             assert isinstance(document["claims"], list)
@@ -633,14 +634,24 @@ def test_boarlock_fixture_has_exact_runtime_lowerable_combo_sequence():
         claim for claim in bundle["claims"] if claim["claim_kind"] == "combo_sequence"
     ]
 
-    assert any(
-        claim.get("sequence") == ["SW_075", "UNG_832", "DINO_402", "ULD_717"]
-        and claim.get("timing_kind") == "same_turn"
-        and claim.get("operator") == ">>"
-        and claim.get("values") == ["1", "4", "8", "1"]
-        and claim.get("claim_readiness") == "guide_backed"
-        for claim in combo_claims
+    matching_claim = next(
+        (
+            claim
+            for claim in combo_claims
+            if claim.get("sequence") == ["SW_075", "UNG_832", "DINO_402", "ULD_717"]
+            and claim.get("timing_kind") == "same_turn"
+            and claim.get("operator") == ">>"
+            and claim.get("values") == ["1", "4", "8", "1"]
+        ),
+        None,
     )
+    assert matching_claim is not None
+    assert matching_claim["claim_readiness"] == "source_backed_static_semantics"
+    assert matching_claim["source_refs"][0].startswith("source:")
+    assert matching_claim["source_refs"][1:3] == [
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "https://www.hsguru.com/deck/34322767",
+    ]
 
     deck_cards = {
         str(card["card_id"])
@@ -652,12 +663,24 @@ def test_boarlock_fixture_has_exact_runtime_lowerable_combo_sequence():
     }
     combo_plan = build_combo_plan(deck_cards=deck_cards, claims=combo_claims)
 
-    assert any(
-        combo.get("combo") == "SW_075>>UNG_832>>DINO_402>>ULD_717"
-        and combo.get("value") == 1
-        and combo.get("source_refs")
-        for combo in combo_plan["combos"]
+    combo_row = next(
+        (
+            combo
+            for combo in combo_plan["combos"]
+            if combo.get("combo") == "SW_075>>UNG_832>>DINO_402>>ULD_717"
+        ),
+        None,
     )
+    assert combo_row is not None
+    assert combo_row["operator"] == ">>"
+    assert combo_row["values"] == ["1", "4", "8", "1"]
+    assert combo_row["condition"] == "*"
+    assert combo_row["value"] == 1
+    assert combo_row["source_refs"][0].startswith("source:")
+    assert combo_row["source_refs"][1:3] == [
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "https://www.hsguru.com/deck/34322767",
+    ]
 
 
 def test_piratedh_fixture_covers_pirate_hero_attack_pressure():
