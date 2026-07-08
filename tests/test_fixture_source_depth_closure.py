@@ -5,20 +5,17 @@ import pytest
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
 
-SOURCE_INFORMED_DECKS = {
-    "CtAPaladin",
-    "Discolock",
-    "TreantDruid",
-    "ImbueMage",
-    "Kingslayer",
-    "Boarlock",
-    "PirateDH",
-}
+def _source_informed_rows():
+    return [
+        row
+        for row in load_archetype_matrix()
+        if row["fixture_stage"] == "source_informed_valid_fixture"
+    ]
 
 
 @pytest.mark.parametrize(
     "deck",
-    [row for row in load_archetype_matrix() if row["deck_name"] in SOURCE_INFORMED_DECKS],
+    _source_informed_rows(),
     ids=lambda row: row["deck_name"],
 )
 def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatch, deck):
