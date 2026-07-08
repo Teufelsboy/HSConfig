@@ -338,6 +338,55 @@ def test_apply_cli_allows_source_informed_apply_ready_only_with_explicit_escape_
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
+def test_apply_cli_source_informed_receipt_contains_real_operator_gate(
+    tmp_path: Path,
+    capsys,
+):
+    from hsconfig.cli import main
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="SOURCE_INFORMED_APPLY_READY",
+        apply_policy="ALLOWED_SOURCE_INFORMED",
+        source_informed_apply_readiness={
+            "status": "ready",
+            "requires_flag": "--allow-source-informed",
+            "source_gap_count": 1,
+        },
+    )
+    runtime = tmp_path / "runtime"
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--allow-source-informed",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    receipt = json.loads(
+        (package / "reports" / "runtime_apply_receipt.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "applied"
+    assert payload["apply_gate"]["mode"] == "source_informed_apply_ready"
+    assert receipt["apply_gate"] == payload["apply_gate"]
+    assert receipt["apply_gate"]["operator_summary_path"].endswith(
+        "reports\\operator_summary.json"
+    ) or receipt["apply_gate"]["operator_summary_path"].endswith(
+        "reports/operator_summary.json"
+    )
+
+
 def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
     from hsconfig.cli import main
 
