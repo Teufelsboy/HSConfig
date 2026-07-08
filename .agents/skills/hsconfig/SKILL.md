@@ -53,7 +53,8 @@ Rules:
 - Build direct guide-aligned configs only.
 - Prefer researched guide sources over legacy claim inputs when live guide research was performed.
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
-- Runtime apply is guarded. The CLI validates the package, checks `operator_summary.json`, creates a fake apply receipt, verifies the package hash, and writes runtime files only when apply is explicitly requested.
+- Runtime apply is guarded.
+- Runtime apply is always governed by `reports/operator_summary.json`; `apply_package()` and `hsconfig apply` must reject missing, blocked, or forged apply gates before writing HearthRanger runtime files.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Keep the pre-run boundary visible in operator-facing copy and tests.
 - Choice-surface lowering for `discover_choice` and `choose_one_choice` is source-backed only: lower only when option identity is resolved from source evidence and linked entity metadata; otherwise keep the suppression report visible.

@@ -57,6 +57,8 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | Kingslayer | Preserve as source-informed until blockers close | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present` |
 | Boarlock | Preserve as source-informed until blockers close | `WW_092` / Fracking needs explicit mulligan claim | `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, `unsupported_conditions_present` |
 
+The next closure implementation target remains Boarlock because it is the only current representative row that proves exact `Combo.json` emission; Kingslayer remains the second source-informed closure target because its blocker stack is narrower.
+
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 
 Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` and do not change the representative matrix count.
