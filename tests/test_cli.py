@@ -26,6 +26,44 @@ def test_pyproject_exposes_hsconfig_entrypoint():
     assert pyproject["project"]["scripts"]["hsconfig"] == "hsconfig.cli:main"
 
 
+def test_cli_main_dispatches_apply_without_changing_public_command_shape(
+    tmp_path: Path, monkeypatch
+):
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    package.mkdir()
+    runtime.mkdir()
+
+    captured = {}
+
+    def fake_run_apply_command(args):
+        captured["package"] = args.package
+        captured["runtime_root"] = args.runtime_root
+        captured["json"] = args.json
+        return 0
+
+    monkeypatch.setattr("hsconfig.cli.run_apply_command", fake_run_apply_command)
+
+    assert (
+        main(
+            [
+                "apply",
+                "--package",
+                str(package),
+                "--runtime-root",
+                str(runtime),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert captured == {
+        "package": str(package),
+        "runtime_root": str(runtime),
+        "json": True,
+    }
+
+
 def test_readme_documents_prepare_as_normal_path():
     root_readme = Path("README.md").read_text(encoding="utf-8")
     operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")

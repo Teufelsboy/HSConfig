@@ -16,6 +16,13 @@ from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.combo_plan import build_combo_plan
+from hsconfig.commands.apply import run_apply_command
+from hsconfig.commands.prepare import run_prepare_command
+from hsconfig.commands.source_workflow import (
+    run_draft_source_documents_command,
+    run_research_deck_command,
+    run_source_manifest_command,
+)
 from hsconfig.config_readiness import build_config_readiness_report
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.deck_identity import build_deck_identity
@@ -61,23 +68,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "apply":
+        return run_apply_command(args)
+    if args.command == "build":
+        return run_prepare_command(args, expert_mode=True)
+    if args.command == "prepare":
+        return run_prepare_command(args, expert_mode=False)
+    if args.command == "source-manifest":
+        return run_source_manifest_command(args)
+    if args.command == "draft-source-documents":
+        return run_draft_source_documents_command(args)
+    if args.command == "research-deck":
+        return run_research_deck_command(args)
+
     try:
-        if args.command == "prepare":
-            payload, code = _prepare(args)
-        elif args.command == "build":
-            payload, code = _build(args)
-        elif args.command == "source-manifest":
-            payload, code = _source_manifest(args)
-        elif args.command == "draft-source-documents":
-            payload, code = _draft_source_documents(args)
-        elif args.command == "research-contract":
+        if args.command == "research-contract":
             payload, code = _research_contract(args)
-        elif args.command == "research-deck":
-            payload, code = _research_deck(args)
         elif args.command == "validate":
             payload, code = _validate(args)
-        elif args.command == "apply":
-            payload, code = _apply(args)
         else:
             payload, code = {"status": "failed", "errors": [f"Unknown command: {args.command}"]}, 1
     except Exception as exc:
@@ -87,6 +95,46 @@ def main(argv: list[str] | None = None) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     return build_parser()
+
+
+def _run_prepare_command(args: argparse.Namespace, *, expert_mode: bool) -> int:
+    try:
+        payload, code = _build(args) if expert_mode else _prepare(args)
+    except Exception as exc:
+        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
+    return _emit(payload, args.json, code)
+
+
+def _run_source_manifest_command(args: argparse.Namespace) -> int:
+    try:
+        payload, code = _source_manifest(args)
+    except Exception as exc:
+        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
+    return _emit(payload, args.json, code)
+
+
+def _run_draft_source_documents_command(args: argparse.Namespace) -> int:
+    try:
+        payload, code = _draft_source_documents(args)
+    except Exception as exc:
+        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
+    return _emit(payload, args.json, code)
+
+
+def _run_research_deck_command(args: argparse.Namespace) -> int:
+    try:
+        payload, code = _research_deck(args)
+    except Exception as exc:
+        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
+    return _emit(payload, args.json, code)
+
+
+def _run_apply_command(args: argparse.Namespace) -> int:
+    try:
+        payload, code = _apply(args)
+    except Exception as exc:
+        payload, code = {"status": "failed", "errors": [str(exc)]}, 1
+    return _emit(payload, args.json, code)
 
 
 def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
