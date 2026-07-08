@@ -1,0 +1,70 @@
+{
+  "audit_question": "What is the current truth of the eleven-deck HSConfig fixture matrix on July 8, 2026, including the live core versus source-informed split, the real blocker state for Kingslayer and Boarlock, the breadth of mechanics and runtime surfaces represented, and whether widening the matrix is useful now?",
+  "primary_sources": [
+    "Local matrix authority: C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+    "Local closure guidance: C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-backed-strong-closure.md",
+    "Local operator guide: C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "Live matrix truth test: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_current_truth.py",
+    "Live fixture matrix test: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_fixture_matrix.py",
+    "Live matrix visibility test: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_visibility.py",
+    "Live source-depth closure test: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_fixture_source_depth_closure.py",
+    "Operator readiness logic: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "Source fixture checks: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_source_fixtures.py",
+    "Command evidence: python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_current_truth.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_fixture_matrix.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_visibility.py -q => 13 passed in 0.19s",
+    "Command evidence: python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_fixture_source_depth_closure.py -k \"Kingslayer or Boarlock\" -q => 2 passed, 2 deselected in 12.03s",
+    "Command evidence: python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_operator_summary.py -k \"mulligan_only_gap_source_informed_apply_ready or unsupported_conditions_are_present or blocks_source_informed_apply_when_uncovered_summary_is_present or blocks_source_informed_apply_when_runtime_surface_gap_exists\" -q => 4 passed, 22 deselected in 0.10s",
+    "Web source, Kingsbane mulligan post: https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+    "Web source, Kingsbane archetype page: https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+    "Web source, Kingslayer deck page: https://www.hsguru.com/deck/36087994",
+    "Web source, Boarlock discussion: https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+    "Web source, Boarlock mulligan thread: https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+    "Web source, Boarlock combo deck page: https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+    "Web source, Boarlock deck page: https://www.hsguru.com/deck/34322767",
+    "Web source, Sludgelock mulligan example with explicit Fracking keep: https://us.forums.blizzard.com/en/hearthstone/t/sludgelock-is-a-top-100-deck/133621"
+  ],
+  "confirmed_facts": [
+    "The live representative matrix contains exactly 11 decks.",
+    "The live split is 9 core rows and 2 source-informed rows.",
+    "The 9 core rows are ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH.",
+    "The only source-informed rows are Kingslayer and Boarlock.",
+    "Kingslayer is still marked source_informed_valid_fixture with first_strongness_gap=needs_mulligan_claim_for_quick_pick.",
+    "Boarlock is still marked source_informed_valid_fixture with first_strongness_gap=needs_mulligan_claim_for_fracking.",
+    "Kingslayer source-informed apply readiness is blocked, not ready, and the current matrix records unsupported_conditions_present as the blocking reason.",
+    "Boarlock source-informed apply readiness is blocked, not ready, and the current matrix records cards_need_runtime_surface, generic_low_confidence_cards, uncovered_cards, and unsupported_conditions_present as blocking reasons.",
+    "The operator-summary logic allows source-informed apply only when the remaining blockers are guide-claim or mulligan-claim depth gaps; unsupported conditions, runtime-surface gaps, generic-low-confidence cards, uncovered cards, combo gaps, mechanic gaps, and condition gaps still block it.",
+    "The current matrix spans 31 unique primary mechanics and 22 unique decision families.",
+    "The current matrix already exercises all four declared runtime surfaces: GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json.",
+    "Boarlock is the only current matrix row that exercises Combo.json.",
+    "The matrix visibility report hard-codes the normal next action as close_existing_source_informed_rows_before_adding_more_decks.",
+    "The operator README says to close existing matrix gaps before adding more representative decks and explicitly says to close the current Kingslayer and Boarlock rows before widening the matrix.",
+    "The source-backed closure doc says Kingslayer stays blocked because the exact provided deck page lists Quick Pick but the checked mulligan evidence does not provide an explicit Quick Pick keep or discard claim for that exact list.",
+    "The source-backed closure doc says Boarlock stays blocked because the exact provided deck page lists Fracking but the checked Boarlock mulligan evidence does not provide an explicit Fracking keep or discard claim for that exact list.",
+    "Current public web evidence still matches those blocker summaries: the Kingsbane Reddit mulligan advice explicitly names Kingsbane, its tutors, and Silverleaf Poison, but not Quick Pick; the Boarlock mulligan thread discusses combo pieces, card draw, and early minions or clear, but does not give an explicit Fracking keep or discard instruction; an explicit Fracking keep statement was found in Sludgelock guidance instead."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The live code, docs, and tests agree on the same eleven-deck current truth instead of the older stale seven-row narrative.",
+    "The representative set is still lean: 11 decks, 9 strong controls, and only 2 deliberately visible source-informed rows.",
+    "Breadth is already high for a pre-run config compiler: aggro, burn, recruit, aura, pirate tempo, weapon pressure, big-cheat, deathrattle, discard, token board, hero power, magnetic, combo, control, and resource-setup patterns are all represented.",
+    "Runtime-surface breadth is already complete at the matrix level because the set covers GlobalValues, Mulligan, per-card CardID files, and Combo.",
+    "Kingslayer and Boarlock are honest control cases rather than hidden failures: each exposes the first missing strongness link and the source-informed readiness state.",
+    "The repo has direct regression proof for the matrix split, visibility policy, fixture-source closure behavior, and source-informed readiness rules."
+  ],
+  "gaps_or_risks": [
+    "Two rows are still unclosed, so the matrix is not yet fully source-backed strong.",
+    "Kingslayer is not blocked only by source depth; the live matrix also records unsupported conditions, which means it is not currently source-informed apply ready even if the Quick Pick mulligan gap were the visible first strongness gap.",
+    "Boarlock carries the heaviest remaining risk set because it combines a visible mulligan source-depth gap with runtime-surface, uncovered-card, generic-low-confidence, and unsupported-condition blockers.",
+    "Boarlock is the only Combo.json representative, so combo-surface breadth exists but remains concentrated in one still-source-informed row.",
+    "Several matrix rows intentionally do not cover reactive control, discover chains, or exact combo behavior, so the set is broad but not exhaustive.",
+    "If a future meta or rules change introduces a genuinely new pre-run runtime surface or a new decision family not exercised by the existing matrix, the current no-widening guidance would need review."
+  ],
+  "eleven_deck_implications": [
+    "The matrix is already broad enough to act as the current representative HSConfig proof set.",
+    "The important work is closure quality, not deck count growth: the remaining value is in finishing the Kingslayer and Boarlock chains cleanly or preserving them honestly as source-informed controls.",
+    "Adding another deck now would increase maintenance and test surface faster than it would increase unique compiler coverage, because the current matrix already spans all declared runtime surfaces and a wide mechanic spread.",
+    "The one meaningful breadth caveat is combo: because only Boarlock exercises Combo.json and Boarlock is still blocked, combo remains represented but not yet closed as a strong control."
+  ],
+  "recommendation": "Do not add more representative decks now. Keep the matrix at eleven decks, close the current Kingslayer and Boarlock blocker chains first, and only consider a twelfth deck after those two rows are either promoted or deliberately preserved with stable blocker truth and after there is evidence that a new deck would add a genuinely new pre-run source-depth or runtime-surface family.",
+  "confidence": "high",
+  "uncertain": []
+}

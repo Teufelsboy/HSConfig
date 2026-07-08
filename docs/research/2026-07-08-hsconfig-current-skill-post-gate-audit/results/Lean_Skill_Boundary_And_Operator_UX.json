@@ -1,0 +1,107 @@
+{
+  "audit_question": "Does current HSConfig still operate as a narrow pre-run skill after the source-informed apply gate work, with operator UX centered on docs/operator/README.md and reports/operator_summary.json, while HSTuner, replay, winrate, and post-run tuning concerns remain excluded?",
+  "primary_sources": [
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+      "evidence": "States that HSConfig is pre-run only, excludes replay and winrate concerns, and defines the normal path as source-manifest -> draft-source-documents -> research-deck -> prepare -> operator_summary.json -> apply only when requested."
+    },
+    {
+      "type": "repo_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+      "evidence": "Defines the normal operator path, keeps operator_summary.json as the single normal gate, and narrows source-informed apply to the ALLOWED_SOURCE_INFORMED lane with explicit readiness checks."
+    },
+    {
+      "type": "repo_skill_source",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+      "evidence": "Defines HSConfig as pre-run only, routes the operator to docs/operator/README.md, and restricts apply to the enforced operator summary gate."
+    },
+    {
+      "type": "installed_skill",
+      "path": "C:\\Users\\darbo\\.codex\\skills\\hsconfig\\SKILL.md",
+      "evidence": "Matches the repo skill boundary and documents the same source-informed apply restriction and HSTuner exclusion."
+    },
+    {
+      "type": "repo_skill_reference",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\workflow.md",
+      "evidence": "Keeps the workflow pre-run, marks hdt_deck_id as identity-only metadata, and says source-informed apply is still not SOURCE_BACKED_STRONG."
+    },
+    {
+      "type": "cli_help",
+      "command": "python -m hsconfig --help",
+      "evidence": "Root help says HSConfig builds packages before games are played and separates the normal path from expert and legacy paths."
+    },
+    {
+      "type": "cli_help",
+      "command": "python -m hsconfig prepare --help",
+      "evidence": "Prepare is labeled Normal package creation path."
+    },
+    {
+      "type": "cli_help",
+      "command": "python -m hsconfig apply --help",
+      "evidence": "Apply exposes only package, runtime-root, allow-source-informed, and json flags, with no replay or post-run surfaces."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+      "evidence": "Allows apply only for SOURCE_BACKED_STRONG or the explicit source-informed ready profile, blocks by default otherwise, and rejects optional normal-path surfaces such as Presume.json and Concede.json."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+      "evidence": "Computes SOURCE_INFORMED_APPLY_READY only for limited blocker reasons and keeps runtime-surface, combo, condition, mechanic, conflict, uncovered-card, and low-confidence issues as blockers."
+    },
+    {
+      "type": "tests",
+      "command": "python -m pytest -q tests/test_scope_boundaries.py tests/test_cli_help.py tests/test_operator_guidance.py tests/test_skill_sync.py tests/test_skill_files.py tests/test_apply_gate.py",
+      "evidence": "65 passed in 1.58s on 2026-07-08, confirming current docs, help text, skill sync, scope boundaries, and apply gate behavior."
+    },
+    {
+      "type": "sync_check",
+      "command": "python scripts\\sync_installed_skill.py --check",
+      "evidence": "Reported that the installed HSConfig skill is in sync with the repo source."
+    },
+    {
+      "type": "fixture_matrix",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "Defines the representative 11-deck proof set with nine core_source_backed_fixture rows and two source_informed_valid_fixture rows."
+    }
+  ],
+  "confirmed_facts": [
+    "README.md, docs/operator/README.md, the repo skill, the installed skill, and the workflow reference all describe HSConfig as pre-run only and explicitly exclude replay parsing, winrate inspection, runtime-log analysis, candidate promotion, and after-game tuning.",
+    "The normal operator entry point remains docs/operator/README.md, and the normal command path remains source-manifest -> draft-source-documents -> research-deck -> prepare -> apply.",
+    "reports/operator_summary.json remains the single normal operator gate for handoff or apply decisions; lower-level reports are explanatory evidence and not independent apply authority.",
+    "The source-informed apply change did not open a general warning-based write path. apply_gate.py only allows apply when the package is SOURCE_BACKED_STRONG, or when allow_source_informed is explicitly set and operator_summary.json is in the SOURCE_INFORMED_APPLY_READY / ALLOWED_SOURCE_INFORMED / readiness=ready state.",
+    "operator_summary.py restricts source-informed readiness to narrow blocker reasons: cards_need_guide_claims and cards_need_mulligan_claims. Runtime-surface gaps, combo-sequence gaps, condition or mechanic lowering gaps, conflicts, uncovered cards, and generic low-confidence cards still block that lane.",
+    "apply_gate.py and its tests keep normal-path runtime output lean by rejecting Presume.json, Concede.json, nested runtime files, stale summary file lists, and missing operator summary structure.",
+    "CLI help still presents prepare as the normal package creation path and build as the expert lower-level path, which preserves the intended operator UX split after the gate work.",
+    "The installed skill is currently synchronized with the repo source, so the live operator-facing skill matches the audited boundary.",
+    "The 11-deck representative matrix is still framed as pre-run proof coverage: nine rows are already core_source_backed_fixture, while Kingslayer and Boarlock remain source_informed_valid_fixture rows that expose missing pre-run source-to-runtime links rather than post-run tuning needs."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The negative scope is repeated consistently across README, operator docs, repo skill source, installed skill, workflow reference, and scope tests.",
+    "Operator UX is lean: one normal doc entry point, one normal command path, one first report to open, and a clear split between normal and expert paths.",
+    "The source-informed apply lane is narrow and explicit instead of becoming a broad warning-based runtime write escape hatch.",
+    "Enforcement is not documentation-only. Current code and passing tests actively block out-of-scope or structurally unsafe apply cases.",
+    "The representative deck matrix still supports a pre-run configuration proof model rather than drifting into HSTuner-style post-run evidence handling."
+  ],
+  "gaps_or_risks": [
+    "The root and subcommand help surfaces are intentionally short and do not restate the full negative boundary, so operators still depend on docs/operator/README.md and the synced skill text for the full scope contract.",
+    "The source-informed apply path adds a real runtime write capability for valid-but-not-strong packages, so any future drift between operator_summary semantics, apply_gate enforcement, and skill/docs wording could weaken the lean boundary if not kept under test.",
+    "The CLI still exposes expert and legacy surfaces in the same binary; the separation is clearly labeled today, but that UX relies on sustained wording discipline rather than on separate executables."
+  ],
+  "eleven_deck_implications": {
+    "total_representative_decks": 11,
+    "core_source_backed_fixture_count": 9,
+    "source_informed_valid_fixture_count": 2,
+    "source_informed_valid_fixture_decks": [
+      "Kingslayer",
+      "Boarlock"
+    ],
+    "summary": "The current 11-deck proof set still supports a lean pre-run HSConfig boundary. Nine decks already prove SOURCE_BACKED_STRONG inside the normal pre-game package workflow. Kingslayer and Boarlock are explicitly kept as source-informed-valid pre-run gap rows that should close remaining source-to-runtime links before promotion, not as reasons to add replay parsing, winrate analysis, HSTuner follow-up, or post-run tuning logic to HSConfig."
+  },
+  "recommendation": "Keep the current boundary and operator UX as the default contract. The next practical hardening step is to add one short negative-scope sentence to apply help or root help that repeats that source-informed apply remains pre-run only and does not move replay, winrate, or HSTuner concerns into HSConfig.",
+  "confidence": "high",
+  "uncertain": []
+}

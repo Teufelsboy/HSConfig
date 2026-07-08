@@ -1,0 +1,55 @@
+{
+  "audit_question": "Is HSConfig still lean enough to maintain with confidence, or is it becoming over-engineered in code size, module boundaries, documentation volume, installed skill maintenance, dependency footprint, and tests?",
+  "primary_sources": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\AGENTS.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\pyproject.toml",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\scripts\\sync_installed_skill.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md",
+    "Command: python -m pytest -q -> 484 passed, 2 skipped in 96.71s (0:01:36)",
+    "Command: python scripts\\sync_installed_skill.py --check -> HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig",
+    "Command: repository metrics pass over src/tests/docs -> src 55 Python files and 14,833 total lines under src; tests 69 Python files and 36,166 total lines under tests; docs 103 files and 32,958 total lines under docs",
+    "Command: tracked docs count -> 98 git-tracked files under docs",
+    "Command: internal import fan-in scan -> hsconfig.io imported by 9 modules; hsconfig.source_document_model imported by 8 modules; hsconfig.cli imports 37 internal modules"
+  ],
+  "confirmed_facts": [
+    "HSConfig still enforces the lean repo boundary at the contract level: pre-run only, no replay parsing, no winrate validation, no candidate promotion, and no post-run tuning.",
+    "The runtime dependency footprint is small: pyproject.toml declares one runtime dependency, hearthstone>=9.0.0, plus pytest as the only declared dev dependency.",
+    "The installed hsconfig skill is currently synchronized with the repo copy, and the repo contains an explicit sync script plus tests for skill files and sync behavior.",
+    "The implementation surface is no longer tiny: src contains 55 Python files, with 53 non-bootstrap modules, about 14.8k total lines, and a mean module size of about 188.9 lines.",
+    "Module boundaries are mostly narrow at the low end, with 26 source modules under 100 lines and a median module size of 111 lines.",
+    "There is a clear concentration point in hsconfig.cli at 1,057 lines with 34 top-level functions and imports from 37 internal modules, which makes it the main orchestration bottleneck.",
+    "Several other modules are materially large for a repo that calls itself lean: operator_summary.py 607 lines, gameplan_contract.py 571, source_document_builder.py 565, guide_claim_builder.py 452, and card_behavior_surface_router.py 423.",
+    "The documentation surface is heavy relative to the code surface: docs contains 103 files and about 32.9k lines, with 75 files under docs/research alone and 98 docs files tracked by git.",
+    "Test breadth is strong: tests contains 69 Python test files, the suite passed with 484 passed and 2 skipped, and the test tree includes CLI, skill-sync, matrix, multideck, and end-to-end coverage.",
+    "The representative proof set is still explicitly bounded to eleven decks: nine core_source_backed_fixture rows and two source_informed_valid_fixture rows, Kingslayer and Boarlock."
+  ],
+  "current_repo_alignment": "partially_aligned",
+  "strengths": [
+    "The repo boundary against HSTuner-style sprawl is still explicit in AGENTS.md, README.md, operator docs, the skill file, and tests.",
+    "Dependency discipline is very good; there is no sign of a large framework stack or unnecessary package footprint.",
+    "The codebase is modular rather than monolithic overall, and many modules remain short enough to reason about locally.",
+    "Installed skill maintenance is operationalized instead of manual: there is a dedicated sync script, a documented check flow, and tests that guard drift.",
+    "Test confidence is high because the suite is large, passes cleanly, and includes end-to-end and matrix-level regression checks instead of only unit tests.",
+    "The eleven-deck matrix provides a concrete cap on scope and a shared proof target, which helps prevent uncontrolled expansion."
+  ],
+  "gaps_or_risks": [
+    "The repo is still conceptually lean, but it is no longer small. A 14.8k-line source tree plus a 1,057-line CLI is a real maintainability cost.",
+    "The CLI has become the main coupling hub. Its import breadth and function count mean command growth can keep centralizing logic unless orchestration is split further.",
+    "Several report and contract modules are large enough that future feature work may increase cognitive load faster than the current naming suggests.",
+    "Documentation noise is substantial. Research and audit artifacts now outweigh the implementation surface in tracked volume, which can make the project feel heavier than the runtime product actually is.",
+    "Test confidence is strong, but there is no measured line or branch coverage percentage in the current evidence set, so confidence comes from breadth and passing status rather than a coverage budget.",
+    "Only two source modules lacked an obvious direct test-name hit in the quick scan, which suggests either indirect coverage or weaker discoverability for those modules."
+  ],
+  "eleven_deck_implications": [
+    "The current structure is still good enough to protect the representative eleven-deck proof set, because the docs define that matrix explicitly and the passing suite includes matrix and multideck end-to-end tests.",
+    "Nine decks are already treated as core source-backed controls, so the existing architecture is supporting broad pre-game config coverage without obvious collapse.",
+    "The two source-informed rows, Kingslayer and Boarlock, show that the repo is using the matrix to expose remaining depth and runtime-surface gaps rather than masking them.",
+    "The main risk for the eleven-deck set is not missing tests today; it is that additional orchestration and reporting logic could keep raising the cost of understanding why a matrix row fails."
+  ],
+  "recommendation": "Keep HSConfig scoped as a lean pre-run generator, but start a small maintainability reduction pass instead of adding more workflow surface: first split command orchestration out of hsconfig.cli into narrower command modules or handlers, then freeze or archive low-value research-doc churn so docs/research stops growing faster than the product. Do not widen the representative deck matrix until Kingslayer and Boarlock are closed and the CLI concentration point is reduced.",
+  "confidence": "high",
+  "uncertain": []
+}

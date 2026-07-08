@@ -1,0 +1,39 @@
+topic: hsconfig-current-skill-post-gate-audit-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-current-skill-post-gate-audit\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Lean Skill Boundary And Operator UX
+    category: Architecture
+    description: >
+      Audit whether current HSConfig remains a narrow pre-run skill after the
+      source-informed apply gate work. Check README, docs/operator, installed
+      skill, CLI help, scope tests, and whether HSTuner/replay/winrate concerns
+      are still excluded.
+  - name: VisionAI Runtime Surface And Apply Gate
+    category: HearthRanger VisionAI
+    description: >
+      Audit whether normal runtime surfaces remain GlobalValues.json,
+      Mulligan.json, per-card CardID JSON, and exact Combo.json only. Verify
+      source-informed apply readiness, hard blockers, Presume/Concede blocking,
+      and official HearthRanger VisionAI surface assumptions.
+  - name: Every Card Source Depth And Guide Contract
+    category: Guide research
+    description: >
+      Audit whether every card can be made visible against gameplan via
+      source-manifest, source documents, research-deck, per-card readiness,
+      source-claim gaps, strong promotion, and operator summary without
+      bloating runtime files.
+  - name: Eleven Deck Matrix Current Truth
+    category: Fixture breadth
+    description: >
+      Audit the eleven provided decks and current fixture matrix. Verify current
+      core/source-informed split, hard blocker truth for Kingslayer and Boarlock,
+      mechanic breadth, and whether adding more decks is useful now.
+  - name: Simplicity Maintainability And Test Confidence
+    category: Repo quality
+    description: >
+      Audit code size, module boundaries, docs noise, installed skill sync,
+      dependency footprint, and test coverage. Identify whether HSConfig is
+      still lean or becoming over-engineered.

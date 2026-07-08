@@ -1,0 +1,50 @@
+{
+  "audit_question": "Does the current post-gate HSConfig and HSranger workflow still keep the normal runtime package limited to GlobalValues.json, Mulligan.json, exact per-card CARDID.json files, and Combo.json only for exact documented sequences, while source-informed apply stays explicitly gated and normal-path Presume.json or Concede.json remain blocked even though official HearthRanger VisionAI documentation describes those files?",
+  "primary_sources": [
+    "Official HearthRanger VisionAI URLs captured in C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm , https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm , https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm , https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm , https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm , https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "Official VisionAI cache excerpts in C:/Users/darbo/Documents/HS/fixtures/visionai/cache/json_config.html, mulligan.html, combo.html, global_values.html, concede.html, and presume.html",
+    "HSranger runtime-surface enforcement in C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py, visionai_model.py, runtime_writer.py, apply_approved_patch.py, gameplan_contract_builder.py, and docs/operator/guarded-auto-apply.md",
+    "HSConfig operator contract in C:/Users/darbo/Documents/HSConfig/docs/operator/README.md, source-backed-strong-closure.md, and archetype-fixture-matrix.json",
+    "HSConfig current gate and surface logic in C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py, config_readiness.py, and surface_intent.py",
+    "HSConfig verification tests in C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py, test_apply_gate.py, and test_surface_intent.py",
+    "Command output on 2026-07-08: python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py -q -> 28 passed in 0.47s"
+  ],
+  "confirmed_facts": [
+    "Official HearthRanger VisionAI documentation still documents a deck_config.ini mapping plus separate JSON files for per-card behavior, Mulligan.json, Combo.json, GlobalValues.json, Concede.json, and Presume.json.",
+    "HSranger's current cached syntax model explicitly narrows supported runtime surfaces to card_behavior, mulligan, combo, and global_values, while marking concede and presume as registry-known unsupported runtime-package surfaces.",
+    "HSranger preview validation blocks Concede.json and Presume.json with the reason registry-known surface is not supported by this runtime package, and it also blocks aggregate CardBehavior.json in the runtime package.",
+    "HSranger runtime_writer.py only allows one-level JSON files in the runtime package: Mulligan.json, Combo.json, GlobalValues.json, or exact CARDID-style filenames; it rejects nested paths, non-JSON files, deckinfo.txt, HearthRanger.ini, and aggregate CardBehavior.json.",
+    "HSConfig's normal operator guide remains pre-run only and uses reports/operator_summary.json as the single apply gate.",
+    "HSConfig apply_gate.py requires a real package with GlobalValues.json, Mulligan.json, at least one per-card CardID file, an input manifest, and summary/runtime-file agreement before apply is allowed.",
+    "HSConfig apply_gate.py blocks packages that contain Presume.json or Concede.json either in operator_summary generated_files or in the actual CustomConfig runtime folder.",
+    "HSConfig surface_intent.py keeps GlobalValues.json and Mulligan.json as required surfaces, adds per-card CARDID JSON files for contract cards, and adds Combo.json only when the contract contains combos.",
+    "HSConfig surface_intent.py does not add Presume.json or Concede.json on the default path; those optional surfaces appear only when legacy_policy_surfaces_enabled is explicitly turned on.",
+    "HSConfig's eleven-deck matrix expects GlobalValues.json, Mulligan.json, and per-card CARDID JSON for all eleven representative decks, and only Boarlock currently expects Combo.json.",
+    "Current matrix truth is nine core strong rows and two source_informed_valid_fixture rows: Kingslayer and Boarlock. Both are still blocked from strong promotion by missing mulligan-claim depth, and Boarlock also still carries source-informed blocking reasons such as cards_need_runtime_surface, generic_low_confidence_cards, uncovered_cards, and unsupported_conditions_present.",
+    "HSConfig's source-informed apply lane exists as an explicit mechanism, but it is allowed only when operator_summary says SOURCE_INFORMED_APPLY_READY, ALLOWED_SOURCE_INFORMED, and source_informed_apply_readiness.status=ready, plus the operator passes --allow-source-informed."
+  ],
+  "current_repo_alignment": "aligned",
+  "strengths": [
+    "The normal runtime surface is fenced in three places at once: operator docs, compile-time surface construction, and apply-time package validation.",
+    "Official HearthRanger-documented surfaces are separated cleanly from locally approved runtime-package surfaces, so the repo can acknowledge vendor capabilities without broadening the normal path.",
+    "Source-informed apply is not a silent escape hatch. It is explicit, separately named, requires a ready summary, and requires the operator to opt in with --allow-source-informed.",
+    "The apply gate cross-checks operator_summary against actual runtime files, which prevents stale summaries or hidden files from slipping through.",
+    "The eleven-deck matrix keeps the Combo.json surface intentionally narrow and auditable by limiting it to Boarlock today."
+  ],
+  "gaps_or_risks": [
+    "HSConfig still retains legacy optional-surface plumbing and registry awareness for Presume.json and Concede.json. That is acceptable today because the normal path blocks them, but it remains a documentation and maintenance drift risk.",
+    "Current matrix rows do not yet demonstrate a live representative deck that is source-informed apply ready but not strong. The mechanism is implemented and tested, but the present matrix state still leaves Kingslayer and Boarlock blocked.",
+    "Official HearthRanger docs still advertise Concede.json and Presume.json as valid VisionAI files, so contributors could confuse vendor-documented capability with the narrower HSConfig normal-path contract unless the current wording and tests stay intact.",
+    "Boarlock is the only current Combo.json proof row. That is enough to prove the exact-combo surface exists, but it remains a thin sample for broader combo-shape diversity."
+  ],
+  "eleven_deck_implications": [
+    "The eleven representative decks still support a lean pre-run package model rather than a broad runtime-policy model.",
+    "ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH remain compatible with the narrow GlobalValues.json plus Mulligan.json plus per-card CARDID.json package shape.",
+    "Kingslayer stays a weapon-sequence source-informed control row without requiring Combo.json, Presume.json, or Concede.json on the normal path.",
+    "Boarlock remains the only row that currently justifies Combo.json, which is consistent with the exact-sequence-only rule.",
+    "No representative deck currently justifies normal-path Presume.json or Concede.json, so blocking those files still matches the matrix truth rather than hiding a missing needed surface."
+  ],
+  "recommendation": "Keep the current normal-path boundary unchanged: GlobalValues.json, Mulligan.json, exact per-card CARDID.json, and Combo.json only for exact documented sequences. Keep Presume.json and Concede.json blocked in the normal apply gate, preserve the explicit --allow-source-informed gate for any non-strong apply, and spend the next closure work on Kingslayer and Boarlock source-depth gaps instead of adding new runtime surface categories.",
+  "confidence": "high",
+  "uncertain": []
+}
