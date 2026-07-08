@@ -88,3 +88,45 @@ Result:
 
 None.
 
+## Follow-up Fix: Fake Apply CLI Ambiguity
+
+Task 3 minor ambiguity fixed:
+
+- `hsconfig apply --fake` and `hsconfig apply --from-fake-receipt <path>` are now mutually exclusive at argparse parse time.
+- No apply execution semantics were changed.
+
+Added regression test:
+
+- `tests/test_cli.py::test_apply_rejects_fake_and_from_fake_receipt_together`
+
+TDD evidence:
+
+- RED focused command:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_cli.py::test_apply_rejects_fake_and_from_fake_receipt_together -q
+```
+
+- RED result: `1 failed`; failure reason was `Failed: DID NOT RAISE SystemExit`, proving both options were previously accepted and dispatched.
+
+- GREEN focused command:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_cli.py::test_apply_rejects_fake_and_from_fake_receipt_together -q
+```
+
+- GREEN result: `1 passed in 0.89s`.
+
+Requested verification command:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_runtime_apply.py tests/test_cli.py -q
+```
+
+Result:
+
+- `48 passed in 18.95s`
+
+Concerns:
+
+- None.

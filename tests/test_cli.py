@@ -3,6 +3,8 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from hsconfig.commands.common import emit_result, run_payload_command
 from hsconfig.cli import main
 from hsconfig.input_loading import guide_documents_from_legacy_claims
@@ -65,6 +67,46 @@ def test_cli_main_dispatches_apply_without_changing_public_command_shape(
         "runtime_root": str(runtime),
         "json": True,
     }
+
+
+def test_apply_rejects_fake_and_from_fake_receipt_together(
+    tmp_path: Path, monkeypatch, capsys
+):
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    receipt = tmp_path / "fake-receipt.json"
+    package.mkdir()
+    runtime.mkdir()
+    receipt.write_text("{}", encoding="utf-8")
+    dispatched = False
+
+    def fake_run_apply_command(args):
+        nonlocal dispatched
+        dispatched = True
+        return 0
+
+    monkeypatch.setattr("hsconfig.cli.run_apply_command", fake_run_apply_command)
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "apply",
+                "--package",
+                str(package),
+                "--runtime-root",
+                str(runtime),
+                "--fake",
+                "--from-fake-receipt",
+                str(receipt),
+                "--json",
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert dispatched is False
+    captured = capsys.readouterr()
+    assert "--fake" in captured.err
+    assert "--from-fake-receipt" in captured.err
 
 
 def test_cli_main_dispatches_validate_without_changing_public_command_shape(
