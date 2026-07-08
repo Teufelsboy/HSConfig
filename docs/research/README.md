@@ -2,7 +2,9 @@
 
 Research artifacts are evidence, not operator instructions.
 
-The normal operator entrypoint is `docs/operator/README.md`. Research folders explain why a workflow, matrix row, or source-depth decision exists; they do not grant runtime apply permission and they do not replace `reports/operator_summary.json`.
+Normal operator path starts at `docs/operator/README.md`. The docs/operator/README.md remains the normal operator entrypoint.
+
+Research folders explain why a workflow, matrix row, or source-depth decision exists; they do not grant runtime apply permission and they do not replace `reports/operator_summary.json`.
 
 ## Active Research Packages
 
