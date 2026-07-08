@@ -419,15 +419,18 @@ def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
         encoding="utf-8"
     )
     operator_lower = operator.lower()
+    skill_lower = skill.lower()
+    workflow_lower = workflow.lower()
     negative_scope = (
         "hsconfig is pre-run only. it does not parse replays, inspect winrate, "
         "analyze runtime logs, promote candidates, or tune after games. "
         "those tasks belong to hstuner."
     )
+    second_clause = "close existing matrix gaps before adding more representative decks"
 
     assert "source-depth closure" in operator_lower
     assert "docs/operator/archetype-fixture-matrix.json" in operator
-    assert "close existing matrix gaps before adding more representative decks" in operator_lower
+    assert second_clause in operator_lower
 
     assert negative_scope in operator_lower
     assert operator_lower.count("replay") == negative_scope.count("replay")
@@ -437,5 +440,7 @@ def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
         "every representative deck either proves `source_backed_strong` or "
         "exposes the first missing source-to-runtime link"
     )
-    assert closure_sentence in skill.lower()
-    assert closure_sentence in workflow.lower()
+    assert closure_sentence in skill_lower
+    assert second_clause in skill_lower
+    assert closure_sentence in workflow_lower
+    assert second_clause in workflow_lower
