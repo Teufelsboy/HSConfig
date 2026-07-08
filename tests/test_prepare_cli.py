@@ -1242,6 +1242,12 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     discover_claim = next(
         claim for claim in guide_bundle["claims"] if claim["claim_kind"] == "discover_choice"
     )
+    discover_config = json.loads(
+        (package / "CustomConfig" / "discover_deck" / "DISCOVER_CARD.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    discover_values = discover_config["OnDiscoverCardBonus"]["values"]
 
     assert code == 1
     assert payload["status"] == "failed"
@@ -1253,6 +1259,135 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
             "card_id": "DISCOVER_CARD",
             "option_card_id": "OPTION_ALPHA",
             "status": "resolved",
+        }
+    ]
+    assert {
+        "comment": "Discover Deck: DISCOVER_CARD_pick_option_alpha",
+        "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+        "value": "6",
+    } in discover_values
+
+
+def test_prepare_routes_choose_one_claim_with_identity_links(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [
+            {
+                "id": "CHOOSE_CARD",
+                "dbf_id": 1,
+                "name": "Choose Card",
+                "type": "SPELL",
+                "text": "Choose One - Option Alpha; or Option Beta.",
+                "entourage": ["OPTION_ALPHA", "OPTION_BETA"],
+            },
+            {
+                "id": "OPTION_ALPHA",
+                "dbf_id": 2,
+                "name": "Option Alpha",
+                "type": "SPELL",
+                "text": "Primary option.",
+            },
+            {
+                "id": "OPTION_BETA",
+                "dbf_id": 3,
+                "name": "Option Beta",
+                "type": "SPELL",
+                "text": "Secondary option.",
+            },
+        ],
+    )
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {"card_id": "CHOOSE_CARD", "dbf_id": 1, "count": 2, "name": "Choose Card"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/choose-guide",
+                        "source_title": "Choose Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "choose_one_choice",
+                                "cards": ["CHOOSE_CARD"],
+                                "choice_card_id": "OPTION_ALPHA",
+                                "stance": "choose_option_alpha",
+                                "evidence_text_short": (
+                                    "Prefer Option Alpha when resolving Choose One."
+                                ),
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Choice Deck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    choose_claim = next(
+        row for row in card_behavior["rows"] if row["claim_id"] and row["card_id"] == "CHOOSE_CARD"
+    )
+    choose_config = json.loads(
+        (package / "CustomConfig" / "choice_deck" / "CHOOSE_CARD.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert choose_claim["behavior_block"] == "OnChooseOneCardBonus"
+    assert card_behavior["suppressed"] == []
+    assert card_behavior["option_resolution"] == [
+        {
+            "claim_id": choose_claim["claim_id"],
+            "card_id": "CHOOSE_CARD",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "resolved",
+        }
+    ]
+    assert choose_config["OnChooseOneCardBonus"]["values"] == [
+        {
+            "comment": "Choice Deck: CHOOSE_CARD_choose_option_alpha",
+            "condition": "*",
+            "value": "6",
         }
     ]
 
