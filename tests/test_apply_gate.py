@@ -92,7 +92,7 @@ def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path)
     ]
 
 
-def test_apply_gate_allows_valid_source_informed_package_only_with_explicit_escape_hatch(
+def test_apply_gate_blocks_old_warning_escape_hatch_even_with_source_informed_flag(
     tmp_path: Path,
 ):
     package = tmp_path / "package"
@@ -115,16 +115,94 @@ def test_apply_gate_allows_valid_source_informed_package_only_with_explicit_esca
 
     gate = evaluate_apply_gate(package, allow_source_informed=True)
 
-    assert gate["status"] == "allowed"
-    assert gate["mode"] == "source_informed_with_warnings"
+    assert gate["status"] == "blocked"
+    assert gate["mode"] == "blocked"
     assert gate["reasons"] == [
         {
-            "reason": "source_informed_escape_hatch_used",
+            "reason": "operator_summary_not_ready_to_apply",
+            "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
         }
     ]
+
+
+def test_apply_gate_allows_source_informed_apply_ready_only_with_flag(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "SOURCE_INFORMED_APPLY_READY",
+            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "source_informed_apply_readiness": {
+                "status": "ready",
+                "requires_flag": "--allow-source-informed",
+                "source_gap_count": 2,
+            },
+            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 2}],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    blocked = evaluate_apply_gate(package)
+    allowed = evaluate_apply_gate(package, allow_source_informed=True)
+
+    assert blocked["status"] == "blocked"
+    assert blocked["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
+    assert allowed == {
+        "status": "allowed",
+        "operator_summary_path": str(package / "reports" / "operator_summary.json"),
+        "mode": "source_informed_apply_ready",
+        "reasons": [
+            {
+                "reason": "source_informed_apply_profile_used",
+                "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+                "next_action": "SOURCE_INFORMED_APPLY_READY",
+                "apply_policy": "ALLOWED_SOURCE_INFORMED",
+                "source_gap_count": 2,
+            }
+        ],
+    }
+
+
+def test_apply_gate_blocks_source_informed_policy_when_readiness_is_not_ready(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "SOURCE_INFORMED_APPLY_READY",
+            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "source_informed_apply_readiness": {
+                "status": "blocked",
+                "requires_flag": "--allow-source-informed",
+                "source_gap_count": 2,
+                "blocking_reasons": ["cards_need_runtime_surface"],
+            },
+            "semantic_blockers": [{"reason": "cards_need_runtime_surface", "count": 2}],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+                "CustomConfig\\deck\\EX1_001.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package, allow_source_informed=True)
+
+    assert gate["status"] == "blocked"
+    assert gate["mode"] == "blocked"
+    assert gate["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
 
 
 def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path):

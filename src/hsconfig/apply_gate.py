@@ -74,24 +74,27 @@ def evaluate_apply_gate(
 
     if (
         allow_source_informed
-        and semantic_status in {"VALID_BUT_NOT_GUIDE_STRONG", "STATIC_SEMANTICS_USABLE"}
-        and apply_policy == "ALLOWED_WITH_WARNINGS"
-        and next_action
-        in {
-            "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
-            "READY_WITH_WARNINGS",
-            "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG",
-        }
+        and semantic_status == "VALID_BUT_NOT_GUIDE_STRONG"
+        and next_action == "SOURCE_INFORMED_APPLY_READY"
+        and apply_policy == "ALLOWED_SOURCE_INFORMED"
+        and isinstance(summary.get("source_informed_apply_readiness"), dict)
+        and summary["source_informed_apply_readiness"].get("status") == "ready"
     ):
         return _allowed(
             operator_path,
-            mode="source_informed_with_warnings",
+            mode="source_informed_apply_ready",
             reasons=[
                 {
-                    "reason": "source_informed_escape_hatch_used",
+                    "reason": "source_informed_apply_profile_used",
                     "semantic_status": semantic_status,
                     "next_action": next_action,
                     "apply_policy": apply_policy,
+                    "source_gap_count": _int_value(
+                        summary["source_informed_apply_readiness"].get(
+                            "source_gap_count",
+                            0,
+                        )
+                    ),
                 }
             ],
         )
@@ -304,3 +307,10 @@ def _blocked(operator_path: Path, *reasons: dict[str, Any]) -> dict[str, Any]:
         "mode": "blocked",
         "reasons": list(reasons),
     }
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

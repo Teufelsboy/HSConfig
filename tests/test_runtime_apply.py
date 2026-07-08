@@ -8,7 +8,12 @@ from hsconfig.runtime_apply import apply_package
 
 
 def _complete_package(
-    tmp_path: Path, *, semantic_status: str, next_action: str, apply_policy: str
+    tmp_path: Path,
+    *,
+    semantic_status: str,
+    next_action: str,
+    apply_policy: str,
+    source_informed_apply_readiness: dict | None = None,
 ):
     package = tmp_path / "package"
     deck = package / "CustomConfig" / "deck"
@@ -35,23 +40,23 @@ def _complete_package(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(
-        package / "reports" / "operator_summary.json",
-        {
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": semantic_status,
-            "next_action": next_action,
-            "apply_policy": apply_policy,
-            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 1}]
-            if semantic_status != "SOURCE_BACKED_STRONG"
-            else [],
-            "generated_files": [
-                "CustomConfig\\deck\\GlobalValues.json",
-                "CustomConfig\\deck\\Mulligan.json",
-                "CustomConfig\\deck\\EX1_001.json",
-            ],
-        },
-    )
+    summary = {
+        "technical_status": "VALID_PACKAGE",
+        "semantic_status": semantic_status,
+        "next_action": next_action,
+        "apply_policy": apply_policy,
+        "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 1}]
+        if semantic_status != "SOURCE_BACKED_STRONG"
+        else [],
+        "generated_files": [
+            "CustomConfig\\deck\\GlobalValues.json",
+            "CustomConfig\\deck\\Mulligan.json",
+            "CustomConfig\\deck\\EX1_001.json",
+        ],
+    }
+    if source_informed_apply_readiness is not None:
+        summary["source_informed_apply_readiness"] = source_informed_apply_readiness
+    write_json(package / "reports" / "operator_summary.json", summary)
     return package
 
 
@@ -142,8 +147,13 @@ def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
-        apply_policy="ALLOWED_WITH_WARNINGS",
+        next_action="SOURCE_INFORMED_APPLY_READY",
+        apply_policy="ALLOWED_SOURCE_INFORMED",
+        source_informed_apply_readiness={
+            "status": "ready",
+            "requires_flag": "--allow-source-informed",
+            "source_gap_count": 1,
+        },
     )
     runtime = tmp_path / "runtime"
 
@@ -167,7 +177,7 @@ def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
     assert not (runtime / "CustomConfig" / "deck").exists()
 
 
-def test_apply_cli_allows_valid_but_not_guide_strong_only_with_explicit_escape_hatch(
+def test_apply_cli_allows_source_informed_apply_ready_only_with_explicit_escape_hatch(
     tmp_path: Path, capsys
 ):
     from hsconfig.cli import main
@@ -175,8 +185,13 @@ def test_apply_cli_allows_valid_but_not_guide_strong_only_with_explicit_escape_h
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
-        apply_policy="ALLOWED_WITH_WARNINGS",
+        next_action="SOURCE_INFORMED_APPLY_READY",
+        apply_policy="ALLOWED_SOURCE_INFORMED",
+        source_informed_apply_readiness={
+            "status": "ready",
+            "requires_flag": "--allow-source-informed",
+            "source_gap_count": 1,
+        },
     )
     runtime = tmp_path / "runtime"
 
@@ -196,7 +211,7 @@ def test_apply_cli_allows_valid_but_not_guide_strong_only_with_explicit_escape_h
 
     assert code == 0
     assert payload["status"] == "applied"
-    assert payload["apply_gate"]["mode"] == "source_informed_with_warnings"
+    assert payload["apply_gate"]["mode"] == "source_informed_apply_ready"
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
