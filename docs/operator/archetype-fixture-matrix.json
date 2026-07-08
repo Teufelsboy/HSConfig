@@ -27,14 +27,14 @@
       "archetype_bucket": "recruit_board_flood",
       "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture",
+      "fixture_stage": "core_source_backed_fixture",
       "strongness_visibility": {
-        "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_recruit_aura_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture"
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
       },
       "decision_families_proven": ["recruit_board_flood", "aura_pressure"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
+      "known_coverage_limits": ["does_not_cover_reactive_control"]
     },
     {
       "deck_name": "PirateRogue",
@@ -78,14 +78,14 @@
       "archetype_bucket": "discard_hand_mutation",
       "primary_mechanics": ["discard", "hand_mutation", "payoff_summon"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture",
+      "fixture_stage": "core_source_backed_fixture",
       "strongness_visibility": {
-        "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_discard_hand_mutation_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture"
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
       },
       "decision_families_proven": ["discard_payoff", "hand_mutation"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_exact_combo"]
+      "known_coverage_limits": ["does_not_cover_exact_combo"]
     },
     {
       "deck_name": "TreantDruid",
@@ -95,14 +95,14 @@
       "archetype_bucket": "token_board_snowball",
       "primary_mechanics": ["token_board", "treant", "board_buff"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture",
+      "fixture_stage": "core_source_backed_fixture",
       "strongness_visibility": {
-        "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_token_board_buff_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture"
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
       },
       "decision_families_proven": ["token_board", "board_buff"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_single_target_removal"]
+      "known_coverage_limits": ["does_not_cover_single_target_removal"]
     },
     {
       "deck_name": "ImbueMage",
@@ -112,14 +112,14 @@
       "archetype_bucket": "hero_power_spell_generation",
       "primary_mechanics": ["hero_power", "imbue", "spell_generation"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture",
+      "fixture_stage": "core_source_backed_fixture",
       "strongness_visibility": {
-        "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_hero_power_spell_generation_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture"
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
       },
       "decision_families_proven": ["hero_power", "spell_generation"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_discover_chains"]
+      "known_coverage_limits": ["does_not_cover_discover_chains"]
     },
     {
       "deck_name": "MechPala",
@@ -149,11 +149,11 @@
       "fixture_stage": "source_informed_valid_fixture",
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_weapon_sequence_runtime_surface_closure",
+        "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
         "operator_action": "close_existing_source_informed_fixture"
       },
       "decision_families_proven": ["weapon_sequence", "attack_pressure"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
+      "known_coverage_limits": ["first_missing_chain:DEEP_014:Quick Pick:needs_mulligan_claim", "does_not_cover_reactive_control"]
     },
     {
       "deck_name": "Boarlock",
@@ -166,11 +166,11 @@
       "fixture_stage": "source_informed_valid_fixture",
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_exact_combo_sequence_closure",
+        "first_strongness_gap": "needs_mulligan_claim_for_fracking",
         "operator_action": "close_existing_source_informed_fixture"
       },
       "decision_families_proven": ["combo_control", "resource_setup"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "single_combo_fixture_only"]
+      "known_coverage_limits": ["first_missing_chain:WW_092:Fracking:needs_mulligan_claim", "single_combo_fixture_only"]
     },
     {
       "deck_name": "PirateDH",
@@ -180,14 +180,14 @@
       "archetype_bucket": "pirate_hero_attack_pressure",
       "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "source_informed_valid_fixture",
+      "fixture_stage": "core_source_backed_fixture",
       "strongness_visibility": {
-        "current_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_hero_attack_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture"
+        "current_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture"
       },
       "decision_families_proven": ["pirate_tempo", "hero_attack"],
-      "known_coverage_limits": ["still_source_informed_not_strong", "does_not_cover_reactive_control"]
+      "known_coverage_limits": ["does_not_cover_reactive_control"]
     }
   ]
 }

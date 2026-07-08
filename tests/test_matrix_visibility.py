@@ -9,8 +9,8 @@ def test_matrix_visibility_summarizes_core_and_source_informed_rows():
     report = build_matrix_visibility(matrix)
 
     assert report["total_decks"] == 11
-    assert report["core_source_backed_fixture_count"] == 4
-    assert report["source_informed_valid_fixture_count"] == 7
+    assert report["core_source_backed_fixture_count"] == 9
+    assert report["source_informed_valid_fixture_count"] == 2
     assert report["normal_next_action"] == "close_existing_source_informed_rows_before_adding_more_decks"
 
 
@@ -43,7 +43,7 @@ def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
     }
     assert {
         "deck_name": "CtAPaladin",
-        "fixture_stage": "source_informed_valid_fixture",
-        "first_strongness_gap": "needs_recruit_aura_runtime_surface_closure",
-        "operator_action": "close_existing_source_informed_fixture",
+        "fixture_stage": "core_source_backed_fixture",
+        "first_strongness_gap": "none",
+        "operator_action": "keep_as_core_control_fixture",
     } in report["deck_visibility"]

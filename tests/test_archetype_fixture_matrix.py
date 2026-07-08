@@ -16,20 +16,30 @@ EXPECTED_DECKS = {
     "Boarlock",
     "PirateDH",
 }
-CORE_FIXTURES = {"BigShaman", "MechPala", "PirateRogue", "ShadowPriest"}
+CORE_FIXTURES = {
+    "BigShaman",
+    "CtAPaladin",
+    "Discolock",
+    "ImbueMage",
+    "MechPala",
+    "PirateDH",
+    "PirateRogue",
+    "ShadowPriest",
+    "TreantDruid",
+}
 SOURCE_INFORMED_VALID_FIXTURES = EXPECTED_DECKS - CORE_FIXTURES
 EXPECTED_STRONGNESS_GAPS = {
     "ShadowPriest": "none",
-    "CtAPaladin": "needs_recruit_aura_runtime_surface_closure",
+    "CtAPaladin": "none",
     "PirateRogue": "none",
     "BigShaman": "none",
-    "Discolock": "needs_discard_hand_mutation_runtime_surface_closure",
-    "TreantDruid": "needs_token_board_buff_runtime_surface_closure",
-    "ImbueMage": "needs_hero_power_spell_generation_runtime_surface_closure",
+    "Discolock": "none",
+    "TreantDruid": "none",
+    "ImbueMage": "none",
     "MechPala": "none",
-    "Kingslayer": "needs_weapon_sequence_runtime_surface_closure",
-    "Boarlock": "needs_exact_combo_sequence_closure",
-    "PirateDH": "needs_hero_attack_runtime_surface_closure",
+    "Kingslayer": "needs_mulligan_claim_for_quick_pick",
+    "Boarlock": "needs_mulligan_claim_for_fracking",
+    "PirateDH": "none",
 }
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {

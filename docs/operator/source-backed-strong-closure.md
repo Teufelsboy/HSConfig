@@ -18,36 +18,49 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 
 The fixture matrix also documents `decision_families_proven` and `known_coverage_limits`. These fields describe what a fixture proves for HSConfig's pre-game config compiler. They are not gameplay-quality claims and they do not imply post-run optimization coverage.
 
+## Promotion Rule
+
+A matrix row may move from `source_informed_valid_fixture` to `core_source_backed_fixture` only when a fixture prepare run proves:
+
+- `technical_status=VALID_PACKAGE`
+- `semantic_status=SOURCE_BACKED_STRONG`
+- `next_action=READY_TO_APPLY_OR_HANDOFF`
+- zero semantic blockers
+- zero blocked cards in `source_claim_gap_report.json`
+- no generated `Presume.json` or `Concede.json`
+
+Rows that do not meet all six checks stay source-informed and must expose one specific first missing chain.
+
 ## Current Closure Targets
 
 | Deck | Fixture stage | Required work before promotion |
 |---|---|---|
 | ShadowPriest | `core_source_backed_fixture` | Already strong. Preserve this as the control fixture. |
-| MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
+| CtAPaladin | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | PirateRogue | `core_source_backed_fixture` | Already strong. Preserve this as the third promoted fixture. |
-| CtAPaladin | `source_informed_valid_fixture` | Close guide-claim and recruit/board-flood runtime-surface gaps. |
 | BigShaman | `core_source_backed_fixture` | Already strong. Preserve the source-faithful recruit and deathrattle claim set, including explicit `9` recruit/big-cheat and `7` deathrattle runtime values. |
-| Discolock | `source_informed_valid_fixture` | Close guide-claim, discard runtime-surface, and mechanic-lowering gaps. |
-| Kingslayer | `source_informed_valid_fixture` | Close guide-claim, weapon runtime-surface, and unsupported-condition gaps. |
-| TreantDruid | `source_informed_valid_fixture` | Close guide-claim and token-board runtime-surface gaps. |
-| ImbueMage | `source_informed_valid_fixture` | Close guide-claim, hero-power/spell-generation runtime-surface, and mechanic-lowering gaps. |
-| Boarlock | `source_informed_valid_fixture` | Close guide-claim, combo/resource runtime-surface, and unsupported-condition gaps. |
-| PirateDH | `source_informed_valid_fixture` | Close guide-claim and pirate/hero-attack runtime-surface gaps. |
+| Discolock | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
+| TreantDruid | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
+| ImbueMage | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
+| MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
+| Kingslayer | `source_informed_valid_fixture` | First missing chain stays explicit: `DEEP_014` `Quick Pick` still needs a mulligan keep/discard claim. |
+| Boarlock | `source_informed_valid_fixture` | First missing chain stays explicit: `WW_092` `Fracking` still needs a mulligan keep/discard claim. |
+| PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
 ## Current Blocker Snapshot
 
-Fresh local prepare runs after the strict stage split show:
+Fresh local prepare runs for the Task 7 matrix state show:
 
-| Deck | Semantic status | Guide gaps | Runtime-surface gaps | Mechanic-lowering gaps |
-|---|---|---:|---:|---:|
-| ShadowPriest | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
-| CtAPaladin | `VALID_BUT_NOT_GUIDE_STRONG` | 4 | 4 | 0 |
-| PirateRogue | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
-| BigShaman | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
-| Discolock | `VALID_BUT_NOT_GUIDE_STRONG` | 2 | 9 | 2 |
-| TreantDruid | `VALID_BUT_NOT_GUIDE_STRONG` | 9 | 3 | 0 |
-| ImbueMage | `VALID_BUT_NOT_GUIDE_STRONG` | 3 | 3 | 1 |
-| MechPala | `SOURCE_BACKED_STRONG` | 0 | 0 | 0 |
-| Kingslayer | `VALID_BUT_NOT_GUIDE_STRONG` | 7 | 2 | 0 |
-| Boarlock | `VALID_BUT_NOT_GUIDE_STRONG` | 7 | 5 | 0 |
-| PirateDH | `VALID_BUT_NOT_GUIDE_STRONG` | 10 | 2 | 0 |
+| Deck | Semantic status | First missing chain | Next action |
+|---|---|---|---|
+| ShadowPriest | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| CtAPaladin | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| PirateRogue | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| BigShaman | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| Discolock | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| TreantDruid | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| ImbueMage | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| MechPala | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
+| Kingslayer | `VALID_BUT_NOT_GUIDE_STRONG` | `DEEP_014` `Quick Pick` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
+| Boarlock | `VALID_BUT_NOT_GUIDE_STRONG` | `WW_092` `Fracking` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
+| PirateDH | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
