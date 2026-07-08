@@ -4,7 +4,8 @@ import tomllib
 from pathlib import Path
 
 from hsconfig.commands.common import emit_result, run_payload_command
-from hsconfig.cli import _guide_documents_from_legacy_claims, main
+from hsconfig.cli import main
+from hsconfig.input_loading import guide_documents_from_legacy_claims
 
 
 SHADOWPRIEST_CODE = (
@@ -97,6 +98,17 @@ def test_readme_documents_prepare_as_normal_path():
     assert "hsconfig apply" in root_readme
     assert "hsconfig build" in operator_readme
     assert "reports/research" in workflow
+
+
+def test_cli_no_longer_owns_input_loading_helpers():
+    text = Path("src/hsconfig/cli.py").read_text(encoding="utf-8")
+
+    assert "def _load_cards(" not in text
+    assert "def _load_claims(" not in text
+    assert "def _load_guide_sources(" not in text
+    assert "def _load_source_documents(" not in text
+    assert "def _load_source_evidence(" not in text
+    assert "def _fixture_row_for(" not in text
 
 
 def test_build_accepts_cards_json_object(tmp_path: Path, capsys):
@@ -210,7 +222,7 @@ def test_build_rejects_invalid_deck_code_without_placeholder_flag(tmp_path: Path
 
 
 def test_legacy_claims_synthesize_legacy_retrieved_at_when_unstamped():
-    documents = _guide_documents_from_legacy_claims(
+    documents = guide_documents_from_legacy_claims(
         [
             {
                 "source": "guide",
