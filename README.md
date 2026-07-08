@@ -9,3 +9,9 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 python -m pip install -e .
 
 Start with `docs/operator/README.md`.
+
+Normal path starts with `hsconfig source-manifest`; runtime apply happens only when requested through `hsconfig apply`.
+
+Keep the installed skill synchronized with:
+
+python scripts/sync_installed_skill.py --check
