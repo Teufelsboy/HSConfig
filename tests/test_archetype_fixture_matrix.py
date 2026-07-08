@@ -196,6 +196,13 @@ def test_each_fixture_row_documents_strongness_visibility():
             assert visibility["stop_condition"] == (
                 "exact_boarlock_fracking_mulligan_source_unavailable"
             )
+        elif deck_name == "Kingslayer":
+            assert visibility["operator_action"] == (
+                "preserve_source_informed_with_explicit_stop_condition"
+            )
+            assert visibility["stop_condition"] == (
+                "exact_kingslayer_quick_pick_mulligan_source_unavailable"
+            )
         else:
             assert visibility["operator_action"] == "close_existing_source_informed_fixture"
             assert visibility.get("stop_condition") is None

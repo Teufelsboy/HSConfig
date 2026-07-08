@@ -22,7 +22,7 @@ def build_matrix_visibility(matrix: dict[str, Any]) -> dict[str, Any]:
         "source_informed_valid_fixture_count": len(source_informed),
         "decks_missing_visibility": missing_visibility,
         "deck_visibility": [_deck_visibility(row) for row in rows],
-        "normal_next_action": "close_existing_source_informed_rows_before_adding_more_decks",
+        "normal_next_action": "keep_closed_matrix_until_new_exact_source_or_family_gap",
     }
 
 

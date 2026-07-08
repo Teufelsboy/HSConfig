@@ -43,19 +43,19 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | TreantDruid | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | ImbueMage | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
-| Kingslayer | `source_informed_valid_fixture` | Promotion stays blocked: the exact provided Kingslayer deck page publicly lists `Quick Pick` but does not expose an explicit card-level mulligan instruction. The checked Kingsbane-specific mulligan post is for a different list without `Quick Pick`, and the only explicit `Quick Pick` mulligan statement found was for adjacent weapon rogue rather than the provided deck. |
+| Kingslayer | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Kingslayer Quick Pick mulligan evidence remains unavailable. Preserve this row as the weapon-sequence source-informed control until an exact Kingslayer/Kingsbane Quick Pick keep-or-discard source exists. |
 | Boarlock | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Boarlock Fracking mulligan evidence remains unavailable or unresolved lowering blockers remain. Preserve this row as the combo-control source-informed control until those blockers close. |
 | PirateDH | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 
 - `Boarlock` remains source-informed with explicit stop condition `exact_boarlock_fracking_mulligan_source_unavailable` unless an exact Boarlock-relevant Fracking mulligan source is added.
-- `Kingslayer` remains source-informed until `DEEP_014` / `Quick Pick` receives an exact deck-specific keep or discard source claim.
+- `Kingslayer` remains source-informed with explicit stop condition `exact_kingslayer_quick_pick_mulligan_source_unavailable` unless an exact Kingslayer/Kingsbane `DEEP_014` / `Quick Pick` mulligan source is added.
 - Adjacent archetype advice is not source-backed evidence for these two rows.
 
 ## Current Source-Informed Closure Decisions
 
 | Deck | Current decision | First missing link | Hard blocker reason |
 |---|---|---|---|
-| Kingslayer | Preserve as source-informed until blockers close | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present` |
+| Kingslayer | Preserve as source-informed until exact source exists | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present`; stop condition `exact_kingslayer_quick_pick_mulligan_source_unavailable` |
 | Boarlock | Preserve as source-informed until blockers close | `WW_092` / Fracking needs explicit mulligan claim | `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, `unsupported_conditions_present` |
 
 Boarlock's current low-confidence `WW_092` / `Fracking` mulligan row documents
@@ -65,9 +65,10 @@ Current closure order is Boarlock first, Kingslayer second. Boarlock stays first
 because it is the only representative `Combo.json` control row, but this row is
 durably preserved as source-informed until exact Boarlock-relevant Fracking
 mulligan evidence exists. Kingslayer follows because its remaining gap is
-narrower and tied to `DEEP_014` / `Quick Pick`.
+narrower and tied to `DEEP_014` / `Quick Pick`, but it is also preserved until
+exact Quick Pick mulligan evidence exists.
 
-Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
+After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target. The next closure target appears only when new exact source evidence is added for either preserved row or a future matrix row exposes a new first missing chain.
 
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 

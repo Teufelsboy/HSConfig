@@ -39,15 +39,17 @@ def _has_durable_preservation_stop(row: dict[str, Any]) -> bool:
 
 
 def _preserved_source_informed_targets(rows: list[dict[str, Any]]) -> list[str]:
-    names: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if row.get("fixture_stage") != "source_informed_valid_fixture":
-            continue
-        if _has_durable_preservation_stop(row):
-            names.append(str(row.get("deck_name", "")))
-    return [name for name in names if name]
+    preserved = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("fixture_stage") == "source_informed_valid_fixture"
+        and _has_durable_preservation_stop(row)
+    ]
+    preserved.sort(
+        key=lambda row: (_closure_priority(row), str(row.get("deck_name", "")))
+    )
+    return [str(row["deck_name"]) for row in preserved if row.get("deck_name")]
 
 
 def _next_actionable_closure_target(rows: list[dict[str, Any]]) -> str | None:

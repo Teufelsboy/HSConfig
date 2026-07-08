@@ -59,9 +59,17 @@ def test_active_operator_docs_do_not_claim_seven_source_informed_rows():
 
     assert "seven `source_informed_valid_fixture` rows" not in text
     assert (
+        "Boarlock and Kingslayer are both durable source-informed controls with explicit"
+        in text
+    )
+    assert (
+        "Add or promote only when exact source evidence closes a"
+        in text
+    )
+    assert (
         "Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
         "before widening the matrix."
-    ) in text
+    ) not in text
     assert (
         "Keep the current Kingslayer and Boarlock `source_informed_valid_fixture` rows "
         "closed before widening the matrix."
@@ -82,10 +90,13 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     kingslayer = by_name["Kingslayer"]["strongness_visibility"]
     assert kingslayer["first_strongness_gap"] == "needs_mulligan_claim_for_quick_pick"
     assert kingslayer["source_informed_apply_readiness"] == "blocked"
-    assert kingslayer["operator_action"] in {
-        "close_existing_source_informed_fixture",
-        "preserve_source_informed_with_explicit_stop_condition",
-    }
+    assert kingslayer["operator_action"] == (
+        "preserve_source_informed_with_explicit_stop_condition"
+    )
+    assert (
+        kingslayer["stop_condition"]
+        == "exact_kingslayer_quick_pick_mulligan_source_unavailable"
+    )
 
     boarlock = by_name["Boarlock"]["strongness_visibility"]
     assert boarlock["first_strongness_gap"] == "needs_mulligan_claim_for_fracking"
@@ -94,18 +105,20 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
 
 
-def test_operator_docs_name_boarlock_preservation_and_next_actionable_target():
+def test_operator_docs_name_both_preserved_rows_and_no_actionable_target():
     operator_text = OPERATOR_README.read_text(encoding="utf-8")
     closure_text = Path("docs/operator/source-backed-strong-closure.md").read_text(
         encoding="utf-8"
     )
 
     expected = (
-        "Next actionable closure target after durable Boarlock preservation: "
-        "`Kingslayer`."
+        "After durable Boarlock and Kingslayer preservation, there is no current "
+        "actionable source-informed closure target."
     )
     assert expected in operator_text
     assert expected in closure_text
+    assert "Next actionable closure target after durable Boarlock preservation" not in operator_text
+    assert "Next actionable closure target after durable Boarlock preservation" not in closure_text
     assert (
         "Do not treat Boarlock's low-confidence Fracking row as SOURCE_BACKED_STRONG."
         in closure_text

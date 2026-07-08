@@ -33,11 +33,7 @@ The row must keep exposing:
 
 Boarlock remains the first closure-truth row because it is the representative `Combo.json` control.
 
-After this explicit preservation decision, the next actionable closure target is:
-
-`Kingslayer`
-
-Next actionable closure target: `Kingslayer`
+Kingslayer is the next closure row in priority order, but it is also preserved until exact Quick Pick mulligan evidence exists.
 
 ## Accepted Evidence
 

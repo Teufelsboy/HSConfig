@@ -115,7 +115,12 @@ def test_source_informed_rows_explain_blocked_closure_decision_without_promotion
                         "cards_need_runtime_surface",
                         "generic_low_confidence_cards",
                     ],
-                    "operator_action": "close_existing_source_informed_fixture",
+                    "operator_action": (
+                        "preserve_source_informed_with_explicit_stop_condition"
+                    ),
+                    "stop_condition": (
+                        "exact_boarlock_fracking_mulligan_source_unavailable"
+                    ),
                 },
             }
         ]

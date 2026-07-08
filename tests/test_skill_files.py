@@ -501,15 +501,15 @@ def test_docs_explain_source_informed_apply_ready_lane():
     assert "source-informed apply is still not `SOURCE_BACKED_STRONG`" in docs
 
 
-def test_skill_names_boarlock_preservation_and_next_actionable_target():
+def test_skill_names_preserved_closure_rows_and_no_actionable_target():
     skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
     workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
         encoding="utf-8"
     )
 
     expected = (
-        "Next actionable closure target after durable Boarlock preservation: "
-        "`Kingslayer`."
+        "After durable Boarlock and Kingslayer preservation, there is no current "
+        "actionable source-informed closure target."
     )
     assert expected in skill
     assert expected in workflow

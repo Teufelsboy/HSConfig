@@ -87,12 +87,18 @@ Source-depth closure means every representative deck either proves `SOURCE_BACKE
 
 When a source-informed row cannot be promoted honestly, keep it visible with an explicit stop condition instead of widening the matrix or forcing a weak source claim.
 
-Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family. Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows before widening the matrix.
+Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family.
 
 Boarlock remains the first closure-truth row because it is the representative
 `Combo.json` control. Its current Fracking row is durably preserved as
 source-informed until exact Boarlock-relevant Fracking mulligan evidence exists.
-Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
+
+Boarlock and Kingslayer are both durable source-informed controls with explicit
+stop conditions. Do not widen the representative matrix to a twelfth deck to
+avoid these rows. Add or promote only when exact source evidence closes a
+preserved stop condition.
+
+After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
 
 ## Supplemental Proof Decks
 
@@ -100,5 +106,5 @@ Next actionable closure target after durable Boarlock preservation: `Kingslayer`
 syntax, or acceptance behavior without widening the representative matrix.
 
 CuteWarrior is supplemental. It must not be counted as a twelfth representative
-row until Kingslayer and Boarlock have either been closed or explicitly reviewed
-as durable source-informed controls.
+row unless a future matrix review proves a real missing family that none of the
+current eleven representative rows can exercise.

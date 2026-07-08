@@ -39,7 +39,8 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
                     ],
                     "closure_state": "source_informed_blocked",
                     "closure_priority": 2,
-                    "operator_action": "close_existing_source_informed_fixture",
+                    "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+                    "stop_condition": "exact_kingslayer_quick_pick_mulligan_source_unavailable",
                 },
             },
         ]
@@ -49,8 +50,11 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
 
     assert report["summary"]["next_closure_target"] == "Boarlock"
     assert report["summary"]["closure_sequence"] == ["Boarlock", "Kingslayer"]
-    assert report["summary"]["preserved_source_informed_targets"] == ["Boarlock"]
-    assert report["summary"]["next_actionable_closure_target"] == "Kingslayer"
+    assert report["summary"]["preserved_source_informed_targets"] == [
+        "Boarlock",
+        "Kingslayer",
+    ]
+    assert report["summary"]["next_actionable_closure_target"] is None
 
     boarlock = report["decks"]["Boarlock"]
     assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
@@ -67,6 +71,10 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
     assert boarlock["recommended_next_target"] == "Boarlock"
 
     kingslayer = report["decks"]["Kingslayer"]
+    assert kingslayer["closure_decision"] == "preserve_source_informed_until_blockers_close"
+    assert kingslayer["stop_condition"] == (
+        "exact_kingslayer_quick_pick_mulligan_source_unavailable"
+    )
     assert kingslayer["recommended_next_target"] is None
 
 

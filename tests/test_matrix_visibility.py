@@ -11,7 +11,9 @@ def test_matrix_visibility_summarizes_core_and_source_informed_rows():
     assert report["total_decks"] == 11
     assert report["core_source_backed_fixture_count"] == 9
     assert report["source_informed_valid_fixture_count"] == 2
-    assert report["normal_next_action"] == "close_existing_source_informed_rows_before_adding_more_decks"
+    assert report["normal_next_action"] == (
+        "keep_closed_matrix_until_new_exact_source_or_family_gap"
+    )
 
 
 def test_each_matrix_row_exposes_first_strongness_link():
@@ -33,6 +35,13 @@ def test_each_matrix_row_exposes_first_strongness_link():
                 )
                 assert visibility["stop_condition"] == (
                     "exact_boarlock_fracking_mulligan_source_unavailable"
+                )
+            elif row["deck_name"] == "Kingslayer":
+                assert visibility["operator_action"] == (
+                    "preserve_source_informed_with_explicit_stop_condition"
+                )
+                assert visibility["stop_condition"] == (
+                    "exact_kingslayer_quick_pick_mulligan_source_unavailable"
                 )
             else:
                 assert visibility["operator_action"] == "close_existing_source_informed_fixture"
@@ -77,6 +86,12 @@ def test_matrix_visibility_exposes_source_informed_blockers_and_priority():
         "unsupported_conditions_present"
     ]
     assert by_name["Kingslayer"]["closure_priority"] == 2
+    assert by_name["Kingslayer"]["operator_action"] == (
+        "preserve_source_informed_with_explicit_stop_condition"
+    )
+    assert by_name["Kingslayer"]["stop_condition"] == (
+        "exact_kingslayer_quick_pick_mulligan_source_unavailable"
+    )
 
     assert by_name["Boarlock"]["closure_state"] == "source_informed_blocked"
     assert by_name["Boarlock"]["source_informed_blocking_reasons"] == [

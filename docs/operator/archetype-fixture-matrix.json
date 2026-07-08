@@ -154,7 +154,8 @@
         "source_informed_blocking_reasons": ["unsupported_conditions_present"],
         "closure_state": "source_informed_blocked",
         "closure_priority": 2,
-        "operator_action": "close_existing_source_informed_fixture"
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "stop_condition": "exact_kingslayer_quick_pick_mulligan_source_unavailable"
       },
       "decision_families_proven": ["weapon_sequence", "attack_pressure"],
       "known_coverage_limits": ["first_missing_chain:DEEP_014:Quick Pick:needs_mulligan_claim", "does_not_cover_reactive_control"]

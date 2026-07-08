@@ -52,7 +52,8 @@ Current closure truth is Boarlock first, Kingslayer second. Boarlock stays first
 because it is the only representative `Combo.json` control row, but its current
 Fracking source is durably preserved as source-informed unless exact
 Boarlock-relevant Fracking mulligan evidence appears.
-Next actionable closure target after durable Boarlock preservation: `Kingslayer`.
+Kingslayer is also durably preserved as source-informed unless exact Kingslayer/Kingsbane `DEEP_014` / `Quick Pick` mulligan evidence appears.
+After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
 
 Rules:
 

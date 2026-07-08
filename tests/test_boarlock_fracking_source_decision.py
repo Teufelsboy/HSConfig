@@ -17,7 +17,10 @@ def test_boarlock_fracking_decision_artifact_exists_and_sets_boundary():
     assert "Low-confidence generic card-draw advice is not enough" in text
     assert "Adjacent archetype advice is not enough" in text
     assert "Do not promote Boarlock to `core_source_backed_fixture`" in text
-    assert "Next actionable closure target: `Kingslayer`" in text
+    assert (
+        "Kingslayer is the next closure row in priority order, but it is also preserved"
+        in text
+    )
 
 
 def test_existing_fracking_mulligan_claim_is_low_confidence_only():
