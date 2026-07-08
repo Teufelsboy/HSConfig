@@ -204,7 +204,23 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    if summary_key in {"cards_needing_guide_claims", "cards_needing_mulligan_claims"}:
+        assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
+        assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+        assert summary["source_informed_apply_readiness"] == {
+            "status": "ready",
+            "requires_flag": "--allow-source-informed",
+            "allowed_blocker_reasons": [
+                "cards_need_guide_claims",
+                "cards_need_mulligan_claims",
+            ],
+            "blocking_reasons": [],
+            "source_gap_count": 1,
+        }
+    else:
+        assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+        assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+        assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["guide_strength_summary"][summary_key] == 1
 
 
@@ -575,3 +591,114 @@ def test_source_evidence_warnings_prevent_source_backed_strong():
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert summary["guide_strength_summary"]["source_evidence_warnings"] == 1
+
+
+def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
+    summary = build_operator_summary(
+        deck_name="Kingslayer",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 12,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/kingslayer/GlobalValues.json"],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 10,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 10,
+            "runtime_emitted": 9,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 1,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        config_readiness_report={
+            "cards": {
+                "DEEP_014": {
+                    "name": "Quick Pick",
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_mulligan_claim",
+                }
+            }
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+    )
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
+    assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+    assert summary["source_informed_apply_readiness"] == {
+        "status": "ready",
+        "requires_flag": "--allow-source-informed",
+        "allowed_blocker_reasons": [
+            "cards_need_guide_claims",
+            "cards_need_mulligan_claims",
+        ],
+        "blocking_reasons": [],
+        "source_gap_count": 1,
+    }
+
+
+def test_operator_summary_blocks_source_informed_apply_when_runtime_surface_gap_exists():
+    summary = build_operator_summary(
+        deck_name="Fixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 12,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 10,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 10,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 1,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_A": {
+                    "name": "Needs Runtime Surface",
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_runtime_surface",
+                }
+            }
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+    )
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
+        "cards_need_runtime_surface"
+    ]

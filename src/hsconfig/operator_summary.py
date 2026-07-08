@@ -31,6 +31,18 @@ READINESS_GAP_SUMMARY_KEYS = (
     "cards_needing_condition_lowering",
     "cards_needing_mechanic_lowering",
 )
+SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS = [
+    "cards_need_guide_claims",
+    "cards_need_mulligan_claims",
+]
+SOURCE_INFORMED_BLOCKING_REASONS = {
+    "cards_need_runtime_surface",
+    "cards_need_combo_sequence",
+    "cards_need_condition_lowering",
+    "cards_need_mechanic_lowering",
+    "claim_conflicts_present",
+    "unsupported_conditions_present",
+}
 READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
     "cards_need_guide_claims": "cards_needing_guide_claims",
     "cards_need_runtime_surface": "cards_needing_runtime_surface",
@@ -90,10 +102,17 @@ def build_operator_summary(
         globalvalue_authority=globalvalue_authority or {},
         unsupported_conditions=unsupported_conditions or [],
     )
+    source_informed_apply_readiness = _source_informed_apply_readiness(
+        technical_status=technical_status,
+        semantic_status=semantic_status,
+        guide_strength_summary=guide_strength_summary,
+        semantic_blockers=semantic_blockers,
+    )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
         primary_blockers=primary_blockers,
+        source_informed_apply_ready=source_informed_apply_readiness["status"] == "ready",
     )
     summary = {
         "schema_version": 1,
@@ -109,6 +128,7 @@ def build_operator_summary(
         "warnings": warnings,
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
+        "source_informed_apply_readiness": source_informed_apply_readiness,
         "generated_files": sorted(str(path) for path in generated_files),
     }
     summary["operator_guidance"] = build_operator_guidance(summary)
@@ -359,6 +379,68 @@ def _semantic_blockers(
     return blockers
 
 
+def _source_informed_apply_readiness(
+    *,
+    technical_status: str,
+    semantic_status: str,
+    guide_strength_summary: dict[str, Any],
+    semantic_blockers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    allowed_reasons = list(SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS)
+    if technical_status != "VALID_PACKAGE":
+        return {
+            "status": "not_applicable",
+            "requires_flag": "--allow-source-informed",
+            "allowed_blocker_reasons": allowed_reasons,
+            "blocking_reasons": ["invalid_package"],
+            "source_gap_count": 0,
+        }
+    if semantic_status != "VALID_BUT_NOT_GUIDE_STRONG":
+        return {
+            "status": "not_applicable",
+            "requires_flag": "--allow-source-informed",
+            "allowed_blocker_reasons": allowed_reasons,
+            "blocking_reasons": [],
+            "source_gap_count": 0,
+        }
+
+    blocker_reasons = [
+        str(blocker.get("reason", ""))
+        for blocker in semantic_blockers
+        if isinstance(blocker, dict)
+    ]
+    hard_reasons = sorted(
+        {
+            reason
+            for reason in blocker_reasons
+            if reason in SOURCE_INFORMED_BLOCKING_REASONS
+            or reason not in SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS
+        }
+    )
+    if _int_value(guide_strength_summary.get("generic_low_confidence_cards", 0)) > 0:
+        hard_reasons.append("generic_low_confidence_cards")
+    if _int_value(guide_strength_summary.get("uncovered_cards", 0)) > 0:
+        hard_reasons.append("uncovered_cards")
+    if _int_value(guide_strength_summary.get("claim_conflicts", 0)) > 0:
+        hard_reasons.append("claim_conflicts_present")
+    if _int_value(guide_strength_summary.get("source_evidence_warnings", 0)) > 0:
+        hard_reasons.append("source_evidence_warnings")
+
+    source_gap_count = sum(
+        int(blocker.get("count", 0))
+        for blocker in semantic_blockers
+        if isinstance(blocker, dict)
+        and str(blocker.get("reason", "")) in SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS
+    )
+    return {
+        "status": "blocked" if hard_reasons else "ready",
+        "requires_flag": "--allow-source-informed",
+        "allowed_blocker_reasons": allowed_reasons,
+        "blocking_reasons": sorted(set(hard_reasons)),
+        "source_gap_count": source_gap_count,
+    }
+
+
 def _affected_cards_by_missing_link(
     config_readiness_report: dict[str, Any],
     missing_link: str,
@@ -499,11 +581,14 @@ def _next_action_and_policy(
     technical_status: str,
     semantic_status: str,
     primary_blockers: list[dict[str, str]],
+    source_informed_apply_ready: bool = False,
 ) -> tuple[str, str]:
     if technical_status == "INVALID_PACKAGE" or primary_blockers:
         return "FIX_PACKAGE_BEFORE_APPLY", "BLOCKED"
     if semantic_status == "SOURCE_BACKED_STRONG":
         return "READY_TO_APPLY_OR_HANDOFF", "ALLOWED"
+    if source_informed_apply_ready:
+        return "SOURCE_INFORMED_APPLY_READY", "ALLOWED_SOURCE_INFORMED"
     if semantic_status == "STATIC_SEMANTICS_USABLE":
         return "READY_WITH_WARNINGS", "ALLOWED_WITH_WARNINGS"
     if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
