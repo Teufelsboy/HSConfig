@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hsconfig.source_depth_closure_index import build_source_depth_closure_index
+from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
 
 def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
@@ -58,3 +59,51 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
 
     kingslayer = report["decks"]["Kingslayer"]
     assert kingslayer["recommended_next_target"] is None
+
+
+def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch):
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+    deck = next(
+        row for row in load_archetype_matrix() if row["deck_name"] == "Boarlock"
+    )
+
+    result = prepare_fixture_deck(tmp_path, deck)
+
+    operator = result["operator"]
+    gap_report = result["source_claim_gap_report"]
+    promotion = result["strong_promotion_report"]
+    readiness = result["readiness"]
+
+    assert result["exit_code"] == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
+    assert operator["source_informed_apply_readiness"]["blocking_reasons"] == [
+        "cards_need_runtime_surface",
+        "generic_low_confidence_cards",
+        "uncovered_cards",
+        "unsupported_conditions_present",
+    ]
+
+    assert promotion["promotion_ready"] is False
+    assert promotion["next_action"] == "close_first_missing_chain"
+    assert "Combo.json" in result["generated_files"]
+    assert "Presume.json" not in result["generated_files"]
+    assert "Concede.json" not in result["generated_files"]
+
+    first_chain = gap_report["summary"]["first_missing_chain"]
+    assert first_chain == {
+        "card_id": "WW_092",
+        "name": "Fracking",
+        "first_missing_link": "needs_mulligan_claim",
+        "recommended_source_claim_kind": "mulligan_keep",
+        "next_action": "add_mulligan_keep_or_discard_claim",
+        "priority_score": 85,
+        "priority_reason": "missing_link:needs_mulligan_claim, report_only_supported:+5, partial_runtime_surface:-10",
+    }
+
+    summary = readiness["summary"]
+    assert summary["cards_needing_mulligan_claims"] >= 1
+    assert summary["cards_needing_runtime_surface"] >= 1
+    assert summary["generic_low_confidence"] >= 1
