@@ -88,6 +88,73 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
     assert plan["suppressed"] == []
 
 
+def test_resolved_discover_choice_derives_my_discover_condition():
+    plan = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_pick_option_alpha",
+                "claim_kind": "discover_choice",
+                "cards": ["DISCOVER_CARD"],
+                "option_card_id": "OPTION_ALPHA",
+                "stance": "pick_option_alpha",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "runtime_value": "11",
+            }
+        ],
+        identity_links={
+            "DISCOVER_CARD": [
+                {"link_kind": "entourage", "card_id": "OPTION_ALPHA"},
+            ]
+        },
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["option_resolution"] == [
+        {
+            "claim_id": "claim_pick_option_alpha",
+            "card_id": "DISCOVER_CARD",
+            "option_card_id": "OPTION_ALPHA",
+            "status": "resolved",
+        }
+    ]
+    row = plan["card_rows"]["DISCOVER_CARD"][0]
+    assert row["behavior_block"] == "OnDiscoverCardBonus"
+    assert row["condition"] == "my_discover(count(),cardid=OPTION_ALPHA) > 0"
+    assert row["intent"] == "pick_option_alpha"
+    assert row["value"] == "11"
+    assert row["meaningful_runtime_surface"] is True
+
+
+def test_choose_one_choice_with_resolved_option_lowers_to_choose_one_block():
+    plan = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_choose_option_alpha",
+                "claim_kind": "choose_one_choice",
+                "cards": ["CHOOSE_CARD"],
+                "choice_card_id": "OPTION_ALPHA",
+                "stance": "choose_option_alpha",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "guide",
+                "runtime_value": "9",
+            }
+        ],
+        identity_links={
+            "CHOOSE_CARD": [
+                {"link_kind": "entourage", "card_id": "OPTION_ALPHA"},
+            ]
+        },
+    )
+
+    assert plan["suppressed"] == []
+    row = plan["card_rows"]["CHOOSE_CARD"][0]
+    assert row["behavior_block"] == "OnChooseOneCardBonus"
+    assert row["condition"] == "*"
+    assert row["intent"] == "choose_option_alpha"
+    assert row["meaningful_runtime_surface"] is True
+
+
 def test_card_behavior_surface_router_suppresses_unresolved_option_identity():
     spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
     assert spec is not None, "card behavior surface router module is required"

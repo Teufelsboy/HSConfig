@@ -118,6 +118,7 @@ def route_card_behavior_surfaces(
                 _suppressed_row(claim, claim_kind, cards, "unresolved_option_identity")
             )
             continue
+        condition = _choice_surface_condition(claim_kind, condition, _claim_option_card_id(claim))
 
         if claim_kind == "targeting_rule":
             intent = _claim_intent(claim, fallback=claim_kind)
@@ -404,6 +405,18 @@ def _claim_option_card_id(claim: dict[str, Any]) -> str | None:
         if claim.get(key):
             return str(claim[key])
     return None
+
+
+def _choice_surface_condition(
+    claim_kind: str,
+    condition: str,
+    option_card_id: str | None,
+) -> str:
+    if condition != "*":
+        return condition
+    if claim_kind == "discover_choice" and option_card_id:
+        return f"my_discover(count(),cardid={option_card_id}) > 0"
+    return condition
 
 
 def _linked_card_ids(value: Any) -> set[str]:
