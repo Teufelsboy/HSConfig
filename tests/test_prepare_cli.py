@@ -1276,6 +1276,176 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     ]
 
 
+def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic_fallback(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [
+            {
+                "id": "CARD_RESOLVED",
+                "dbf_id": 1,
+                "name": "Resolved Discover Card",
+                "type": "MINION",
+                "text": "Discover a spell.",
+                "entourage": ["OPTION_ALPHA"],
+            },
+            {
+                "id": "CARD_UNRESOLVED",
+                "dbf_id": 2,
+                "name": "Unresolved Discover Card",
+                "type": "MINION",
+                "text": "Discover a spell.",
+                "entourage": ["OPTION_BETA"],
+            },
+            {
+                "id": "OPTION_ALPHA",
+                "dbf_id": 3,
+                "name": "Option Alpha",
+                "type": "SPELL",
+                "text": "Deal damage.",
+            },
+            {
+                "id": "OPTION_BETA",
+                "dbf_id": 4,
+                "name": "Option Beta",
+                "type": "SPELL",
+                "text": "Draw a card.",
+            },
+        ],
+    )
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "CARD_RESOLVED",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Resolved Discover Card",
+                    },
+                    {
+                        "card_id": "CARD_UNRESOLVED",
+                        "dbf_id": 2,
+                        "count": 2,
+                        "name": "Unresolved Discover Card",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/discover-guide",
+                        "source_title": "Discover Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "discover_choice",
+                                "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
+                                "option_card_id": "OPTION_ALPHA",
+                                "stance": "pick_option_alpha",
+                                "evidence_text_short": (
+                                    "Prefer Option Alpha from this discover pool."
+                                ),
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "Discover Split Deck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    card_behavior = json.loads((reports / "card_behavior_plan_report.json").read_text(encoding="utf-8"))
+    suppressions = json.loads(
+        (reports / "card_behavior_suppression_report.json").read_text(encoding="utf-8")
+    )
+    resolved_config = json.loads(
+        (package / "CustomConfig" / "discover_split_deck" / "CARD_RESOLVED.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    unresolved_config = json.loads(
+        (package / "CustomConfig" / "discover_split_deck" / "CARD_UNRESOLVED.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    resolved_choice_claim_id = card_behavior["option_resolution"][0]["claim_id"]
+    generic_discover_claim_id = next(
+        row["claim_id"] for row in card_behavior["rows"] if row["card_id"] == "CARD_UNRESOLVED"
+    )
+
+    assert code == 1
+    assert payload["status"] == "failed"
+    assert [
+        (row["claim_id"], row["card_id"], row["condition"])
+        for row in card_behavior["rows"]
+        if row["card_id"] in {"CARD_RESOLVED", "CARD_UNRESOLVED"}
+        ] == [
+        (
+            resolved_choice_claim_id,
+            "CARD_RESOLVED",
+            "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+        ),
+        (generic_discover_claim_id, "CARD_UNRESOLVED", "*"),
+    ]
+    assert suppressions[0] == {
+        "claim_id": resolved_choice_claim_id,
+        "claim_kind": "discover_choice",
+        "cards": ["CARD_UNRESOLVED"],
+        "reason": "unresolved_option_identity",
+    }
+    assert suppressions[1]["claim_kind"] == "mechanic_usage"
+    assert suppressions[1]["cards"] == ["CARD_RESOLVED"]
+    assert suppressions[1]["reason"] == "covered_by_resolved_choice_surface"
+    assert resolved_config["OnDiscoverCardBonus"]["values"] == [
+        {
+            "comment": "Discover Split Deck: CARD_RESOLVED_pick_option_alpha",
+            "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
+            "value": "6",
+        }
+    ]
+    assert unresolved_config["OnDiscoverCardBonus"]["values"] == [
+        {
+            "comment": "Discover Split Deck: CARD_UNRESOLVED_use_discover_according_to_card_text",
+            "condition": "*",
+            "value": "6",
+        }
+    ]
+
+
 def test_prepare_routes_choose_one_claim_with_identity_links(
     tmp_path: Path, capsys, monkeypatch
 ):

@@ -84,7 +84,10 @@ reports and do not become runtime JSON.
 Supported `claim_kind` values are `archetype`, `mulligan_keep`,
 `mulligan_discard`, `card_role`, `targeting_rule`, `combo_sequence`,
 `gameplan_posture`, `hero_power_transform`, `mechanic_usage`,
-`known_bad_pattern`, `tech_slot`, and `replacement_option`.
+`known_bad_pattern`, `tech_slot`, `replacement_option`, `discover_choice`,
+and `choose_one_choice`.
+
+Additional supported choice-claim requirements:
 
 - `discover_choice`: exact card-specific Discover option preference; requires `option_card_id` or `option_card` plus source-backed option identity.
 - `choose_one_choice`: exact card-specific Choose One option preference; requires `choice_card_id` or `choice_card` plus source-backed option identity.

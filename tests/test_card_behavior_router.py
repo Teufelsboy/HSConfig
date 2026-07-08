@@ -234,14 +234,20 @@ def test_partial_discover_choice_resolution_suppresses_only_resolved_cards():
         },
     )
 
-    assert [row["card_id"] for row in plan["rows"]] == ["CARD_UNRESOLVED"]
-    assert plan["rows"][0]["claim_id"] == "claim_generic_discover"
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_RESOLVED", "CARD_UNRESOLVED"]
+    assert [row["claim_id"] for row in plan["rows"]] == [
+        "claim_pick_option_alpha",
+        "claim_generic_discover",
+    ]
     assert plan["rows"][0]["behavior_block"] == "OnDiscoverCardBonus"
+    assert plan["rows"][0]["condition"] == "my_discover(count(),cardid=OPTION_ALPHA) > 0"
+    assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
+    assert plan["rows"][1]["condition"] == "*"
     assert plan["suppressed"] == [
         {
             "claim_id": "claim_pick_option_alpha",
             "claim_kind": "discover_choice",
-            "cards": ["CARD_RESOLVED", "CARD_UNRESOLVED"],
+            "cards": ["CARD_UNRESOLVED"],
             "reason": "unresolved_option_identity",
         },
         {

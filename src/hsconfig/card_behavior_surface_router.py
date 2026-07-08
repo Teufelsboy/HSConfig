@@ -107,19 +107,35 @@ def route_card_behavior_surfaces(
             )
             continue
 
-        unresolved = _option_resolution_rows(
+        option_rows = _option_resolution_rows(
             claim=claim,
             claim_kind=claim_kind,
             cards=cards,
             identity_links=identity_links,
         )
-        option_resolution.extend(unresolved)
-        if any(row["status"] == "unresolved" for row in unresolved):
-            suppressed.append(
-                _suppressed_row(claim, claim_kind, cards, "unresolved_option_identity")
+        option_resolution.extend(option_rows)
+        if option_rows:
+            resolved_cards = [row["card_id"] for row in option_rows if row["status"] == "resolved"]
+            unresolved_cards = [
+                row["card_id"] for row in option_rows if row["status"] == "unresolved"
+            ]
+            if unresolved_cards:
+                suppressed.append(
+                    _suppressed_row(
+                        claim,
+                        claim_kind,
+                        unresolved_cards,
+                        "unresolved_option_identity",
+                    )
+                )
+            if not resolved_cards:
+                continue
+            cards = resolved_cards
+            condition = _choice_surface_condition(
+                claim_kind,
+                condition,
+                _claim_option_card_id(claim),
             )
-            continue
-        condition = _choice_surface_condition(claim_kind, condition, _claim_option_card_id(claim))
 
         if claim_kind == "targeting_rule":
             intent = _claim_intent(claim, fallback=claim_kind)
