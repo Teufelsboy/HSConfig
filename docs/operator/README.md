@@ -7,6 +7,7 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 The normal path is: source-manifest -> draft-source-documents -> research-deck -> prepare -> apply.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
+Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
 
 ## Normal Operator Path
 

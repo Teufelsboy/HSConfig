@@ -86,6 +86,9 @@ Supported `claim_kind` values are `archetype`, `mulligan_keep`,
 `gameplan_posture`, `hero_power_transform`, `mechanic_usage`,
 `known_bad_pattern`, `tech_slot`, and `replacement_option`.
 
+- `discover_choice`: exact card-specific Discover option preference; requires `option_card_id` or `option_card` plus source-backed option identity.
+- `choose_one_choice`: exact card-specific Choose One option preference; requires `choice_card_id` or `choice_card` plus source-backed option identity.
+
 Claim freshness and conflicts:
 
 - Treat `retrieved_at` as the claim freshness anchor. Prefer current guide claims over older guide claims when both map to the same card and behavior.

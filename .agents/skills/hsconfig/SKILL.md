@@ -56,6 +56,7 @@ Rules:
 - Runtime apply is allowed after validation only through the enforced apply gate; runtime writes remain only when requested by the user or task.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Keep the pre-run boundary visible in operator-facing copy and tests.
+- Choice-surface lowering for `discover_choice` and `choose_one_choice` is source-backed only: lower only when option identity is resolved from source evidence and linked entity metadata; otherwise keep the suppression report visible.
 - Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 - Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.

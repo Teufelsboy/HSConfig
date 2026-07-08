@@ -42,3 +42,11 @@ syntax.
 
 Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
 Do not emit `Presume.json` or `Concede.json` in the normal HSConfig path.
+
+## Choice Surface Lowering
+
+`discover_choice` may lower to `OnDiscoverCardBonus` only when the selected option card identity is resolved from source evidence and linked entity metadata. If no condition is supplied, HSConfig derives `my_discover(count(),cardid=<OPTION_CARD_ID>) > 0`.
+
+`choose_one_choice` may lower to `OnChooseOneCardBonus` only when the selected option card identity is resolved from source evidence and linked entity metadata. HSConfig keeps the condition as `*` unless the source document supplies a documented runtime condition.
+
+Unresolved option identity must stay visible in `card_behavior_suppression_report.json` with `reason=unresolved_option_identity`; do not emit guessed choice rows.
