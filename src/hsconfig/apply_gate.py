@@ -6,7 +6,7 @@ from typing import Any
 from hsconfig.io import read_json
 
 
-OPTIONAL_NORMAL_PATH_SURFACES = ("Presume.json", "Concede.json")
+LEGACY_GATED_SURFACES = ("Presume.json", "Concede.json")
 REQUIRED_RUNTIME_FILES = ("GlobalValues.json", "Mulligan.json")
 
 
@@ -199,7 +199,7 @@ def _summary_optional_surface_reasons(summary: dict[str, Any]) -> list[dict[str,
     reasons: list[dict[str, str]] = []
     for item in generated:
         generated_file = str(item)
-        if generated_file.endswith(OPTIONAL_NORMAL_PATH_SURFACES):
+        if generated_file.endswith(LEGACY_GATED_SURFACES):
             reasons.append(
                 {
                     "reason": "normal_path_optional_surface_present",
@@ -224,7 +224,7 @@ def _actual_optional_surface_reasons(package: Path) -> list[dict[str, str]]:
                 }
             )
             continue
-        if path.name in OPTIONAL_NORMAL_PATH_SURFACES:
+        if path.name in LEGACY_GATED_SURFACES:
             reasons.append(
                 {
                     "reason": "normal_path_optional_surface_present",
@@ -247,7 +247,7 @@ def _actual_files_missing_from_summary_reasons(
         path
         for path in sorted(path for path in custom_config.rglob("*") if path.is_file())
         if len(path.relative_to(custom_config).parts) == 2
-        and path.name not in OPTIONAL_NORMAL_PATH_SURFACES
+        and path.name not in LEGACY_GATED_SURFACES
     ]
     if actual_files and not summary_files:
         return [
