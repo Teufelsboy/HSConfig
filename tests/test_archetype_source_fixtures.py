@@ -441,8 +441,7 @@ def test_imbuemage_fixture_marks_hero_power_and_generation_boundaries():
     claims = _claims("ImbueMage")
     assert any(
         claim["claim_kind"] == "hero_power_transform"
-        and claim.get("runtime_block")
-        in {"HeroPowerBonus", "BeforeHeroPowerBonus", "BeforePlayCardBonus", "BeforeUseHeroPowerBonus"}
+        and claim.get("runtime_block") == "BeforeUseHeroPowerBonus"
         and claim.get("runtime_value")
         for claim in claims
     )
