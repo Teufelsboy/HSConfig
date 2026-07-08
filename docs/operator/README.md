@@ -44,4 +44,6 @@ Use `--allow-source-informed` only when intentionally applying a technically val
 
 `docs/operator/archetype-fixture-matrix.json` is the representative 11-deck HSConfig proof set.
 
+Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link. Close existing matrix gaps before adding more representative decks.
+
 Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family. Improve the seven `source_informed_valid_fixture` rows before widening the matrix.

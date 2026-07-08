@@ -410,3 +410,32 @@ def test_skill_doc_keeps_expert_paths_in_expert_section():
     ):
         assert token not in skill[:expert_index]
         assert skill.index(token) > expert_index
+
+
+def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+    operator_lower = operator.lower()
+    negative_scope = (
+        "hsconfig is pre-run only. it does not parse replays, inspect winrate, "
+        "analyze runtime logs, promote candidates, or tune after games. "
+        "those tasks belong to hstuner."
+    )
+
+    assert "source-depth closure" in operator_lower
+    assert "docs/operator/archetype-fixture-matrix.json" in operator
+    assert "close existing matrix gaps before adding more representative decks" in operator_lower
+
+    assert negative_scope in operator_lower
+    assert operator_lower.count("replay") == negative_scope.count("replay")
+    assert operator_lower.count("winrate") == negative_scope.count("winrate")
+
+    closure_sentence = (
+        "every representative deck either proves `source_backed_strong` or "
+        "exposes the first missing source-to-runtime link"
+    )
+    assert closure_sentence in skill.lower()
+    assert closure_sentence in workflow.lower()

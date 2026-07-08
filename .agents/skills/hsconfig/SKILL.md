@@ -43,6 +43,8 @@ Fixture stage meaning:
 - `source_informed_valid_fixture`: the fixture produces a valid package, but still has source-depth or lowering gaps before it can be called strong.
 - `future_fixture`: reserved for examples outside the current proof set.
 
+Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link.
+
 Rules:
 
 - Build direct guide-aligned configs only.
