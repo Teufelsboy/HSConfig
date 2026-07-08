@@ -14,7 +14,10 @@
           "cards": [],
           "stance": "pirate_face_pressure",
           "evidence_text_short": "Its goal is to threaten damage as much as possible and put minions in play from the minute the game starts.",
-          "source_confidence": "medium"
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
         },
         {
           "claim_kind": "mulligan_keep",
@@ -23,7 +26,112 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "Ship's Cannon can be extremely useful on your round 2, so I highly recommend you keep it in your hand.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "source_refs": [
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_075"],
+          "stance": "pirate_board_damage",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Ship's Cannon is one of the best round-two payoffs because the pirate opener lets it keep firing damage into the enemy board.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        }
+      ]
+    },
+    {
+      "source_url": "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+      "source_title": "Is Pirate DH really that good?",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "PirateDH",
+      "archetype": "pirate_hero_attack_pressure",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["CFM_637", "DRG_056", "NX2_050", "TOY_518"],
+          "stance": "pirate_opening_flood",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "The aggressive Pirate DH list opens with Mistake, Patches the Pirate, Parachute Brigand, and Treasure Distributor to flood the board early.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["REV_507", "REV_509", "VAC_927", "VAC_929"],
+          "mechanic": "hero_attack",
+          "stance": "hero_attack_pressure",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "The aggressive Pirate DH list goes all in on hero attack turns with Dispose of Evidence, Magnifying Glaive, Adrenaline Fiend, and Dangerous Cliffside.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["REV_507", "REV_509", "VAC_927", "VAC_929"],
+          "stance": "prefer_enemy_hero",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
+          "runtime_value": "8",
+          "evidence_text_short": "The pilot advice is to swing the match immediately, so attack-based pressure should prefer enemy hero damage when survival trades are not required.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["BT_753", "SCH_356"],
+          "stance": "disruption_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Mana Burn and Glide are timing-sensitive disruption pieces that buy another turn or reshuffle the opponent before the next attack push.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["AV_661"],
+          "stance": "board_attack_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Field of Strife is the board-wide attack buff spell that keeps the pirate opener converting into pressure.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_938"],
+          "stance": "pirate_attack_buff",
+          "runtime_block": "OnBoardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Hozen Roughhouser keeps pirate attacks hitting harder once the board is already established.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+            "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
+          ]
         }
       ]
     },
@@ -35,6 +143,15 @@
       "deck_name": "PirateDH",
       "archetype": "pirate_hero_attack_pressure",
       "claims": [
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["BT_490"],
+          "stance": "prefer_enemy_minion",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Silence an enemy minion. Outcast: Draw a card.",
+          "source_confidence": "high"
+        },
         {
           "claim_kind": "card_role",
           "cards": ["VAC_927"],

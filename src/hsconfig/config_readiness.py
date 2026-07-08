@@ -69,6 +69,7 @@ def build_config_readiness_report(
         card_behavior_plan
     )
     mulligan_cards = _cards_from_mulligan(mulligan_plan)
+    suppressed_mulligan_cards = _cards_from_suppressed_mulligan(mulligan_plan)
     combo_cards = _cards_from_combos(combo_plan)
     globalvalue_cards = _cards_from_globalvalues(
         gameplan_contract,
@@ -95,6 +96,7 @@ def build_config_readiness_report(
             emitted_cardid_cards=emitted_cardid_cards,
             unsupported_condition_cards=unsupported_condition_cards,
             mulligan_cards=mulligan_cards,
+            suppressed_mulligan_cards=suppressed_mulligan_cards,
             combo_cards=combo_cards,
             globalvalue_cards=globalvalue_cards,
         )
@@ -243,6 +245,22 @@ def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
     return cards
 
 
+def _cards_from_suppressed_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
+    cards: set[str] = set()
+    for row in mulligan_plan.get("suppressed_rules", []):
+        if not isinstance(row, dict):
+            continue
+        if row.get("reason") != "claim_not_runtime_lowerable":
+            continue
+        selector_cards = _normalize_card_list(row.get("selector_cards", row.get("cards", [])))
+        if selector_cards:
+            cards.update(card for card in selector_cards if card != "*")
+            continue
+        if row.get("card") and str(row["card"]) != "*":
+            cards.add(str(row["card"]))
+    return cards
+
+
 def _normalize_card_list(value: Any) -> list[str]:
     if isinstance(value, str):
         value = [value]
@@ -309,6 +327,7 @@ def _lane_and_missing_link(
     emitted_cardid_cards: set[str],
     unsupported_condition_cards: set[str],
     mulligan_cards: set[str],
+    suppressed_mulligan_cards: set[str],
     combo_cards: set[str],
     globalvalue_cards: set[str],
 ) -> tuple[str, str]:
@@ -316,6 +335,8 @@ def _lane_and_missing_link(
     roles = {str(role).lower() for role in card.get("roles", [])}
     is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
 
+    if card_id in suppressed_mulligan_cards:
+        return "report_only_supported", "needs_mulligan_claim"
     if card_id in concrete_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
     if card_id in mulligan_cards:

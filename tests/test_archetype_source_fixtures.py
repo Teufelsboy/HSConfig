@@ -341,6 +341,47 @@ def test_kingslayer_fixture_covers_weapon_sequence_pressure():
     )
 
 
+def test_kingslayer_fixture_has_runtime_lowerable_weapon_sequence_claims():
+    claims = _claims("Kingslayer")
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "weapon"
+        and claim.get("runtime_block") in {"BeforePlayCardBonus", "BeforePhysicalAttackBonus"}
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+    assert any(
+        claim["claim_kind"] == "targeting_rule"
+        and claim.get("stance") == "prefer_enemy_hero"
+        and claim.get("runtime_block") == "BeforePhysicalAttackBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+
+
+def test_kingslayer_fixture_closes_runtime_surfaces_for_pirate_support_cards():
+    claims_by_card = {}
+    for claim in _claims("Kingslayer"):
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {
+        "CFM_637",
+        "DRG_056",
+        "EDR_846",
+        "NX2_006",
+        "TOY_505",
+        "TOY_518",
+        "VAC_938",
+    }
+    for card_id in expected_cards:
+        assert any(
+            claim.get("runtime_block") in {"BeforePlayCardBonus", "BeforePhysicalAttackBonus", "OnBoardBonus"}
+            and claim.get("runtime_value")
+            for claim in claims_by_card.get(card_id, [])
+        ), card_id
+
+
 def test_kingslayer_unsupported_quick_pick_mulligan_claim_does_not_lower():
     bundle = _source_bundle_for_fixture("Kingslayer")
     quick_pick_claims = [
@@ -559,3 +600,46 @@ def test_piratedh_fixture_covers_pirate_hero_attack_pressure():
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     assert "pirate" in text
     assert any(marker in text for marker in ("hero attack", "weapon", "face", "tempo"))
+
+
+def test_piratedh_fixture_has_runtime_lowerable_hero_attack_claims():
+    claims = _claims("PirateDH")
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "hero_attack"
+        and claim.get("runtime_block") == "BeforePhysicalAttackBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+
+
+def test_piratedh_fixture_closes_runtime_surfaces_for_support_cards():
+    claims = _claims("PirateDH")
+    claims_by_card = {}
+    for claim in claims:
+        for card in claim.get("cards", []):
+            claims_by_card.setdefault(card, []).append(claim)
+
+    expected_cards = {
+        "AV_661",
+        "BT_753",
+        "CFM_637",
+        "DRG_056",
+        "NX2_050",
+        "SCH_356",
+        "TOY_518",
+        "VAC_938",
+    }
+    for card_id in expected_cards:
+        assert any(
+            claim.get("runtime_block") in {"BeforePlayCardBonus", "BeforePhysicalAttackBonus", "OnBoardBonus"}
+            and claim.get("runtime_value")
+            for claim in claims_by_card.get(card_id, [])
+        ), card_id
+    assert any(
+        claim["claim_kind"] == "targeting_rule"
+        and claim.get("stance") == "prefer_enemy_hero"
+        and claim.get("runtime_block") == "BeforePhysicalAttackBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
