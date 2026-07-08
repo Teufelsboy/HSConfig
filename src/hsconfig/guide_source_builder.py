@@ -162,6 +162,23 @@ def build_guide_builder_receipt(
     }
 
 
+def research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "deck_name": deck_name,
+        "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
+        "source_depth_status": "needs_more_research",
+        "sources": [],
+        "summary": {
+            "source_count": 0,
+            "claim_count": 0,
+            "stale_source_count": 0,
+            "downgraded_source_count": 0,
+            "static_card_semantics_used": False,
+        },
+    }
+
+
 def _normalize_claim(claim: dict[str, Any], *, source_index: int, claim_index: int) -> dict[str, Any]:
     normalized = dict(claim)
     if "reason" in normalized and "evidence_text_short" not in normalized:

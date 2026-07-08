@@ -34,6 +34,7 @@ from hsconfig.guide_source_builder import (
     build_deck_fingerprint,
     build_guide_builder_receipt,
     build_guide_sources,
+    research_required_guide_sources,
 )
 from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.hearthstonejson import fetch_latest_cards
@@ -175,7 +176,7 @@ def _build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         )
         strict_source_documents = []
     elif not guide_sources:
-        generated_guide_sources = _research_required_guide_sources(args.deck_name, deck_identity)
+        generated_guide_sources = research_required_guide_sources(args.deck_name, deck_identity)
         strict_source_documents = []
     source_documents = [*strict_source_documents, *guide_documents_from_legacy_claims(claims)]
     guide_claim_bundle = build_guide_claim_bundle(

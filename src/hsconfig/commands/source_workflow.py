@@ -13,6 +13,7 @@ from hsconfig.guide_source_builder import (
     build_deck_fingerprint,
     build_guide_builder_receipt,
     build_guide_sources,
+    research_required_guide_sources,
 )
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.identity_graph import build_identity_gap_report, build_identity_graph_report
@@ -256,7 +257,7 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         )
         strict_source_documents = []
     elif not guide_sources:
-        generated_guide_sources = _research_required_guide_sources(args.deck_name, deck_identity)
+        generated_guide_sources = research_required_guide_sources(args.deck_name, deck_identity)
         strict_source_documents = []
     source_documents = [*strict_source_documents, *guide_documents_from_legacy_claims(claims)]
     guide_claim_bundle = build_guide_claim_bundle(
@@ -338,21 +339,4 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         "identity_gap_report": build_identity_gap_report(identity_graph_report),
         "source_evidence_report": verify_source_documents(source_documents),
         "source_document_draft_report": source_document_draft_report,
-    }
-
-
-def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "deck_name": deck_name,
-        "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
-        "source_depth_status": "needs_more_research",
-        "sources": [],
-        "summary": {
-            "source_count": 0,
-            "claim_count": 0,
-            "stale_source_count": 0,
-            "downgraded_source_count": 0,
-            "static_card_semantics_used": False,
-        },
     }

@@ -736,9 +736,30 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
 
 
 def test_prepare_no_auto_research_fallback_requests_research_before_strong_config(
-    tmp_path: Path, capsys
+    tmp_path: Path, capsys, monkeypatch
 ):
     package = tmp_path / "package"
+
+    monkeypatch.setattr("hsconfig.cli.fetch_latest_cards", lambda timeout=10.0: [])
+
+    def _shared_fallback(deck_name: str, deck_identity: dict[str, object]) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "deck_name": deck_name,
+            "deck_code_hash": str(deck_identity.get("deck_code_hash", "")),
+            "source_depth_status": "needs_more_research",
+            "sources": [],
+            "summary": {
+                "source_count": 0,
+                "claim_count": 0,
+                "stale_source_count": 0,
+                "downgraded_source_count": 0,
+                "static_card_semantics_used": False,
+            },
+            "research_fallback_source": "shared_module",
+        }
+
+    monkeypatch.setattr("hsconfig.cli.research_required_guide_sources", _shared_fallback)
 
     code = main(
         [
@@ -760,12 +781,16 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     operator_summary = json.loads(
         (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
+    guide_sources = json.loads((package / "reports" / "guide_sources.json").read_text(encoding="utf-8"))
 
     assert code == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
     assert payload["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert guide_sources["source_depth_status"] == "needs_more_research"
+    assert guide_sources["summary"]["source_count"] == 0
+    assert guide_sources["research_fallback_source"] == "shared_module"
 
 
 def test_prepare_source_posture_drives_globalvalues_authority_matrix(
