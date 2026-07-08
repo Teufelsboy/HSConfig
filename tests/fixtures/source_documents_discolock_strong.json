@@ -25,6 +25,8 @@
           "cards": ["EX1_308", "DMF_119", "WON_103", "CATA_490"],
           "mechanic": "discard",
           "stance": "controlled_discard",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
           "evidence_text_short": "Soulfire, Wicked Whispers, Chamber of Viscidus, and Ocular Occultist are discard outlets that mutate the hand state.",
           "source_confidence": "high",
           "source_refs": [
@@ -66,6 +68,137 @@
             "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
             "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd"
           ]
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "Discolock",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["BOT_568"],
+          "stance": "temporary_refill_discard_setup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Draw 3 cards. They are Temporary.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["BT_300"],
+          "mechanic": "discard",
+          "stance": "discard_draw_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "When you play or discard this, draw 3 cards.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CATA_493"],
+          "stance": "discard_scaling_rush_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Rush. Has +2/+2 for each card you've discarded this game.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["CATA_499"],
+          "stance": "discard_summon_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "When you play or discard this, summon two random 1-Cost minions.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["DMF_119"],
+          "mechanic": "discard",
+          "stance": "controlled_discard_buff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Discard your lowest Cost card. Give your minions +1/+1.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["END_016"],
+          "mechanic": "weapon",
+          "stance": "discard_attack_sequence",
+          "runtime_block": "BeforePhysicalAttackBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "After your hero attacks, discard your highest Cost card.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["EX1_308"],
+          "mechanic": "discard",
+          "stance": "discard_burn_outlet",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Deal 4 damage. Discard a random card.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["RLK_532"],
+          "stance": "discard_summon_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Taunt. If you discard this minion, summon it.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["RLK_534"],
+          "stance": "discard_damage_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "When you play or discard this, deal 5 damage randomly split among all enemies.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SCH_147"],
+          "stance": "discard_deathrattle_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Deathrattle: Summon two 2/1 Spiders. If you discard this, trigger its Deathrattle.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TIME_026"],
+          "stance": "board_buff_followup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Give your minions +1/+1. Shuffle 2 Shreds of Time into your deck.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["WON_098"],
+          "stance": "discard_summon_payoff",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "If you discard this minion, summon it.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["WON_103"],
+          "mechanic": "discard",
+          "stance": "controlled_discard_refill",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Look at 3 cards in your hand and choose one to discard. Draw two cards.",
+          "source_confidence": "high"
         }
       ]
     }

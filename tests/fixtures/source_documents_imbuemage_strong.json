@@ -35,8 +35,10 @@
         },
         {
           "claim_kind": "hero_power_transform",
-          "cards": ["EDR_800", "EDR_519", "EDR_852"],
+          "cards": ["EDR_800", "EDR_519", "EDR_852", "EDR_871"],
           "stance": "imbued_hero_power",
+          "runtime_block": "BeforeUseHeroPowerBonus",
+          "runtime_value": "8",
           "evidence_text_short": "Imbue cards transform the Mage Hero Power plan into the deck's main pressure engine.",
           "source_confidence": "medium",
           "source_refs": [
@@ -66,6 +68,78 @@
             "https://www.hsguru.com/deck/28773511",
             "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage"
           ]
+        }
+      ]
+    },
+    {
+      "source_url": "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+      "source_title": "cards.json",
+      "source_family": "metadata",
+      "retrieved_at": "2026-07-07T00:00:00Z",
+      "deck_name": "ImbueMage",
+      "claims": [
+        {
+          "claim_kind": "card_role",
+          "cards": ["BAR_546"],
+          "stance": "hero_power_damage_scaling",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Your Hero Power deals 1 more damage this game.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["EDR_804"],
+          "stance": "wisp_refill_conversion",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Destroy a friendly Wisp to draw 3 cards.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["ETC_534"],
+          "stance": "one_damage_cleanup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "After ANY minion takes exactly 1 damage, destroy it.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["FIR_911"],
+          "stance": "staged_refill_draw",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Draw cards over time, but discard the spell if you wait too long.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["LOE_077"],
+          "stance": "double_battlecry_imbue_setup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Your Battlecries trigger twice.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_528"],
+          "stance": "double_hero_power_trigger",
+          "runtime_block": "BeforeUseHeroPowerBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Your Hero Power triggers twice.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["VAC_520"],
+          "stance": "enemy_board_ping_setup",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Deal 2 damage randomly split among all enemy minions.",
+          "source_confidence": "high"
         }
       ]
     }

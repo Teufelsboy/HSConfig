@@ -331,6 +331,22 @@ def test_discolock_fixture_covers_discard_and_hand_mutation():
     assert any(claim["claim_kind"] in {"mechanic_usage", "known_bad_pattern"} for claim in claims)
 
 
+def test_discolock_fixture_marks_discard_runtime_and_never_autopatch_boundaries():
+    claims = _claims("Discolock")
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "discard"
+        and claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+    assert any(
+        claim["claim_kind"] == "known_bad_pattern"
+        and "discard" in str(claim.get("evidence_text_short", "")).lower()
+        for claim in claims
+    )
+
+
 def test_kingslayer_fixture_covers_weapon_sequence_pressure():
     claims = _claims("Kingslayer")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
@@ -419,6 +435,22 @@ def test_imbuemage_fixture_covers_hero_power_and_generation():
     kinds = {claim["claim_kind"] for claim in claims}
     assert any(marker in text for marker in ("imbue", "hero power", "spell", "generate", "discover"))
     assert {"hero_power_transform", "mechanic_usage", "discover_choice"} & kinds
+
+
+def test_imbuemage_fixture_marks_hero_power_and_generation_boundaries():
+    claims = _claims("ImbueMage")
+    assert any(
+        claim["claim_kind"] == "hero_power_transform"
+        and claim.get("runtime_block")
+        in {"HeroPowerBonus", "BeforeHeroPowerBonus", "BeforePlayCardBonus", "BeforeUseHeroPowerBonus"}
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+    assert any(
+        claim["claim_kind"] in {"mechanic_usage", "discover_choice"}
+        and claim.get("mechanic") in {"spell_generation", "discover", "imbue"}
+        for claim in claims
+    )
 
 
 def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
