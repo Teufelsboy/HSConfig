@@ -46,3 +46,19 @@ def test_build_help_is_marked_expert_path(capsys):
     help_text = _subcommand_help("build", capsys)
 
     assert "Expert lower-level package builder" in help_text
+
+
+def test_root_help_states_negative_scope():
+    help_text = build_parser().format_help()
+
+    assert "pre-run only" in help_text
+    assert "does not parse replays, inspect winrate, or tune after games" in help_text
+
+
+def test_apply_help_keeps_source_informed_pre_run_scope():
+    parser = build_parser()
+    apply_parser = parser._subparsers._actions[1].choices["apply"]
+    help_text = apply_parser.format_help()
+
+    assert "--allow-source-informed" in help_text
+    assert "source-informed apply remains pre-run only" in help_text

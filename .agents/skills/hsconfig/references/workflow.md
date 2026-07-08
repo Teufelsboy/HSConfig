@@ -38,6 +38,8 @@ For blockers, improve `source_documents.json` for `cards_need_guide_claims`; imp
 
 `SOURCE_INFORMED_APPLY_READY` with `ALLOWED_SOURCE_INFORMED` and `source_informed_apply_readiness.status=ready` is the only valid source-informed apply lane. It allows `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json` when the remaining blockers are only `cards_need_guide_claims` or `cards_need_mulligan_claims`. `cards_need_runtime_surface` and other hard blockers keep the lane blocked. Source-informed apply is still not `SOURCE_BACKED_STRONG`; use `source_claim_gap_report.json` and `strong_promotion_report.json` to close those links before promotion.
 
+Source-informed apply remains pre-run only. It is not replay analysis, winrate validation, HSTuner candidate promotion, or post-run tuning.
+
 ## Fixture Stage Semantics
 
 `core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.

@@ -7,6 +7,8 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.
+
 For the normal operator entry point, start at `docs/operator/README.md`.
 
 Inputs:

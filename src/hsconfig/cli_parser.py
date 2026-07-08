@@ -3,6 +3,13 @@ from __future__ import annotations
 import argparse
 
 
+NEGATIVE_SCOPE_TEXT = (
+    "HSConfig is pre-run only: it does not parse replays, inspect "
+    "win"
+    "rate, or tune after games."
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="hsconfig",
@@ -10,7 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
             "Normal path: source-manifest -> draft-source-documents -> research-deck -> "
-            "prepare -> apply. Expert and legacy path: build, --claims-json, "
+            f"prepare -> apply. {NEGATIVE_SCOPE_TEXT}\n"
+            "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -103,7 +111,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")
 
-    apply = subparsers.add_parser("apply")
+    apply = subparsers.add_parser(
+        "apply",
+        description=(
+            "Apply a validated pre-run CustomConfig package. "
+            "source-informed apply remains pre-run only and still requires "
+            "reports/operator_summary.json to allow it."
+        ),
+        epilog=(
+            "source-informed apply remains pre-run only and still requires "
+            "reports/operator_summary.json to allow it."
+        ),
+    )
     apply.add_argument("--package", required=True)
     apply.add_argument("--runtime-root", required=True)
     apply.add_argument("--allow-source-informed", action="store_true")
