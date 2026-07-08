@@ -289,6 +289,23 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
     assert "Concede.json" in docs
 
 
+def test_skill_sources_document_runtime_apply_mode_as_descriptive():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+
+    assert "runtime_apply_mode" in skill
+    assert "runtime_apply_allowed" in skill
+    assert "runtime_apply_requires_flag" in skill
+    assert "ALLOWED_WITH_WARNINGS" in skill
+    assert "ALLOWED_WITH_WARNINGS as runtime write permission" not in skill
+
+    assert "runtime_apply_mode" in workflow
+    assert "human-readable write mode" in workflow
+    assert "hsconfig apply" in workflow
+    assert "apply_package()" in workflow
+    assert "re-evaluate the operator gate before writing" in workflow
+
+
 def test_readme_documents_installed_skill_sync():
     text = Path("README.md").read_text(encoding="utf-8")
     normalized = text.replace("\\", "/")
