@@ -4,7 +4,7 @@ Supported runtime files:
 
 - `GlobalValues.json`
 - `Mulligan.json`
-- `<CARDID>.json`
+- `per-card <CARDID>.json`
 - `Combo.json` when a concrete valid combo exists
 
 Normal HSConfig output is limited to the files above. `Presume.json` and `Concede.json` remain legacy/gated validator-supported surfaces and are not part of the normal path package output or operator handoff.

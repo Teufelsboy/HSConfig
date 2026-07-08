@@ -219,6 +219,7 @@ def test_skill_docs_use_per_card_cardid_json_wording():
         ".agents/skills/hsconfig/SKILL.md": "`per-card <CARDID>.json`",
         ".agents/skills/hsconfig/references/workflow.md": "`per-card <CARDID>.json`",
         ".agents/skills/hsconfig/references/card-behavior-policy.md": "`per-card <CARDID>.json`",
+        ".agents/skills/hsconfig/references/visionai-surfaces.md": "`per-card <CARDID>.json`",
     }
 
     for relative_path, phrase in docs.items():
