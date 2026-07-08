@@ -4,7 +4,8 @@ HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a d
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
-Research artifacts are evidence, not operator instructions.
+Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
+The normal path is: source-manifest -> draft-source-documents -> research-deck -> prepare -> apply.
 
 ## Normal Operator Path
 

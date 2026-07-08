@@ -1,4 +1,17 @@
+from pathlib import Path
+
 from hsconfig.operator_guidance import build_operator_guidance
+
+
+def test_operator_docs_point_to_research_index_without_making_it_operator_path():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "Research artifacts are evidence, not operator instructions." in text
+    assert "docs/research/README.md" in text
+    assert (
+        "source-manifest -> draft-source-documents -> research-deck -> prepare -> apply"
+        in text
+    )
 
 
 def test_guidance_for_source_backed_strong_package():
