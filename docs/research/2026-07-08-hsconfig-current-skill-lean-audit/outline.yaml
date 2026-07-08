@@ -1,0 +1,40 @@
+topic: hsconfig-current-skill-lean-audit-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-current-skill-lean-audit\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Lean Operator Boundary And Skill UX
+    category: Skill architecture
+    description: >
+      Audit whether HSConfig is still narrow, simple, efficient, and operator-friendly:
+      README, docs/operator/README.md, installed skill source, workflow reference,
+      report ownership, CLI boundaries, and exclusion of replay, winrate, HSTuner
+      tuning, Presume.json, and Concede.json from the normal path.
+  - name: VisionAI Runtime Surface And Apply Gate Correctness
+    category: HearthRanger VisionAI
+    description: >
+      Audit whether the current implementation covers the right pre-run VisionAI
+      runtime surfaces: GlobalValues.json, Mulligan.json, per-card CardID JSON,
+      exact Combo.json only when justified, guarded runtime apply, runtime_apply_mode
+      readability fields, and forged-gate rejection.
+  - name: Every Card Contract And Source Depth Model
+    category: Guide research
+    description: >
+      Audit whether every card can receive a visible role, source-depth lane,
+      guide/static/archetype claim, missing-link explanation, and operator
+      recommendation without pretending low-confidence cards are optimized.
+  - name: Provided Deck Set Coverage And Fixture Truth
+    category: Deck matrix
+    description: >
+      Audit the provided deck set: ShadowPriest, CtAPaladin, PirateRogue,
+      BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer,
+      Boarlock, PirateDH, and CuteWarrior. Verify which decks are representative
+      matrix controls, which remain source-informed, and whether CuteWarrior
+      should stay supplemental to avoid widening the matrix too early.
+  - name: Maintainability Tests And Repo Slimness
+    category: Repo quality
+    description: >
+      Audit maintainability and slimness: command handler boundaries, test coverage,
+      installed skill sync, dependency footprint, research/archive noise, and whether
+      the next work should be functional closure, cleanup, or no-change.

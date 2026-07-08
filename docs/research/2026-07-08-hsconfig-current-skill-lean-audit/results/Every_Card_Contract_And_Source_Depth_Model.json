@@ -1,0 +1,101 @@
+{
+  "audit_question": "Audit whether every card can receive a visible role, source-depth lane, guide/static/archetype claim, missing-link explanation, and operator recommendation without pretending low-confidence cards are optimized.",
+  "primary_sources": [
+    {
+      "type": "policy",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\guide-research-policy.md",
+      "evidence": "The policy says every card must land in a visible lane. The preferred order is card-specific guide claim, static semantics, archetype inference, then generic_low_confidence as the final visible fallback. Only guide_backed and source_backed_static_semantics can support strong guide depth."
+    },
+    {
+      "type": "workflow",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-builder-workflow.md",
+      "evidence": "The workflow document states that every card should reach one visible lane: guide_backed, source_backed_static_semantics, archetype_inferred, explicit_low_confidence, generic_low_confidence, or contract_gap."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+      "evidence": "build_gameplan_contract() iterates the full decoded deck, emits one contract record per deck card, merges guide claims with research roles, and falls back to archetype_inferred or generic_low_confidence instead of pretending every card is optimized."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\config_readiness.py",
+      "evidence": "build_config_readiness_report() assigns every card a readiness lane and first_missing_link. The visible readiness lanes include runtime_emitted, mulligan_only, globalvalues_only, report_only_supported, archetype_inferred, and generic_low_confidence."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\guide_source_depth.py",
+      "evidence": "build_guide_source_depth_report() keeps source-depth truth visible with lowerable_claims, report_only_claims, blocked_runtime_claims, supported_cards, warnings_count, cards_needing_guide_claims, and cards_needing_runtime_surface. It only returns source_backed when lowerable claims exist and warnings are absent."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_gap_report.py",
+      "evidence": "build_source_claim_gap_report() converts first_missing_link into a per-card recommendation with recommended_source_claim_kind, next_action, priority_score, and first_missing_chain so blocked cards stay actionable."
+    },
+    {
+      "type": "code",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+      "evidence": "build_operator_summary() promotes to SOURCE_BACKED_STRONG only when technical validity, source-backed depth, positive claim count, zero source-evidence warnings, zero generic-low-confidence cards, zero uncovered cards, zero conflicts, and zero readiness-gap counters all hold at once."
+    },
+    {
+      "type": "operator_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\source-backed-strong-closure.md",
+      "evidence": "The closure document keeps Kingslayer and Boarlock visible as source-informed controls with named first missing links instead of widening the matrix to avoid those unresolved rows."
+    },
+    {
+      "type": "operator_doc",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\supplemental-proof-decks.json",
+      "evidence": "CuteWarrior is documented as supplemental_command_acceptance with operator_action keep_supplemental, which means it does not widen the representative source-depth closure matrix."
+    },
+    {
+      "type": "verification",
+      "command": "python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests -k \"every_card or guide_source_depth or config_readiness or operator_summary or source_claim_gap or strong_promotion\"",
+      "evidence": "Focused verification passed on 2026-07-08 with 76 passed and 500 deselected in 35.21s, covering the every-card contract, readiness lanes, source-depth reporting, gap reporting, strong-promotion gate, and operator-summary behavior."
+    }
+  ],
+  "confirmed_facts": [
+    "The repository has an explicit every-card visibility rule in current operator documentation and implements it in the active builders and reports.",
+    "Visible role assignment is already implemented for every deck card because the current gameplan contract iterates the full deck and emits per-card roles, semantic families, confidence, and source claim ids.",
+    "Visible claim-state assignment is already implemented because cards can land in guide_backed, source_backed_static_semantics, archetype_inferred, explicit_low_confidence, generic_low_confidence, or contract_gap instead of silently disappearing.",
+    "Visible source-depth or readiness lanes are already implemented because config_readiness.py assigns every card a readiness lane and first_missing_link.",
+    "Visible missing-link explanations are already implemented because source_claim_gap_report.py translates first_missing_link into a concrete repair action and a first_missing_chain summary.",
+    "Visible operator recommendation is already implemented because operator_summary.py turns card-level weakness into semantic_status, semantic_blockers, source_informed_apply_readiness, next_action, and apply_policy.",
+    "Low-confidence cards are not presented as optimized because generic_low_confidence, uncovered cards, source-evidence warnings, claim conflicts, and remaining readiness-gap counters all prevent SOURCE_BACKED_STRONG.",
+    "Static semantics are useful but bounded because source_backed_static_semantics can support visible roles and expectations but does not bypass the strict strong-promotion gate on its own.",
+    "The current matrix truth is honest: nine representative decks are already SOURCE_BACKED_STRONG, while Kingslayer and Boarlock remain visible source-informed rows with named first gaps."
+  ],
+  "alignment_verdict": "aligned",
+  "strengths": [
+    "The model separates five distinct card questions cleanly: role, evidence lane, runtime-readiness lane, first missing link, and operator next action.",
+    "The repository prefers explicit weak states over silent omission, which makes low-confidence cards visible without overstating certainty.",
+    "The strong gate is strict and defensible because SOURCE_BACKED_STRONG requires zero low-confidence cards, zero uncovered cards, zero conflicts, zero source-evidence warnings, and zero readiness gaps.",
+    "The operator outputs are actionable rather than merely descriptive because blocked cards receive a next action and a prioritized first missing chain."
+  ],
+  "gaps_or_risks": [
+    "Visible coverage is not the same as optimized coverage. A card can be fully visible and still remain archetype_inferred, report_only_supported, or generic_low_confidence.",
+    "Technical validity alone is not enough. Operators still need semantic_status and semantic_blockers to avoid confusing VALID_PACKAGE with source-backed strength.",
+    "Kingslayer and Boarlock remain real closure risks if their named missing links are ignored. Those rows are valuable because they prove the system does not fake certainty, but they should not be bypassed by widening the matrix."
+  ],
+  "deck_set_implications": {
+    "representative_decks": [
+      "ShadowPriest",
+      "CtAPaladin",
+      "PirateRogue",
+      "BigShaman",
+      "Discolock",
+      "TreantDruid",
+      "ImbueMage",
+      "MechPala",
+      "Kingslayer",
+      "Boarlock",
+      "PirateDH"
+    ],
+    "supplemental_decks": [
+      "CuteWarrior"
+    ],
+    "summary": "Across the active eleven representative decks, the current implementation already supports visible roles, claim states, readiness lanes, missing-link explanations, and operator recommendations for every represented card family. Nine rows prove the strong happy path. Kingslayer and Boarlock prove the truth path because incomplete cards stay visible, named, and actionable without being presented as optimized.",
+    "operator_boundary": "Keep CuteWarrior supplemental and do not count it as a twelfth representative deck. Close the existing Kingslayer and Boarlock missing chains before widening fixture breadth."
+  },
+  "recommendation": "Keep the current every-card contract and strict strong-gate logic unchanged. Do not relax generic_low_confidence, uncovered-card, or readiness-gap demotions. The next improvement should stay narrow: preserve the current reports, keep Kingslayer and Boarlock as visible source-informed controls, and close those exact missing chains before widening the matrix.",
+  "confidence": "high",
+  "uncertain": []
+}

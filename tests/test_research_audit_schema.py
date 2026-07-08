@@ -75,6 +75,18 @@ def test_research_index_marks_research_as_evidence_not_operator_guidance():
     assert "docs/operator/README.md remains the normal operator entrypoint." in text
 
 
+def test_current_skill_lean_audit_package_is_indexed_as_evidence():
+    readme = Path("docs/research/README.md").read_text(encoding="utf-8")
+    audit_root = Path("docs/research/2026-07-08-hsconfig-current-skill-lean-audit")
+
+    assert "2026-07-08-hsconfig-current-skill-lean-audit" in readme
+    assert "current skill lean audit" in readme.lower()
+    assert "evidence, not operator instructions" in readme.lower()
+    assert (audit_root / "fields.yaml").exists()
+    assert (audit_root / "outline.yaml").exists()
+    assert len(list((audit_root / "results").glob("*.json"))) == 5
+
+
 def test_source_builder_lite_research_results_validate():
     audit_dir = Path("docs/research/2026-07-07-hsconfig-source-builder-lite")
     fields = audit_dir / "fields.yaml"

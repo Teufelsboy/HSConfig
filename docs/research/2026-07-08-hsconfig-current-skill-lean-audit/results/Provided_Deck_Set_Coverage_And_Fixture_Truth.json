@@ -1,0 +1,112 @@
+{
+  "audit_question": "Audit the provided deck set: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, PirateDH, and CuteWarrior. Verify which decks are representative matrix controls, which remain source-informed, and whether CuteWarrior should stay supplemental to avoid widening the matrix too early.",
+  "primary_sources": [
+    {
+      "source_type": "local_matrix_definition",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\archetype-fixture-matrix.json",
+      "evidence": "Defines the representative 11-deck HSConfig proof set and marks fixture_stage per deck."
+    },
+    {
+      "source_type": "local_operator_guide",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+      "evidence": "States the matrix is the representative 11-deck proof set, requires closing Kingslayer and Boarlock before widening, and says CuteWarrior is supplemental."
+    },
+    {
+      "source_type": "local_supplemental_policy",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\supplemental-proof-decks.json",
+      "evidence": "Lists CuteWarrior with proof_role supplemental_command_acceptance, matrix_policy not_representative_until_kingslayer_boarlock_closure_review, and operator_action keep_supplemental."
+    },
+    {
+      "source_type": "locked_test",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_visibility.py",
+      "evidence": "Locks total_decks=11, core_source_backed_fixture_count=9, source_informed_valid_fixture_count=2, and the normal next action to close existing source-informed rows before adding more decks."
+    },
+    {
+      "source_type": "locked_test",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_informed_closure_contract.py",
+      "evidence": "Locks the representative matrix at 11 rows, requires one Kingslayer row, one Boarlock row, and zero CuteWarrior rows."
+    },
+    {
+      "source_type": "locked_test",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_governance.py",
+      "evidence": "Confirms CuteWarrior is not a representative matrix row and must remain supplemental."
+    },
+    {
+      "source_type": "locked_test",
+      "path": "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_strong_promotion_report.py",
+      "evidence": "Uses CuteWarrior at runtime_prepare stage as a blocked supplemental example instead of a representative fixture."
+    },
+    {
+      "source_type": "verification_command",
+      "command": "python -m pytest C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_matrix_visibility.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_informed_closure_contract.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_strong_promotion_report.py C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_depth_closure_index.py -q",
+      "evidence": "Passed with 16 tests on 2026-07-08, confirming the matrix counts, source-informed blockers, and promotion policy used in this audit."
+    }
+  ],
+  "confirmed_facts": [
+    "The representative HSConfig matrix currently contains 11 decks, not 12.",
+    "Nine provided decks are representative matrix controls with fixture_stage core_source_backed_fixture: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH.",
+    "Two provided decks remain representative but source-informed rather than strong controls: Kingslayer and Boarlock.",
+    "Kingslayer remains source_informed_valid_fixture with first_strongness_gap needs_mulligan_claim_for_quick_pick and closure priority 2.",
+    "Boarlock remains source_informed_valid_fixture with first_strongness_gap needs_mulligan_claim_for_fracking, multiple blocking reasons, and an explicit stop condition exact_boarlock_fracking_mulligan_source_unavailable.",
+    "CuteWarrior is not part of the representative matrix and is intentionally tracked in supplemental-proof-decks.json as supplemental_command_acceptance.",
+    "Operator policy explicitly says not to add a new representative deck when an existing row already covers the same source-depth or runtime-surface family.",
+    "Operator policy explicitly says to close or review the current Kingslayer and Boarlock source-informed rows before widening the matrix.",
+    "The provided deck set therefore splits into three groups: nine representative matrix controls, two representative source-informed rows, and one supplemental non-matrix deck."
+  ],
+  "alignment_verdict": "aligned",
+  "strengths": [
+    "The current matrix is lean and explicitly bounded at 11 representative decks.",
+    "Each representative deck has a documented fixture stage and strongness visibility status.",
+    "The matrix already covers broad mechanic families without promoting CuteWarrior prematurely.",
+    "Kingslayer and Boarlock remain visible as honest source-informed controls instead of being misreported as source-backed strong.",
+    "Supplemental policy cleanly separates narrow command-acceptance proof decks from representative coverage decisions."
+  ],
+  "gaps_or_risks": [
+    "Kingslayer is still blocked on exact Quick Pick mulligan evidence, so it cannot yet be treated as a strong representative control.",
+    "Boarlock is still blocked on exact Fracking mulligan evidence plus runtime-surface and coverage gaps, so it remains a durable source-informed control rather than a closed strong row.",
+    "Promoting CuteWarrior into the representative matrix now would widen the matrix without resolving the two known source-informed gaps, which would dilute the current closure discipline.",
+    "The matrix purpose is lean pre-game CustomConfig coverage, so it still has documented limits around reactive control, discover chains, and some exact combo cases depending on the deck."
+  ],
+  "deck_set_implications": {
+    "representative_matrix_controls": [
+      "ShadowPriest",
+      "CtAPaladin",
+      "PirateRogue",
+      "BigShaman",
+      "Discolock",
+      "TreantDruid",
+      "ImbueMage",
+      "MechPala",
+      "PirateDH"
+    ],
+    "representative_source_informed_rows": [
+      {
+        "deck_name": "Kingslayer",
+        "status": "source_informed_valid_fixture",
+        "current_role": "representative source-informed control",
+        "first_missing_chain": "DEEP_014 Quick Pick needs mulligan claim",
+        "operator_action": "close_existing_source_informed_fixture"
+      },
+      {
+        "deck_name": "Boarlock",
+        "status": "source_informed_valid_fixture",
+        "current_role": "representative source-informed control",
+        "first_missing_chain": "WW_092 Fracking needs mulligan claim",
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition"
+      }
+    ],
+    "supplemental_only": [
+      {
+        "deck_name": "CuteWarrior",
+        "status": "supplemental_command_acceptance",
+        "matrix_role": "not_representative",
+        "operator_action": "keep_supplemental",
+        "reason": "It proves narrow command or syntax behavior without changing the representative matrix count and should not become a twelfth representative row before Kingslayer and Boarlock closure or explicit review."
+      }
+    ],
+    "overall_conclusion": "The provided deck set is already the intended current audit set: nine strong representative controls, two honest source-informed representative rows, and CuteWarrior as supplemental support. Keeping CuteWarrior supplemental preserves the lean matrix and keeps attention on closing the existing source-informed truth gaps first."
+  },
+  "recommendation": "Keep the representative matrix unchanged. Treat ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH as the current representative matrix controls; keep Kingslayer and Boarlock as the only source-informed representative rows; and keep CuteWarrior supplemental until Kingslayer and Boarlock are either closed to source-backed strong or explicitly reviewed as durable long-term source-informed controls.",
+  "confidence": "high",
+  "uncertain": []
+}

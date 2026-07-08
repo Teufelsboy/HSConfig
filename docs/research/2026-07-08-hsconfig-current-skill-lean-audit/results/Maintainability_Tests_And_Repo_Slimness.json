@@ -1,0 +1,53 @@
+{
+  "audit_question": "Audit whether the current HSConfig repo remains maintainable and slim, with clear command-handler boundaries, credible test coverage, synced operator-skill surfaces, controlled dependencies, manageable research noise, and a clear next-work recommendation.",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/pyproject.toml",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/scripts/sync_installed_skill.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/prepare.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/source_workflow.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_docs_active_path.py",
+    "Command: python scripts/sync_installed_skill.py --check -> HSConfig skill is in sync: C:/Users/darbo/.codex/skills/hsconfig",
+    "Command: python -m hsconfig --help",
+    "Command: python -m hsconfig prepare --help",
+    "Command: python -m hsconfig apply --help",
+    "Command: python -m pytest tests/test_skill_files.py tests/test_docs_active_path.py tests/test_scope_boundaries.py tests/test_operator_summary.py tests/test_apply_gate.py tests/test_runtime_apply.py tests/test_archetype_fixture_matrix.py tests/test_matrix_current_truth.py -q -> 135 passed",
+    "Command: python -m pytest -q -> 574 passed, 2 skipped"
+  ],
+  "confirmed_facts": [
+    "The runtime dependency footprint is intentionally small: pyproject.toml declares hearthstone as the only runtime dependency and pytest as the dev dependency.",
+    "The CLI exposes a normal path of source-manifest, draft-source-documents, research-deck, prepare, and apply while keeping build/research-contract/expert inputs separate.",
+    "Command handler extraction exists under src/hsconfig/commands, so the repo is no longer a single monolithic CLI file.",
+    "The installed HSConfig skill is synchronized from the repo source by scripts/sync_installed_skill.py, and --check passes in the current workspace.",
+    "The active README and operator docs point to docs/operator/README.md and keep HSConfig pre-run-only.",
+    "The focused skill/operator/gate/matrix test slice passed with 135 tests, and the full suite passed with 574 passed and 2 skipped.",
+    "The provided deck set is governed by an 11-deck representative matrix plus CuteWarrior as supplemental, avoiding uncontrolled fixture widening.",
+    "The repo contains many historical docs/superpowers plans and docs/research packages. They are evidence/history, but they add search and reading noise for future agents."
+  ],
+  "alignment_verdict": "mostly_aligned",
+  "strengths": [
+    "The product boundary is clear: HSConfig is a pre-run direct-config builder, not a post-run tuner.",
+    "Operator docs, skill docs, and CLI help agree on the normal path.",
+    "The dependency footprint is slim for a Hearthstone deck-code/config compiler.",
+    "The installed skill parity check is explicit and currently passing.",
+    "Tests cover docs, skill sync, scope boundaries, operator summary, apply gate, runtime apply, fixture matrix truth, and end-to-end package behavior."
+  ],
+  "gaps_or_risks": [
+    "Historical research and plan volume is the biggest remaining slimness issue. It does not break the normal path, but it increases search noise.",
+    "More cleanup could improve agent efficiency by indexing or archiving old docs more aggressively without deleting evidence.",
+    "The CLI has been split into command modules, but further tiny extractions should be done only when they reduce actual complexity; broad refactors would add churn.",
+    "The current audit package is intentionally uncommitted during brainstorming. If accepted as evidence, it should be committed or removed to keep git status clean."
+  ],
+  "deck_set_implications": "The current repo is maintainable enough for the provided deck set. Do not add CuteWarrior as a twelfth representative row yet; keep it supplemental until Kingslayer and Boarlock are either closed or explicitly preserved as durable source-informed controls.",
+  "recommendation": "No urgent architecture rewrite is needed. The next best work is a small cleanup-plus-closure wave: keep the product code stable, archive/index noisy historical research more clearly, then close Boarlock Fracking or Kingslayer Quick Pick source-depth gaps. Avoid new surfaces and avoid broad CLI refactors unless a specific test or operator path becomes hard to maintain.",
+  "confidence": "high",
+  "uncertain": []
+}

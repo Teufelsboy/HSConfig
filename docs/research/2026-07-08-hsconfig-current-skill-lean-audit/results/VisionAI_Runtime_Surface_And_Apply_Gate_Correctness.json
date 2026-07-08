@@ -1,0 +1,59 @@
+{
+  "audit_question": "Audit whether the current HSConfig implementation covers the right pre-run VisionAI runtime surfaces: GlobalValues.json, Mulligan.json, per-card CardID JSON, exact Combo.json only when justified, guarded runtime apply, runtime_apply_mode readability fields, and forged-gate rejection.",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py",
+    "Command: rg -n \"runtime_apply_mode|runtime_apply_allowed|runtime_apply_requires_flag\" src tests docs .agents",
+    "Command: python -m pytest tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_apply_gate.py tests/test_runtime_apply.py tests/test_skill_files.py tests/test_docs_active_path.py -q -> 127 passed",
+    "Command: python -m pytest -q -> 574 passed, 2 skipped"
+  ],
+  "confirmed_facts": [
+    "The normal HSConfig runtime surface is intentionally limited to GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json when a concrete valid combo exists.",
+    "Presume.json and Concede.json are documented as legacy or gated validator-supported surfaces, not normal-path HSConfig package outputs.",
+    "Choice surfaces for discover_choice and choose_one_choice lower only to per-card CardID JSON when option identity is source-backed; unresolved choices remain visible in suppression reports.",
+    "operator_summary.py now emits runtime_apply_mode, runtime_apply_allowed, and runtime_apply_requires_flag as read-facing fields.",
+    "operator_guidance.py mirrors the runtime_apply fields from operator_summary.json instead of recomputing a second truth.",
+    "docs/operator/README.md and the HSConfig skill source explain that runtime_apply_allowed is descriptive and that apply_package() and the CLI still re-evaluate the gate before writing.",
+    "apply_gate.py does not trust forged runtime_apply_allowed; tests include a forged normal_apply payload with ALLOWED_WITH_WARNINGS and confirm the gate remains blocked.",
+    "runtime_apply.py re-evaluates the operator gate before runtime mutation and tests confirm forged or stale gate payloads are rejected.",
+    "The current source-informed lane is explicit: SOURCE_INFORMED_APPLY_READY plus ALLOWED_SOURCE_INFORMED plus source_informed_apply_readiness.status=ready requires --allow-source-informed.",
+    "Combo.json is not emitted from vague synergy ideas; the combo policy requires exact sequence/timing evidence before runtime Combo.json output.",
+    "GlobalValues.json is mandatory, baseline-preserving, and key-profiled; keys that require runtime evidence are blocked from Step1 tuning."
+  ],
+  "alignment_verdict": "aligned",
+  "strengths": [
+    "Runtime surface boundaries are narrow and operator-readable.",
+    "The recent runtime_apply_mode contract removes ambiguity without weakening apply safety.",
+    "Forged apply-readiness metadata is covered by tests and rejected by the actual gate.",
+    "The skill remains pre-run-only and does not leak HSTuner replay, winrate, or candidate-promotion concerns into HSConfig.",
+    "VisionAI file families map cleanly to the documented compiler modules and reports."
+  ],
+  "gaps_or_risks": [
+    "Combo.json remains intentionally narrow; this is correct for safety, but it means some combo decks stay source-informed until exact sequence evidence exists.",
+    "GlobalValues posture overlays are source-backed and baseline-preserving; broad autonomous GlobalValues tuning remains out of scope until runtime evidence exists in HSTuner.",
+    "External HearthRanger VisionAI syntax pages can change, so future runtime-surface expansions should be re-checked against current documentation before implementation.",
+    "The runtime_apply_mode fields are present in operator_summary and operator_guidance, not in every lower-level receipt. This is acceptable because operator_summary.json is the single normal operator gate."
+  ],
+  "deck_set_implications": [
+    "ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH can stay representative SOURCE_BACKED_STRONG controls under the current runtime surface model.",
+    "Kingslayer remains source-informed because Quick Pick needs exact mulligan/source closure rather than a new runtime file family.",
+    "Boarlock remains source-informed because Fracking and combo-control closure need exact mulligan/runtime-surface evidence rather than a weakened Combo.json gate.",
+    "CuteWarrior should stay supplemental; it can prove command acceptance or narrow syntax behavior without widening the representative matrix."
+  ],
+  "recommendation": "Keep the current VisionAI runtime surface and apply-gate model. Do not broaden runtime files or weaken gates. The next functional improvement should close Boarlock or Kingslayer source-depth links, not add new config surfaces.",
+  "confidence": "high",
+  "uncertain": []
+}

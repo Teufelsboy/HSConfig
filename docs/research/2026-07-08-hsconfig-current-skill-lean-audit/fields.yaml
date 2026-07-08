@@ -1,0 +1,33 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: audit_question
+        required: true
+        description: The exact HSConfig skill audit question this item answers.
+      - name: primary_sources
+        required: true
+        description: Official URLs, local files, tests, command outputs, and repo artifacts used as evidence.
+      - name: confirmed_facts
+        required: true
+        description: Evidence-backed facts about the current HSConfig implementation.
+      - name: alignment_verdict
+        required: true
+        description: aligned, mostly_aligned, partially_aligned, or not_aligned.
+      - name: strengths
+        required: true
+        description: What is implemented well now.
+      - name: gaps_or_risks
+        required: true
+        description: Remaining risks, missing coverage, overgrowth, or simplification opportunities.
+      - name: deck_set_implications
+        required: true
+        description: What this finding means for the provided deck set, including CuteWarrior as supplemental unless promoted later.
+      - name: recommendation
+        required: true
+        description: Practical recommendation for the next HSConfig improvement or no-change decision.
+      - name: confidence
+        required: true
+        description: high, medium, or low.
+      - name: uncertain
+        required: true
+        description: Field names where certainty is not available.

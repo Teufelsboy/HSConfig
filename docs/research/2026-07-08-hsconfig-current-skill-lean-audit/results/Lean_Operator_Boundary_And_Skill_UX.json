@@ -1,0 +1,52 @@
+{
+  "audit_question": "Audit whether HSConfig is still narrow, simple, efficient, and operator-friendly: README, docs/operator/README.md, installed skill source, workflow reference, report ownership, CLI boundaries, and exclusion of replay, winrate, HSTuner tuning, Presume.json, and Concede.json from the normal path.",
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "Command: python -m hsconfig.cli apply --help",
+    "Command: python scripts/sync_installed_skill.py --check",
+    "Command: python -m pytest tests/test_skill_files.py tests/test_report_ownership.py tests/test_runtime_apply.py tests/test_surface_intent.py -q"
+  ],
+  "confirmed_facts": [
+    "The live root README defines HSConfig as a pre-run-only tool that builds guide-aligned HearthRanger CustomConfig packages from deck input and explicitly excludes replay parsing, winrate inspection, runtime-log analysis, candidate promotion, and after-game tuning.",
+    "The live operator guide keeps the normal path short and linear: source-manifest, short evidence rows, draft-source-documents, research-deck, prepare, open reports/operator_summary.json first, and apply only when the gate allows it.",
+    "The repo skill source and the installed skill are in sync, and both repeat the same narrow contract: pre-run only, operator starts at docs/operator/README.md, reports/operator_summary.json is the single operator gate, and Presume.json and Concede.json are not normal-path outputs.",
+    "The installed workflow reference also stays pre-run only and routes the operator through reports/operator_summary.json before any runtime write decision.",
+    "CLI help for hsconfig apply is narrow and operator-facing. It exposes only package path, runtime root, source-informed escape hatch, fake apply receipt options, and JSON output, and it explicitly says that source-informed apply remains pre-run only and still requires reports/operator_summary.json.",
+    "Report ownership is explicit and simple: reports/operator_summary.json is the only open-first authority file, while source_claim_gap_report.json, strong_promotion_report.json, per_card_config_readiness_report.json, guide_source_depth_report.json, and global_values_authority_matrix.json are downstream explanatory reports.",
+    "The apply gate enforces the boundary in code, not only in docs. It requires reports/operator_summary.json, input_manifest.json, a single deck runtime directory, GlobalValues.json, Mulligan.json, and at least one per-card runtime file before apply is allowed.",
+    "The apply gate blocks Presume.json and Concede.json when they appear either in operator_summary generated_files or in the actual package tree, and it also blocks hidden or stale runtime files that are missing from the summary.",
+    "The direct runtime writer still stays within the same boundary because apply_package() re-evaluates the allowed gate from reports/operator_summary.json and rejects missing, blocked, or forged gate payloads before writing runtime files.",
+    "The deck proof set remains lean: the representative matrix still contains 11 decks, with 9 core_source_backed_fixture rows and 2 source_informed_valid_fixture rows. CuteWarrior is kept in supplemental-proof-decks.json as a supplemental command-acceptance deck, not a representative twelfth matrix row."
+  ],
+  "alignment_verdict": "aligned",
+  "strengths": [
+    "The operator path is short, readable, and consistent across README, operator guide, skill text, workflow reference, and CLI help.",
+    "Operator UX is focused on one gate file first, so the user does not need to interpret multiple competing readiness reports.",
+    "Code and tests back the scope boundary: apply-gate logic, runtime-apply checks, skill sync checks, and surface tests all reinforce the documented pre-run-only contract.",
+    "The deck set policy stays disciplined by keeping CuteWarrior supplemental and by treating Kingslayer and Boarlock as visible pre-run gap rows instead of reasons to widen HSConfig into HSTuner territory."
+  ],
+  "gaps_or_risks": [
+    "No critical drift was found in the active operator path, but older internal design-history files under docs/superpowers still discuss optional Presume.json or Concede.json behavior. Those files are not the operator contract, yet they could confuse contributors if they are read without the live operator docs.",
+    "Registry and validator awareness of legacy policy surfaces is broader than the approved normal-path output contract, so the current apply-gate and surface tests must keep guarding that distinction.",
+    "The lean UX depends on keeping the repo skill, installed skill, CLI help text, and operator docs synchronized. The current sync script and tests cover this well, but future doc drift would weaken operator clarity faster than core code would."
+  ],
+  "deck_set_implications": "The current deck set still supports a lean pre-run HSConfig boundary. Nine representative decks already validate the normal strong path, while Kingslayer and Boarlock remain explicit source-informed-but-blocked pre-run closure rows. CuteWarrior remains supplemental only, so it should continue to prove narrow command acceptance or regression behavior without being counted as a twelfth representative deck unless it is intentionally promoted later. This means the current matrix still argues for closing remaining source-to-runtime links inside HSConfig rather than importing replay, winrate, or HSTuner tuning concerns into the normal path.",
+  "recommendation": "Keep the current boundary and operator UX unchanged as the active contract. If this area is touched again, the highest-value cleanup is to label or prune older internal design-history docs that still mention optional Presume.json or Concede.json behavior, so contributors cannot confuse historical exploration with the live operator workflow.",
+  "confidence": "high",
+  "uncertain": []
+}
