@@ -28,6 +28,9 @@ def build_source_depth_closure_index(
         if not isinstance(blocking_reasons, list):
             blocking_reasons = []
         blocking_reasons = [str(reason) for reason in blocking_reasons]
+        explicit_stop_condition = visibility.get("stop_condition")
+        if not isinstance(explicit_stop_condition, str):
+            explicit_stop_condition = None
 
         reports = deck_reports.get(deck_name, {})
         operator = reports.get("operator_summary", {}) if isinstance(reports, dict) else {}
@@ -65,6 +68,7 @@ def build_source_depth_closure_index(
             "stop_condition": _stop_condition(
                 closure_decision=closure_decision,
                 blocking_reasons=blocking_reasons,
+                explicit_stop_condition=explicit_stop_condition,
             ),
             "stop_condition_reason": _preserve_reason(closure_decision),
             "recommended_next_target": _recommended_next_target(
@@ -147,9 +151,12 @@ def _stop_condition(
     *,
     closure_decision: str,
     blocking_reasons: list[str],
+    explicit_stop_condition: str | None,
 ) -> str | None:
     if closure_decision != "preserve_source_informed_until_blockers_close":
         return None
+    if explicit_stop_condition:
+        return explicit_stop_condition
     if blocking_reasons:
         return "exact_source_or_lowering_gap_still_open"
     return "first_missing_chain_still_open"

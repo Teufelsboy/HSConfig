@@ -21,7 +21,8 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
                     ],
                     "closure_state": "source_informed_blocked",
                     "closure_priority": 1,
-                    "operator_action": "close_existing_source_informed_fixture",
+                    "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+                    "stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable",
                 },
             },
             {
@@ -51,7 +52,7 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
         "uncovered_cards",
         "unsupported_conditions_present",
     ]
-    assert boarlock["stop_condition"] == "exact_source_or_lowering_gap_still_open"
+    assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
     assert boarlock["stop_condition_reason"] == (
         "source-informed row has hard blockers and cannot be promoted or applied as strong"
     )

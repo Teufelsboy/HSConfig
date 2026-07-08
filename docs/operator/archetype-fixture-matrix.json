@@ -180,7 +180,8 @@
         ],
         "closure_state": "source_informed_blocked",
         "closure_priority": 1,
-        "operator_action": "close_existing_source_informed_fixture"
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable"
       },
       "decision_families_proven": ["combo_control", "resource_setup"],
       "known_coverage_limits": ["first_missing_chain:WW_092:Fracking:needs_mulligan_claim", "single_combo_fixture_only"]

@@ -27,7 +27,16 @@ def test_each_matrix_row_exposes_first_strongness_link():
             assert visibility["operator_action"] == "keep_as_core_control_fixture"
         else:
             assert visibility["first_strongness_gap"] != "none"
-            assert visibility["operator_action"].startswith("close_existing_")
+            if row["deck_name"] == "Boarlock":
+                assert visibility["operator_action"] == (
+                    "preserve_source_informed_with_explicit_stop_condition"
+                )
+                assert visibility["stop_condition"] == (
+                    "exact_boarlock_fracking_mulligan_source_unavailable"
+                )
+            else:
+                assert visibility["operator_action"] == "close_existing_source_informed_fixture"
+                assert visibility.get("stop_condition") is None
 
 
 def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
@@ -40,6 +49,7 @@ def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
         "fixture_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
         "operator_action": "keep_as_core_control_fixture",
+        "stop_condition": None,
         "closure_state": "core_strong",
         "source_informed_blocking_reasons": [],
         "closure_priority": 0,
@@ -49,6 +59,7 @@ def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
         "fixture_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
         "operator_action": "keep_as_core_control_fixture",
+        "stop_condition": None,
         "closure_state": "core_strong",
         "source_informed_blocking_reasons": [],
         "closure_priority": 0,
@@ -75,3 +86,9 @@ def test_matrix_visibility_exposes_source_informed_blockers_and_priority():
         "unsupported_conditions_present",
     ]
     assert by_name["Boarlock"]["closure_priority"] == 1
+    assert by_name["Boarlock"]["operator_action"] == (
+        "preserve_source_informed_with_explicit_stop_condition"
+    )
+    assert by_name["Boarlock"]["stop_condition"] == (
+        "exact_boarlock_fracking_mulligan_source_unavailable"
+    )

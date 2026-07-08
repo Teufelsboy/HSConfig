@@ -188,5 +188,14 @@ def test_each_fixture_row_documents_strongness_visibility():
         assert visibility["first_strongness_gap"] == EXPECTED_STRONGNESS_GAPS[deck_name]
         if row["fixture_stage"] == "core_source_backed_fixture":
             assert visibility["operator_action"] == "keep_as_core_control_fixture"
+            assert visibility.get("stop_condition") is None
+        elif deck_name == "Boarlock":
+            assert visibility["operator_action"] == (
+                "preserve_source_informed_with_explicit_stop_condition"
+            )
+            assert visibility["stop_condition"] == (
+                "exact_boarlock_fracking_mulligan_source_unavailable"
+            )
         else:
             assert visibility["operator_action"] == "close_existing_source_informed_fixture"
+            assert visibility.get("stop_condition") is None

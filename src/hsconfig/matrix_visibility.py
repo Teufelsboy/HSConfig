@@ -41,6 +41,9 @@ def _deck_visibility(row: dict[str, Any]) -> dict[str, Any]:
     operator_action = str(
         visibility.get("operator_action", "add_strongness_visibility")
     )
+    stop_condition = visibility.get("stop_condition")
+    if stop_condition is not None:
+        stop_condition = str(stop_condition)
 
     closure_state = "core_strong"
     if fixture_stage == "source_informed_valid_fixture":
@@ -57,6 +60,7 @@ def _deck_visibility(row: dict[str, Any]) -> dict[str, Any]:
         "fixture_stage": fixture_stage,
         "first_strongness_gap": first_gap,
         "operator_action": operator_action,
+        "stop_condition": stop_condition,
         "closure_state": closure_state,
         "source_informed_blocking_reasons": blocking_reasons,
         "closure_priority": closure_priority,
