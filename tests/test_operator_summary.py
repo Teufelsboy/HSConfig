@@ -643,6 +643,53 @@ def test_operator_summary_can_mark_source_informed_ready_for_source_depth_only_g
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == []
 
 
+def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_alias_hard_blockers():
+    summary = build_operator_summary(
+        validation_report={"status": "passed", "errors": []},
+        config_readiness_report={
+            "summary": {
+                "cards_needing_guide_claims": 1,
+                "cards_needing_mulligan_claims": 1,
+                "cards_need_runtime_surface": 0,
+                "generic_low_confidence_cards": 2,
+                "uncovered_cards": 1,
+                "unsupported_conditions_present": 1,
+                "combo_blockers": 0,
+                "mechanic_blockers": 0,
+            }
+        },
+        guide_source_depth_report={"depth_status": "source_informed"},
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 2,
+                "first_missing_chain": {
+                    "card_id": "EXAMPLE_001",
+                    "card_name": "Example Card",
+                    "first_missing_link": "needs_mulligan_claim",
+                    "next_action": "add_exact_mulligan_claim",
+                },
+            }
+        },
+        strong_promotion_report={"promotion_ready": False},
+        generated_files=[
+            "CustomConfig\\deck\\GlobalValues.json",
+            "CustomConfig\\deck\\Mulligan.json",
+            "CustomConfig\\deck\\EXAMPLE_001.json",
+        ],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
+        "generic_low_confidence_cards",
+        "uncovered_cards",
+        "unsupported_conditions_present",
+    ]
+
+
 def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
     summary = build_operator_summary(
         deck_name="Kingslayer",

@@ -12,7 +12,7 @@ from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
-from hsconfig.commands.source_workflow import prepare_research_output_dir
+from hsconfig.commands.common import prepare_research_output_dir
 from hsconfig.config_readiness import build_config_readiness_report
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract

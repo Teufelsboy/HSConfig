@@ -285,6 +285,7 @@ def _normalize_readiness_summary_aliases(
         "cards_need_combo_sequence": "cards_needing_combo_sequence",
         "cards_need_condition_lowering": "cards_needing_condition_lowering",
         "cards_need_mechanic_lowering": "cards_needing_mechanic_lowering",
+        "generic_low_confidence_cards": "generic_low_confidence",
     }
     normalized = dict(summary)
     for source_key, target_key in aliases.items():
@@ -345,7 +346,10 @@ def _guide_strength_summary(
             config_readiness_summary=config_readiness_summary,
             claim_coverage_report=claim_coverage_report,
         ),
-        "uncovered_cards": _uncovered_card_count(claim_coverage_report),
+        "uncovered_cards": _uncovered_card_count_with_fallback(
+            claim_coverage_report=claim_coverage_report,
+            config_readiness_summary=config_readiness_summary,
+        ),
         "claim_conflicts": _int_value(claim_conflict_report.get("conflict_count", 0)),
         "lowerable_claims": _int_value(depth_summary.get("lowerable_claims", 0)),
         "report_only_claims": _int_value(depth_summary.get("report_only_claims", 0)),
@@ -427,6 +431,21 @@ def _semantic_blockers(
                 "affected_cards": _affected_cards_from_conditions(unsupported_conditions)[:5],
             }
         )
+    else:
+        unsupported_count = _first_present_int(
+            config_readiness_summary,
+            "unsupported_conditions_present",
+        )
+        if unsupported_count:
+            blockers.append(
+                {
+                    "reason": "unsupported_conditions_present",
+                    "count": unsupported_count,
+                    "blocking_strength": "report_visible_gap",
+                    "report": "reports/mulligan_plan_report.json",
+                    "affected_cards": [],
+                }
+            )
     return blockers
 
 
@@ -562,7 +581,11 @@ def _generic_low_confidence_count(
     claim_coverage_report: dict[str, Any] | None,
 ) -> int:
     if isinstance(config_readiness_summary, dict):
-        return _int_value(config_readiness_summary.get("generic_low_confidence", 0))
+        return _first_present_int(
+            config_readiness_summary,
+            "generic_low_confidence",
+            "generic_low_confidence_cards",
+        )
     return _low_confidence_card_count(claim_coverage_report or {})
 
 
@@ -632,6 +655,30 @@ def _uncovered_card_count(report: dict[str, Any]) -> int:
     if isinstance(summary, dict) and "uncovered_low_confidence" in summary:
         return _int_value(summary.get("uncovered_low_confidence", 0))
     return len(_uncovered_cards(report))
+
+
+def _uncovered_card_count_with_fallback(
+    *,
+    claim_coverage_report: dict[str, Any] | None,
+    config_readiness_summary: dict[str, Any] | None,
+) -> int:
+    if isinstance(claim_coverage_report, dict):
+        summary = claim_coverage_report.get("summary", {})
+        uncovered_cards = claim_coverage_report.get("uncovered_cards", [])
+        if (isinstance(summary, dict) and "uncovered_low_confidence" in summary) or (
+            isinstance(uncovered_cards, list) and uncovered_cards
+        ):
+            return _uncovered_card_count(claim_coverage_report)
+    if isinstance(config_readiness_summary, dict):
+        return _first_present_int(config_readiness_summary, "uncovered_cards")
+    return _uncovered_card_count(claim_coverage_report or {})
+
+
+def _first_present_int(summary: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        if key in summary:
+            return _int_value(summary.get(key, 0))
+    return 0
 
 
 def _next_action_and_policy(

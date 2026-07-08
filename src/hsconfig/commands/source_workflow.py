@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.card_metadata import hydrate_card_metadata
-from hsconfig.commands.common import run_payload_command
+from hsconfig.commands.common import prepare_research_output_dir, run_payload_command
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.guide_source_builder import (
@@ -179,17 +179,6 @@ def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         },
         0,
     )
-
-
-def prepare_research_output_dir(out: Path) -> None:
-    if not out.exists():
-        return
-    if not out.is_dir():
-        raise ValueError(f"Research output path exists and is not a directory: {out}")
-    if list(out.iterdir()):
-        raise ValueError(f"Refusing to overwrite non-empty research output directory: {out}")
-
-
 def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
     cards_payload = load_cards(
         args.cards_json,
