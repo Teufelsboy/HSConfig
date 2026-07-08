@@ -24,3 +24,12 @@ def read_required_baseline(package: Path) -> dict[str, Any]:
     if not isinstance(baseline, dict):
         raise ValueError(f"GlobalValues baseline must be an object: {baseline_path}")
     return baseline
+
+
+def prepare_research_output_dir(out: Path) -> None:
+    if not out.exists():
+        return
+    if not out.is_dir():
+        raise ValueError(f"Research output path exists and is not a directory: {out}")
+    if list(out.iterdir()):
+        raise ValueError(f"Refusing to overwrite non-empty research output directory: {out}")

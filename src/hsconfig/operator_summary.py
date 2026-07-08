@@ -185,10 +185,19 @@ def _semantic_status(
         config_readiness_summary=config_readiness_summary,
         claim_coverage_report=claim_coverage_report,
     )
-    uncovered_card_count = _uncovered_card_count(claim_coverage_report or {})
+    uncovered_card_count = _uncovered_card_count_with_fallback(
+        claim_coverage_report=claim_coverage_report,
+        config_readiness_summary=config_readiness_summary,
+    )
     conflict_count = _int_value((claim_conflict_report or {}).get("conflict_count", 0))
     readiness_gap_count = _readiness_gap_count(config_readiness_summary or {})
-    unsupported_condition_count = len(unsupported_conditions or [])
+    unsupported_condition_count = max(
+        len(unsupported_conditions or []),
+        _first_present_int(
+            config_readiness_summary or {},
+            "unsupported_conditions_present",
+        ),
+    )
     source_evidence = guide_source_depth.get("source_evidence", {}) if isinstance(guide_source_depth, dict) else {}
     source_evidence_warnings = _int_value(source_evidence.get("warnings_count", 0))
 
@@ -289,8 +298,14 @@ def _normalize_readiness_summary_aliases(
     }
     normalized = dict(summary)
     for source_key, target_key in aliases.items():
-        if source_key in summary and target_key not in summary:
-            normalized[target_key] = summary[source_key]
+        if source_key in summary:
+            if target_key in normalized:
+                normalized[target_key] = max(
+                    _int_value(normalized.get(target_key, 0)),
+                    _int_value(summary.get(source_key, 0)),
+                )
+            else:
+                normalized[target_key] = summary[source_key]
             normalized.pop(source_key, None)
     return normalized
 
@@ -581,7 +596,7 @@ def _generic_low_confidence_count(
     claim_coverage_report: dict[str, Any] | None,
 ) -> int:
     if isinstance(config_readiness_summary, dict):
-        return _first_present_int(
+        return _max_present_int(
             config_readiness_summary,
             "generic_low_confidence",
             "generic_low_confidence_cards",
@@ -672,6 +687,10 @@ def _uncovered_card_count_with_fallback(
     if isinstance(config_readiness_summary, dict):
         return _first_present_int(config_readiness_summary, "uncovered_cards")
     return _uncovered_card_count(claim_coverage_report or {})
+
+
+def _max_present_int(summary: dict[str, Any], *keys: str) -> int:
+    return max((_int_value(summary.get(key, 0)) for key in keys if key in summary), default=0)
 
 
 def _first_present_int(summary: dict[str, Any], *keys: str) -> int:

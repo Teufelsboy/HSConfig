@@ -838,10 +838,10 @@ def test_prepare_command_module_no_longer_imports_hsconfig_cli():
     assert "from hsconfig.cli import" not in text
 
 
-def test_package_builder_no_longer_imports_source_workflow_helper():
+def test_package_builder_does_not_import_command_modules():
     text = Path("src/hsconfig/package_builder.py").read_text(encoding="utf-8")
 
-    assert "from hsconfig.commands.source_workflow import prepare_research_output_dir" not in text
+    assert "from hsconfig.commands" not in text
 
 
 def test_cli_no_longer_owns_package_builder():

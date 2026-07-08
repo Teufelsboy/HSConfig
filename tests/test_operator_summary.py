@@ -690,6 +690,56 @@ def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_a
     ]
 
 
+@pytest.mark.parametrize(
+    ("readiness_overrides", "expected_reason"),
+    [
+        ({"uncovered_cards": 1}, "uncovered_cards"),
+        ({"unsupported_conditions_present": 1}, "unsupported_conditions_present"),
+        (
+            {"generic_low_confidence": 0, "generic_low_confidence_cards": 1},
+            "generic_low_confidence_cards",
+        ),
+    ],
+)
+def test_operator_summary_blocks_strong_when_compat_summary_has_pure_alias_hard_blockers(
+    readiness_overrides, expected_reason
+):
+    readiness_summary = {
+        "cards_needing_guide_claims": 0,
+        "cards_need_runtime_surface": 0,
+        "cards_needing_mulligan_claims": 0,
+        "cards_need_combo_sequence": 0,
+        "cards_need_condition_lowering": 0,
+        "cards_need_mechanic_lowering": 0,
+        "generic_low_confidence_cards": 0,
+        "uncovered_cards": 0,
+        "unsupported_conditions_present": 0,
+    }
+    readiness_summary.update(readiness_overrides)
+
+    summary = build_operator_summary(
+        validation_report={"status": "passed", "errors": []},
+        config_readiness_report={"summary": readiness_summary},
+        guide_source_depth_report={
+            "depth_status": "source_backed",
+            "summary": {"claim_count": 3},
+            "source_evidence": {"warnings_count": 0},
+        },
+        claim_conflict_report={"conflict_count": 0},
+        generated_files=[
+            "CustomConfig\\deck\\GlobalValues.json",
+            "CustomConfig\\deck\\Mulligan.json",
+        ],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["operator_guidance"]["safe_to_apply"] is False
+    assert expected_reason in summary["source_informed_apply_readiness"]["blocking_reasons"]
+
+
 def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
     summary = build_operator_summary(
         deck_name="Kingslayer",
