@@ -77,6 +77,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator_summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert blocked_apply_code == 1
     assert blocked_apply_out["status"] == "blocked"
     assert blocked_apply_out["apply_gate"]["status"] == "blocked"
@@ -89,7 +90,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert not runtime_deck_dir.exists()
     assert not runtime_deck_config.exists()
 
-    apply_code = main(
+    flagged_apply_code = main(
         [
             "apply",
             "--package",
@@ -100,12 +101,15 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
             "--json",
         ]
     )
-    apply_out = json.loads(capsys.readouterr().out)
+    flagged_apply_out = json.loads(capsys.readouterr().out)
 
-    assert apply_code == 0
-    assert apply_out["status"] == "applied"
-    assert apply_out["apply_gate"]["mode"] == "source_informed_with_warnings"
-    assert apply_out["receipt"]["mapped_deck_name"] == "ShadowPriest"
+    assert flagged_apply_code == 1
+    assert flagged_apply_out["status"] == "blocked"
+    assert flagged_apply_out["apply_gate"]["mode"] == "blocked"
+    assert (
+        flagged_apply_out["apply_gate"]["reasons"][0]["reason"]
+        == "operator_summary_not_ready_to_apply"
+    )
     assert deck_identity["deck_name"] == "ShadowPriest"
     assert deck_identity["deck_slug"] == "shadowpriest"
     assert deck_identity["hero_dbf_id"] == 813
@@ -139,6 +143,5 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert (deck_dir / "DS1_233.json").exists()
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
-    assert (runtime_deck_dir / "DS1_233.json").exists()
-    deck_config = runtime_deck_config.read_text(encoding="utf-8")
-    assert "ShadowPriest = shadowpriest" in deck_config
+    assert not runtime_deck_dir.exists()
+    assert not runtime_deck_config.exists()

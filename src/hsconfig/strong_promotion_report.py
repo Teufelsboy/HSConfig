@@ -34,7 +34,7 @@ def build_strong_promotion_report(
         "verdict": "SOURCE_BACKED_STRONG_CONFIRMED" if promotion_ready else "PROMOTION_BLOCKED",
         "source_informed_apply_readiness": operator_summary.get(
             "source_informed_apply_readiness",
-            {},
+            {"status": "not_applicable"},
         ),
         "next_action": _report_next_action(
             promotion_ready=promotion_ready,
