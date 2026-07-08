@@ -78,32 +78,10 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 def _runtime_apply_fields(summary: dict[str, Any]) -> dict[str, Any]:
-    next_action = str(summary.get("next_action", ""))
-    apply_policy = str(summary.get("apply_policy", ""))
-    source_informed_apply_readiness = summary.get("source_informed_apply_readiness", {})
-    if not isinstance(source_informed_apply_readiness, dict):
-        source_informed_apply_readiness = {}
-
-    if next_action == "READY_TO_APPLY_OR_HANDOFF" and apply_policy == "ALLOWED":
-        return {
-            "runtime_apply_mode": "normal_apply",
-            "runtime_apply_allowed": True,
-            "runtime_apply_requires_flag": None,
-        }
-    if (
-        next_action == "SOURCE_INFORMED_APPLY_READY"
-        and apply_policy == "ALLOWED_SOURCE_INFORMED"
-        and source_informed_apply_readiness.get("status") == "ready"
-    ):
-        return {
-            "runtime_apply_mode": "source_informed_apply_requires_flag",
-            "runtime_apply_allowed": True,
-            "runtime_apply_requires_flag": "--allow-source-informed",
-        }
     return {
-        "runtime_apply_mode": "blocked",
-        "runtime_apply_allowed": False,
-        "runtime_apply_requires_flag": None,
+        "runtime_apply_mode": summary.get("runtime_apply_mode", "blocked"),
+        "runtime_apply_allowed": bool(summary.get("runtime_apply_allowed", False)),
+        "runtime_apply_requires_flag": summary.get("runtime_apply_requires_flag"),
     }
 
 

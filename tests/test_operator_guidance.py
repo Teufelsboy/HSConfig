@@ -21,6 +21,9 @@ def test_guidance_for_source_backed_strong_package():
             "semantic_status": "SOURCE_BACKED_STRONG",
             "next_action": "READY_TO_APPLY_OR_HANDOFF",
             "apply_policy": "ALLOWED",
+            "runtime_apply_mode": "normal_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
             "semantic_blockers": [],
         }
     )
@@ -36,6 +39,25 @@ def test_guidance_for_source_backed_strong_package():
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
     }
+
+
+def test_guidance_mirrors_explicit_runtime_apply_fields_from_summary():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "runtime_apply_mode": "blocked",
+            "runtime_apply_allowed": False,
+            "runtime_apply_requires_flag": "--allow-source-informed",
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["runtime_apply_mode"] == "blocked"
+    assert guidance["runtime_apply_allowed"] is False
+    assert guidance["runtime_apply_requires_flag"] == "--allow-source-informed"
 
 
 def test_guidance_for_valid_but_not_guide_strong_package():
@@ -70,6 +92,9 @@ def test_guidance_for_source_informed_apply_ready_package():
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "SOURCE_INFORMED_APPLY_READY",
             "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "runtime_apply_mode": "source_informed_apply_requires_flag",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": "--allow-source-informed",
             "source_informed_apply_readiness": {
                 "status": "ready",
                 "requires_flag": "--allow-source-informed",
