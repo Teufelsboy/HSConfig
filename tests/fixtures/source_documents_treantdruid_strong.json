@@ -24,6 +24,18 @@
           "stance": "keep",
           "evidence_text_short": "Keep all Blood Treant you see, and other 1-cost cards, with Vicious Slitherspear, Living Roots and Forest Seedlings, preferably.",
           "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["JAM_028"],
+          "stance": "token_board",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Blood Treant is an early pressure starter that helps Treant Druid build a gigantic board right away.",
+          "source_confidence": "medium",
+          "source_refs": [
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
         }
       ]
     },
@@ -40,16 +52,59 @@
           "cards": ["BOT_420"],
           "stance": "treant_generator",
           "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
           "evidence_text_short": "Summon two 2/2 Treants.",
           "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mechanic_usage",
+          "cards": ["DRG_311"],
+          "mechanic": "treant",
+          "stance": "token_board",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Choose One - Give a minion +2 Health and Taunt; or Summon a 2/2 Treant.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DMF_060"],
+          "stance": "spell_followup_pressure",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "7",
+          "evidence_text_short": "Rush. Costs (1) less for each spell you've cast this game.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["DRG_311"],
+          "stance": "token_board",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "evidence_text_short": "Choose One - Give a minion +2 Health and Taunt; or Summon a 2/2 Treant.",
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+          ]
         },
         {
           "claim_kind": "card_role",
           "cards": ["TTN_954"],
           "stance": "board_buff_finisher",
           "runtime_block": "OnBoardBonus",
+          "runtime_value": "9",
           "evidence_text_short": "Give your minions +2/+2. Costs (1) less for each Treant you've summoned this game.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "source_refs": [
+            "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+            "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+          ]
         }
       ]
     }

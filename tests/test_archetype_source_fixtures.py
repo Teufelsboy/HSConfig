@@ -405,6 +405,25 @@ def test_ctapaladin_fixture_covers_recruit_board_flood():
     assert any(marker in text for marker in ("recruit", "call to arms", "board", "flood"))
 
 
+def test_ctapaladin_source_fixture_has_runtime_lowerable_recruit_and_aura_claims():
+    claims = _claims("CtAPaladin")
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") == "recruit"
+        and claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+    assert any(
+        claim["claim_kind"] in {"card_role", "targeting_rule"}
+        and str(claim.get("stance", "")).lower()
+        in {"board_flood", "aura_pressure", "wide_board_pressure"}
+        and claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+
+
 def test_piraterogue_fixture_covers_pirate_weapon_pressure():
     claims = _claims("PirateRogue")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
@@ -454,6 +473,24 @@ def test_treantdruid_fixture_covers_token_board_snowball():
     claims = _claims("TreantDruid")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()
     assert any(marker in text for marker in ("treant", "token", "wide board", "board buff"))
+
+
+def test_treantdruid_source_fixture_has_runtime_lowerable_token_and_board_buff_claims():
+    claims = _claims("TreantDruid")
+    assert any(
+        claim["claim_kind"] == "mechanic_usage"
+        and claim.get("mechanic") in {"treant", "token_board"}
+        and claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("runtime_value")
+        for claim in claims
+    )
+    assert any(
+        claim["claim_kind"] == "card_role"
+        and str(claim.get("stance", "")).lower() in {"board_buff", "board_buff_finisher"}
+        and claim.get("runtime_block") in {"BeforePlayCardBonus", "OnBoardBonus"}
+        and claim.get("runtime_value")
+        for claim in claims
+    )
 
 
 def test_mechpala_fixture_covers_mech_board_scaling():
