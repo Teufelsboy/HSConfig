@@ -56,11 +56,23 @@ def build_source_depth_closure_index(
             "semantic_status": operator.get("semantic_status"),
             "first_matrix_gap": str(visibility.get("first_strongness_gap", "")),
             "source_informed_blocking_reasons": blocking_reasons,
+            "closure_blocker_stack": blocking_reasons,
             "first_blocking_reason": blocking_reasons[0] if blocking_reasons else None,
             "promotion_ready": promotion_ready,
             "first_missing_chain": first_missing_chain,
             "closure_decision": closure_decision,
             "preserve_reason": _preserve_reason(closure_decision),
+            "stop_condition": _stop_condition(
+                closure_decision=closure_decision,
+                blocking_reasons=blocking_reasons,
+            ),
+            "stop_condition_reason": _preserve_reason(closure_decision),
+            "recommended_next_target": _recommended_next_target(
+                deck_name=deck_name,
+                fixture_stage=fixture_stage,
+                blocking_reasons=blocking_reasons,
+                visibility=visibility,
+            ),
             "next_action": _next_action(
                 fixture_stage=fixture_stage,
                 report_status=report_status,
@@ -129,3 +141,31 @@ def _preserve_reason(closure_decision: str) -> str | None:
     if closure_decision == "preserve_source_informed_until_blockers_close":
         return "source-informed row has hard blockers and cannot be promoted or applied as strong"
     return None
+
+
+def _stop_condition(
+    *,
+    closure_decision: str,
+    blocking_reasons: list[str],
+) -> str | None:
+    if closure_decision != "preserve_source_informed_until_blockers_close":
+        return None
+    if blocking_reasons:
+        return "exact_source_or_lowering_gap_still_open"
+    return "first_missing_chain_still_open"
+
+
+def _recommended_next_target(
+    *,
+    deck_name: str,
+    fixture_stage: str,
+    blocking_reasons: list[str],
+    visibility: dict[str, Any],
+) -> str | None:
+    if fixture_stage != "source_informed_valid_fixture" or not blocking_reasons:
+        return None
+    try:
+        priority = int(visibility.get("closure_priority", 0))
+    except (TypeError, ValueError):
+        priority = 0
+    return deck_name if priority == 1 else None
