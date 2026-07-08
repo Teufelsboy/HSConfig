@@ -1,0 +1,41 @@
+{
+  "recommendation_question": "Should the next step be maintainability polish instead of source-depth closure for the current HSranger codebase?",
+  "evidence_sources": [
+    "Command output on 2026-07-08: src/hsranger_core/cli.py is 1063 lines with 42 command handler definitions.",
+    "Command output on 2026-07-08: src/hsranger_core/cli_registration.py is 610 lines with 6 registration phases and 43 add_parser calls.",
+    "Command output on 2026-07-08: python scripts/audit_code_inventory.py --repo-root . --json --limit 15 reported the largest production modules as promotion_chain.py 1978 lines, candidate_promotion.py 1641, postrun_analysis.py 1515, decision_rows.py 1443, acceptance_readiness.py 1442, deck_research_contract.py 1401, decision_row_projection.py 1328, operator_candidate_summary.py 1314, gameplan_profiles.py 1244, candidate_yield_diagnostics.py 1236, runtime_writer.py 1087, cli.py 1063, capability_matrix.py 1055, decision_trace.py 1019, and candidate_verdicts.py 975.",
+    "Command output on 2026-07-08: the docs tree contains 426 files, including 72 research directories and 317 files under docs/**/research/**.",
+    "Command output on 2026-07-08: the tests tree contains 251 test files, 130 fixture files, and the current test inventory reports 94,756 test lines, 592 TemporaryDirectory occurrences, and 170 subprocess call sites.",
+    "Command output on 2026-07-08: python -m unittest tests.test_public_facades tests.test_code_inventory tests.test_test_inventory -v passed 48 tests in 19.244 seconds.",
+    "Local file evidence: docs/superpowers/plans/2026-06-23-identity-to-decision-closure-wave.md shows the active closure chain still depends on source_correlation, decision rows, runtime-window routing, and candidate lanes, and it names current blockers such as hdt_replay_ambiguous, missing_state_delta, unknown_parser_action, and missing_selected_card_id.",
+    "Local file evidence: tests/test_shadowpriest_no_tune_gap_fixture.py asserts that the current fixture still routes to FIX_RUNTIME_HDT_IDENTITY, has zero decision rows, and has zero promoted candidates, which means important source-depth blockers remain unresolved.",
+    "Local file evidence: tests/test_second_fixture.py and tests/test_output_fixture_audit.py show that fixture and artifact governance already exist, so the blocker gap is not a missing-fixture-foundation problem.",
+    "Local file evidence: README.md, docs/operator/README.md, and AGENTS.md preserve strict workflow boundaries around analyze-step2, read-only Step 2 artifacts, and runtime writes only through write-runtime --mode apply."
+  ],
+  "current_state": "The repository already has clear maintainability pressure: the CLI surface is still large, the command surface is dense, the docs and research corpus is large enough to create navigation overhead, and the test suite has substantial cost and fixture complexity. However, the remaining blockers are not cosmetic. They are still concentrated in the same behavior-dense modules that source-depth closure depends on, especially source correlation, decision row generation, candidate promotion, promotion-chain reporting, and Step 2 orchestration. Current fixture evidence still expects FIX_RUNTIME_HDT_IDENTITY and zero promoted work, so the repo has not yet reached a clean point where a broad maintainability wave would be low-risk.",
+  "highest_value_next_action": "Do not switch the main next step to broad maintainability polish. Continue source-depth closure first, while allowing only a very small maintainability guardrail slice that directly supports closure work, such as refreshed inventory snapshots, facade coverage adjustments, and timing visibility.",
+  "why_not_alternatives": "A broad maintainability-first wave would touch exactly the files that still carry unresolved fixture and source-depth logic, so it would blur whether later blocker reductions are real or refactor-induced. A pure source-depth-only posture without any maintainability guardrails is also weaker than necessary because the repo already benefits from inventory and facade checks. The best balance is closure-first with minimal guardrail polish, then a larger maintainability pass after the remaining fixture-driven blockers are materially reduced.",
+  "implementation_shape": [
+    "Freeze broad refactors in promotion_chain.py, candidate_promotion.py, postrun_analysis.py, decision_rows.py, acceptance_readiness.py, and the main Step 2 control-plane files until the current closure blockers are reduced.",
+    "If a short polish slice is needed now, limit it to non-behavioral guardrails: refresh code and test inventory outputs, keep facade tests green, and document the current module and test cost hotspots.",
+    "Use the next substantive wave on source-depth closure work: identity and source-correlation cleanup, decision row completeness, parser-gap reduction, and candidate-lane visibility.",
+    "Reassess maintainability polish only after the live and fixture-driven closure path stops failing at FIX_RUNTIME_HDT_IDENTITY or equivalent false upstream blockers and the remaining issues are genuinely downstream parser or contract gaps."
+  ],
+  "risks_and_guards": [
+    "Risk: refactoring the same large modules that still own blocker logic can create false progress and make regression attribution harder.",
+    "Guard: keep analyze-step2 as the normal Step 2 command and keep lower-level Step 2 commands diagnostic only.",
+    "Guard: preserve read-only Step 2 artifacts with runtime_write_performed=false.",
+    "Guard: preserve runtime mutation only through write-runtime --mode apply.",
+    "Guard: do not let docs, fixtures, or CI imply CONFIG_LOAD_OK, RUNTIME_SAMPLED, FINETUNE_READY, gameplay improvement, or patch correctness beyond the documented boundary.",
+    "Guard: do not commit raw runtime evidence or private runtime artifacts during any polish or closure wave.",
+    "Guard: if any maintainability work is done before closure is finished, keep it facade-preserving and inventory-oriented rather than behavior-oriented."
+  ],
+  "success_criteria": [
+    "Targeted closure evidence improves before any broad refactor wave: the relevant fixture and Step 2 closure tests stop failing at the current false identity or source-correlation blocker layer and expose more downstream reviewable work.",
+    "The closure work does not regress repo safety boundaries: tests.test_public_facades, tests.test_code_inventory, and tests.test_test_inventory continue to pass.",
+    "A follow-up maintainability decision can point to a narrower risk surface because the remaining blockers are no longer concentrated in the same core orchestration and promotion modules.",
+    "When the next maintainability wave begins, it is scoped as facade-preserving extraction or test-cost reduction rather than mixed with unresolved source-depth closure behavior."
+  ],
+  "confidence": "high",
+  "uncertain": []
+}

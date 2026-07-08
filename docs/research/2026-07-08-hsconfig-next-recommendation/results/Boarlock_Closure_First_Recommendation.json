@@ -1,0 +1,52 @@
+{
+  "recommendation_question": "Should Boarlock be the next implementation target after the post-closure audit, given its Fracking mulligan gap, runtime-surface blockers, combo fixture value, and the alternative of broadening the matrix?",
+  "evidence_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json: Boarlock is a source_informed_valid_fixture with closure_priority 1, first_strongness_gap needs_mulligan_claim_for_fracking, and the only row that expects Combo.json.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md: the operator rule is to close existing source_informed rows before adding more representative decks, and it names Kingslayer and Boarlock explicitly.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md: Boarlock remains blocked by the missing deck-specific Fracking mulligan claim and should not be bypassed by widening the matrix.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_visibility.py: the live matrix visibility contract sets normal_next_action to close_existing_source_informed_rows_before_adding_more_decks and gives Boarlock closure_priority 1 over Kingslayer closure_priority 2.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py: Boarlock has exact combo fixture value because its source bundle covers an exact same-turn combo sequence that lowers into Combo.json.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure/results/Boarlock_Fracking_Mulligan_Closure.json: the same-day Fracking research remains blocked because no exact Boarlock source explicitly says to keep or discard Fracking.",
+    "Live command on 2026-07-08: a local prepare run for Boarlock returned technical_status VALID_PACKAGE, semantic_status VALID_BUT_NOT_GUIDE_STRONG, blocked_cards 9, first_missing_chain WW_092 Fracking needs_mulligan_claim, and blocking_reasons cards_need_runtime_surface, generic_low_confidence_cards, uncovered_cards, and unsupported_conditions_present.",
+    "Live command on 2026-07-08: a local prepare run for Kingslayer returned the same technical status but only blocked_cards 1, with Quick Pick as the only first missing chain.",
+    "Live command on 2026-07-08: python -m pytest tests/test_archetype_fixture_matrix.py tests/test_matrix_visibility.py tests/test_fixture_source_depth_closure.py tests/test_archetype_source_fixtures.py -q passed with 55 passed in 12.05s.",
+    "Live command on 2026-07-08: the matrix summary shows 11 decks, 11 unique archetype buckets, 22 unique decision families, and only Boarlock as a Combo.json deck."
+  ],
+  "current_state": [
+    "Boarlock is currently a valid but blocked source-informed fixture, not a strong fixture. The latest local prepare run produced technical_status VALID_PACKAGE, semantic_status VALID_BUT_NOT_GUIDE_STRONG, next_action IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY, and source_informed_apply_readiness.status blocked.",
+    "The first missing chain is still WW_092 Fracking -> needs_mulligan_claim -> add_mulligan_keep_or_discard_claim, so the Fracking mulligan gap is real and still unresolved.",
+    "Boarlock is blocked by more than Fracking alone. The same live run still reports cards_needing_guide_claims 5, cards_needing_runtime_surface 3, generic_low_confidence_cards 5, uncovered_cards 5, and unsupported_conditions_present.",
+    "Boarlock carries unique HSConfig value because it is the only current matrix row that exercises Combo.json and the only live combo_control_resource representative deck.",
+    "The current matrix is already broad for the repo's stated purpose. It spans 11 representative decks, 11 unique archetype buckets, and 22 decision families, and the operator contract says to close the two existing source-informed rows before adding more decks."
+  ],
+  "highest_value_next_action": "Make Boarlock the next implementation target, but scope it as full closure of the existing Boarlock row rather than a Fracking-only patch and not as a matrix-broadening exercise. The work should start with the exact Fracking mulligan claim, then continue through the remaining Boarlock guide-depth and runtime-surface blockers until the row can either promote cleanly or be preserved with an explicit stop condition.",
+  "why_not_alternatives": [
+    "Do not broaden the matrix now. The live matrix already covers 11 archetype buckets and 22 decision families, and both the operator guide and matrix visibility logic say to close existing source-informed rows before adding more decks.",
+    "Do not treat a Fracking-only fix as sufficient. Even if WW_092 gets an explicit keep or discard claim, the current prepare run shows that Boarlock still has five guide-depth gaps and three runtime-surface gaps, so it would remain blocked.",
+    "Do not pick Kingslayer first if the goal is the highest HSConfig leverage instead of the quickest single-card cleanup. Kingslayer is easier, but it only resolves one Quick Pick mulligan gap in an already represented weapon-sequence family, while Boarlock is the repo's only explicit Combo.json control point.",
+    "Do not jump to broad runtime-surface expansion first. The present evidence points to deck-specific closure work inside an already supported surface set, not to a missing global surface policy that justifies widening scope."
+  ],
+  "implementation_shape": [
+    "Phase 1: acquire or reject an exact deck-specific Fracking mulligan claim for the provided Boarlock list. Adjacent Sludgelock or generic draw advice must not be promoted as Boarlock evidence.",
+    "Phase 2: rerun hsconfig prepare with the updated source bundle and use operator_summary.json, source_claim_gap_report.json, per_card_config_readiness_report.json, and strong_promotion_report.json as the control reports.",
+    "Phase 3: close the remaining five guide-depth gaps and three report-only runtime-surface gaps that still keep Boarlock below SOURCE_BACKED_STRONG after the Fracking decision.",
+    "Phase 4: preserve the exact combo fixture value by keeping the same-turn Boar sequence source-backed and emitted into Combo.json throughout the closure work.",
+    "Fallback: if no exact Boarlock Fracking mulligan claim can be sourced, stop the closure attempt, preserve Boarlock as a visible blocked source-informed control, and move the next implementation slot to Kingslayer."
+  ],
+  "risks_and_guards": [
+    "Do not promote Boarlock using non-deck-specific Fracking evidence. The current block exists exactly because adjacent archetype evidence is not acceptable.",
+    "Do not claim source-backed strong status while source_informed_apply_readiness.blocking_reasons still includes cards_need_runtime_surface, generic_low_confidence_cards, uncovered_cards, or unsupported_conditions_present.",
+    "Do not widen the representative matrix to hide the blocked Boarlock row. That would reduce closure honesty without adding a new decision family.",
+    "Keep the runtime surface boundary narrow: GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and deck-local Combo.json only. Do not let Boarlock closure turn into Presume.json or Concede.json expansion.",
+    "Keep the work inside HSConfig's pre-game compiler contract. This recommendation is about fixture closure and source-to-runtime lowering, not about HSranger runtime tuning or post-run optimization."
+  ],
+  "success_criteria": [
+    "A fresh Boarlock prepare run returns technical_status VALID_PACKAGE, semantic_status SOURCE_BACKED_STRONG, next_action READY_TO_APPLY_OR_HANDOFF, and strong_promotion_report.promotion_ready true.",
+    "source_claim_gap_report.summary.blocked_cards reaches 0 and the first_missing_chain for Boarlock is cleared.",
+    "per_card_config_readiness_report no longer reports cards_needing_mulligan_claims, cards_needing_runtime_surface, cards_needing_guide_claims, generic_low_confidence, or uncovered_cards for Boarlock.",
+    "Boarlock still emits Combo.json with the exact same-turn combo sequence covered by the source-backed fixture.",
+    "The current closure test set remains green after the change."
+  ],
+  "confidence": "medium",
+  "uncertain": []
+}

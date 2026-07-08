@@ -1,0 +1,34 @@
+topic: hsconfig-next-recommendation-2026-07-08
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-08-hsconfig-next-recommendation\results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: Boarlock Closure First Recommendation
+    category: Fixture closure
+    description: >
+      Decide whether Boarlock should be the next implementation target after
+      the post-closure audit. Evaluate its Fracking mulligan gap, runtime-surface
+      blockers, combo fixture value, and whether closing it improves HSConfig
+      more than broadening the matrix.
+  - name: Kingslayer Closure Second Recommendation
+    category: Fixture closure
+    description: >
+      Decide whether Kingslayer should be the second target after Boarlock.
+      Evaluate Quick Pick, exact generated-card identity, unsupported conditions,
+      weapon sequencing value, and whether this work should wait until after
+      Boarlock.
+  - name: Maintainability Polish Timing Recommendation
+    category: Repo quality
+    description: >
+      Decide whether the next step should be maintainability polish instead of
+      source-depth closure. Evaluate cli.py size, command modules, docs/research
+      growth, tests, and the risk of refactoring before the remaining fixture
+      blockers are closed.
+  - name: Runtime Surface Expansion Boundary Recommendation
+    category: VisionAI scope
+    description: >
+      Decide whether runtime-surface expansion should be done now. Evaluate
+      documented VisionAI CardID behavior blocks, Combo exactness, GlobalValues
+      authority, option identity, and whether expansion risks bloating the
+      skill beyond its pre-run purpose.

@@ -1,0 +1,56 @@
+{
+  "recommendation_question": "Should Kingslayer be the second implementation target after Boarlock, given its Quick Pick mulligan gap, exact generated-card identity work, unsupported-condition blocker, weapon sequencing value, and the option to defer it until later?",
+  "evidence_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json: Kingslayer is a source_informed_valid_fixture with closure_priority 2, first_strongness_gap needs_mulligan_claim_for_quick_pick, decision_families_proven weapon_sequence and attack_pressure, and blocked source-informed apply readiness only because of unsupported_conditions_present.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md: Kingslayer stays blocked because the exact provided deck page lists Quick Pick but no checked deck-specific source explicitly says to keep or discard it in the mulligan.",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/source_documents_kingslayer_strong.json: the source bundle already uses exact Kingslayer identities such as TIME_875t1 for The Kingslayers and EDR_846 for Shaladrassil, and it already carries runtime-lowerable weapon-sequence and attack-pressure claims.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py: Kingslayer is explicitly tested as the weapon-sequence pressure fixture, its pirate-support cards already close runtime surfaces, and the Quick Pick mulligan claim is intentionally suppressed because it is not runtime-lowerable yet.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-08-hsconfig-kingslayer-boarlock-mulligan-closure/results/Kingslayer_Quick_Pick_Mulligan_Closure.json: the same-day public-source research remains blocked because no exact Kingslayer source explicitly supports keeping or discarding Quick Pick.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-07-hsconfig-current-skill-audit/results/Hearthstone_Data_And_Card_Identity_Audit.json: HSConfig's current identity contract is to fail closed unless exact transformed, generated, or option-card CardIDs can be proven from structured data plus a deterministic supplement.",
+    "C:/Users/darbo/.codex/memories/rollout_summaries/2026-05-29T20-26-07-qgRK-hearthranger_kingslayer_visionai_customconfig_rebuild.md: prior Kingslayer work in the HS repo already identified TIME_875t1 and the Shaladrassil-related identity set as exact-ID cases, which reinforces that identity resolution is known work rather than a fresh ambiguity.",
+    "Live command on 2026-07-08: a local prepare run for Kingslayer returned technical_status VALID_PACKAGE, semantic_status VALID_BUT_NOT_GUIDE_STRONG, blocked_cards 1, first_missing_chain DEEP_014 Quick Pick needs_mulligan_claim, cards_needing_runtime_surface 0, generic_low_confidence_cards 0, uncovered_cards 0, and source_informed_apply_readiness.blocking_reasons ['unsupported_conditions_present'].",
+    "Live command on 2026-07-08: the same Kingslayer prepare run emitted exact IDs in card_id_map.json including DEEP_014 Quick Pick, EDR_846 Shaladrassil, TIME_875 Garona Halforcen, TIME_875t King Llane, and TIME_875t1 The Kingslayers.",
+    "Live command on 2026-07-08: the same Kingslayer mulligan_plan_report.json showed quality.blocked_reason no_source_backed_mulligan_keeps, no emitted mulligan rules, and one suppressed Quick Pick hold row with reason claim_not_runtime_lowerable.",
+    "Live command on 2026-07-08: a local prepare run for Boarlock returned blocked_cards 9 plus blocking_reasons cards_need_runtime_surface, generic_low_confidence_cards, uncovered_cards, and unsupported_conditions_present, confirming Boarlock is still the heavier first-priority closure row.",
+    "Live command on 2026-07-08: python -m pytest tests/test_fixture_source_depth_closure.py -k \"Kingslayer or Boarlock\" -q passed with 2 passed, 3 deselected, and python -m pytest tests/test_archetype_fixture_matrix.py -q passed with 7 passed."
+  ],
+  "current_state": [
+    "Kingslayer is currently the cleaner of the two remaining source-informed rows. The latest local prepare run shows technical_status VALID_PACKAGE, semantic_status VALID_BUT_NOT_GUIDE_STRONG, blocked_cards 1, cards_needing_runtime_surface 0, generic_low_confidence_cards 0, and uncovered_cards 0.",
+    "The visible first missing chain is still DEEP_014 Quick Pick -> needs_mulligan_claim -> add_mulligan_keep_or_discard_claim, and the same-day mulligan-closure research still blocks promotion because no exact Kingslayer source gives a deck-specific Quick Pick keep or discard instruction.",
+    "Exact identity work for Kingslayer is already substantially closed. The live fixture and prepare output use exact non-generic IDs such as TIME_875t1 for The Kingslayers and EDR_846 for Shaladrassil, and the current identity architecture explicitly treats unresolved generated or option-card identity as fail-closed rather than guessed.",
+    "The current source-informed apply blocker is unsupported_conditions_present, but the live Kingslayer reports show that this is attached to the suppressed Quick Pick mulligan hold row and a mulligan_plan_report with no source-backed keeps, not to broader uncovered cards, runtime-surface gaps, or unsupported claims report entries.",
+    "Kingslayer still has meaningful matrix value after Boarlock because it is the dedicated weapon_sequence and attack_pressure control row. That family is related to PirateRogue, but Kingslayer is the sharper representative for repeated weapon sequencing and exact hero-attack pressure without Combo.json."
+  ],
+  "highest_value_next_action": "Keep Kingslayer as the second closure target after Boarlock. Do not start it before Boarlock while Boarlock remains the only Combo.json control row with closure_priority 1, but be ready to move to Kingslayer immediately after Boarlock reaches either a clean closure outcome or a documented stop condition. For Kingslayer itself, scope the work as a narrow closure pass: resolve or explicitly preserve the Quick Pick mulligan claim, then clear the derived unsupported-condition blocker, while preserving the already-resolved exact identity mapping for TIME_875t1, EDR_846, and related weapon-sequence cards.",
+  "why_not_alternatives": [
+    "Do not take Kingslayer before Boarlock if the question is overall HSConfig leverage. Boarlock is still the only Combo.json row and the only combo_control_resource fixture, so leaving it unresolved keeps the matrix's exact-combo surface underproven.",
+    "Do not defer Kingslayer far beyond Boarlock if the goal is to finish the existing matrix honestly. Kingslayer already has only one blocked card and no runtime-surface or uncovered-card debt, so it is the natural second closure row once the combo fixture has been handled.",
+    "Do not widen the matrix instead of closing Kingslayer. The operator contract, matrix visibility tests, and current-truth research all say to close the two remaining source-informed rows before adding more representative decks.",
+    "Do not frame Kingslayer as an identity-architecture project first. The live evidence shows the exact identity layer is already strong enough for this row; the present blocker is mostly source-depth plus a derived mulligan suppression, not missing exact CardID coverage.",
+    "Do not treat the unsupported-condition blocker as evidence that Kingslayer needs broad runtime-surface expansion. The live prepare run shows zero cards_needing_runtime_surface and an empty unsupported_claims_report, so this looks like a local mulligan-lowering cleanup tied to Quick Pick rather than a repo-wide missing surface."
+  ],
+  "implementation_shape": [
+    "Phase 1: keep Boarlock first and use it to close or conclusively preserve the only Combo.json fixture row. If Boarlock stalls at the evidence gate, stop cleanly and hand the next slot to Kingslayer.",
+    "Phase 2: for Kingslayer, revisit only the exact Quick Pick mulligan chain. Accept promotion only if a deck-specific Kingslayer or Kingsbane source explicitly supports a keep or discard for DEEP_014 in the provided list.",
+    "Phase 3: rerun hsconfig prepare for Kingslayer and inspect operator_summary.json, source_claim_gap_report.json, strong_promotion_report.json, and mulligan_plan_report.json together. The target is to remove both cards_need_mulligan_claims and the derived unsupported_conditions_present blocker in the same pass.",
+    "Phase 4: preserve the exact identity layer already present in the fixture. Keep TIME_875t1, EDR_846, and other exact-card mappings deterministic, and do not loosen them into fuzzy same-name or generated-card guesses just to accelerate closure.",
+    "Phase 5: keep Kingslayer's role narrow and valuable: weapon sequencing, repeated attack pressure, and related per-card surfaces, without expanding it into Combo.json, Presume.json, or Concede.json work."
+  ],
+  "risks_and_guards": [
+    "Do not promote Quick Pick from adjacent weapon-rogue advice. The current same-day research already rejected that evidence as too weak for source-backed promotion.",
+    "Do not regress the exact identity layer while closing the row. Kingslayer is useful partly because it already proves exact IDs for non-trivial cards such as TIME_875t1 and EDR_846.",
+    "Do not misread unsupported_conditions_present as a broad runtime-surface failure. The live Kingslayer prepare run shows zero cards_needing_runtime_surface and no unsupported_claims_report rows, so the guard is to fix or preserve the specific mulligan-lowering chain rather than widen scope.",
+    "Do not let Kingslayer closure outrank Boarlock by convenience alone. Boarlock must stay first until the combo-control row is either closed or deliberately preserved with a stable stop condition.",
+    "Keep the work inside HSConfig's pre-run contract. Kingslayer closure is about source-backed fixture truth, exact CardID lowering, and prepare-time reports, not HSranger runtime evidence or post-run tuning."
+  ],
+  "success_criteria": [
+    "Boarlock has already been handled first, either by reaching a stronger closure state or by being deliberately preserved with an explicit blocker stop condition.",
+    "A fresh Kingslayer prepare run returns technical_status VALID_PACKAGE, semantic_status SOURCE_BACKED_STRONG, next_action READY_TO_APPLY_OR_HANDOFF, and strong_promotion_report.promotion_ready true.",
+    "Kingslayer source_claim_gap_report.summary.blocked_cards reaches 0 and the first_missing_chain for DEEP_014 Quick Pick is cleared.",
+    "Kingslayer operator_summary.source_informed_apply_readiness no longer reports unsupported_conditions_present, and per_card_config_readiness_report no longer reports cards_needing_mulligan_claims for DEEP_014.",
+    "The exact-card mapping for Kingslayer remains deterministic in the prepare output, including TIME_875t1 and EDR_846, with no new identity-gap regressions.",
+    "The current Kingslayer and matrix closure tests remain green after the change."
+  ],
+  "confidence": "high",
+  "uncertain": []
+}

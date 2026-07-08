@@ -1,0 +1,33 @@
+field_categories:
+  - category: recommendation
+    fields:
+      - name: recommendation_question
+        required: true
+        description: The exact recommendation question this item answers.
+      - name: evidence_sources
+        required: true
+        description: Local files, tests, official docs, and command outputs used as evidence.
+      - name: current_state
+        required: true
+        description: Evidence-backed summary of the current HSConfig state for this topic.
+      - name: highest_value_next_action
+        required: true
+        description: The recommended next action.
+      - name: why_not_alternatives
+        required: true
+        description: Why other plausible next actions are lower value or riskier now.
+      - name: implementation_shape
+        required: true
+        description: The implementation shape if the user later asks for a plan.
+      - name: risks_and_guards
+        required: true
+        description: Risks to avoid and guardrails that should be kept.
+      - name: success_criteria
+        required: true
+        description: Concrete pass/fail criteria for the recommended work.
+      - name: confidence
+        required: true
+        description: high, medium, or low.
+      - name: uncertain
+        required: true
+        description: Field names where certainty is not available.
