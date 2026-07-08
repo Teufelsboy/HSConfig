@@ -3,126 +3,48 @@
 ## Status
 DONE
 
-## Changed Files
-- `src/hsconfig/runtime_apply.py`
-- `tests/test_runtime_apply.py`
-- `.superpowers/sdd/task-1-report.md` (report artifact, not included in the Task 1 code commit)
+## Commits
+- `3758339` (`docs: index hsconfig research audit evidence`)
 
-## Commit Hashes
-- `d9c48f566c7f2fde9391014b891173a3dc71087e` - `fix: gate direct runtime apply writes`
+## Files Changed
+- `docs/research/README.md`
+- `tests/test_research_audit_schema.py`
 
-## Red Test Command and Output Summary
-Command:
-
-```powershell
-python -m pytest tests\test_runtime_apply.py::test_apply_package_blocks_direct_write_without_operator_summary tests\test_runtime_apply.py::test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path tests\test_runtime_apply.py::test_apply_package_direct_source_informed_requires_explicit_flag -q
-```
-
-Result before implementation:
-
-```text
-FFF [100%]
-3 failed in 3.00s
-```
-
-Expected failure reason confirmed:
-- `test_apply_package_blocks_direct_write_without_operator_summary` failed with `Failed: DID NOT RAISE ValueError`.
-- `test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path` failed with `Failed: DID NOT RAISE ValueError`.
-- `test_apply_package_direct_source_informed_requires_explicit_flag` failed with `Failed: DID NOT RAISE ValueError`.
-
-This matched the brief: direct `apply_package()` calls still wrote without resolving the operator gate and accepted a forged allowed gate dictionary.
-
-## Green Test Command and Output Summary
-Focused new-test rerun:
-
-```powershell
-python -m pytest tests\test_runtime_apply.py::test_apply_package_blocks_direct_write_without_operator_summary tests\test_runtime_apply.py::test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path tests\test_runtime_apply.py::test_apply_package_direct_source_informed_requires_explicit_flag -q
-```
-
-Result:
-
-```text
-... [100%]
-3 passed in 0.57s
-```
-
-Focused suite from the brief:
-
-```powershell
-python -m pytest tests\test_runtime_apply.py tests\test_runtime_apply_receipts.py tests\test_apply_gate.py -q
-```
-
-Result:
-
-```text
-.......................................................... [100%]
-58 passed in 4.90s
-```
-
-Additional check:
-
-```powershell
-git diff --check -- src\hsconfig\runtime_apply.py tests\test_runtime_apply.py
-```
-
-Result: exit code `0`. Git printed CRLF normalization warnings for the two edited tracked files, but no whitespace errors.
+## Tests Run
+- `python -m pytest tests/test_research_audit_schema.py::test_research_index_marks_research_as_evidence_not_operator_guidance -q`
+  - `1 failed` initially (`docs/research/README.md` missing final package marker phrase), then `1 passed`.
+- `Get-ChildItem docs\research\2026-07-08-hsconfig-final-skill-audit\results -Filter *.json | ForEach-Object { python "$env:USERPROFILE\.codex\skills\research\validate_json.py" -f docs\research\2026-07-08-hsconfig-final-skill-audit\fields.yaml -j $_.FullName }`
+  - `Validation passed: 1/1` for each of the 6 JSON files (`Apply_Gate_And_Source_Informed_Safety.json`, `Eleven_Deck_Matrix_And_Source_Depth_Truth.json`, `Every_Card_Contract_And_Source_Evidence.json`, `Lean_Operator_Boundary_And_UX.json`, `Maintainability_Tests_And_Repo_Size.json`, `VisionAI_Runtime_Surface_Competence.json`).
+- `python -m pytest tests/test_research_audit_schema.py -q`
+  - `5 passed in 0.34s`
+- `python -m pytest tests/test_docs_active_path.py -q`
+  - `3 passed` (to keep existing assertion compatibility).
 
 ## Self-Review Notes
-- `apply_package()` now resolves an allowed apply gate before fake receipt generation, fake receipt verification, source validation, or runtime writes.
-- Direct calls without `reports/operator_summary.json` now fail closed before mutating runtime files.
-- Source-informed direct apply now requires `allow_source_informed=True`, matching the CLI gate behavior.
-- Forged direct `apply_gate` dictionaries are rejected unless they are allowed and point at this package's `reports/operator_summary.json`.
-- Generated fake receipts and final runtime apply receipts now persist the resolved gate.
-- Existing direct-runtime tests that used hand-built packages were updated only enough to pass through the new gate and continue testing their original behavior.
-- The Task 1 code commit includes only `src/hsconfig/runtime_apply.py` and `tests/test_runtime_apply.py`, per the brief's commit command.
+- Scope stays within Task 1 only: added the required research-index marker test and created/updated the research index documentation for the 2026-07-08 audit package.
+- Existing research guidance tests in repo were preserved by including the prior accepted operator-path phrase in the same README.
+- No runtime tooling or functional CLI behavior was changed.
 
 ## Concerns
 - None.
 
-## Review Fix Report
+## Fix Report
 
 ### Status
-Resolved. Runtime writes now require the fresh `evaluate_apply_gate()` result; any caller-supplied `apply_gate` must exactly match that fresh evaluation before mutation.
+Resolved. Added the untracked Task 1 audit package directory and plan file under repository version control, and updated this report with the follow-up verification.
 
-### Changes
-- Added `test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summary_path`.
-- Updated `_resolve_allowed_apply_gate()` to always derive the write gate with `evaluate_apply_gate(package, allow_source_informed=...)`.
-- Rejected supplied gate dictionaries when they differ from the fresh evaluation, including forged allowed gates with matching `operator_summary_path`.
-- Updated runtime apply tests so non-forgery cases use a real `evaluate_apply_gate()` result instead of fabricated allowed gates.
-- Forwarded the CLI `--allow-source-informed` flag into `apply_package()` so CLI source-informed applies still satisfy the hardened direct API requirement.
+### Commits
+- `389e52f` (`docs: add task 1 audit package and implementation plan`)
 
-### Red Test
-```powershell
-python -m pytest tests\test_runtime_apply.py::test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summary_path -q
-```
+### Tests
+- `python -m pytest tests/test_research_audit_schema.py -q` → `5 passed`
+- `python -m pytest tests/test_docs_active_path.py -q` → `3 passed`
+- `python "$env:USERPROFILE\.codex\skills\research\validate_json.py" -f docs/research/2026-07-08-hsconfig-final-skill-audit/fields.yaml -j <each json in docs/research/2026-07-08-hsconfig-final-skill-audit/results/*.json>` → `Validation passed` for 6/6 files
 
-Result before implementation:
-
-```text
-FAILED tests/test_runtime_apply.py::test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summary_path
-Failed: DID NOT RAISE ValueError
-```
-
-### Green Tests
-```powershell
-python -m pytest tests\test_runtime_apply.py::test_apply_package_rejects_forged_allowed_gate_with_matching_operator_summary_path tests\test_runtime_apply.py::test_apply_package_blocks_direct_write_without_operator_summary tests\test_runtime_apply.py::test_apply_package_direct_source_informed_requires_explicit_flag -q
-```
-
-Result:
-
-```text
-3 passed in 0.73s
-```
-
-```powershell
-python -m pytest tests\test_runtime_apply.py tests\test_runtime_apply_receipts.py tests\test_apply_gate.py -q
-```
-
-Result:
-
-```text
-59 passed in 5.93s
-```
+### Self-Review
+- Scope remained Task 1-only (documentation package + plan indexing).
+- No product/runtime code changes were made.
+- Existing Task 1 checks pass with the completed audit package present.
 
 ### Concerns
 - None.
