@@ -66,3 +66,12 @@ Source-depth closure means every representative deck either proves `SOURCE_BACKE
 When a source-informed row cannot be promoted honestly, keep it visible with an explicit stop condition instead of widening the matrix or forcing a weak source claim.
 
 Do not add a new representative deck when an existing row can exercise the same source-depth or runtime-surface family. Close the current Kingslayer and Boarlock `source_informed_valid_fixture` rows before widening the matrix.
+
+## Supplemental Proof Decks
+
+`docs/operator/supplemental-proof-decks.json` lists decks that prove narrow command,
+syntax, or acceptance behavior without widening the representative matrix.
+
+CuteWarrior is supplemental. It must not be counted as a twelfth representative
+row until Kingslayer and Boarlock have either been closed or explicitly reviewed
+as durable source-informed controls.

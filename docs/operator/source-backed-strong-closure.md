@@ -59,6 +59,8 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 
+Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` and do not change the representative matrix count.
+
 ## Current Blocker Snapshot
 
 Fresh local prepare runs for the current matrix state show:
