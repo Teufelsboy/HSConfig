@@ -36,7 +36,7 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 
-`SOURCE_INFORMED_APPLY_READY` with `ALLOWED_SOURCE_INFORMED` and `source_informed_apply_readiness.status=ready` is the only valid source-informed apply lane. It allows `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json` when the remaining blockers are only guide or mulligan source-depth gaps. Source-informed apply is still not `SOURCE_BACKED_STRONG`; use `source_claim_gap_report.json` and `strong_promotion_report.json` to close those links before promotion.
+`SOURCE_INFORMED_APPLY_READY` with `ALLOWED_SOURCE_INFORMED` and `source_informed_apply_readiness.status=ready` is the only valid source-informed apply lane. It allows `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json` when the remaining blockers are only `cards_need_guide_claims` or `cards_need_mulligan_claims`. `cards_need_runtime_surface` and other hard blockers keep the lane blocked. Source-informed apply is still not `SOURCE_BACKED_STRONG`; use `source_claim_gap_report.json` and `strong_promotion_report.json` to close those links before promotion.
 
 ## Fixture Stage Semantics
 

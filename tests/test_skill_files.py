@@ -461,4 +461,7 @@ def test_docs_explain_source_informed_apply_ready_lane():
     assert "ALLOWED_SOURCE_INFORMED" in docs
     assert "source_informed_apply_readiness" in docs
     assert "--allow-source-informed --json" in docs
+    assert "cards_need_guide_claims" in docs
+    assert "cards_need_mulligan_claims" in docs
+    assert "cards_need_runtime_surface" in docs
     assert "source-informed apply is still not `SOURCE_BACKED_STRONG`" in docs

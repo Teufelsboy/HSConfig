@@ -22,7 +22,8 @@ Use `reports/operator_summary.json` as the normal operator gate.
 - `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work.
 - `apply_policy=ALLOWED` is required for normal apply.
-- `next_action=SOURCE_INFORMED_APPLY_READY` plus `apply_policy=ALLOWED_SOURCE_INFORMED` means the only remaining blockers are source-depth gaps for guide or mulligan claims. `source_informed_apply_readiness.status=ready` documents that state.
+- `next_action=SOURCE_INFORMED_APPLY_READY` plus `apply_policy=ALLOWED_SOURCE_INFORMED` means the only remaining blockers are source-depth gaps for `cards_need_guide_claims` or `cards_need_mulligan_claims`. `source_informed_apply_readiness.status=ready` documents that state.
+- `cards_need_runtime_surface`, combo, condition, mechanic, conflict, unsupported-condition, uncovered-card, and generic-low-confidence blockers keep source-informed apply blocked.
 
 Lower-level reports explain the gate. They do not grant independent apply permission.
 
