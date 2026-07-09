@@ -9,7 +9,7 @@ def test_operator_docs_point_to_research_index_without_making_it_operator_path()
     assert "Research artifacts are evidence, not operator instructions." in text
     assert "docs/research/README.md" in text
     assert (
-        "source-manifest -> draft-source-documents -> research-deck -> prepare -> apply"
+        "source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply"
         in text
     )
 
