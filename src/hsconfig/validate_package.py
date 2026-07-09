@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
 
-from hsconfig.io import read_json
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
@@ -55,7 +55,7 @@ def validate_config_package(
                 continue
             checked_files += 1
             try:
-                data = read_json(path)
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
             except Exception as exc:
                 errors.append(f"{path}: invalid JSON: {exc}")
                 continue

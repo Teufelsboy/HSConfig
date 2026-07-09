@@ -293,6 +293,24 @@ def test_validate_package_accepts_before_overkilled_bonus_block(tmp_path: Path):
     assert report["status"] == "passed"
 
 
+def test_validate_package_rejects_trailing_comma_runtime_json(tmp_path: Path):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "EX1_001.json").write_text(
+        '{\n'
+        '  "GameCardId": "EX1_001",\n'
+        '  "ConfigComment": "bad",\n'
+        '  "InHandPlayPriority": {"values": []},\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any("EX1_001.json: invalid JSON" in error for error in report["errors"])
+
+
 def test_validate_package_rejects_non_json_surface_with_underscore(tmp_path: Path):
     deck_dir = tmp_path / "CustomConfig" / "deck"
     deck_dir.mkdir(parents=True)

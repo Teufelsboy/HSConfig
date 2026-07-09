@@ -884,6 +884,42 @@ def test_apply_package_rejects_corrupted_runtime_json_before_runtime_mutation(
     assert not (package / "reports" / "runtime_apply_receipt.json").exists()
 
 
+def test_apply_package_rejects_trailing_comma_runtime_json_before_runtime_mutation(
+    tmp_path: Path,
+):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
+        source_informed_apply_readiness={
+            "status": "blocked",
+            "blocking_reasons": ["cards_need_runtime_surface"],
+        },
+    )
+    runtime = tmp_path / "runtime"
+    runtime_json = package / "CustomConfig" / "deck" / "EX1_001.json"
+    runtime_json.write_text(
+        '{\n'
+        '  "GameCardId": "EX1_001",\n'
+        '  "ConfigComment": "new",\n'
+        '  "InHandPlayPriority": {"values": []},\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Runtime apply requires a valid complete package",
+    ) as excinfo:
+        apply_package(package_root=package, runtime_root=runtime)
+
+    assert "invalid JSON" in str(excinfo.value)
+    assert "EX1_001.json" in str(excinfo.value)
+    assert not (runtime / "CustomConfig").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+
+
 def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
     from hsconfig.runtime_apply import plan_apply_package
 
@@ -935,6 +971,44 @@ def test_plan_apply_package_rejects_corrupted_runtime_json_before_writing_fake_r
             apply_gate=_allowed_gate(package),
         )
 
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (runtime / "CustomConfig").exists()
+
+
+def test_plan_apply_package_rejects_trailing_comma_runtime_json_before_writing_fake_receipt(
+    tmp_path: Path,
+):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    runtime_json = package / "CustomConfig" / "deck" / "EX1_001.json"
+    runtime_json.write_text(
+        '{\n'
+        '  "GameCardId": "EX1_001",\n'
+        '  "ConfigComment": "new",\n'
+        '  "InHandPlayPriority": {"values": []},\n'
+        '}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Runtime apply requires a valid complete package",
+    ) as excinfo:
+        plan_apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate=_allowed_gate(package),
+        )
+
+    assert "invalid JSON" in str(excinfo.value)
+    assert "EX1_001.json" in str(excinfo.value)
     assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
     assert not (runtime / "CustomConfig").exists()
 
