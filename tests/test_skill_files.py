@@ -372,6 +372,7 @@ def test_skill_docs_explain_strong_fixture_truth_contract():
 
 def test_skill_docs_explain_load_safe_apply_mode():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
 
     assert "runtime_load_safe" in skill
     assert "load_safe_apply" in skill
@@ -379,6 +380,11 @@ def test_skill_docs_explain_load_safe_apply_mode():
         "ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE"
         in skill
     )
+    assert "technical_status=VALID_PACKAGE" in workflow
+    assert "runtime_load_safe=true" in workflow
+    assert "runtime_apply_mode=load_safe_apply" in workflow
+    assert "blocks by default unless the package is source-backed ready" not in workflow.lower()
+    assert "source-backed ready" not in workflow.lower()
 
 
 def test_skill_documents_source_builder_lite_workflow():
