@@ -778,7 +778,7 @@ def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_a
         ),
     ],
 )
-def test_operator_summary_blocks_strong_when_compat_summary_has_pure_alias_hard_blockers(
+def test_operator_summary_blocks_source_backed_strong_when_compat_summary_has_pure_alias_hard_blockers(
     readiness_overrides, expected_reason
 ):
     readiness_summary = {
@@ -813,7 +813,7 @@ def test_operator_summary_blocks_strong_when_compat_summary_has_pure_alias_hard_
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
-    assert summary["operator_guidance"]["safe_to_apply"] is False
+    assert summary["operator_guidance"]["safe_to_apply"] is True
     assert expected_reason in summary["source_informed_apply_readiness"]["blocking_reasons"]
     assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True

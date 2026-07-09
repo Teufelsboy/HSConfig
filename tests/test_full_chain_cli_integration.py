@@ -142,7 +142,12 @@ def test_documented_operator_chain_reaches_guarded_apply(tmp_path: Path, monkeyp
             "--json",
         ]
     )
-    if operator["apply_policy"] == "ALLOWED":
+    can_apply = (
+        operator["runtime_apply_allowed"]
+        and operator["runtime_apply_mode"] == "load_safe_apply"
+    ) or operator["apply_policy"] in {"ALLOWED", "ALLOWED_WITH_WARNINGS"}
+
+    if can_apply:
         assert fake_code == 0
         assert not list(runtime_root.rglob("*.json"))
         assert main(
