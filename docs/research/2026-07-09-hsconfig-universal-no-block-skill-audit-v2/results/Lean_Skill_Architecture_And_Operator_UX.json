@@ -1,0 +1,133 @@
+{
+  "item_name": "Lean Skill Architecture And Operator UX",
+  "primary_question": "Does the live HSConfig skill still operate as a small, autonomous, competent, pre-run-only workflow with a simple operator path, visible non-blocking warnings, and no scope drift into HSTuner-only concerns such as replay parsing, winrate analysis, or post-run tuning?",
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/apply.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_full_chain_cli_integration.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_fixture_source_depth_closure.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_boarlock_closure_wave.py"
+  ],
+  "source_backed_claims": [
+    {
+      "claim": "HSConfig still declares and enforces a pre-run-only boundary rather than a post-run tuning role.",
+      "evidence": [
+        "AGENTS.md lines 5-7 define HSConfig as a lean deck-to-HearthRanger-config generator and explicitly forbid replay parsing, HDT parsing, winrate validation, candidate promotion, and post-run tuning.",
+        "README.md lines 3-16 say HSConfig is pre-run only, assign replay, winrate, runtime-log analysis, and after-game tuning to HSTuner, and keep runtime writes inside explicit hsconfig apply calls.",
+        "The repo-local skill entrypoint repeats the same boundary in SKILL.md lines 8-10 and 67-70."
+      ]
+    },
+    {
+      "claim": "The normal operator path is intentionally slim and has one visible gate.",
+      "evidence": [
+        "docs/operator/README.md lines 12-30 define one normal chain: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply, then say to open reports/operator_summary.json first and treat it as the single gate.",
+        "docs/operator/source-builder-workflow.md lines 9-22 restate the same path and say guide strength is not the write gate.",
+        "cli_parser.py lines 13-24 and 88-153 expose the public normal commands directly and keep the operator-facing epilog focused on that one chain."
+      ]
+    },
+    {
+      "claim": "Warnings remain visible without becoming runtime-write blockers when the package is technically valid.",
+      "evidence": [
+        "docs/operator/README.md lines 36-47 state that READY_TO_APPLY_WITH_WARNINGS plus ALLOWED_WITH_WARNINGS still allows runtime writes when technical_status=VALID_PACKAGE, and that warnings describe semantic or source-confidence debt rather than load-safety failure.",
+        "docs/operator/universal-wild-no-block-contract.md lines 28-38 classify missing guide claims, generic-low-confidence cards, runtime-surface gaps that stay report-only, unsupported semantic claims that are suppressed, partial mechanic support, and warning-only mechanics as non-blocking warnings.",
+        "operator_summary.py lines 140-175 and 755-775 compute READY_TO_APPLY_WITH_WARNINGS plus ALLOWED_WITH_WARNINGS for valid but not guide-strong packages and still set runtime_apply_mode=load_safe_apply when technical_status is VALID_PACKAGE."
+      ]
+    },
+    {
+      "claim": "The apply path stays autonomous but guarded by validation, operator summary, and receipt checks rather than by manual extra steps.",
+      "evidence": [
+        "commands/apply.py lines 44-98 re-validates the package, evaluates the apply gate, blocks when operator summary does not allow runtime apply, supports a fake receipt preview, and only then calls runtime apply.",
+        "apply_gate.py lines 13-83 allow runtime apply only after operator_summary.json exists, has valid shape, passes structure checks, excludes forbidden normal-path optional surfaces, and reports technical_status=VALID_PACKAGE.",
+        "runtime_apply.py lines 63-90 and 228-283 re-evaluate the gate from reports/operator_summary.json, reject mismatched or forged gate dictionaries, and require a fake receipt path or same-invocation fake receipt before final writes."
+      ]
+    },
+    {
+      "claim": "The skill remains small at the instruction layer while delegating heavy logic into deterministic Python modules.",
+      "evidence": [
+        "The live repo-local skill file currently has 84 lines, while the workflow reference in docs/operator/source-builder-workflow.md has 26 lines.",
+        "SKILL.md lines 23-33 define the workflow and gate behavior, while cli.py lines 17-41 dispatch the actual command implementations and keep compiler logic out of the skill file itself.",
+        "README.md lines 11-16 and SKILL.md lines 12-13 both redirect operators to docs/operator/README.md instead of embedding a second full operator manual inside the skill."
+      ]
+    },
+    {
+      "claim": "The skill remains competent despite staying lean because it still covers the full pre-run package lifecycle.",
+      "evidence": [
+        "cli.py lines 21-36 expose source-manifest, draft-source-documents, research-deck, prepare, validate, and apply, which is enough to go from deck input to validated package and optional guarded runtime write.",
+        "operator_summary.py lines 57-175 produce an operator-facing synthesis of technical validity, semantic strength, warnings, blocker reports, runtime apply mode, and next action.",
+        "test_full_chain_cli_integration.py lines 24-166 proves the documented chain reaches prepare, validate, fake apply, and real apply when the gate allows it."
+      ]
+    },
+    {
+      "claim": "HSTuner-only concerns remain out of scope in the live public interface.",
+      "evidence": [
+        "cli_parser.py lines 6-23 describe HSConfig as pre-run only and list no replay, log, winrate, session, or post-run tuning commands in the public CLI.",
+        "docs/operator/source-builder-workflow.md line 7 says hdt_deck_id is identity-only metadata, not replay evidence, HDT parsing input, or a post-run tuning source.",
+        "SKILL.md lines 68-70 explicitly forbid replay analysis, winrate analysis, HSTuner follow-up, and after-game tuning."
+      ]
+    },
+    {
+      "claim": "The no-block contract is tested against warning-heavy fixtures instead of being only a documentation promise.",
+      "evidence": [
+        "test_fixture_source_depth_closure.py lines 22-79 assert that source-informed rows can remain VALID_BUT_NOT_GUIDE_STRONG, keep blocker visibility, and still report runtime_load_safe=true with runtime_apply_mode=load_safe_apply.",
+        "test_boarlock_closure_wave.py lines 81-133 prove a blocker-heavy Boarlock fixture still lands on READY_TO_APPLY_WITH_WARNINGS and ALLOWED_WITH_WARNINGS while exposing the full blocker stack and first missing chain.",
+        "test_boarlock_closure_wave.py lines 201-227 also prove the normal runtime surface does not widen beyond GlobalValues.json, Mulligan.json, Combo.json when needed, and per-card CardID files."
+      ]
+    }
+  ],
+  "unknown_or_blocked_claims": [
+    "[uncertain] The audit can prove the intended operator simplicity from live docs, command count, and tests, but it does not include a direct human usability study or timing measurement for real operators.",
+    "[uncertain] The audit can prove scope separation in the HSConfig repo and public CLI, but it does not run a side-by-side code ownership study against the full HSTuner repo in this turn.",
+    "[uncertain] The audit can show the skill file is short and delegated, but 'small' is still a qualitative architecture judgment rather than a formal repo-size threshold enforced by CI."
+  ],
+  "hearthstone_semantics_implications": [
+    "Exact deck and CardID identity remain first-class constraints, so the lean architecture does not trade away card-specific correctness just to keep the skill small.",
+    "The pre-run boundary means card intent must be expressed through documented VisionAI surfaces before games are played, not by learning from replays or winrate deltas after games.",
+    "Identity metadata such as hdt_deck_id stays allowed only as pre-run deck identity context. It does not grant replay semantics or post-run evidence authority.",
+    "Warning-only mechanics such as Dredge and Tradeable remain visible in reports instead of being invented as guessed runtime rows, which protects card-behavior honesty while preserving package validity.",
+    "The no-block contract preserves playable initial configs for valid decks even when source depth is incomplete, but it keeps missing mulligan claims, runtime-surface gaps, combo gaps, and unsupported conditions explicit so operators can judge semantic strength without confusing it with runtime safety."
+  ],
+  "hsconfig_current_fit": "HSConfig currently fits the target very well. The live repo still behaves like a lean pre-run config authoring system: one public research-to-prepare-to-validate-to-apply chain, one operator gate, explicit warnings, explicit blocker reports, and explicit runtime apply protection. The skill layer stays short and delegates to the Python toolchain, while the Python toolchain stays within pre-run package creation, validation, operator summarization, and guarded apply instead of drifting into replay parsing, runtime scoring, or post-run tuning.",
+  "no_block_contract_implications": {
+    "allowed": [
+      "A package with technical_status=VALID_PACKAGE may proceed through the normal apply lane when runtime_apply_mode=load_safe_apply, even when semantic_status=VALID_BUT_NOT_GUIDE_STRONG.",
+      "ALLOWED_WITH_WARNINGS is a normal operator outcome, not an exceptional failure lane, as long as the package remains structurally valid and load-safe.",
+      "The operator should still open reports/operator_summary.json first and then the first blocker report named by operator_guidance, but that review is informational rather than a runtime-write veto for valid packages."
+    ],
+    "warning_only": [
+      "Missing guide claims, generic-low-confidence cards, report-only runtime-surface gaps, unsupported semantic claims that are suppressed instead of emitted, partial mechanic support, and warning-only mechanics must stay visible in reports.",
+      "source_informed_apply_readiness may remain blocked for diagnostic reasons while runtime apply still stays allowed in the normal load-safe lane; that field documents semantic debt, not load-safety failure.",
+      "READY_TO_APPLY_WITH_WARNINGS should remain operator-facing language because it accurately tells the user both that the package is usable now and that source-depth work remains."
+    ],
+    "truly_invalid": [
+      "Missing or invalid operator_summary.json, missing required runtime files, undeclared runtime files, nested runtime files, invalid JSON, unsupported VisionAI filenames or blocks, malformed deck identity, forged or stale apply evidence, and normal-path Presume.json or Concede.json remain real blockers.",
+      "Technical invalidity must continue to downgrade the package to blocked apply behavior regardless of any semantic optimism elsewhere in the reports."
+    ]
+  },
+  "lean_architecture_risk": [
+    "The main drift risk is not lack of capability but scope creep: adding replay, HDT, winrate, session, candidate-promotion, or post-run tuning concepts to the public CLI or operator docs would turn HSConfig into a partial HSTuner clone.",
+    "A second drift risk is gate confusion. If future changes make semantic-strength fields act like hidden technical blockers, operators will lose the clean distinction between load-safe apply and source-confidence debt.",
+    "A third risk is report sprawl in the skill layer. The current system keeps detail in reports and deterministic modules; duplicating those details inside SKILL.md or broadening expert lanes would make the operator surface heavier without improving the normal path."
+  ],
+  "recommended_next_actions": [
+    "Keep the public normal path frozen around source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply, and treat any new public command that smells like replay, winrate, or post-run tuning as a scope review event.",
+    "Add or preserve a lightweight architecture regression test that fails if the public CLI or operator docs introduce replay parsing, runtime log parsing, winrate validation, candidate promotion, or HSTuner wording as active HSConfig behavior.",
+    "Keep READY_TO_APPLY_WITH_WARNINGS, ALLOWED_WITH_WARNINGS, runtime_load_safe, and runtime_apply_mode documented and tested together so future contributors do not accidentally turn warnings into blockers.",
+    "Keep the skill entrypoint short and reference-driven. New policy detail should go into docs or deterministic modules unless it is essential for when-to-use or how-to-run decisions.",
+    "Keep source_informed_apply_readiness explicitly labeled as diagnostic or compatibility context, not as the primary normal-path gate, so operator UX stays simple."
+  ],
+  "confidence": "high",
+  "uncertain": [
+    "unknown_or_blocked_claims"
+  ]
+}

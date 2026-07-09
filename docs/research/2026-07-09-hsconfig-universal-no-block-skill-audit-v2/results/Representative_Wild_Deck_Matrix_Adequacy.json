@@ -1,0 +1,44 @@
+{
+  "item_name": "Representative Wild Deck Matrix Adequacy",
+  "primary_question": "Is the current twelve-deck HSConfig proof set broad enough to catch the common failure modes across aggro, combo, weapon, discard, treant/token, hero-power, mech, boar/combo, pirate, big-minion, and low-curve Warrior shells without bloating the representative matrix?",
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/docs/research/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-09-hsconfig-universal-wild-skill-audit/results/Wild_Mechanic_Stress_Matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_supplemental_cute_warrior_load_safe.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_governance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_informed_closure_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_deckstring_decode.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py"
+  ],
+  "source_backed_claims": [
+    "The live proof set is twelve decks total: eleven representative rows in `archetype-fixture-matrix.json` plus supplemental `CuteWarrior` in `supplemental-proof-decks.json`, and `test_universal_wild_no_block_matrix.py` runs all twelve through the load-safe prepare path.",
+    "Every shell family named in this audit is exercised by at least one current deck: ShadowPriest covers aggro and hero-power transform; Boarlock covers combo and boar/combo with `Combo.json`; Kingslayer and PirateRogue cover weapon pressure; Discolock covers discard; TreantDruid covers treant/token; ImbueMage covers hero-power plus generation and discover adjacency; MechPala covers mech; PirateRogue and PirateDH cover pirate pressure; BigShaman covers big-minion cheat; CuteWarrior covers the low-curve Warrior shell.",
+    "The current set already exercises the major HSConfig runtime-shape failure lanes for these shells: exact deck identity and per-card CardID emission across all decks, optional `Combo.json` emission only for the combo control row, warning-visible but still load-safe source-informed rows through Kingslayer and Boarlock, and sideboard-aware deck decoding through MechPala.",
+    "Kingslayer and Boarlock are intentionally preserved as `source_informed_valid_fixture` rows with explicit stop conditions, so the matrix already checks that HSConfig can stay technically valid and load-safe even when exact guide depth is still blocked.",
+    "CuteWarrior remains supplemental rather than representative, but it now has dedicated load-safe proof in `test_supplemental_cute_warrior_load_safe.py` and participates in the universal twelve-deck no-block matrix, which means the low-curve Warrior family is covered without widening the representative matrix.",
+    "The repeatedly declared matrix limits are reactive control depth and discover-chain depth, not any missing aggro, combo, weapon, discard, treant/token, hero-power, mech, boar/combo, pirate, big-minion, or low-curve Warrior shell."
+  ],
+  "unknown_or_blocked_claims": [
+    "The current proof set does not include a dedicated representative row whose main purpose is secret-heavy freeze or discover-chain pressure, overload-first timing, or location-heavy reactive control.",
+    "The repo does not prove that adding one of those beyond-scope families now would catch a more common failure mode than the current twelve-deck set for the shell list in this item.",
+    "Kingslayer still exposes an exact Quick Pick mulligan stop condition, and Boarlock still exposes an exact Fracking mulligan stop condition plus remaining runtime-surface blockers, so both rows prove honest warning-path behavior rather than fully closed source-backed strength."
+  ],
+  "hearthstone_semantics_implications": "For shell-level stress, the set is broad enough. It spans burst aggro, board-flood recruit, pirate tempo from both weapon-led and hero-attack-led variants, exact combo sequencing, discard mutation, token snowball, hero-power transform and hero-power use, mech magnetic scaling, big-minion cheat, and low-curve Warrior load-safe generation. Those semantics map directly to the common HSConfig failure modes that matter before runtime: wrong mulligan posture, missing or misrouted per-card runtime blocks, wrong attack or hero-power surfaces, accidental `Combo.json` emission or omission, or deck identity loss. The current decks hit all of those lanes at least once, and several lanes twice from different semantic angles.",
+  "hsconfig_current_fit": "The current HSConfig design fits this matrix well. The representative matrix stays lean at eleven rows for source-depth truth, while the broader no-block shell proof set reaches twelve total decks by keeping CuteWarrior supplemental. That split is appropriate: the representative rows prove broad archetype and runtime-family coverage, Kingslayer and Boarlock prove blocked-but-load-safe warning behavior, and CuteWarrior proves a narrow low-curve Warrior acceptance lane without distorting matrix governance. The active docs and tests align with this design, so the matrix is doing useful work instead of carrying decorative breadth.",
+  "no_block_contract_implications": "For the named shell families, the no-block contract is already adequately stressed. A valid deck in these shells should still generate `GlobalValues.json`, `Mulligan.json`, and per-card CardID files; only Boarlock currently needs exact `Combo.json`; Kingslayer and Boarlock show that unresolved source depth remains warning-visible rather than runtime-write-blocking when the package stays load-safe; and CuteWarrior shows that a low-curve Warrior shell can remain supplemental but still be technically covered by the universal no-block proof. The next guard is not another shell deck. The right guard is to keep rerunning the current twelve-deck universal matrix whenever runtime-surface or package-validation logic changes.",
+  "lean_architecture_risk": "The main risk is matrix bloat through duplication. Another aggro, pirate, weapon, or Warrior row would mostly repeat families that are already covered. Promoting CuteWarrior into the representative matrix without a documented missing family would make the matrix larger but not sharper. Adding a second combo-only or second discard-only row would also dilute attention from the two existing source-informed controls that already expose the hardest honest warning-path edges. The lean rule should stay unchanged: add a new representative deck only when it surfaces a runtime family or source-depth failure that none of the current twelve proof decks can already reveal.",
+  "recommended_next_actions": [
+    "Keep the representative matrix at eleven rows and the broader shell proof set at twelve total decks.",
+    "Use the current twelve-deck set as the default shell stress matrix for no-block audits and runtime-surface regression checks.",
+    "Do not add a new deck now. The next non-bloating addition count for the shell families in this item is zero.",
+    "If a future matrix review expands beyond this shell list, justify any new deck only by a proven uncovered family such as dedicated secret or discover-chain pressure, overload-first timing, or location-heavy reactive control, not by ladder popularity or deck novelty."
+  ],
+  "confidence": "High",
+  "uncertain": []
+}

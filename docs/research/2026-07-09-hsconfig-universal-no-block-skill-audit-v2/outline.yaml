@@ -1,0 +1,39 @@
+topic: hsconfig_universal_no_block_skill_audit_v2
+execution:
+  output_dir: 'C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-09-hsconfig-universal-no-block-skill-audit-v2\results'
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: VisionAI Runtime Surfaces And No-Block Apply Contract
+    category: HearthRanger VisionAI
+    description: >
+      Verify whether the HSConfig normal-path surfaces GlobalValues.json,
+      Mulligan.json, per-card CardID.json, and conditional Combo.json are the
+      correct compact runtime target for a pre-run deck config generator, and
+      identify which unsupported surfaces must remain report-only without
+      blocking a load-safe package.
+  - name: Wild Mechanics And Static Card Semantics Coverage
+    category: Hearthstone card semantics
+    description: >
+      Check whether HSConfig's mechanic-support posture can cover modern and
+      Wild mechanics as direct, partial, or warning-only without blocking deck
+      generation. Include card identity, hero powers, generated entities,
+      choice/discover, weapons, locations, secrets, aura, discard, deathrattle,
+      reborn, recruit, dredge, tradeable, overload, freeze, lifesteal, taunt,
+      rush, charge, silence, transform, destroy, summon, draw, heal, overkill,
+      and divine shield.
+  - name: Representative Wild Deck Matrix Adequacy
+    category: Deck stress matrix
+    description: >
+      Evaluate whether the current twelve-deck proof set is broad enough to
+      catch common HSConfig failure modes across aggro, combo, weapon, discard,
+      treant/token, hero-power, mech, boar/combo, pirate, big-minion, and
+      low-curve Warrior shells, and identify the next non-bloating additions if
+      any.
+  - name: Lean Skill Architecture And Operator UX
+    category: Repository architecture
+    description: >
+      Audit whether the HSConfig skill remains small, autonomous, competent,
+      and pre-run only. Verify that warnings remain visible without becoming
+      blockers, the operator path is simple, and HSTuner-only concerns such as
+      replay parsing, winrate, and post-run tuning stay out of scope.

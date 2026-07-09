@@ -1,0 +1,57 @@
+field_categories:
+  - category: audit_identity
+    fields:
+      - name: item_name
+        description: Research item name.
+        detail_level: brief
+        required: true
+      - name: primary_question
+        description: The concrete audit question answered by this item.
+        detail_level: moderate
+        required: true
+      - name: source_urls
+        description: Primary sources used, preferably official or machine-readable sources.
+        detail_level: moderate
+        required: true
+  - category: evidence
+    fields:
+      - name: source_backed_claims
+        description: Claims that are directly supported by cited sources.
+        detail_level: detailed
+        required: true
+      - name: unknown_or_blocked_claims
+        description: Claims that remain uncertain, unsupported, or impossible to prove from the sources.
+        detail_level: moderate
+        required: true
+      - name: hearthstone_semantics_implications
+        description: Consequences for card identity, mechanics, deck archetypes, or card behavior expectations.
+        detail_level: detailed
+        required: true
+  - category: implementation
+    fields:
+      - name: hsconfig_current_fit
+        description: How the current HSConfig design fits the researched evidence.
+        detail_level: detailed
+        required: true
+      - name: no_block_contract_implications
+        description: What should be allowed, warning-only, or truly invalid under the no-block deck generation policy.
+        detail_level: detailed
+        required: true
+      - name: lean_architecture_risk
+        description: Bloat, duplication, or wrong-repo risks introduced by over-solving the item.
+        detail_level: moderate
+        required: true
+      - name: recommended_next_actions
+        description: Small, high-value actions recommended by this item.
+        detail_level: detailed
+        required: true
+  - category: uncertainty
+    fields:
+      - name: confidence
+        description: High, medium, or low confidence in the recommendation.
+        detail_level: brief
+        required: true
+      - name: uncertain
+        description: Fields with uncertain values, as required by research-deep.
+        detail_level: brief
+        required: true

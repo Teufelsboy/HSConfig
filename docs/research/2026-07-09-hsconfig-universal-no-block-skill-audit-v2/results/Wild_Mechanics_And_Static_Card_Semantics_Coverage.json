@@ -1,0 +1,179 @@
+{
+  "item_name": "Wild Mechanics And Static Card Semantics Coverage",
+  "primary_question": "Can HSConfig's current mechanic-support posture cover modern and Wild Hearthstone card semantics as direct, partial, or warning-only while still keeping valid deck generation non-blocking, specifically for card identity, hero powers, generated entities, choice/discover, weapons, locations, secrets, aura, discard, deathrattle, reborn, recruit, dredge, tradeable, overload, freeze, lifesteal, taunt, rush, charge, silence, transform, destroy, summon, draw, heal, overkill, and divine shield?",
+  "source_urls": [
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://hearthstone.wiki.gg/wiki/Dredge",
+    "https://hearthstone.wiki.gg/wiki/Tradeable",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/deckstring_decode.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/deck_identity.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/option_identity_resolver.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_deck_identity.py"
+  ],
+  "source_backed_claims": [
+    {
+      "claim": "Card identity is direct and load-critical.",
+      "evidence": "The HearthSim deckstring specification encodes Wild decks losslessly with DBF IDs, and HSConfig decodes those DBF IDs into exact CardIDs, preserves sideboards, and builds a stable deck fingerprint. `deck_identity.py` rejects missing `card_id`, and the universal no-block contract explicitly hard-blocks unresolved exact deck-card identity needed for `<CARDID>.json`.",
+      "coverage": "direct"
+    },
+    {
+      "claim": "Hero powers are directly supported when identity is exact, including transformed hero powers.",
+      "evidence": "`mechanic_support.py` marks `hero_power` and `hero_power_transform` as `direct`, `compile_cardid.py` maps hero-power behavior into `BeforeUseHeroPowerBonus`, `option_identity_resolver.py` resolves `heroPowerDbfId`, and `test_card_behavior_router.py` proves hero-power-transform claims route to the Hero Power surface.",
+      "coverage": "direct"
+    },
+    {
+      "claim": "Generated entities are partially supported, not fully open-ended.",
+      "evidence": "HearthstoneJSON documents `entourage` as a pool relationship and includes non-collectible cards in `cards.json`. HSConfig resolves deterministic linked entities from `heroPowerDbfId`, `questReward`, and `entourage`, while `mechanic_support.py` marks `generated_entity` as `partial` and keeps random or unresolved pools warning-boundary only.",
+      "coverage": "partial"
+    },
+    {
+      "claim": "Choice/discover is direct only when option identity is resolved.",
+      "evidence": "`mechanic_support.py` marks `discover` as `direct`. `guide-research-policy.md` supports both `discover_choice` and `choose_one_choice`, and `test_card_behavior_router.py` proves resolved Discover choices lower to `OnDiscoverCardBonus`, resolved Choose One choices lower to `OnChooseOneCardBonus`, and unresolved option identity is suppressed rather than emitted.",
+      "coverage": "direct_with_identity_gate"
+    },
+    {
+      "claim": "Weapons, discard, overload, and overkill are directly lowerable in the current normal path.",
+      "evidence": "`mechanic_support.py` marks `weapon`, `discard`, `overload`, and `overkill` as `direct`. `compile_cardid.py` maps weapon posture into `BeforePhysicalAttackBonus`, and `test_card_behavior_router.py` proves overkill lowers to `BeforeOverkilledBonus`.",
+      "coverage": "direct"
+    },
+    {
+      "claim": "Locations, secrets, aura, deathrattle, reborn, recruit, freeze, lifesteal, taunt, rush, charge, silence, transform, destroy, summon, draw, heal, and divine shield are only partially supported.",
+      "evidence": "The live support table in `mechanic_support.py` assigns each of these families `partial` support and names their documented surfaces plus explicit warning boundaries. In each case HSConfig can represent deploy, attack, preserve, or posture value, but not the full signature decision logic for every target, trigger ordering, repeated activation, or hidden-information branch.",
+      "coverage": "partial"
+    },
+    {
+      "claim": "Dredge and Tradeable remain warning-only under the current normal-path contract.",
+      "evidence": "The Hearthstone wiki pages define Dredge as choosing one of the bottom three cards and Tradeable as spending one mana to cycle the card into the deck. `mechanic_support.py` marks both as `warning_only`, `test_mechanic_support.py` asserts that classification, and `universal-wild-no-block-contract.md` names Dredge and Tradeable as the current warning-only mechanics.",
+      "coverage": "warning_only"
+    },
+    {
+      "claim": "Warning-only and partial mechanics do not block valid deck generation by themselves.",
+      "evidence": "`universal-wild-no-block-contract.md` says missing guide claims, runtime-surface gaps, unsupported semantic claims that are suppressed, partial mechanic support, and warning-only mechanics stay non-blocking. `test_universal_wild_no_block_matrix.py` verifies representative Wild decks still produce `VALID_PACKAGE`, `runtime_load_safe=true`, and one per-card file for each deck CardID.",
+      "coverage": "non_blocking_contract"
+    }
+  ],
+  "unknown_or_blocked_claims": [
+    {
+      "area": "Dredge",
+      "status": "unsupported as a first-class choice action",
+      "reason": "HSConfig has no documented normal-path runtime block for choosing among the bottom three cards. Timing the Dredge card is not equivalent to encoding the Dredge choice itself."
+    },
+    {
+      "area": "Tradeable",
+      "status": "unsupported as a first-class trade action",
+      "reason": "HSConfig has no documented normal-path runtime block for deciding when to spend one mana to trade the card back into the deck. Generic play timing is not the same as the trade-now decision."
+    },
+    {
+      "area": "Generated entities with random or unresolved pools",
+      "status": "partially blocked from runtime emission",
+      "reason": "HSConfig can lower only deterministic or source-resolved identities. Random generation pools or unresolved option sets must stay in reports or suppression output."
+    },
+    {
+      "area": "Generic spell-target silence, transform, destroy, and freeze cases",
+      "status": "not fully target-complete",
+      "reason": "The current normal path has better surfaces for battlecry targeting, hero powers, and attack posture than for arbitrary spell-target selection."
+    },
+    {
+      "area": "Repeated location use and deep trigger ordering",
+      "status": "not modeled as first-class normal-path planning",
+      "reason": "Locations, deathrattle chains, reborn value loops, and stacked aura math are represented only through timing or board posture, not by dedicated planners."
+    }
+  ],
+  "hearthstone_semantics_implications": {
+    "summary": "HSConfig can honestly keep deck generation universal and non-blocking only if it separates exact identity from semantic confidence. Exact deck identity and exact runtime file emission are hard requirements. Most mechanic families can still be represented at least partially through documented CARDID, Mulligan, GlobalValues, and Combo surfaces, but unresolved choice, random-generation, hidden-information, or repeated-use branches must remain warnings or suppressions rather than fabricated runtime behavior.",
+    "coverage_matrix": [
+      { "semantic_area": "card identity", "coverage": "direct", "why": "Exact deck CardID identity is required for per-card runtime files and is preserved from deckstring decode through deck identity reports." },
+      { "semantic_area": "hero powers", "coverage": "direct", "why": "Base and transformed hero-power usage map to `BeforeUseHeroPowerBonus` when identity is exact." },
+      { "semantic_area": "generated entities", "coverage": "partial", "why": "Deterministic linked entities resolve, but random pools remain warning-only unless exact identity is source-backed." },
+      { "semantic_area": "choice/discover", "coverage": "direct", "why": "Resolved Discover and Choose One option identity can lower directly; unresolved option identity is suppressed." },
+      { "semantic_area": "weapons", "coverage": "direct", "why": "Weapon attack posture and exact weapon sequences have documented surfaces." },
+      { "semantic_area": "locations", "coverage": "partial", "why": "Play timing is lowerable, but repeated activations and targets are not first-class surfaces." },
+      { "semantic_area": "secrets", "coverage": "partial", "why": "Secret play timing and mulligan value lower, but hidden-information ordering does not." },
+      { "semantic_area": "aura", "coverage": "partial", "why": "On-board and deploy value lower, but continuous aura math does not." },
+      { "semantic_area": "discard", "coverage": "direct", "why": "Discard enabler timing lowers directly even though hidden discard outcomes still follow card rules." },
+      { "semantic_area": "deathrattle", "coverage": "partial", "why": "Deploy and preserve posture lower, but trigger ordering and resurrection quality do not." },
+      { "semantic_area": "reborn", "coverage": "partial", "why": "Persistence value lowers only through deploy or preserve posture." },
+      { "semantic_area": "recruit", "coverage": "partial", "why": "The recruiter can be timed, but the pulled card is not a runtime choice surface." },
+      { "semantic_area": "dredge", "coverage": "warning_only", "why": "The signature bottom-three choice has no documented normal-path runtime block." },
+      { "semantic_area": "tradeable", "coverage": "warning_only", "why": "The signature trade-now action has no documented normal-path runtime block." },
+      { "semantic_area": "overload", "coverage": "direct", "why": "Overload play timing lowers, even though exact future mana planning stays heuristic." },
+      { "semantic_area": "freeze", "coverage": "partial", "why": "Some freeze delivery paths lower, but generic spell-target freeze is not fully modeled." },
+      { "semantic_area": "lifesteal", "coverage": "partial", "why": "Use and attack posture lower, but heal-threshold planning is not a dedicated surface." },
+      { "semantic_area": "taunt", "coverage": "partial", "why": "Taunt is represented mostly as defensive board value." },
+      { "semantic_area": "rush", "coverage": "partial", "why": "Attack posture lowers, but full trade selection remains broader bot evaluation." },
+      { "semantic_area": "charge", "coverage": "partial", "why": "Attack posture lowers, but lethal math is not a dedicated surface." },
+      { "semantic_area": "silence", "coverage": "partial", "why": "Battlecry-based or timing-based silence can lower, but generic spell-target silence is incomplete." },
+      { "semantic_area": "transform", "coverage": "partial", "why": "Some transform delivery paths lower, but random or generic spell-target transforms do not fully lower." },
+      { "semantic_area": "destroy", "coverage": "partial", "why": "Some destroy delivery paths lower, but arbitrary targeted destroy is only partial." },
+      { "semantic_area": "summon", "coverage": "partial", "why": "Summon value is represented through deploy or board posture rather than a separate summon planner." },
+      { "semantic_area": "draw", "coverage": "partial", "why": "Draw timing and mulligan value lower, but exact hand-state planning does not." },
+      { "semantic_area": "heal", "coverage": "partial", "why": "Heal timing and survivability posture lower, but exact threshold planning does not." },
+      { "semantic_area": "overkill", "coverage": "direct", "why": "Overkill has a documented `BeforeOverkilledBonus` surface and test coverage." },
+      { "semantic_area": "divine shield", "coverage": "partial", "why": "Divine Shield is represented as deploy or on-board value, not a dedicated planner." }
+    ],
+    "coverage_totals": {
+      "direct": 7,
+      "partial": 19,
+      "warning_only": 2
+    }
+  },
+  "hsconfig_current_fit": {
+    "fit_summary": "The current HSConfig design fits this audit well. It already distinguishes exact identity, documented runtime surfaces, and warning-only gaps. That is the right posture for a universal no-block generator.",
+    "why_it_fits": [
+      "`deckstring_decode.py` and `deck_identity.py` keep exact deck identity as the non-negotiable core.",
+      "`mechanic_support.py` gives an explicit direct/partial/warning-only matrix instead of pretending every mechanic is fully lowerable.",
+      "`guide-research-policy.md` and `test_card_behavior_router.py` enforce exact option identity for Discover and Choose One before runtime emission.",
+      "`option_identity_resolver.py` supports deterministic linked entities without claiming full coverage of random generation.",
+      "`universal-wild-no-block-contract.md` keeps warnings, suppressions, and partial support non-blocking as long as the emitted package remains structurally valid and load-safe."
+    ]
+  },
+  "no_block_contract_implications": {
+    "allow": [
+      "Valid deck generation when cards or mechanics only have partial support.",
+      "Valid deck generation when mechanic usage stays report-only or suppression-only.",
+      "Valid deck generation when generated entities, Discover options, or Choose One options cannot be fully resolved, as long as unresolved branches are suppressed instead of emitted.",
+      "Valid deck generation with warning-only mechanics such as Dredge and Tradeable."
+    ],
+    "warning_only": [
+      "Dredge choice semantics.",
+      "Tradeable action semantics.",
+      "Random or unresolved generated pools.",
+      "Unresolved Discover or Choose One option identity.",
+      "Generic spell-target branches that lack a documented normal-path surface."
+    ],
+    "hard_invalid": [
+      "Malformed or unsupported deckcode.",
+      "Unresolved exact deck-card identity needed to emit per-card `<CARDID>.json` files.",
+      "Invalid JSON, unsupported runtime blocks, or unsupported runtime filenames.",
+      "Missing required runtime files, undeclared files, nested runtime files, or banned normal-path surfaces."
+    ],
+    "bottom_line": "HSConfig should block only when it cannot emit an exact, structurally valid, load-safe package. It should not block merely because a mechanic is partial or warning-only."
+  },
+  "lean_architecture_risk": {
+    "risk_level": "medium",
+    "main_risks": [
+      "Expanding the runtime model just to avoid warnings for Dredge or Tradeable would push HSConfig into invented choice surfaces that the current VisionAI contract does not document.",
+      "Trying to make generated entities fully automatic would encourage guessed identities, especially for random pools and transform branches.",
+      "Adding one-off planners for every partial mechanic would bloat a repo that is supposed to stay a lean pre-run config generator rather than a full strategic simulator.",
+      "Solving generic spell-target logic too aggressively risks crossing from safe lowering into fabricated decision-making."
+    ],
+    "lean_recommendation": "Keep the matrix explicit, keep suppressions visible, and only upgrade a mechanic from warning-only or partial when there is an exact documented runtime surface plus exact identity resolution."
+  },
+  "recommended_next_actions": [
+    "Keep the current universal no-block policy and use the support matrix as the operator-facing truth: exact identity is mandatory, partial and warning-only mechanics are acceptable with visible reporting.",
+    "Add one compact operator report section that summarizes direct, partial, and warning-only mechanic families for the current deck so operators can see why a package is load-safe but not fully source-strong.",
+    "If the repo grows next, prioritize only mechanics with a documented first-class surface and clear payoff: Dredge and Tradeable should not move first unless VisionAI exposes direct blocks for their actual actions.",
+    "Maintain focused tests around exact option identity, deterministic linked entities, and warning-only non-block behavior so future changes cannot silently over-claim support."
+  ],
+  "confidence": "High",
+  "uncertain": []
+}

@@ -1,0 +1,164 @@
+{
+  "item_name": "VisionAI Runtime Surfaces And No-Block Apply Contract",
+  "primary_question": "Are `GlobalValues.json`, `Mulligan.json`, per-card `CardID.json`, and optional conditional `Combo.json` the correct compact normal-path runtime target for HSConfig Step 1 package generation, and which other documented or unsupported surfaces must stay report-only or non-normal so they do not block a load-safe package?",
+  "source_urls": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "file:///C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "file:///C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "file:///C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py"
+  ],
+  "source_backed_claims": [
+    {
+      "claim": "Yes. The compact normal-path HSConfig runtime target is `GlobalValues.json` plus `Mulligan.json` plus concrete per-card `CardID.json` files, with `Combo.json` emitted only when a source-backed sequence is present.",
+      "evidence": [
+        "Official VisionAI docs define separate syntax pages for per-card card behavior, mulligan, combo, and global values, all mounted under a deck directory selected through `CustomConfig/deck_config.ini`.",
+        "HSConfig `package_builder.py` always writes `GlobalValues.json` and `Mulligan.json`, writes concrete per-card files from compiled card behavior rows, and writes `Combo.json` only when `compile_combo(...)` returns a sequence payload.",
+        "HSConfig `apply_gate.py` and `runtime_apply.py` require `GlobalValues.json`, `Mulligan.json`, and at least one per-card runtime file, while not requiring `Combo.json`."
+      ]
+    },
+    {
+      "claim": "`deck_config.ini` is part of the runtime apply mapping, but it is not a deck-local payload surface inside the compact Step 1 package.",
+      "evidence": [
+        "Official VisionAI docs place deck selection in `CustomConfig/deck_config.ini` with a `[CONFIGS]` mapping from deck name to config directory.",
+        "HSConfig `visionai_docs.py` models `deck_config.ini` as a separate `deck_config` surface, distinct from the supported runtime surfaces list.",
+        "HSConfig `runtime_apply.py` updates `deck_config.ini` during apply, after copying the package deck directory."
+      ]
+    },
+    {
+      "claim": "The supported runtime surface set is intentionally narrower than the full VisionAI documentation set.",
+      "evidence": [
+        "HSranger `visionai_docs.py` sets `supported_runtime_surfaces` to `card_behavior`, `mulligan`, `combo`, and `global_values`.",
+        "The same module records `concede` and `presume` as `registry_known_unsupported_surfaces`."
+      ]
+    },
+    {
+      "claim": "Per-card runtime output must be concrete `<CARDID>.json` files. The aggregate `CardBehavior.json` file is preview-only and must not be placed in the runtime package.",
+      "evidence": [
+        "Official card-behavior docs show a concrete `CARDID.json` pattern under the mapped deck directory.",
+        "HSranger `visionai_docs.py` labels `CardBehavior.json` as `aggregated_preview_filename` for the card-behavior surface.",
+        "HSranger `visionai_model.py` blocks `CardBehavior.json` with the reason `aggregate preview file is not allowed in runtime package`."
+      ]
+    },
+    {
+      "claim": "Normal-path load-safe apply is a technical package contract, not a guarantee that every semantic gap is closed.",
+      "evidence": [
+        "HSConfig `operator_summary.py` marks `runtime_load_safe=true` and `runtime_apply_mode=load_safe_apply` whenever `technical_status=VALID_PACKAGE` and apply policy is not blocked.",
+        "HSConfig `apply_gate.py` allows `load_safe_apply` for `VALID_PACKAGE` summaries even when semantic status is `VALID_BUT_NOT_GUIDE_STRONG` and semantic blockers still exist."
+      ]
+    },
+    {
+      "claim": "Unsupported conditions, unresolved option identity, missing mulligan evidence, missing combo sequence evidence, and warning-only mechanic coverage are meant to remain visible in reports without forcing package invalidation.",
+      "evidence": [
+        "HSConfig `config_readiness.py` routes these states into `report_only_supported`, `mulligan_only`, `globalvalues_only`, or other non-invalid readiness lanes.",
+        "HSConfig tests explicitly keep warning-only mechanics visible and still permit `load_safe_apply` when the technical package is valid."
+      ]
+    },
+    {
+      "claim": "Two documented surfaces, `Presume.json` and `Concede.json`, are intentionally outside the normal-path runtime contract and must not appear in a load-safe package.",
+      "evidence": [
+        "Official VisionAI docs contain dedicated pages for `Concede.json` and for `Presume.json` behavior.",
+        "HSConfig `visionai_registry.py` marks both as `known_non_normal_surface` with `normal_path_runtime=false`.",
+        "HSConfig `compile_optional_surfaces.py` returns `None` for both by default, and `apply_gate.py` blocks the package if either surface appears in generated files or on disk."
+      ]
+    }
+  ],
+  "unknown_or_blocked_claims": [
+    {
+      "claim": "There is no source-backed basis to widen the normal Step 1 package to additional first-class runtime files beyond `GlobalValues.json`, `Mulligan.json`, concrete per-card `CardID.json`, and optional `Combo.json`.",
+      "status": "blocked_by_design",
+      "reason": "The local contract deliberately keeps Step 1 compact and load-safe. Official docs document more surfaces, but HSConfig normal-path policy intentionally does not adopt them."
+    },
+    {
+      "claim": "There is no evidence in the audited sources that `Presume.json` or `Concede.json` should be silently tolerated inside the normal load-safe package.",
+      "status": "blocked_by_policy",
+      "reason": "HSConfig currently treats them as explicit normal-path blockers, not as warning-only runtime files."
+    },
+    {
+      "claim": "Step 1 cannot prove runtime behavior quality, load success in a live client session, or post-run tuning correctness.",
+      "status": "unsupported_from_static_sources",
+      "reason": "The audited sources only prove package structure, syntax gates, supported surfaces, and apply policy."
+    }
+  ],
+  "hearthstone_semantics_implications": [
+    {
+      "area": "Card identity",
+      "implication": "Normal-path semantics are anchored on exact card ids. This is why runtime card behavior must resolve to concrete `<CARDID>.json` files and why unresolved discover or choice identities are suppressed instead of widened into a new runtime surface."
+    },
+    {
+      "area": "Opening hand",
+      "implication": "`Mulligan.json` is the only dedicated normal-path opening-hand surface. Missing mulligan evidence remains a visible gap, but the package can still be load-safe if the technical files are valid."
+    },
+    {
+      "area": "Exact sequencing",
+      "implication": "`Combo.json` is reserved for explicit multi-card order claims. If the guide or source evidence lacks exact sequence timing, HSConfig suppresses combo emission and keeps the gap report-visible."
+    },
+    {
+      "area": "Deck posture and hero-power deck effects",
+      "implication": "`GlobalValues.json` covers deck-wide posture and some hero-power-transform overlays, but the local contract keeps GlobalValues conservative. Broad post-run GlobalValues tuning still belongs behind later runtime evidence, not Step 1 speculation."
+    },
+    {
+      "area": "Mechanic coverage",
+      "implication": "Direct, partial, and warning-only mechanic support all flow through the same compact surface family. This prevents a surface explosion while still keeping unsupported mechanics visible in operator reports."
+    }
+  ],
+  "hsconfig_current_fit": {
+    "verdict": "Strong fit",
+    "summary": "The current HSConfig design matches both the official VisionAI file families and the local no-block policy. It keeps Step 1 small, emits only the compact runtime files needed for a deck-local package, and separates syntax-valid apply from deeper semantic completeness.",
+    "fit_points": [
+      "Builder output already matches the compact target: `GlobalValues.json`, `Mulligan.json`, concrete per-card files, and conditional `Combo.json`.",
+      "Validator and apply gate enforce the same boundary from two directions: syntax/shape validation and normal-path surface policy.",
+      "Operator summary and config readiness keep semantic gaps visible without redefining the package as technically invalid."
+    ],
+    "mismatch_points": [
+      "None found in the audited normal path."
+    ]
+  },
+  "no_block_contract_implications": {
+    "allowed_normal_path": [
+      "Require one deck runtime directory with `GlobalValues.json`, `Mulligan.json`, and at least one per-card `<CARDID>.json` file.",
+      "Allow `Combo.json` only when exact combo rows exist; do not require it for package validity.",
+      "Treat `deck_config.ini` as apply-time mapping metadata, updated during runtime apply rather than authored as a deck-local package surface.",
+      "Allow `VALID_PACKAGE` packages to remain `load_safe_apply` even when semantic status is only `VALID_BUT_NOT_GUIDE_STRONG`."
+    ],
+    "warning_only_or_report_only": [
+      "Cards in `mulligan_only`, `globalvalues_only`, or `report_only_supported` lanes should stay visible in reports rather than forcing package invalidation.",
+      "Unsupported conditions, missing mulligan claims, missing combo sequence evidence, missing runtime lowering, and warning-only mechanics should stay operator-visible and non-silent.",
+      "A concrete per-card file can exist without proving a fully meaningful runtime lowering; that still belongs in the report layer rather than in new blocker surfaces."
+    ],
+    "must_block_or_stay_non_normal": [
+      "`Presume.json` and `Concede.json` must remain outside the normal-path load-safe package. Their presence should block the normal apply gate.",
+      "`CardBehavior.json` must remain a preview artifact, not a runtime file.",
+      "Unexpected nested runtime files or untracked runtime files must block apply because they break the compact package contract.",
+      "Missing required files, invalid JSON, wrong `GameCardId`, malformed `Mulligan`, malformed `ComboList`, or malformed `GlobalValues` must stay true technical blockers."
+    ]
+  },
+  "lean_architecture_risk": {
+    "risk_level": "Medium if widened, low if preserved",
+    "main_risks": [
+      "Adding `Presume.json` or `Concede.json` to the normal builder would widen scope, complicate apply safety, and weaken the compact no-block contract.",
+      "Treating every unsupported mechanic as a new surface would duplicate logic and bloat the package model.",
+      "Collapsing preview, research, and post-run tuning concerns into Step 1 would mix HSConfig with later HSranger or HSTuner responsibilities.",
+      "Turning report-only semantic gaps into hard apply blockers would break the stated no-block operator goal."
+    ],
+    "best_boundary": "Keep the runtime package narrow, keep unsupported or unresolved semantics in reports, and reserve broader runtime mutation policy for explicit non-normal or post-run workflows."
+  },
+  "recommended_next_actions": [
+    "Preserve the current normal-path emission contract: `GlobalValues.json`, `Mulligan.json`, concrete per-card `<CARDID>.json`, and optional `Combo.json` only.",
+    "Keep `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` outside the normal-path apply lane.",
+    "Continue to distinguish technical validity from semantic completeness in operator summaries so warning-only gaps do not masquerade as package corruption.",
+    "If legacy policy surfaces are ever needed, introduce them only behind an explicit non-normal expert mode rather than widening `load_safe_apply`."
+  ],
+  "confidence": "high",
+  "uncertain": []
+}
