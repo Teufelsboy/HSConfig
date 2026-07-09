@@ -72,8 +72,8 @@ def test_report_marks_source_informed_apply_ready_without_strong_promotion():
         operator_summary={
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "SOURCE_INFORMED_APPLY_READY",
-            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
             "source_informed_apply_readiness": readiness,
             "semantic_blockers": [{"reason": "cards_need_mulligan_claims", "count": 2}],
             "guide_strength_summary": {"generic_low_confidence_cards": 0},

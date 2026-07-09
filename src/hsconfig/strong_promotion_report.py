@@ -80,10 +80,11 @@ def _report_next_action(
         return "fixture_can_be_core_source_backed"
     if operator_summary.get("technical_status") != "VALID_PACKAGE":
         return str(operator_summary.get("next_action", ""))
+    readiness = operator_summary.get("source_informed_apply_readiness")
     if (
-        operator_summary.get("next_action") == "SOURCE_INFORMED_APPLY_READY"
-        and isinstance(operator_summary.get("source_informed_apply_readiness"), dict)
-        and operator_summary["source_informed_apply_readiness"].get("status") == "ready"
+        operator_summary.get("semantic_status") != "SOURCE_BACKED_STRONG"
+        and isinstance(readiness, dict)
+        and readiness.get("status") == "ready"
     ):
         return "source_informed_apply_ready_but_not_strong"
     return "close_first_missing_chain"

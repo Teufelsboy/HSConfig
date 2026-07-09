@@ -137,14 +137,11 @@ def build_operator_summary(
         technical_status=technical_status,
         semantic_status=semantic_status,
         primary_blockers=primary_blockers,
-        source_informed_apply_ready=source_informed_apply_readiness["status"] == "ready",
     )
     runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = (
         _runtime_apply_contract(
             technical_status=technical_status,
-            next_action=next_action,
             apply_policy=apply_policy,
-            source_informed_apply_readiness=source_informed_apply_readiness,
         )
     )
     summary = {
@@ -717,7 +714,6 @@ def _next_action_and_policy(
     technical_status: str,
     semantic_status: str,
     primary_blockers: list[dict[str, str]],
-    source_informed_apply_ready: bool = False,
 ) -> tuple[str, str]:
     if technical_status == "INVALID_PACKAGE" or primary_blockers:
         return "FIX_PACKAGE_BEFORE_APPLY", "BLOCKED"
@@ -729,9 +725,7 @@ def _next_action_and_policy(
 def _runtime_apply_contract(
     *,
     technical_status: str,
-    next_action: str,
     apply_policy: str,
-    source_informed_apply_readiness: dict[str, Any],
 ) -> tuple[str, bool, str | None]:
     if technical_status == "VALID_PACKAGE" and apply_policy != "BLOCKED":
         return "load_safe_apply", True, None

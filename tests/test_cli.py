@@ -691,7 +691,10 @@ def test_build_uses_computed_source_depth_status_for_operator_gating(tmp_path: P
     assert depth["summary"]["report_only_claims"] == 1
     assert depth["source_depth_status"] == "needs_more_research"
     assert operator_summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
-    assert operator_summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is True
 
 
 def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):

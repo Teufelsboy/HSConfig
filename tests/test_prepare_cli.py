@@ -135,7 +135,10 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is True
     assert payload["operator_summary"]["next_action"] == operator_summary["next_action"]
     assert payload["next_action"] == operator_summary["next_action"]
     assert (package / "CustomConfig" / "shadowpriest" / "GlobalValues.json").exists()
