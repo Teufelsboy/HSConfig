@@ -20,6 +20,15 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 7. Open `reports/operator_summary.json` first.
 8. Run `hsconfig apply` only when the operator summary allows it.
 
+## Load Safety vs. Config Richness
+
+Open `reports/operator_summary.json` first.
+
+- `technical_status`, `runtime_apply_mode`, and `runtime_apply_allowed` decide whether the package is structurally load-safe to apply.
+- `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
+- A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
+- HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
+
 ## Single Gate
 
 Use `reports/operator_summary.json` as the normal operator gate.

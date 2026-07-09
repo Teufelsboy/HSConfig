@@ -11,6 +11,15 @@ every valid deck input.
 - `SOURCE_BACKED_STRONG` is a source-confidence label, not the runtime-write gate.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
+## Non-Blocking Config Usefulness
+
+`config_usefulness` is descriptive. It must not change the no-block contract:
+
+- `VALID_PACKAGE` remains the technical load-safety truth.
+- `load_safe_apply` remains allowed when the apply gate is structurally valid.
+- `config_usefulness.status=load_safe_but_thin` is a warning surface, not an apply blocker.
+- `config_usefulness.next_report_to_open` tells the operator which pre-run report explains the first usefulness gap.
+
 ## Hard Blocks
 
 HSConfig still blocks when it cannot produce a correct runtime package:

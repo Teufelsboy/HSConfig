@@ -530,3 +530,21 @@ def test_skill_names_preserved_closure_rows_and_no_actionable_target():
     )
     assert expected in skill
     assert expected in workflow
+
+
+def test_docs_explain_config_usefulness_without_making_it_a_blocker():
+    operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    no_block_contract = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+        encoding="utf-8"
+    )
+    installed_skill = Path(r"C:\Users\darbo\.codex\skills\hsconfig\SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join([operator_readme, no_block_contract, installed_skill])
+
+    assert "config_usefulness" in combined
+    assert "load-safe" in combined
+    assert "non-blocking" in combined
+    assert "HSTuner" in combined
+    assert "does not parse replays" in operator_readme
+    assert operator_readme.lower().count("replay") == 1
