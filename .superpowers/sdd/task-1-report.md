@@ -53,3 +53,16 @@ Result:
 - The helper is defensive around missing or partial report dictionaries and keeps the normal operator gate untouched.
 - I kept the card-ID surface thin when no meaningful runtime rows exist, which matches the visible test contract and preserves the "richness is not a hard blocker" rule.
 
+## Review Fix
+
+Fixed the card-ID usefulness classification so `_cardid_surface(...)` now returns `report_only` when there are no meaningful runtime rows but `report_only_supported > 0` in the readiness summary.
+
+Added a focused regression test covering the report-only-only case and updated the sparse-package expectation to match the new contract.
+
+Verification:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_config_usefulness.py -q
+```
+
+Result: `5 passed in 0.19s`

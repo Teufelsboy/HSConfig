@@ -102,7 +102,12 @@ def _cardid_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str
     cards = sorted({str(row.get("card_id")) for row in meaningful_rows if row.get("card_id")})
     report_only_supported = _int(summary.get("report_only_supported"))
     runtime_emitted = _int(summary.get("runtime_emitted"))
-    status = "rich" if meaningful_rows else "thin"
+    if meaningful_rows:
+        status = "rich"
+    elif report_only_supported > 0:
+        status = "report_only"
+    else:
+        status = "thin"
     return {
         "status": status,
         "meaningful_cardid_row_count": len(meaningful_rows),

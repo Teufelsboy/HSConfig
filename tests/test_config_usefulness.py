@@ -119,8 +119,37 @@ def test_config_usefulness_marks_valid_sparse_package_load_safe_but_thin():
     assert payload["status"] == "load_safe_but_thin"
     assert payload["surfaces"]["mulligan"]["default_only"] is True
     assert payload["surfaces"]["globalvalues"]["status"] == "thin"
-    assert payload["surfaces"]["cardid_behavior"]["status"] == "thin"
+    assert payload["surfaces"]["cardid_behavior"]["status"] == "report_only"
     assert payload["first_usefulness_gap"] == "runtime_surface_gap"
+
+
+def test_config_usefulness_marks_report_only_cardid_surface_when_only_report_only_support_exists():
+    payload = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="STATIC_SEMANTICS_USABLE",
+        config_readiness_summary={
+            "total_cards": 4,
+            "runtime_emitted": 0,
+            "mulligan_only": 0,
+            "globalvalues_only": 0,
+            "report_only_supported": 2,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        config_readiness_report={"cards": {}},
+        mulligan_plan_report={"rules": [], "suppressed_rules": [], "quality": {"has_concrete_keeps": False}},
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": [], "unchanged_keys": []},
+    )
+
+    assert payload["surfaces"]["cardid_behavior"]["status"] == "report_only"
+    assert payload["surfaces"]["cardid_behavior"]["meaningful_cardid_row_count"] == 0
 
 
 def test_config_usefulness_marks_invalid_package_without_affecting_gate_fields():
