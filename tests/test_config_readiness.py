@@ -480,3 +480,47 @@ def test_globalvalues_card_with_empty_roles_still_needs_runtime_surface():
     row = report["cards"]["SW_448"]
     assert row["readiness_lane"] == "globalvalues_only"
     assert row["first_missing_link"] == "needs_runtime_surface"
+
+
+def test_config_readiness_reports_mechanic_support_without_blocking_load_safe():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Mechanic Deck",
+            "deck_slug": "mechanicdeck",
+            "cards": [
+                {"card_id": "DREDGE_001", "name": "Dredge Card", "roles": ["dredge"], "count": 1},
+                {"card_id": "BATTLE_001", "name": "Battlecry Card", "roles": ["battlecry"], "count": 1},
+            ],
+        },
+        claim_coverage={"uncovered_cards": []},
+        gameplan_contract={
+            "deck_name": "Mechanic Deck",
+            "deck_slug": "mechanicdeck",
+            "cards": {
+                "DREDGE_001": {
+                    "card_id": "DREDGE_001",
+                    "name": "Dredge Card",
+                    "roles": ["dredge"],
+                    "coverage_status": "source_backed_static_semantics",
+                },
+                "BATTLE_001": {
+                    "card_id": "BATTLE_001",
+                    "name": "Battlecry Card",
+                    "roles": ["battlecry"],
+                    "coverage_status": "source_backed_static_semantics",
+                },
+            },
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+        emitted_cardid_files=["DREDGE_001.json", "BATTLE_001.json"],
+    )
+
+    assert report["cards"]["DREDGE_001"]["mechanic_support"][0]["mechanic"] == "dredge"
+    assert report["cards"]["DREDGE_001"]["mechanic_support"][0]["support_level"] == "warning_only"
+    assert report["cards"]["BATTLE_001"]["mechanic_support"][0]["support_level"] == "direct"
+    assert report["summary"]["mechanic_support"]["warning_only_mechanics"] == ["dredge"]
+    assert report["summary"]["mechanic_support"]["support_level_counts"]["direct"] == 1
+    assert report["summary"]["mechanic_support"]["support_level_counts"]["warning_only"] == 1

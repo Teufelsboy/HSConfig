@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import Any, Iterable
 
+from hsconfig.mechanic_support import support_for_roles, summarize_mechanic_support
 from hsconfig.io import slugify_deck_name
 
 
@@ -90,6 +91,7 @@ def build_config_readiness_report(
     missing_counter: Counter[str] = Counter()
 
     for card_id, card in sorted(cards.items()):
+        mechanic_support = support_for_roles(card.get("roles", []))
         runtime_surfaces = _runtime_surfaces(
             card_id=card_id,
             emitted_cardid_file_map=emitted_cardid_file_map,
@@ -121,6 +123,7 @@ def build_config_readiness_report(
             "coverage_status": str(card.get("coverage_status", card.get("confidence", ""))),
             "roles": [str(role) for role in card.get("roles", [])],
             "source_claim_ids": [str(item) for item in card.get("source_claim_ids", [])],
+            "mechanic_support": mechanic_support,
             "runtime_surfaces": runtime_surfaces,
             "readiness_lane": lane,
             "first_missing_link": missing,
@@ -141,6 +144,7 @@ def build_config_readiness_report(
             total_cards=len(rows),
             lane_counter=lane_counter,
             missing_counter=missing_counter,
+            rows=rows.values(),
         ),
         "cards": rows,
     }
@@ -381,7 +385,8 @@ def _summary(
     total_cards: int,
     lane_counter: Counter[str],
     missing_counter: Counter[str],
-) -> dict[str, int]:
+    rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
     return {
         "total_cards": total_cards,
         **{lane: lane_counter[lane] for lane in LANES},
@@ -391,4 +396,5 @@ def _summary(
         "cards_needing_combo_sequence": missing_counter["needs_combo_sequence"],
         "cards_needing_condition_lowering": missing_counter["needs_condition_lowering"],
         "cards_needing_mechanic_lowering": missing_counter["needs_mechanic_lowering"],
+        "mechanic_support": summarize_mechanic_support(rows),
     }
