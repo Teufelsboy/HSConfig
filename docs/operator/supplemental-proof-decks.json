@@ -9,6 +9,8 @@
       "hs_id": "2750150375",
       "hdt_deck_id": "a753f091-b770-4a06-8da8-59f1d5269f6b",
       "proof_role": "supplemental_load_safe_prepare_proof",
+      "proof_scope": "supplemental_load_safe_only",
+      "representative_output_competence": false,
       "matrix_policy": "not_representative_until_future_matrix_review_proves_missing_family",
       "operator_action": "keep_supplemental",
       "known_limits": [
