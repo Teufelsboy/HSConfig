@@ -1,4 +1,9 @@
-from hsconfig.mechanic_support import support_for_roles, summarize_mechanic_support
+from hsconfig.mechanic_support import (
+    operator_visibility_bucket,
+    support_for_roles,
+    summarize_mechanic_visibility,
+    summarize_mechanic_support,
+)
 
 
 def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
@@ -44,3 +49,44 @@ def test_summarize_mechanic_support_counts_warning_only_cards():
     }
     assert summary["warning_only_mechanics"] == ["dredge"]
     assert summary["warning_only_card_count"] == 1
+
+
+def test_operator_visibility_bucket_marks_identity_gated_direct_mechanics():
+    rows = support_for_roles(["discover", "hero_power_transform", "battlecry"])
+    buckets = {row["mechanic"]: operator_visibility_bucket(row) for row in rows}
+
+    assert buckets["battlecry"] == "direct"
+    assert buckets["discover"] == "identity_gated_direct"
+    assert buckets["hero_power_transform"] == "identity_gated_direct"
+
+
+def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
+    summary = summarize_mechanic_visibility(
+        [
+            {
+                "card_id": "DISCOVER_001",
+                "mechanic_support": support_for_roles(["discover"]),
+            },
+            {
+                "card_id": "DREDGE_001",
+                "mechanic_support": support_for_roles(["dredge"]),
+            },
+            {
+                "card_id": "AURA_001",
+                "mechanic_support": support_for_roles(["magnetic"]),
+            },
+        ]
+    )
+
+    assert summary["non_blocking"] is True
+    assert summary["bucket_counts"] == {
+        "direct": 0,
+        "identity_gated_direct": 1,
+        "partial": 1,
+        "warning_only": 1,
+    }
+    assert summary["mechanics_by_bucket"]["identity_gated_direct"] == ["discover"]
+    assert summary["mechanics_by_bucket"]["partial"] == ["aura"]
+    assert summary["mechanics_by_bucket"]["warning_only"] == ["dredge"]
+    assert summary["warning_only_card_count"] == 1
+    assert summary["first_warning_boundary"]["mechanic"] == "dredge"

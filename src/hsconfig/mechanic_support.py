@@ -221,6 +221,13 @@ NON_MECHANIC_ROLES = {
     "spell",
 }
 
+IDENTITY_GATED_DIRECT_MECHANICS = {
+    "discover",
+    "generated_entity",
+    "hero_power_transform",
+}
+VISIBILITY_BUCKETS = ("direct", "identity_gated_direct", "partial", "warning_only")
+
 
 def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
@@ -252,6 +259,16 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: row["mechanic"])
 
 
+def operator_visibility_bucket(support: dict[str, Any]) -> str:
+    mechanic = str(support.get("mechanic", ""))
+    support_level = str(support.get("support_level", ""))
+    if support_level == "direct" and mechanic in IDENTITY_GATED_DIRECT_MECHANICS:
+        return "identity_gated_direct"
+    if support_level in {"direct", "partial", "warning_only"}:
+        return support_level
+    return "warning_only"
+
+
 def summarize_mechanic_support(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     level_counts: Counter[str] = Counter()
     warning_mechanics: set[str] = set()
@@ -278,4 +295,41 @@ def summarize_mechanic_support(rows: Iterable[dict[str, Any]]) -> dict[str, Any]
         },
         "warning_only_mechanics": sorted(warning_mechanics),
         "warning_only_card_count": len(warning_cards),
+    }
+
+
+def summarize_mechanic_visibility(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    bucket_counts: Counter[str] = Counter()
+    mechanics_by_bucket: dict[str, set[str]] = {bucket: set() for bucket in VISIBILITY_BUCKETS}
+    warning_cards: set[str] = set()
+    first_warning_boundary: dict[str, str] | None = None
+
+    for row in rows:
+        card_id = str(row.get("card_id", ""))
+        for support in row.get("mechanic_support", []):
+            if not isinstance(support, dict):
+                continue
+            mechanic = str(support.get("mechanic", ""))
+            bucket = operator_visibility_bucket(support)
+            bucket_counts[bucket] += 1
+            if mechanic:
+                mechanics_by_bucket.setdefault(bucket, set()).add(mechanic)
+            if bucket == "warning_only":
+                if card_id:
+                    warning_cards.add(card_id)
+                if first_warning_boundary is None:
+                    first_warning_boundary = {
+                        "mechanic": mechanic,
+                        "warning_boundary": str(support.get("warning_boundary", "")),
+                    }
+
+    return {
+        "non_blocking": True,
+        "bucket_counts": {bucket: bucket_counts[bucket] for bucket in VISIBILITY_BUCKETS},
+        "mechanics_by_bucket": {
+            bucket: sorted(mechanics_by_bucket.get(bucket, set()))
+            for bucket in VISIBILITY_BUCKETS
+        },
+        "warning_only_card_count": len(warning_cards),
+        "first_warning_boundary": first_warning_boundary,
     }
