@@ -131,7 +131,7 @@ def test_index_reports_first_missing_link_for_source_informed_rows():
                 "operator_summary": {
                     "technical_status": "VALID_PACKAGE",
                     "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-                    "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+                    "next_action": "READY_TO_APPLY_WITH_WARNINGS",
                 },
                 "source_claim_gap_report": {
                     "summary": {

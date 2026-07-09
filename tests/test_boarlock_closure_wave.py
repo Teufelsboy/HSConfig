@@ -96,7 +96,10 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator["runtime_load_safe"] is True
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["source_informed_apply_readiness"]["status"] == "blocked"
     assert operator["source_informed_apply_readiness"]["blocking_reasons"] == [
         "cards_need_runtime_surface",

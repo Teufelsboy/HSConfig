@@ -33,7 +33,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     validate_code = main(["validate", "--package", str(package), "--json"])
     validate_out = json.loads(capsys.readouterr().out)
 
-    blocked_apply_code = main(
+    apply_code = main(
         [
             "apply",
             "--package",
@@ -43,7 +43,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
             "--json",
         ]
     )
-    blocked_apply_out = json.loads(capsys.readouterr().out)
+    apply_out = json.loads(capsys.readouterr().out)
 
     reports = package / "reports"
     deck_dir = package / "CustomConfig" / "shadowpriest"
@@ -75,40 +75,19 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert validate_out["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is True
     assert operator_summary["source_informed_apply_readiness"]["status"] == "blocked"
-    assert blocked_apply_code == 1
-    assert blocked_apply_out["status"] == "blocked"
-    assert blocked_apply_out["apply_gate"]["status"] == "blocked"
+    assert apply_code == 0
+    assert apply_out["status"] == "applied"
+    assert apply_out["apply_gate"]["status"] == "allowed"
+    assert apply_out["apply_gate"]["mode"] == "load_safe_apply"
     assert (
-        blocked_apply_out["apply_gate"]["reasons"][0]["reason"]
-        == "operator_summary_not_ready_to_apply"
-    )
-    assert not runtime.exists()
-    assert not (runtime / "CustomConfig").exists()
-    assert not runtime_deck_dir.exists()
-    assert not runtime_deck_config.exists()
-
-    flagged_apply_code = main(
-        [
-            "apply",
-            "--package",
-            str(package),
-            "--runtime-root",
-            str(runtime),
-            "--allow-source-informed",
-            "--json",
-        ]
-    )
-    flagged_apply_out = json.loads(capsys.readouterr().out)
-
-    assert flagged_apply_code == 1
-    assert flagged_apply_out["status"] == "blocked"
-    assert flagged_apply_out["apply_gate"]["mode"] == "blocked"
-    assert (
-        flagged_apply_out["apply_gate"]["reasons"][0]["reason"]
-        == "operator_summary_not_ready_to_apply"
+        apply_out["apply_gate"]["reasons"][0]["reason"]
+        == "runtime_load_safe_package"
     )
     assert deck_identity["deck_name"] == "ShadowPriest"
     assert deck_identity["deck_slug"] == "shadowpriest"
@@ -143,5 +122,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert (deck_dir / "DS1_233.json").exists()
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
-    assert not runtime_deck_dir.exists()
-    assert not runtime_deck_config.exists()
+    assert runtime.exists()
+    assert (runtime / "CustomConfig").exists()
+    assert runtime_deck_dir.exists()
+    assert runtime_deck_config.exists()

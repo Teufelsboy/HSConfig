@@ -115,7 +115,7 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
     assert operator["semantic_status"] in {"SOURCE_BACKED_STRONG", "VALID_BUT_NOT_GUIDE_STRONG"}
     assert operator["next_action"] in {
         "READY_TO_APPLY_OR_HANDOFF",
-        "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+        "READY_TO_APPLY_WITH_WARNINGS",
     }
     assert coverage["summary"]["guide_backed"] > 0
     assert (

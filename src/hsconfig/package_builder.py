@@ -221,7 +221,10 @@ def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], i
     if code == 0:
         operator_summary = payload.get("operator_summary")
         if isinstance(operator_summary, dict):
-            payload["next_action"] = operator_summary.get("next_action", "READY_WITH_WARNINGS")
+            payload["next_action"] = operator_summary.get(
+                "next_action",
+                "READY_TO_APPLY_WITH_WARNINGS",
+            )
         else:
             payload["next_action"] = "READY_TO_APPLY_OR_HANDOFF"
     return payload, code

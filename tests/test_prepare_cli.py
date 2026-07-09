@@ -342,7 +342,7 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert guide_sources["source_depth_status"] == "source_backed"
     assert receipt["source_depth_status"] == "source_backed"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
@@ -464,7 +464,7 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert readiness["summary"]["mulligan_only"] == 0
     assert readiness["summary"]["generic_low_confidence"] == 3
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
@@ -645,7 +645,7 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
         ["source_confidence"],
     ]
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
@@ -789,8 +789,8 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     assert code == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
-    assert payload["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert payload["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert guide_sources["source_depth_status"] == "needs_more_research"
     assert guide_sources["summary"]["source_count"] == 0
     assert guide_sources["research_fallback_source"] == "shared_module"
