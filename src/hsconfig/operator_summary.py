@@ -403,6 +403,7 @@ def _mechanic_visibility_summary(
         },
         "warning_only_card_count": 0,
         "first_warning_boundary": None,
+        "warning_boundaries": [],
     }
     summary = {}
     if isinstance(config_readiness_report, dict):
@@ -421,6 +422,9 @@ def _mechanic_visibility_summary(
     mechanics_by_bucket = visibility.get("mechanics_by_bucket", {})
     if not isinstance(mechanics_by_bucket, dict):
         mechanics_by_bucket = {}
+    warning_boundaries = visibility.get("warning_boundaries", [])
+    if not isinstance(warning_boundaries, list):
+        warning_boundaries = []
 
     return {
         "non_blocking": bool(visibility.get("non_blocking", True)),
@@ -440,6 +444,14 @@ def _mechanic_visibility_summary(
         },
         "warning_only_card_count": _int_value(visibility.get("warning_only_card_count", 0)),
         "first_warning_boundary": visibility.get("first_warning_boundary"),
+        "warning_boundaries": [
+            {
+                "mechanic": str(item.get("mechanic", "")),
+                "warning_boundary": str(item.get("warning_boundary", "")),
+            }
+            for item in warning_boundaries
+            if isinstance(item, dict)
+        ],
     }
 
 

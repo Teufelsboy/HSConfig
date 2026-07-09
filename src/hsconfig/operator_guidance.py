@@ -164,6 +164,7 @@ def _mechanic_visibility_fields(summary: dict[str, Any]) -> dict[str, Any]:
             },
             "warning_only_card_count": 0,
             "first_warning_boundary": None,
+            "warning_boundaries": [],
         }
     }
 

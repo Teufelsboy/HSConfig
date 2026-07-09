@@ -100,6 +100,12 @@ def test_operator_summary_exposes_mechanic_visibility_without_blocking_apply():
                         "mechanic": "dredge",
                         "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
                     },
+                    "warning_boundaries": [
+                        {
+                            "mechanic": "dredge",
+                            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+                        }
+                    ],
                 },
             },
             "cards": {},
@@ -117,7 +123,19 @@ def test_operator_summary_exposes_mechanic_visibility_without_blocking_apply():
     assert summary["mechanic_visibility_summary"]["mechanics_by_bucket"]["warning_only"] == [
         "dredge"
     ]
+    assert summary["mechanic_visibility_summary"]["warning_boundaries"] == [
+        {
+            "mechanic": "dredge",
+            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+        }
+    ]
     assert summary["operator_guidance"]["mechanic_visibility_summary"]["warning_only_card_count"] == 1
+    assert summary["operator_guidance"]["mechanic_visibility_summary"]["warning_boundaries"] == [
+        {
+            "mechanic": "dredge",
+            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+        }
+    ]
 
 
 def test_operator_summary_uses_mechanic_warnings_from_summary_only_input():

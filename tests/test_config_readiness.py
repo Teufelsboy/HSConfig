@@ -530,6 +530,12 @@ def test_config_readiness_reports_mechanic_support_without_blocking_load_safe():
     assert visibility["bucket_counts"]["warning_only"] == 1
     assert visibility["mechanics_by_bucket"]["warning_only"] == ["dredge"]
     assert visibility["first_warning_boundary"]["mechanic"] == "dredge"
+    assert visibility["warning_boundaries"] == [
+        {
+            "mechanic": "dredge",
+            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+        }
+    ]
 
 
 def test_config_readiness_keeps_unknown_mechanic_role_visible_as_warning_only():

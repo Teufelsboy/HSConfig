@@ -85,6 +85,10 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
                 "mechanic_support": support_for_roles(["discover"]),
             },
             {
+                "card_id": "POSITION_001",
+                "mechanic_support": support_for_roles(["board_position"]),
+            },
+            {
                 "card_id": "DREDGE_001",
                 "mechanic_support": support_for_roles(["dredge"]),
             },
@@ -100,13 +104,23 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
         "direct": 0,
         "identity_gated_direct": 1,
         "partial": 1,
-        "warning_only": 1,
+        "warning_only": 2,
     }
     assert summary["mechanics_by_bucket"]["identity_gated_direct"] == ["discover"]
     assert summary["mechanics_by_bucket"]["partial"] == ["aura"]
-    assert summary["mechanics_by_bucket"]["warning_only"] == ["dredge"]
-    assert summary["warning_only_card_count"] == 1
+    assert summary["mechanics_by_bucket"]["warning_only"] == ["board_position", "dredge"]
+    assert summary["warning_only_card_count"] == 2
     assert summary["first_warning_boundary"]["mechanic"] == "dredge"
+    assert summary["warning_boundaries"] == [
+        {
+            "mechanic": "board_position",
+            "warning_boundary": "Exact minion placement has no documented normal-path VisionAI positioning surface.",
+        },
+        {
+            "mechanic": "dredge",
+            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+        },
+    ]
 
 
 def test_visibility_slice_classifies_choose_one_and_warning_boundaries():

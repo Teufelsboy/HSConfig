@@ -58,6 +58,7 @@ def test_guidance_for_source_backed_strong_package():
             },
             "warning_only_card_count": 0,
             "first_warning_boundary": None,
+            "warning_boundaries": [],
         },
         "runtime_apply_mode": "normal_apply",
         "runtime_apply_allowed": True,
@@ -193,6 +194,12 @@ def test_warning_guidance_carries_mechanic_visibility_summary():
                     "mechanic": "tradeable",
                     "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
                 },
+                "warning_boundaries": [
+                    {
+                        "mechanic": "tradeable",
+                        "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
+                    }
+                ],
             },
             "semantic_blockers": [],
         }
@@ -203,6 +210,12 @@ def test_warning_guidance_carries_mechanic_visibility_summary():
     assert guidance["mechanic_visibility_summary"]["non_blocking"] is True
     assert guidance["mechanic_visibility_summary"]["mechanics_by_bucket"]["partial"] == [
         "aura"
+    ]
+    assert guidance["mechanic_visibility_summary"]["warning_boundaries"] == [
+        {
+            "mechanic": "tradeable",
+            "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
+        }
     ]
 
 
@@ -261,6 +274,7 @@ def test_guidance_for_source_informed_apply_ready_package():
             },
             "warning_only_card_count": 0,
             "first_warning_boundary": None,
+            "warning_boundaries": [],
         },
         "runtime_apply_mode": "source_informed_apply_requires_flag",
         "runtime_apply_allowed": True,
