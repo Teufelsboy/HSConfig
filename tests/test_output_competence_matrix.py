@@ -20,6 +20,20 @@ SOURCE_DOCS = {
     "PirateDH": "tests/fixtures/source_documents_piratedh_strong.json",
 }
 
+EXPECTED_REPRESENTATIVE_DECK_NAMES = {
+    "ShadowPriest",
+    "CtAPaladin",
+    "PirateRogue",
+    "BigShaman",
+    "Discolock",
+    "TreantDruid",
+    "Kingslayer",
+    "ImbueMage",
+    "MechPala",
+    "Boarlock",
+    "PirateDH",
+}
+
 
 def _representative_decks() -> list[dict]:
     matrix = json.loads(
@@ -30,6 +44,14 @@ def _representative_decks() -> list[dict]:
         for row in matrix["decks"]
         if row["fixture_stage"] in {"core_source_backed_fixture", "source_informed_valid_fixture"}
     ]
+
+
+def test_representative_deck_set_is_exact():
+    representative_decks = _representative_decks()
+
+    assert set(SOURCE_DOCS) == EXPECTED_REPRESENTATIVE_DECK_NAMES
+    assert len(representative_decks) == 11
+    assert {row["deck_name"] for row in representative_decks} == EXPECTED_REPRESENTATIVE_DECK_NAMES
 
 
 @pytest.mark.parametrize("deck", _representative_decks(), ids=lambda row: row["deck_name"])

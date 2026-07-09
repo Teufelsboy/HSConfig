@@ -71,3 +71,22 @@ Observed result:
 - Output competence proof now exists for all 11 representative decks through `operator_summary.json -> config_usefulness`.
 - `CuteWarrior` remains explicitly supplemental and load-safe-only.
 - No regression required widening scope beyond Task 3 files.
+
+## Review Fix
+
+- Tightened `tests/test_output_competence_matrix.py` so the representative selection is no longer only stage-driven.
+- Added `EXPECTED_REPRESENTATIVE_DECK_NAMES` and asserted the selection is exactly those 11 deck names.
+- Added a direct guard that `set(SOURCE_DOCS)` matches the same representative set.
+
+Verification:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_output_competence_matrix.py -q
+```
+
+Result:
+
+```text
+.............                                                            [100%]
+13 passed in 15.56s
+```
