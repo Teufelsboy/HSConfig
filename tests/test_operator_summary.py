@@ -65,6 +65,38 @@ def test_operator_summary_exposes_mechanic_warnings_without_blocking_apply():
     assert summary["operator_guidance"]["safe_to_apply"] is True
 
 
+def test_operator_summary_uses_mechanic_warnings_from_summary_only_input():
+    summary = build_operator_summary(
+        deck_name="Summary Only",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        config_readiness_summary={
+            "total_cards": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+            "mechanic_support": {
+                "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 1},
+                "warning_only_mechanics": ["future_keyword"],
+                "warning_only_card_count": 1,
+            },
+        },
+        generated_files=["CustomConfig/summaryonly/GlobalValues.json"],
+    )
+
+    assert summary["mechanic_warning_summary"]["warning_only_mechanics"] == [
+        "future_keyword"
+    ]
+    assert summary["operator_guidance"]["mechanic_warning_summary"][
+        "warning_only_card_count"
+    ] == 1
+
+
 def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

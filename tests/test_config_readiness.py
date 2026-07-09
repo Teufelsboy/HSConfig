@@ -524,3 +524,31 @@ def test_config_readiness_reports_mechanic_support_without_blocking_load_safe():
     assert report["summary"]["mechanic_support"]["warning_only_mechanics"] == ["dredge"]
     assert report["summary"]["mechanic_support"]["support_level_counts"]["direct"] == 1
     assert report["summary"]["mechanic_support"]["support_level_counts"]["warning_only"] == 1
+
+
+def test_config_readiness_keeps_unknown_mechanic_role_visible_as_warning_only():
+    report = _report_for_card(
+        card_id="FUTURE_001",
+        roles=["future_keyword", "pressure"],
+        coverage_status="source_backed_static_semantics",
+        emitted_cardid_files=["FUTURE_001.json"],
+    )
+
+    mechanic_support = report["cards"]["FUTURE_001"]["mechanic_support"]
+
+    assert mechanic_support == [
+        {
+            "mechanic": "future_keyword",
+            "support_level": "warning_only",
+            "normal_path_surfaces": ["report-only"],
+            "warning_boundary": (
+                "No registered VisionAI normal-path surface exists for role "
+                "'future_keyword'; keep it visible as warning-only until mapped."
+            ),
+            "registered": False,
+        }
+    ]
+    assert report["summary"]["mechanic_support"]["warning_only_mechanics"] == [
+        "future_keyword"
+    ]
+    assert report["summary"]["mechanic_support"]["warning_only_card_count"] == 1

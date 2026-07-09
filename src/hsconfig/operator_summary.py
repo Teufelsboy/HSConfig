@@ -96,7 +96,10 @@ def build_operator_summary(
         config_readiness_summary,
         config_readiness_report,
     )
-    mechanic_warning_summary = _mechanic_warning_summary(config_readiness_report)
+    mechanic_warning_summary = _mechanic_warning_summary(
+        config_readiness_report,
+        effective_config_readiness_summary,
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -321,15 +324,20 @@ def _normalize_readiness_summary_aliases(
     return normalized
 
 
-def _mechanic_warning_summary(config_readiness_report: dict[str, Any] | None) -> dict[str, Any]:
+def _mechanic_warning_summary(
+    config_readiness_report: dict[str, Any] | None,
+    config_readiness_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     empty_summary = {
         "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
         "warning_only_mechanics": [],
         "warning_only_card_count": 0,
     }
-    if not isinstance(config_readiness_report, dict):
-        return empty_summary
-    summary = config_readiness_report.get("summary", {})
+    summary = {}
+    if isinstance(config_readiness_report, dict):
+        summary = config_readiness_report.get("summary", {})
+    if not isinstance(summary, dict) or "mechanic_support" not in summary:
+        summary = config_readiness_summary or {}
     if not isinstance(summary, dict):
         return empty_summary
     mechanic_support = summary.get("mechanic_support", {})

@@ -24,6 +24,25 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         ],
         "warning_boundary": "Only source-resolved option identity lowers; unresolved options stay suppressed.",
     },
+    "damage": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePlayCardBonus",
+            "CARDID.json:BeforeBattlecryTargetBonus",
+            "CARDID.json:BeforeUseHeroPowerBonus",
+        ],
+        "warning_boundary": "Damage timing and targeting lower only through exact documented card or Hero Power surfaces.",
+    },
+    "draw": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "Mulligan.json:opening_hand"],
+        "warning_boundary": "Draw timing can be encouraged; exact hand-state planning remains broader bot evaluation.",
+    },
+    "heal": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:survivability_posture"],
+        "warning_boundary": "Exact heal-threshold planning is not a dedicated normal-path surface.",
+    },
     "overload": {
         "support_level": "direct",
         "normal_path_surfaces": [
@@ -59,6 +78,11 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
         "warning_boundary": "Hidden hand-discard outcomes follow card rules; enabler timing is lowerable.",
     },
+    "overkill": {
+        "support_level": "direct",
+        "normal_path_surfaces": ["CARDID.json:BeforeOverkilledBonus"],
+        "warning_boundary": "Overkill lowers when the card has a documented overkill behavior block.",
+    },
     "deathrattle": {
         "support_level": "partial",
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
@@ -73,6 +97,11 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "support_level": "partial",
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:board_pressure"],
         "warning_boundary": "HSConfig can time the recruiter, not choose the pulled card beyond deck construction.",
+    },
+    "summon": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
+        "warning_boundary": "Generic summon value can be represented only through deploy or board posture.",
     },
     "freeze": {
         "support_level": "partial",
@@ -127,6 +156,11 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["CARDID.json:OnBoardBonus", "CARDID.json:BeforePlayCardBonus"],
         "warning_boundary": "Continuous aura math and stacked board effects are not dedicated normal-path surfaces.",
     },
+    "divine_shield": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:OnBoardBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Divine Shield is represented as board/deploy value, not a dedicated planner.",
+    },
     "destroy": {
         "support_level": "partial",
         "normal_path_surfaces": [
@@ -160,6 +194,7 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
 
 ROLE_ALIASES = {
     "shadow_hero_power": "hero_power_transform",
+    "hero_power_pressure": "hero_power",
     "hero_attack": "weapon",
     "weapon_pressure": "weapon",
     "spell_generation": "generated_entity",
@@ -173,16 +208,46 @@ ROLE_ALIASES = {
     "treant": "aura",
 }
 
+NON_MECHANIC_ROLES = {
+    "burn_payoff",
+    "combo_piece",
+    "deck_card",
+    "early_pressure",
+    "minion",
+    "mulligan_anchor",
+    "one_drop",
+    "prefer_enemy_hero",
+    "pressure",
+    "spell",
+}
+
 
 def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for role in roles:
-        mechanic = ROLE_ALIASES.get(str(role).lower(), str(role).lower())
+        raw_role = str(role).lower()
+        if raw_role in NON_MECHANIC_ROLES:
+            continue
+        mechanic = ROLE_ALIASES.get(raw_role, raw_role)
         spec = MECHANIC_SUPPORT.get(mechanic)
-        if spec is None or mechanic in seen:
+        if mechanic in seen:
             continue
         seen.add(mechanic)
+        if spec is None:
+            rows.append(
+                {
+                    "mechanic": mechanic,
+                    "support_level": "warning_only",
+                    "normal_path_surfaces": ["report-only"],
+                    "warning_boundary": (
+                        "No registered VisionAI normal-path surface exists for role "
+                        f"'{mechanic}'; keep it visible as warning-only until mapped."
+                    ),
+                    "registered": False,
+                }
+            )
+            continue
         rows.append({"mechanic": mechanic, **spec})
     return sorted(rows, key=lambda row: row["mechanic"])
 
