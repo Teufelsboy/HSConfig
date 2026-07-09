@@ -1,0 +1,53 @@
+{
+  "scope": "Audit whether the current HSConfig normal no-block runtime surface should stay limited to GlobalValues.json, Mulligan.json, per-card CardID runtime files, and exact Combo.json, and whether unsupported or unknown semantic detail should remain visible without blocking runtime package generation.",
+  "source_backed_facts": [
+    "The official HearthRanger VisionAI help set still exposes separate documentation for general JSON config structure, Mulligan.json, Combo.json, GlobalValues.json, Concede.json, and Presume.json. HTTP HEAD checks against those pages returned 200 on 2026-07-09, so the broader documented VisionAI surface still exists outside HSConfig's local policy boundary.",
+    "HSConfig's current surface router requires GlobalValues.json and Mulligan.json, adds one per-card <CardID>.json file for every card in the contract, adds Combo.json only when combo rows exist, and only routes Presume.json or Concede.json when legacy_policy_surfaces_enabled is explicitly set.",
+    "The current package builder always writes GlobalValues.json and Mulligan.json, writes concrete per-card CardID files, and writes Combo.json only when compile_combo() returns a non-empty exact sequence payload.",
+    "The current validator only accepts supported runtime filenames, requires GameCardId and ConfigComment, rejects unsupported card-behavior blocks, rejects malformed Mulligan rows, rejects malformed ComboList rows, and rejects GlobalValues baseline or profile drift. When complete-package validation is requested, it also requires GlobalValues.json, Mulligan.json, and at least one per-card CardID runtime file.",
+    "The current apply gate treats Presume.json and Concede.json as legacy gated surfaces. It allows load_safe_apply when the package is technically valid, but still blocks missing input_manifest evidence, nested or undeclared runtime files, missing required runtime files, and any normal-path package that contains Presume.json or Concede.json.",
+    "The universal wild no-block operator contract says config_usefulness and mechanic_visibility_summary are descriptive only. Partial support, warning-only mechanics, unsupported semantic claims, and thin source depth must remain visible as warnings or reports rather than becoming apply blockers when technical_status stays VALID_PACKAGE.",
+    "The universal no-block matrix test currently proves a twelve-deck set produces VALID_PACKAGE, runtime_load_safe=true, runtime_apply_mode=load_safe_apply, exact per-card file coverage equal to the deck CardID set, and no emitted Presume.json or Concede.json files.",
+    "The mechanic support registry keeps generated_entity in partial coverage and keeps Dredge and Tradeable in warning_only coverage. That means unsupported option-choice semantics stay visible but are not promoted into invented runtime rows."
+  ],
+  "no_block_implications": [
+    "Any valid deck can stay on the normal path as long as HSConfig always emits a structurally valid GlobalValues.json, a structurally valid Mulligan.json, and concrete per-card CardID runtime files. Combo.json should remain optional rather than required.",
+    "Unknown or unsupported semantic detail should be suppressed from runtime JSON and preserved in reports, suppression summaries, or operator guidance. That keeps the package load-safe without pretending unsupported semantics are solved.",
+    "config_usefulness, source depth, and mechanic visibility should continue to describe package richness rather than redefine technical validity. A thin but valid package must still be usable under the no-block promise.",
+    "The no-block promise is not permission to relax load-safety checks. Invalid JSON, unsupported runtime filenames or blocks, missing required files, GameCardId mismatches, malformed Mulligan rows, malformed Combo rows, and GlobalValues profile or baseline drift must continue to hard-block.",
+    "Presume.json and Concede.json should stay outside the normal no-block lane. Their official documentation does not override the current HSConfig policy that they are non-normal surfaces and apply-unsafe in the default package."
+  ],
+  "mechanic_or_surface_gaps": [
+    "The official VisionAI documentation covers more surfaces than HSConfig's normal path, so operators or future contributors can still confuse documented surface existence with approved normal-path emission.",
+    "Dredge and Tradeable remain warning-only because the current normal-path runtime surface has no documented safe choice block for those actions.",
+    "generated_entity remains partial because unresolved generated or transformed identity should not be lowered unless exact identity is available.",
+    "The validator only requires at least one per-card CardID file in complete-package mode, while the stronger every-card guarantee is enforced by the builder and matrix tests. That split is intentional but worth keeping explicit.",
+    "GlobalValues remains the widest-impact surface. Any future widening of posture overlays or key generation needs careful test coverage because syntactic validity alone would not prove safe behavioral intent.",
+    "Unsupported semantic claims and unsupported mulligan selectors are already surfaced, but the operator experience still depends on reading the reports rather than on additional runtime files."
+  ],
+  "implementation_pressure": "No core runtime-surface expansion is justified by the current evidence. The current compact surface contract should stay unchanged. The only near-term pressure is light polish: keep the non-normal Presume and Concede boundary explicit in docs and tests, preserve every-card coverage checks in matrix-style tests, and continue tightening warning/report visibility without widening the runtime package.",
+  "confidence": "high: the current HSConfig code, validator, apply gate, operator contract, matrix tests, and live 2026-07-09 HTTP checks for the official HearthRanger VisionAI help pages all support the same no-block normal-path boundary.",
+  "sources": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_optional_surfaces.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_globalvalues.py"
+  ],
+  "uncertain": []
+}

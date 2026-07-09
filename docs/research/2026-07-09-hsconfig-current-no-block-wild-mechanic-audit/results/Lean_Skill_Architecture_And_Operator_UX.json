@@ -1,0 +1,54 @@
+{
+  "scope": "Audit whether the live HSConfig implementation still remains narrow, efficient, pre-run only, and understandable for operators, or whether research artifacts, reports, gates, and CLI surfaces have become broader than that goal.",
+  "source_backed_facts": [
+    "The normal operator path is still explicitly documented as `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.",
+    "The root README and operator guide still define HSConfig as pre-run only and explicitly exclude replay parsing, HDT parsing, runtime-log analysis, winrate analysis, candidate promotion, and post-run tuning.",
+    "Research artifacts are explicitly labeled as evidence rather than operator instructions, and the repo tells operators to return to `docs/operator/README.md` for the normal path.",
+    "Runtime write permission is still centralized in `reports/operator_summary.json`, then re-checked by `evaluate_apply_gate()` and `runtime_apply.apply_package()` before any runtime mutation happens.",
+    "A technically valid package still remains applyable in the normal warning lane: `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` can coexist with `READY_TO_APPLY_WITH_WARNINGS` and `ALLOWED_WITH_WARNINGS`.",
+    "The public CLI is still relatively small for normal use, but it exposes both the normal workflow and expert or legacy surfaces through the same parser.",
+    "The internal audit and support layer is broad even though the operator path is slim: the live repo currently has 62 top-level `src/hsconfig` modules, 82 top-level tests, and 24 research folders containing 113 research JSON files."
+  ],
+  "no_block_implications": [
+    "The current architecture still satisfies the no-block goal for valid decks because technical validity, not research completeness, remains the runtime-write gate.",
+    "Warning layers such as `config_usefulness` and `mechanic_visibility_summary` remain descriptive. They help operators inspect thin, partial, or warning-only packages without automatically blocking a load-safe apply.",
+    "The representative and universal Wild deck matrices should stay proof devices for coverage and warning visibility, not excuses to widen the normal operator workflow or add new runtime mutation lanes."
+  ],
+  "mechanic_or_surface_gaps": [
+    "Research and audit package naming is starting to drift. Multiple nearby no-block and skill-audit folders make current-truth discovery harder than it should be.",
+    "The operator summary now carries several secondary surfaces such as `config_usefulness`, `mechanic_visibility_summary`, and `source_informed_apply_readiness`. They are still understandable, but contributors need discipline to keep them descriptive rather than gate-forming.",
+    "Expert or legacy CLI surfaces remain exposed next to the normal path. That is the clearest place where future scope creep could show up.",
+    "[uncertain] This repo audit did not run a human usability study, so real operator onboarding friction is inferred from docs, tests, and surface count rather than directly measured."
+  ],
+  "implementation_pressure": "Documentation polish, not a new implementation wave. The core operator path and guarded apply behavior should stay frozen. The highest-value change is to declare one canonical active no-block audit family in `docs/research/README.md` and reduce near-duplicate audit naming so archive breadth does not leak into day-to-day operator or contributor UX.",
+  "confidence": "high - the live repo still documents, enforces, and tests the lean pre-run boundary and the single guarded apply gate; the only weaker part is direct human-UX measurement.",
+  "sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md:3-12",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:7-8",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:20-31",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:35-61",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:81-85",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md:9-24",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:8-20",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:23-55",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/README.md:3-7",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py:13-24",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py:28-153",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py:13-83",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py:50-68",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py:78-166",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py:228-250",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py:14-55",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py:6-44",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py:18-69",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_full_chain_cli_integration.py:24-166",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py:123-176",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py:6-15",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py:87-118",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_docs_active_path.py:4-32",
+    "C:/Users/darbo/Documents/HSConfig/docs/research"
+  ],
+  "uncertain": [
+    "mechanic_or_surface_gaps"
+  ]
+}

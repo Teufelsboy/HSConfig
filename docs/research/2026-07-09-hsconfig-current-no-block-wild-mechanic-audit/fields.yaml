@@ -1,0 +1,27 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: scope
+        required: true
+        description: What exact HSConfig audit question this item answers.
+      - name: source_backed_facts
+        required: true
+        description: Concise facts grounded in public documentation or local repo evidence.
+      - name: no_block_implications
+        required: true
+        description: How the facts affect the requirement that any valid deck should produce a usable load-safe config without hard blocking.
+      - name: mechanic_or_surface_gaps
+        required: true
+        description: Mechanic, card-surface, VisionAI, or workflow gaps that remain relevant.
+      - name: implementation_pressure
+        required: true
+        description: Whether the finding suggests no change, documentation polish, targeted tests, or a future implementation wave.
+      - name: confidence
+        required: true
+        description: high, medium, or low, with a short reason.
+      - name: sources
+        required: true
+        description: URLs, repo files, or local docs used as evidence.
+      - name: uncertain
+        required: true
+        description: Field names whose values remain uncertain.

@@ -1,0 +1,109 @@
+{
+  "item_name": "Mechanic Visibility Next Slice",
+  "primary_question": "Should the next HSConfig improvement explicitly model Choose One, board-position effects, generic spell targets, location activation, secret timing, and generated-entity random pools inside mechanic visibility while still refusing to emit unsupported runtime rows?",
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-09-hsconfig-no-block-polish-mechanic-visibility.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_prepare_cli.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/results/Wild_Mechanic_Stress_Matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-08-hsconfig-next-recommendation/results/Runtime_Surface_Expansion_Boundary_Recommendation.json",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.json",
+    "https://hearthstone.wiki.gg/wiki/Choose_One",
+    "https://hearthstone.wiki.gg/wiki/Discover",
+    "https://hearthstone.wiki.gg/wiki/Location",
+    "https://hearthstone.wiki.gg/wiki/Secret",
+    "https://hearthstone.wiki.gg/wiki/Positional_effect",
+    "https://hearthstone.wiki.gg/wiki/Random_effect"
+  ],
+  "current_strengths": [
+    "HSConfig already treats mechanic visibility as descriptive and non-blocking, which is the correct contract for the normal pre-run path. Valid packages can stay load-safe even when some mechanics remain partial or warning-only.",
+    "The documented VisionAI runtime surface is narrow but real. Local verification on 2026-07-09 confirmed that the official help page still documents OnDiscoverCardBonus, OnChooseOneCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, my_target(...), and my_discover(...).",
+    "Choose One already exists as an exact runtime lane at the router and policy level. The local router maps choose_one_choice to OnChooseOneCardBonus, the guide research policy allows choose_one_choice claims with exact option identity, and prepare tests already prove emitted OnChooseOneCardBonus rows when identity is resolved.",
+    "The current registry already captures several of the relevant parent families conservatively: location is partial, secret is partial, and generated_entity is partial with an explicit warning that random generation pools must stay warning-only unless exact identity is source-backed.",
+    "The current registry also already encodes the generic truth behind the target gap. Freeze, silence, destroy, and transform all carry warning text that generic spell targeting is not a documented first-class normal-path surface.",
+    "HearthstoneJSON remains useful for deterministic identity joins and broad static semantics, but a live 2026-07-09 probe still showed heroPowerDbfId on 2,988 rows, questReward on 9 rows, and entourage and playRequirements on 0 rows, which reinforces that random generated pools and some targeting details are not safely derivable from HearthstoneJSON alone."
+  ],
+  "current_gaps": [
+    "Choose One is supported in runtime lowering but not yet explicit in the mechanic visibility registry. Discover is represented as identity-gated direct, but Choose One currently depends on claim-kind and router knowledge rather than having its own first-class visibility label.",
+    "Board-position effects are not explicitly modeled in the local registry. They are acknowledged in research text, but there is no stable board_position visibility key that operator reports can count and expose.",
+    "Generic spell target selection is still only implied through warning text attached to other parent mechanics such as freeze, silence, destroy, and transform. That makes the gap real but not easily countable as one named unsupported decision surface.",
+    "Location activation, secret timing, and generated-entity random pools are each currently buried inside broader parent entries. The registry tells the truth in prose, but the operator summary cannot currently count these specific gaps as distinct visibility items.",
+    "Because these gaps are not explicit submechanics today, partial parent support can be misread as broader support than HSConfig actually has. A partial location row does not mean repeated activation is supported; a partial secret row does not mean trap timing is supported; a partial generated_entity row does not mean random pools are supported."
+  ],
+  "recommended_next_focus": "Yes. The next HSConfig improvement should explicitly model these mechanics in mechanic visibility, but only as a visibility-layer refinement, not as a runtime-surface expansion. The highest-value shape is: add choose_one as identity-gated direct, and add board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool as explicit warning-only submechanics. Keep the existing broader parent entries such as location, secret, and generated_entity unchanged where they already describe partial support. This gives operator reports a precise explanation of what is and is not covered, closes the current visibility blind spots, and avoids inventing unsupported runtime rows.",
+  "not_recommended_now": [
+    "Do not add new normal-path VisionAI blocks for generic spell targeting, slot-sensitive board placement, location re-activation, secret trigger ordering, or random generated pools unless official runtime syntax is documented and locally validated.",
+    "Do not overload existing documented blocks such as OnDiscoverCardBonus, BeforePlayCardBonus, or BeforeBattlecryTargetBonus to pretend they cover unsupported signature actions such as board placement or random pool selection.",
+    "Do not treat partial parent mechanics as proof that the more specific submechanic is supported. A playable secret is not the same as supported secret timing, and a playable location is not the same as supported repeated activation.",
+    "Do not broaden HSConfig into simulation, replay parsing, runtime state inference, or post-run tuning just to make these visibility labels look stronger.",
+    "Do not hide these gaps behind generic_low_confidence alone. They should be visible as named mechanic-visibility truth, not only as diffuse warnings."
+  ],
+  "acceptance_metrics": {
+    "registry_expectations": [
+      "support_for_roles(...) or the equivalent visibility registry explicitly recognizes choose_one, board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool.",
+      "choose_one resolves to identity_gated_direct because OnChooseOneCardBonus is documented and only exact option identity may lower.",
+      "board_position resolves to warning_only because there is no documented left-right placement or adjacency-preservation runtime block.",
+      "generic_spell_target resolves to warning_only because the target-choice surface itself is not documented as a first-class normal-path VisionAI block.",
+      "location_activation resolves to warning_only because repeated activation is more specific than the current partial location play-timing support.",
+      "secret_timing resolves to warning_only because hidden trigger timing and secret ordering are more specific than the current partial secret play support.",
+      "generated_entity_random_pool resolves to warning_only because random pools remain unsafe without exact deterministic identity."
+    ],
+    "report_expectations": [
+      "operator_summary.json exposes the new labels through mechanic_visibility_summary without changing runtime_apply_allowed, runtime_apply_mode, or technical_status.",
+      "mechanic_visibility_summary.mechanics_by_bucket.identity_gated_direct includes both discover and choose_one when present in the deck evidence.",
+      "mechanic_visibility_summary.mechanics_by_bucket.warning_only can include board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool as separate visible reasons instead of collapsing them into generic prose.",
+      "first_warning_boundary or equivalent warning fields can point to one of the new explicit submechanics rather than only to older generic warning-only families such as dredge or tradeable."
+    ],
+    "test_expectations": [
+      "Unit tests prove that choose_one is surfaced separately from discover and inherits identity-gated direct behavior.",
+      "Unit tests prove that the five unsupported signature actions above stay warning_only and do not accidentally promote apply-gate blocking or runtime row emission.",
+      "Prepare or operator-summary tests prove that packages remain load-safe and apply-eligible when these warning-only visibility labels are present."
+    ],
+    "non_regression_expectations": [
+      "No new runtime files are emitted.",
+      "No new documented block names are required beyond the existing supported set.",
+      "Per-row provenance, strict JSON validation, and fail-closed suppression behavior stay unchanged."
+    ]
+  },
+  "no_block_policy_interaction": [
+    "This recommendation strengthens the no-block contract rather than weakening it. It adds explanation, not permission.",
+    "The new labels should remain descriptive. They must not become new technical blockers, new apply-gate conditions, or reasons to refuse a structurally valid package.",
+    "Unsupported mechanics should stay visible in reports as named warning-only truth. That is better than either hiding them or fabricating runtime JSON to appear more complete.",
+    "Choose One is the only item in this slice that should become a stronger positive visibility label, because the runtime lane already exists and is identity-gated. The other five items are valuable mainly because they make unsupported signature actions explicitly visible while preserving load-safe apply.",
+    "This keeps HSConfig honest: the operator sees that some parent mechanics are partially represented while the exact unsupported subdecision remains warning-only."
+  ],
+  "lean_architecture_boundary": [
+    "Keep HSConfig pre-run only. This slice should touch the visibility registry, readiness summaries, operator summaries, docs, and tests, but not runtime state collectors or post-run analyzers.",
+    "Do not add new claim kinds unless a clear operator-facing label truly needs one. In many cases, the better shape is a visibility alias or submechanic label rather than a broader lowering path.",
+    "Do not add new runtime families beyond GlobalValues.json, Mulligan.json, per-card CARDID.json, and exact Combo.json.",
+    "Do not infer random generated pools, secret trigger order, or board slots from plain text alone. Keep exact identity requirements and fail-closed suppression intact.",
+    "Preserve the distinction between parent mechanic support and submechanic warning truth. That is the smallest robust way to improve clarity without repo bloat."
+  ],
+  "recommended_design_shape": {
+    "phase_1_registry": [
+      "Extend the mechanic visibility registry with explicit entries or aliases for choose_one, board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool.",
+      "Bucket choose_one as identity_gated_direct and the other five as warning_only.",
+      "Keep existing parent entries such as location, secret, generated_entity, freeze, silence, destroy, and transform so the current broader partial-support truth remains intact."
+    ],
+    "phase_2_reporting": [
+      "Thread the new labels into per-card config readiness and operator_summary.json so the operator can see both parent support and submechanic warning truth.",
+      "Prefer one compact visibility summary over scattered prose. The goal is countable and readable truth, not more report sprawl."
+    ],
+    "phase_3_tests_and_docs": [
+      "Add or update unit tests for support_for_roles, operator_visibility_bucket, summarize_mechanic_visibility, and operator summary threading.",
+      "Update operator docs to explain that these labels are visibility only, especially that warning-only mechanics do not block load-safe apply and do not imply missing required files.",
+      "Include one concise doc note that partial parent support and warning-only submechanic truth can coexist without contradiction."
+    ],
+    "decision_rule": "If a mechanic's signature action lacks a documented normal-path VisionAI surface, model it explicitly as warning_only visibility instead of stretching an adjacent runtime block to cover it."
+  },
+  "confidence": "high",
+  "uncertain": []
+}

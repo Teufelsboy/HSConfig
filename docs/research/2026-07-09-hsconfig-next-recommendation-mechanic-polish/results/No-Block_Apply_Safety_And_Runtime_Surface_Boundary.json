@@ -1,0 +1,60 @@
+{
+  "recommendation_question": "Should the next HSConfig recommendation change runtime apply gates, or keep all changes descriptive while preserving hard blocks only for invalid or load-unsafe packages?",
+  "evidence_sources": [
+    "C:/Users/darbo/Documents/HS/docs/research/2026-07-09-hsconfig-next-recommendation-mechanic-polish/outline.yaml",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-09-hsconfig-next-recommendation-audit/fields.yaml",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/results/VisionAI_Runtime_Surfaces_And_No-Block_Apply_Contract.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-09-hsconfig-next-recommendation-audit/results/Lean_Operator_Recommendation_Surface.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_guidance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_docs_active_path.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py",
+    "Local command on 2026-07-09: Get-Date -Format yyyy-MM-dd -> 2026-07-09",
+    "Local command on 2026-07-09: python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py C:/Users/darbo/Documents/HSConfig/tests/test_docs_active_path.py C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py -q -> 145 passed in 20.28s"
+  ],
+  "current_state": "HSConfig already implements the intended no-block boundary. operator_summary sets runtime_apply_mode=load_safe_apply whenever technical_status=VALID_PACKAGE and apply_policy is not BLOCKED, including valid packages that still have semantic warnings or mechanic gaps. apply_gate and runtime_apply then enforce runtime mutation only for structurally valid normal-path packages and still hard-block invalid JSON, missing required runtime files, undeclared or nested runtime files, forged or mismatched apply evidence, and normal-path optional surfaces such as Presume.json or Concede.json. Mechanic visibility, warning-only mechanics, config usefulness, unsupported conditions, low-confidence claims, and other semantic gaps remain descriptive operator surfaces rather than runtime apply blockers. This matches the current universal no-block contract and the focused test suite. For the eleven representative decks, the practical implication is to preserve the same rule: technically valid packages should remain load-safe and applicable even when source strength differs, while any truly load-unsafe package must still block.",
+  "highest_value_next_action": "Keep runtime apply gates unchanged and keep the next recommendation descriptive. If the next polish step touches this area, it should improve operator-facing explanation in reports or docs while preserving the current rule that only invalid or load-unsafe packages hard-block runtime apply.",
+  "why_not_alternatives": [
+    "Changing runtime apply gates to block more semantic or mechanic warning states would directly contradict the current operator_summary, apply_gate, runtime_apply, and universal no-block contract.",
+    "Moving warning-only mechanics, partial mechanic support, or config richness into the runtime-write gate would collapse the deliberate separation between technical load safety and semantic completeness.",
+    "Relaxing hard blocks on undeclared files, nested files, optional non-normal surfaces, or forged apply evidence would weaken runtime safety rather than improve recommendation quality.",
+    "Adding a new expert gate or widening the normal runtime surface would increase workflow complexity and blur the pre-run HSConfig boundary without solving a current safety gap.",
+    "The highest-value open work is explanation and recommendation clarity, not gate mechanics, because the focused proof slice already passes and the existing boundary is coherent."
+  ],
+  "implementation_shape": [
+    "Do not modify apply_gate.py or runtime_apply.py gate semantics for the normal path.",
+    "If a follow-up change is requested, keep it inside descriptive surfaces such as operator_summary, operator_guidance, operator docs, or research/docs wording.",
+    "Preserve runtime_apply_mode=load_safe_apply for VALID_PACKAGE normal-path outputs, even when semantic_status is VALID_BUT_NOT_GUIDE_STRONG.",
+    "Preserve hard blocks for invalid JSON, missing GlobalValues.json or Mulligan.json, missing required CardID files, undeclared or nested runtime files, optional non-normal surfaces, and forged or mismatched apply evidence.",
+    "Keep mechanic_visibility_summary, warning-only mechanics, config_usefulness, and similar signals operator-visible but non-blocking.",
+    "Retain proof with focused tests that cover invalid-package blocking, warning-package allow, runtime-apply safety, docs wording, and the representative no-block deck matrix."
+  ],
+  "risks_and_guards": [
+    "Do not let semantic warnings silently become runtime blockers unless the package is actually invalid or load-unsafe.",
+    "Do not widen the normal path to include Presume.json, Concede.json, aggregate CardBehavior.json, or other non-normal runtime files.",
+    "Do not weaken apply evidence binding; apply must continue to re-evaluate operator_summary-derived gates and reject forged or stale receipts.",
+    "Do not invent runtime rows for warning-only mechanics just to make the recommendation look richer.",
+    "Keep HSConfig within the pre-run package boundary and avoid drifting into post-run tuning or HSTuner responsibilities.",
+    "Keep representative-deck proof stable: the same technically valid deck set should still prepare to load-safe packages after any descriptive polish."
+  ],
+  "success_criteria": [
+    "The next recommendation explicitly says runtime apply gates should stay unchanged for the normal path.",
+    "The recommendation makes clear that hard blocks are reserved for invalid or load-unsafe packages, not for descriptive semantic debt.",
+    "VALID_PACKAGE normal-path outputs still produce runtime_apply_mode=load_safe_apply and runtime_apply_allowed=true in operator_summary.",
+    "Invalid or load-unsafe packages still fail apply through the same hard-block reasons already covered in apply_gate.py and runtime_apply.py.",
+    "Warning-only mechanics, partial mechanic support, config_usefulness, and semantic blockers remain report-visible and non-blocking.",
+    "The eleven representative decks continue to fit the same no-block rule, with technically valid outputs remaining load-safe even when source strength varies.",
+    "Focused proof remains green for the current contract, including operator summary, apply gate, runtime apply, docs wording, skill wording, and the universal no-block deck matrix."
+  ],
+  "confidence": "high",
+  "uncertain": []
+}

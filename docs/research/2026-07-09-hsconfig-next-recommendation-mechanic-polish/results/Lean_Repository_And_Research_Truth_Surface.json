@@ -1,0 +1,25 @@
+{
+  "scope": "Decide whether the next HSConfig recommendation should add research/docs indexing or more archiving to reduce current-truth discovery drag without changing the normal operator path.",
+  "current_state": "The repository already defines a stable operator truth surface: README.md points to docs/operator/README.md, which points onward to artifact ownership and the deck checklist. Multiple docs and tests explicitly mark docs/superpowers as provenance rather than operator guidance, and docs/superpowers/archive already exists as the superseded-history boundary. Discovery drag still exists inside provenance surfaces: docs/superpowers/plans currently contains 43 markdown plan files, docs/superpowers/research currently contains 26 research-package directories, and docs/superpowers/archive/research currently contains 14 archived research directories. The lifecycle manifest and plan index help, but a user still has to hop across README.md, docs/superpowers/README.md, docs/superpowers/plans/README.md, and docs/superpowers/lifecycle_manifest.json to identify the current research truth quickly. At task start, the requested HSConfig research package also lacked its local fields.yaml while the matching schema existed under the HS repo, which is a concrete cross-repo truth-discovery friction point.",
+  "recommendation": "Include research/docs indexing, not another archival pass. Add one thin current-truth index for recommendation work that names the normal operator path, the active implementation plan, the active research packages, the archive/provenance boundary, and the few highest-value provenance references for repo-polish decisions.",
+  "why_this_not_alternatives": "Broader archiving is lower leverage because the repo already separates active operator docs from provenance and already has an archive subtree plus lifecycle labeling. More archiving would create move churn, risk stale links from plans, specs, and tests, and still leave active-package discovery spread across several indexes. A narrower no-op leaves the current lookup hops in place. A thin index reduces discovery cost without changing authority boundaries or rewriting history.",
+  "no_block_impact": "This is discovery-surface documentation only. It does not change Step 1 or Step 2 gates, does not expand runtime write authority, and does not weaken the rule that only invalid or load-unsafe packages should hard-block any-valid-deck behavior.",
+  "implementation_shape": "Create a small index artifact, likely one markdown page and optionally one generated summary table, derived from docs/superpowers/lifecycle_manifest.json. It should map: operator entrypoint; active plan; active research packages; archive location; and 'read this, not that' links for recommendation and repo-polish work. Keep the existing README.md -> docs/operator/README.md path unchanged and keep the index explicitly outside operator authority.",
+  "risks": "If the index is hand-maintained, it can drift from lifecycle_manifest.json and the plans README. If it grows too large, it recreates the same discovery problem it is meant to solve. If it starts restating operator commands instead of linking to the operator docs, it could blur the operator-versus-provenance boundary. If the HS repo and HSConfig repo keep mirrored research packages without a clear synchronization rule, cross-repo truth drift can persist.",
+  "sources": [
+    "README.md",
+    "docs/operator/README.md",
+    "docs/operator/artifact-ownership.md",
+    "docs/AI_HANDOFF.md",
+    "docs/superpowers/README.md",
+    "docs/superpowers/plans/README.md",
+    "docs/superpowers/research/README.md",
+    "docs/superpowers/archive/README.md",
+    "docs/superpowers/lifecycle_manifest.json",
+    "tests/test_superpowers_docs_hygiene.py",
+    "Live repo scan: docs/superpowers/plans = 43 markdown files",
+    "Live repo scan: docs/superpowers/research = 26 directories",
+    "Live repo scan: docs/superpowers/archive/research = 14 directories"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,61 @@
+field_categories:
+  - category: audit_identity
+    fields:
+      - name: item_name
+        description: Research item name.
+        detail_level: brief
+        required: true
+      - name: primary_question
+        description: The concrete recommendation question answered by this item.
+        detail_level: moderate
+        required: true
+      - name: source_urls
+        description: Local files, tests, docs, or external sources used as evidence.
+        detail_level: moderate
+        required: true
+  - category: recommendation
+    fields:
+      - name: current_strengths
+        description: What already works and should be preserved.
+        detail_level: detailed
+        required: true
+      - name: current_gaps
+        description: Gaps that remain after the no-block audit.
+        detail_level: detailed
+        required: true
+      - name: recommended_next_focus
+        description: The recommended next focus and why it has the best return.
+        detail_level: detailed
+        required: true
+      - name: not_recommended_now
+        description: Attractive but lower-value or bloating actions to avoid now.
+        detail_level: moderate
+        required: true
+  - category: implementation_implications
+    fields:
+      - name: acceptance_metrics
+        description: Concrete metrics or report fields that would prove the recommendation.
+        detail_level: detailed
+        required: true
+      - name: no_block_policy_interaction
+        description: How the recommendation keeps warning/quality debt visible without blocking load-safe packages.
+        detail_level: detailed
+        required: true
+      - name: lean_architecture_boundary
+        description: Boundaries that prevent repo bloat or HSTuner scope creep.
+        detail_level: moderate
+        required: true
+      - name: recommended_design_shape
+        description: Recommended shape of a future design/plan if the user approves.
+        detail_level: detailed
+        required: true
+  - category: uncertainty
+    fields:
+      - name: confidence
+        description: High, medium, or low confidence in the recommendation.
+        detail_level: brief
+        required: true
+      - name: uncertain
+        description: Fields with uncertain values, as required by research-deep.
+        detail_level: brief
+        required: true
