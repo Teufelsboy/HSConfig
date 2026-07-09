@@ -27,10 +27,9 @@ Minimal load-safe runtime apply is deliberately narrower than normal prepare ric
 HSConfig still blocks when it cannot produce a correct runtime package:
 
 - malformed or unsupported deckcode
-- unresolved exact deck-card identity needed for `<CARDID>.json`
 - invalid JSON
 - unsupported VisionAI filename or block
-- missing `GlobalValues.json`, `Mulligan.json`, or required per-card CardID files
+- missing required minimal runtime files: `GlobalValues.json` or `Mulligan.json`
 - undeclared runtime files
 - nested runtime files
 - normal-path `Presume.json` or `Concede.json`
