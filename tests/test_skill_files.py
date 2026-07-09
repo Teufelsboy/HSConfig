@@ -598,3 +598,4 @@ def test_docs_and_skill_explain_visibility_only_mechanic_polish():
     assert "complete alphabetical list" in combined
     assert "must not block load-safe apply" in combined
     assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in combined
+    assert "Current warning-only mechanics" not in combined

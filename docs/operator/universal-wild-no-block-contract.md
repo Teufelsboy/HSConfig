@@ -58,10 +58,8 @@ These stay visible, but they do not block a valid package:
 
 `generated_entity` and its `spell_generation` alias stay in `partial`; they are not identity-gated direct coverage.
 
-Current warning-only mechanics:
-
-- Dredge
-- Tradeable
+Use `first_warning_boundary` for the first next-inspection item and
+`warning_boundaries` for the complete alphabetical list of report-only mechanics.
 
 ## Proof Matrix
 
