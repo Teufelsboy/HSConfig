@@ -549,3 +549,18 @@ def test_docs_explain_config_usefulness_without_making_it_a_blocker():
     assert "HSTuner" in combined
     assert "does not parse replays" in operator_readme
     assert operator_readme.lower().count("replay") == 1
+
+
+def test_docs_and_skill_explain_mechanic_visibility_without_blocking_apply():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "mechanic_visibility_summary" in combined
+    assert "identity_gated_direct" in combined
+    assert "warning-only mechanics are descriptive" in combined
+    assert "must not block load-safe apply" in combined

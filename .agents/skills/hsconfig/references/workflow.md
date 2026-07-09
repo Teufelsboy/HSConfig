@@ -30,6 +30,7 @@ For source-informed packages, open `source_claim_gap_report.json` first to see t
 
 Read `reports/operator_summary.json` before handoff or runtime apply.
 `reports/operator_summary.json` is the single operator gate for normal handoff or apply decisions. Lower-level reports explain why the package is strong, warning-only, or still needs source work.
+`mechanic_visibility_summary` explains mechanic coverage buckets: `direct`, `identity_gated_direct`, `partial`, and `warning_only`. Warning-only mechanics are descriptive and must not block load-safe apply when the package is technically valid.
 
 1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.
