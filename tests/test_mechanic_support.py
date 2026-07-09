@@ -8,7 +8,16 @@ from hsconfig.mechanic_support import (
 
 def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
     rows = support_for_roles(
-        ["battlecry", "location", "dredge", "tradeable", "future_keyword", "pressure"]
+        [
+            "battlecry",
+            "location",
+            "dredge",
+            "tradeable",
+            "future_keyword",
+            "pressure",
+            "spell_generation",
+            "payoff_summon",
+        ]
     )
 
     by_mechanic = {row["mechanic"]: row for row in rows}
@@ -21,6 +30,11 @@ def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
     assert by_mechanic["future_keyword"]["registered"] is False
     assert "pressure" not in by_mechanic
     assert by_mechanic["dredge"]["normal_path_surfaces"] == ["report-only"]
+    assert by_mechanic["generated_entity"]["support_level"] == "partial"
+    assert by_mechanic["generated_entity"]["normal_path_surfaces"] == [
+        "CARDID.json:resolved_identity",
+        "CARDID.json:OnDiscoverCardBonus",
+    ]
 
 
 def test_summarize_mechanic_support_counts_warning_only_cards():
@@ -52,12 +66,15 @@ def test_summarize_mechanic_support_counts_warning_only_cards():
 
 
 def test_operator_visibility_bucket_marks_identity_gated_direct_mechanics():
-    rows = support_for_roles(["discover", "hero_power_transform", "battlecry"])
+    rows = support_for_roles(
+        ["discover", "hero_power_transform", "battlecry", "spell_generation"]
+    )
     buckets = {row["mechanic"]: operator_visibility_bucket(row) for row in rows}
 
     assert buckets["battlecry"] == "direct"
     assert buckets["discover"] == "identity_gated_direct"
     assert buckets["hero_power_transform"] == "identity_gated_direct"
+    assert buckets["generated_entity"] == "partial"
 
 
 def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():

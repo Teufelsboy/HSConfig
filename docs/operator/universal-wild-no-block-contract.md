@@ -48,11 +48,13 @@ These stay visible, but they do not block a valid package:
 ## Mechanic Support Levels
 
 - `direct`: HSConfig can emit the documented normal-path runtime row.
-- `identity_gated_direct`: HSConfig can emit the documented runtime row only when exact option, generated-card, or transformed-identity resolution is available.
+- `identity_gated_direct`: HSConfig can emit the documented runtime row only when exact option or transformed-identity resolution is available.
 - `partial`: HSConfig can emit only the parts that map to documented VisionAI blocks.
 - `warning_only`: HSConfig must not invent a runtime row for the mechanic's signature action.
 
 `mechanic_visibility_summary` is an operator-facing explanation layer. It is not an apply gate. Partial and warning-only mechanics are descriptive and must not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
+
+`generated_entity` and its `spell_generation` alias stay in `partial`; they are not identity-gated direct coverage.
 
 Current warning-only mechanics:
 

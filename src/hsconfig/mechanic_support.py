@@ -223,7 +223,6 @@ NON_MECHANIC_ROLES = {
 
 IDENTITY_GATED_DIRECT_MECHANICS = {
     "discover",
-    "generated_entity",
     "hero_power_transform",
 }
 VISIBILITY_BUCKETS = ("direct", "identity_gated_direct", "partial", "warning_only")

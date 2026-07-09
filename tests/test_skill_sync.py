@@ -86,9 +86,15 @@ def test_skill_sync_check_explains_newline_only_drift(tmp_path: Path):
         check=True,
     )
     installed_skill = install_root / "hsconfig" / "SKILL.md"
-    installed_skill.write_bytes(
-        installed_skill.read_bytes().replace(b"\r\n", b"\n")
-    )
+    original_bytes = installed_skill.read_bytes()
+    if b"\r\n" in original_bytes:
+        drift_bytes = original_bytes.replace(b"\r\n", b"\n")
+    elif b"\n" in original_bytes:
+        drift_bytes = original_bytes.replace(b"\n", b"\r\n")
+    else:
+        drift_bytes = original_bytes + b"\r\n"
+    assert drift_bytes != original_bytes
+    installed_skill.write_bytes(drift_bytes)
 
     check = subprocess.run(
         [

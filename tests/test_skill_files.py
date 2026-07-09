@@ -564,3 +564,13 @@ def test_docs_and_skill_explain_mechanic_visibility_without_blocking_apply():
     assert "identity_gated_direct" in combined
     assert "warning-only mechanics are descriptive" in combined
     assert "must not block load-safe apply" in combined
+
+
+def test_universal_wild_contract_keeps_generated_entity_partial():
+    text = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "exact option or transformed-identity resolution" in text
+    assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in text
+    assert "generated-card" not in text
