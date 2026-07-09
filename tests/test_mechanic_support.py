@@ -110,7 +110,7 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
     assert summary["mechanics_by_bucket"]["partial"] == ["aura"]
     assert summary["mechanics_by_bucket"]["warning_only"] == ["board_position", "dredge"]
     assert summary["warning_only_card_count"] == 2
-    assert summary["first_warning_boundary"]["mechanic"] == "dredge"
+    assert summary["first_warning_boundary"]["mechanic"] == "board_position"
     assert summary["warning_boundaries"] == [
         {
             "mechanic": "board_position",

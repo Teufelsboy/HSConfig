@@ -342,7 +342,6 @@ def summarize_mechanic_visibility(rows: Iterable[dict[str, Any]]) -> dict[str, A
     mechanics_by_bucket: dict[str, set[str]] = {bucket: set() for bucket in VISIBILITY_BUCKETS}
     warning_cards: set[str] = set()
     first_warning_boundary: dict[str, str] | None = None
-    first_warning_boundary_card_id: str | None = None
     warning_boundaries_by_mechanic: dict[str, str] = {}
 
     for row in rows:
@@ -358,18 +357,11 @@ def summarize_mechanic_visibility(rows: Iterable[dict[str, Any]]) -> dict[str, A
             if bucket == "warning_only":
                 if card_id:
                     warning_cards.add(card_id)
-                if first_warning_boundary is None or (
-                    card_id
-                    and (
-                        first_warning_boundary_card_id is None
-                        or card_id < first_warning_boundary_card_id
-                    )
-                ):
+                if first_warning_boundary is None:
                     first_warning_boundary = {
                         "mechanic": mechanic,
                         "warning_boundary": str(support.get("warning_boundary", "")),
                     }
-                    first_warning_boundary_card_id = card_id or None
                 if mechanic and mechanic not in warning_boundaries_by_mechanic:
                     warning_boundaries_by_mechanic[mechanic] = str(
                         support.get("warning_boundary", "")

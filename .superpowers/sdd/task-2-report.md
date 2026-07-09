@@ -27,3 +27,10 @@ Implemented `warning_boundaries` on mechanic visibility summaries and carried th
 
 ## Concerns
 - None beyond the existing CRLF line-ending warnings reported by Git on modified files. The test suite passed, and no adjacent behavior outside Task 2 surfaces was changed.
+
+## Fix Follow-up
+- Reviewer finding: `first_warning_boundary` in `src/hsconfig/mechanic_support.py` had been changed to prefer the lexicographically smallest `card_id`, which broke the original first-encounter semantics.
+- Exact fix: removed the `card_id` tie-break from `summarize_mechanic_visibility`, so `first_warning_boundary` is now set on the first warning-only row encountered in row/support iteration order. Kept `warning_boundaries` as the sorted unique mechanic list.
+- Test adjustment: `tests/test_mechanic_support.py` now asserts the first warning boundary follows the input row order instead of the `card_id` sort path.
+- Verification command: `$env:PYTHONPATH='src'; python -m pytest tests/test_mechanic_support.py tests/test_config_readiness.py tests/test_operator_summary.py tests/test_operator_guidance.py -q`
+- Result: `73 passed in 0.27s`
