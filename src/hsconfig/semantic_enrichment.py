@@ -84,9 +84,21 @@ def enrich_card_metadata(
         enriched["linked_entities"] = linked_entities
         enriched_cards.append(enriched)
 
+    deckwide_effects = _dedupe_deckwide_effects(deckwide_effects)
+    cards_with_warning_only = sum(
+        1 for card in enriched_cards if card.get("warning_only_mechanics")
+    )
     return {
+        "schema_version": 1,
+        "non_blocking": True,
+        "summary": {
+            "total_cards": len(enriched_cards),
+            "cards_with_warning_only_mechanics": cards_with_warning_only,
+            "deckwide_effect_count": len(deckwide_effects),
+            "warning_count": len(warnings),
+        },
         "cards": enriched_cards,
-        "deckwide_effects": _dedupe_deckwide_effects(deckwide_effects),
+        "deckwide_effects": deckwide_effects,
         "semantic_enrichment_status": "partial" if warnings else "complete",
         "semantic_enrichment_warnings": warnings,
     }

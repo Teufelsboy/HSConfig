@@ -138,6 +138,64 @@ def test_operator_summary_exposes_mechanic_visibility_without_blocking_apply():
     ]
 
 
+def test_operator_summary_exposes_static_semantic_warning_counts():
+    summary = build_operator_summary(
+        deck_name="deck",
+        deck_code="fixture",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        semantic_enrichment_report={
+            "non_blocking": True,
+            "summary": {
+                "total_cards": 3,
+                "cards_with_warning_only_mechanics": 2,
+                "deckwide_effect_count": 1,
+                "warning_count": 0,
+            },
+        },
+        config_readiness_report={
+            "summary": {
+                "mechanic_visibility": {
+                    "non_blocking": True,
+                    "bucket_counts": {
+                        "direct": 2,
+                        "identity_gated_direct": 1,
+                        "partial": 3,
+                        "warning_only": 4,
+                    },
+                    "mechanics_by_bucket": {
+                        "direct": ["battlecry"],
+                        "identity_gated_direct": ["hero_power_transform"],
+                        "partial": ["deathrattle"],
+                        "warning_only": ["dredge", "tradeable"],
+                    },
+                    "warning_only_card_count": 2,
+                    "first_warning_boundary": {
+                        "mechanic": "dredge",
+                        "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+                    },
+                    "warning_boundaries": [],
+                }
+            }
+        },
+    )
+
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_enrichment_summary"] == {
+        "non_blocking": True,
+        "total_cards": 3,
+        "cards_with_warning_only_mechanics": 2,
+        "deckwide_effect_count": 1,
+        "warning_count": 0,
+    }
+    assert summary["mechanic_visibility_summary"]["non_blocking"] is True
+    assert summary["mechanic_visibility_summary"]["bucket_counts"]["warning_only"] == 4
+    assert summary["next_action"] in {
+        "READY_TO_APPLY_WITH_WARNINGS",
+        "READY_TO_APPLY_OR_HANDOFF",
+    }
+
+
 def test_operator_summary_uses_mechanic_warnings_from_summary_only_input():
     summary = build_operator_summary(
         deck_name="Summary Only",

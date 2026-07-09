@@ -52,6 +52,9 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
 
     payload = json.loads(capsys.readouterr().out)
     operator = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
+    semantic_report = json.loads(
+        (out / "reports" / "semantic_enrichment_report.json").read_text(encoding="utf-8")
+    )
     deck_identity = json.loads((out / "reports" / "deck_identity.json").read_text(encoding="utf-8"))
 
     deck_dirs = [path for path in (out / "CustomConfig").iterdir() if path.is_dir()]
@@ -71,7 +74,12 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
+    assert operator["mechanic_visibility_summary"]["non_blocking"] is True
+    assert operator["semantic_enrichment_summary"]["non_blocking"] is True
     assert operator["next_action"] in {"READY_TO_APPLY_OR_HANDOFF", "READY_TO_APPLY_WITH_WARNINGS"}
+    assert semantic_report["non_blocking"] is True
+    assert "summary" in semantic_report
+    assert "cards" in semantic_report
     assert (deck_dir / "GlobalValues.json").is_file()
     assert (deck_dir / "Mulligan.json").is_file()
     assert card_files == deck_card_ids

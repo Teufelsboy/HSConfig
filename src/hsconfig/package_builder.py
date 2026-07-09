@@ -458,6 +458,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "card_behavior_plan_report": card_behavior_plan,
         "combo_plan_report": combo_plan,
         "globalvalues_profile_report": globalvalues["profile"],
+        "semantic_enrichment_report": semantic_report,
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(

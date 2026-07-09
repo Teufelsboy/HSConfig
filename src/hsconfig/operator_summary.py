@@ -72,6 +72,7 @@ def build_operator_summary(
     card_behavior_plan_report: dict[str, Any] | None = None,
     combo_plan_report: dict[str, Any] | None = None,
     globalvalues_profile_report: dict[str, Any] | None = None,
+    semantic_enrichment_report: dict[str, Any] | None = None,
     validation_report: dict[str, Any] | None = None,
     guide_source_depth_report: dict[str, Any] | None = None,
     source_claim_gap_report: dict[str, Any] | None = None,
@@ -185,6 +186,9 @@ def build_operator_summary(
         "warnings": warnings,
         "mechanic_warning_summary": mechanic_warning_summary,
         "mechanic_visibility_summary": mechanic_visibility_summary,
+        "semantic_enrichment_summary": _semantic_enrichment_summary(
+            semantic_enrichment_report
+        ),
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
@@ -452,6 +456,29 @@ def _mechanic_visibility_summary(
             for item in warning_boundaries
             if isinstance(item, dict)
         ],
+    }
+
+
+def _semantic_enrichment_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "non_blocking": True,
+            "total_cards": 0,
+            "cards_with_warning_only_mechanics": 0,
+            "deckwide_effect_count": 0,
+            "warning_count": 0,
+        }
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    return {
+        "non_blocking": bool(report.get("non_blocking", True)),
+        "total_cards": _int_value(summary.get("total_cards", 0)),
+        "cards_with_warning_only_mechanics": _int_value(
+            summary.get("cards_with_warning_only_mechanics", 0)
+        ),
+        "deckwide_effect_count": _int_value(summary.get("deckwide_effect_count", 0)),
+        "warning_count": _int_value(summary.get("warning_count", 0)),
     }
 
 
