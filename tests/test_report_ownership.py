@@ -19,3 +19,11 @@ def test_report_ownership_has_single_open_first_report():
     open_first = [row for row in rows if row["open_order"] == "1"]
 
     assert [row["file"] for row in open_first] == ["reports/operator_summary.json"]
+
+
+def test_operator_summary_owns_config_usefulness_signal():
+    ownership = build_report_ownership()
+    operator = next(row for row in ownership if row["file"] == "reports/operator_summary.json")
+
+    assert "config_usefulness" in operator["contains"]
+    assert operator["authority"] == "normal_operator_gate"

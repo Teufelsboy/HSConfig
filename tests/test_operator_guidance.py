@@ -35,6 +35,8 @@ def test_guidance_for_source_backed_strong_package():
         "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
         "safe_to_apply": True,
         "requires_expert_flag": False,
+        "config_usefulness_status": "unknown",
+        "config_usefulness_next_report": "reports/operator_summary.json",
         "mechanic_warning_summary": {
             "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
             "warning_only_mechanics": [],
@@ -98,6 +100,33 @@ def test_guidance_for_load_safe_warning_package():
     assert guidance["runtime_apply_requires_flag"] is None
 
 
+def test_operator_guidance_mentions_config_usefulness_when_load_safe_but_thin():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "STATIC_SEMANTICS_USABLE",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "primary_blockers": [],
+            "semantic_blockers": [],
+            "config_usefulness": {
+                "status": "load_safe_but_thin",
+                "headline": "Package is load-safe, but config richness is thin; first gap is runtime_surface_gap.",
+                "first_usefulness_gap": "runtime_surface_gap",
+                "next_report_to_open": "reports/per_card_config_readiness_report.json",
+            },
+        }
+    )
+
+    assert guidance["safe_to_apply"] is True
+    assert guidance["config_usefulness_status"] == "load_safe_but_thin"
+    assert (
+        guidance["config_usefulness_next_report"]
+        == "reports/per_card_config_readiness_report.json"
+    )
+
+
 def test_warning_guidance_carries_mechanic_warning_summary():
     guidance = build_operator_guidance(
         {
@@ -152,6 +181,8 @@ def test_guidance_for_source_informed_apply_ready_package():
         ),
         "safe_to_apply": True,
         "requires_expert_flag": True,
+        "config_usefulness_status": "unknown",
+        "config_usefulness_next_report": "reports/operator_summary.json",
         "mechanic_warning_summary": {
             "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
             "warning_only_mechanics": [],

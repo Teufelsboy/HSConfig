@@ -34,6 +34,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
                 "safe_to_apply": True,
                 "requires_expert_flag": False,
+                **_config_usefulness_fields(summary),
                 **_mechanic_warning_fields(summary),
                 **_runtime_apply_fields(summary),
             }
@@ -45,6 +46,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
             "safe_to_apply": True,
             "requires_expert_flag": False,
+            **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
@@ -57,6 +59,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
             "safe_to_apply": True,
             "requires_expert_flag": False,
+            **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
@@ -81,6 +84,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             ),
             "safe_to_apply": True,
             "requires_expert_flag": True,
+            **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
@@ -92,8 +96,23 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         "normal_next_command": "read reports/operator_summary.json and follow next_action",
         "safe_to_apply": False,
         "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
+        **_config_usefulness_fields(summary),
         **_mechanic_warning_fields(summary),
         **_runtime_apply_fields(summary),
+    }
+
+
+def _config_usefulness_fields(summary: dict[str, Any]) -> dict[str, str]:
+    return {
+        "config_usefulness_status": str(
+            summary.get("config_usefulness", {}).get("status", "unknown")
+        ),
+        "config_usefulness_next_report": str(
+            summary.get("config_usefulness", {}).get(
+                "next_report_to_open",
+                "reports/operator_summary.json",
+            )
+        ),
     }
 
 

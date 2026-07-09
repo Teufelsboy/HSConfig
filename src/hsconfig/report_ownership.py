@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from typing import Any
 
-def build_report_ownership() -> list[dict[str, str]]:
+
+def build_report_ownership() -> list[dict[str, Any]]:
     return [
         {
             "file": "reports/operator_summary.json",
             "authority": "normal_operator_gate",
             "answers": "what to do next",
             "open_order": "1",
+            "contains": ["config_usefulness"],
         },
         {
             "file": "reports/source_claim_gap_report.json",
