@@ -30,7 +30,7 @@ from hsconfig.input_loading import (
 )
 from hsconfig.io import write_json
 from hsconfig.research_contract import build_research_contract_bundle
-from hsconfig.semantic_enrichment import enrich_card_metadata
+from hsconfig.semantic_enrichment import append_semantic_warning, enrich_card_metadata
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
@@ -218,10 +218,10 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         hearthstonejson_cards=hearthstonejson_cards,
     )
     if semantic_fetch_error is not None:
-        semantic_report.setdefault("semantic_enrichment_warnings", []).append(
-            {"card_id": None, "warning": f"hearthstonejson_fetch_failed: {semantic_fetch_error}"}
+        append_semantic_warning(
+            semantic_report,
+            {"card_id": None, "warning": f"hearthstonejson_fetch_failed: {semantic_fetch_error}"},
         )
-        semantic_report["semantic_enrichment_status"] = "partial"
     enriched_card_metadata = {"cards": semantic_report["cards"]}
     source_document_draft_report = None
     if source_evidence_rows:

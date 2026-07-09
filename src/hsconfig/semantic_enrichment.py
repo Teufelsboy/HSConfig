@@ -112,6 +112,25 @@ def enrich_card_metadata(
     }
 
 
+def append_semantic_warning(
+    semantic_report: dict[str, Any],
+    warning: dict[str, Any],
+) -> dict[str, Any]:
+    """Append a report warning and keep summary counters consistent."""
+    warnings = semantic_report.setdefault("semantic_enrichment_warnings", [])
+    if not isinstance(warnings, list):
+        warnings = []
+        semantic_report["semantic_enrichment_warnings"] = warnings
+    warnings.append(warning)
+    semantic_report["semantic_enrichment_status"] = "partial"
+    summary = semantic_report.setdefault("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+        semantic_report["summary"] = summary
+    summary["warning_count"] = len(warnings)
+    return semantic_report
+
+
 def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
     merged = dict(card)
     if _is_missing_value(merged.get("name")) or merged.get("name") == merged.get("card_id"):

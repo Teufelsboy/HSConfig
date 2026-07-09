@@ -146,6 +146,49 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert card_roles["SW_448"]["confidence"] == "source_backed_static_semantics"
 
 
+def test_prepare_fetch_failure_keeps_semantic_warning_counts_consistent(
+    tmp_path: Path, capsys, monkeypatch
+):
+    package = tmp_path / "shadowpriest_package"
+    runtime = tmp_path / "runtime"
+
+    def raise_fetch_failure(timeout: float = 10.0):
+        raise RuntimeError("offline fixture")
+
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", raise_fetch_failure)
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(runtime),
+            "--out",
+            str(package),
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    reports = package / "reports"
+    semantic_report = json.loads(
+        (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    warnings = semantic_report["semantic_enrichment_warnings"]
+
+    assert code == 0
+    assert semantic_report["semantic_enrichment_status"] == "partial"
+    assert any("hearthstonejson_fetch_failed: offline fixture" in row["warning"] for row in warnings)
+    assert semantic_report["summary"]["warning_count"] == len(warnings)
+    assert operator_summary["semantic_enrichment_summary"]["warning_count"] == len(warnings)
+
+
 def test_build_and_research_contract_agree_on_shadowpriest_research(tmp_path: Path, capsys):
     research_out = tmp_path / "research_only"
     package = tmp_path / "package"
