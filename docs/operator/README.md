@@ -30,6 +30,9 @@ and verifies the fake receipt in the same invocation, then writes the runtime pa
 `--from-fake-receipt` can be used when an operator wants to apply a previously generated
 matching fake receipt.
 
+For the durable no-block contract across valid Wild decks, see
+`docs/operator/universal-wild-no-block-contract.md`.
+
 - `technical_status=VALID_PACKAGE` means the runtime JSON shape is structurally valid and load-safe.
 - `runtime_load_safe=true` means the package passed the normal pre-run load-safety contract.
 - `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` is allowed.
@@ -97,6 +100,11 @@ avoid these rows. Add or promote only when exact source evidence closes a
 preserved stop condition.
 
 After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
+
+The representative fixture matrix proves source-depth breadth. The universal
+no-block matrix proves the separate runtime promise: every valid listed deck
+still creates a load-safe initial package even when source confidence remains
+warning-only.
 
 ## Supplemental Proof Decks
 

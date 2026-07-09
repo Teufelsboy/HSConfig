@@ -16,6 +16,11 @@ Normal path:
 6. Read `reports/operator_summary.json` first.
 7. Run `hsconfig apply` only after `reports/operator_summary.json` shows the package is runtime-load-safe. `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane; older source-informed summaries are legacy compatibility exceptions, not the normal path.
 
+Guide strength is not the write gate. When `technical_status=VALID_PACKAGE` and
+`runtime_apply_mode=load_safe_apply`, HSConfig may apply the initial package
+even if `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`. Use the warnings to
+improve future source depth; do not treat them as load-safety blockers.
+
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
