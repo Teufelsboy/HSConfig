@@ -12,6 +12,7 @@ every valid deck input.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
 Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
+The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
 ## Non-Blocking Config Usefulness
 
@@ -80,5 +81,7 @@ The universal matrix test covers:
 - CuteWarrior
 
 Each deck must produce `VALID_PACKAGE`, `runtime_load_safe=true`,
-`runtime_apply_mode=load_safe_apply`, `GlobalValues.json`, `Mulligan.json`, and
-one per-card JSON file for every unique deck CardID.
+`runtime_apply_mode=load_safe_apply`, `GlobalValues.json`, and `Mulligan.json`.
+As HSConfig rich-output repo policy, normal `prepare` must also emit one per-card
+JSON file for every unique deck CardID when deck-card identity is known. That
+rich-output proof is not the minimal runtime-apply gate.

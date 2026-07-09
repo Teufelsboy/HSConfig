@@ -38,6 +38,35 @@ def test_operator_docs_explain_runtime_apply_mode_is_descriptive():
     assert "ALLOWED_WITH_WARNINGS is not runtime write permission" not in operator_docs
 
 
+def test_universal_no_block_contract_labels_per_card_every_card_as_rich_policy():
+    text = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "HSConfig rich-output repo policy" in text
+    assert "not the minimal runtime-apply gate" in text
+    assert "not an official HearthRanger minimum" in text
+    assert "one per-card JSON file for every unique deck CardID" in text
+
+
+def test_source_backed_closure_uses_promotion_blocker_language():
+    text = Path("docs/operator/source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Promotion blocker reason" in text
+    assert "Hard blocker reason" not in text
+    assert "runtime apply is no longer blocked by source strength" in text
+
+
+def test_operator_docs_name_load_safe_apply_as_hsconfig_policy():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "`load_safe_apply` is an HSConfig operator policy" in text
+    assert "not a HearthRanger public-doc term" in text
+    assert "per-card-every-card coverage is HSConfig rich output" in text
+
+
 def test_operator_docs_describe_no_block_static_semantics():
     operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
     skill_text = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")

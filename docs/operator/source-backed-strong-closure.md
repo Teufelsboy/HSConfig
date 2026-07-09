@@ -18,7 +18,7 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 
 The fixture matrix also documents `decision_families_proven` and `known_coverage_limits`. These fields describe what a fixture proves for HSConfig's pre-game config compiler. They are not gameplay-quality claims and they do not imply post-run optimization coverage.
 
-Runtime apply no longer requires every package to be `SOURCE_BACKED_STRONG`. The representative matrix still preserves source-strength truth, but `VALID_PACKAGE` plus `runtime_load_safe=true` is enough for an initial load-safe runtime write. Source-informed rows remain valuable because they expose confidence debt, not because they should block usable package handoff.
+runtime apply is no longer blocked by source strength. The representative matrix still preserves source-strength truth, but `VALID_PACKAGE` plus `runtime_load_safe=true` is enough for an initial load-safe runtime write. Source-informed rows remain valuable because they expose confidence debt, not because they should block usable package handoff.
 
 ## Promotion Rule
 
@@ -55,7 +55,7 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 
 ## Current Source-Informed Closure Decisions
 
-| Deck | Current decision | First missing link | Hard blocker reason |
+| Deck | Current decision | First missing link | Promotion blocker reason |
 |---|---|---|---|
 | Kingslayer | Preserve as source-informed until exact source exists | `DEEP_014` / Quick Pick needs explicit mulligan claim | `unsupported_conditions_present`; stop condition `exact_kingslayer_quick_pick_mulligan_source_unavailable` |
 | Boarlock | Preserve as source-informed until blockers close | `WW_092` / Fracking needs explicit mulligan claim | `cards_need_runtime_surface`, `generic_low_confidence_cards`, `uncovered_cards`, `unsupported_conditions_present` |
