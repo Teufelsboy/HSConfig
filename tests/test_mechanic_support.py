@@ -107,3 +107,41 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
     assert summary["mechanics_by_bucket"]["warning_only"] == ["dredge"]
     assert summary["warning_only_card_count"] == 1
     assert summary["first_warning_boundary"]["mechanic"] == "dredge"
+
+
+def test_visibility_slice_classifies_choose_one_and_warning_boundaries():
+    rows = support_for_roles(
+        [
+            "choose_one_choice",
+            "choose_one",
+            "board_position",
+            "generic_spell_target",
+            "location_activation",
+            "secret_timing",
+            "generated_entity_random_pool",
+            "spell_generation",
+        ]
+    )
+
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    assert by_mechanic["choose_one"]["support_level"] == "direct"
+    assert operator_visibility_bucket(by_mechanic["choose_one"]) == "identity_gated_direct"
+    assert by_mechanic["choose_one"]["normal_path_surfaces"] == [
+        "CARDID.json:OnChooseOneCardBonus",
+        "CARDID.json:BeforePlayCardBonus",
+    ]
+
+    for mechanic in [
+        "board_position",
+        "generic_spell_target",
+        "location_activation",
+        "secret_timing",
+        "generated_entity_random_pool",
+    ]:
+        assert by_mechanic[mechanic]["support_level"] == "warning_only"
+        assert by_mechanic[mechanic]["normal_path_surfaces"] == ["report-only"]
+        assert operator_visibility_bucket(by_mechanic[mechanic]) == "warning_only"
+
+    assert by_mechanic["generated_entity"]["support_level"] == "partial"
+    assert operator_visibility_bucket(by_mechanic["generated_entity"]) == "partial"

@@ -24,6 +24,14 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         ],
         "warning_boundary": "Only source-resolved option identity lowers; unresolved options stay suppressed.",
     },
+    "choose_one": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:OnChooseOneCardBonus",
+            "CARDID.json:BeforePlayCardBonus",
+        ],
+        "warning_boundary": "Only source-resolved Choose One option identity lowers; unresolved options stay suppressed.",
+    },
     "damage": {
         "support_level": "direct",
         "normal_path_surfaces": [
@@ -141,15 +149,40 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
         "warning_boundary": "Repeated location activation and targeting are not first-class normal-path surfaces.",
     },
+    "board_position": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Exact minion placement has no documented normal-path VisionAI positioning surface.",
+    },
+    "generic_spell_target": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Generic spell target selection is not lowerable unless a documented card-specific target surface exists.",
+    },
+    "location_activation": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Repeated location activation and target choice have no documented normal-path runtime row.",
+    },
     "secret": {
         "support_level": "partial",
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "Mulligan.json:opening_hand"],
         "warning_boundary": "Secret ordering and hidden-information trap timing are not separate normal-path surfaces.",
     },
+    "secret_timing": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Hidden-information secret timing has no separate normal-path runtime row.",
+    },
     "generated_entity": {
         "support_level": "partial",
         "normal_path_surfaces": ["CARDID.json:resolved_identity", "CARDID.json:OnDiscoverCardBonus"],
         "warning_boundary": "Random generation pools stay warning-only unless exact identity is source-backed.",
+    },
+    "generated_entity_random_pool": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Random generated-entity pools stay report-only unless exact generated identity is source-backed.",
     },
     "aura": {
         "support_level": "partial",
@@ -198,6 +231,12 @@ ROLE_ALIASES = {
     "hero_attack": "weapon",
     "weapon_pressure": "weapon",
     "spell_generation": "generated_entity",
+    "choose_one_choice": "choose_one",
+    "positioning": "board_position",
+    "spell_target": "generic_spell_target",
+    "location_use": "location_activation",
+    "secret_ordering": "secret_timing",
+    "random_generation": "generated_entity_random_pool",
     "token_board": "aura",
     "board_buff": "aura",
     "board_scaling": "aura",
@@ -222,6 +261,7 @@ NON_MECHANIC_ROLES = {
 }
 
 IDENTITY_GATED_DIRECT_MECHANICS = {
+    "choose_one",
     "discover",
     "hero_power_transform",
 }
