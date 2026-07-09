@@ -46,8 +46,16 @@ def enrich_card_metadata(
         semantic_families.update(_semantic_families_from_card(enriched))
         static_semantics = infer_static_semantics(enriched)
         semantic_families.update(static_semantics["families"])
-        enriched["static_semantic_evidence"] = static_semantics["evidence"]
-        enriched["warning_only_mechanics"] = static_semantics["warning_only"]
+        enriched["static_semantic_evidence"] = _merge_semantic_evidence(
+            enriched.get("static_semantic_evidence", []),
+            static_semantics["evidence"],
+        )
+        enriched["warning_only_mechanics"] = sorted(
+            {
+                *[str(item) for item in enriched.get("warning_only_mechanics", []) or []],
+                *[str(item) for item in static_semantics["warning_only"]],
+            }
+        )
         card_id = str(enriched.get("card_id") or enriched.get("id") or "")
         resolved_links = resolve_linked_entities(
             [enriched],
@@ -110,6 +118,12 @@ def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
         merged["name"] = hjson.get("name")
     if _is_missing_value(merged.get("type")) or str(merged.get("type")).upper() == "UNKNOWN":
         merged["type"] = hjson.get("type")
+    if _is_missing_value(merged.get("card_class")):
+        merged["card_class"] = hjson.get("card_class")
+    if _is_missing_value(merged.get("cost")):
+        merged["cost"] = hjson.get("cost")
+    if _is_missing_value(merged.get("collectible")):
+        merged["collectible"] = hjson.get("collectible")
     if _is_missing_value(merged.get("text")):
         merged["text"] = hjson.get("text", "")
     merged["mechanics"] = list(
@@ -213,6 +227,28 @@ def _merge_linked_entities(existing: Any, additions: list[dict[str, Any]]) -> li
         seen.add(key)
         rows.append(dict(row))
     return rows
+
+
+def _merge_semantic_evidence(existing: Any, additions: list[dict[str, Any]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for source in (existing, additions):
+        if not isinstance(source, list):
+            continue
+        for row in source:
+            if not isinstance(row, dict):
+                continue
+            normalized = {
+                "family": str(row.get("family", "")),
+                "source": str(row.get("source", "")),
+                "value": str(row.get("value", "")),
+            }
+            key = (normalized["family"], normalized["source"], normalized["value"])
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(normalized)
+    return sorted(rows, key=lambda row: (row["family"], row["source"], row["value"]))
 
 
 def _starting_hero_power_link(linked_entities: list[dict[str, Any]]) -> dict[str, Any] | None:

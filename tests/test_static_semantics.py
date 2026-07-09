@@ -59,3 +59,42 @@ def test_warning_only_contains_unlowerable_choice_surfaces():
     assert "choose_one" in result["families"]
     assert "dredge" in result["warning_only"]
     assert "tradeable" in result["warning_only"]
+
+
+def test_draw_from_deck_is_not_recruit_without_recruit_wording():
+    result = infer_static_semantics(
+        {
+            "id": "TEST_004",
+            "type": "SPELL",
+            "text": "Draw a card from your deck.",
+        }
+    )
+
+    assert "draw" in result["families"]
+    assert "recruit" not in result["families"]
+
+
+def test_whenever_trigger_is_not_aura_without_ongoing_board_grant():
+    result = infer_static_semantics(
+        {
+            "id": "TEST_005",
+            "type": "MINION",
+            "text": "Whenever a minion is healed, draw a card.",
+        }
+    )
+
+    assert "draw" in result["families"]
+    assert "aura" not in result["families"]
+
+
+def test_random_damage_is_not_generated_entity_pool():
+    result = infer_static_semantics(
+        {
+            "id": "TEST_006",
+            "type": "SPELL",
+            "text": "Deal random damage to enemies.",
+        }
+    )
+
+    assert "damage" in result["families"]
+    assert "generated_entity_random_pool" not in result["families"]

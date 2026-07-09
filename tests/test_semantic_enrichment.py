@@ -273,3 +273,50 @@ def test_enrichment_merges_static_semantics_from_hjson_fields():
     assert "choose_one" in card["semantic_families"]
     assert "generated_entity_random_pool" in card["semantic_families"]
     assert "location_activation" in card["warning_only_mechanics"]
+
+
+def test_enrichment_preserves_hjson_identity_fields_and_existing_semantic_evidence():
+    enriched = enrich_card_metadata(
+        {
+            "cards": [
+                {
+                    "card_id": "TEST_002",
+                    "dbf_id": 1002,
+                    "name": "TEST_002",
+                    "type": "UNKNOWN",
+                    "text": "",
+                    "mechanic_families": [],
+                    "static_semantic_evidence": [
+                        {"family": "custom_family", "source": "fixture", "value": "manual"}
+                    ],
+                    "warning_only_mechanics": ["manual_warning"],
+                    "metadata_status": "source_record",
+                }
+            ]
+        },
+        hearthstonejson_cards=[
+            {
+                "id": "TEST_002",
+                "dbfId": 1002,
+                "name": "Test Spell",
+                "type": "SPELL",
+                "cardClass": "MAGE",
+                "cost": 2,
+                "collectible": True,
+                "text": "Dredge.",
+            }
+        ],
+    )
+
+    card = enriched["cards"][0]
+
+    assert card["card_class"] == "MAGE"
+    assert card["cost"] == 2
+    assert card["collectible"] is True
+    assert "manual_warning" in card["warning_only_mechanics"]
+    assert "dredge" in card["warning_only_mechanics"]
+    assert {
+        "family": "custom_family",
+        "source": "fixture",
+        "value": "manual",
+    } in card["static_semantic_evidence"]

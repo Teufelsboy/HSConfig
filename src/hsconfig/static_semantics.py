@@ -23,13 +23,13 @@ TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
     "heal": ("heal", "healed", "healing", "restore health"),
     "damage": ("damage", "deal damage", "deals damage"),
     "summon": ("summon", "summons", "summoned"),
-    "recruit": ("recruit", "from your deck"),
+    "recruit": ("recruit",),
     "discard": ("discard", "discards"),
     "silence": ("silence", "silences"),
     "transform": ("transform", "transforms", "becomes"),
     "destroy": ("destroy", "destroys"),
     "choose_one": ("choose one",),
-    "aura": ("adjacent", "your other", "your minions have", "whenever"),
+    "aura": ("adjacent", "your other", "your minions have"),
 }
 
 TYPE_TO_FAMILY = {
@@ -109,7 +109,18 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
         _add(families, evidence, "hero_power", "text", "shadowform")
         if "start_of_game" in families:
             _add(families, evidence, "hero_power_transform", "text", "shadowform start of game")
-    if "random" in lowered and ("summon" in families or "add" in lowered or "generate" in lowered):
+    if (
+        "random" in lowered
+        and (
+            "summon" in families
+            or _contains(lowered, "add")
+            or _contains(lowered, "generate")
+        )
+        and any(
+            _contains(lowered, object_word)
+            for object_word in ("card", "copy", "minion", "secret", "spell", "weapon")
+        )
+    ):
         _add(families, evidence, "generated_entity", "text", "random generated entity")
         _add(families, evidence, "generated_entity_random_pool", "text", "random generated entity")
     if "secret" in families:
