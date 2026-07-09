@@ -509,6 +509,38 @@ def test_apply_gate_blocks_package_without_input_manifest(tmp_path: Path):
     }
 
 
+def test_apply_gate_ignores_config_usefulness_when_package_is_load_safe(tmp_path: Path):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+            "config_usefulness": {
+                "status": "load_safe_but_thin",
+                "runtime_permission_impact": "none",
+            },
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
+
+
 def test_package_io_reads_optional_profile_when_present(tmp_path: Path):
     package = tmp_path / "package"
     write_json(

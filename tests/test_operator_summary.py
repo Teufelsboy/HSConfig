@@ -1148,3 +1148,111 @@ def test_operator_summary_source_backed_exposes_load_safe_runtime_apply_mode():
     assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
+
+
+def test_operator_summary_includes_nonblocking_config_usefulness():
+    summary = build_operator_summary(
+        deck_name="UsefulDeck",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=[
+            "CustomConfig/usefuldeck/GlobalValues.json",
+            "CustomConfig/usefuldeck/Mulligan.json",
+            "CustomConfig/usefuldeck/CARD_A.json",
+        ],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 1,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 1,
+            "runtime_emitted": 1,
+            "mulligan_only": 0,
+            "globalvalues_only": 0,
+            "report_only_supported": 0,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        mulligan_plan_report={
+            "rules": [{"action": "keep", "card": "CARD_A"}],
+            "suppressed_rules": [],
+            "quality": {"has_concrete_keeps": True},
+        },
+        card_behavior_plan_report={
+            "rows": [
+                {
+                    "card_id": "CARD_A",
+                    "surface_family": "CARDID.json",
+                    "meaningful_runtime_surface": True,
+                    "behavior_block": {"BeforePlayCardBonus": {"values": []}},
+                }
+            ]
+        },
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+    )
+
+    assert summary["config_usefulness"]["status"] == "guide_aligned"
+    assert summary["config_usefulness"]["runtime_permission_impact"] == "none"
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_thin_usefulness_does_not_block_apply():
+    summary = build_operator_summary(
+        deck_name="ThinDeck",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=[
+            "CustomConfig/thindeck/GlobalValues.json",
+            "CustomConfig/thindeck/Mulligan.json",
+        ],
+        config_readiness_summary={
+            "total_cards": 10,
+            "runtime_emitted": 1,
+            "mulligan_only": 0,
+            "globalvalues_only": 0,
+            "report_only_supported": 8,
+            "generic_low_confidence": 1,
+            "cards_needing_guide_claims": 1,
+            "cards_needing_runtime_surface": 5,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {"has_concrete_keeps": False},
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": []},
+    )
+
+    assert summary["config_usefulness"]["status"] == "load_safe_but_thin"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["runtime_apply_allowed"] is True

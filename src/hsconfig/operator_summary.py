@@ -4,6 +4,7 @@ from collections import Counter
 import hashlib
 from typing import Any
 
+from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.report_ownership import build_report_ownership
 
@@ -67,6 +68,10 @@ def build_operator_summary(
     config_readiness_summary: dict[str, Any] | None = None,
     config_readiness_report: dict[str, Any] | None = None,
     claim_conflict_report: dict[str, Any] | None = None,
+    mulligan_plan_report: dict[str, Any] | None = None,
+    card_behavior_plan_report: dict[str, Any] | None = None,
+    combo_plan_report: dict[str, Any] | None = None,
+    globalvalues_profile_report: dict[str, Any] | None = None,
     validation_report: dict[str, Any] | None = None,
     guide_source_depth_report: dict[str, Any] | None = None,
     source_claim_gap_report: dict[str, Any] | None = None,
@@ -131,6 +136,16 @@ def build_operator_summary(
         globalvalue_authority=globalvalue_authority or {},
         unsupported_conditions=unsupported_conditions or [],
     )
+    config_usefulness = build_config_usefulness(
+        technical_status=technical_status,
+        semantic_status=semantic_status,
+        config_readiness_summary=effective_config_readiness_summary,
+        config_readiness_report=config_readiness_report or {},
+        mulligan_plan_report=mulligan_plan_report or {},
+        card_behavior_plan_report=card_behavior_plan_report or {},
+        combo_plan_report=combo_plan_report or {},
+        globalvalues_profile_report=globalvalues_profile_report or {},
+    )
     source_informed_apply_readiness = _source_informed_apply_readiness(
         technical_status=technical_status,
         semantic_status=semantic_status,
@@ -167,6 +182,7 @@ def build_operator_summary(
         "mechanic_warning_summary": mechanic_warning_summary,
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
+        "config_usefulness": config_usefulness,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),

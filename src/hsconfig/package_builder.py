@@ -454,6 +454,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "config_readiness_summary": config_readiness_report["summary"],
         "config_readiness_report": config_readiness_report,
         "claim_conflict_report": guide_claim_bundle.get("claim_conflict_report"),
+        "mulligan_plan_report": mulligan_plan,
+        "card_behavior_plan_report": card_behavior_plan,
+        "combo_plan_report": combo_plan,
+        "globalvalues_profile_report": globalvalues["profile"],
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(
