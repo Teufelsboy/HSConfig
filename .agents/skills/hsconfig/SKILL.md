@@ -28,7 +28,7 @@ Normal workflow:
 4. Run `hsconfig draft-source-documents ...` to create `source_documents.json` with card-specific claims.
 5. Run `hsconfig research-deck --source-documents-json ...` to create normalized guide sources and the research contract inputs.
 6. Run `hsconfig prepare --guide-sources-json ...` to compile the package and reports.
-7. Read `reports/operator_summary.json` first, then inspect the research contract, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
+7. Read `reports/operator_summary.json` first and inspect `config_usefulness`, then inspect the research contract, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, and `guide_source_depth_report.json`.
 8. Run `hsconfig apply ...` only when runtime writes are intended. Guarded apply stays pre-run: runtime writes remain only when requested through `hsconfig apply`. A package with `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` can be applied with `hsconfig apply --package <package> --runtime-root <runtime-root> --json`. `SOURCE_BACKED_STRONG` is a confidence label, not the default runtime-write gate.
 9. Use `reports/operator_summary.json` as the single operator gate. Detail reports are evidence, not independent apply permissions.
 
@@ -62,6 +62,9 @@ Rules:
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Runtime apply is guarded.
 - Read `runtime_load_safe`, `runtime_apply_mode`, `runtime_apply_allowed`, and `runtime_apply_requires_flag` in `operator_summary.json`. ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE; warnings describe semantic/source confidence debt.
+- After `prepare`, inspect `config_usefulness` in `reports/operator_summary.json`.
+- Treat `config_usefulness` as non-blocking: it describes richness across Mulligan, GlobalValues, CardID behavior, and Combo, but it must not prevent load-safe apply.
+- If `config_usefulness.status` is `load_safe_but_thin` or `usable_with_targeted_gaps`, report the first gap and `next_report_to_open`; do not switch to HSTuner or replay analysis inside HSConfig.
 - Runtime apply is always governed by `reports/operator_summary.json`; `apply_package()` and `hsconfig apply` must reject missing, blocked, or forged apply gates before writing HearthRanger runtime files.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Keep the pre-run boundary visible in operator-facing copy and tests.

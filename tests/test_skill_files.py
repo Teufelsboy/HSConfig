@@ -537,14 +537,15 @@ def test_docs_explain_config_usefulness_without_making_it_a_blocker():
     no_block_contract = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
         encoding="utf-8"
     )
-    installed_skill = Path(r"C:\Users\darbo\.codex\skills\hsconfig\SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    combined = "\n".join([operator_readme, no_block_contract, installed_skill])
+    repo_skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    combined = "\n".join([operator_readme, no_block_contract, repo_skill])
 
     assert "config_usefulness" in combined
     assert "load-safe" in combined
     assert "non-blocking" in combined
+    assert "load_safe_but_thin" in combined
+    assert "usable_with_targeted_gaps" in combined
+    assert "next_report_to_open" in combined
     assert "HSTuner" in combined
     assert "does not parse replays" in operator_readme
     assert operator_readme.lower().count("replay") == 1
