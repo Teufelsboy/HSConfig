@@ -592,6 +592,9 @@ def test_docs_and_skill_explain_visibility_only_mechanic_polish():
     assert "`location_activation`" in combined
     assert "`secret_timing`" in combined
     assert "`generated_entity_random_pool`" in combined
+    assert "first_warning_boundary" in combined
     assert "warning_boundaries" in combined
+    assert "first next-inspection item" in combined
+    assert "complete alphabetical list" in combined
     assert "must not block load-safe apply" in combined
     assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in combined
