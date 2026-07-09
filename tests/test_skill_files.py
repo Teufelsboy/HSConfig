@@ -370,6 +370,17 @@ def test_skill_docs_explain_strong_fixture_truth_contract():
     assert "not emit" in docs.lower() or "not part of the normal path" in docs.lower()
 
 
+def test_skill_docs_explain_load_safe_apply_mode():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "runtime_load_safe" in skill
+    assert "load_safe_apply" in skill
+    assert (
+        "ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE"
+        in skill
+    )
+
+
 def test_skill_documents_source_builder_lite_workflow():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
@@ -491,14 +502,14 @@ def test_docs_explain_source_informed_apply_ready_lane():
         ]
     )
 
-    assert "SOURCE_INFORMED_APPLY_READY" in docs
-    assert "ALLOWED_SOURCE_INFORMED" in docs
-    assert "source_informed_apply_readiness" in docs
-    assert "--allow-source-informed --json" in docs
-    assert "cards_need_guide_claims" in docs
-    assert "cards_need_mulligan_claims" in docs
-    assert "cards_need_runtime_surface" in docs
-    assert "source-informed apply is still not `SOURCE_BACKED_STRONG`" in docs
+    assert "runtime_load_safe" in docs
+    assert "load_safe_apply" in docs
+    assert (
+        "ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE"
+        in docs
+    )
+    assert "ALLOWED_SOURCE_INFORMED" not in docs
+    assert "--allow-source-informed --json" not in docs
 
 
 def test_skill_names_preserved_closure_rows_and_no_actionable_target():

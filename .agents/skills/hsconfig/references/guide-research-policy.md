@@ -183,4 +183,4 @@ Depth reports:
 
 Do not infer replay performance, winrate, or postgame tuning from HSConfig outputs.
 
-`hsconfig apply` enforces this boundary. A valid package that is not `SOURCE_BACKED_STRONG` requires the explicit `--allow-source-informed` flag before runtime files are written.
+`hsconfig apply` enforces load safety, not source strength. A valid load-safe package may apply even when guide depth is weak; source-depth gaps remain visible in `operator_summary.json`, `source_claim_gap_report.json`, and `strong_promotion_report.json`.

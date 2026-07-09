@@ -39,7 +39,7 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 
-`SOURCE_INFORMED_APPLY_READY` with `ALLOWED_SOURCE_INFORMED` and `source_informed_apply_readiness.status=ready` is the only valid source-informed apply lane. It allows `hsconfig apply --package <package> --runtime-root <runtime-root> --allow-source-informed --json` when the remaining blockers are only `cards_need_guide_claims` or `cards_need_mulligan_claims`. `cards_need_runtime_surface` and other hard blockers keep the lane blocked. Source-informed apply is still not `SOURCE_BACKED_STRONG`; use `source_claim_gap_report.json` and `strong_promotion_report.json` to close those links before promotion.
+`technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` is the normal initial write boundary. `runtime_apply_mode=load_safe_apply` means `hsconfig apply --package <package> --runtime-root <runtime-root> --json` is allowed. `SOURCE_BACKED_STRONG` remains the high-confidence source-backed handoff label. Lower confidence lanes remain visible in reports, but they do not block a load-safe initial package.
 
 Source-informed apply remains pre-run only. It is not replay analysis, winrate validation, HSTuner candidate promotion, or post-run tuning.
 
@@ -64,4 +64,4 @@ Use `hsconfig research-contract` only when the research bundle should be inspect
 Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. It still writes `reports/research/*`. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
 When apply is allowed, it copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
-Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json` and blocks by default unless the package is source-backed ready. Use `--allow-source-informed` only for `SOURCE_INFORMED_APPLY_READY` packages.
+Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json` and blocks by default unless the package is source-backed ready.
