@@ -8,7 +8,7 @@
       "deck_code": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
       "hs_id": "2750150375",
       "hdt_deck_id": "a753f091-b770-4a06-8da8-59f1d5269f6b",
-      "proof_role": "supplemental_command_acceptance",
+      "proof_role": "supplemental_load_safe_prepare_proof",
       "matrix_policy": "not_representative_until_future_matrix_review_proves_missing_family",
       "operator_action": "keep_supplemental",
       "known_limits": [

@@ -21,7 +21,7 @@ def test_supplemental_proof_decks_are_not_representative_matrix_rows():
 
     assert rows
     cute = next(row for row in rows if row["deck_name"] == "CuteWarrior")
-    assert cute["proof_role"] == "supplemental_command_acceptance"
+    assert cute["proof_role"] == "supplemental_load_safe_prepare_proof"
     assert (
         cute["matrix_policy"]
         == "not_representative_until_future_matrix_review_proves_missing_family"
