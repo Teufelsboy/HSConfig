@@ -87,13 +87,6 @@ def _validate_required_package_files(deck_dir: Path) -> list[str]:
         errors.append(f"{deck_dir}: missing required runtime file GlobalValues.json")
     if not (deck_dir / "Mulligan.json").is_file():
         errors.append(f"{deck_dir}: missing required runtime file Mulligan.json")
-    card_files = [
-        path
-        for path in deck_dir.glob("*.json")
-        if path.name not in SPECIAL_SURFACE_NAMES and supported_surface(path.name)
-    ]
-    if not card_files:
-        errors.append(f"{deck_dir}: missing at least one per-card CardID runtime file")
     return errors
 
 

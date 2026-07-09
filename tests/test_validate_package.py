@@ -75,7 +75,43 @@ def test_validate_package_strict_mode_rejects_incomplete_package(tmp_path: Path)
 
     assert report["status"] == "failed"
     assert any("missing required runtime file Mulligan.json" in error for error in report["errors"])
-    assert any("missing at least one per-card CardID runtime file" in error for error in report["errors"])
+    assert not any("per-card CardID runtime file" in error for error in report["errors"])
+
+
+def test_validate_package_strict_mode_accepts_minimal_load_safe_package_without_cardid(
+    tmp_path: Path,
+):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "test",
+            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+            "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+        },
+    )
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "test",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "hold early pressure",
+                        "mulligan": "EX1_001",
+                        "condition": "*",
+                        "value": "hold",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = validate_config_package(tmp_path, require_complete_package=True)
+
+    assert report == {"status": "passed", "errors": [], "checked_files": 2}
 
 
 def test_validate_package_rejects_special_surface_scalar_blocks(tmp_path: Path):

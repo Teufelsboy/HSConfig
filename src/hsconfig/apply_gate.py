@@ -131,26 +131,6 @@ def _required_package_structure_reasons(
                 }
             ]
 
-    card_files = [
-        path
-        for path in sorted(deck_dir.glob("*.json"))
-        if path.name
-        not in {
-            "Combo.json",
-            "Concede.json",
-            "GlobalValues.json",
-            "Mulligan.json",
-            "Presume.json",
-        }
-    ]
-    if not card_files:
-        return [
-            {
-                "reason": "missing_cardid_runtime_file",
-                "path": str(deck_dir),
-            }
-        ]
-
     summary_files = _summary_generated_file_set(summary)
     for filename in REQUIRED_RUNTIME_FILES:
         key = _normalize_generated_file_path((deck_dir / filename).relative_to(package))

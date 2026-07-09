@@ -108,6 +108,44 @@ def test_apply_gate_allows_valid_but_not_guide_strong_as_load_safe_apply(tmp_pat
     }
 
 
+def test_apply_gate_allows_minimal_load_safe_package_without_cardid_files(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "new"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "STATIC_SEMANTICS_USABLE",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "semantic_blockers": [{"reason": "no_cardid_runtime_rows", "count": 30}],
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "allowed"
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
+    assert gate["reasons"][0]["semantic_blocker_count"] == 1
+
+
 def test_apply_gate_allows_valid_runtime_surface_gap_as_load_safe_warning(
     tmp_path: Path,
 ):
@@ -429,6 +467,43 @@ def test_apply_gate_blocks_actual_runtime_files_when_summary_runtime_entries_mis
         "reason": "required_runtime_file_not_in_operator_summary",
         "generated_file": "CustomConfig/deck/GlobalValues.json",
     }
+
+
+def test_apply_gate_blocks_unreported_cardid_file_but_allows_absent_cardid_files(
+    tmp_path: Path,
+):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
+    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
+    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+            ],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == "blocked"
+    assert gate["reasons"] == [
+        {
+            "reason": "actual_runtime_file_not_in_operator_summary",
+            "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
+        }
+    ]
 
 
 def test_apply_gate_blocks_missing_operator_summary(tmp_path: Path):
