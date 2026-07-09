@@ -18,7 +18,8 @@ def test_source_backed_valid_package_is_ready_to_apply():
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert summary["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert summary["apply_policy"] == "ALLOWED"
-    assert summary["runtime_apply_mode"] == "normal_apply"
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
     assert summary["primary_blockers"] == []
@@ -82,8 +83,12 @@ def test_static_semantics_valid_package_is_ready_with_warnings():
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
-    assert summary["next_action"] == "READY_WITH_WARNINGS"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["runtime_apply_requires_flag"] is None
     assert any(warning["reason"] == "static_semantics_only" for warning in summary["warnings"])
 
 
@@ -100,8 +105,11 @@ def test_missing_guide_depth_requests_more_research_without_invalidating_package
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
-    assert summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
 
 
 def test_source_backed_without_effective_claims_requests_more_research():
@@ -121,7 +129,7 @@ def test_source_backed_without_effective_claims_requests_more_research():
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
-    assert summary["next_action"] == "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_operator_summary_marks_valid_package_not_guide_strong_when_many_cards_need_claims():
@@ -143,7 +151,7 @@ def test_operator_summary_marks_valid_package_not_guide_strong_when_many_cards_n
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_operator_summary_marks_valid_package_not_guide_strong_when_claims_conflict():
@@ -168,7 +176,7 @@ def test_operator_summary_marks_valid_package_not_guide_strong_when_claims_confl
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert "claim_conflicts_present" in summary["source_informed_apply_readiness"]["blocking_reasons"]
 
@@ -209,9 +217,9 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     if summary_key in {"cards_needing_guide_claims", "cards_needing_mulligan_claims"}:
-        assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
-        assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
         assert summary["source_informed_apply_readiness"] == {
             "status": "ready",
             "requires_flag": "--allow-source-informed",
@@ -219,13 +227,17 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
                 "cards_need_guide_claims",
                 "cards_need_mulligan_claims",
             ],
-            "blocking_reasons": [],
-            "source_gap_count": 1,
-        }
+                "blocking_reasons": [],
+                "source_gap_count": 1,
+            }
+        assert summary["runtime_apply_mode"] == "load_safe_apply"
+        assert summary["runtime_apply_allowed"] is True
+        assert summary["runtime_apply_requires_flag"] is None
     else:
-        assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
-        assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
         assert summary["source_informed_apply_readiness"]["status"] == "blocked"
+        assert summary["runtime_apply_mode"] == "load_safe_apply"
+        assert summary["runtime_apply_allowed"] is True
+        assert summary["runtime_apply_requires_flag"] is None
     assert summary["guide_strength_summary"][summary_key] == 1
 
 
@@ -258,7 +270,7 @@ def test_operator_summary_demotes_from_per_card_report_when_summary_is_omitted()
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert {
         "reason": "cards_need_runtime_surface",
         "count": 1,
@@ -303,8 +315,8 @@ def test_unsupported_conditions_are_operator_warnings():
     reasons = {warning["reason"] for warning in summary["warnings"]}
     assert "unsupported_condition" in reasons
     assert "globalvalue_runtime_evidence_required" in reasons
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -329,8 +341,8 @@ def test_claim_conflicts_and_low_confidence_coverage_are_operator_warnings():
 
     assert {"reason": "claim_conflicts_present", "conflict_count": 1} in summary["warnings"]
     assert {"reason": "cards_still_low_confidence", "card_count": 2} in summary["warnings"]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -439,9 +451,47 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
         "report": "reports/per_card_config_readiness_report.json",
         "affected_cards": [{"card_id": "CARD_C", "name": "Card C"}],
     } in summary["semantic_blockers"]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
+
+
+def test_valid_but_not_guide_strong_is_load_safe_but_not_semantically_strong():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="deck-code",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "source_count": 1,
+            "claim_count": 1,
+            "warnings": [{"reason": "cards_need_guide_claims", "count": 2}],
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        config_readiness_summary={
+            "total_cards": 3,
+            "generic_low_confidence": 1,
+            "cards_needing_guide_claims": 2,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert summary["semantic_blockers"]
 
 
 def test_operator_summary_explains_claim_conflict_blocker():
@@ -574,8 +624,8 @@ def test_operator_summary_exposes_lowerable_and_report_only_claim_counts():
     assert summary["guide_strength_summary"]["lowerable_claims"] == 1
     assert summary["guide_strength_summary"]["report_only_claims"] == 1
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -610,14 +660,14 @@ def test_source_evidence_warnings_prevent_source_backed_strong():
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["guide_strength_summary"]["source_evidence_warnings"] == 1
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
         "source_evidence_warnings"
     ]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -658,13 +708,13 @@ def test_operator_summary_can_mark_source_informed_ready_for_source_depth_only_g
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
-    assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"]["status"] == "ready"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == []
-    assert summary["runtime_apply_mode"] == "source_informed_apply_requires_flag"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
-    assert summary["runtime_apply_requires_flag"] == "--allow-source-informed"
+    assert summary["runtime_apply_requires_flag"] is None
 
 
 def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_alias_hard_blockers():
@@ -704,7 +754,7 @@ def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_a
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
@@ -712,8 +762,8 @@ def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_a
         "uncovered_cards",
         "unsupported_conditions_present",
     ]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -761,12 +811,12 @@ def test_operator_summary_blocks_strong_when_compat_summary_has_pure_alias_hard_
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["operator_guidance"]["safe_to_apply"] is False
     assert expected_reason in summary["source_informed_apply_readiness"]["blocking_reasons"]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -815,8 +865,8 @@ def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "SOURCE_INFORMED_APPLY_READY"
-    assert summary["apply_policy"] == "ALLOWED_SOURCE_INFORMED"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"] == {
         "status": "ready",
         "requires_flag": "--allow-source-informed",
@@ -827,9 +877,9 @@ def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
         "blocking_reasons": [],
         "source_gap_count": 1,
     }
-    assert summary["runtime_apply_mode"] == "source_informed_apply_requires_flag"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
-    assert summary["runtime_apply_requires_flag"] == "--allow-source-informed"
+    assert summary["runtime_apply_requires_flag"] is None
 
 
 def test_operator_summary_blocks_strong_apply_when_unsupported_conditions_are_present():
@@ -868,14 +918,14 @@ def test_operator_summary_blocks_strong_apply_when_unsupported_conditions_are_pr
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
         "unsupported_conditions_present"
     ]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -915,15 +965,15 @@ def test_operator_summary_blocks_source_informed_apply_when_uncovered_summary_is
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["guide_strength_summary"]["uncovered_cards"] == 1
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
         "uncovered_cards"
     ]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
@@ -971,18 +1021,18 @@ def test_operator_summary_blocks_source_informed_apply_when_runtime_surface_gap_
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert summary["next_action"] == "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY"
+    assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert summary["source_informed_apply_readiness"]["blocking_reasons"] == [
         "cards_need_runtime_surface"
     ]
-    assert summary["runtime_apply_mode"] == "blocked"
-    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None
 
 
-def test_operator_summary_source_backed_exposes_normal_runtime_apply_mode():
+def test_operator_summary_source_backed_exposes_load_safe_runtime_apply_mode():
     summary = build_operator_summary(
         deck_name="StrongDeck",
         deck_code="AAE=",
@@ -1025,6 +1075,6 @@ def test_operator_summary_source_backed_exposes_normal_runtime_apply_mode():
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert summary["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert summary["apply_policy"] == "ALLOWED"
-    assert summary["runtime_apply_mode"] == "normal_apply"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
     assert summary["runtime_apply_requires_flag"] is None

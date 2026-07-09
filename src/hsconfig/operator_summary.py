@@ -141,6 +141,7 @@ def build_operator_summary(
     )
     runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = (
         _runtime_apply_contract(
+            technical_status=technical_status,
             next_action=next_action,
             apply_policy=apply_policy,
             source_informed_apply_readiness=source_informed_apply_readiness,
@@ -156,6 +157,7 @@ def build_operator_summary(
         "semantic_status": semantic_status,
         "next_action": next_action,
         "apply_policy": apply_policy,
+        "runtime_load_safe": technical_status == "VALID_PACKAGE",
         "runtime_apply_mode": runtime_apply_mode,
         "runtime_apply_allowed": runtime_apply_allowed,
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
@@ -721,27 +723,16 @@ def _next_action_and_policy(
         return "FIX_PACKAGE_BEFORE_APPLY", "BLOCKED"
     if semantic_status == "SOURCE_BACKED_STRONG":
         return "READY_TO_APPLY_OR_HANDOFF", "ALLOWED"
-    if source_informed_apply_ready:
-        return "SOURCE_INFORMED_APPLY_READY", "ALLOWED_SOURCE_INFORMED"
-    if semantic_status == "STATIC_SEMANTICS_USABLE":
-        return "READY_WITH_WARNINGS", "ALLOWED_WITH_WARNINGS"
-    if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
-        return "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY", "ALLOWED_WITH_WARNINGS"
-    return "RESEARCH_REQUIRED_BEFORE_STRONG_CONFIG", "ALLOWED_WITH_WARNINGS"
+    return "READY_TO_APPLY_WITH_WARNINGS", "ALLOWED_WITH_WARNINGS"
 
 
 def _runtime_apply_contract(
     *,
+    technical_status: str,
     next_action: str,
     apply_policy: str,
     source_informed_apply_readiness: dict[str, Any],
 ) -> tuple[str, bool, str | None]:
-    if next_action == "READY_TO_APPLY_OR_HANDOFF" and apply_policy == "ALLOWED":
-        return "normal_apply", True, None
-    if (
-        next_action == "SOURCE_INFORMED_APPLY_READY"
-        and apply_policy == "ALLOWED_SOURCE_INFORMED"
-        and source_informed_apply_readiness.get("status") == "ready"
-    ):
-        return "source_informed_apply_requires_flag", True, "--allow-source-informed"
+    if technical_status == "VALID_PACKAGE" and apply_policy != "BLOCKED":
+        return "load_safe_apply", True, None
     return "blocked", False, None
