@@ -27,6 +27,44 @@ def test_source_backed_valid_package_is_ready_to_apply():
     assert summary["operator_guidance"]["normal_next_step"] == "apply_or_handoff"
 
 
+def test_operator_summary_exposes_mechanic_warnings_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="Warning Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        config_readiness_report={
+            "summary": {
+                "total_cards": 1,
+                "generic_low_confidence": 0,
+                "cards_needing_guide_claims": 0,
+                "cards_needing_runtime_surface": 0,
+                "cards_needing_mulligan_claims": 0,
+                "cards_needing_combo_sequence": 0,
+                "cards_needing_condition_lowering": 0,
+                "cards_needing_mechanic_lowering": 0,
+                "mechanic_support": {
+                    "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 1},
+                    "warning_only_mechanics": ["dredge"],
+                    "warning_only_card_count": 1,
+                },
+            },
+            "cards": {},
+        },
+        generated_files=[
+            "CustomConfig/warningdeck/GlobalValues.json",
+            "CustomConfig/warningdeck/Mulligan.json",
+            "CustomConfig/warningdeck/DREDGE_001.json",
+        ],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["mechanic_warning_summary"]["warning_only_mechanics"] == ["dredge"]
+    assert summary["operator_guidance"]["safe_to_apply"] is True
+
+
 def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

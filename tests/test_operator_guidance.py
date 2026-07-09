@@ -35,6 +35,11 @@ def test_guidance_for_source_backed_strong_package():
         "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
         "safe_to_apply": True,
         "requires_expert_flag": False,
+        "mechanic_warning_summary": {
+            "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
+            "warning_only_mechanics": [],
+            "warning_only_card_count": 0,
+        },
         "runtime_apply_mode": "normal_apply",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
@@ -93,6 +98,28 @@ def test_guidance_for_load_safe_warning_package():
     assert guidance["runtime_apply_requires_flag"] is None
 
 
+def test_warning_guidance_carries_mechanic_warning_summary():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "mechanic_warning_summary": {
+                "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 1},
+                "warning_only_mechanics": ["tradeable"],
+                "warning_only_card_count": 1,
+            },
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["safe_to_apply"] is True
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["mechanic_warning_summary"]["warning_only_mechanics"] == ["tradeable"]
+
+
 def test_guidance_for_source_informed_apply_ready_package():
     guidance = build_operator_guidance(
         {
@@ -125,6 +152,11 @@ def test_guidance_for_source_informed_apply_ready_package():
         ),
         "safe_to_apply": True,
         "requires_expert_flag": True,
+        "mechanic_warning_summary": {
+            "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
+            "warning_only_mechanics": [],
+            "warning_only_card_count": 0,
+        },
         "runtime_apply_mode": "source_informed_apply_requires_flag",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": "--allow-source-informed",

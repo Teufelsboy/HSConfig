@@ -96,6 +96,7 @@ def build_operator_summary(
         config_readiness_summary,
         config_readiness_report,
     )
+    mechanic_warning_summary = _mechanic_warning_summary(config_readiness_report)
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -160,6 +161,7 @@ def build_operator_summary(
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
         "primary_blockers": primary_blockers,
         "warnings": warnings,
+        "mechanic_warning_summary": mechanic_warning_summary,
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "source_informed_apply_readiness": source_informed_apply_readiness,
@@ -317,6 +319,39 @@ def _normalize_readiness_summary_aliases(
                 normalized[target_key] = summary[source_key]
             normalized.pop(source_key, None)
     return normalized
+
+
+def _mechanic_warning_summary(config_readiness_report: dict[str, Any] | None) -> dict[str, Any]:
+    empty_summary = {
+        "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
+        "warning_only_mechanics": [],
+        "warning_only_card_count": 0,
+    }
+    if not isinstance(config_readiness_report, dict):
+        return empty_summary
+    summary = config_readiness_report.get("summary", {})
+    if not isinstance(summary, dict):
+        return empty_summary
+    mechanic_support = summary.get("mechanic_support", {})
+    if not isinstance(mechanic_support, dict):
+        return empty_summary
+
+    support_level_counts = mechanic_support.get("support_level_counts", {})
+    if not isinstance(support_level_counts, dict):
+        support_level_counts = {}
+    warning_only_mechanics = mechanic_support.get("warning_only_mechanics", [])
+    if not isinstance(warning_only_mechanics, list):
+        warning_only_mechanics = []
+
+    return {
+        "support_level_counts": {
+            "direct": _int_value(support_level_counts.get("direct", 0)),
+            "partial": _int_value(support_level_counts.get("partial", 0)),
+            "warning_only": _int_value(support_level_counts.get("warning_only", 0)),
+        },
+        "warning_only_mechanics": [str(item) for item in warning_only_mechanics],
+        "warning_only_card_count": _int_value(mechanic_support.get("warning_only_card_count", 0)),
+    }
 
 
 def _low_confidence_card_count(report: dict[str, Any]) -> int:

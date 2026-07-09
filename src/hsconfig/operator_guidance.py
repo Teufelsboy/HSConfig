@@ -19,6 +19,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "run hsconfig validate --package <package> --json and fix reported JSON/package errors",
             "safe_to_apply": False,
             "requires_expert_flag": False,
+            **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -33,6 +34,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
                 "safe_to_apply": True,
                 "requires_expert_flag": False,
+                **_mechanic_warning_fields(summary),
                 **_runtime_apply_fields(summary),
             }
         return {
@@ -43,6 +45,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
             "safe_to_apply": True,
             "requires_expert_flag": False,
+            **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -54,6 +57,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
             "safe_to_apply": True,
             "requires_expert_flag": False,
+            **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -77,6 +81,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             ),
             "safe_to_apply": True,
             "requires_expert_flag": True,
+            **_mechanic_warning_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -87,6 +92,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         "normal_next_command": "read reports/operator_summary.json and follow next_action",
         "safe_to_apply": False,
         "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
+        **_mechanic_warning_fields(summary),
         **_runtime_apply_fields(summary),
     }
 
@@ -96,6 +102,19 @@ def _runtime_apply_fields(summary: dict[str, Any]) -> dict[str, Any]:
         "runtime_apply_mode": summary.get("runtime_apply_mode", "blocked"),
         "runtime_apply_allowed": bool(summary.get("runtime_apply_allowed", False)),
         "runtime_apply_requires_flag": summary.get("runtime_apply_requires_flag"),
+    }
+
+
+def _mechanic_warning_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    mechanic_warning_summary = summary.get("mechanic_warning_summary")
+    if isinstance(mechanic_warning_summary, dict):
+        return {"mechanic_warning_summary": mechanic_warning_summary}
+    return {
+        "mechanic_warning_summary": {
+            "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
+            "warning_only_mechanics": [],
+            "warning_only_card_count": 0,
+        }
     }
 
 
