@@ -41,15 +41,67 @@ def test_normalize_card_row_preserves_semantic_fields():
         "name": "Darkbishop Benedictus",
         "type": "MINION",
         "card_class": "PRIEST",
+        "classes": [],
+        "collectible": False,
         "cost": None,
+        "attack": None,
+        "health": None,
+        "durability": None,
         "text": "enter Shadowform",
         "mechanics": [],
         "referenced_tags": ["START_OF_GAME_KEYWORD"],
+        "spell_school": "",
+        "race": None,
+        "races": [],
+        "overload": None,
+        "spell_damage": None,
+        "targeting_arrow_text": "",
         "hero_power_dbf_id": None,
         "quest_reward": None,
         "play_requirements": {},
         "entourage": [],
     }
+
+
+def test_normalize_card_row_preserves_static_semantic_fields():
+    row = normalize_card_row(
+        {
+            "id": "TEST_001",
+            "dbfId": 1001,
+            "name": "Test Weapon",
+            "type": "WEAPON",
+            "cardClass": "WARRIOR",
+            "classes": ["WARRIOR", "ROGUE"],
+            "cost": 3,
+            "attack": 4,
+            "health": 0,
+            "durability": 2,
+            "collectible": True,
+            "text": "Tradeable. Overload: (1).",
+            "mechanics": ["TRADEABLE"],
+            "referencedTags": ["OVERLOAD"],
+            "spellSchool": "FIRE",
+            "race": "MECHANICAL",
+            "races": ["MECHANICAL"],
+            "overload": 1,
+            "spellDamage": 2,
+            "targetingArrowText": "Deal damage.",
+            "heroPowerDbfId": 479,
+            "entourage": ["TEST_001t"],
+        }
+    )
+
+    assert row["collectible"] is True
+    assert row["attack"] == 4
+    assert row["health"] == 0
+    assert row["durability"] == 2
+    assert row["classes"] == ["WARRIOR", "ROGUE"]
+    assert row["spell_school"] == "FIRE"
+    assert row["race"] == "MECHANICAL"
+    assert row["races"] == ["MECHANICAL"]
+    assert row["overload"] == 1
+    assert row["spell_damage"] == 2
+    assert row["targeting_arrow_text"] == "Deal damage."
 
 
 def test_normalize_card_row_preserves_identity_link_fields():
