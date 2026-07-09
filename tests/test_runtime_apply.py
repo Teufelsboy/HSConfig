@@ -170,31 +170,25 @@ def test_apply_package_rejects_forged_runtime_apply_fields_in_allowed_gate(
     assert not (runtime / "CustomConfig" / "deck").exists()
 
 
-def test_apply_package_direct_source_informed_requires_explicit_flag(tmp_path: Path):
+def test_apply_package_applies_valid_warning_package_without_source_informed_flag(
+    tmp_path: Path,
+):
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="SOURCE_INFORMED_APPLY_READY",
-        apply_policy="ALLOWED_SOURCE_INFORMED",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
         source_informed_apply_readiness={
-            "status": "ready",
-            "requires_flag": "--allow-source-informed",
-            "source_gap_count": 1,
+            "status": "blocked",
+            "blocking_reasons": ["cards_need_runtime_surface"],
         },
     )
     runtime = tmp_path / "runtime"
 
-    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
-        apply_package(package_root=package, runtime_root=runtime)
-
-    receipt = apply_package(
-        package_root=package,
-        runtime_root=runtime,
-        allow_source_informed=True,
-    )
+    receipt = apply_package(package_root=package, runtime_root=runtime)
 
     assert receipt["status"] == "applied"
-    assert receipt["apply_gate"]["mode"] == "source_informed_apply_ready"
+    assert receipt["apply_gate"]["mode"] == "load_safe_apply"
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
@@ -294,7 +288,7 @@ def test_apply_cli_rejects_incomplete_package_without_deleting_runtime(tmp_path:
     assert (runtime_deck / "Mulligan.json").exists()
 
 
-def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
+def test_apply_cli_applies_valid_warning_package_without_source_informed_flag(
     tmp_path: Path, capsys
 ):
     from hsconfig.cli import main
@@ -302,11 +296,11 @@ def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="SOURCE_INFORMED_APPLY_READY",
-        apply_policy="ALLOWED_SOURCE_INFORMED",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
         source_informed_apply_readiness={
-            "status": "ready",
-            "requires_flag": "--allow-source-informed",
+            "status": "blocked",
+            "blocking_reasons": ["cards_need_runtime_surface"],
             "source_gap_count": 1,
         },
     )
@@ -325,14 +319,14 @@ def test_apply_cli_blocks_valid_but_not_guide_strong_package_by_default(
 
     payload = json.loads(capsys.readouterr().out)
 
-    assert code == 1
-    assert payload["status"] == "blocked"
-    assert payload["apply_gate"]["status"] == "blocked"
-    assert payload["apply_gate"]["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
-    assert not (runtime / "CustomConfig" / "deck").exists()
+    assert code == 0
+    assert payload["status"] == "applied"
+    assert payload["apply_gate"]["status"] == "allowed"
+    assert payload["apply_gate"]["mode"] == "load_safe_apply"
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
-def test_apply_cli_allows_source_informed_apply_ready_only_with_explicit_escape_hatch(
+def test_apply_cli_load_safe_warning_package_ignores_optional_source_informed_flag(
     tmp_path: Path, capsys
 ):
     from hsconfig.cli import main
@@ -340,10 +334,10 @@ def test_apply_cli_allows_source_informed_apply_ready_only_with_explicit_escape_
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="SOURCE_INFORMED_APPLY_READY",
-        apply_policy="ALLOWED_SOURCE_INFORMED",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
         source_informed_apply_readiness={
-            "status": "ready",
+            "status": "blocked",
             "requires_flag": "--allow-source-informed",
             "source_gap_count": 1,
         },
@@ -366,7 +360,7 @@ def test_apply_cli_allows_source_informed_apply_ready_only_with_explicit_escape_
 
     assert code == 0
     assert payload["status"] == "applied"
-    assert payload["apply_gate"]["mode"] == "source_informed_apply_ready"
+    assert payload["apply_gate"]["mode"] == "load_safe_apply"
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
 
 
@@ -379,10 +373,10 @@ def test_apply_cli_source_informed_receipt_contains_real_operator_gate(
     package = _complete_package(
         tmp_path,
         semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
-        next_action="SOURCE_INFORMED_APPLY_READY",
-        apply_policy="ALLOWED_SOURCE_INFORMED",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
         source_informed_apply_readiness={
-            "status": "ready",
+            "status": "blocked",
             "requires_flag": "--allow-source-informed",
             "source_gap_count": 1,
         },
@@ -410,7 +404,7 @@ def test_apply_cli_source_informed_receipt_contains_real_operator_gate(
 
     assert code == 0
     assert payload["status"] == "applied"
-    assert payload["apply_gate"]["mode"] == "source_informed_apply_ready"
+    assert payload["apply_gate"]["mode"] == "load_safe_apply"
     assert receipt["apply_gate"] == payload["apply_gate"]
     assert receipt["apply_gate"]["operator_summary_path"].endswith(
         "reports\\operator_summary.json"

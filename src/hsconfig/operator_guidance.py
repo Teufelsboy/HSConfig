@@ -22,6 +22,30 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_runtime_apply_fields(summary),
         }
 
+    if bool(summary.get("runtime_apply_allowed")) and str(
+        summary.get("runtime_apply_mode", "")
+    ) == "load_safe_apply":
+        if semantic_status == "SOURCE_BACKED_STRONG" and apply_policy == "ALLOWED":
+            return {
+                "first_report_to_open": "reports/operator_summary.json",
+                "next_report_to_open": None,
+                "normal_next_step": "apply_or_handoff",
+                "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
+                "safe_to_apply": True,
+                "requires_expert_flag": False,
+                **_runtime_apply_fields(summary),
+            }
+        return {
+            "first_report_to_open": "reports/operator_summary.json",
+            "next_report_to_open": _first_semantic_blocker_report(summary)
+            or "reports/source_claim_gap_report.json",
+            "normal_next_step": "apply_with_warnings",
+            "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
+            "safe_to_apply": True,
+            "requires_expert_flag": False,
+            **_runtime_apply_fields(summary),
+        }
+
     if semantic_status == "SOURCE_BACKED_STRONG" and apply_policy == "ALLOWED":
         return {
             "first_report_to_open": "reports/operator_summary.json",
@@ -51,18 +75,6 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             ),
             "safe_to_apply": True,
             "requires_expert_flag": True,
-            **_runtime_apply_fields(summary),
-        }
-
-    if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
-        return {
-            "first_report_to_open": "reports/operator_summary.json",
-            "next_report_to_open": _first_semantic_blocker_report(summary)
-            or "reports/source_claim_gap_report.json",
-            "normal_next_step": "improve_sources",
-            "normal_next_command": "update source_documents.json, rerun hsconfig research-deck, then rerun hsconfig prepare",
-            "safe_to_apply": False,
-            "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
             **_runtime_apply_fields(summary),
         }
 

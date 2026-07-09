@@ -60,28 +60,36 @@ def test_guidance_mirrors_explicit_runtime_apply_fields_from_summary():
     assert guidance["runtime_apply_requires_flag"] == "--allow-source-informed"
 
 
-def test_guidance_for_valid_but_not_guide_strong_package():
+def test_guidance_for_load_safe_warning_package():
     guidance = build_operator_guidance(
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
-            "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 2}],
+            "runtime_load_safe": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+            "semantic_blockers": [
+                {
+                    "reason": "cards_need_guide_claims",
+                    "report": "reports/source_claim_gap_report.json",
+                }
+            ],
         }
     )
 
     assert guidance["first_report_to_open"] == "reports/operator_summary.json"
     assert guidance["next_report_to_open"] == "reports/source_claim_gap_report.json"
-    assert guidance["normal_next_step"] == "improve_sources"
-    assert (
-        guidance["normal_next_command"]
-        == "update source_documents.json, rerun hsconfig research-deck, then rerun hsconfig prepare"
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["normal_next_command"] == (
+        "hsconfig apply --package <package> --runtime-root <runtime-root> --json"
     )
-    assert guidance["safe_to_apply"] is False
-    assert guidance["requires_expert_flag"] is True
-    assert guidance["runtime_apply_mode"] == "blocked"
-    assert guidance["runtime_apply_allowed"] is False
+    assert guidance["safe_to_apply"] is True
+    assert guidance["requires_expert_flag"] is False
+    assert guidance["runtime_apply_mode"] == "load_safe_apply"
+    assert guidance["runtime_apply_allowed"] is True
     assert guidance["runtime_apply_requires_flag"] is None
 
 
@@ -130,6 +138,10 @@ def test_guidance_opens_first_semantic_blocker_report_for_claim_conflicts():
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_load_safe": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
             "semantic_blockers": [
                 {"reason": "claim_conflicts_present", "report": "reports/claim_conflict_report.json"}
             ],
@@ -137,9 +149,11 @@ def test_guidance_opens_first_semantic_blocker_report_for_claim_conflicts():
     )
 
     assert guidance["next_report_to_open"] == "reports/claim_conflict_report.json"
-    assert guidance["requires_expert_flag"] is True
-    assert guidance["runtime_apply_mode"] == "blocked"
-    assert guidance["runtime_apply_allowed"] is False
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["safe_to_apply"] is True
+    assert guidance["requires_expert_flag"] is False
+    assert guidance["runtime_apply_mode"] == "load_safe_apply"
+    assert guidance["runtime_apply_allowed"] is True
     assert guidance["runtime_apply_requires_flag"] is None
 
 
@@ -150,6 +164,10 @@ def test_guidance_opens_first_semantic_blocker_report_for_unsupported_conditions
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_load_safe": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
             "semantic_blockers": [
                 {
                     "reason": "unsupported_conditions_present",
@@ -160,9 +178,11 @@ def test_guidance_opens_first_semantic_blocker_report_for_unsupported_conditions
     )
 
     assert guidance["next_report_to_open"] == "reports/mulligan_plan_report.json"
-    assert guidance["requires_expert_flag"] is True
-    assert guidance["runtime_apply_mode"] == "blocked"
-    assert guidance["runtime_apply_allowed"] is False
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["safe_to_apply"] is True
+    assert guidance["requires_expert_flag"] is False
+    assert guidance["runtime_apply_mode"] == "load_safe_apply"
+    assert guidance["runtime_apply_allowed"] is True
     assert guidance["runtime_apply_requires_flag"] is None
 
 

@@ -85,4 +85,5 @@ def test_apply_help_keeps_source_informed_pre_run_scope(capsys):
     assert "--fake" in help_text
     assert "--from-fake-receipt" in help_text
     assert "--allow-source-informed" in help_text
-    assert "source-informed apply remains pre-run only" in help_text
+    assert "Backward-compatible source-informed apply flag." in help_text
+    assert "Normal load-safe packages do not require this flag." in help_text

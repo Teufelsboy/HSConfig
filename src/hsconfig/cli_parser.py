@@ -129,12 +129,12 @@ def build_parser() -> argparse.ArgumentParser:
         "apply",
         description=(
             "Apply a validated pre-run CustomConfig package. "
-            "source-informed apply remains pre-run only and still requires "
-            "reports/operator_summary.json to allow it."
+            "Backward-compatible source-informed apply flag. Normal load-safe "
+            "packages do not require this flag."
         ),
         epilog=(
-            "source-informed apply remains pre-run only and still requires "
-            "reports/operator_summary.json to allow it."
+            "Backward-compatible source-informed apply flag. Normal load-safe "
+            "packages do not require this flag."
         ),
     )
     apply.add_argument("--package", required=True)
