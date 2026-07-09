@@ -159,3 +159,24 @@ def test_visibility_slice_classifies_choose_one_and_warning_boundaries():
 
     assert by_mechanic["generated_entity"]["support_level"] == "partial"
     assert operator_visibility_bucket(by_mechanic["generated_entity"]) == "partial"
+
+
+def test_mechanic_support_covers_static_semantic_families_without_blocking():
+    rows = support_for_roles(
+        [
+            "choose_one",
+            "spell_damage",
+            "start_of_game",
+            "location_activation",
+            "secret_timing",
+            "generated_entity_random_pool",
+        ]
+    )
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    assert by_mechanic["choose_one"]["support_level"] == "direct"
+    assert by_mechanic["spell_damage"]["support_level"] == "partial"
+    assert by_mechanic["start_of_game"]["support_level"] == "partial"
+    assert by_mechanic["location_activation"]["support_level"] == "warning_only"
+    assert by_mechanic["secret_timing"]["support_level"] == "warning_only"
+    assert by_mechanic["generated_entity_random_pool"]["support_level"] == "warning_only"

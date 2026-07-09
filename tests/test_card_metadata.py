@@ -32,7 +32,7 @@ def test_hydrate_card_metadata_uses_source_records():
     card = snapshot["cards"][0]
     assert card["name"] == "Northshire Cleric"
     assert card["card_id"] == "CS2_235"
-    assert card["mechanic_families"] == ["draw", "heal", "minion"]
+    assert {"draw", "heal", "minion"} <= set(card["mechanic_families"])
 
 
 def test_hydrate_card_metadata_keeps_missing_records_visible():
@@ -64,3 +64,24 @@ def test_hydrate_card_metadata_preserves_referenced_tags_and_entourage():
     card = snapshot["cards"][0]
     assert card["referenced_tags"] == ["START_OF_GAME_KEYWORD"]
     assert card["entourage"] == ["EX1_625t"]
+
+
+def test_hydrate_card_metadata_adds_static_semantic_evidence():
+    snapshot = hydrate_card_metadata(
+        cards=[{"card_id": "TEST_001", "dbf_id": 1, "count": 1}],
+        source_records={
+            "TEST_001": {
+                "name": "Test Dredge",
+                "type": "SPELL",
+                "text": "Dredge. Tradeable.",
+                "mechanics": ["TRADEABLE"],
+            }
+        },
+    )
+
+    card = snapshot["cards"][0]
+
+    assert "dredge" in card["mechanic_families"]
+    assert "tradeable" in card["mechanic_families"]
+    assert "dredge" in card["warning_only_mechanics"]
+    assert any(row["family"] == "tradeable" for row in card["static_semantic_evidence"])

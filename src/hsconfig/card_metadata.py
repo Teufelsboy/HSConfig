@@ -1,45 +1,12 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
-
-MECHANIC_ALIASES: dict[str, tuple[str, ...]] = {
-    "battlecry": ("battlecry", "BATTLECRY"),
-    "deathrattle": ("deathrattle", "DEATHRATTLE"),
-    "discover": ("discover", "DISCOVER"),
-    "dredge": ("dredge", "DREDGE"),
-    "tradeable": ("tradeable", "TRADEABLE"),
-    "overload": ("overload", "OVERLOAD"),
-    "lifesteal": ("lifesteal", "LIFESTEAL"),
-    "reborn": ("reborn", "REBORN"),
-    "rush": ("rush", "RUSH"),
-    "charge": ("charge", "CHARGE"),
-    "taunt": ("taunt", "TAUNT"),
-    "secret": ("secret", "SECRET"),
-    "weapon": ("weapon", "WEAPON"),
-    "location": ("location", "LOCATION"),
-    "minion": ("minion", "MINION"),
-    "spell": ("spell", "SPELL"),
-    "draw": ("draw", "draws", "drawn"),
-    "heal": ("heal", "healed", "healing", "restore health"),
-    "damage": ("damage", "deal damage", "deals damage"),
-    "summon": ("summon", "summons", "summoned"),
-    "discard": ("discard", "discards"),
-    "silence": ("silence", "silences"),
-    "transform": ("transform", "transforms"),
-    "destroy": ("destroy", "destroys"),
-}
+from hsconfig.static_semantics import infer_static_semantics
 
 
 def assign_mechanic_families(card: dict[str, Any]) -> list[str]:
-    haystack = _mechanic_haystack(card)
-    families = [
-        family
-        for family, aliases in MECHANIC_ALIASES.items()
-        if any(_contains_alias(haystack, alias) for alias in aliases)
-    ]
-    return sorted(set(families))
+    return infer_static_semantics(card)["families"]
 
 
 def hydrate_card_metadata(
@@ -71,22 +38,19 @@ def hydrate_card_metadata(
                 source.get("referenced_tags", source.get("referencedTags", [])) or []
             ),
             "entourage": list(source.get("entourage", []) or []),
+            "overload": source.get("overload"),
+            "spell_damage": source.get("spell_damage", source.get("spellDamage")),
+            "targeting_arrow_text": source.get(
+                "targeting_arrow_text",
+                source.get("targetingArrowText", ""),
+            ),
+            "hero_power_dbf_id": source.get("hero_power_dbf_id", source.get("heroPowerDbfId")),
             "metadata_status": metadata_status,
             "source_record_key": source_key if source else None,
         }
-        merged["mechanic_families"] = assign_mechanic_families(merged)
+        semantic_result = infer_static_semantics(merged)
+        merged["mechanic_families"] = semantic_result["families"]
+        merged["static_semantic_evidence"] = semantic_result["evidence"]
+        merged["warning_only_mechanics"] = semantic_result["warning_only"]
         hydrated.append(merged)
     return {"cards": hydrated, "unresolved_metadata_count": missing_count}
-
-
-def _mechanic_haystack(card: dict[str, Any]) -> str:
-    values = [str(card.get("type", "")), str(card.get("text", ""))]
-    values.extend(str(item) for item in card.get("mechanics", []) or [])
-    return " ".join(values).lower()
-
-
-def _contains_alias(haystack: str, alias: str) -> bool:
-    normalized = alias.lower()
-    if " " in normalized:
-        return normalized in haystack
-    return bool(re.search(rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", haystack))

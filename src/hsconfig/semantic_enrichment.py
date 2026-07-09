@@ -6,6 +6,7 @@ from typing import Any
 from hsconfig.hearthstonejson import index_cards_by_id
 from hsconfig.linked_entity_supplement import curated_link_map_for
 from hsconfig.option_identity_resolver import resolve_linked_entities
+from hsconfig.static_semantics import infer_static_semantics
 
 
 MIND_SPIKE_FALLBACK = {
@@ -43,6 +44,10 @@ def enrich_card_metadata(
 
         semantic_families = {str(item) for item in enriched.get("mechanic_families", [])}
         semantic_families.update(_semantic_families_from_card(enriched))
+        static_semantics = infer_static_semantics(enriched)
+        semantic_families.update(static_semantics["families"])
+        enriched["static_semantic_evidence"] = static_semantics["evidence"]
+        enriched["warning_only_mechanics"] = static_semantics["warning_only"]
         card_id = str(enriched.get("card_id") or enriched.get("id") or "")
         resolved_links = resolve_linked_entities(
             [enriched],
@@ -95,6 +100,9 @@ def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
         merged["type"] = hjson.get("type")
     if _is_missing_value(merged.get("text")):
         merged["text"] = hjson.get("text", "")
+    merged["mechanics"] = list(
+        dict.fromkeys([*merged.get("mechanics", []), *hjson.get("mechanics", [])])
+    )
     merged["referenced_tags"] = list(
         dict.fromkeys([*merged.get("referenced_tags", []), *hjson.get("referenced_tags", [])])
     )
@@ -105,6 +113,22 @@ def _merge_hjson(card: dict[str, Any], hjson: dict[str, Any]) -> dict[str, Any]:
         merged["hero_power_dbf_id"] = hjson.get("hero_power_dbf_id")
     if _is_missing_value(merged.get("quest_reward")):
         merged["quest_reward"] = hjson.get("quest_reward")
+    for key in (
+        "attack",
+        "health",
+        "durability",
+        "overload",
+        "spell_damage",
+        "targeting_arrow_text",
+        "spell_school",
+        "race",
+    ):
+        if _is_missing_value(merged.get(key)):
+            merged[key] = hjson.get(key)
+    merged["races"] = list(dict.fromkeys([*merged.get("races", []), *hjson.get("races", [])]))
+    merged["classes"] = list(
+        dict.fromkeys([*merged.get("classes", []), *hjson.get("classes", [])])
+    )
     play_requirements = dict(hjson.get("play_requirements", {}) or {})
     play_requirements.update(dict(merged.get("play_requirements", {}) or {}))
     merged["play_requirements"] = play_requirements

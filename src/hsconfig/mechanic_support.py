@@ -81,6 +81,22 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         ],
         "warning_boundary": "Only exact transformed hero-power identity lowers.",
     },
+    "spell_damage": {
+        "support_level": "partial",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePlayCardBonus",
+            "GlobalValues.json:deck_posture",
+        ],
+        "warning_boundary": "Spell-damage synergy can be encouraged; exact hand and spell sequencing remains source-dependent.",
+    },
+    "start_of_game": {
+        "support_level": "partial",
+        "normal_path_surfaces": [
+            "GlobalValues.json:deck_posture",
+            "CARDID.json:resolved_identity",
+        ],
+        "warning_boundary": "Start-of-game effects are represented through deck posture or exact linked entities, not by executing a runtime action.",
+    },
     "discard": {
         "support_level": "direct",
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],

@@ -237,3 +237,39 @@ def test_existing_upstream_hero_power_transform_suppresses_curated_duplicate():
             "source": "upstream.semantic_fixture",
         }
     ]
+
+
+def test_enrichment_merges_static_semantics_from_hjson_fields():
+    enriched = enrich_card_metadata(
+        {
+            "cards": [
+                {
+                    "card_id": "TEST_001",
+                    "dbf_id": 1001,
+                    "name": "TEST_001",
+                    "type": "UNKNOWN",
+                    "text": "",
+                    "mechanic_families": [],
+                    "metadata_status": "source_record",
+                }
+            ]
+        },
+        hearthstonejson_cards=[
+            {
+                "id": "TEST_001",
+                "dbfId": 1001,
+                "name": "Test Location",
+                "type": "LOCATION",
+                "text": "Choose One - Summon a random minion; or Draw a card.",
+                "mechanics": [],
+                "referencedTags": ["CHOOSE_ONE"],
+            }
+        ],
+    )
+
+    card = enriched["cards"][0]
+
+    assert "location" in card["semantic_families"]
+    assert "choose_one" in card["semantic_families"]
+    assert "generated_entity_random_pool" in card["semantic_families"]
+    assert "location_activation" in card["warning_only_mechanics"]
