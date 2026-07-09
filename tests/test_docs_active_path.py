@@ -9,9 +9,8 @@ def test_research_docs_are_marked_as_evidence_not_operator_path():
     assert "docs/research/current-truth.md" in text
     assert "Use it as the only place that names the active evidence packages" in text
     assert "Active Research Packages" not in text
+    assert "Historical evidence examples" in text
     assert "2026-07-09-hsconfig-universal-wild-skill-audit" not in text
-    assert "2026-07-08-hsconfig-final-skill-audit" not in text
-    assert "2026-07-08-hsconfig-current-skill-lean-audit" not in text
 
 
 def test_root_readme_points_to_operator_path_not_research_history():
