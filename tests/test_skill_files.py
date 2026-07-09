@@ -574,3 +574,24 @@ def test_universal_wild_contract_keeps_generated_entity_partial():
     assert "exact option or transformed-identity resolution" in text
     assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in text
     assert "generated-card" not in text
+
+
+def test_docs_and_skill_explain_visibility_only_mechanic_polish():
+    paths = [
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path("docs/operator/README.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+        Path(".agents/skills/hsconfig/references/card-behavior-policy.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "`choose_one`" in combined
+    assert "`board_position`" in combined
+    assert "`generic_spell_target`" in combined
+    assert "`location_activation`" in combined
+    assert "`secret_timing`" in combined
+    assert "`generated_entity_random_pool`" in combined
+    assert "warning_boundaries" in combined
+    assert "must not block load-safe apply" in combined
+    assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in combined
