@@ -171,7 +171,9 @@ def test_apply_gate_allows_source_informed_apply_ready_without_flag(tmp_path: Pa
     assert compatibility_gate["mode"] == "load_safe_apply"
 
 
-def test_apply_gate_blocks_source_informed_policy_when_readiness_is_not_ready(tmp_path: Path):
+def test_apply_gate_allows_load_safe_apply_when_legacy_source_informed_readiness_is_blocked(
+    tmp_path: Path,
+):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
     _write_operator_summary(

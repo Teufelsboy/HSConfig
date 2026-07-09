@@ -14,7 +14,7 @@ Normal path:
 4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
 5. Run `hsconfig prepare --guide-sources-json ...` to compile the package.
 6. Read `reports/operator_summary.json` first.
-7. Run `hsconfig apply` only when the apply gate allows it or the operator intentionally uses `--allow-source-informed`.
+7. Run `hsconfig apply` only after `reports/operator_summary.json` shows the package is runtime-load-safe. `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane; older source-informed summaries are legacy compatibility exceptions, not the normal path.
 
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 

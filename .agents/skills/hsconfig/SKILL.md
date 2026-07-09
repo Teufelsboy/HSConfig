@@ -38,7 +38,7 @@ Status meaning:
 - `SOURCE_BACKED_STRONG`: current guide-backed per-card coverage supports a strong initial config.
 - `STATIC_SEMANTICS_USABLE`: static card semantics produced a valid package without enough live guide depth.
 - `VALID_BUT_NOT_GUIDE_STRONG`: the package is valid, but `guide_strength_summary` and `semantic_blockers` identify missing source depth, conflict resolution, runtime-surface gaps, or combo detail.
-- `SOURCE_INFORMED_APPLY_READY`: a valid-but-not-strong package whose `source_informed_apply_readiness` shows only `cards_need_guide_claims` or `cards_need_mulligan_claims` remain. Hard blockers such as `cards_need_runtime_surface` keep source-informed apply blocked; source-informed apply is still not `SOURCE_BACKED_STRONG`.
+- `SOURCE_INFORMED_APPLY_READY`: legacy compatibility status for older summaries that still require the narrow source-informed expert lane. Normal load-safe runtime apply is `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` when `technical_status=VALID_PACKAGE`; source-informed compatibility is still not `SOURCE_BACKED_STRONG`.
 
 Fixture stage meaning:
 

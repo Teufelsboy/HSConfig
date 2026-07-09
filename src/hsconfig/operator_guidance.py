@@ -57,6 +57,8 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_runtime_apply_fields(summary),
         }
 
+    # Legacy/backward-compatible expert lane for older summaries that still
+    # require explicit source-informed apply instead of the normal load-safe lane.
     if (
         semantic_status == "VALID_BUT_NOT_GUIDE_STRONG"
         and apply_policy == "ALLOWED_SOURCE_INFORMED"

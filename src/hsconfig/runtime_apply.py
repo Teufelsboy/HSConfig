@@ -7,6 +7,7 @@ from typing import Any
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import file_sha256, read_json, write_json
+from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.runtime_apply_receipts import (
     build_fake_apply_receipt,
     runtime_snapshot,
@@ -14,7 +15,11 @@ from hsconfig.runtime_apply_receipts import (
     write_fake_apply_receipt,
     write_runtime_write_history,
 )
-from hsconfig.validate_package import SPECIAL_SURFACE_NAMES, supported_surface
+from hsconfig.validate_package import (
+    SPECIAL_SURFACE_NAMES,
+    supported_surface,
+    validate_config_package,
+)
 
 
 def plan_apply_package(
@@ -25,6 +30,7 @@ def plan_apply_package(
     apply_gate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     package = Path(package_root)
+    _validate_runtime_apply_package(package)
     deck_dir_name = config_dir or _single_config_dir(package)
     _validate_config_dir(deck_dir_name)
     source_dir = package / "CustomConfig" / deck_dir_name
@@ -54,6 +60,7 @@ def apply_package(
 ) -> dict[str, Any]:
     package = Path(package_root)
     runtime = Path(runtime_root)
+    _validate_runtime_apply_package(package)
     resolved_apply_gate = _resolve_allowed_apply_gate(
         package=package,
         apply_gate=apply_gate,
@@ -187,6 +194,35 @@ def apply_package(
             except Exception as history_exc:
                 exc.add_note(f"runtime rollback history write failed: {history_exc}")
         raise
+
+
+def _validate_runtime_apply_package(package: Path) -> None:
+    try:
+        baseline = read_required_baseline(package)
+        profile = read_optional_profile(package)
+    except ValueError as exc:
+        raise ValueError(
+            "Runtime apply requires a valid complete package before fake/apply "
+            f"receipt or runtime writes: {exc}"
+        ) from exc
+
+    report = validate_config_package(
+        package,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_complete_package=True,
+        require_globalvalues_profile=True,
+    )
+    if report["status"] == "passed":
+        return
+    errors = report.get("errors") or ["unknown package validation failure"]
+    first_error = str(errors[0])
+    extra_count = max(len(errors) - 1, 0)
+    suffix = f" (and {extra_count} more)" if extra_count else ""
+    raise ValueError(
+        "Runtime apply requires a valid complete package before fake/apply "
+        f"receipt or runtime writes: {first_error}{suffix}"
+    )
 
 
 def _resolve_allowed_apply_gate(

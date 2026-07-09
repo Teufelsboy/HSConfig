@@ -8,6 +8,18 @@ from hsconfig.io import write_json
 from hsconfig.runtime_apply import apply_package
 
 
+def _write_validation_reports(package: Path, globalvalues: dict) -> None:
+    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        package / "reports" / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+        },
+    )
+
+
 def _complete_package(
     tmp_path: Path,
     *,
@@ -28,15 +40,7 @@ def _complete_package(
         deck / "EX1_001.json",
         {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
     )
-    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        package / "reports" / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-        },
-    )
+    _write_validation_reports(package, globalvalues)
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
@@ -64,15 +68,17 @@ def _complete_package(
 def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
     package = tmp_path / "raw-package"
     deck = package / "CustomConfig" / "deck"
-    write_json(deck / "GlobalValues.json", {"GameCardId": "GlobalValues"})
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(deck / "GlobalValues.json", globalvalues)
     write_json(
         deck / "Mulligan.json",
-        {"GameCardId": "Mulligan", "Mulligan": {"values": []}},
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
     )
     write_json(
         deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "InHandPlayPriority": {"values": []}},
+        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
     )
+    _write_validation_reports(package, globalvalues)
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
@@ -228,7 +234,9 @@ def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
 def test_apply_package_rejects_incomplete_source_before_replacing_runtime(tmp_path: Path):
     package = tmp_path / "package"
     package_deck = package / "CustomConfig" / "deck"
-    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(package_deck / "GlobalValues.json", globalvalues)
+    _write_validation_reports(package, globalvalues)
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
@@ -247,7 +255,7 @@ def test_apply_package_rejects_incomplete_source_before_replacing_runtime(tmp_pa
     runtime_deck = tmp_path / "runtime" / "CustomConfig" / "deck"
     write_json(runtime_deck / "Mulligan.json", {"old": True})
 
-    with pytest.raises(ValueError, match="Runtime apply requires an allowed apply gate"):
+    with pytest.raises(ValueError, match="Runtime apply requires a valid complete package"):
         apply_package(
             package_root=package,
             runtime_root=tmp_path / "runtime",
@@ -565,12 +573,14 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
 def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section(tmp_path: Path):
     package = tmp_path / "package"
     package_deck = package / "CustomConfig" / "shadowpriest"
-    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(package_deck / "GlobalValues.json", globalvalues)
     write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
     write_json(
         package_deck / "EX1_001.json",
         {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
     )
+    _write_validation_reports(package, globalvalues)
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "ShadowPriest", "deck_code": "fixture", "runtime_root": "unused"},
@@ -613,12 +623,14 @@ def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section
 def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_path: Path):
     package = tmp_path / "package"
     package_deck = package / "CustomConfig" / "deck"
-    write_json(package_deck / "GlobalValues.json", {"GameCardId": "GlobalValues", "ConfigComment": "new"})
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
+    write_json(package_deck / "GlobalValues.json", globalvalues)
     write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
     write_json(
         package_deck / "EX1_001.json",
         {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
     )
+    _write_validation_reports(package, globalvalues)
     write_json(
         package / "reports" / "input_manifest.json",
         {"deck_name": "Bad\nDeck", "deck_code": "fixture", "runtime_root": "unused"},
@@ -831,12 +843,45 @@ def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_pa
         runtime_root=runtime,
         apply_gate=_allowed_gate(package),
     )
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {"GameCardId": "EX1_001", "changed": True})
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {
+            "GameCardId": "EX1_001",
+            "ConfigComment": "changed",
+            "InHandPlayPriority": {"values": [{"condition": "Always", "value": 100}]},
+        },
+    )
 
     with pytest.raises(ValueError, match="fake apply receipt does not match package"):
         apply_package(package_root=package, runtime_root=runtime, fake_receipt=receipt)
 
     assert not (runtime / "CustomConfig" / "deck").exists()
+
+
+def test_apply_package_rejects_corrupted_runtime_json_before_runtime_mutation(
+    tmp_path: Path,
+):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        apply_policy="ALLOWED_WITH_WARNINGS",
+        source_informed_apply_readiness={
+            "status": "blocked",
+            "blocking_reasons": ["cards_need_runtime_surface"],
+        },
+    )
+    runtime = tmp_path / "runtime"
+    (package / "CustomConfig" / "deck" / "EX1_001.json").write_text(
+        "{ invalid json",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Runtime apply requires a valid complete package"):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    assert not (runtime / "CustomConfig").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
 
 
 def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
@@ -864,6 +909,34 @@ def test_apply_package_writes_history_and_backup_snapshot(tmp_path: Path):
     assert receipt["rollback_snapshot_path"]
     assert Path(receipt["rollback_snapshot_path"]).exists()
     assert (runtime / "CustomConfig" / "hsconfig_write_history.jsonl").exists()
+
+
+def test_plan_apply_package_rejects_corrupted_runtime_json_before_writing_fake_receipt(
+    tmp_path: Path,
+):
+    from hsconfig.runtime_apply import plan_apply_package
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    (package / "CustomConfig" / "deck" / "EX1_001.json").write_text(
+        "{ invalid json",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Runtime apply requires a valid complete package"):
+        plan_apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate=_allowed_gate(package),
+        )
+
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (runtime / "CustomConfig").exists()
 
 
 def test_apply_package_rejects_runtime_drift_before_runtime_mutation(tmp_path: Path):
