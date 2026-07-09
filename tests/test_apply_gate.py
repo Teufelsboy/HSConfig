@@ -55,12 +55,21 @@ def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
         "status": "allowed",
         "allowed": True,
         "operator_summary_path": str(package / "reports" / "operator_summary.json"),
-        "mode": "source_backed_strong",
-        "reasons": [],
+        "mode": "load_safe_apply",
+        "reasons": [
+            {
+                "reason": "runtime_load_safe_package",
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "SOURCE_BACKED_STRONG",
+                "next_action": "READY_TO_APPLY_OR_HANDOFF",
+                "apply_policy": "ALLOWED",
+                "semantic_blocker_count": 0,
+            }
+        ],
     }
 
 
-def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path):
+def test_apply_gate_allows_valid_but_not_guide_strong_as_load_safe_apply(tmp_path: Path):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
     _write_operator_summary(
@@ -68,7 +77,7 @@ def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path)
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
             "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 3}],
             "generated_files": [
@@ -81,20 +90,25 @@ def test_apply_gate_blocks_valid_but_not_guide_strong_by_default(tmp_path: Path)
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["status"] == "blocked"
-    assert gate["mode"] == "blocked"
-    assert gate["reasons"] == [
-        {
-            "reason": "operator_summary_not_ready_to_apply",
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
-            "apply_policy": "ALLOWED_WITH_WARNINGS",
-        }
-    ]
+    assert gate == {
+        "status": "allowed",
+        "allowed": True,
+        "operator_summary_path": str(package / "reports" / "operator_summary.json"),
+        "mode": "load_safe_apply",
+        "reasons": [
+            {
+                "reason": "runtime_load_safe_package",
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+                "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+                "apply_policy": "ALLOWED_WITH_WARNINGS",
+                "semantic_blocker_count": 1,
+            }
+        ],
+    }
 
 
-def test_apply_gate_blocks_old_warning_escape_hatch_even_with_source_informed_flag(
+def test_apply_gate_allows_valid_runtime_surface_gap_as_load_safe_warning(
     tmp_path: Path,
 ):
     package = tmp_path / "package"
@@ -104,7 +118,7 @@ def test_apply_gate_blocks_old_warning_escape_hatch_even_with_source_informed_fl
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
             "semantic_blockers": [{"reason": "cards_need_runtime_surface", "count": 2}],
             "generated_files": [
@@ -117,20 +131,14 @@ def test_apply_gate_blocks_old_warning_escape_hatch_even_with_source_informed_fl
 
     gate = evaluate_apply_gate(package, allow_source_informed=True)
 
-    assert gate["status"] == "blocked"
-    assert gate["mode"] == "blocked"
-    assert gate["reasons"] == [
-        {
-            "reason": "operator_summary_not_ready_to_apply",
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "IMPROVE_GUIDE_SOURCES_BEFORE_STRONG_APPLY",
-            "apply_policy": "ALLOWED_WITH_WARNINGS",
-        }
-    ]
+    assert gate["status"] == "allowed"
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
+    assert gate["reasons"][0]["semantic_blocker_count"] == 1
 
 
-def test_apply_gate_allows_source_informed_apply_ready_only_with_flag(tmp_path: Path):
+def test_apply_gate_allows_source_informed_apply_ready_without_flag(tmp_path: Path):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
     _write_operator_summary(
@@ -138,11 +146,11 @@ def test_apply_gate_allows_source_informed_apply_ready_only_with_flag(tmp_path: 
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "SOURCE_INFORMED_APPLY_READY",
-            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
             "source_informed_apply_readiness": {
                 "status": "ready",
-                "requires_flag": "--allow-source-informed",
+                "requires_flag": None,
                 "source_gap_count": 2,
             },
             "semantic_blockers": [{"reason": "cards_need_guide_claims", "count": 2}],
@@ -154,26 +162,13 @@ def test_apply_gate_allows_source_informed_apply_ready_only_with_flag(tmp_path: 
         },
     )
 
-    blocked = evaluate_apply_gate(package)
-    allowed = evaluate_apply_gate(package, allow_source_informed=True)
+    default_gate = evaluate_apply_gate(package)
+    compatibility_gate = evaluate_apply_gate(package, allow_source_informed=True)
 
-    assert blocked["status"] == "blocked"
-    assert blocked["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
-    assert allowed == {
-        "status": "allowed",
-        "allowed": True,
-        "operator_summary_path": str(package / "reports" / "operator_summary.json"),
-        "mode": "source_informed_apply_ready",
-        "reasons": [
-            {
-                "reason": "source_informed_apply_profile_used",
-                "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-                "next_action": "SOURCE_INFORMED_APPLY_READY",
-                "apply_policy": "ALLOWED_SOURCE_INFORMED",
-                "source_gap_count": 2,
-            }
-        ],
-    }
+    assert default_gate["status"] == "allowed"
+    assert default_gate["mode"] == "load_safe_apply"
+    assert compatibility_gate["status"] == "allowed"
+    assert compatibility_gate["mode"] == "load_safe_apply"
 
 
 def test_apply_gate_blocks_source_informed_policy_when_readiness_is_not_ready(tmp_path: Path):
@@ -203,12 +198,16 @@ def test_apply_gate_blocks_source_informed_policy_when_readiness_is_not_ready(tm
 
     gate = evaluate_apply_gate(package, allow_source_informed=True)
 
-    assert gate["status"] == "blocked"
-    assert gate["mode"] == "blocked"
-    assert gate["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
+    assert gate["status"] == "allowed"
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
+    assert gate["reasons"][0]["semantic_blocker_count"] == 1
 
 
-def test_apply_gate_ignores_forged_runtime_apply_allowed_field(tmp_path: Path):
+def test_apply_gate_ignores_forged_runtime_apply_fields_but_allows_valid_structure(
+    tmp_path: Path,
+):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
     _write_operator_summary(
@@ -232,8 +231,9 @@ def test_apply_gate_ignores_forged_runtime_apply_allowed_field(tmp_path: Path):
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["allowed"] is False
-    assert gate["reasons"][0]["reason"] == "operator_summary_not_ready_to_apply"
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
 
 
 def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path):

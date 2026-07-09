@@ -53,47 +53,19 @@ def evaluate_apply_gate(
     next_action = str(summary.get("next_action", ""))
     apply_policy = str(summary.get("apply_policy", ""))
 
-    if technical_status != "VALID_PACKAGE":
-        return _blocked(
-            operator_path,
-            {
-                "reason": "operator_summary_not_valid_package",
-                "technical_status": technical_status,
-                "next_action": next_action,
-                "apply_policy": apply_policy,
-            },
-        )
-
-    if (
-        semantic_status == "SOURCE_BACKED_STRONG"
-        and next_action == "READY_TO_APPLY_OR_HANDOFF"
-        and apply_policy == "ALLOWED"
-        and not summary.get("semantic_blockers")
-    ):
-        return _allowed(operator_path, mode="source_backed_strong", reasons=[])
-
-    if (
-        allow_source_informed
-        and semantic_status == "VALID_BUT_NOT_GUIDE_STRONG"
-        and next_action == "SOURCE_INFORMED_APPLY_READY"
-        and apply_policy == "ALLOWED_SOURCE_INFORMED"
-        and isinstance(summary.get("source_informed_apply_readiness"), dict)
-        and summary["source_informed_apply_readiness"].get("status") == "ready"
-    ):
+    if technical_status == "VALID_PACKAGE":
         return _allowed(
             operator_path,
-            mode="source_informed_apply_ready",
+            mode="load_safe_apply",
             reasons=[
                 {
-                    "reason": "source_informed_apply_profile_used",
+                    "reason": "runtime_load_safe_package",
+                    "technical_status": technical_status,
                     "semantic_status": semantic_status,
                     "next_action": next_action,
                     "apply_policy": apply_policy,
-                    "source_gap_count": _int_value(
-                        summary["source_informed_apply_readiness"].get(
-                            "source_gap_count",
-                            0,
-                        )
+                    "semantic_blocker_count": _list_count(
+                        summary.get("semantic_blockers", [])
                     ),
                 }
             ],
@@ -102,7 +74,7 @@ def evaluate_apply_gate(
     return _blocked(
         operator_path,
         {
-            "reason": "operator_summary_not_ready_to_apply",
+            "reason": "operator_summary_not_valid_package",
             "technical_status": technical_status,
             "semantic_status": semantic_status,
             "next_action": next_action,
@@ -316,3 +288,7 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _list_count(value: Any) -> int:
+    return len(value) if isinstance(value, list) else 0
