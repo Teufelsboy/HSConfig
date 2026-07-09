@@ -33,7 +33,7 @@ matching fake receipt.
 - `technical_status=VALID_PACKAGE` means the runtime JSON shape is load-safe.
 - `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid and load-safe, but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work before it can be called source-backed strong.
-- `apply_policy=ALLOWED` is required for normal apply.
+- `apply_policy=ALLOWED` marks the no-warning source-strong path; it is not the only normal apply permission.
 - `next_action=READY_TO_APPLY_WITH_WARNINGS` plus `apply_policy=ALLOWED_WITH_WARNINGS` means the package is still allowed to write at runtime when `technical_status=VALID_PACKAGE`, while semantic warnings remain visible in the reports.
 - `source_informed_apply_readiness.status=ready` is diagnostic only. It documents that the remaining semantic blockers are limited to allowed source-depth gaps such as `cards_need_guide_claims` or `cards_need_mulligan_claims`.
 - `cards_need_runtime_surface`, combo, condition, mechanic, conflict, unsupported-condition, uncovered-card, and generic-low-confidence blockers keep source-informed apply blocked.
@@ -44,7 +44,7 @@ Runtime apply readability fields:
 - `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` may write the runtime package because the package is load-safe.
 - `runtime_apply_mode=blocked` means no runtime write should happen.
 - `runtime_apply_allowed=true` is descriptive; the CLI and `apply_package()` still re-evaluate the gate before writing.
-- `apply_policy=ALLOWED_WITH_WARNINGS` is runtime write permission when `technical_status=VALID_PACKAGE`; the warnings stay visible through `semantic_status`, `semantic_blockers`, and `source_informed_apply_readiness`.
+- ALLOWED_WITH_WARNINGS can still be runtime-write permission when `technical_status=VALID_PACKAGE`; the warnings stay visible through `semantic_status`, `semantic_blockers`, and `source_informed_apply_readiness`.
 
 Lower-level reports explain the gate. They do not grant independent apply permission.
 

@@ -27,4 +27,5 @@ def test_operator_docs_explain_runtime_apply_mode_is_descriptive():
     assert "runtime_load_safe" in operator_docs
     assert "runtime_apply_mode" in operator_docs
     assert "runtime_apply_allowed" in operator_docs
-    assert "ALLOWED_WITH_WARNINGS` is runtime write permission when `technical_status=VALID_PACKAGE`" in operator_docs
+    assert "ALLOWED_WITH_WARNINGS can still be runtime-write permission when `technical_status=VALID_PACKAGE`" in operator_docs
+    assert "`apply_policy=ALLOWED` is required for normal apply" not in operator_docs
