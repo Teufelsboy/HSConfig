@@ -38,6 +38,17 @@ def test_operator_docs_explain_runtime_apply_mode_is_descriptive():
     assert "ALLOWED_WITH_WARNINGS is not runtime write permission" not in operator_docs
 
 
+def test_operator_docs_describe_no_block_static_semantics():
+    operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    skill_text = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+
+    for text in (operator_docs, skill_text):
+        assert "semantic_enrichment_report.json" in text
+        assert "warning-only mechanics do not block load-safe apply" in text
+    assert "GlobalValues" in skill_text
+    assert "Mulligan" in skill_text
+
+
 def test_research_current_truth_index_exists_and_keeps_operator_boundary():
     text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
 

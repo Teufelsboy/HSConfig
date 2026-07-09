@@ -62,8 +62,9 @@ Rules:
 - Use `operator_summary.json` as the operator-facing readiness file and single operator gate; do not confuse `semantic_status` with runtime validity.
 - Runtime apply is guarded.
 - Read `runtime_load_safe`, `runtime_apply_mode`, `runtime_apply_allowed`, and `runtime_apply_requires_flag` in `operator_summary.json`. ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE; warnings describe semantic/source confidence debt.
-- Inspect `mechanic_visibility_summary` in `reports/operator_summary.json` to understand direct, identity-gated direct, partial, and warning-only mechanic coverage. Treat warning-only mechanics as descriptive; they must not block load-safe apply.
+- Inspect `mechanic_visibility_summary` in `reports/operator_summary.json` to understand direct, identity-gated direct, partial, and warning-only mechanic coverage. Treat warning-only mechanics as descriptive; warning-only mechanics do not block load-safe apply.
 - Use `first_warning_boundary` in `mechanic_visibility_summary` as the first next-inspection item. Use `warning_boundaries` for the complete alphabetical list of report-only mechanics. `choose_one` is identity-gated direct; `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only and must not block load-safe apply.
+- Open `reports/semantic_enrichment_report.json` when static or warning-only mechanic coverage needs explanation. It is a diagnostic report for inferred Hearthstone mechanics and CardID runtime visibility, not an independent apply gate.
 - After `prepare`, inspect `config_usefulness` in `reports/operator_summary.json`.
 - Treat `config_usefulness` as non-blocking: it describes richness across Mulligan, GlobalValues, CardID behavior, and Combo, but it must not prevent load-safe apply.
 - If `config_usefulness.status` is `load_safe_but_thin` or `usable_with_targeted_gaps`, report the first gap and `next_report_to_open`; do not switch to HSTuner or replay analysis inside HSConfig.

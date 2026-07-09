@@ -28,7 +28,8 @@ Open `reports/operator_summary.json` first.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
 - `mechanic_visibility_summary` is descriptive and non-blocking. It shows `direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic buckets so a valid package can be applied while still making Dredge, Tradeable, unresolved generation, or partial targeting limits visible.
 
-`first_warning_boundary` names the first next-inspection item. `warning_boundaries` is the complete alphabetical list of report-only mechanics the operator may inspect next. `choose_one` is identity-gated direct, while `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only. These warnings are explanatory; they must not block load-safe apply for a valid package.
+`first_warning_boundary` names the first next-inspection item. `warning_boundaries` is the complete alphabetical list of report-only mechanics the operator may inspect next. `choose_one` is identity-gated direct, while `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only. These warnings are explanatory; warning-only mechanics do not block load-safe apply for a valid package.
+- Open `reports/semantic_enrichment_report.json` when the summary points to static or warning-only mechanic coverage. It explains which mechanics were inferred from card metadata, which ones lower to direct runtime surfaces, and which ones remain review-only.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
@@ -79,6 +80,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | `reports/per_card_config_readiness_report.json` | card lane diagnostics | which lane each card occupies |
 | `reports/guide_source_depth_report.json` | source-depth diagnostics | how strong the guide and source coverage is |
 | `reports/global_values_authority_matrix.json` | GlobalValues diagnostics | which GlobalValues keys are source-backed or archetype-inferred |
+| `reports/semantic_enrichment_report.json` | mechanic visibility diagnostics | which static mechanics were inferred, directly lowerable, identity-gated, partial, or warning-only |
 
 ## Expert Paths
 
