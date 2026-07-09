@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any, Iterable
+
+
+MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
+    "battlecry": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforeBattlecryTargetBonus",
+            "CARDID.json:BeforePlayCardBonus",
+            "Combo.json:exact_sequence",
+        ],
+        "warning_boundary": (
+            "Non-targeted battlecry value remains general card timing unless a source-backed target rule exists."
+        ),
+    },
+    "discover": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:OnDiscoverCardBonus",
+            "CARDID.json:BeforePlayCardBonus",
+        ],
+        "warning_boundary": "Only source-resolved option identity lowers; unresolved options stay suppressed.",
+    },
+    "overload": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePlayCardBonus",
+            "GlobalValues.json:deck_posture",
+        ],
+        "warning_boundary": "Exact future-mana planning is heuristic, not a dedicated overload planner.",
+    },
+    "weapon": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePhysicalAttackBonus",
+            "CARDID.json:BeforePlayCardBonus",
+            "Combo.json:exact_sequence",
+        ],
+        "warning_boundary": "Exact weapon combos still require explicit sequence evidence.",
+    },
+    "hero_power": {
+        "support_level": "direct",
+        "normal_path_surfaces": ["CARDID.json:BeforeUseHeroPowerBonus"],
+        "warning_boundary": "Unresolved or random hero-power identity stays warning-only.",
+    },
+    "hero_power_transform": {
+        "support_level": "direct",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforeUseHeroPowerBonus",
+            "GlobalValues.json:deck_posture",
+        ],
+        "warning_boundary": "Only exact transformed hero-power identity lowers.",
+    },
+    "discard": {
+        "support_level": "direct",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Hidden hand-discard outcomes follow card rules; enabler timing is lowerable.",
+    },
+    "deathrattle": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
+        "warning_boundary": "Trigger ordering and resurrection quality are not dedicated normal-path surfaces.",
+    },
+    "reborn": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
+        "warning_boundary": "Respawn value is represented only through deploy or preserve posture.",
+    },
+    "recruit": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:board_pressure"],
+        "warning_boundary": "HSConfig can time the recruiter, not choose the pulled card beyond deck construction.",
+    },
+    "freeze": {
+        "support_level": "partial",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePlayCardBonus",
+            "CARDID.json:BeforeBattlecryTargetBonus",
+            "CARDID.json:BeforeUseHeroPowerBonus",
+        ],
+        "warning_boundary": "Generic spell-target freeze is not a dedicated normal-path target surface.",
+    },
+    "lifesteal": {
+        "support_level": "partial",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforePlayCardBonus",
+            "CARDID.json:BeforePhysicalAttackBonus",
+            "GlobalValues.json:survivability_posture",
+        ],
+        "warning_boundary": "Exact heal-threshold planning is not a dedicated normal-path surface.",
+    },
+    "taunt": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:OnBoardBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Taunt is mostly defensive board value, not a dedicated taunt planner.",
+    },
+    "rush": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePhysicalAttackBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Attack posture lowers; full trade selection remains broader bot evaluation.",
+    },
+    "charge": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePhysicalAttackBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Attack posture lowers; lethal math remains broader bot evaluation.",
+    },
+    "location": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Repeated location activation and targeting are not first-class normal-path surfaces.",
+    },
+    "secret": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "Mulligan.json:opening_hand"],
+        "warning_boundary": "Secret ordering and hidden-information trap timing are not separate normal-path surfaces.",
+    },
+    "generated_entity": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:resolved_identity", "CARDID.json:OnDiscoverCardBonus"],
+        "warning_boundary": "Random generation pools stay warning-only unless exact identity is source-backed.",
+    },
+    "aura": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:OnBoardBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Continuous aura math and stacked board effects are not dedicated normal-path surfaces.",
+    },
+    "destroy": {
+        "support_level": "partial",
+        "normal_path_surfaces": [
+            "CARDID.json:BeforeBattlecryTargetBonus",
+            "CARDID.json:BeforePhysicalAttackBonus",
+            "CARDID.json:BeforePlayCardBonus",
+        ],
+        "warning_boundary": "Generic targeted destroy spells are only partially lowerable.",
+    },
+    "silence": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforeBattlecryTargetBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Generic silence spell targeting is not a dedicated normal-path surface.",
+    },
+    "transform": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforeBattlecryTargetBonus", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Random transform outcomes and generic spell targets stay warning-only.",
+    },
+    "dredge": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+    },
+    "tradeable": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
+    },
+}
+
+ROLE_ALIASES = {
+    "shadow_hero_power": "hero_power_transform",
+    "hero_attack": "weapon",
+    "weapon_pressure": "weapon",
+    "spell_generation": "generated_entity",
+    "token_board": "aura",
+    "board_buff": "aura",
+    "board_scaling": "aura",
+    "board_flood": "aura",
+    "hand_mutation": "discard",
+    "payoff_summon": "generated_entity",
+    "magnetic": "aura",
+    "treant": "aura",
+}
+
+
+def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for role in roles:
+        mechanic = ROLE_ALIASES.get(str(role).lower(), str(role).lower())
+        spec = MECHANIC_SUPPORT.get(mechanic)
+        if spec is None or mechanic in seen:
+            continue
+        seen.add(mechanic)
+        rows.append({"mechanic": mechanic, **spec})
+    return sorted(rows, key=lambda row: row["mechanic"])
+
+
+def summarize_mechanic_support(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    level_counts: Counter[str] = Counter()
+    warning_mechanics: set[str] = set()
+    warning_cards: set[str] = set()
+    for row in rows:
+        card_id = str(row.get("card_id", ""))
+        for support in row.get("mechanic_support", []):
+            if not isinstance(support, dict):
+                continue
+            level = str(support.get("support_level", ""))
+            mechanic = str(support.get("mechanic", ""))
+            if not level:
+                continue
+            level_counts[level] += 1
+            if level == "warning_only":
+                warning_mechanics.add(mechanic)
+                if card_id:
+                    warning_cards.add(card_id)
+    return {
+        "support_level_counts": {
+            "direct": level_counts["direct"],
+            "partial": level_counts["partial"],
+            "warning_only": level_counts["warning_only"],
+        },
+        "warning_only_mechanics": sorted(warning_mechanics),
+        "warning_only_card_count": len(warning_cards),
+    }
