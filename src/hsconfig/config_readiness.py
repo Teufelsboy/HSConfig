@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Iterable
 
-from hsconfig.mechanic_support import support_for_roles, summarize_mechanic_support
+from hsconfig.mechanic_support import (
+    support_for_roles,
+    summarize_mechanic_support,
+    summarize_mechanic_visibility,
+)
 from hsconfig.io import slugify_deck_name
 
 
@@ -397,4 +401,5 @@ def _summary(
         "cards_needing_condition_lowering": missing_counter["needs_condition_lowering"],
         "cards_needing_mechanic_lowering": missing_counter["needs_mechanic_lowering"],
         "mechanic_support": summarize_mechanic_support(rows),
+        "mechanic_visibility": summarize_mechanic_visibility(rows),
     }

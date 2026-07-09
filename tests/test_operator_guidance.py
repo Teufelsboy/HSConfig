@@ -42,6 +42,23 @@ def test_guidance_for_source_backed_strong_package():
             "warning_only_mechanics": [],
             "warning_only_card_count": 0,
         },
+        "mechanic_visibility_summary": {
+            "non_blocking": True,
+            "bucket_counts": {
+                "direct": 0,
+                "identity_gated_direct": 0,
+                "partial": 0,
+                "warning_only": 0,
+            },
+            "mechanics_by_bucket": {
+                "direct": [],
+                "identity_gated_direct": [],
+                "partial": [],
+                "warning_only": [],
+            },
+            "warning_only_card_count": 0,
+            "first_warning_boundary": None,
+        },
         "runtime_apply_mode": "normal_apply",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
@@ -149,6 +166,46 @@ def test_warning_guidance_carries_mechanic_warning_summary():
     assert guidance["mechanic_warning_summary"]["warning_only_mechanics"] == ["tradeable"]
 
 
+def test_warning_guidance_carries_mechanic_visibility_summary():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "mechanic_visibility_summary": {
+                "non_blocking": True,
+                "bucket_counts": {
+                    "direct": 0,
+                    "identity_gated_direct": 0,
+                    "partial": 1,
+                    "warning_only": 1,
+                },
+                "mechanics_by_bucket": {
+                    "direct": [],
+                    "identity_gated_direct": [],
+                    "partial": ["aura"],
+                    "warning_only": ["tradeable"],
+                },
+                "warning_only_card_count": 1,
+                "first_warning_boundary": {
+                    "mechanic": "tradeable",
+                    "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
+                },
+            },
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["safe_to_apply"] is True
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["mechanic_visibility_summary"]["non_blocking"] is True
+    assert guidance["mechanic_visibility_summary"]["mechanics_by_bucket"]["partial"] == [
+        "aura"
+    ]
+
+
 def test_guidance_for_source_informed_apply_ready_package():
     guidance = build_operator_guidance(
         {
@@ -187,6 +244,23 @@ def test_guidance_for_source_informed_apply_ready_package():
             "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
             "warning_only_mechanics": [],
             "warning_only_card_count": 0,
+        },
+        "mechanic_visibility_summary": {
+            "non_blocking": True,
+            "bucket_counts": {
+                "direct": 0,
+                "identity_gated_direct": 0,
+                "partial": 0,
+                "warning_only": 0,
+            },
+            "mechanics_by_bucket": {
+                "direct": [],
+                "identity_gated_direct": [],
+                "partial": [],
+                "warning_only": [],
+            },
+            "warning_only_card_count": 0,
+            "first_warning_boundary": None,
         },
         "runtime_apply_mode": "source_informed_apply_requires_flag",
         "runtime_apply_allowed": True,

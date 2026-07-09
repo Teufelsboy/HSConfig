@@ -65,6 +65,61 @@ def test_operator_summary_exposes_mechanic_warnings_without_blocking_apply():
     assert summary["operator_guidance"]["safe_to_apply"] is True
 
 
+def test_operator_summary_exposes_mechanic_visibility_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="Mechanic Visibility",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        config_readiness_report={
+            "summary": {
+                "total_cards": 2,
+                "generic_low_confidence": 0,
+                "cards_needing_guide_claims": 0,
+                "cards_needing_runtime_surface": 0,
+                "cards_needing_mulligan_claims": 0,
+                "cards_needing_combo_sequence": 0,
+                "cards_needing_condition_lowering": 0,
+                "cards_needing_mechanic_lowering": 0,
+                "mechanic_visibility": {
+                    "non_blocking": True,
+                    "bucket_counts": {
+                        "direct": 1,
+                        "identity_gated_direct": 1,
+                        "partial": 0,
+                        "warning_only": 1,
+                    },
+                    "mechanics_by_bucket": {
+                        "direct": ["battlecry"],
+                        "identity_gated_direct": ["discover"],
+                        "partial": [],
+                        "warning_only": ["dredge"],
+                    },
+                    "warning_only_card_count": 1,
+                    "first_warning_boundary": {
+                        "mechanic": "dredge",
+                        "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+                    },
+                },
+            },
+            "cards": {},
+        },
+        generated_files=[
+            "CustomConfig/mechanicvisibility/GlobalValues.json",
+            "CustomConfig/mechanicvisibility/Mulligan.json",
+            "CustomConfig/mechanicvisibility/DREDGE_001.json",
+        ],
+    )
+
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["mechanic_visibility_summary"]["non_blocking"] is True
+    assert summary["mechanic_visibility_summary"]["mechanics_by_bucket"]["warning_only"] == [
+        "dredge"
+    ]
+    assert summary["operator_guidance"]["mechanic_visibility_summary"]["warning_only_card_count"] == 1
+
+
 def test_operator_summary_uses_mechanic_warnings_from_summary_only_input():
     summary = build_operator_summary(
         deck_name="Summary Only",

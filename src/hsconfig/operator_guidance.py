@@ -20,6 +20,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "safe_to_apply": False,
             "requires_expert_flag": False,
             **_mechanic_warning_fields(summary),
+            **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -36,6 +37,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 "requires_expert_flag": False,
                 **_config_usefulness_fields(summary),
                 **_mechanic_warning_fields(summary),
+                **_mechanic_visibility_fields(summary),
                 **_runtime_apply_fields(summary),
             }
         return {
@@ -48,6 +50,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "requires_expert_flag": False,
             **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
+            **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -61,6 +64,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "requires_expert_flag": False,
             **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
+            **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -86,6 +90,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "requires_expert_flag": True,
             **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
+            **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
         }
 
@@ -98,6 +103,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         "requires_expert_flag": _requires_expert_flag(semantic_status, apply_policy),
         **_config_usefulness_fields(summary),
         **_mechanic_warning_fields(summary),
+        **_mechanic_visibility_fields(summary),
         **_runtime_apply_fields(summary),
     }
 
@@ -133,6 +139,31 @@ def _mechanic_warning_fields(summary: dict[str, Any]) -> dict[str, Any]:
             "support_level_counts": {"direct": 0, "partial": 0, "warning_only": 0},
             "warning_only_mechanics": [],
             "warning_only_card_count": 0,
+        }
+    }
+
+
+def _mechanic_visibility_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    mechanic_visibility_summary = summary.get("mechanic_visibility_summary")
+    if isinstance(mechanic_visibility_summary, dict):
+        return {"mechanic_visibility_summary": mechanic_visibility_summary}
+    return {
+        "mechanic_visibility_summary": {
+            "non_blocking": True,
+            "bucket_counts": {
+                "direct": 0,
+                "identity_gated_direct": 0,
+                "partial": 0,
+                "warning_only": 0,
+            },
+            "mechanics_by_bucket": {
+                "direct": [],
+                "identity_gated_direct": [],
+                "partial": [],
+                "warning_only": [],
+            },
+            "warning_only_card_count": 0,
+            "first_warning_boundary": None,
         }
     }
 

@@ -105,6 +105,10 @@ def build_operator_summary(
         config_readiness_report,
         effective_config_readiness_summary,
     )
+    mechanic_visibility_summary = _mechanic_visibility_summary(
+        config_readiness_report,
+        effective_config_readiness_summary,
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -180,6 +184,7 @@ def build_operator_summary(
         "primary_blockers": primary_blockers,
         "warnings": warnings,
         "mechanic_warning_summary": mechanic_warning_summary,
+        "mechanic_visibility_summary": mechanic_visibility_summary,
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
@@ -375,6 +380,66 @@ def _mechanic_warning_summary(
         },
         "warning_only_mechanics": [str(item) for item in warning_only_mechanics],
         "warning_only_card_count": _int_value(mechanic_support.get("warning_only_card_count", 0)),
+    }
+
+
+def _mechanic_visibility_summary(
+    config_readiness_report: dict[str, Any] | None,
+    config_readiness_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    empty_summary = {
+        "non_blocking": True,
+        "bucket_counts": {
+            "direct": 0,
+            "identity_gated_direct": 0,
+            "partial": 0,
+            "warning_only": 0,
+        },
+        "mechanics_by_bucket": {
+            "direct": [],
+            "identity_gated_direct": [],
+            "partial": [],
+            "warning_only": [],
+        },
+        "warning_only_card_count": 0,
+        "first_warning_boundary": None,
+    }
+    summary = {}
+    if isinstance(config_readiness_report, dict):
+        summary = config_readiness_report.get("summary", {})
+    if not isinstance(summary, dict) or "mechanic_visibility" not in summary:
+        summary = config_readiness_summary or {}
+    if not isinstance(summary, dict):
+        return empty_summary
+    visibility = summary.get("mechanic_visibility", {})
+    if not isinstance(visibility, dict):
+        return empty_summary
+
+    bucket_counts = visibility.get("bucket_counts", {})
+    if not isinstance(bucket_counts, dict):
+        bucket_counts = {}
+    mechanics_by_bucket = visibility.get("mechanics_by_bucket", {})
+    if not isinstance(mechanics_by_bucket, dict):
+        mechanics_by_bucket = {}
+
+    return {
+        "non_blocking": bool(visibility.get("non_blocking", True)),
+        "bucket_counts": {
+            "direct": _int_value(bucket_counts.get("direct", 0)),
+            "identity_gated_direct": _int_value(bucket_counts.get("identity_gated_direct", 0)),
+            "partial": _int_value(bucket_counts.get("partial", 0)),
+            "warning_only": _int_value(bucket_counts.get("warning_only", 0)),
+        },
+        "mechanics_by_bucket": {
+            "direct": [str(item) for item in mechanics_by_bucket.get("direct", [])],
+            "identity_gated_direct": [
+                str(item) for item in mechanics_by_bucket.get("identity_gated_direct", [])
+            ],
+            "partial": [str(item) for item in mechanics_by_bucket.get("partial", [])],
+            "warning_only": [str(item) for item in mechanics_by_bucket.get("warning_only", [])],
+        },
+        "warning_only_card_count": _int_value(visibility.get("warning_only_card_count", 0)),
+        "first_warning_boundary": visibility.get("first_warning_boundary"),
     }
 
 
