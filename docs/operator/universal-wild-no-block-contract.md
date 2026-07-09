@@ -11,6 +11,8 @@ every valid deck input.
 - `SOURCE_BACKED_STRONG` is a source-confidence label, not the runtime-write gate.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
+Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
+
 ## Non-Blocking Config Usefulness
 
 `config_usefulness` is descriptive. It must not change the no-block contract:
