@@ -16,8 +16,6 @@ from hsconfig.runtime_apply_receipts import (
     write_runtime_write_history,
 )
 from hsconfig.validate_package import (
-    SPECIAL_SURFACE_NAMES,
-    supported_surface,
     validate_config_package,
 )
 
@@ -471,13 +469,6 @@ def _validate_complete_source_dir(source_dir: Path) -> None:
         missing.append("GlobalValues.json")
     if not (source_dir / "Mulligan.json").is_file():
         missing.append("Mulligan.json")
-    card_files = [
-        path
-        for path in source_dir.glob("*.json")
-        if path.name not in SPECIAL_SURFACE_NAMES and supported_surface(path.name)
-    ]
-    if not card_files:
-        missing.append("<CardID>.json")
     if missing:
         raise ValueError(
             f"Incomplete package deck config {source_dir}: missing {', '.join(missing)}"

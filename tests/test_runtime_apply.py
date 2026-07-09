@@ -65,6 +65,48 @@ def _complete_package(
     return package
 
 
+def _minimal_load_safe_package_without_cardid(tmp_path: Path) -> Path:
+    package = tmp_path / "minimal-package"
+    deck = package / "CustomConfig" / "deck"
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "minimal"}
+    write_json(deck / "GlobalValues.json", globalvalues)
+    write_json(
+        deck / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "minimal",
+            "Mulligan": {"values": []},
+        },
+    )
+    _write_validation_reports(package, globalvalues)
+    write_json(
+        package / "reports" / "input_manifest.json",
+        {"deck_name": "Minimal Deck", "deck_code": "fixture", "runtime_root": "unused"},
+    )
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+            "semantic_blockers": [{"reason": "load_safe_but_thin"}],
+            "generated_files": [
+                "CustomConfig\\deck\\GlobalValues.json",
+                "CustomConfig\\deck\\Mulligan.json",
+            ],
+            "config_usefulness": {
+                "status": "load_safe_but_thin",
+                "runtime_permission_impact": "none",
+            },
+        },
+    )
+    return package
+
+
 def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
     package = tmp_path / "raw-package"
     deck = package / "CustomConfig" / "deck"
@@ -196,6 +238,23 @@ def test_apply_package_applies_valid_warning_package_without_source_informed_fla
     assert receipt["status"] == "applied"
     assert receipt["apply_gate"]["mode"] == "load_safe_apply"
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+
+
+def test_apply_package_applies_minimal_load_safe_package_without_cardid(
+    tmp_path: Path,
+):
+    package = _minimal_load_safe_package_without_cardid(tmp_path)
+    runtime = tmp_path / "runtime"
+
+    receipt = apply_package(package_root=package, runtime_root=runtime)
+
+    assert receipt["status"] == "applied"
+    assert receipt["runtime_write_performed"] is True
+    assert receipt["apply_gate"]["mode"] == "load_safe_apply"
+    assert receipt["copied_files"] == ["GlobalValues.json", "Mulligan.json"]
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+    assert (runtime / "CustomConfig" / "deck" / "Mulligan.json").exists()
+    assert not (runtime / "CustomConfig" / "deck" / "EX1_001.json").exists()
 
 
 def test_apply_package_replaces_only_target_deck_folder(tmp_path: Path):
@@ -332,6 +391,36 @@ def test_apply_cli_applies_valid_warning_package_without_source_informed_flag(
     assert payload["apply_gate"]["status"] == "allowed"
     assert payload["apply_gate"]["mode"] == "load_safe_apply"
     assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+
+
+def test_apply_cli_applies_minimal_load_safe_package_without_cardid(
+    tmp_path: Path,
+    capsys,
+):
+    from hsconfig.cli import main
+
+    package = _minimal_load_safe_package_without_cardid(tmp_path)
+    runtime = tmp_path / "runtime"
+
+    code = main(
+        [
+            "apply",
+            "--package",
+            str(package),
+            "--runtime-root",
+            str(runtime),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["status"] == "applied"
+    assert payload["receipt"]["apply_gate"]["mode"] == "load_safe_apply"
+    assert payload["receipt"]["copied_files"] == ["GlobalValues.json", "Mulligan.json"]
+    assert (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
+    assert (runtime / "CustomConfig" / "deck" / "Mulligan.json").exists()
 
 
 def test_apply_cli_load_safe_warning_package_ignores_optional_source_informed_flag(
