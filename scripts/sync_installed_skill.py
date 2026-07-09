@@ -15,16 +15,51 @@ def _iter_files(root: Path) -> list[Path]:
     return sorted(path.relative_to(root) for path in root.rglob("*") if path.is_file())
 
 
-def folders_match(left: Path, right: Path) -> bool:
+TEXT_LIKE_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".toml"}
+
+
+def _normalized_text_equal(left_bytes: bytes, right_bytes: bytes) -> bool:
+    return left_bytes.replace(b"\r\n", b"\n") == right_bytes.replace(b"\r\n", b"\n")
+
+
+def folder_diff(left: Path, right: Path) -> dict[str, object]:
     if not left.exists() or not right.exists():
-        return False
+        return {
+            "matches": False,
+            "reason": "missing_folder",
+            "left_exists": left.exists(),
+            "right_exists": right.exists(),
+            "diffs": [],
+        }
 
     left_files = _iter_files(left)
     right_files = _iter_files(right)
+    diffs: list[dict[str, object]] = []
     if left_files != right_files:
-        return False
+        left_set = set(left_files)
+        right_set = set(right_files)
+        for rel in sorted(left_set - right_set):
+            diffs.append({"path": rel.as_posix(), "kind": "missing_installed_file"})
+        for rel in sorted(right_set - left_set):
+            diffs.append({"path": rel.as_posix(), "kind": "unexpected_installed_file"})
 
-    return all((left / rel).read_bytes() == (right / rel).read_bytes() for rel in left_files)
+    for rel in left_files:
+        if rel not in right_files:
+            continue
+        left_bytes = (left / rel).read_bytes()
+        right_bytes = (right / rel).read_bytes()
+        if left_bytes == right_bytes:
+            continue
+        entry: dict[str, object] = {"path": rel.as_posix(), "kind": "bytes_differ"}
+        if rel.suffix.lower() in TEXT_LIKE_SUFFIXES:
+            entry["normalized_text_equal"] = _normalized_text_equal(left_bytes, right_bytes)
+        diffs.append(entry)
+
+    return {"matches": not diffs, "reason": "diffs_found" if diffs else "in_sync", "diffs": diffs}
+
+
+def folders_match(left: Path, right: Path) -> bool:
+    return bool(folder_diff(left, right).get("matches"))
 
 
 def sync_skill(install_root: Path) -> Path:
@@ -62,10 +97,18 @@ def main(argv: list[str] | None = None) -> int:
 
     target = args.install_root / "hsconfig"
     if args.check:
-        if folders_match(SOURCE_SKILL, target):
+        diff = folder_diff(SOURCE_SKILL, target)
+        if diff["matches"]:
             print(f"HSConfig skill is in sync: {target}")
             return 0
         print(f"HSConfig skill drift detected: {target}", file=sys.stderr)
+        for item in list(diff.get("diffs", []))[:10]:
+            if not isinstance(item, dict):
+                continue
+            detail = f"- {item.get('path')}: {item.get('kind')}"
+            if item.get("normalized_text_equal") is True:
+                detail += " (normalized text matches; run without --check to re-sync exact bytes)"
+            print(detail, file=sys.stderr)
         return 1
 
     synced = sync_skill(args.install_root)

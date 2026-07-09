@@ -70,3 +70,41 @@ def test_skill_sync_check_fails_when_installed_copy_drifts(tmp_path: Path):
     )
     assert check.returncode == 1
     assert "drift" in (check.stdout + check.stderr).lower()
+
+
+def test_skill_sync_check_explains_newline_only_drift(tmp_path: Path):
+    install_root = tmp_path / "codex" / "skills"
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    installed_skill = install_root / "hsconfig" / "SKILL.md"
+    installed_skill.write_bytes(
+        installed_skill.read_bytes().replace(b"\r\n", b"\n")
+    )
+
+    check = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--check",
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    output = check.stdout + check.stderr
+    assert check.returncode == 1
+    assert "SKILL.md" in output
+    assert "normalized text matches" in output
+    assert "run without --check to re-sync" in output
