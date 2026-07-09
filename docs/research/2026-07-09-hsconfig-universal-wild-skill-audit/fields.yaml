@@ -1,0 +1,34 @@
+field_categories:
+  - name: audit
+    category: audit
+    fields:
+      - name: audit_question
+        type: string
+        required: true
+      - name: verdict
+        type: string
+        required: true
+      - name: current_truth
+        type: array
+        required: true
+      - name: evidence_checked
+        type: array
+        required: true
+      - name: gaps_or_risks
+        type: array
+        required: true
+      - name: deck_set_implications
+        type: string
+        required: true
+      - name: recommended_action
+        type: string
+        required: true
+      - name: confidence
+        type: string
+        required: true
+      - name: citations
+        type: array
+        required: true
+      - name: uncertain
+        type: array
+        required: true

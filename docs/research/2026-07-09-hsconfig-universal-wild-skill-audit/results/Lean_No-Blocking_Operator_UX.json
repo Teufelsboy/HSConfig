@@ -1,0 +1,157 @@
+{
+  "audit_question": "What is the smallest long-term operator promise and proof matrix for HSConfig if valid packages must never be blocked for semantic or source-confidence reasons, while invalid JSON, unsupported runtime files, deck identity failure, and malformed deckcodes still hard-block?",
+  "verdict": "Yes. The smallest durable promise is: any `VALID_PACKAGE` may apply as a load-safe initial HearthRanger package, while `SOURCE_BACKED_STRONG` remains a confidence and promotion label, not the default runtime-write gate. Hard blocking should stay limited to deck-input failure, identity failure, package invalidity, unsupported emitted runtime files, or apply-gate and receipt safety failure.",
+  "current_truth": [
+    {
+      "area": "current_behavior",
+      "finding": "Current HSConfig behavior already matches most of that promise. `src/hsconfig/operator_summary.py` sets `runtime_load_safe=true` whenever `technical_status=VALID_PACKAGE`, `_next_action_and_policy()` returns `READY_TO_APPLY_WITH_WARNINGS` plus `ALLOWED_WITH_WARNINGS` for non-strong but still valid packages, `_runtime_apply_contract()` maps every non-blocked valid package to `load_safe_apply`, `src/hsconfig/apply_gate.py` allows any `VALID_PACKAGE` after structure and emitted-file checks, and `src/hsconfig/operator_guidance.py` treats warning packages as `safe_to_apply`. Semantic gaps such as generic-low-confidence cards, runtime-surface gaps, unsupported conditions, combo gaps, uncovered cards, or missing guide claims remain visible in reports, but they do not block runtime apply by themselves. Hard failures still start earlier: malformed deck input without placeholder mode, missing required card identity, invalid JSON, unsupported VisionAI filenames or blocks, missing required runtime files, undeclared extra runtime files, nested runtime files, missing operator summary, or forged apply evidence."
+    },
+    {
+      "area": "no_blocking",
+      "finding": {
+        "operator_wording": "Any valid HSConfig package can be applied as a load-safe initial CustomConfig package. Load-safe means deck input decoded successfully, required identity fields and emitted runtime files are valid, package validation passed, and apply-gate plus receipt checks passed. Guide strength, low-confidence cards, missing guide claims, runtime-surface gaps, combo gaps, unsupported semantic lowering, and uncovered cards remain warnings and next-action data, not default write blockers.",
+        "smallest_proof_matrix": [
+          {
+            "case": "Valid package with semantic warnings or weak source depth",
+            "expected": "ALLOW",
+            "proof": "`operator_summary.py`, `apply_gate.py`, `operator_guidance.py`, `tests/test_apply_gate.py`, and `tests/test_operator_summary.py`."
+          },
+          {
+            "case": "Malformed or non-decodable deckcode on the normal path",
+            "expected": "BLOCK",
+            "proof": "`input_loading.py` plus `tests/test_cli.py::test_build_rejects_invalid_deck_code_without_placeholder_flag`."
+          },
+          {
+            "case": "Missing required card identity or required identity fields",
+            "expected": "BLOCK",
+            "proof": "`deck_identity.py` raises on missing `card_id`, and `identity_graph.py` exposes `missing_identity_fields` for unresolved identity."
+          },
+          {
+            "case": "Invalid JSON or unsupported VisionAI file or block",
+            "expected": "BLOCK",
+            "proof": "`validate_package.py` plus `tests/test_validate_package.py`."
+          },
+          {
+            "case": "Missing required runtime files, undeclared extra files, nested runtime files, or normal-path `Presume.json` / `Concede.json`",
+            "expected": "BLOCK",
+            "proof": "`apply_gate.py` plus `tests/test_apply_gate.py`."
+          },
+          {
+            "case": "Forged or stale apply-gate evidence",
+            "expected": "BLOCK",
+            "proof": "`runtime_apply.py` plus `tests/test_runtime_apply.py`."
+          }
+        ]
+      }
+    },
+    {
+      "area": "load_safety",
+      "finding": {
+        "must_remain_hard_blocking": [
+          "Deck input that cannot decode on the normal path.",
+          "Missing or malformed required deck identity inputs for emitted runtime rows.",
+          "Invalid JSON or wrong top-level `GameCardId` contract.",
+          "Unsupported VisionAI filenames or unsupported card behavior blocks.",
+          "Missing `GlobalValues.json`, missing `Mulligan.json`, or missing per-card CardID runtime files.",
+          "Undeclared extra runtime files, nested runtime files, or normal-path `Presume.json` / `Concede.json`.",
+          "Fake-receipt or runtime-apply evidence that does not match the package and runtime state."
+        ],
+        "must_remain_warning_only": [
+          "Low-confidence or generic-low-confidence cards.",
+          "Missing guide claims.",
+          "Runtime-surface gaps for cards that are still omitted safely from runtime lowering.",
+          "Unsupported semantic claims that are preserved in suppression reports rather than emitted.",
+          "Cards that are not yet source-backed strong."
+        ],
+        "must_not_be_guessed": [
+          "Undocumented runtime filenames.",
+          "Unsupported card behavior blocks.",
+          "Unresolved Discover or Choose One option identity.",
+          "Exact combo rows without exact card order and value-segment proof.",
+          "Runtime-evidence-only `GlobalValues` tuning."
+        ]
+      }
+    },
+    {
+      "area": "confidence",
+      "finding": {
+        "recommended_operator_terms": [
+          "`technical_status=VALID_PACKAGE` means structurally valid and runtime-load-safe.",
+          "`runtime_apply_mode=load_safe_apply` means normal runtime apply is allowed.",
+          "`semantic_status=SOURCE_BACKED_STRONG` means high-confidence source-backed handoff quality.",
+          "`semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means usable but confidence-limited.",
+          "`semantic_blockers` and suppression reports explain confidence debt; they do not revoke load-safe apply unless they caused an invalid emitted runtime surface."
+        ],
+        "recommended_operator_sentence": "Load-safe initial package. Semantic confidence debt remains visible in reports and does not imply source-backed strong gameplay guidance.",
+        "reporting_rule": "Keep semantic warnings, source gaps, unsupported conditions, uncovered cards, and low-confidence lanes visible in `operator_summary.json`, `per_card_config_readiness_report.json`, suppression reports, and promotion reports. Do not silently generalize them into runtime rows."
+      }
+    },
+    {
+      "area": "scope",
+      "finding": "Yes. This stays within HSConfig's narrow pre-run scope because it only governs deck-input decoding, static identity, config generation, validation, operator reporting, and guarded runtime writes. It does not require replay parsing, runtime log analysis, winrate claims, candidate promotion, or post-run tuning."
+    }
+  ],
+  "evidence_checked": [
+    "`src/hsconfig/operator_summary.py` sets `runtime_load_safe` from `technical_status == VALID_PACKAGE`, returns `READY_TO_APPLY_OR_HANDOFF` plus `ALLOWED` only for `SOURCE_BACKED_STRONG`, and otherwise returns `READY_TO_APPLY_WITH_WARNINGS` plus `ALLOWED_WITH_WARNINGS` for valid non-strong packages.",
+    "`src/hsconfig/operator_summary.py` sets `runtime_apply_mode=load_safe_apply` and `runtime_apply_allowed=true` for any valid package whose `apply_policy` is not `BLOCKED`.",
+    "`src/hsconfig/apply_gate.py` allows runtime apply for any summary with `technical_status=VALID_PACKAGE`, but still blocks missing `reports/operator_summary.json`, invalid summaries, missing `CustomConfig`, missing `input_manifest.json`, missing required runtime files, missing per-card CardID files, undeclared runtime files, nested runtime files, and normal-path `Presume.json` or `Concede.json`.",
+    "`src/hsconfig/validate_package.py` rejects invalid JSON, unsupported VisionAI filenames, `GameCardId` mismatches, unsupported card behavior blocks, unsupported Mulligan selectors, invalid wildcard discard ordering, malformed Combo rows, and incomplete or mismatched `GlobalValues.json` baseline and profile state.",
+    "`src/hsconfig/input_loading.py` decodes deckstrings by default when `--cards-json` is not supplied and `--allow-placeholder` is not enabled, so malformed deckcodes fail before a normal package can exist.",
+    "`src/hsconfig/deck_identity.py` raises `ValueError` when any deck card lacks `card_id`, and `src/hsconfig/identity_graph.py` emits `missing_identity_fields` when required identity fields such as format, hero, or starting hero power are absent.",
+    "`src/hsconfig/operator_guidance.py` marks both `SOURCE_BACKED_STRONG` and warning-only `load_safe_apply` packages as `safe_to_apply`, while invalid or blocked packages route the operator to fix-package actions first.",
+    "`docs/operator/README.md` says `technical_status=VALID_PACKAGE` means structurally valid and load-safe, `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` is allowed, and `READY_TO_APPLY_WITH_WARNINGS` plus `ALLOWED_WITH_WARNINGS` is the normal load-safe lane.",
+    "`docs/operator/source-builder-workflow.md` says `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane and that older source-informed summaries are legacy compatibility exceptions.",
+    "`tests/test_apply_gate.py` proves valid-but-not-guide-strong packages, runtime-surface-gap packages, and warning packages are allowed as `load_safe_apply`, while invalid packages, missing summaries, missing manifests, nested files, undeclared files, and normal-path optional surfaces are blocked.",
+    "`tests/test_operator_summary.py` proves valid packages with static semantics, missing research depth, unsupported conditions, or readiness gaps still remain `runtime_load_safe` and `runtime_apply_allowed`, while invalid packages switch to `BLOCKED`.",
+    "`tests/test_runtime_apply.py` proves `apply_package()` re-checks the gate before mutation, rejects forged gate payloads, blocks incomplete packages, and still applies a valid warning package without `--allow-source-informed`.",
+    "`tests/test_validate_package.py` proves strict validation blocks invalid JSON, unsupported surfaces, invalid Mulligan rows, invalid Combo rows, missing required runtime files, and unsupported card behavior blocks.",
+    "`tests/test_cli.py::test_build_rejects_invalid_deck_code_without_placeholder_flag` proves malformed or non-decodable deckcode input fails the normal build path.",
+    "Focused verification on 2026-07-09 passed: `python -m pytest tests/test_apply_gate.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_validate_package.py tests/test_runtime_apply.py tests/test_deckstring_decode.py -q` returned `122 passed in 13.31s`, and `python -m pytest tests/test_cli.py -q -k \"invalid_deck_code or build_decodes_deck_code_by_default\"` returned `2 passed, 22 deselected in 16.63s`."
+  ],
+  "gaps_or_risks": [
+    "Older audit JSON files from 2026-07-09 still describe the pre-change blocked warning lane, so stale research artifacts can contradict the current repo truth if operators read them instead of the live code and current operator docs.",
+    "If operator wording says only `ALLOWED_WITH_WARNINGS` without the explicit `load-safe` explanation, users may confuse usability with strategic confidence.",
+    "The validator enforces at least one per-card CardID file, not explicit full deck-wide card-file coverage, so the proof matrix depends partly on the normal builder contract rather than on a stricter standalone package validator.",
+    "Expert-only placeholder mode can bypass deckcode decode for fixtures or diagnostics, so the no-blocking promise should be stated for the normal exact-deck path, not for every expert override path.",
+    "If future changes start lowering weak semantic lanes into runtime JSON instead of keeping them report-only, the load-safe promise could drift into speculative behavior."
+  ],
+  "deck_set_implications": {
+    "operator_wording": "Any valid HSConfig package can be applied as a load-safe initial CustomConfig package. Load-safe means deck input decoded successfully, required identity fields and emitted runtime files are valid, package validation passed, and apply-gate plus receipt checks passed. Guide strength, low-confidence cards, missing guide claims, runtime-surface gaps, combo gaps, unsupported semantic lowering, and uncovered cards remain warnings and next-action data, not default write blockers.",
+    "smallest_proof_matrix": [
+      {
+        "case": "Valid package with semantic warnings or weak source depth",
+        "expected": "ALLOW",
+        "proof": "`operator_summary.py`, `apply_gate.py`, `operator_guidance.py`, `tests/test_apply_gate.py`, and `tests/test_operator_summary.py`."
+      },
+      {
+        "case": "Malformed or non-decodable deckcode on the normal path",
+        "expected": "BLOCK",
+        "proof": "`input_loading.py` plus `tests/test_cli.py::test_build_rejects_invalid_deck_code_without_placeholder_flag`."
+      },
+      {
+        "case": "Missing required card identity or required identity fields",
+        "expected": "BLOCK",
+        "proof": "`deck_identity.py` raises on missing `card_id`, and `identity_graph.py` exposes `missing_identity_fields` for unresolved identity."
+      },
+      {
+        "case": "Invalid JSON or unsupported VisionAI file or block",
+        "expected": "BLOCK",
+        "proof": "`validate_package.py` plus `tests/test_validate_package.py`."
+      },
+      {
+        "case": "Missing required runtime files, undeclared extra files, nested runtime files, or normal-path `Presume.json` / `Concede.json`",
+        "expected": "BLOCK",
+        "proof": "`apply_gate.py` plus `tests/test_apply_gate.py`."
+      },
+      {
+        "case": "Forged or stale apply-gate evidence",
+        "expected": "BLOCK",
+        "proof": "`runtime_apply.py` plus `tests/test_runtime_apply.py`."
+      }
+    ]
+  },
+  "recommended_action": "Add one focused regression artifact and doc table that freezes this exact proof matrix in the live repo: valid warning packages allow `load_safe_apply`; malformed deckcode, identity failure, invalid JSON, unsupported runtime files, missing required runtime files, undeclared extra files, and forged apply evidence all hard-block. That is the smallest remaining step because the runtime behavior is already largely implemented.",
+  "confidence": "High. The answer is grounded in the current HSConfig source, current operator docs, and focused passing test slices run on 2026-07-09, including `122 passed in 13.31s` for the core gate and validation tests and `2 passed, 22 deselected in 16.63s` for the deckcode CLI checks.",
+  "citations": [],
+  "uncertain": []
+}

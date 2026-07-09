@@ -1,0 +1,369 @@
+{
+  "audit_question": "Determine which Wild-relevant Hearthstone mechanics and archetype pressures can be lowered directly into HSConfig normal-path runtime config, and which should stay warning-only because the current HSConfig and documented VisionAI surfaces do not expose a safe first-class lowering path.",
+  "verdict": "The current HSConfig normal path can directly or partially express most Wild mechanic pressure through GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json for exact sequences, but it cannot honestly lower every signature mechanic as a first-class choice surface. In this matrix, 6 mechanic groups are direct enough for normal-path runtime authoring, 13 are only partial and need explicit warning boundaries, and 2 should remain warning-only in the current design: Dredge and Tradeable.",
+  "current_truth": [
+    {
+      "mechanic": "Battlecry",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforeBattlecryTargetBonus",
+        "CARDID.json: BeforePlayCardBonus",
+        "Combo.json for exact ordered battlecry chains"
+      ],
+      "warning_only_boundary": "Non-targeted value heuristics still depend on general card-usage lowering rather than a battlecry-only planner.",
+      "beyond_current_fixture_examples": [
+        "Highlander Priest package",
+        "Secret Mage tempo battlecries"
+      ],
+      "rationale": "Battlecry is the cleanest targeted mechanic in the documented card-behavior surface because the current registry and local fixtures already use BeforeBattlecryTargetBonus for exact target posture."
+    },
+    {
+      "mechanic": "Deathrattle",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: OnBoardBonus",
+        "GlobalValues.json for broad board-value posture"
+      ],
+      "warning_only_boundary": "Deathrattle trigger ordering, resurrection quality, and generated-body follow-up value remain indirect unless they collapse into simpler play-now or keep-alive posture.",
+      "beyond_current_fixture_examples": [
+        "Egg Hunter [uncertain]",
+        "Deathrattle package decks [uncertain]"
+      ],
+      "rationale": "HSConfig can tell the bot when to deploy or preserve a deathrattle minion, but there is no dedicated normal-path deathrattle trigger planner."
+    },
+    {
+      "mechanic": "Reborn",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: OnBoardBonus"
+      ],
+      "warning_only_boundary": "The respawn value itself is not a first-class runtime block, so only deploy or preserve posture is directly representable.",
+      "beyond_current_fixture_examples": [
+        "Package mechanic across mixed Wild lists rather than a verified dedicated fixture candidate in this audit [uncertain]"
+      ],
+      "rationale": "Reborn behaves like a persistence modifier on top of minion timing and board value, not like a separate documented choice surface."
+    },
+    {
+      "mechanic": "Recruit",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "GlobalValues.json for board-pressure posture"
+      ],
+      "warning_only_boundary": "HSConfig can time the recruiter, but it cannot control which card the deck pulls beyond deck construction and source-backed sequencing context.",
+      "beyond_current_fixture_examples": [
+        "JtU Quest Mage with Guild Recruiter",
+        "Other recruit package decks [uncertain]"
+      ],
+      "rationale": "Current CtAPaladin and BigShaman fixtures already prove recruit timing, but the summon result itself is not a separate runtime choice."
+    },
+    {
+      "mechanic": "Discover",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: OnDiscoverCardBonus",
+        "CARDID.json: BeforePlayCardBonus for discover generators"
+      ],
+      "warning_only_boundary": "Only exact option identities lower cleanly. Unresolved or source-weak discover pools must stay suppressed and warning-visible.",
+      "beyond_current_fixture_examples": [
+        "Secret Mage",
+        "Questline Mage",
+        "XL Exodia Mage"
+      ],
+      "rationale": "The operator guide and router contract explicitly support discover_choice lowering when the offered option card ids are source-backed."
+    },
+    {
+      "mechanic": "Dredge",
+      "support_level": "warning_only",
+      "direct_runtime_representation": "no",
+      "normal_path_surfaces": [
+        "Timing-only fallback through CARDID.json: BeforePlayCardBonus"
+      ],
+      "warning_only_boundary": "The signature bottom-three choice is not a documented VisionAI choice block, so HSConfig should not pretend Dredge option selection is a direct runtime surface.",
+      "beyond_current_fixture_examples": [
+        "Kingsbane Rogue with Gone Fishin'"
+      ],
+      "rationale": "Dredge is a real mechanic family in Step 03 taxonomy, but the current documented lowering surfaces do not include a Dredge-choice equivalent to OnDiscoverCardBonus."
+    },
+    {
+      "mechanic": "Tradeable",
+      "support_level": "warning_only",
+      "direct_runtime_representation": "no",
+      "normal_path_surfaces": [
+        "Timing-only fallback through CARDID.json: BeforePlayCardBonus",
+        "Mulligan.json for opening-hand handling"
+      ],
+      "warning_only_boundary": "There is no documented trade-now runtime block, so HSConfig cannot honestly encode the actual trade decision as a first-class behavior.",
+      "beyond_current_fixture_examples": [
+        "Package mechanic across Reno and control lists rather than a verified dedicated archetype in this audit [uncertain]"
+      ],
+      "rationale": "The local compiler can tag tradeable cards for generic play-timing pressure, but that is not the same as telling the bot when to trade."
+    },
+    {
+      "mechanic": "Overload",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "GlobalValues.json for deck-speed posture"
+      ],
+      "warning_only_boundary": "Exact future-mana planning is still heuristic and deck-level, not a separate documented overload planner.",
+      "beyond_current_fixture_examples": [
+        "Overload Shaman"
+      ],
+      "rationale": "Overload timing is still a play-now or wait rule, and the current compiler already maps overload roles into BeforePlayCardBonus."
+    },
+    {
+      "mechanic": "Freeze",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: BeforeBattlecryTargetBonus when the freeze effect is battlecry-based",
+        "CARDID.json: BeforeUseHeroPowerBonus when the freeze effect is hero-power-based"
+      ],
+      "warning_only_boundary": "Generic targeted freeze spells do not have a dedicated spell-target runtime block, so exact target choice remains warning-boundary work outside battlecry and hero-power cases.",
+      "beyond_current_fixture_examples": [
+        "Questline Mage",
+        "XL Mage"
+      ],
+      "rationale": "Freeze pressure matters in Wild, but only some freeze delivery paths match the documented target surfaces cleanly."
+    },
+    {
+      "mechanic": "Lifesteal",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: BeforePhysicalAttackBonus",
+        "GlobalValues.json for broad survivability posture"
+      ],
+      "warning_only_boundary": "Healing tradeoffs and exact stabilisation thresholds are not exposed as a dedicated normal-path lifesteal surface.",
+      "beyond_current_fixture_examples": [
+        "Mage stabilisation packages with Sleet Skater [uncertain]",
+        "Mixed Reno/control packages [uncertain]"
+      ],
+      "rationale": "HSConfig can prefer using or attacking with a lifesteal source, but it cannot express full heal-threshold planning as a separate mechanic compiler."
+    },
+    {
+      "mechanic": "Taunt/Rush/Charge",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePhysicalAttackBonus for Rush and Charge",
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: OnBoardBonus for Taunt persistence"
+      ],
+      "warning_only_boundary": "Rush and Charge map well to attack posture; Taunt is mostly indirect board-value posture and does not have a dedicated taunt-specific runtime block.",
+      "beyond_current_fixture_examples": [
+        "Secret Mage charge-less tempo boards",
+        "Aggro and pirate shells with Rush or Charge packages [uncertain]"
+      ],
+      "rationale": "The grouped mechanic family is not uniform. Rush and Charge are attack-decision mechanics, while Taunt is mostly about defensive board value."
+    },
+    {
+      "mechanic": "Locations",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus"
+      ],
+      "warning_only_boundary": "Repeated location activations and target use after the card is already in play are not a first-class documented location block in the current HSConfig path.",
+      "beyond_current_fixture_examples": [
+        "Highlander Priest with Cathedral of Atonement",
+        "XL Mage with Nightcloak Sanctum"
+      ],
+      "rationale": "Step 03 treats locations as an explicit card family, but the current normal-path router only gives them generic play-timing treatment."
+    },
+    {
+      "mechanic": "Weapons",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePhysicalAttackBonus",
+        "CARDID.json: BeforePlayCardBonus",
+        "Combo.json for exact weapon-sequence turns"
+      ],
+      "warning_only_boundary": "None beyond ordinary exact-sequence limits; this is already a proven mechanic family in current fixtures.",
+      "beyond_current_fixture_examples": [
+        "Kingsbane Rogue"
+      ],
+      "rationale": "Weapon sequencing and hero-attack posture are among the clearest current HSConfig families, already proven by Kingslayer and Pirate shells."
+    },
+    {
+      "mechanic": "Secrets",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "Mulligan.json for openers"
+      ],
+      "warning_only_boundary": "The timing of playing a secret is lowerable, but secret ordering, hidden-information timing traps, and cross-secret layering are not separate documented runtime surfaces.",
+      "beyond_current_fixture_examples": [
+        "Secret Mage",
+        "Questline Mage"
+      ],
+      "rationale": "Secrets are strategically important in Wild, but HSConfig currently treats them as play-timing pressure rather than a first-class secret engine."
+    },
+    {
+      "mechanic": "Hero Power swaps",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforeUseHeroPowerBonus",
+        "Structured claim kind: hero_power_transform",
+        "Linked hero-power identity from Step 03 metadata"
+      ],
+      "warning_only_boundary": "Only unresolved or random hero-power identities should stay warning-only.",
+      "beyond_current_fixture_examples": [
+        "Highlander Priest and XL Shadow Priest with Shadowreaper Anduin and Raza"
+      ],
+      "rationale": "Hero-power transform is already a named claim kind, an existing fixture family, and a documented card-behavior block."
+    },
+    {
+      "mechanic": "Generated entities",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "Linked entity graph for deterministic hero powers, rewards, and fixed generated cards",
+        "CARDID.json for generated cards with resolved identity",
+        "OnDiscoverCardBonus for discover-generated choices"
+      ],
+      "warning_only_boundary": "Random generation pools, untracked option sets, and unstable created-card branches should stay warning-only unless exact identities are source-backed.",
+      "beyond_current_fixture_examples": [
+        "XL Exodia Mage",
+        "Questline Mage",
+        "Highlander Priest theft or generation packages"
+      ],
+      "rationale": "Step 03 explicitly requires generated-entity relationships, but only deterministic or source-resolved identities lower cleanly."
+    },
+    {
+      "mechanic": "Aura/ongoing effects",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: OnBoardBonus",
+        "CARDID.json: BeforePlayCardBonus",
+        "GlobalValues.json for deck-wide board posture"
+      ],
+      "warning_only_boundary": "Continuous aura math, stacked aura valuation, and full board-state optimisation are broader than the current first-class runtime blocks.",
+      "beyond_current_fixture_examples": [
+        "Board-flood and aura shells rather than one verified extra archetype in this audit [uncertain]"
+      ],
+      "rationale": "HSConfig can value keeping an aura minion alive or playing it on curve, but not compute every downstream aura interaction directly."
+    },
+    {
+      "mechanic": "Discard",
+      "support_level": "direct",
+      "direct_runtime_representation": "yes",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforePlayCardBonus",
+        "CARDID.json: BeforePhysicalAttackBonus when discard synergies affect attack posture"
+      ],
+      "warning_only_boundary": "Exact hidden hand-discard outcomes still follow card rules, but the enabler timing itself is directly lowerable.",
+      "beyond_current_fixture_examples": [
+        "Current Discolock already proves the family; no additional Wild fixture is required right now"
+      ],
+      "rationale": "The local fixture suite already proves discard as a runtime-lowerable mechanic_usage family."
+    },
+    {
+      "mechanic": "Destroy",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforeBattlecryTargetBonus when destroy is battlecry-based",
+        "CARDID.json: BeforePhysicalAttackBonus when destroy is attack-based",
+        "CARDID.json: BeforePlayCardBonus for untargeted destroy timing"
+      ],
+      "warning_only_boundary": "Generic targeted destroy spells do not have a dedicated spell-target normal-path block, so exact target choice is only partial today.",
+      "beyond_current_fixture_examples": [
+        "Highlander Priest removal packages",
+        "Mage transform or destroy-control packages [uncertain]"
+      ],
+      "rationale": "Destroy is a delivery-family problem more than a standalone surface: some delivery paths lower, others do not."
+    },
+    {
+      "mechanic": "Silence",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforeBattlecryTargetBonus when silence is battlecry-based",
+        "CARDID.json: BeforePlayCardBonus for untargeted or self-silence timing"
+      ],
+      "warning_only_boundary": "Generic silence-spell target choice is not a documented dedicated surface in the current normal path.",
+      "beyond_current_fixture_examples": [
+        "Highlander Priest with Shard of the Naaru or similar silence packages"
+      ],
+      "rationale": "Silence behaves like targeted utility. It only becomes fully direct when the delivery path maps to an existing target block."
+    },
+    {
+      "mechanic": "Transform",
+      "support_level": "partial",
+      "direct_runtime_representation": "partial",
+      "normal_path_surfaces": [
+        "CARDID.json: BeforeBattlecryTargetBonus when transform is battlecry-based",
+        "CARDID.json: BeforePlayCardBonus for untargeted transform timing"
+      ],
+      "warning_only_boundary": "Generic spell-based transform target choice and random transform outcomes are not first-class lowerable surfaces.",
+      "beyond_current_fixture_examples": [
+        "XL Mage with Polymorph effects",
+        "Shaman Devolve or Hex packages [uncertain]"
+      ],
+      "rationale": "Transform shares the same delivery-path constraint as silence and destroy: some forms lower cleanly, some remain warning-only."
+    }
+  ],
+  "evidence_checked": [
+    "Read the live HSConfig operator boundary in docs/operator/README.md and confirmed the normal path is source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply, with normal-path runtime files centered on GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only for exact sequences.",
+    "Read docs/operator/guide-research-policy.md and confirmed supported claim kinds, direct runtime blocks, discover_choice lowering rules, hero_power_transform support, and the rule that unresolved option identity must stay suppressed instead of being invented.",
+    "Read src/hsconfig/compile_cardid.py and confirmed the current compiler already maps battlecry, discover, freeze, hero_power, location, overload, secret, tradeable, rush, charge, and weapon roles into documented CARDID blocks, even when the mapping is still heuristic.",
+    "Read src/hsconfig/surface_intent.py and confirmed the emitted runtime family boundary is GlobalValues.json, Mulligan.json, per-card CARDID.json, and optional Combo.json, with Presume.json and Concede.json gated behind a legacy-policy flag.",
+    "Read src/hsconfig/visionai_registry.py and validate_package.py and confirmed the supported card-behavior block registry, GameCardId validation, and the normal-path recognition of CARDID.json surfaces.",
+    "Read tests/test_archetype_source_fixtures.py and confirmed live repo evidence for runtime-lowerable mechanic_usage claims such as recruit, discard, weapon, hero_attack, hero_power_transform, and discover-linked coverage in representative fixtures.",
+    "Read docs/operator/archetype-fixture-matrix.json and confirmed the current representative matrix already covers recruit, deathrattle, discard, hero-power transforms, weapons, combo control, and pirate attack pressure, so the new matrix should focus on mechanics that are not yet first-class or not yet widened beyond the current 11 decks.",
+    "Read prior HSConfig research artifacts on Step 03 taxonomy, Step 08 card behavior routing, the CardID surface router, and the current runtime-surface contract to keep this matrix aligned with the live local repo instead of the older broader design material.",
+    "Verified current Wild examples beyond the present fixture set through HSGuru deck pages for Secret Mage, Questline Mage, XL Mage, Overload Shaman, Kingsbane Rogue, and Highlander Priest or XL Shadow Priest.",
+    "Checked current mechanic reference pages for Dredge and Tradeable on Hearthstone Wiki to confirm that both mechanics are real choice or action surfaces from the game side, which makes their absence from current documented VisionAI choice blocks meaningful rather than semantic noise."
+  ],
+  "gaps_or_risks": [
+    "The current HSConfig compiler is broader than the representative matrix but narrower than the full documented VisionAI block registry. Several mechanics are only partially real in the current implementation even when the registry could theoretically support richer lowering later.",
+    "Generic targeted spell mechanics remain the biggest honest boundary. Battlecry targets, hero powers, physical attacks, Discover, and some Choose One flows have direct documented blocks; generic spell targeting does not, so destroy, silence, transform, and some freeze cases remain partial.",
+    "Dredge and Tradeable are easy places to over-claim. Timing the card is not the same as lowering the signature Dredge choice or Tradeable action. Those two should stay warning-only until a first-class documented surface exists.",
+    "Locations are under-surfaced in the current normal path. The card family is explicit in metadata, but current runtime lowering still treats it mostly as a generic play-timing card instead of a repeated-use object.",
+    "Generated entities are a mixed lane. Deterministic linked entities are safe, but random creation pools, unstable token identities, and unresolved discover-like branches can quickly become fabricated behavior if not suppressed visibly.",
+    "Some beyond-current archetype examples are package-level rather than dedicated tiered archetypes, so this matrix is stronger on runtime-surface honesty than on claiming a one-deck-per-mechanic Wild taxonomy [uncertain]."
+  ],
+  "deck_set_implications": "The current 11-deck HSConfig matrix already covers recruit, deathrattle, discard, combo, hero-power transform, pirate weapon pressure, and board snowball families well enough for source-depth proof. The next useful beyond-current Wild expansion candidates are not more of the same. Secret Mage or a similar secret-heavy Mage row would add Secrets plus real Freeze and Discover pressure in one deck. Overload Shaman would add a clean Overload-first row that the current matrix does not isolate. A Highlander Priest or similar location-heavy control row would add Locations plus practical silence, destroy, and hero-power-swap adjacency. Dredge and Tradeable do not justify a representative fixture until HSConfig grows a direct first-class lowering path for their actual choice or action semantics.",
+  "recommended_action": "Treat Battlecry, Discover, Overload, Weapons, Hero Power swaps, and Discard as direct enough for normal-path runtime authoring today. Treat Deathrattle, Reborn, Recruit, Freeze, Lifesteal, Taunt/Rush/Charge, Locations, Secrets, generated entities, aura effects, Destroy, Silence, and Transform as partial families that should emit real runtime rows only for the parts that map cleanly to documented blocks, while keeping the rest in warning or suppression reports. Keep Dredge and Tradeable warning-only until there is a documented direct surface for the mechanic itself instead of only a timing proxy. If the matrix is widened, prioritise one Secret Mage style deck, one Overload Shaman style deck, and one location-heavy Priest or control deck before inventing narrower fixture rows.",
+  "confidence": "High for the runtime-surface classifications and current local HSConfig boundaries; medium for some beyond-current archetype examples where the mechanic is more of a package than a stable dedicated Wild archetype. The support verdicts are grounded mainly in the live HSConfig code, active operator docs, and fixture tests, with current Wild deck pages used as contemporary stress examples rather than as the primary runtime-contract authority.",
+  "citations": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md - active HSConfig operator boundary and normal runtime path.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md - supported claim kinds, discover_choice and hero_power_transform lowering, and suppression rules for unresolved option identity.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py - current role-to-block mappings for battlecry, discover, freeze, hero_power, location, overload, secret, tradeable, rush, charge, and weapon.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py - required versus optional runtime surfaces in the current normal path.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py - documented supported CARDID blocks in the local registry.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py - package validation rules for GameCardId, CARDID blocks, Mulligan.json, Combo.json, and GlobalValues.json.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py - fixture evidence for runtime-lowerable recruit, discard, weapon, hero power, and discover-related families.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json - current 11-deck representative HSConfig proof set and already-covered mechanic families.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm - official VisionAI generic JSON surface and documented CARDID block families.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm - official Combo.json surface for exact ordered sequences.",
+    "https://www.hsguru.com/deck/8192930 - current Secret Mage Wild example covering secrets and discover-adjacent tempo.",
+    "https://www.hsguru.com/deck/14460860 - current Questline Mage Wild example covering freeze and secrets.",
+    "https://www.hsguru.com/deck/12458980 - current XL Mage Wild example covering freeze and location usage.",
+    "https://www.hsguru.com/deck/38413921 - current Overload Shaman Wild example.",
+    "https://www.hsguru.com/deck/10391393 - current Kingsbane Rogue Wild example with weapon pressure.",
+    "https://www.hsguru.com/deck/3712713 - current Highlander Priest Wild example with Cathedral of Atonement and control utility.",
+    "https://www.hsguru.com/deck/33740532 - current XL Shadow Priest Wild example with Shadowreaper Anduin and location support.",
+    "https://hearthstone.wiki.gg/wiki/Dredge - current Dredge mechanic reference.",
+    "https://hearthstone.wiki.gg/wiki/Tradeable - current Tradeable mechanic reference."
+  ],
+  "uncertain": [
+    "current_truth"
+  ]
+}
