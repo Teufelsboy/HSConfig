@@ -34,6 +34,8 @@ Read `reports/operator_summary.json` before handoff or runtime apply.
 
 For mechanic visibility, use `first_warning_boundary` as the first next-inspection item and `warning_boundaries` as the complete alphabetical list of report-only mechanics. Keep the workflow moving when the package is technically valid: warning-only mechanics describe limits, not blocks.
 
+Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.
+
 1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.
 3. `semantic_status=STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline, not guide-depth confidence.

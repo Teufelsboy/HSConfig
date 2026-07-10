@@ -47,6 +47,8 @@ These stay visible, but they do not block a valid package:
 - partial mechanic support
 - warning-only mechanics
 
+Mechanic drift is not a runtime apply gate. `reports/mechanic_drift_report.json` and `mechanic_drift_summary` expose unknown mechanics, text-only mechanics, and unknown card types as warning data. Unknown mechanics are warning-only and do not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
+
 ## Mechanic Support Levels
 
 - `direct`: HSConfig can emit the documented normal-path runtime row.

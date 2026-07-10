@@ -104,3 +104,18 @@ def test_current_truth_names_post_contract_closure_audit():
     assert "2026-07-10-hsconfig-post-contract-closure-skill-audit" in text
     assert "Post-contract no-block cleanup evidence" in text
     assert "per-card-every-card coverage is HSConfig rich output" in text
+
+
+def test_operator_docs_explain_mechanic_drift_without_new_gate():
+    docs = "\n".join(
+        [
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
+            Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+    assert "reports/mechanic_drift_report.json" in docs
+    assert "mechanic_drift_summary" in docs
+    assert "Unknown mechanics are warning-only and do not block load-safe apply" in docs
+    assert "Mechanic drift is not a runtime apply gate" in docs

@@ -629,3 +629,14 @@ def test_docs_and_skill_explain_visibility_only_mechanic_polish():
     assert "must not block load-safe apply" in combined
     assert "`generated_entity` and its `spell_generation` alias stay in `partial`" in combined
     assert "Current warning-only mechanics" not in combined
+
+
+def test_skill_docs_explain_mechanic_drift_is_nonblocking():
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{skill}\n{workflow}"
+    assert "mechanic_drift_summary" in combined
+    assert "reports/mechanic_drift_report.json" in combined
+    assert "Unknown mechanics are warning-only and do not block load-safe apply" in combined
