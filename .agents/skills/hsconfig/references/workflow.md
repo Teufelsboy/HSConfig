@@ -36,7 +36,7 @@ For mechanic visibility, use `first_warning_boundary` as the first next-inspecti
 
 Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.
 
-Modern mechanic visibility is non-blocking: `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` are surfaced as direct, partial, or warning-only visibility labels, not runtime write blockers.
+Modern mechanic visibility is non-blocking: `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` are surfaced as partial or warning-only visibility labels, not runtime write blockers.
 
 1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.
