@@ -1699,3 +1699,41 @@ def test_no_block_failure_mode_summary_marks_invalid_package_as_hard_block():
     assert no_block["operator_message"] == (
         "Package is not load-safe. Fix technical_hard_block items before hsconfig apply."
     )
+
+
+def test_no_block_summary_surfaces_future_mechanic_drift_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="FutureMechanicDeck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        mechanic_drift_report={
+            "non_blocking": True,
+            "unknown_mechanics": [],
+            "text_only_mechanics": ["herald", "kindred", "rewind", "shatter", "tourist"],
+            "unknown_card_types": [],
+            "summary": {
+                "mechanic_count": 5,
+                "unknown_mechanic_count": 0,
+                "text_only_mechanic_count": 5,
+                "unknown_card_type_count": 0,
+            },
+        },
+        generated_files=[
+            "CustomConfig/futuremechanicdeck/GlobalValues.json",
+            "CustomConfig/futuremechanicdeck/Mulligan.json",
+        ],
+    )
+
+    no_block = summary["no_block_failure_mode_summary"]
+
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert no_block["hard_block"] is False
+    assert no_block["categories"]["future_mechanic_drift"] == [
+        {"kind": "text_only_mechanic", "value": "herald"},
+        {"kind": "text_only_mechanic", "value": "kindred"},
+        {"kind": "text_only_mechanic", "value": "rewind"},
+        {"kind": "text_only_mechanic", "value": "shatter"},
+        {"kind": "text_only_mechanic", "value": "tourist"},
+    ]

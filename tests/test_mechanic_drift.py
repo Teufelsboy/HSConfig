@@ -138,6 +138,12 @@ def test_mechanic_drift_detects_modern_text_only_mechanics_without_blocking():
     ]
     for mechanic in ["rewind", "herald", "shatter"]:
         assert report["support_by_mechanic"][mechanic]["support_level"] == "warning_only"
+    for mechanic in ["kindred", "tourist", "rewind", "herald", "shatter"]:
+        assert mechanic in report["text_only_mechanics"]
+        assert report["support_by_mechanic"][mechanic]["normal_path_surfaces"] == [
+            "report-only"
+        ]
+        assert report["support_by_mechanic"][mechanic]["support_level"] == "warning_only"
     assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
     assert report["support_by_mechanic"]["spellburst"]["support_level"] == "partial"
 
