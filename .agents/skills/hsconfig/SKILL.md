@@ -77,6 +77,7 @@ Rules:
 - Open `reports/semantic_enrichment_report.json` when static or warning-only mechanic coverage needs explanation. It is a diagnostic report for inferred Hearthstone mechanics, linked entities, deckwide effects, and warning-only flags, not an independent apply gate. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
 - After `prepare`, inspect `config_usefulness` in `reports/operator_summary.json`.
 - Treat `config_usefulness` as non-blocking: it describes richness across Mulligan, GlobalValues, CardID behavior, and Combo, but it must not prevent load-safe apply.
+- Inspect `config_usefulness.surfaces.mulligan.first_gap_reason`, `source_backed_rule_count`, and `next_source_need`. A thin Mulligan is an actionable source-quality gap, not a runtime-load block, when `Mulligan.json` exists and the package is otherwise `load_safe_apply`.
 - If `config_usefulness.status` is `load_safe_but_thin` or `usable_with_targeted_gaps`, report the first gap and `next_report_to_open`; do not switch to HSTuner or replay analysis inside HSConfig.
 - Inspect `no_block_failure_mode_summary` when a package has warnings. Only
   `technical_hard_block` stops `hsconfig apply`; `source_depth_warning`,

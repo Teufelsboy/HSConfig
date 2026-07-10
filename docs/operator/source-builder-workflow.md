@@ -24,3 +24,25 @@ improve future source depth; do not treat them as load-safety blockers.
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
+
+For Mulligan evidence, prefer exact, source-backed claims over broad archetype guesses. The source document builder accepts both canonical and convenience fields, but each claim should still preserve the source family, source confidence, selector, condition, and short evidence text so `Mulligan.json` can be rich without becoming a load-safety gate.
+
+```json
+{
+  "source_url": "https://example.invalid/guide",
+  "source_title": "Example Deck Guide",
+  "source_family": "mulligan_guide",
+  "claims": [
+    {
+      "kind": "mulligan_keep",
+      "card_id": "CARD_001",
+      "selector": "CARD_001",
+      "condition": {"coin": true},
+      "source_confidence": "high",
+      "evidence_text_short": "Keep CARD_001 with The Coin as the early pressure anchor."
+    }
+  ]
+}
+```
+
+Use separate claims for always-keep, with-Coin, no-Coin, matchup-speed, hand-partner, and throw/discard-away rules when the guide supports them. Unsupported conditions stay visible as `unsupported_mulligan_condition` in `mulligan_plan_report.json`; they do not block `load_safe_apply`.

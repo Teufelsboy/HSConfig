@@ -36,6 +36,36 @@ def test_manifest_emits_aliases_and_required_source_families():
     }
 
 
+def test_manifest_asks_for_source_backed_mulligan_specifics():
+    manifest = build_source_research_manifest(
+        deck_name="MechPala",
+        deck_identity={
+            "deck_name": "MechPala",
+            "deck_code_hash": "sha256:abc",
+            "cards": [{"card_id": "BOT_001", "name": "Mech Example", "count": 2}],
+        },
+        candidate_archetypes={"primary_archetype": "mech_board_scaling"},
+        fixture_row=None,
+    )
+
+    questions = [row["question"].lower() for row in manifest["research_questions"]]
+
+    assert any("always keep" in question for question in questions)
+    assert any("coin" in question and "mulligan" in question for question in questions)
+    assert any("opponent class" in question for question in questions)
+    assert any(
+        "hand partner" in question or "with another card" in question
+        for question in questions
+    )
+    assert any("throw" in question or "discard" in question for question in questions)
+    assert any(
+        "source confidence" in question
+        and "guide" in question
+        and "static card semantics" in question
+        for question in questions
+    )
+
+
 def test_manifest_uses_repo_deck_name_when_no_known_alias_exists():
     manifest = build_source_research_manifest(
         deck_name="UnknownDeck",

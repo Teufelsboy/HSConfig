@@ -84,6 +84,120 @@ def test_source_document_builder_preserves_mulligan_selectors():
     assert bundle["claims"][0]["selector"] == "CARD_A + CARD_B"
 
 
+def test_source_document_builder_preserves_mulligan_conditions_and_lowering_diagnostics():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "count": 2, "name": "Card A"},
+            {"card_id": "CARD_B", "count": 2, "name": "Card B"},
+        ],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/mulligan",
+            "source_title": "Fixture Mulligan Guide",
+            "source_family": "mulligan_guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "selector_kind": "card",
+                    "selector": "CARD_A",
+                    "condition": {"coin": True},
+                    "evidence_text_short": "Keep Card A with the Coin.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "selector": "CARD_A+CARD_B",
+                    "condition": {"hand_contains": "CARD_B"},
+                    "evidence_text_short": "Keep Card A with Card B already present.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "mulligan_discard",
+                    "cards": ["CARD_A"],
+                    "selector": "DROP1",
+                    "evidence_text_short": "Throw weak one-drops in this opener.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_B"],
+                    "selector": "CARD_B",
+                    "evidence_text_short": "Speculative keep only.",
+                    "source_confidence": "low",
+                },
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    first, second, third, fourth = bundle["claims"]
+    assert first["selector_kind"] == "card"
+    assert first["selector"] == "CARD_A"
+    assert first["condition"] == {"coin": True}
+    assert first["conditions"] == {"coin": True}
+    assert first["runtime_lowerable"] is True
+    assert first["runtime_lowering_reason"] == "runtime_lowerable"
+    assert claim_can_lower_to_runtime(first)
+
+    assert second["selector"] == "CARD_A+CARD_B"
+    assert second["condition"] == {"hand_contains": "CARD_B"}
+    assert second["runtime_lowerable"] is True
+    assert claim_can_lower_to_runtime(second)
+
+    assert third["selector"] == "DROP1"
+    assert third["runtime_lowerable"] is True
+    assert claim_can_lower_to_runtime(third)
+
+    assert fourth["runtime_lowerable"] is False
+    assert fourth["runtime_lowering_reason"] == "claim_not_runtime_lowerable"
+    assert not claim_can_lower_to_runtime(fourth)
+
+
+def test_source_document_builder_accepts_kind_and_card_id_aliases():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "TEST_001", "count": 2, "name": "Test Card"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/alias-guide",
+            "source_title": "Alias Guide",
+            "source_family": "mulligan_guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "kind": "mulligan_keep",
+                    "card_id": "TEST_001",
+                    "selector": "TEST_001",
+                    "evidence_text_short": "Keep Test Card.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["claim_kind"] == "mulligan_keep"
+    assert claim["cards"] == ["TEST_001"]
+    assert claim["runtime_lowerable"] is True
+
+
 def test_source_document_builder_preserves_combo_timing_metadata_and_provenance():
     deck_identity = {
         "deck_name": "Fixture",

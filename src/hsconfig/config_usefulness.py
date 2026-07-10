@@ -33,6 +33,7 @@ def build_config_usefulness(
             "status": "invalid_package",
             "headline": "Package is technically invalid; config richness is not evaluated.",
             "runtime_permission_impact": "none",
+            "blocking": False,
             "surfaces": {},
             "first_usefulness_gap": "technical_invalid",
             "next_report_to_open": "reports/validation_report.json",
@@ -58,6 +59,7 @@ def build_config_usefulness(
         "status": status,
         "headline": _headline(status, first_gap),
         "runtime_permission_impact": "none",
+        "blocking": False,
         "surfaces": {
             "mulligan": mulligan,
             "globalvalues": globalvalues,
@@ -74,19 +76,38 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
     suppressed = _list(report.get("suppressed_rules"))
     quality = report.get("quality", {})
     has_concrete_keeps = bool(quality.get("has_concrete_keeps")) if isinstance(quality, dict) else False
+    quality_status = str(quality.get("status", "")).strip() if isinstance(quality, dict) else ""
     default_only = not rules and not suppressed and not has_concrete_keeps
-    if has_concrete_keeps or rules:
+    if quality_status in {"rich", "thin"}:
+        status = quality_status
+    elif has_concrete_keeps or rules:
         status = "rich"
     elif suppressed:
         status = "report_only"
     else:
         status = "thin"
+    first_gap_reason = (
+        str(quality.get("first_gap_reason", "none"))
+        if isinstance(quality, dict)
+        else "none"
+    )
+    suppressed_reasons = (
+        dict(quality.get("suppressed_reasons", {}))
+        if isinstance(quality, dict) and isinstance(quality.get("suppressed_reasons"), dict)
+        else {}
+    )
     return {
         "status": status,
         "rule_count": len(rules),
         "suppressed_rule_count": len(suppressed),
         "has_concrete_keeps": has_concrete_keeps,
         "default_only": default_only,
+        "first_gap_reason": first_gap_reason,
+        "next_source_need": "none" if status == "rich" else "source_backed_mulligan_keeps",
+        "source_backed_rule_count": _int(quality.get("source_backed_rule_count", 0))
+        if isinstance(quality, dict)
+        else 0,
+        "suppressed_reasons": suppressed_reasons,
     }
 
 

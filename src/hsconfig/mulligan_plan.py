@@ -89,7 +89,7 @@ def build_mulligan_plan(
                         "selector_kind": selector_info["selector_kind"],
                         "selector": selector_info["selector"],
                         "action": action,
-                        "reason": unsupported_reason,
+                        "reason": _mulligan_condition_reason(unsupported_reason),
                         "source_claim_ids": _source_claim_ids(claim),
                     }
                 )
@@ -148,7 +148,34 @@ def build_mulligan_plan(
     has_concrete_keeps = any(
         row["action"] == "hold" and row.get("selector_kind") != "wildcard" for row in rules
     )
-    quality: dict[str, Any] = {"has_concrete_keeps": has_concrete_keeps}
+    suppressed_reasons = _suppressed_reason_counts(suppressed_rules)
+    source_backed_rule_count = sum(
+        1
+        for row in rules
+        if row.get("source_type") == "source_claim" and row.get("selector_kind") != "wildcard"
+    )
+    source_backed_keep_rule_count = sum(
+        1
+        for row in rules
+        if row.get("source_type") == "source_claim"
+        and row.get("selector_kind") != "wildcard"
+        and row.get("action") == "hold"
+    )
+    has_source_backed_keeps = source_backed_keep_rule_count > 0
+    first_gap_reason = (
+        str(suppressed_rules[0]["reason"])
+        if suppressed_rules
+        else ("none" if has_source_backed_keeps else "no_source_backed_mulligan_keeps")
+    )
+    quality: dict[str, Any] = {
+        "has_concrete_keeps": has_concrete_keeps,
+        "status": "rich" if has_source_backed_keeps else "thin",
+        "first_gap_reason": first_gap_reason,
+        "source_backed_rule_count": source_backed_rule_count,
+        "source_backed_keep_rule_count": source_backed_keep_rule_count,
+        "suppressed_rule_count": len(suppressed_rules),
+        "suppressed_reasons": suppressed_reasons,
+    }
     if has_concrete_keeps:
         rules.append(
             {
@@ -224,3 +251,17 @@ def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
     if claim.get("claim_id"):
         return [str(claim["claim_id"])]
     return []
+
+
+def _mulligan_condition_reason(reason: str) -> str:
+    if reason == "unsupported_condition":
+        return "unsupported_mulligan_condition"
+    return reason
+
+
+def _suppressed_reason_counts(suppressed_rules: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in suppressed_rules:
+        reason = str(row.get("reason", "unknown"))
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts

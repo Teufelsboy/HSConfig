@@ -9,6 +9,7 @@ from hsconfig.source_document_model import (
     REQUIRED_CLAIM_KEYS,
     REQUIRED_SOURCE_KEYS,
     SUPPORTED_ATOMIC_CLAIM_KINDS,
+    claim_can_lower_to_runtime,
 )
 
 
@@ -159,8 +160,8 @@ def _normalize_source_claim(
     known_card_ids: set[str],
     current_date: Any = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    claim_kind = _clean_text(raw_claim.get("claim_kind", raw_claim.get("claim_type", "")))
-    cards = _normalize_cards(raw_claim.get("cards", []))
+    claim_kind = _clean_text(_raw_claim_kind(raw_claim))
+    cards = _normalize_cards(_raw_claim_cards(raw_claim))
     scope = _clean_text(raw_claim.get("scope", "card")).lower() or "card"
     if claim_kind == "archetype" and not cards:
         scope = "deck"
@@ -264,6 +265,11 @@ def _normalize_source_claim(
     for key in ("option_card_id", "option_card", "choice_card_id", "choice_card"):
         if key in raw_claim:
             claim[key] = _clean_text(raw_claim[key])
+    runtime_lowerable = claim_can_lower_to_runtime(claim)
+    claim["runtime_lowerable"] = runtime_lowerable
+    claim["runtime_lowering_reason"] = (
+        "runtime_lowerable" if runtime_lowerable else "claim_not_runtime_lowerable"
+    )
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
     claim["claim_id"] = _claim_id(claim)
@@ -361,8 +367,8 @@ def _unsupported(
         "source_ref": source_ref,
         "claim_index": claim_index,
         "reason": reason,
-        "claim_kind": _clean_text(raw_claim.get("claim_kind", raw_claim.get("claim_type", ""))),
-        "cards": _normalize_cards(raw_claim.get("cards", [])),
+        "claim_kind": _clean_text(_raw_claim_kind(raw_claim)),
+        "cards": _normalize_cards(_raw_claim_cards(raw_claim)),
         "source_url": str(document.get("source_url", "")),
         "source_title": str(document.get("source_title", "")),
         "evidence_text_short": _claim_evidence(raw_claim),
@@ -417,7 +423,7 @@ def _missing_claim_keys(raw_claim: dict[str, Any]) -> list[str]:
     missing = []
     for key in REQUIRED_CLAIM_KEYS:
         if key == "claim_kind":
-            value = raw_claim.get("claim_kind", raw_claim.get("claim_type", ""))
+            value = _raw_claim_kind(raw_claim)
         elif key == "evidence_text_short":
             value = _claim_evidence(raw_claim)
         else:
@@ -540,6 +546,18 @@ def _normalize_cards(cards: Any) -> list[str]:
         if card and card not in normalized:
             normalized.append(card)
     return normalized
+
+
+def _raw_claim_kind(raw_claim: dict[str, Any]) -> Any:
+    return raw_claim.get("claim_kind", raw_claim.get("claim_type", raw_claim.get("kind", "")))
+
+
+def _raw_claim_cards(raw_claim: dict[str, Any]) -> Any:
+    if "cards" in raw_claim:
+        return raw_claim["cards"]
+    if "card_id" in raw_claim:
+        return raw_claim["card_id"]
+    return []
 
 
 def _normalize_optional(value: Any) -> Any:

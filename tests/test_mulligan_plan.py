@@ -51,6 +51,9 @@ def test_mulligan_plan_uses_early_role_fallback_without_source_claims():
     assert plan["rules"][0]["action"] == "hold"
     assert plan["rules"][0]["confidence"] == "archetype_inferred"
     assert plan["rules"][-1]["card"] == "*"
+    assert plan["quality"]["status"] == "thin"
+    assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
+    assert plan["quality"]["source_backed_rule_count"] == 0
 
 
 def test_mulligan_plan_preserves_multiple_conditions_for_same_card():
@@ -93,8 +96,9 @@ def test_mulligan_plan_suppresses_unsupported_conditions_instead_of_broadening_t
 
     assert plan["rules"] == []
     assert plan["suppressed_rules"][0]["card"] == "CARD_001"
-    assert plan["suppressed_rules"][0]["reason"] == "unsupported_condition"
+    assert plan["suppressed_rules"][0]["reason"] == "unsupported_mulligan_condition"
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
+    assert plan["quality"]["first_gap_reason"] == "unsupported_mulligan_condition"
 
 
 def test_mulligan_plan_orders_conflicting_exact_rules_by_precedence():
@@ -212,3 +216,65 @@ def test_mulligan_plan_suppresses_unsupported_selectors():
     assert plan["rules"] == []
     assert plan["suppressed_rules"][0]["reason"] == "unsupported_mulligan_selector"
     assert plan["suppressed_rules"][0]["selector"] == "CARD_A | CARD_B"
+
+
+def test_mulligan_plan_quality_reports_counts_status_and_first_gap():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "selector": "CARD_A",
+                "conditions": {"coin": True},
+                "claim_id": "keep_coin",
+                "claim_readiness": "guide_backed",
+            },
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_B"],
+                "selector": "CARD_B | CARD_C",
+                "claim_id": "bad_selector",
+                "claim_readiness": "guide_backed",
+            },
+        ],
+        card_roles={},
+    )
+
+    assert plan["quality"]["status"] == "rich"
+    assert plan["quality"]["first_gap_reason"] == "unsupported_mulligan_selector"
+    assert plan["quality"]["source_backed_rule_count"] == 1
+    assert plan["quality"]["suppressed_rule_count"] == 1
+    assert plan["quality"]["suppressed_reasons"] == {"unsupported_mulligan_selector": 1}
+
+
+def test_mulligan_plan_quality_reports_no_source_backed_keeps_when_empty():
+    plan = build_mulligan_plan(deck_name="UnknownDeck", claims=[], card_roles={})
+
+    assert plan["quality"]["status"] == "thin"
+    assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
+    assert plan["quality"]["source_backed_rule_count"] == 0
+    assert plan["quality"]["suppressed_rule_count"] == 0
+    assert plan["quality"]["suppressed_reasons"] == {}
+
+
+def test_mulligan_plan_discard_only_source_keeps_mulligan_thin():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_discard",
+                "cards": ["CARD_A"],
+                "claim_id": "discard_card_a",
+                "claim_readiness": "guide_backed",
+            }
+        ],
+        card_roles={},
+    )
+
+    assert plan["rules"][0]["action"] == "discard"
+    assert plan["quality"]["status"] == "thin"
+    assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
+    assert plan["quality"]["source_backed_rule_count"] == 1
+    assert plan["quality"]["source_backed_keep_rule_count"] == 0
+    assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"

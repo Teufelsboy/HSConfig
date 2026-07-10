@@ -106,7 +106,31 @@ def _research_questions(mechanics: list[str]) -> list[dict[str, str]]:
         },
         {
             "claim_kind": "mulligan_keep",
-            "question": "Which exact cards are kept or thrown in mulligan and under which condition?",
+            "question": "Which exact cards are always keep cards in the mulligan?",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "question": "Which exact cards are conditional mulligan keeps with Coin or without Coin?",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "question": "Which exact cards are conditional mulligan keeps by opponent class or matchup speed?",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "question": "Which exact cards are kept only with a hand partner or with another card already present?",
+        },
+        {
+            "claim_kind": "mulligan_discard",
+            "question": "Which exact cards should be thrown or discarded away in mulligan?",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "question": "Which one-drop, early-curve, or mulligan-anchor cards are kept because of source-backed guide confidence?",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "question": "What is the source confidence for each mulligan claim, and is it from a guide, archetype analysis, or static card semantics?",
         },
         {
             "claim_kind": "gameplan_posture",

@@ -91,6 +91,51 @@ def test_config_usefulness_marks_source_gap_package_usable_with_targeted_gaps():
     assert payload["next_report_to_open"] == "reports/mulligan_plan_report.json"
 
 
+def test_config_usefulness_surfaces_actionable_nonblocking_mulligan_gap():
+    payload = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        config_readiness_summary={
+            "total_cards": 10,
+            "runtime_emitted": 8,
+            "report_only_supported": 0,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 1,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [
+                {"card": "CARD_A", "reason": "unsupported_mulligan_condition"}
+            ],
+            "quality": {
+                "has_concrete_keeps": False,
+                "status": "thin",
+                "first_gap_reason": "unsupported_mulligan_condition",
+                "source_backed_rule_count": 0,
+                "suppressed_rule_count": 1,
+                "suppressed_reasons": {"unsupported_mulligan_condition": 1},
+            },
+        },
+        card_behavior_plan_report={"rows": [{"meaningful_runtime_surface": True, "behavior_block": {"x": []}}]},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+    )
+
+    mulligan = payload["surfaces"]["mulligan"]
+    assert payload["blocking"] is False
+    assert payload["runtime_permission_impact"] == "none"
+    assert payload["first_usefulness_gap"] == "mulligan_gap"
+    assert mulligan["status"] == "thin"
+    assert mulligan["first_gap_reason"] == "unsupported_mulligan_condition"
+    assert mulligan["next_source_need"] == "source_backed_mulligan_keeps"
+    assert mulligan["suppressed_reasons"] == {"unsupported_mulligan_condition": 1}
+
+
 def test_config_usefulness_marks_valid_sparse_package_load_safe_but_thin():
     payload = build_config_usefulness(
         technical_status="VALID_PACKAGE",

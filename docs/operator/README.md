@@ -29,6 +29,7 @@ Open `reports/operator_summary.json` first.
 - `Concede.json` and `Presume.json` are HearthRanger-documented VisionAI surfaces, but normal HSConfig does not emit them. Their absence is not a block for a load-safe deck package.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
+- `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_mulligan_keeps` tells the operator that more guide-backed keep/discard evidence would improve the package.
 - `mechanic_visibility_summary` is descriptive and non-blocking. It shows `direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic buckets so a valid package can be applied while still making Dredge, Tradeable, unresolved generation, or partial targeting limits visible.
 
 The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only; they do not increment `cards_needing_mechanic_lowering`.
@@ -42,6 +43,7 @@ Modern mechanic visibility is non-blocking. HSConfig names current mechanics suc
 
 - Open `reports/semantic_enrichment_report.json` when the summary points to static or warning-only mechanic coverage. It explains inferred card semantics, static evidence, linked entities, deckwide effects, and warning-only flags. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
+- A thin Mulligan means the package fell back to static/archetype early-role logic or wildcard discard behavior because guide evidence did not name enough concrete keep rules. It is a source-quality signal, not a HearthRanger load error.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
 ## Single Gate
