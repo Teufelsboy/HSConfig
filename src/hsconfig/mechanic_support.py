@@ -254,6 +254,27 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["report-only"],
         "warning_boundary": "Starship build and launch choices have no documented normal-path VisionAI runtime block.",
     },
+    "rewind": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Do not lower temporal replay/prior-state effects into card values without exact public VisionAI support.",
+        "proof_basis": "text drift visibility only; no documented VisionAI temporal prior-state surface in the normal package",
+        "never_autopatch_reason": "Do not lower temporal replay/prior-state effects into card values without exact public VisionAI support.",
+    },
+    "herald": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Do not infer a generic card-value action from a keyword whose concrete effect is card-specific.",
+        "proof_basis": "text drift visibility only; no documented normal-path runtime action surface",
+        "never_autopatch_reason": "Do not infer a generic card-value action from a keyword whose concrete effect is card-specific.",
+    },
+    "shatter": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Do not auto-patch conditional destroy/damage targeting without exact target and board-state semantics.",
+        "proof_basis": "text drift visibility only; conditional frozen/minion state must stay review-visible unless exact card behavior is known",
+        "never_autopatch_reason": "Do not auto-patch conditional destroy/damage targeting without exact target and board-state semantics.",
+    },
     "spellburst": {
         "support_level": "partial",
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],

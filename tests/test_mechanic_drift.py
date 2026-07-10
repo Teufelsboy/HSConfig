@@ -94,6 +94,27 @@ def test_mechanic_drift_detects_modern_text_only_mechanics_without_blocking():
                 "referencedTags": [],
                 "text": "Imbue your Hero Power.",
             },
+            {
+                "id": "REWIND_001",
+                "type": "SPELL",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Rewind: Repeat your last spell.",
+            },
+            {
+                "id": "HERALD_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Herald: Draw a minion.",
+            },
+            {
+                "id": "SHATTER_001",
+                "type": "SPELL",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Shatter a Frozen minion.",
+            },
         ]
     )
 
@@ -102,16 +123,21 @@ def test_mechanic_drift_detects_modern_text_only_mechanics_without_blocking():
     assert report["unknown_mechanics"] == []
     assert report["text_only_mechanics"] == [
         "elusive",
+        "herald",
         "honorable_kill",
         "imbue",
         "kindred",
         "miniaturize",
         "poisonous",
         "quickdraw",
+        "rewind",
+        "shatter",
         "spellburst",
         "starship",
         "tourist",
     ]
+    for mechanic in ["rewind", "herald", "shatter"]:
+        assert report["support_by_mechanic"][mechanic]["support_level"] == "warning_only"
     assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
     assert report["support_by_mechanic"]["spellburst"]["support_level"] == "partial"
 

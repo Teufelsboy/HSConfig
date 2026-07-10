@@ -247,6 +247,9 @@ def test_current_modern_wild_mechanics_are_registered_without_blocking():
             "poisonous",
             "imbue",
             "hero_power_imbue",
+            "rewind",
+            "herald",
+            "shatter",
         ]
     )
     by_mechanic = {row["mechanic"]: row for row in rows}
@@ -262,6 +265,9 @@ def test_current_modern_wild_mechanics_are_registered_without_blocking():
         "elusive": "partial",
         "poisonous": "partial",
         "imbue": "partial",
+        "rewind": "warning_only",
+        "herald": "warning_only",
+        "shatter": "warning_only",
     }
 
     assert set(by_mechanic) == set(expected)
@@ -271,6 +277,12 @@ def test_current_modern_wild_mechanics_are_registered_without_blocking():
         if support_level == "warning_only":
             assert by_mechanic[mechanic]["normal_path_surfaces"] == ["report-only"]
             assert operator_visibility_bucket(by_mechanic[mechanic]) == "warning_only"
+    for mechanic in ["rewind", "herald", "shatter"]:
+        summary = by_mechanic[mechanic]
+        assert summary.get("registered", True) is True
+        assert summary["support_level"] == "warning_only"
+        assert summary["normal_path_surfaces"] == ["report-only"]
+        assert operator_visibility_bucket(summary) == "warning_only"
 
 
 def test_cthun_alias_accepts_apostrophe_punctuation():
