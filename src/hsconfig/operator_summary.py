@@ -498,10 +498,18 @@ def _mechanic_drift_summary(report: dict[str, Any] | None) -> dict[str, Any]:
             "unknown_mechanics": [],
             "text_only_mechanics": [],
             "unknown_card_types": [],
+            "first_unknown_mechanic": None,
+            "first_text_only_mechanic": None,
+            "first_unknown_card_type": None,
+            "next_report_to_open": None,
         }
     summary = report.get("summary", {})
     if not isinstance(summary, dict):
         summary = {}
+    unknown_mechanics = [str(item) for item in report.get("unknown_mechanics", [])]
+    text_only_mechanics = [str(item) for item in report.get("text_only_mechanics", [])]
+    unknown_card_types = [str(item) for item in report.get("unknown_card_types", [])]
+    has_followup = bool(unknown_mechanics or text_only_mechanics or unknown_card_types)
     return {
         "non_blocking": bool(report.get("non_blocking", True)),
         "mechanic_count": _int_value(summary.get("mechanic_count", 0)),
@@ -514,13 +522,13 @@ def _mechanic_drift_summary(report: dict[str, Any] | None) -> dict[str, Any]:
         "unknown_card_type_count": _int_value(
             summary.get("unknown_card_type_count", 0)
         ),
-        "unknown_mechanics": [str(item) for item in report.get("unknown_mechanics", [])],
-        "text_only_mechanics": [
-            str(item) for item in report.get("text_only_mechanics", [])
-        ],
-        "unknown_card_types": [
-            str(item) for item in report.get("unknown_card_types", [])
-        ],
+        "unknown_mechanics": unknown_mechanics,
+        "text_only_mechanics": text_only_mechanics,
+        "unknown_card_types": unknown_card_types,
+        "first_unknown_mechanic": unknown_mechanics[0] if unknown_mechanics else None,
+        "first_text_only_mechanic": text_only_mechanics[0] if text_only_mechanics else None,
+        "first_unknown_card_type": unknown_card_types[0] if unknown_card_types else None,
+        "next_report_to_open": "reports/mechanic_drift_report.json" if has_followup else None,
     }
 
 

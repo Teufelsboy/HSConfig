@@ -27,3 +27,13 @@ def test_operator_summary_owns_config_usefulness_signal():
 
     assert "config_usefulness" in operator["contains"]
     assert operator["authority"] == "normal_operator_gate"
+
+
+def test_report_ownership_includes_mechanic_diagnostics():
+    rows = build_report_ownership()
+    by_file = {row["file"]: row for row in rows}
+
+    assert by_file["reports/mechanic_drift_report.json"]["authority"] == "non_blocking_mechanic_drift_visibility"
+    assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "7"
+    assert by_file["reports/semantic_enrichment_report.json"]["authority"] == "semantic_mechanic_diagnostics"
+    assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "8"

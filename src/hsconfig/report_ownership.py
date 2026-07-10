@@ -52,4 +52,14 @@ def build_report_ownership() -> list[dict[str, Any]]:
             ),
             "open_order": "7",
         },
+        {
+            "file": "reports/semantic_enrichment_report.json",
+            "producer": "prepare",
+            "authority": "semantic_mechanic_diagnostics",
+            "open_when": (
+                "mechanic_visibility_summary or config_usefulness points to static, "
+                "partial, or warning-only mechanic coverage"
+            ),
+            "open_order": "8",
+        },
     ]

@@ -1461,6 +1461,34 @@ def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_appl
     assert readiness["requires_flag"] == "--allow-source-informed"
 
 
+def test_operator_summary_names_first_mechanic_drift_followup():
+    summary = build_operator_summary(
+        deck_name="MechanicTest",
+        deck_code="AAEBAfake",
+        technical_validation={"status": "passed"},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 1},
+        mechanic_drift_report={
+            "non_blocking": True,
+            "unknown_mechanics": ["future_keyword"],
+            "text_only_mechanics": ["kindred", "starship"],
+            "unknown_card_types": ["lettuce_ability"],
+            "summary": {
+                "mechanic_count": 3,
+                "unknown_mechanic_count": 1,
+                "text_only_mechanic_count": 2,
+                "unknown_card_type_count": 1,
+            },
+        },
+    )
+
+    drift = summary["mechanic_drift_summary"]
+    assert drift["non_blocking"] is True
+    assert drift["first_unknown_mechanic"] == "future_keyword"
+    assert drift["first_text_only_mechanic"] == "kindred"
+    assert drift["first_unknown_card_type"] == "lettuce_ability"
+    assert drift["next_report_to_open"] == "reports/mechanic_drift_report.json"
+
+
 def test_operator_summary_threads_nonblocking_mechanic_drift_summary():
     summary = build_operator_summary(
         deck_name="DriftDeck",
@@ -1499,5 +1527,9 @@ def test_operator_summary_threads_nonblocking_mechanic_drift_summary():
         "unknown_mechanics": ["future_keyword"],
         "text_only_mechanics": ["tradeable"],
         "unknown_card_types": ["starship"],
+        "first_unknown_mechanic": "future_keyword",
+        "first_text_only_mechanic": "tradeable",
+        "first_unknown_card_type": "starship",
+        "next_report_to_open": "reports/mechanic_drift_report.json",
     }
     assert summary["runtime_apply_mode"] == "load_safe_apply"
