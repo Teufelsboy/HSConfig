@@ -60,6 +60,7 @@
   - `primary_blockers: list[dict[str, Any]]`
   - `warnings: list[dict[str, Any]]`
   - `semantic_status: str`
+  - `source_depth_status: str`
   - `semantic_blockers: list[dict[str, Any]]`
   - `guide_strength_summary: dict[str, Any]`
   - `config_usefulness: dict[str, Any]`
@@ -194,13 +195,9 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
         "they do not block hsconfig apply."
     )
     assert no_block["categories"]["technical_hard_block"] == []
-    assert {row["reason"] for row in no_block["categories"]["source_depth_warning"]} >= {
-        "cards_need_guide_claims",
-        "cards_need_runtime_surface",
-        "cards_need_mulligan_claims",
-        "cards_need_combo_sequence",
-        "cards_need_mechanic_lowering",
-    }
+    assert no_block["categories"]["source_depth_warning"] == [
+        {"reason": "static_semantics_only"}
+    ]
     assert no_block["categories"]["warning_only_mechanic"] == [
         {"mechanic": "dredge"},
         {"mechanic": "tradeable"},
@@ -217,6 +214,14 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
     assert no_block["categories"]["combo_uncertainty"] == [
         {"reason": "cards_need_combo_sequence", "count": 1}
     ]
+    source_informed_gap = next(
+        row
+        for row in no_block["categories"]["guide_strength_gap"]
+        if row["reason"] == "source_informed_apply_gap"
+    )
+    assert "cards_need_runtime_surface" in source_informed_gap["values"]
+    assert "cards_need_mechanic_lowering" in source_informed_gap["values"]
+    assert "cards_need_combo_sequence" not in source_informed_gap["values"]
     assert no_block["categories"]["runtime_evidence_only_tuning"] == []
     assert no_block["first_non_blocking_followup"]["category"] == "source_depth_warning"
 ```
