@@ -239,9 +239,100 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["report-only"],
         "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
     },
+    "questline": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["GlobalValues.json:deck_posture", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Questline progress and reward timing can be encouraged, not fully planned as a separate action tree.",
+    },
+    "highlander": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["GlobalValues.json:deck_posture", "CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "No-duplicate payoff posture can be represented; deck legality remains deck construction.",
+    },
+    "outcast": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Exact hand-edge position has no documented normal-path VisionAI surface.",
+    },
+    "infuse": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:board_pressure"],
+        "warning_boundary": "Infuse setup can be encouraged; exact counter state remains broader bot evaluation.",
+    },
+    "corrupt": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "Combo.json:exact_sequence"],
+        "warning_boundary": "Corrupt sequencing can be represented when source-backed; exact hand-state timing remains partial.",
+    },
+    "finale": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Finale requires exact remaining-mana state, which is not a dedicated normal-path surface.",
+    },
+    "manathirst": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Mana-threshold timing can be encouraged; exact threshold control remains partial.",
+    },
+    "forge": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Forge is an alternate pre-play action with no documented normal-path runtime block.",
+    },
+    "excavate": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
+        "warning_boundary": "Excavate card timing can be encouraged; treasure chain identity remains report-only unless source-backed.",
+    },
+    "plague": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:deck_posture"],
+        "warning_boundary": "Shuffle-pressure posture can be represented; opponent draw timing remains outside pre-run control.",
+    },
+    "titan": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Titan ability choice is option identity and has no documented normal-path runtime row.",
+    },
+    "colossal": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
+        "warning_boundary": "Colossal body timing can be represented; appendage interaction remains broader bot evaluation.",
+    },
+    "dormant": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
+        "warning_boundary": "Dormant payoff timing can be represented; wake-up timing remains partial.",
+    },
+    "invoke": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:deck_posture"],
+        "warning_boundary": "Invoke progression can be encouraged; exact upgrade state remains partial.",
+    },
+    "jade": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:board_pressure"],
+        "warning_boundary": "Jade scaling posture can be represented; exact summoned stat line is not a separate runtime surface.",
+    },
+    "cthun_package": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:deck_posture"],
+        "warning_boundary": "C'Thun package setup can be represented; shard/order state remains broader bot evaluation.",
+    },
+    "spell_school": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "GlobalValues.json:deck_posture"],
+        "warning_boundary": "Spell-school synergy can be encouraged; exact school chain state remains source-dependent.",
+    },
 }
 
 ROLE_ALIASES = {
+    "quest": "questline",
+    "sidequest": "questline",
+    "no_duplicate": "highlander",
+    "no_duplicates": "highlander",
+    "cthun": "cthun_package",
+    "c_thun": "cthun_package",
     "shadow_hero_power": "hero_power_transform",
     "hero_power_pressure": "hero_power",
     "hero_attack": "weapon",

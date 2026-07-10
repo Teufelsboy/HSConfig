@@ -180,3 +180,52 @@ def test_mechanic_support_covers_static_semantic_families_without_blocking():
     assert by_mechanic["location_activation"]["support_level"] == "warning_only"
     assert by_mechanic["secret_timing"]["support_level"] == "warning_only"
     assert by_mechanic["generated_entity_random_pool"]["support_level"] == "warning_only"
+
+
+def test_future_wild_mechanics_are_registered_without_blocking():
+    rows = support_for_roles(
+        [
+            "questline",
+            "highlander",
+            "outcast",
+            "infuse",
+            "corrupt",
+            "finale",
+            "manathirst",
+            "forge",
+            "excavate",
+            "plague",
+            "titan",
+            "colossal",
+            "dormant",
+            "invoke",
+            "jade",
+            "cthun_package",
+            "spell_school",
+        ]
+    )
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    expected = {
+        "questline": "partial",
+        "highlander": "partial",
+        "outcast": "warning_only",
+        "infuse": "partial",
+        "corrupt": "partial",
+        "finale": "partial",
+        "manathirst": "partial",
+        "forge": "warning_only",
+        "excavate": "partial",
+        "plague": "partial",
+        "titan": "warning_only",
+        "colossal": "partial",
+        "dormant": "partial",
+        "invoke": "partial",
+        "jade": "partial",
+        "cthun_package": "partial",
+        "spell_school": "partial",
+    }
+    assert set(by_mechanic) == set(expected)
+    for mechanic, support_level in expected.items():
+        assert by_mechanic[mechanic]["support_level"] == support_level
+        assert by_mechanic[mechanic].get("registered", True) is True

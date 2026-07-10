@@ -34,6 +34,18 @@ TEXT_MECHANIC_PATTERNS: dict[str, tuple[str, ...]] = {
     "questline": ("questline",),
     "titan": ("titan",),
     "colossal": ("colossal",),
+    "highlander": ("if your deck has no duplicates", "no duplicates"),
+    "jade": ("jade golem",),
+    "cthun_package": ("c'thun", "cthun"),
+    "spell_school": (
+        "fire spell",
+        "frost spell",
+        "fel spell",
+        "shadow spell",
+        "holy spell",
+        "nature spell",
+        "arcane spell",
+    ),
 }
 
 

@@ -59,3 +59,22 @@ def test_mechanic_drift_reports_unknown_card_types_without_blocking():
     assert report["card_types"] == ["starship"]
     assert report["unknown_card_types"] == ["starship"]
     assert report["summary"]["unknown_card_type_count"] == 1
+
+
+def test_mechanic_drift_treats_registered_future_mechanics_as_known():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "FUTURE_QUEST",
+                "name": "Future Questline",
+                "type": "SPELL",
+                "mechanics": ["QUESTLINE", "MANATHIRST"],
+                "text": "Questline. Manathirst (8): Improve this.",
+            }
+        ]
+    )
+
+    assert report["non_blocking"] is True
+    assert report["unknown_mechanics"] == []
+    assert report["support_by_mechanic"]["questline"]["support_level"] == "partial"
+    assert report["support_by_mechanic"]["manathirst"]["support_level"] == "partial"
