@@ -201,3 +201,18 @@ def test_current_truth_names_no_block_failure_mode_audit_v5():
 
     assert "2026-07-10-hsconfig-universal-no-block-skill-audit-v5" in text
     assert "No-block failure-mode summary evidence" in text
+
+
+def test_acceptance_matrix_is_documented_as_diagnostic_only():
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    contract = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "hsconfig acceptance-matrix" in operator
+    assert "diagnostic only" in operator
+    assert "does not write runtime files" in operator
+    assert "does not parse replays" in operator
+    assert "does not replace `reports/operator_summary.json`" in operator
+    assert "does not change the apply gate" in contract
+    assert "guarded `hsconfig apply` path" in contract

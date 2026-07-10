@@ -121,6 +121,24 @@ def build_parser() -> argparse.ArgumentParser:
     research_deck.add_argument("--allow-placeholder", action="store_true")
     research_deck.add_argument("--json", action="store_true")
 
+    acceptance_matrix = subparsers.add_parser(
+        "acceptance-matrix",
+        help="read-only package acceptance matrix",
+        description=(
+            "Read one or more prepared HSConfig packages and summarize load-safe "
+            "status, runtime files, warning boundaries, and no-block hard stops. "
+            "This command is diagnostic only and never writes runtime files."
+        ),
+    )
+    acceptance_matrix.add_argument(
+        "--package",
+        action="append",
+        required=True,
+        help="Prepared package directory. Repeat for multiple packages.",
+    )
+    acceptance_matrix.add_argument("--out", help="Optional JSON output path.")
+    acceptance_matrix.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")

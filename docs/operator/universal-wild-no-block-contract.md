@@ -102,3 +102,11 @@ Each deck must produce `VALID_PACKAGE`, `runtime_load_safe=true`,
 As HSConfig rich-output repo policy, normal `prepare` must also emit one per-card
 JSON file for every unique deck CardID when deck-card identity is known. That
 rich-output proof is not the minimal runtime-apply gate.
+
+## Acceptance Matrix Diagnostic
+
+`hsconfig acceptance-matrix` may summarize prepared packages across the proof
+set. This command is a read-only diagnostic surface for package status,
+runtime-file coverage, CardID file counts, and warning boundaries.
+It does not change the apply gate. Runtime permission still comes only from
+`reports/operator_summary.json` and the guarded `hsconfig apply` path.

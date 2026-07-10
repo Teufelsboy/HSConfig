@@ -102,6 +102,21 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | `reports/mechanic_drift_report.json` | non-blocking mechanic drift visibility | which unknown, text-only, or current-card-type mechanics should be inspected next |
 | `reports/semantic_enrichment_report.json` | semantic mechanic diagnostics | which static mechanics, linked entities, deckwide effects, and warning-only flags were inferred |
 
+## Optional Acceptance Matrix
+
+Use `hsconfig acceptance-matrix` after one or more packages have already been
+prepared when you want a compact read-only proof view.
+
+```powershell
+hsconfig acceptance-matrix --package outputs/ShadowPriest --package outputs/BigShaman --json
+```
+
+The matrix summarizes `technical_status`, `runtime_apply_mode`, runtime file
+coverage, CardID file count, `config_usefulness`, and warning boundaries across
+packages. It is diagnostic only. It does not write runtime files, does not parse
+replays, and does not replace `reports/operator_summary.json` as the single
+operator gate.
+
 ## Expert Paths
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
