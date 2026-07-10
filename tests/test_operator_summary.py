@@ -1533,3 +1533,169 @@ def test_operator_summary_threads_nonblocking_mechanic_drift_summary():
         "next_report_to_open": "reports/mechanic_drift_report.json",
     }
     assert summary["runtime_apply_mode"] == "load_safe_apply"
+
+
+def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
+    summary = build_operator_summary(
+        deck_name="Warning Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 1,
+                "static_semantics_backfilled": 1,
+                "uncovered_low_confidence": 2,
+            },
+            "uncovered_cards": ["CARD_A", "CARD_B"],
+        },
+        config_readiness_summary={
+            "total_cards": 3,
+            "generic_low_confidence": 2,
+            "cards_needing_guide_claims": 2,
+            "cards_needing_runtime_surface": 1,
+            "cards_needing_mulligan_claims": 1,
+            "cards_needing_combo_sequence": 1,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 1,
+        },
+        config_readiness_report={
+            "summary": {
+                "mechanic_visibility": {
+                    "non_blocking": True,
+                    "bucket_counts": {
+                        "direct": 1,
+                        "identity_gated_direct": 0,
+                        "partial": 1,
+                        "warning_only": 2,
+                    },
+                    "mechanics_by_bucket": {
+                        "direct": ["battlecry"],
+                        "identity_gated_direct": [],
+                        "partial": ["generated_entity"],
+                        "warning_only": ["dredge", "tradeable"],
+                    },
+                    "warning_only_card_count": 2,
+                    "first_warning_boundary": {
+                        "mechanic": "dredge",
+                        "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+                    },
+                    "warning_boundaries": [
+                        {
+                            "mechanic": "dredge",
+                            "warning_boundary": "Dredge option selection has no documented normal-path VisionAI choice surface.",
+                        },
+                        {
+                            "mechanic": "tradeable",
+                            "warning_boundary": "Trade-now decisions have no documented normal-path VisionAI runtime block.",
+                        },
+                    ],
+                }
+            },
+            "cards": {
+                "CARD_A": {
+                    "name": "Card A",
+                    "first_missing_link": "needs_guide_claim",
+                },
+                "CARD_B": {
+                    "name": "Card B",
+                    "first_missing_link": "needs_runtime_surface",
+                },
+                "CARD_C": {
+                    "name": "Card C",
+                    "first_missing_link": "needs_combo_sequence",
+                },
+            },
+        },
+        mechanic_drift_report={
+            "non_blocking": True,
+            "unknown_mechanics": ["future_keyword"],
+            "text_only_mechanics": ["rewind"],
+            "unknown_card_types": ["future_type"],
+            "summary": {
+                "mechanic_count": 2,
+                "unknown_mechanic_count": 1,
+                "text_only_mechanic_count": 1,
+                "unknown_card_type_count": 1,
+            },
+        },
+        combo_plan_report={
+            "summary": {
+                "combo_count": 0,
+                "cards_needing_combo_sequence": 1,
+            }
+        },
+        generated_files=[
+            "CustomConfig/warningdeck/GlobalValues.json",
+            "CustomConfig/warningdeck/Mulligan.json",
+            "CustomConfig/warningdeck/CARD_A.json",
+            "CustomConfig/warningdeck/CARD_B.json",
+            "CustomConfig/warningdeck/CARD_C.json",
+        ],
+    )
+
+    no_block = summary["no_block_failure_mode_summary"]
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert no_block["overall"] == "load_safe_apply_allowed_with_warnings"
+    assert no_block["hard_block"] is False
+    assert no_block["runtime_apply_allowed"] is True
+    assert no_block["operator_message"] == (
+        "Package is load-safe. Listed warnings explain source or mechanic limits; "
+        "they do not block hsconfig apply."
+    )
+    assert no_block["categories"]["technical_hard_block"] == []
+    assert {row["reason"] for row in no_block["categories"]["source_depth_warning"]} >= {
+        "cards_need_guide_claims",
+        "cards_need_runtime_surface",
+        "cards_need_mulligan_claims",
+        "cards_need_combo_sequence",
+        "cards_need_mechanic_lowering",
+    }
+    assert no_block["categories"]["warning_only_mechanic"] == [
+        {"mechanic": "dredge"},
+        {"mechanic": "tradeable"},
+    ]
+    assert no_block["categories"]["future_mechanic_drift"] == [
+        {"kind": "unknown_mechanic", "value": "future_keyword"},
+        {"kind": "text_only_mechanic", "value": "rewind"},
+        {"kind": "unknown_card_type", "value": "future_type"},
+    ]
+    assert any(
+        row["reason"] == "generic_low_confidence_cards"
+        for row in no_block["categories"]["guide_strength_gap"]
+    )
+    assert no_block["categories"]["combo_uncertainty"] == [
+        {"reason": "cards_need_combo_sequence", "count": 1}
+    ]
+    assert no_block["categories"]["runtime_evidence_only_tuning"] == []
+    assert no_block["first_non_blocking_followup"]["category"] == "source_depth_warning"
+
+
+def test_no_block_failure_mode_summary_marks_invalid_package_as_hard_block():
+    summary = build_operator_summary(
+        deck_name="Broken Deck",
+        deck_code="bad-code",
+        technical_validation={
+            "status": "failed",
+            "errors": ["missing_required_runtime_file"],
+        },
+        generated_files=[],
+    )
+
+    no_block = summary["no_block_failure_mode_summary"]
+
+    assert summary["technical_status"] == "INVALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "blocked"
+    assert summary["runtime_apply_allowed"] is False
+    assert no_block["overall"] == "technical_hard_block"
+    assert no_block["hard_block"] is True
+    assert no_block["runtime_apply_allowed"] is False
+    assert no_block["categories"]["technical_hard_block"] == [
+        {"reason": "missing_required_runtime_file"}
+    ]
+    assert no_block["operator_message"] == (
+        "Package is not load-safe. Fix technical_hard_block items before hsconfig apply."
+    )

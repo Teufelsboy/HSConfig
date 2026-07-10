@@ -5,6 +5,7 @@ import hashlib
 from typing import Any
 
 from hsconfig.config_usefulness import build_config_usefulness
+from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.report_ownership import build_report_ownership
 
@@ -172,6 +173,23 @@ def build_operator_summary(
             apply_policy=apply_policy,
         )
     )
+    mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
+    no_block_failure_mode_summary = build_no_block_failure_mode_summary(
+        technical_status=technical_status,
+        runtime_apply_mode=runtime_apply_mode,
+        runtime_apply_allowed=runtime_apply_allowed,
+        next_action=next_action,
+        apply_policy=apply_policy,
+        primary_blockers=primary_blockers,
+        warnings=warnings,
+        semantic_status=semantic_status,
+        semantic_blockers=semantic_blockers,
+        guide_strength_summary=guide_strength_summary,
+        config_usefulness=config_usefulness,
+        mechanic_visibility_summary=mechanic_visibility_summary,
+        mechanic_drift_summary=mechanic_drift_summary,
+        source_informed_apply_readiness=source_informed_apply_readiness,
+    )
     summary = {
         "schema_version": 1,
         "deck": {
@@ -193,10 +211,11 @@ def build_operator_summary(
         "semantic_enrichment_summary": _semantic_enrichment_summary(
             semantic_enrichment_report
         ),
-        "mechanic_drift_summary": _mechanic_drift_summary(mechanic_drift_report),
+        "mechanic_drift_summary": mechanic_drift_summary,
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
+        "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
