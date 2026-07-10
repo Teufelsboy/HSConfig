@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 
-CARD_BEHAVIOR_BLOCKS = frozenset(
+PUBLIC_DOC_CONFIRMED_CARD_BEHAVIOR_BLOCKS = frozenset(
     {
         "InHandBonus",
         "OnBoardBonus",
@@ -17,20 +17,48 @@ CARD_BEHAVIOR_BLOCKS = frozenset(
         "BeforeOverkilledBonus",
         "OnDiscoverCardBonus",
         "OnChooseOneCardBonus",
+        "InHandPlayPriority",
+    }
+)
+
+REPO_SUPPORTED_SOURCE_GAP_CARD_BEHAVIOR_BLOCKS = frozenset(
+    {
         "OnAdaptCardBonus",
         "BeforeUpgradeCardBonus",
-        "InHandPlayPriority",
         "OnBoardPlayPriority",
     }
 )
 
-CARD_BEHAVIOR_BLOCK_REGISTRY: dict[str, dict[str, Any]] = {
-    block: {
+CARD_BEHAVIOR_BLOCKS = (
+    PUBLIC_DOC_CONFIRMED_CARD_BEHAVIOR_BLOCKS
+    | REPO_SUPPORTED_SOURCE_GAP_CARD_BEHAVIOR_BLOCKS
+)
+
+
+def _card_behavior_registry_row(block: str) -> dict[str, Any]:
+    if block in REPO_SUPPORTED_SOURCE_GAP_CARD_BEHAVIOR_BLOCKS:
+        return {
+            "support": "supported",
+            "normal_path_runtime": True,
+            "surface_family": "card_behavior",
+            "source_backing": "repo_supported_source_gap",
+            "source_note": (
+                "Repo-supported block; not confirmed in the latest public-doc audit."
+            ),
+        }
+    return {
         "support": "supported",
         "normal_path_runtime": True,
         "surface_family": "card_behavior",
+        "source_backing": "public_doc_confirmed",
+        "source_note": (
+            "Confirmed by HearthRanger VisionAI public docs or prior HSConfig surface audit."
+        ),
     }
-    for block in CARD_BEHAVIOR_BLOCKS
+
+
+CARD_BEHAVIOR_BLOCK_REGISTRY: dict[str, dict[str, Any]] = {
+    block: _card_behavior_registry_row(block) for block in CARD_BEHAVIOR_BLOCKS
 }
 
 CARD_BEHAVIOR_BLOCK_REGISTRY.update(
@@ -39,11 +67,15 @@ CARD_BEHAVIOR_BLOCK_REGISTRY.update(
             "support": "known_non_normal_surface",
             "normal_path_runtime": False,
             "surface_family": "legacy_gated",
+            "source_backing": "legacy_gated",
+            "source_note": "Known surface, intentionally outside the normal HSConfig path.",
         },
         "Concede.json": {
             "support": "known_non_normal_surface",
             "normal_path_runtime": False,
             "surface_family": "legacy_gated",
+            "source_backing": "legacy_gated",
+            "source_note": "Known surface, intentionally outside the normal HSConfig path.",
         },
     }
 )
@@ -88,6 +120,8 @@ def runtime_block_support(block_name: str) -> dict[str, Any]:
         "support": "unsupported",
         "normal_path_runtime": False,
         "surface_family": "unknown",
+        "source_backing": "unsupported",
+        "source_note": "No HSConfig runtime support.",
     }
 
 
