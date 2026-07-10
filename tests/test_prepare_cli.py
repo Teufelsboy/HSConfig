@@ -1744,7 +1744,7 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
                     "card_id": "FUTURE_001",
                     "id": "FUTURE_001",
                     "name": "Future Card",
-                    "type": "STARSHIP",
+                    "type": "LETTUCE_ABILITY",
                     "mechanics": ["FUTURE_KEYWORD"],
                     "text": "Future Keyword: Do something.",
                 },
@@ -1782,7 +1782,7 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
     assert drift_report["non_blocking"] is True
     assert drift_report["text_only_mechanics"] == ["tradeable"]
     assert drift_report["unknown_mechanics"] == ["future_keyword"]
-    assert drift_report["unknown_card_types"] == ["starship"]
+    assert drift_report["unknown_card_types"] == ["lettuce_ability"]
     assert operator["mechanic_drift_summary"]["unknown_mechanic_count"] == 1
     assert operator["mechanic_drift_summary"]["unknown_card_type_count"] == 1
     assert operator["runtime_apply_mode"] == "load_safe_apply"
