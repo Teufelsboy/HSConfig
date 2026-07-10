@@ -67,7 +67,8 @@ Rules:
 - Per-card-every-card coverage is HSConfig rich-output repo policy. It improves control and matrix proof, but it is not the minimal runtime-write gate and not an official HearthRanger minimum.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term.
 - Inspect `mechanic_visibility_summary` in `reports/operator_summary.json` to understand direct, identity-gated direct, partial, and warning-only mechanic coverage. Treat warning-only mechanics as descriptive; warning-only mechanics do not block load-safe apply.
-- Modern mechanic visibility is non-blocking. Current mechanics such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, `imbue`, `rewind`, `herald`, and `shatter` should be named in reports when detected, but they must not block load-safe apply unless the package is technically invalid.
+- Modern mechanic visibility is non-blocking. Current mechanics such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` should be named in reports when detected, but they must not block load-safe apply unless the package is technically invalid.
+- `rewind`, `herald`, and `shatter` are warning-only report-only visibility labels. Name them in reports when detected; normal HSConfig does not map them to runtime surfaces, and they must not block load-safe apply.
 - Use `first_warning_boundary` in `mechanic_visibility_summary` as the first next-inspection item. Use `warning_boundaries` for the complete alphabetical list of report-only mechanics. `choose_one` is identity-gated direct; `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only and must not block load-safe apply.
 - Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.
 - Open `reports/semantic_enrichment_report.json` when static or warning-only mechanic coverage needs explanation. It is a diagnostic report for inferred Hearthstone mechanics, linked entities, deckwide effects, and warning-only flags, not an independent apply gate. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
@@ -79,7 +80,7 @@ Rules:
 - Keep the pre-run boundary visible in operator-facing copy and tests.
 - Choice-surface lowering for `discover_choice` and `choose_one_choice` is source-backed only: lower only when option identity is resolved from source evidence and linked entity metadata; otherwise keep the suppression report visible.
 - Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
-- Do not emit `Presume.json` or `Concede.json` in the normal path; they are legacy/gated surfaces only.
+- Do not emit `Presume.json` or `Concede.json` in the normal path; they are documented HearthRanger surfaces outside normal HSConfig output.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 
 ## Expert Paths

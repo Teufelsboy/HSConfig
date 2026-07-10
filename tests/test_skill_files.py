@@ -639,6 +639,33 @@ def test_docs_and_skill_explain_current_modern_mechanic_visibility_without_block
     assert "source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply" in combined
 
 
+def test_new_modern_mechanics_are_report_only_visibility_not_partial_lowering():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    mechanics = ["`rewind`", "`herald`", "`shatter`"]
+    visibility_terms = ("report-only", "warning-only", "warning_only")
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        mechanic_lines = [
+            line.strip()
+            for line in text.splitlines()
+            if any(mechanic in line for mechanic in mechanics)
+        ]
+
+        assert mechanic_lines, f"{path}: missing explicit new mechanic wording"
+        mechanic_context = "\n".join(mechanic_lines).lower()
+        for mechanic in mechanics:
+            assert mechanic in text, f"{path}: {mechanic}"
+        assert any(term in mechanic_context for term in visibility_terms), path
+        assert "partial" not in mechanic_context, path
+        assert "lower" not in mechanic_context, path
+
+
 def test_universal_wild_contract_keeps_generated_entity_partial():
     text = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
         encoding="utf-8"
