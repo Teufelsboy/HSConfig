@@ -205,17 +205,13 @@ def test_bigshaman_fixture_uses_explicit_recruit_and_deathrattle_values(
             "value": "9",
         }
     ]
-    assert ww_440["BeforePlayCardBonus"]["values"] == [
-        {
-            "comment": "BigShaman: WW_440_summon_from_deck",
-            "condition": "*",
-            "value": "9",
-        }
-    ]
-    assert ww_440["OnBoardBonus"]["values"] == [
-        {
-            "comment": "BigShaman: WW_440_deathrattle_summon_from_deck",
-            "condition": "*",
-            "value": "7",
-        }
-    ]
+    assert {
+        "comment": "BigShaman: WW_440_summon_from_deck",
+        "condition": "*",
+        "value": "9",
+    } in ww_440["BeforePlayCardBonus"]["values"]
+    assert {
+        "comment": "BigShaman: WW_440_deathrattle_summon_from_deck",
+        "condition": "*",
+        "value": "7",
+    } in ww_440["OnBoardBonus"]["values"]

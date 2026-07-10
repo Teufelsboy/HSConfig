@@ -71,6 +71,8 @@ Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `s
 
 `mechanic_visibility_summary` is an operator-facing explanation layer. It is not an apply gate. Partial and warning-only mechanics are descriptive and must not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
 
+The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only; they do not increment `cards_needing_mechanic_lowering`.
+
 `choose_one` is `identity_gated_direct`: HSConfig can lower it through `OnChooseOneCardBonus` only when exact option identity is source-backed. `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are `warning_only`: they are visible in `warning_boundaries`, but they must not block load-safe apply. `generated_entity` and its `spell_generation` alias stay in `partial`, because exact generated identity can be represented only when the generated card is known.
 
 `generated_entity` and its `spell_generation` alias stay in `partial`; they are not identity-gated direct coverage.

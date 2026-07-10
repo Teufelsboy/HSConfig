@@ -2,6 +2,22 @@ from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 
 
+def _mechanic_claims(bundle, mechanic):
+    return [
+        claim
+        for claim in bundle["claims"]
+        if claim["claim_kind"] == "mechanic_usage" and claim.get("mechanic") == mechanic
+    ]
+
+
+def _mechanics(bundle):
+    return {
+        claim.get("mechanic")
+        for claim in bundle["claims"]
+        if claim["claim_kind"] == "mechanic_usage"
+    }
+
+
 def test_builds_atomic_claims_from_structured_sources():
     cards = {
         "SW_448": {
@@ -194,6 +210,134 @@ def test_static_semantics_cover_mechanic_text_without_guide_sources():
     assert bundle["claim_coverage_report"]["cards"]["CARD_001"]["coverage_status"] == "static_semantics_backfilled"
     assert bundle["claim_coverage_report"]["cards"]["CARD_002"]["coverage_status"] == "static_semantics_backfilled"
     assert bundle["claim_coverage_report"]["summary"]["static_semantics_backfilled"] == 2
+
+
+def test_static_semantics_emit_deathrattle_mechanic_usage():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "DeathrattleDeck"},
+        card_metadata={
+            "CARD_DEATHRATTLE": {
+                "name": "Deathrattle Card",
+                "text": "Deathrattle: Summon a 1/1 Spirit.",
+            }
+        },
+        source_documents=[],
+    )
+
+    claims = _mechanic_claims(bundle, "deathrattle")
+
+    assert len(claims) == 1
+    assert claims[0]["cards"] == ["CARD_DEATHRATTLE"]
+    assert claims[0]["confidence"] == "source_backed_static_semantics"
+    assert claims[0]["claim_readiness"] == "source_backed_static_semantics"
+    assert claims[0]["trust_ceiling"] == "static_semantics"
+
+
+def test_static_semantics_emit_rush_and_charge_mechanic_usage():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "AttackKeywordDeck"},
+        card_metadata={
+            "CARD_RUSH": {"name": "Rush Card", "text": "Rush"},
+            "CARD_CHARGE": {"name": "Charge Card", "text": "Charge"},
+        },
+        source_documents=[],
+    )
+
+    assert _mechanic_claims(bundle, "rush")[0]["cards"] == ["CARD_RUSH"]
+    assert _mechanic_claims(bundle, "charge")[0]["cards"] == ["CARD_CHARGE"]
+
+
+def test_static_semantics_emit_spellburst_quickdraw_finale_manathirst_infuse_corrupt():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "ModernLowerableDeck"},
+        card_metadata={
+            "CARD_SPELLBURST": {"name": "Spellburst Card", "text": "Spellburst: Draw a card."},
+            "CARD_QUICKDRAW": {"name": "Quickdraw Card", "text": "Quickdraw: Deal 2 damage."},
+            "CARD_FINALE": {"name": "Finale Card", "text": "Finale: Summon a 2/2."},
+            "CARD_MANATHIRST": {"name": "Manathirst Card", "text": "Manathirst (6): Gain +2/+2."},
+            "CARD_INFUSE": {"name": "Infuse Card", "text": "Infuse (3): Costs (2) less."},
+            "CARD_CORRUPT": {"name": "Corrupt Card", "text": "Corrupt: Become upgraded."},
+        },
+        source_documents=[],
+    )
+
+    mechanics = _mechanics(bundle)
+
+    assert {
+        "spellburst",
+        "quickdraw",
+        "finale",
+        "manathirst",
+        "infuse",
+        "corrupt",
+    } <= mechanics
+
+
+def test_static_semantics_do_not_emit_runtime_lowering_claim_for_tradeable():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "TradeableDeck"},
+        card_metadata={
+            "CARD_TRADEABLE": {"name": "Tradeable Card", "text": "Tradeable. Draw a card."}
+        },
+        source_documents=[],
+    )
+
+    assert _mechanic_claims(bundle, "tradeable") == []
+    assert "draw" in _mechanics(bundle)
+
+
+def test_static_semantics_do_not_emit_runtime_lowering_claim_for_forge_outcast_titan_starship():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "ReportOnlyModernDeck"},
+        card_metadata={
+            "CARD_FORGE": {"name": "Forge Card", "text": "Forge: Gain +2/+2."},
+            "CARD_OUTCAST": {"name": "Outcast Card", "text": "Outcast: Draw a card."},
+            "CARD_TITAN": {"name": "Titan Card", "text": "Titan. Choose an ability."},
+            "CARD_STARSHIP": {"name": "Starship Card", "text": "Launch your Starship."},
+        },
+        source_documents=[],
+    )
+
+    mechanics = _mechanics(bundle)
+
+    assert not {"forge", "outcast", "titan", "starship"} & mechanics
+    assert "draw" in mechanics
+
+
+def test_existing_guide_claim_prevents_duplicate_static_claim():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "GuideBackedMechanicDeck"},
+        card_metadata={
+            "CARD_DEATHRATTLE": {
+                "name": "Deathrattle Card",
+                "text": "Deathrattle: Summon a 1/1 Spirit.",
+            }
+        },
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/guide",
+                "source_title": "Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-10T00:00:00Z",
+                "claims": [
+                    {
+                        "claim_kind": "mechanic_usage",
+                        "cards": ["CARD_DEATHRATTLE"],
+                        "mechanic": "deathrattle",
+                        "stance": "guide_deathrattle_timing",
+                        "evidence_text_short": "Use the Deathrattle card for tempo.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+    )
+
+    claims = _mechanic_claims(bundle, "deathrattle")
+
+    assert len(claims) == 1
+    assert claims[0]["confidence"] == "guide_backed"
+    assert claims[0]["stance"] == "guide_deathrattle_timing"
 
 
 def test_off_deck_card_claim_is_reported_not_promoted():

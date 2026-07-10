@@ -37,6 +37,8 @@ are explanatory and do not create a second apply gate when the package is
 `technical_status=VALID_PACKAGE`.
 `mechanic_visibility_summary` explains mechanic coverage buckets: `direct`, `identity_gated_direct`, `partial`, and `warning_only`. Warning-only mechanics are descriptive and must not block load-safe apply when the package is technically valid.
 
+The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only; they do not increment `cards_needing_mechanic_lowering`.
+
 For mechanic visibility, use `first_warning_boundary` as the first next-inspection item and `warning_boundaries` as the complete alphabetical list of report-only mechanics. Keep the workflow moving when the package is technically valid: warning-only mechanics describe limits, not blocks.
 
 Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.

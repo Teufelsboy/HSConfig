@@ -43,14 +43,6 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_condition_lowering": "condition_lowering_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
 }
-MECHANIC_LOWERING_ROLES = {
-    "battlecry",
-    "discover",
-    "weapon",
-    "location",
-    "secret",
-    "hero_power",
-}
 GUIDE_BACKED_COVERAGE_STATUSES = {
     "guide_backed",
     "source_backed",
@@ -373,11 +365,23 @@ def _lane_and_missing_link(
         return "report_only_supported", "needs_mulligan_claim"
     if is_guide_backed and "combo_piece" in roles:
         return "report_only_supported", "needs_combo_sequence"
-    if roles & MECHANIC_LOWERING_ROLES:
+    if _roles_need_mechanic_lowering(roles):
         return "report_only_supported", "needs_mechanic_lowering"
     if card_id in emitted_cardid_cards:
         return "report_only_supported", "none"
     return "report_only_supported", "needs_runtime_surface"
+
+
+def _roles_need_mechanic_lowering(roles: set[str]) -> bool:
+    for support in support_for_roles(roles):
+        lowering = support.get("lowering", {})
+        if not isinstance(lowering, dict):
+            continue
+        if lowering.get("policy") == "report_only":
+            continue
+        if lowering.get("default_block") is not None:
+            return True
+    return False
 
 
 def _source_depth_lane(first_missing_link: str) -> str:

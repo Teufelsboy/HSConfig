@@ -173,12 +173,7 @@
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_mulligan_claim_for_fracking",
         "source_informed_apply_readiness": "blocked",
-        "source_informed_blocking_reasons": [
-          "cards_need_runtime_surface",
-          "generic_low_confidence_cards",
-          "uncovered_cards",
-          "unsupported_conditions_present"
-        ],
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
         "closure_state": "source_informed_blocked",
         "closure_priority": 1,
         "operator_action": "preserve_source_informed_with_explicit_stop_condition",

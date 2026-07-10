@@ -44,12 +44,7 @@ def test_source_informed_rows_are_expected_current_candidates():
         "Boarlock": {
             "first_strongness_gap": "needs_mulligan_claim_for_fracking",
             "source_informed_apply_readiness": "blocked",
-            "source_informed_blocking_reasons": [
-                "cards_need_runtime_surface",
-                "generic_low_confidence_cards",
-                "uncovered_cards",
-                "unsupported_conditions_present",
-            ],
+            "source_informed_blocking_reasons": ["unsupported_conditions_present"],
         },
     }
 

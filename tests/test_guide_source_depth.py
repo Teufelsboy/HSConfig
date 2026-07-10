@@ -254,6 +254,38 @@ def test_report_only_claims_do_not_produce_source_backed_depth():
     assert report["source_depth_status"] == "needs_more_research"
 
 
+def test_static_semantics_claims_do_not_produce_source_backed_depth():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_kind": "mechanic_usage",
+                    "claim_readiness": "source_backed_static_semantics",
+                    "trust_ceiling": "static_semantics",
+                    "cards": ["CARD_STATIC"],
+                    "source_family": "hearthstonejson_static_semantics",
+                }
+            ],
+            "unsupported_claims": [],
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 1, "runtime_emitted": 1, "generic_low_confidence": 0},
+            "cards": {
+                "CARD_STATIC": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                }
+            },
+        },
+    )
+
+    assert report["summary"]["claim_count"] == 1
+    assert report["summary"]["lowerable_claims"] == 1
+    assert report["summary"]["strong_lowerable_claims"] == 0
+    assert report["depth_status"] == "usable"
+    assert report["source_depth_status"] == "static_semantics_only"
+
+
 def test_guide_source_depth_separates_strong_lowerable_from_report_only():
     report = build_guide_source_depth_report(
         guide_claim_bundle={

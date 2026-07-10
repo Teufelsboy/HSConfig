@@ -5,7 +5,9 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from hsconfig.mechanic_support import mechanic_static_claim_allowed
 from hsconfig.source_document_builder import build_source_document_bundle
+from hsconfig.static_semantics import infer_static_semantics
 
 
 SUPPORTED_CLAIM_KINDS = {
@@ -18,28 +20,6 @@ SUPPORTED_CLAIM_KINDS = {
     "hero_power_transform",
     "mechanic_usage",
 }
-
-MECHANIC_TEXT_MARKERS = {
-    "battlecry": ("battlecry",),
-    "deathrattle": ("deathrattle",),
-    "discover": ("discover",),
-    "dredge": ("dredge",),
-    "tradeable": ("tradeable",),
-    "overload": ("overload",),
-    "freeze": ("freeze", "frozen"),
-    "lifesteal": ("lifesteal",),
-    "taunt": ("taunt",),
-    "rush": ("rush",),
-    "charge": ("charge",),
-    "secret": ("secret",),
-    "location": ("location",),
-    "weapon": ("weapon", "equip"),
-    "silence": ("silence",),
-    "transform": ("transform",),
-    "destroy": ("destroy",),
-    "discard": ("discard",),
-}
-
 
 @dataclass(frozen=True)
 class ClaimBuildResult:
@@ -281,11 +261,7 @@ def _static_semantic_claims(
                     stance="enable_transformed_hero_power",
                 )
             )
-        for mechanic, markers in MECHANIC_TEXT_MARKERS.items():
-            if (mechanic == "transform" and "hero power becomes" in text) or not any(
-                marker in text for marker in markers
-            ):
-                continue
+        for mechanic in _static_mechanic_usage_families(card, text=text):
             key = ("mechanic_usage", card_id, mechanic)
             if key in existing_pairs:
                 continue
@@ -299,6 +275,29 @@ def _static_semantic_claims(
                 )
             )
     return claims
+
+
+def _static_mechanic_usage_families(card: dict[str, Any], *, text: str) -> list[str]:
+    families = infer_static_semantics(card).get("families", [])
+    mechanics: list[str] = []
+    for family in families:
+        mechanic = _clean_text(family).lower()
+        if not mechanic or mechanic in mechanics:
+            continue
+        if not _static_mechanic_usage_allowed(mechanic, text=text):
+            continue
+        mechanics.append(mechanic)
+    return mechanics
+
+
+def _static_mechanic_usage_allowed(mechanic: str, *, text: str) -> bool:
+    if mechanic == "hero_power_transform":
+        return False
+    if mechanic == "transform" and ("hero power becomes" in text or "enter shadowform" in text):
+        return False
+    if mechanic == "hero_power" and ("hero power becomes" in text or "shadowform" in text):
+        return False
+    return mechanic_static_claim_allowed(mechanic)
 
 
 def _static_claim(

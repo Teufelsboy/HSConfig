@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Iterable
 
+from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
+
 
 MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
     "battlecry": {
@@ -453,6 +455,35 @@ IDENTITY_GATED_DIRECT_MECHANICS = {
 }
 VISIBILITY_BUCKETS = ("direct", "identity_gated_direct", "partial", "warning_only")
 
+LOWERING_POLICIES = {"lowerable", "identity_gated", "report_only"}
+IDENTITY_GATED_LOWERING_MECHANICS = {
+    "choose_one",
+    "discover",
+    "generated_entity",
+    "hero_power_transform",
+    "start_of_game",
+}
+NO_DEFAULT_RUNTIME_BLOCK_MECHANICS = {
+    "choose_one",
+    "generated_entity",
+    "start_of_game",
+}
+STATIC_CLAIM_DISABLED_MECHANICS = {
+    "choose_one",
+    "generated_entity",
+    "start_of_game",
+}
+UNKNOWN_MECHANIC_LOWERING_POLICY: dict[str, Any] = {
+    "policy": "report_only",
+    "static_claim_allowed": False,
+    "default_block": None,
+    "allowed_blocks": [],
+    "default_value": "6",
+    "default_condition": "*",
+    "default_intent": None,
+    "suppression_reason": "unregistered_mechanic_runtime_surface",
+}
+
 
 def normalize_role_token(role: object) -> str:
     return (
@@ -464,6 +495,137 @@ def normalize_role_token(role: object) -> str:
         .replace(" ", "_")
         .replace("-", "_")
     )
+
+
+def _canonical_mechanic(mechanic: object) -> str:
+    token = normalize_role_token(mechanic)
+    return ROLE_ALIASES.get(token, token)
+
+
+def _copy_lowering_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    copied = dict(policy)
+    copied["allowed_blocks"] = list(policy.get("allowed_blocks", []))
+    return copied
+
+
+def _card_behavior_blocks_from_surfaces(surfaces: Iterable[str]) -> list[str]:
+    blocks: list[str] = []
+    for surface in surfaces:
+        text = str(surface)
+        prefix = "CARDID.json:"
+        if not text.startswith(prefix):
+            continue
+        block = text.removeprefix(prefix)
+        if block not in CARD_BEHAVIOR_BLOCKS:
+            continue
+        if block not in blocks:
+            blocks.append(block)
+    return blocks
+
+
+def _report_only_lowering_policy(mechanic: str) -> dict[str, Any]:
+    policy = dict(UNKNOWN_MECHANIC_LOWERING_POLICY)
+    policy["suppression_reason"] = f"{mechanic}_has_no_documented_runtime_block"
+    return policy
+
+
+def _default_lowering_policy(mechanic: str, spec: dict[str, Any]) -> dict[str, Any]:
+    support_level = str(spec.get("support_level", ""))
+    if support_level == "warning_only":
+        return _report_only_lowering_policy(mechanic)
+
+    allowed_blocks = _card_behavior_blocks_from_surfaces(
+        spec.get("normal_path_surfaces", [])
+    )
+    policy_name = (
+        "identity_gated"
+        if mechanic in IDENTITY_GATED_LOWERING_MECHANICS or not allowed_blocks
+        else "lowerable"
+    )
+    default_block = (
+        None
+        if mechanic in NO_DEFAULT_RUNTIME_BLOCK_MECHANICS or not allowed_blocks
+        else allowed_blocks[0]
+    )
+    return {
+        "policy": policy_name,
+        "static_claim_allowed": mechanic not in STATIC_CLAIM_DISABLED_MECHANICS,
+        "default_block": default_block,
+        "allowed_blocks": allowed_blocks,
+        "default_value": "6",
+        "default_condition": "*",
+        "default_intent": f"use_{mechanic}_according_to_card_text",
+        "suppression_reason": None,
+    }
+
+
+def _validate_lowering_policy(mechanic: str, policy: dict[str, Any]) -> None:
+    policy_name = str(policy.get("policy", ""))
+    if policy_name not in LOWERING_POLICIES:
+        raise ValueError(f"{mechanic}: unsupported lowering policy {policy_name!r}")
+    if not isinstance(policy.get("static_claim_allowed"), bool):
+        raise ValueError(f"{mechanic}: static_claim_allowed must be bool")
+
+    allowed_blocks = list(policy.get("allowed_blocks", []))
+    undocumented_blocks = sorted(set(allowed_blocks) - CARD_BEHAVIOR_BLOCKS)
+    if undocumented_blocks:
+        raise ValueError(
+            f"{mechanic}: unsupported card behavior blocks {undocumented_blocks!r}"
+        )
+
+    default_block = policy.get("default_block")
+    if default_block is not None and default_block not in allowed_blocks:
+        raise ValueError(f"{mechanic}: default_block must be in allowed_blocks")
+    if policy_name == "report_only" and (allowed_blocks or default_block is not None):
+        raise ValueError(f"{mechanic}: report_only policies cannot emit runtime blocks")
+    if policy_name == "report_only" and not policy.get("suppression_reason"):
+        raise ValueError(f"{mechanic}: report_only policies need suppression_reason")
+
+
+def _install_lowering_policies() -> None:
+    for mechanic, spec in MECHANIC_SUPPORT.items():
+        policy = _default_lowering_policy(mechanic, spec)
+        _validate_lowering_policy(mechanic, policy)
+        spec["lowering"] = policy
+
+
+_install_lowering_policies()
+
+
+def mechanic_lowering_policy(mechanic: str) -> dict[str, Any]:
+    canonical = _canonical_mechanic(mechanic)
+    spec = MECHANIC_SUPPORT.get(canonical)
+    if spec is None:
+        return _copy_lowering_policy(UNKNOWN_MECHANIC_LOWERING_POLICY)
+    return _copy_lowering_policy(spec["lowering"])
+
+
+def mechanic_static_claim_allowed(mechanic: str) -> bool:
+    return bool(mechanic_lowering_policy(mechanic)["static_claim_allowed"])
+
+
+def mechanic_allowed_runtime_blocks(mechanic: str) -> set[str]:
+    return set(mechanic_lowering_policy(mechanic)["allowed_blocks"])
+
+
+def mechanic_default_runtime_block(mechanic: str) -> str | None:
+    block = mechanic_lowering_policy(mechanic)["default_block"]
+    return str(block) if block is not None else None
+
+
+def mechanic_report_only_reason(mechanic: str) -> str:
+    policy = mechanic_lowering_policy(mechanic)
+    if policy["policy"] != "report_only":
+        return ""
+    return str(policy["suppression_reason"])
+
+
+def mechanics_with_executable_lowering() -> set[str]:
+    return {
+        mechanic
+        for mechanic, spec in MECHANIC_SUPPORT.items()
+        if spec["lowering"]["policy"] in {"lowerable", "identity_gated"}
+    }
 
 
 def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
@@ -488,6 +650,7 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
                         "No registered VisionAI normal-path surface exists for role "
                         f"'{mechanic}'; keep it visible as warning-only until mapped."
                     ),
+                    "lowering": mechanic_lowering_policy(mechanic),
                     "registered": False,
                 }
             )

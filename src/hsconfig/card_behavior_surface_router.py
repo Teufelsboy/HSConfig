@@ -3,6 +3,13 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.mechanic_support import (
+    ROLE_ALIASES,
+    mechanic_allowed_runtime_blocks,
+    mechanic_default_runtime_block,
+    mechanic_lowering_policy,
+    normalize_role_token,
+)
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
@@ -24,41 +31,6 @@ INTENT_BLOCKS = {
     "attack_posture": "BeforePhysicalAttackBonus",
     "discover_choice": "OnDiscoverCardBonus",
     "choose_one_choice": "OnChooseOneCardBonus",
-}
-ROLE_BLOCKS = {
-    "battlecry": "BeforeBattlecryTargetBonus",
-    "discover": "OnDiscoverCardBonus",
-    "dredge": "OnDiscoverCardBonus",
-    "freeze": "BeforePlayCardBonus",
-    "hero_power": "BeforeUseHeroPowerBonus",
-    "location": "BeforePlayCardBonus",
-    "overkill": "BeforeOverkilledBonus",
-    "overload": "BeforePlayCardBonus",
-    "prefer_enemy_hero": "BeforePlayCardBonus",
-    "prefer_enemy_minion": "BeforeBattlecryTargetBonus",
-    "prefer_friendly_minion": "BeforePlayCardBonus",
-    "secret": "BeforePlayCardBonus",
-    "tradeable": "BeforePlayCardBonus",
-    "weapon": "BeforePhysicalAttackBonus",
-}
-MECHANIC_ROLE_MAP = {
-    "battlecry": "battlecry",
-    "discover": "discover",
-    "dredge": "discover",
-    "tradeable": "tradeable",
-    "overload": "overload",
-    "overkill": "overkill",
-    "freeze": "freeze",
-    "weapon": "weapon",
-    "secret": "secret",
-    "location": "location",
-}
-EXPLICIT_MECHANIC_RUNTIME_BLOCKS = {
-    "discard": {"BeforePlayCardBonus"},
-    "recruit": {"BeforePlayCardBonus", "OnBoardBonus"},
-    "deathrattle": {"BeforePlayCardBonus", "OnBoardBonus"},
-    "treant": {"BeforePlayCardBonus", "OnBoardBonus"},
-    "hero_attack": {"BeforePhysicalAttackBonus"},
 }
 OPTION_CLAIM_KINDS = {"discover_choice", "choose_one_choice"}
 OPTION_CARD_KEYS = (
@@ -155,8 +127,37 @@ def route_card_behavior_surfaces(
             continue
 
         if claim_kind == "mechanic_usage":
-            mechanic = str(claim.get("mechanic", claim.get("stance", ""))).lower()
-            role = MECHANIC_ROLE_MAP.get(mechanic)
+            mechanic = _claim_mechanic(claim)
+            policy = mechanic_lowering_policy(mechanic)
+            policy_name = str(policy["policy"])
+            if policy_name == "report_only":
+                suppressed.append(
+                    {
+                        **_suppressed_row(
+                            claim,
+                            claim_kind,
+                            cards,
+                            str(policy["suppression_reason"]),
+                        ),
+                        "mechanic": mechanic,
+                        "lowering_policy": policy_name,
+                    }
+                )
+                continue
+            if _mechanic_usage_requires_option_identity(mechanic, policy):
+                suppressed.append(
+                    {
+                        **_suppressed_row(
+                            claim,
+                            claim_kind,
+                            cards,
+                            "identity_gated_mechanic_requires_option_identity",
+                        ),
+                        "mechanic": mechanic,
+                        "lowering_policy": policy_name,
+                    }
+                )
+                continue
             if explicit_block is not None and not _mechanic_runtime_block_allowed(
                 mechanic,
                 explicit_block,
@@ -174,10 +175,11 @@ def route_card_behavior_surfaces(
                     }
                 )
                 continue
-            if role is not None:
+            behavior_block = explicit_block or mechanic_default_runtime_block(mechanic)
+            if behavior_block is not None:
                 covered_cards = (
                     [card_id for card_id in cards if card_id in resolved_discover_choice_cards]
-                    if role == "discover" and explicit_block is None
+                    if mechanic == "discover" and explicit_block is None
                     else []
                 )
                 uncovered_cards = [card_id for card_id in cards if card_id not in covered_cards]
@@ -196,23 +198,17 @@ def route_card_behavior_surfaces(
                     _rows_for_cards(
                         claim,
                         uncovered_cards,
-                        condition=condition,
-                        behavior_block=explicit_block or ROLE_BLOCKS[role],
-                        intent=f"use_{role}_according_to_card_text",
-                        roles=[role],
-                    )
-                )
-                continue
-            if explicit_block is not None:
-                intent = _claim_intent(claim, fallback=f"use_{mechanic}_according_to_card_text")
-                rows.extend(
-                    _rows_for_cards(
-                        claim,
-                        cards,
-                        condition=condition,
-                        behavior_block=explicit_block,
-                        intent=intent,
-                        roles=[mechanic or claim_kind],
+                        condition=_mechanic_condition(claim, condition, policy),
+                        behavior_block=behavior_block,
+                        intent=_claim_intent(
+                            claim,
+                            fallback=str(
+                                policy.get("default_intent")
+                                or f"use_{mechanic}_according_to_card_text"
+                            ),
+                        ),
+                        roles=[mechanic],
+                        value_default=str(policy.get("default_value", DEFAULT_ROW_VALUE)),
                     )
                 )
                 continue
@@ -302,6 +298,7 @@ def _rows_for_cards(
     behavior_block: str,
     intent: str,
     roles: list[str],
+    value_default: str = DEFAULT_ROW_VALUE,
 ) -> list[dict[str, Any]]:
     return [
         _attach_behavior_fields(
@@ -310,6 +307,7 @@ def _rows_for_cards(
             intent=intent,
             roles=roles,
             claim=claim,
+            value_default=value_default,
         )
         for card_id in cards
     ]
@@ -383,11 +381,34 @@ def _runtime_value(claim: dict[str, Any], default: str = DEFAULT_ROW_VALUE) -> s
     return str(claim.get("runtime_value", claim.get("value", default)))
 
 
+def _claim_mechanic(claim: dict[str, Any]) -> str:
+    token = normalize_role_token(claim.get("mechanic", claim.get("stance", "")))
+    return ROLE_ALIASES.get(token, token)
+
+
 def _mechanic_runtime_block_allowed(mechanic: str, runtime_block: str) -> bool:
-    role = MECHANIC_ROLE_MAP.get(mechanic)
-    if role is not None:
-        return runtime_block == ROLE_BLOCKS[role]
-    return runtime_block in EXPLICIT_MECHANIC_RUNTIME_BLOCKS.get(mechanic, set())
+    return runtime_block in mechanic_allowed_runtime_blocks(mechanic)
+
+
+def _mechanic_usage_requires_option_identity(
+    mechanic: str,
+    policy: dict[str, Any],
+) -> bool:
+    return (
+        mechanic == "choose_one"
+        and policy.get("policy") == "identity_gated"
+        and policy.get("default_block") is None
+    )
+
+
+def _mechanic_condition(
+    claim: dict[str, Any],
+    condition: str,
+    policy: dict[str, Any],
+) -> str:
+    if condition != "*" or claim.get("condition") is not None or claim.get("conditions") is not None:
+        return condition
+    return str(policy.get("default_condition") or condition)
 
 
 def _attach_behavior_fields(
@@ -397,12 +418,13 @@ def _attach_behavior_fields(
     intent: str,
     roles: list[str],
     claim: dict[str, Any],
+    value_default: str = DEFAULT_ROW_VALUE,
 ) -> dict[str, Any]:
     row["behavior_block"] = behavior_block
     row["intent"] = intent
     row["roles"] = roles
     row["rule_id_suffix"] = str(claim.get("rule_id_suffix", intent))
-    row["value"] = _runtime_value(claim)
+    row["value"] = _runtime_value(claim, default=value_default)
     row["meaningful_runtime_surface"] = True
     return row
 

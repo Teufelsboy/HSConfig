@@ -134,7 +134,7 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert payload["package"] == str(package)
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
@@ -316,9 +316,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert guide_bundle["claims"]
     assert source_index[0]["claim_count"] >= 12
     assert unsupported == []
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
-    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] > 0
+    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
+    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] == 0
     assert (reports / "mulligan_plan_report.json").exists()
 
 
@@ -384,8 +384,8 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert payload["status"] == "passed"
     assert guide_sources["source_depth_status"] == "source_backed"
     assert receipt["source_depth_status"] == "source_backed"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
@@ -676,18 +676,20 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert payload["guide_claims_count"] == 0
+    assert payload["guide_claims_count"] == 1
     assert guide_sources["source_depth_status"] == "needs_more_research"
     assert guide_sources["summary"]["claim_count"] == 0
     assert guide_sources["sources"][0]["claims"] == []
     assert receipt["source_depth_status"] == "needs_more_research"
     assert receipt["claim_count"] == 0
-    assert guide_bundle["claims"] == []
+    assert not [
+        claim for claim in guide_bundle["claims"] if claim.get("source_family") == "guide"
+    ]
     assert [row["missing_claim_keys"] for row in unsupported] == [
         ["source_confidence"],
         ["source_confidence"],
     ]
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
@@ -1182,7 +1184,9 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
 
     assert code == 1
     assert payload["status"] == "failed"
-    assert card_behavior["rows"] == []
+    suppressed_claim_id = card_behavior["suppressed"][0]["claim_id"]
+    assert all(row.get("claim_id") != suppressed_claim_id for row in card_behavior["rows"])
+    assert all(row.get("claim_kind") != "discover_choice" for row in card_behavior["rows"])
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": card_behavior["suppressed"][0]["claim_id"],
@@ -1607,13 +1611,11 @@ def test_prepare_routes_choose_one_claim_with_identity_links(
             "status": "resolved",
         }
     ]
-    assert choose_config["OnChooseOneCardBonus"]["values"] == [
-        {
-            "comment": "Choice Deck: CHOOSE_CARD_choose_option_alpha",
-            "condition": "*",
-            "value": "6",
-        }
-    ]
+    assert {
+        "comment": "Choice Deck: CHOOSE_CARD_choose_option_alpha",
+        "condition": "*",
+        "value": "6",
+    } in choose_config["OnChooseOneCardBonus"]["values"]
 
 
 def test_prepare_json_mirrors_operator_summary_guide_strength_fields(

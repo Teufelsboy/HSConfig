@@ -17,9 +17,6 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
                     "first_strongness_gap": "needs_mulligan_claim_for_fracking",
                     "source_informed_apply_readiness": "blocked",
                     "source_informed_blocking_reasons": [
-                        "cards_need_runtime_surface",
-                        "generic_low_confidence_cards",
-                        "uncovered_cards",
                         "unsupported_conditions_present",
                     ],
                     "closure_state": "source_informed_blocked",
@@ -59,9 +56,6 @@ def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
     boarlock = report["decks"]["Boarlock"]
     assert boarlock["closure_decision"] == "preserve_source_informed_until_blockers_close"
     assert boarlock["closure_blocker_stack"] == [
-        "cards_need_runtime_surface",
-        "generic_low_confidence_cards",
-        "uncovered_cards",
         "unsupported_conditions_present",
     ]
     assert boarlock["stop_condition"] == "exact_boarlock_fracking_mulligan_source_unavailable"
@@ -102,9 +96,6 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["source_informed_apply_readiness"]["status"] == "blocked"
     assert operator["source_informed_apply_readiness"]["blocking_reasons"] == [
-        "cards_need_runtime_surface",
-        "generic_low_confidence_cards",
-        "uncovered_cards",
         "unsupported_conditions_present",
     ]
 
@@ -128,8 +119,9 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
 
     summary = readiness["summary"]
     assert summary["cards_needing_mulligan_claims"] >= 1
-    assert summary["cards_needing_runtime_surface"] >= 1
-    assert summary["generic_low_confidence"] >= 1
+    assert summary["cards_needing_runtime_surface"] == 0
+    assert summary["generic_low_confidence"] == 0
+    assert summary["report_only_supported"] >= 1
 
 
 def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(

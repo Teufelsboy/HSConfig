@@ -526,20 +526,155 @@ def test_card_role_fallback_does_not_override_stronger_targeting_row():
     assert "in_hand_priority" not in intents
 
 
-def test_unimplemented_mechanic_claim_is_suppressed():
+def test_deathrattle_static_mechanic_lowers_without_explicit_block():
     routed = route_card_behavior_claims(
         [
             {
+                "claim_id": "claim_deathrattle_static",
                 "claim_kind": "mechanic_usage",
-                "cards": ["CARD_001"],
+                "cards": ["CARD_DEATHRATTLE"],
                 "mechanic": "deathrattle",
                 "claim_confidence": "high",
             }
         ]
     )
 
+    row = routed["card_rows"]["CARD_DEATHRATTLE"][0]
+
+    assert routed["suppressed"] == []
+    assert row["behavior_block"] == "BeforePlayCardBonus"
+    assert row["intent"] == "use_deathrattle_according_to_card_text"
+    assert row["roles"] == ["deathrattle"]
+    assert row["value"] == "6"
+    assert row["meaningful_runtime_surface"] is True
+
+
+def test_rush_static_mechanic_lowers_to_attack_posture_without_explicit_block():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_rush_static",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_RUSH"],
+                "mechanic": "rush",
+                "claim_confidence": "high",
+            }
+        ]
+    )
+
+    row = routed["card_rows"]["CARD_RUSH"][0]
+
+    assert routed["suppressed"] == []
+    assert row["behavior_block"] == "BeforePhysicalAttackBonus"
+    assert row["intent"] == "use_rush_according_to_card_text"
+    assert row["roles"] == ["rush"]
+    assert row["meaningful_runtime_surface"] is True
+
+
+def test_tradeable_static_mechanic_stays_report_only():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_tradeable_static",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_TRADEABLE"],
+                "mechanic": "tradeable",
+                "claim_confidence": "high",
+            }
+        ]
+    )
+
     assert routed["card_rows"] == {}
-    assert routed["suppressed"][0]["reason"] == "no_documented_card_behavior_surface"
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_tradeable_static",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_TRADEABLE"],
+            "reason": "tradeable_has_no_documented_runtime_block",
+            "mechanic": "tradeable",
+            "lowering_policy": "report_only",
+        }
+    ]
+
+
+def test_dredge_static_mechanic_stays_report_only():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_dredge_static",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_DREDGE"],
+                "mechanic": "dredge",
+                "claim_confidence": "high",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_dredge_static",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_DREDGE"],
+            "reason": "dredge_has_no_documented_runtime_block",
+            "mechanic": "dredge",
+            "lowering_policy": "report_only",
+        }
+    ]
+
+
+def test_choose_one_mechanic_usage_requires_resolved_option_identity():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_choose_one_generic",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_CHOOSE_ONE"],
+                "mechanic": "choose_one",
+                "runtime_block": "OnChooseOneCardBonus",
+                "claim_confidence": "high",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_choose_one_generic",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_CHOOSE_ONE"],
+            "reason": "identity_gated_mechanic_requires_option_identity",
+            "mechanic": "choose_one",
+            "lowering_policy": "identity_gated",
+        }
+    ]
+
+
+def test_warning_only_mechanic_with_explicit_supported_block_stays_suppressed_unless_policy_allows_explicit_override():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_tradeable_explicit",
+                "claim_kind": "mechanic_usage",
+                "cards": ["CARD_TRADEABLE"],
+                "mechanic": "tradeable",
+                "runtime_block": "BeforePlayCardBonus",
+                "claim_confidence": "high",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"] == [
+        {
+            "claim_id": "claim_tradeable_explicit",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_TRADEABLE"],
+            "reason": "tradeable_has_no_documented_runtime_block",
+            "mechanic": "tradeable",
+            "lowering_policy": "report_only",
+        }
+    ]
 
 
 def test_unmapped_mechanic_claim_with_explicit_documented_block_lowers():
@@ -648,9 +783,9 @@ def test_unmapped_mechanic_claim_with_unsupported_explicit_block_stays_report_on
             "claim_id": "claim_unknown",
             "claim_kind": "mechanic_usage",
             "cards": ["UNKNOWN_MECHANIC_CARD"],
-            "reason": "unsupported_mechanic_runtime_block",
+            "reason": "unregistered_mechanic_runtime_surface",
             "mechanic": "unknown_combo_window",
-            "runtime_block": "BeforePlayCardBonus",
+            "lowering_policy": "report_only",
         }
     ]
 
@@ -722,7 +857,7 @@ def test_router_maps_overkill_mechanic_to_before_overkilled_bonus():
     assert row["value"] == "6"
 
 
-def test_router_preserves_dredge_discover_cardid_fallback():
+def test_router_replaces_dredge_discover_cardid_fallback_with_report_only_suppression():
     report = route_card_behavior_claims(
         [
             {
@@ -735,10 +870,17 @@ def test_router_preserves_dredge_discover_cardid_fallback():
         ]
     )
 
-    row = report["card_rows"]["TSC_001"][0]
-
-    assert row["behavior_block"] == "OnDiscoverCardBonus"
-    assert row["roles"] == ["discover"]
+    assert report["card_rows"] == {}
+    assert report["suppressed"] == [
+        {
+            "claim_id": "claim_dredge",
+            "claim_kind": "mechanic_usage",
+            "cards": ["TSC_001"],
+            "reason": "dredge_has_no_documented_runtime_block",
+            "mechanic": "dredge",
+            "lowering_policy": "report_only",
+        }
+    ]
 
 
 def test_router_accepts_explicit_documented_runtime_block():

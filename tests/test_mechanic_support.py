@@ -1,9 +1,17 @@
+import hsconfig.mechanic_support as mechanic_support
 from hsconfig.mechanic_support import (
+    MECHANIC_SUPPORT,
     operator_visibility_bucket,
     support_for_roles,
     summarize_mechanic_visibility,
     summarize_mechanic_support,
 )
+from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
+
+
+def _helper(name):
+    assert hasattr(mechanic_support, name), f"{name} helper is required"
+    return getattr(mechanic_support, name)
 
 
 def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
@@ -291,3 +299,123 @@ def test_cthun_alias_accepts_apostrophe_punctuation():
     assert rows[0]["mechanic"] == "cthun_package"
     assert rows[0]["support_level"] == "partial"
     assert rows[0].get("registered", True) is True
+
+
+def test_every_cardid_surface_mechanic_has_lowering_policy():
+    mechanic_lowering_policy = _helper("mechanic_lowering_policy")
+    mechanic_allowed_runtime_blocks = _helper("mechanic_allowed_runtime_blocks")
+    mechanic_default_runtime_block = _helper("mechanic_default_runtime_block")
+
+    for mechanic, spec in MECHANIC_SUPPORT.items():
+        if spec["support_level"] == "warning_only":
+            continue
+        if not any(
+            str(surface).startswith("CARDID.json:")
+            for surface in spec["normal_path_surfaces"]
+        ):
+            continue
+
+        policy = mechanic_lowering_policy(mechanic)
+        assert policy["policy"] in {"lowerable", "identity_gated"}, mechanic
+        assert "lowering" in spec, mechanic
+        assert policy == spec["lowering"]
+        assert mechanic_default_runtime_block(mechanic) in (
+            mechanic_allowed_runtime_blocks(mechanic) | {None}
+        )
+
+    deathrattle_policy = mechanic_lowering_policy("deathrattle")
+    assert deathrattle_policy["policy"] == "lowerable"
+    assert deathrattle_policy["default_block"] == "BeforePlayCardBonus"
+    assert mechanic_allowed_runtime_blocks("deathrattle") == {
+        "BeforePlayCardBonus",
+        "OnBoardBonus",
+    }
+
+
+def test_warning_only_mechanics_have_report_only_policy():
+    mechanic_lowering_policy = _helper("mechanic_lowering_policy")
+    mechanic_static_claim_allowed = _helper("mechanic_static_claim_allowed")
+    mechanic_allowed_runtime_blocks = _helper("mechanic_allowed_runtime_blocks")
+    mechanic_default_runtime_block = _helper("mechanic_default_runtime_block")
+    mechanic_report_only_reason = _helper("mechanic_report_only_reason")
+
+    for mechanic, spec in MECHANIC_SUPPORT.items():
+        if spec["support_level"] != "warning_only":
+            continue
+
+        policy = mechanic_lowering_policy(mechanic)
+        assert policy["policy"] == "report_only", mechanic
+        assert policy == spec["lowering"]
+        assert policy["static_claim_allowed"] is False
+        assert policy["default_block"] is None
+        assert mechanic_static_claim_allowed(mechanic) is False
+        assert mechanic_allowed_runtime_blocks(mechanic) == set()
+        assert mechanic_default_runtime_block(mechanic) is None
+        assert mechanic_report_only_reason(mechanic) == policy["suppression_reason"]
+        assert policy["suppression_reason"] != "unregistered_mechanic_runtime_surface"
+
+    unknown_policy = mechanic_lowering_policy("future_keyword")
+    assert unknown_policy["policy"] == "report_only"
+    assert unknown_policy["suppression_reason"] == "unregistered_mechanic_runtime_surface"
+    assert mechanic_report_only_reason("future_keyword") == (
+        "unregistered_mechanic_runtime_surface"
+    )
+
+
+def test_static_claim_allowed_only_for_executable_or_identity_gated_mechanics():
+    mechanic_lowering_policy = _helper("mechanic_lowering_policy")
+    mechanic_static_claim_allowed = _helper("mechanic_static_claim_allowed")
+    mechanics_with_executable_lowering = _helper("mechanics_with_executable_lowering")
+
+    executable = mechanics_with_executable_lowering()
+    assert "deathrattle" in executable
+    assert "discover" in executable
+    assert "tradeable" not in executable
+    assert "future_keyword" not in executable
+
+    for mechanic in MECHANIC_SUPPORT:
+        policy = mechanic_lowering_policy(mechanic)
+        static_allowed = mechanic_static_claim_allowed(mechanic)
+        if static_allowed:
+            assert policy["policy"] in {"lowerable", "identity_gated"}, mechanic
+        if policy["policy"] == "report_only":
+            assert static_allowed is False, mechanic
+
+    assert mechanic_static_claim_allowed("deathrattle") is True
+    assert mechanic_static_claim_allowed("choose_one") is False
+    assert mechanic_static_claim_allowed("tradeable") is False
+    assert mechanic_static_claim_allowed("future_keyword") is False
+
+
+def test_choose_one_identity_gated_policy_has_no_generic_default_lowering():
+    mechanic_lowering_policy = _helper("mechanic_lowering_policy")
+    mechanic_allowed_runtime_blocks = _helper("mechanic_allowed_runtime_blocks")
+    mechanic_default_runtime_block = _helper("mechanic_default_runtime_block")
+
+    policy = mechanic_lowering_policy("choose_one")
+
+    assert policy["policy"] == "identity_gated"
+    assert policy["static_claim_allowed"] is False
+    assert policy["default_block"] is None
+    assert "OnChooseOneCardBonus" in mechanic_allowed_runtime_blocks("choose_one")
+    assert mechanic_default_runtime_block("choose_one") is None
+
+
+def test_runtime_block_allowlist_matches_documented_card_behavior_blocks():
+    mechanic_lowering_policy = _helper("mechanic_lowering_policy")
+    mechanic_allowed_runtime_blocks = _helper("mechanic_allowed_runtime_blocks")
+    mechanic_default_runtime_block = _helper("mechanic_default_runtime_block")
+
+    for mechanic in MECHANIC_SUPPORT:
+        policy = mechanic_lowering_policy(mechanic)
+        allowed_blocks = mechanic_allowed_runtime_blocks(mechanic)
+        assert allowed_blocks == set(policy["allowed_blocks"]), mechanic
+        assert allowed_blocks <= CARD_BEHAVIOR_BLOCKS, mechanic
+        default_block = mechanic_default_runtime_block(mechanic)
+        assert default_block is None or default_block in allowed_blocks, mechanic
+        if policy["policy"] == "report_only":
+            assert allowed_blocks == set(), mechanic
+            assert default_block is None, mechanic
+
+    assert mechanic_allowed_runtime_blocks("future_keyword") == set()
+    assert mechanic_default_runtime_block("future_keyword") is None

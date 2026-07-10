@@ -12,6 +12,7 @@ TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
     "dredge": ("dredge",),
     "tradeable": ("tradeable",),
     "overload": ("overload",),
+    "weapon": ("weapon", "equip", "equips"),
     "freeze": ("freeze", "frozen"),
     "lifesteal": ("lifesteal",),
     "reborn": ("reborn",),
@@ -30,6 +31,16 @@ TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
     "destroy": ("destroy", "destroys"),
     "choose_one": ("choose one",),
     "aura": ("adjacent", "your other", "your minions have"),
+    "spellburst": ("spellburst",),
+    "quickdraw": ("quickdraw",),
+    "finale": ("finale",),
+    "manathirst": ("manathirst", "mana thirst"),
+    "infuse": ("infuse", "infused"),
+    "corrupt": ("corrupt", "corrupted"),
+    "forge": ("forge", "forged"),
+    "outcast": ("outcast",),
+    "titan": ("titan",),
+    "starship": ("starship", "launch your starship"),
 }
 
 TYPE_TO_FAMILY = {
@@ -56,6 +67,21 @@ REFERENCED_TAG_TO_FAMILY = {
     "TAUNT": "taunt",
     "SECRET": "secret",
     "START_OF_GAME_KEYWORD": "start_of_game",
+    "SPELLBURST": "spellburst",
+    "QUICKDRAW": "quickdraw",
+    "FINALE": "finale",
+    "MANATHIRST": "manathirst",
+    "INFUSE": "infuse",
+    "CORRUPT": "corrupt",
+    "FORGE": "forge",
+    "OUTCAST": "outcast",
+    "TITAN": "titan",
+    "STARSHIP": "starship",
+    "KINDRED": "kindred",
+    "TOURIST": "tourist",
+    "REWIND": "rewind",
+    "HERALD": "herald",
+    "SHATTER": "shatter",
 }
 
 WARNING_ONLY_MECHANICS = {
@@ -64,7 +90,16 @@ WARNING_ONLY_MECHANICS = {
     "generated_entity_random_pool",
     "location_activation",
     "secret_timing",
+    "forge",
     "tradeable",
+    "outcast",
+    "titan",
+    "starship",
+    "kindred",
+    "tourist",
+    "rewind",
+    "herald",
+    "shatter",
 }
 
 

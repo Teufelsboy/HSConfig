@@ -538,6 +538,92 @@ def test_config_readiness_reports_mechanic_support_without_blocking_load_safe():
     ]
 
 
+def test_source_backed_lowerable_mechanic_without_runtime_row_needs_mechanic_lowering():
+    report = _report_for_card(
+        card_id="DEATH_001",
+        roles=["deathrattle"],
+        coverage_status="source_backed_static_semantics",
+        card_behavior_plan={"rows": [], "suppressed": []},
+        emitted_cardid_files=["DEATH_001.json"],
+    )
+
+    row = report["cards"]["DEATH_001"]
+
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_mechanic_lowering"
+    assert row["source_depth_lane"] == "mechanic_lowering_gap"
+    assert report["summary"]["cards_needing_mechanic_lowering"] == 1
+
+
+def test_report_only_mechanics_do_not_create_mechanic_lowering_gaps():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Warning Deck",
+            "deck_slug": "warningdeck",
+            "cards": [
+                {"card_id": "DREDGE_001", "name": "Dredge Card", "count": 1},
+                {"card_id": "TRADE_001", "name": "Tradeable Card", "count": 1},
+                {"card_id": "FUTURE_001", "name": "Future Card", "count": 1},
+            ],
+        },
+        claim_coverage={"uncovered_cards": [], "total_cards": 3},
+        gameplan_contract={
+            "deck_name": "Warning Deck",
+            "deck_slug": "warningdeck",
+            "cards": {
+                "DREDGE_001": {
+                    "card_id": "DREDGE_001",
+                    "name": "Dredge Card",
+                    "roles": ["dredge"],
+                    "coverage_status": "source_backed_static_semantics",
+                },
+                "TRADE_001": {
+                    "card_id": "TRADE_001",
+                    "name": "Tradeable Card",
+                    "roles": ["tradeable"],
+                    "coverage_status": "source_backed_static_semantics",
+                },
+                "FUTURE_001": {
+                    "card_id": "FUTURE_001",
+                    "name": "Future Card",
+                    "roles": ["future_keyword"],
+                    "coverage_status": "source_backed_static_semantics",
+                },
+            },
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+        emitted_cardid_files=["DREDGE_001.json", "TRADE_001.json", "FUTURE_001.json"],
+    )
+
+    assert report["summary"]["cards_needing_mechanic_lowering"] == 0
+    assert "needs_mechanic_lowering" not in {
+        row["first_missing_link"] for row in report["cards"].values()
+    }
+    assert report["summary"]["mechanic_visibility"]["mechanics_by_bucket"]["warning_only"] == [
+        "dredge",
+        "future_keyword",
+        "tradeable",
+    ]
+
+
+def test_identity_gated_mechanic_without_default_block_is_not_mechanic_lowering_gap():
+    report = _report_for_card(
+        card_id="START_001",
+        roles=["start_of_game"],
+        coverage_status="source_backed_static_semantics",
+        card_behavior_plan={"rows": [], "suppressed": []},
+        emitted_cardid_files=["START_001.json"],
+    )
+
+    row = report["cards"]["START_001"]
+
+    assert row["first_missing_link"] != "needs_mechanic_lowering"
+    assert report["summary"]["cards_needing_mechanic_lowering"] == 0
+
+
 def test_config_readiness_keeps_unknown_mechanic_role_visible_as_warning_only():
     report = _report_for_card(
         card_id="FUTURE_001",
@@ -548,18 +634,26 @@ def test_config_readiness_keeps_unknown_mechanic_role_visible_as_warning_only():
 
     mechanic_support = report["cards"]["FUTURE_001"]["mechanic_support"]
 
-    assert mechanic_support == [
-        {
-            "mechanic": "future_keyword",
-            "support_level": "warning_only",
-            "normal_path_surfaces": ["report-only"],
-            "warning_boundary": (
-                "No registered VisionAI normal-path surface exists for role "
-                "'future_keyword'; keep it visible as warning-only until mapped."
-            ),
-            "registered": False,
-        }
-    ]
+    assert mechanic_support[0] == {
+        "mechanic": "future_keyword",
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": (
+            "No registered VisionAI normal-path surface exists for role "
+            "'future_keyword'; keep it visible as warning-only until mapped."
+        ),
+        "lowering": {
+            "policy": "report_only",
+            "static_claim_allowed": False,
+            "default_block": None,
+            "allowed_blocks": [],
+            "default_value": "6",
+            "default_condition": "*",
+            "default_intent": None,
+            "suppression_reason": "unregistered_mechanic_runtime_surface",
+        },
+        "registered": False,
+    }
     assert report["summary"]["mechanic_support"]["warning_only_mechanics"] == [
         "future_keyword"
     ]

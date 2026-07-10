@@ -74,13 +74,13 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert validate_code == 0
     assert validate_out["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert operator_summary["source_informed_apply_readiness"]["status"] == "not_applicable"
     assert apply_code == 0
     assert apply_out["status"] == "applied"
     assert apply_out["apply_gate"]["status"] == "allowed"

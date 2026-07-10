@@ -121,6 +121,24 @@ def test_operator_docs_explain_mechanic_drift_without_new_gate():
     assert "Mechanic drift is not a runtime apply gate" in docs
 
 
+def test_operator_docs_explain_executable_mechanic_lowering_gap_contract():
+    docs = "\n".join(
+        [
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
+            Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "mechanic lowering registry" in docs.lower()
+    assert "cards_needing_mechanic_lowering" in docs
+    assert "needs_mechanic_lowering" in docs
+    assert "documented default CardID lowering target" in docs
+    assert "Dredge, Tradeable, and unknown future mechanics" in docs
+    assert "do not increment `cards_needing_mechanic_lowering`" in docs
+
+
 def test_active_docs_do_not_reintroduce_stale_matrix_counts_or_closure_targets():
     active_files = [
         "README.md",

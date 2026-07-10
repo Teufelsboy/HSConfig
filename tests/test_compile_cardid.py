@@ -232,6 +232,118 @@ def test_compile_cardid_does_not_duplicate_pressure_fallbacks_for_explicit_befor
     assert before_play_values[0]["value"] == "15"
 
 
+def test_compile_cardid_does_not_emit_tradeable_fallback_from_roles():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "CARD_TRADEABLE": {
+                "roles": ["tradeable"],
+                "source_claim_ids": ["claim_tradeable"],
+                "confidence": "source_backed_static_semantics",
+            }
+        },
+    }
+
+    files = compile_cardid_behaviors(contract)
+
+    card_file = files["CARD_TRADEABLE.json"]
+    assert card_file["GameCardId"] == "CARD_TRADEABLE"
+    assert "InHandPlayPriority" in card_file
+    assert "BeforePlayCardBonus" not in card_file
+
+
+def test_compile_cardid_does_not_emit_dredge_fallback_from_roles():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "CARD_DREDGE": {
+                "roles": ["dredge"],
+                "source_claim_ids": ["claim_dredge"],
+                "confidence": "source_backed_static_semantics",
+            }
+        },
+    }
+
+    files = compile_cardid_behaviors(contract)
+
+    card_file = files["CARD_DREDGE.json"]
+    assert card_file["GameCardId"] == "CARD_DREDGE"
+    assert "InHandPlayPriority" in card_file
+    assert "BeforePlayCardBonus" not in card_file
+    assert "OnDiscoverCardBonus" not in card_file
+
+
+def test_compile_cardid_emits_behavior_rows_from_router_for_lowerable_mechanics():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "CARD_DEATHRATTLE": {
+                "roles": ["deathrattle"],
+                "source_claim_ids": ["claim_deathrattle_static"],
+                "confidence": "source_backed_static_semantics",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "CARD_DEATHRATTLE",
+            "behavior_block": "BeforePlayCardBonus",
+            "rule_id_suffix": "use_deathrattle_according_to_card_text",
+            "condition": "*",
+            "value": "6",
+            "roles": ["deathrattle"],
+            "source_claim_ids": ["claim_deathrattle_static"],
+            "confidence": "source_backed_static_semantics",
+            "meaningful_runtime_surface": True,
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    before_play_values = files["CARD_DEATHRATTLE.json"]["BeforePlayCardBonus"]["values"]
+    assert before_play_values == [
+        {
+            "comment": "Fixture: CARD_DEATHRATTLE_use_deathrattle_according_to_card_text",
+            "condition": "*",
+            "value": "6",
+        }
+    ]
+
+
+def test_compile_cardid_keeps_inhand_priority_for_report_only_cards():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "CARD_TRADEABLE": {
+                "roles": ["tradeable"],
+                "source_claim_ids": ["claim_tradeable"],
+                "confidence": "source_backed_static_semantics",
+            },
+            "CARD_DREDGE": {
+                "roles": ["dredge"],
+                "source_claim_ids": ["claim_dredge"],
+                "confidence": "source_backed_static_semantics",
+            },
+        },
+    }
+
+    files = compile_cardid_behaviors(contract)
+
+    for filename in ("CARD_TRADEABLE.json", "CARD_DREDGE.json"):
+        card_file = files[filename]
+        assert card_file["InHandPlayPriority"]["values"] == [
+            {
+                "comment": f"Fixture: {card_file['GameCardId']}_in_hand_priority",
+                "condition": "*",
+                "value": "7",
+            }
+        ]
+    assert "BeforePlayCardBonus" not in files["CARD_TRADEABLE.json"]
+    assert "OnDiscoverCardBonus" not in files["CARD_DREDGE.json"]
+
+
 def test_compile_cardid_preserves_explicit_behavior_row_order_with_same_block():
     rows = [
         {

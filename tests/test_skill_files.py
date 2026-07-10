@@ -607,6 +607,23 @@ def test_docs_and_skill_explain_mechanic_visibility_without_blocking_apply():
     assert "must not block load-safe apply" in combined
 
 
+def test_docs_and_skill_explain_mechanic_lowering_registry_authority():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "mechanic lowering registry" in combined.lower()
+    assert "cards_needing_mechanic_lowering" in combined
+    assert "needs_mechanic_lowering" in combined
+    assert "documented default CardID lowering target" in combined
+    assert "Dredge, Tradeable, and unknown future mechanics" in combined
+    assert "do not increment `cards_needing_mechanic_lowering`" in combined
+
+
 def test_docs_and_skill_explain_current_modern_mechanic_visibility_without_blocking():
     paths = [
         Path("docs/operator/README.md"),

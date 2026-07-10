@@ -29,8 +29,7 @@ def test_index_exposes_ordered_source_informed_closure_targets():
                 "strongness_visibility": {
                     "closure_priority": 1,
                     "source_informed_blocking_reasons": [
-                        "cards_need_runtime_surface",
-                        "generic_low_confidence_cards",
+                        "unsupported_conditions_present",
                     ],
                     "operator_action": (
                         "preserve_source_informed_with_explicit_stop_condition"
@@ -68,8 +67,7 @@ def test_index_skips_durably_preserved_rows_for_next_actionable_target():
                         "exact_boarlock_fracking_mulligan_source_unavailable"
                     ),
                     "source_informed_blocking_reasons": [
-                        "cards_need_runtime_surface",
-                        "generic_low_confidence_cards",
+                        "unsupported_conditions_present"
                     ],
                 },
             },
@@ -197,7 +195,7 @@ def test_index_excludes_non_source_informed_rows_from_preserved_targets():
                 "fixture_stage": "source_informed_valid_fixture",
                 "strongness_visibility": {
                     "closure_priority": 1,
-                    "source_informed_blocking_reasons": ["cards_need_runtime_surface"],
+                    "source_informed_blocking_reasons": ["unsupported_conditions_present"],
                     "operator_action": (
                         "preserve_source_informed_with_explicit_stop_condition"
                     ),

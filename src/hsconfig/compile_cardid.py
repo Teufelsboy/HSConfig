@@ -2,21 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.mechanic_support import (
+    mechanic_default_runtime_block,
+    mechanic_lowering_policy,
+)
 
-ROLE_BLOCKS = {
-    "battlecry": "BeforeBattlecryTargetBonus",
-    "charge": "BeforePhysicalAttackBonus",
-    "discover": "OnDiscoverCardBonus",
-    "freeze": "BeforePlayCardBonus",
-    "hero_power": "BeforeUseHeroPowerBonus",
-    "location": "BeforePlayCardBonus",
-    "overload": "BeforePlayCardBonus",
+
+NON_MECHANIC_FALLBACK_BLOCKS = {
     "prefer_enemy_minion": "BeforeBattlecryTargetBonus",
     "prefer_friendly_minion": "BeforePlayCardBonus",
-    "rush": "BeforePhysicalAttackBonus",
-    "secret": "BeforePlayCardBonus",
-    "tradeable": "BeforePlayCardBonus",
-    "weapon": "BeforePhysicalAttackBonus",
 }
 
 BACKED_CONFIDENCE_LANES = {
@@ -86,23 +80,34 @@ def compile_cardid_behaviors(
                 confidence,
             )
         for role in sorted(roles):
-            block = ROLE_BLOCKS.get(role)
+            block = _role_fallback_block(role)
             if block is None:
                 continue
             if block in explicit_blocks:
                 continue
+            policy = mechanic_lowering_policy(role)
             _append_block_row(
                 config,
                 block,
                 deck_name,
                 card_id,
                 f"{role}_behavior",
-                "6",
+                str(policy.get("default_value", "6")),
                 source_claim_ids,
                 confidence,
+                condition=str(policy.get("default_condition", "*")),
             )
         files[f"{card_id}.json"] = config
     return files
+
+
+def _role_fallback_block(role: str) -> str | None:
+    if role in NON_MECHANIC_FALLBACK_BLOCKS:
+        return NON_MECHANIC_FALLBACK_BLOCKS[role]
+    policy = mechanic_lowering_policy(role)
+    if policy["policy"] == "report_only":
+        return None
+    return mechanic_default_runtime_block(role)
 
 
 def _cards_from_contract(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:

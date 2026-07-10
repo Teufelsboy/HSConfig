@@ -34,13 +34,7 @@ def build_guide_source_depth_report(
         or str(claim.get("claim_readiness", "")).lower()
         in {"explicit_low_confidence", "generic_low_confidence", "contract_gap"}
     )
-    strong_lowerable_claims = sum(
-        1
-        for claim in claims
-        if claim_can_lower_to_runtime(claim)
-        and str(claim.get("claim_readiness", "")).lower()
-        in {"guide_backed", "source_backed_static_semantics"}
-    )
+    strong_lowerable_claims = sum(1 for claim in claims if _is_strong_lowerable_claim(claim))
     blocked_runtime_claims = sum(1 for claim in claims if not claim_can_lower_to_runtime(claim))
 
     cards = _cards(config_readiness_report)
@@ -80,8 +74,10 @@ def build_guide_source_depth_report(
     if total_cards > 0 and cards_needing_guide_claims > 0:
         depth_status = "needs_more_research"
     source_depth_status = depth_status
-    if lowerable_claims > 0 and report_only_claims == 0 and not warnings:
+    if strong_lowerable_claims > 0 and report_only_claims == 0 and not warnings:
         source_depth_status = "source_backed"
+    elif lowerable_claims > 0 and report_only_claims == 0 and not warnings:
+        source_depth_status = "static_semantics_only"
     if lowerable_claims == 0 or cards_needing_guide_claims > 0:
         source_depth_status = "needs_more_research"
 
@@ -193,3 +189,12 @@ def _claim_source_family(claim: dict[str, Any]) -> str:
 
 def _claim_kind(claim: dict[str, Any]) -> str:
     return str(claim.get("claim_kind", claim.get("claim_type", "unknown")))
+
+
+def _is_strong_lowerable_claim(claim: dict[str, Any]) -> bool:
+    return (
+        claim_can_lower_to_runtime(claim)
+        and str(claim.get("claim_readiness", "")).lower() == "guide_backed"
+        and _claim_source_family(claim).lower()
+        not in {"hearthstonejson_static_semantics", "static_semantics", "metadata", "card_text"}
+    )

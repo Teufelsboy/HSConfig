@@ -51,6 +51,31 @@ CASES = [
         {"spell", "discard", "destroy", "silence", "transform"},
         set(),
     ),
+    (
+        "modern_lowerable_and_report_only_keywords",
+        {
+            "type": "SPELL",
+            "text": (
+                "Spellburst: Draw a card. Quickdraw: Deal 2 damage. "
+                "Finale: Summon a minion. Manathirst (6): Gain +2/+2. "
+                "Infuse (3): Costs less. Corrupt: Become upgraded. "
+                "Forge: Gain Armor. Outcast: Draw a card. Titan. Launch your Starship."
+            ),
+        },
+        {
+            "spellburst",
+            "quickdraw",
+            "finale",
+            "manathirst",
+            "infuse",
+            "corrupt",
+            "forge",
+            "outcast",
+            "titan",
+            "starship",
+        },
+        {"forge", "outcast", "titan", "starship"},
+    ),
 ]
 
 

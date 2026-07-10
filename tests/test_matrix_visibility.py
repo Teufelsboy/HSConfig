@@ -95,12 +95,9 @@ def test_matrix_visibility_exposes_source_informed_blockers_and_priority():
 
     assert by_name["Boarlock"]["closure_state"] == "source_informed_blocked"
     assert by_name["Boarlock"]["source_informed_blocking_reasons"] == [
-        "cards_need_runtime_surface",
-        "generic_low_confidence_cards",
-        "uncovered_cards",
         "unsupported_conditions_present",
     ]
-    assert by_name["Boarlock"]["closure_priority"] == 1
+    assert by_name["Boarlock"]["closure_priority"] == 2
     assert by_name["Boarlock"]["operator_action"] == (
         "preserve_source_informed_with_explicit_stop_condition"
     )

@@ -21,6 +21,12 @@ After durable Boarlock and Kingslayer preservation, there is no current actionab
   an operator-facing `no_block_failure_mode_summary`, not a broader apply gate,
   new representative decks, or post-run HSTuner scope.
 
+- `2026-07-10-hsconfig-mechanic-lowering-parity-wave` - Mechanic lowering parity evidence.
+  The mechanic lowering registry is the executable authority:
+  lowerable mechanics with documented CardID targets should emit rows or
+  `cards_needing_mechanic_lowering`; report-only mechanics such as Dredge,
+  Tradeable, and unknown future mechanics remain warning-only and non-blocking.
+
 ## 2026-07-10 No-Block Universal Skill Audit V4
 
 - Path: `docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/`
