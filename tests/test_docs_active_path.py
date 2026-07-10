@@ -176,3 +176,10 @@ def test_operator_docs_explain_no_block_failure_mode_summary():
     assert "combo_uncertainty" in docs
     assert "runtime_evidence_only_tuning" in docs
     assert "It does not create a second apply gate." in docs
+
+
+def test_current_truth_names_no_block_failure_mode_audit_v5():
+    text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+
+    assert "2026-07-10-hsconfig-universal-no-block-skill-audit-v5" in text
+    assert "No-block failure-mode summary evidence" in text

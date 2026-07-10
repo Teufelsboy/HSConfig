@@ -1,0 +1,59 @@
+{
+  "verdict": "Optimal enough: public HearthRanger VisionAI surfaces still support HSConfig's current no-block contract. HSConfig should keep `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and exact `Combo.json` as the normal surface family, while keeping `Presume.json` and `Concede.json` visible but outside the normal path and non-blocking when absent.",
+  "source_backed_evidence": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm: the official VisionAI help still documents the same per-card block family and search-priority blocks, including InHandBonus, OnBoardBonus, BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, BeforeOverkilledBonus, BeforeEndTurnBonus, OnDiscoverCardBonus, OnChooseOneCardBonus, OnAdaptCardBonus, BeforeUpgradeCardBonus, InHandPlayPriority, and OnBoardPlayPriority.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm: the official VisionAI help still treats Combo.json as a separate documented surface with GameCardId Combo and ComboList exact sequence syntax.",
+    "https://www.hearthranger.com/forum/yaf_postst8783_-HowTo--Set-Vision-A-I-Custom-Config.aspx: the normal user-facing setup example uses only GlobalValues.json and Mulligan.json in the deck folder, which supports keeping them as the always-required normal-path files.",
+    "https://www.hearthranger.com/forum/yaf_postsm56382_more-presume-options.aspx?find=unread: public forum evidence treats Presume.json as a special-purpose surface for presuming opponent cards in hand rather than as a normal required runtime file.",
+    "https://hearthranger.com/forum/yaf_postsm48176_scottbreak-s-Meta-Decks-for-Vision-AI.aspx: public forum evidence treats Concede.json as auto-concede configuration rather than as part of the normal minimal custom-config load path.",
+    "https://www.hearthranger.com/forum/yaf_download_hs.aspx: the public product page advertises auto concede and custom card or deck rule debugging, but it does not present Presume.json or Concede.json as mandatory for ordinary custom-config loading.",
+    "https://www.hearthranger.com/forum/yaf_postst12481p2_2024-11--wild-pirate-DH--update-2025-06.aspx: a recent public community thread still tells users to modify Mulligan.json for current deck behavior, which suggests the public surface family has not shifted to a new normal-path file model."
+  ],
+  "repo_evidence": [
+    "C:/Users/darbo/Documents/HSConfig/README.md: HSConfig is explicitly pre-run only and says Presume.json and Concede.json are not emitted in the normal path.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md: the repo's surface reference lists GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json as supported runtime files and says Concede.json and Presume.json are documented but not normal HSConfig output.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py: the registry recognizes GlobalValues.json, Mulligan.json, Combo.json, Presume.json, and Concede.json, but marks Presume.json and Concede.json as known_non_normal_surface with normal_path_runtime set to false.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py: the active apply gate requires only GlobalValues.json and Mulligan.json for minimal runtime load safety and blocks Presume.json or Concede.json if they appear in the normal path.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py: the validator knows Combo.json, Presume.json, and Concede.json syntactically, but complete-package enforcement requires only GlobalValues.json and Mulligan.json.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md: the operator contract says minimal load-safe apply is narrower than rich normal output, that per-card CardID files and Combo.json improve usefulness without redefining the minimal gate, and that Presume.json and Concede.json are documented but absent from the normal path without blocking a valid package.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py: the normal prepare intent always includes GlobalValues.json and Mulligan.json, adds Combo.json only when combos exist, and only mentions Presume.json or Concede.json behind explicit legacy policy flags.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py: the proof matrix exercises the no-block contract across the repo's representative deck set without requiring Presume.json or Concede.json."
+  ],
+  "provided_deck_matrix_assessment": [
+    "The repo's current universal Wild proof matrix is broad enough to test the public normal surface family without bloating the runtime contract. It covers aggressive pirate shells, combo shells, weapon decks, discard decks, mech decks, control or recruit-style decks, and hero-power-sensitive decks.",
+    "That matrix is a strong fit for this audit because it forces GlobalValues.json, Mulligan.json, and normal per-card CardID richness across varied archetypes while leaving Concede.json and Presume.json unnecessary for the no-block promise.",
+    "The matrix does not show any public need to widen the normal runtime surface family. The hard evidence points toward richer reporting inside the same boundary, not toward new mandatory runtime files.",
+    "If future matrix rows depend mainly on hidden-information presumption or auto-concede policy, those cases should stay explicit opt-in or report-visible exceptions rather than redefine the normal no-block meaning."
+  ],
+  "no_block_assessment": [
+    "Nothing is blocked should continue to mean technical load safety first: supported filenames, valid JSON, one deck runtime directory, required GlobalValues.json, required Mulligan.json, and no forbidden normal-path Presume.json or Concede.json.",
+    "Nothing is blocked should not mean maximum semantic richness. Normal prepare should still emit per-card <CARDID>.json files when deck identity and evidence support them, but public HearthRanger material does not turn those richer files into the universal minimal load requirement.",
+    "Nothing is blocked should stay separate from source confidence. Strong guide backing, weak guide backing, or shallow source depth affect usefulness and trust, but they should not change whether a technically valid package may be load-safe.",
+    "Nothing is blocked should stay separate from mechanic visibility. Partial lowering, warning-only mechanics, unresolved option identity, or unsupported claim suppression should remain visible in reports rather than silently becoming runtime blockers.",
+    "Nothing is blocked should stay separate from combo precision. Combo.json should remain strict and exact when a real supported sequence exists, and absent otherwise, without turning vague combo advice into a package blocker.",
+    "Nothing is blocked should continue to treat Presume.json and Concede.json as visible but outside normal HSConfig output. Their absence should not block a valid package, and their presence should remain a deliberate policy choice rather than a hidden requirement."
+  ],
+  "skill_slimness_assessment": [
+    "HSConfig remains appropriately slim when it keeps its public runtime target narrow and pre-run only. The current boundary avoids replay parsing, winrate tuning, runtime candidate promotion, and other HSTuner-style post-run concerns.",
+    "Keeping Presume.json and Concede.json outside the normal path protects that slimness. Those files are more policy-like or hidden-information-like than the core pre-run posture, mulligan, per-card behavior, and exact combo surfaces.",
+    "The public HearthRanger evidence does not show a new mandatory surface family that HSConfig is missing. The official help page has newer card-state keywords and filters, but the documented surface families stay the same.",
+    "The current approach is understandable: GlobalValues for posture, Mulligan for opening hand, per-card CardID files for specific card behavior, Combo for exact sequence planning, and explicit reports for everything that cannot be lowered safely."
+  ],
+  "hearthstone_semantic_coverage": [
+    "GlobalValues.json still maps well to pre-run deck posture, board-pressure posture, survivability posture, and baseline value overlays. Nothing in the public HearthRanger material suggests it now carries hidden-information or auto-concede duties.",
+    "Mulligan.json still clearly owns opening-hand behavior. Public help and community material continue to treat mulligan behavior as a dedicated surface rather than a side effect of some broader runtime file.",
+    "Per-card <CARDID>.json remains the main semantic workhorse for pre-run runtime behavior. The official help still documents play timing, battlecry targeting, attack posture, hero-power use, discover choice, choose-one choice, and search-order hints through per-card blocks.",
+    "Combo.json remains a narrow but legitimate semantic lane for exact, supported sequence planning. It changes usefulness when precise combo evidence exists, but it does not change the no-block meaning for decks that do not need it or lack exact sequence proof.",
+    "Presume.json and Concede.json do not change the meaning of a no-block universal pre-run package. They sit outside the normal HSConfig mission because they address opponent-hand presumption or auto-concede policy rather than the core initial config package.",
+    "The official VisionAI help page includes newer condition and card-state vocabulary, which shows HearthRanger has modernized filters and card metadata without publishing a broader normal runtime file family. That supports keeping unsupported surfaces visible but non-blocking."
+  ],
+  "gaps_or_risks": [
+    "A direct official online-help syntax page for Presume.json or Concede.json was not located in this turn. Their existence and role are well supported by public forum and product-page evidence, but the exact current syntax of those two surfaces was not the basis of this verdict.",
+    "Public community examples can be stale. That risk is limited here because the official VisionAI help page still shows the same core per-card surface family and the repo's current boundary matches the public material.",
+    "If HearthRanger later publishes a new official normal-path runtime file or explicitly makes Presume.json or Concede.json part of ordinary custom-config loading, this audit would need a fresh pass.",
+    "Per-card CardID richness remains a repo policy expectation for normal prepare. Operators should not confuse that richer HSConfig policy with the smaller public minimum needed to keep no-block load safety honest."
+  ],
+  "recommended_next_action": "Keep the current HSConfig boundary unchanged: preserve GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and exact Combo.json as the normal VisionAI surface family, and keep Presume.json plus Concede.json visible in docs or registry but outside the normal path and non-blocking when absent.",
+  "confidence": "high: official public VisionAI help still documents the same per-card and combo surface families, recent public community material still uses the same normal files, and the live HSConfig repo already encodes the same boundary in docs, registry, apply gate, validator, and matrix tests.",
+  "uncertain": []
+}

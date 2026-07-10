@@ -1,0 +1,48 @@
+topic: hsconfig-universal-no-block-skill-audit-v5
+created: "2026-07-10"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-universal-no-block-skill-audit-v5/results
+  items_per_agent: 1
+  batch_size: 5
+items:
+  - name: HSConfig Current Repo Skill No-Block Audit
+    category: Local Repo
+    description: >
+      Audit the active HSConfig repository and installed skill. Check operator docs,
+      skill source, tests, apply gate, package generation, mechanic support, mechanic
+      drift, representative matrix, supplemental proof decks, and current git state.
+      Determine whether the skill is slim, efficient, competent, and no-block for
+      valid deck packages without overstating source-backed gameplay quality.
+  - name: HearthRanger VisionAI Surface And Runtime Boundary Audit
+    category: HearthRanger VisionAI
+    description: >
+      Verify public HearthRanger VisionAI surfaces relevant to HSConfig: GlobalValues,
+      Mulligan, per-card CardID behavior files, Combo, and documented-but-outside-normal
+      Presume/Concede. Determine whether any public surface changes the no-block
+      meaning or whether HSConfig should continue to keep unsupported surfaces visible
+      but non-blocking.
+  - name: Modern Hearthstone Mechanics Coverage Audit
+    category: Hearthstone Semantics
+    description: >
+      Audit current and recent Hearthstone mechanics relevant to Wild decks, including
+      Rewind, Herald, Shatter, Kindred, Tourist, Starship, Spellburst, Miniaturize,
+      Quickdraw, Honorable Kill, Elusive, Poisonous, Imbue, Discover, Choose One,
+      Dredge, Tradeable, Overload, Freeze, Location, Secret, Weapon, Deathrattle,
+      Recruit, generated entities, and hero power transforms. Distinguish direct,
+      identity-gated direct, partial, warning-only, and unknown-warning coverage.
+  - name: Provided Wild Deck Matrix And Archetype Coverage Audit
+    category: Wild Deck Matrix
+    description: >
+      Assess the user-provided deck set: ShadowPriest, CtAPaladin, PirateRogue,
+      BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock,
+      PirateDH, and CuteWarrior. Check whether this set covers enough classes,
+      archetypes, combo/control/aggro/synergy families, and mechanic pressure for
+      a lean HSConfig proof without adding endless fixture bloat.
+  - name: Universal Any-Deck No-Block Proof And Failure Mode Audit
+    category: Proof Strategy
+    description: >
+      Define the safest product meaning of "nothing is blocked; any valid deck should
+      work" for HSConfig. Separate technical invalidity from warning-only mechanics,
+      source-depth gaps, unsupported future mechanics, missing guide strength, combo
+      uncertainty, and runtime-evidence-only tuning. Recommend the smallest next step
+      that improves autonomy without making the skill over-conservative or bloated.

@@ -1,0 +1,193 @@
+{
+  "verdict": "Optimal enough for the current lean HSConfig proof. The provided set is broad enough to test the important pre-run package families, class diversity, source-depth truth, and non-blocking warning behavior without adding endless representative fixture bloat. It should stay an 11-deck representative matrix plus supplemental CuteWarrior, not become an open-ended meta snapshot.",
+  "source_backed_evidence": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json defines the representative HSConfig source-backed archetype fixture matrix and its purpose as lean pre-game CustomConfig coverage.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json lists 11 representative decks: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, and PirateDH.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json marks CuteWarrior as supplemental_load_safe_prepare_proof with representative_output_competence=false, so it adds narrow load-safe proof without widening the representative matrix.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md records 9 core_source_backed_fixture rows and 2 source_informed_valid_fixture rows, with Kingslayer and Boarlock preserved as visible source-informed controls instead of hidden blockers.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md lists all 12 inputs in the universal proof matrix and states that each valid deck must produce VALID_PACKAGE, runtime_load_safe=true, runtime_apply_mode=load_safe_apply, GlobalValues.json, and Mulligan.json.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md separates technical hard blocks from non-blocking warnings such as missing guide claims, partial mechanic support, warning-only mechanics, and mechanic drift.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md states that HSConfig is pre-run only, that the normal path uses operator_summary.json as the gate, and that the representative matrix should not be widened just to avoid existing source-informed rows.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py parametrizes all 12 named decks and requires a passed prepare run, VALID_PACKAGE, runtime_load_safe=true, load_safe_apply, required runtime files, per-card JSON coverage when deck identity is known, and no normal-path Presume.json or Concede.json.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py verifies the representative 11-deck set, exact supplied deck identities, fixture stages, decision families, and known coverage limits.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_matrix_visibility.py verifies the matrix summary as total_decks=11, core_source_backed_fixture_count=9, source_informed_valid_fixture_count=2, and normal_next_action=keep_closed_matrix_until_new_exact_source_or_family_gap.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_supplemental_cute_warrior_load_safe.py verifies the supplemental CuteWarrior prepare path remains load-safe with GlobalValues.json, Mulligan.json, per-card output, and load_safe_apply.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py and C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_drift.py verify direct, identity-gated-direct, partial, warning-only, unknown, and modern text-only mechanics as non-blocking visibility rather than package blockers."
+  ],
+  "repo_evidence": [
+    "The representative matrix covers 8 classes directly: Priest, Paladin, Rogue, Shaman, Warlock, Druid, Mage, and Demon Hunter. CuteWarrior adds Warrior as supplemental load-safe proof. Hunter and Death Knight are not represented, but the matrix goal is runtime-family breadth rather than class-complete ladder coverage.",
+    "The representative matrix includes 9 core source-backed rows: ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, and PirateDH.",
+    "The representative matrix includes 2 source-informed valid rows: Kingslayer and Boarlock. Both are intentionally retained because they expose hard source-confidence gaps while still proving technical load-safe package generation.",
+    "Kingslayer is preserved with first_strongness_gap=needs_mulligan_claim_for_quick_pick and stop_condition=exact_kingslayer_quick_pick_mulligan_source_unavailable.",
+    "Boarlock is preserved with first_strongness_gap=needs_mulligan_claim_for_fracking and stop_condition=exact_boarlock_fracking_mulligan_source_unavailable. It is also the only representative Combo.json control row.",
+    "CuteWarrior is not counted as a twelfth representative row. Its proof role is supplemental_load_safe_only, and its known limits explicitly say it does not change representative matrix count or close the Kingslayer and Boarlock gaps.",
+    "The universal no-block matrix test makes the important operational promise executable across all 12 user-provided inputs instead of relying only on documentation.",
+    "The operator docs define GlobalValues.json and Mulligan.json as the minimal load-safe runtime files, with per-card JSON as HSConfig rich-output repo policy and Combo.json emitted only when the deck and evidence support it.",
+    "The current mechanic support code and tests keep unsupported or unresolved mechanic semantics visible through reports, suppression, partial support, or warning-only buckets instead of inventing unsafe runtime rows."
+  ],
+  "provided_deck_matrix_assessment": [
+    {
+      "deck_name": "ShadowPriest",
+      "class_coverage": "Priest",
+      "archetype_family": "aggro burn and hero-power transform",
+      "proof_value": "Covers low-curve pressure, burn targeting, and transformed hero-power posture.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "CtAPaladin",
+      "class_coverage": "Paladin",
+      "archetype_family": "recruit board flood",
+      "proof_value": "Covers recruit timing, board flood pressure, and aura-style board posture.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "PirateRogue",
+      "class_coverage": "Rogue",
+      "archetype_family": "pirate tempo and weapon pressure",
+      "proof_value": "Covers weapon pressure from a proactive tempo shell and overlaps usefully with pirate families without replacing Kingslayer.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "BigShaman",
+      "class_coverage": "Shaman",
+      "archetype_family": "big recruit, deathrattle, and cheat effects",
+      "proof_value": "Covers big-minion cheat pressure, recruit-style effects, and deathrattle-adjacent runtime decisions.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "Discolock",
+      "class_coverage": "Warlock",
+      "archetype_family": "discard and hand mutation",
+      "proof_value": "Covers discard enabler timing, payoff summon pressure, and hand-mutation semantics.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "TreantDruid",
+      "class_coverage": "Druid",
+      "archetype_family": "token board snowball",
+      "proof_value": "Covers token board development, treant package posture, and board buff pressure.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "ImbueMage",
+      "class_coverage": "Mage",
+      "archetype_family": "hero-power and spell generation",
+      "proof_value": "Covers hero-power posture, imbue visibility, and generated-entity or spell-generation adjacency.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "MechPala",
+      "class_coverage": "Paladin",
+      "archetype_family": "mech board scaling",
+      "proof_value": "Covers mech scaling, magnetic or aura-style board value, sideboard-aware deck identity pressure, and per-card exact-ID output.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture despite Paladin class overlap because its mechanic family differs from CtAPaladin."
+    },
+    {
+      "deck_name": "Kingslayer",
+      "class_coverage": "Rogue",
+      "archetype_family": "weapon sequence pressure",
+      "proof_value": "Covers long-form weapon sequencing and attack pressure while preserving a visible Quick Pick mulligan source-depth gap.",
+      "fixture_stage": "source_informed_valid_fixture",
+      "lean_matrix_fit": "Keep as source-informed with explicit stop condition; do not replace it with an easier weapon row."
+    },
+    {
+      "deck_name": "Boarlock",
+      "class_coverage": "Warlock",
+      "archetype_family": "combo control and resource setup",
+      "proof_value": "Covers the representative Combo.json lane, combo-control resource setup, and warning-visible source-depth debt through Fracking.",
+      "fixture_stage": "source_informed_valid_fixture",
+      "lean_matrix_fit": "Keep as the combo-control source-informed control; do not widen the matrix to avoid the hard row."
+    },
+    {
+      "deck_name": "PirateDH",
+      "class_coverage": "Demon Hunter",
+      "archetype_family": "pirate hero-attack pressure",
+      "proof_value": "Covers hero-attack pressure from a class and play pattern distinct from Rogue weapon tempo.",
+      "fixture_stage": "core_source_backed_fixture",
+      "lean_matrix_fit": "Keep as a core control fixture."
+    },
+    {
+      "deck_name": "CuteWarrior",
+      "class_coverage": "Warrior",
+      "archetype_family": "low-curve supplemental load-safe proof",
+      "proof_value": "Adds Warrior acceptance and low-curve package generation to the universal no-block proof without changing source-depth matrix governance.",
+      "fixture_stage": "supplemental_load_safe_prepare_proof",
+      "lean_matrix_fit": "Keep supplemental unless a future review proves Warrior covers a missing representative family."
+    }
+  ],
+  "no_block_assessment": [
+    "Nothing is blocked can safely mean that a valid deck input can produce a structurally valid, load-safe initial package with GlobalValues.json and Mulligan.json, and can be applied through load_safe_apply when the operator gate allows it.",
+    "Nothing is blocked must not mean that every deck is SOURCE_BACKED_STRONG, that every modern Wild mechanic is first-class lowerable, or that every source-confidence gap is closed.",
+    "The set is useful because it includes both clean source-backed rows and preserved source-informed rows. Kingslayer and Boarlock prove that source-depth debt remains visible while runtime load safety remains available.",
+    "The no-block proof is strongest at the package-shape level: exact deck identity, required runtime files, per-card rich output, optional Combo.json, warning-only mechanic visibility, and no normal-path Presume.json or Concede.json.",
+    "Source confidence, mechanic visibility, source-depth gaps, combo precision, and review-only warnings remain report surfaces. They should guide follow-up research but should not become runtime hard blocks for a technically valid package.",
+    "Technical hard blocks remain appropriate for malformed deckcodes, invalid JSON, unsupported runtime filenames or blocks, missing GlobalValues.json or Mulligan.json, undeclared runtime files, nested runtime files, normal-path Presume.json or Concede.json, and forged or stale apply evidence."
+  ],
+  "skill_slimness_assessment": [
+    "The matrix is slim because it uses representative runtime families rather than trying to mirror every Wild ladder archetype.",
+    "Keeping CuteWarrior supplemental is the right size-control decision: it proves a narrow acceptance lane while leaving the representative matrix at 11 rows.",
+    "Keeping Boarlock and Kingslayer as source-informed controls is leaner and more honest than adding easier replacement decks that avoid the first missing source-depth chains.",
+    "The skill boundary remains clean because the evidence stays in pre-run HSConfig outputs and operator reports, not HSranger runtime tuning, HSTuner replay analysis, winrate analysis, or post-game candidate promotion.",
+    "The current design prefers warning-only and partial mechanic visibility over broad runtime-surface invention. That keeps the skill understandable and reduces future fixture maintenance.",
+    "Adding a new representative deck should require a proven uncovered runtime family or source-depth failure that none of the current 11 representative rows plus CuteWarrior can expose."
+  ],
+  "hearthstone_semantic_coverage": [
+    {
+      "coverage_area": "Class breadth",
+      "assessment": "Adequate for a lean proof but not class-complete. The set covers Priest, Paladin, Rogue, Shaman, Warlock, Druid, Mage, Demon Hunter, and supplemental Warrior. Hunter and Death Knight are not represented, but the tested runtime families matter more than full class enumeration for HSConfig package safety."
+    },
+    {
+      "coverage_area": "Aggro and tempo pressure",
+      "assessment": "Strong. ShadowPriest, PirateRogue, PirateDH, TreantDruid, and CuteWarrior cover proactive pressure from burn, weapons, hero attacks, board flood, and low-curve shells."
+    },
+    {
+      "coverage_area": "Board synergy and scaling",
+      "assessment": "Strong. CtAPaladin, TreantDruid, MechPala, BigShaman, and Discolock cover board flood, aura pressure, token snowball, magnetic or mech scaling, recruit, deathrattle, and payoff summon patterns."
+    },
+    {
+      "coverage_area": "Combo and control",
+      "assessment": "Adequate but intentionally narrow. Boarlock is the representative combo-control and Combo.json row. The set should not add more combo rows until a different combo package exposes a new compiler failure that Boarlock cannot reveal."
+    },
+    {
+      "coverage_area": "Weapon and hero-attack sequencing",
+      "assessment": "Strong. PirateRogue, Kingslayer, and PirateDH cover weapon pressure, long-form attack sequencing, and hero-attack pressure from different class and archetype angles."
+    },
+    {
+      "coverage_area": "Hero power and generated-entity pressure",
+      "assessment": "Adequate. ShadowPriest covers hero-power transform, ImbueMage covers hero-power and imbue posture, and generated entity or spell generation remains partial or identity-gated where exact identities are unresolved."
+    },
+    {
+      "coverage_area": "Source-depth and warning behavior",
+      "assessment": "Strong for the audit goal. The matrix intentionally keeps 9 source-backed-strong rows and 2 source-informed valid rows, proving both clean closure and warning-visible source debt."
+    },
+    {
+      "coverage_area": "Modern and awkward Wild mechanics",
+      "assessment": "Adequate for no-block visibility, not exhaustive first-class lowering. Mechanic support and drift tests cover direct, identity-gated-direct, partial, warning-only, unknown, and modern text-only mechanics without requiring a dedicated fixture for every keyword."
+    },
+    {
+      "coverage_area": "Known non-primary families",
+      "assessment": "Secret-heavy timing, freeze-control, location-heavy reactive control, overload-first timing, discover-chain control, Hunter class shells, and Death Knight class shells are not primary representative rows today. This is acceptable for the lean proof unless one of those families demonstrates a real package-shape or runtime-surface gap."
+    }
+  ],
+  "gaps_or_risks": [
+    "The set is representative, not exhaustive. It cannot prove every current or future Wild deck family, class, card package, or mechanic combination.",
+    "Hunter and Death Knight are not represented in the current 11-plus-1 user-provided set. That is a class-coverage gap, but not yet a proven HSConfig package-safety gap.",
+    "Secret-heavy timing, location-heavy control, overload-first shells, freeze-control, and discover-chain control are not isolated as primary rows. These should remain watch items rather than automatic fixture additions.",
+    "Kingslayer still lacks exact Kingslayer or Kingsbane Quick Pick mulligan evidence, so it must remain source-informed until that specific stop condition closes.",
+    "Boarlock still lacks exact Boarlock-relevant Fracking mulligan evidence and retains source-informed blockers, so it must remain source-informed until those exact gaps close.",
+    "The current no-block claim depends on the distinction between technical load safety and semantic confidence. If future docs or code blur that distinction, the matrix could appear stronger or weaker than it really is.",
+    "Future Hearthstone mechanics may drift beyond current static detection. The right response is first to add non-blocking visibility or warning rows, not to add a full representative deck by default.",
+    "Fixture bloat remains the main governance risk: adding more decks for popularity, class completion, or duplicate aggro and pirate pressure would increase maintenance cost without improving the proof."
+  ],
+  "recommended_next_action": "Keep the representative matrix at 11 decks plus supplemental CuteWarrior, and add no new representative deck unless a future failing or audit proves a runtime-family or source-depth gap that the current set cannot expose.",
+  "confidence": "high - the verdict is grounded in the current operator docs, matrix governance files, source-closure docs, mechanic visibility tests, supplemental CuteWarrior proof, and the universal 12-deck no-block test.",
+  "uncertain": []
+}

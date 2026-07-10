@@ -16,6 +16,11 @@ After durable Boarlock and Kingslayer preservation, there is no current actionab
 | `docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/` | No-block Wild mechanic evidence | Valid deck packages should stay load-safe even when mechanic semantics are report-only. |
 | `docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/` | Universal no-block evidence | The no-block promise is implemented through warning visibility, not through broader runtime writes. |
 
+- `2026-07-10-hsconfig-universal-no-block-skill-audit-v5` - No-block failure-mode summary evidence.
+  Confirms that the next narrow improvement is
+  an operator-facing `no_block_failure_mode_summary`, not a broader apply gate,
+  new representative decks, or post-run HSTuner scope.
+
 ## 2026-07-10 No-Block Universal Skill Audit V4
 
 - Path: `docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/`

@@ -1,0 +1,69 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Short final verdict for this research item. State whether the current skill
+          is optimal enough, needs small polish, or has a material gap.
+      - name: source_backed_evidence
+        type: array
+        required: true
+        description: >
+          Public, official, source-backed, or repo-backed evidence used for the verdict.
+          Include URLs or file paths and concise claim summaries.
+      - name: repo_evidence
+        type: array
+        required: true
+        description: >
+          Local repository evidence such as files, tests, CLI behavior, reports, matrix
+          fixtures, operator docs, or installed skill checks.
+      - name: provided_deck_matrix_assessment
+        type: array
+        required: true
+        description: >
+          Assessment of the user-provided deck set and whether it exercises enough
+          archetype, class, and mechanic families without bloating the repo.
+      - name: no_block_assessment
+        type: array
+        required: true
+        description: >
+          Explain what "nothing is blocked" can safely mean. Separate valid package
+          generation and load-safe apply from source-confidence, mechanic visibility,
+          source-depth, combo precision, and review-only warnings.
+      - name: skill_slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assessment of whether HSConfig remains narrow, efficient, understandable,
+          and free of unnecessary HSranger, HSTuner, replay, winrate, or post-run scope.
+      - name: hearthstone_semantic_coverage
+        type: array
+        required: true
+        description: >
+          Coverage of Hearthstone mechanics, archetypes, card roles, card text, hero
+          power, generated entities, and Wild-specific edge cases relevant to pre-run
+          static config generation.
+      - name: gaps_or_risks
+        type: array
+        required: true
+        description: >
+          Concrete risks, ambiguities, stale docs, missing tests, future-mechanic drift
+          hazards, or over-broad tests. Use an empty array if none.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          The single best next action. Prefer small high-leverage recommendations over
+          broad rewrites unless a material gap is proven.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          Confidence level: high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Field names or claims that could not be verified.
