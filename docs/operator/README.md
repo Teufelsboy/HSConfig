@@ -167,3 +167,8 @@ syntax, or acceptance behavior without widening the representative matrix.
 CuteWarrior is supplemental. It must not be counted as a twelfth representative
 row unless a future matrix review proves a real missing family that none of the
 current eleven representative rows can exercise.
+
+SecretMage and HighlanderPriest are supplemental visibility-only decks. They
+prove that current Wild secret/highlander/location control surfaces still
+produce load-safe packages, but they do not widen the representative matrix and
+do not close Boarlock or Kingslayer source-depth stop conditions.

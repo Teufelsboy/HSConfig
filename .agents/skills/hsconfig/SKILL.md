@@ -46,6 +46,8 @@ Fixture stage meaning:
 - `source_informed_valid_fixture`: the fixture produces a valid package, but still has source-depth or lowering gaps before it can be called strong.
 - `future_fixture`: reserved for examples outside the current proof set.
 
+Supplemental visibility decks can broaden Wild mechanic proof without becoming representative source-depth rows or changing runtime apply permission.
+
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks.
 `source_depth_lane` is the readable alias for that first missing source-to-runtime link. It helps operators read closure depth, but it is not an apply permission; keep `reports/operator_summary.json` as the single operator gate.
 Current closure truth is Boarlock first, Kingslayer second. Boarlock stays first

@@ -103,6 +103,12 @@ As HSConfig rich-output repo policy, normal `prepare` must also emit one per-car
 JSON file for every unique deck CardID when deck-card identity is known. That
 rich-output proof is not the minimal runtime-apply gate.
 
+Supplemental visibility decks may broaden Wild mechanic coverage without
+becoming representative source-depth rows. They must still obey the same
+runtime promise: a valid package remains `load_safe_apply`, warning-only
+mechanics stay descriptive, and normal output must not emit `Presume.json` or
+`Concede.json`.
+
 ## Acceptance Matrix Diagnostic
 
 `hsconfig acceptance-matrix` may summarize prepared packages across the proof
