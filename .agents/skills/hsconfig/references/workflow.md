@@ -22,6 +22,7 @@ When a guide-backed card surface is documented, the runtime file family is `per-
 Use `hsconfig prepare --guide-sources-json ...` for normal package creation. It performs HearthSim deckstring decode, resolves exact identity, enriches card metadata, builds the guide/static research contract, compiles runtime config, validates JSON, and writes the operator reports.
 
 Important outputs include `operator_summary.json`, `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_builder_receipt.json`, `candidate_archetypes.json`, `identity_graph_report.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
+`Concede.json` and `Presume.json` are documented HearthRanger surfaces, but normal HSConfig does not emit them; absence never blocks a valid load-safe package.
 
 For source-informed packages, open `source_claim_gap_report.json` first to see the card-level missing link, then open `strong_promotion_report.json` for the promotion verdict.
 `source_depth_lane` is the readable alias for the first missing source-to-runtime link in those source-informed reports. It does not grant apply permission; `reports/operator_summary.json` remains the single operator gate.
@@ -36,7 +37,7 @@ For mechanic visibility, use `first_warning_boundary` as the first next-inspecti
 
 Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.
 
-Modern mechanic visibility is non-blocking: `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` are surfaced as partial or warning-only visibility labels, not runtime write blockers.
+Modern mechanic visibility is non-blocking: `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, `imbue`, `rewind`, `herald`, and `shatter` are surfaced as partial or warning-only visibility labels, not runtime write blockers.
 
 1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
 2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.

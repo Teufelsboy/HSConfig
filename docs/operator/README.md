@@ -26,6 +26,7 @@ Open `reports/operator_summary.json` first.
 
 - `technical_status`, `runtime_apply_mode`, and `runtime_apply_allowed` decide whether the package is structurally load-safe to apply.
 - Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`. Normal `prepare` packages should still emit per-card `<CARDID>.json` files when deck-card identity is known, but those rich CardID files are not the minimal runtime-apply gate.
+- `Concede.json` and `Presume.json` are HearthRanger-documented VisionAI surfaces, but normal HSConfig does not emit them. Their absence is not a block for a load-safe deck package.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
 - `mechanic_visibility_summary` is descriptive and non-blocking. It shows `direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic buckets so a valid package can be applied while still making Dredge, Tradeable, unresolved generation, or partial targeting limits visible.
@@ -34,7 +35,7 @@ Open `reports/operator_summary.json` first.
 
 `reports/mechanic_drift_report.json` is the non-blocking current-card-data drift surface. `mechanic_drift_summary` in `reports/operator_summary.json` lists unknown mechanics, text-only mechanics, and unknown card types detected from HearthstoneJSON-style metadata. Unknown mechanics are warning-only and do not block load-safe apply. Mechanic drift is not a runtime apply gate; it tells the operator which future Wild mechanic should be mapped next.
 
-Modern mechanic visibility is non-blocking. HSConfig names current mechanics such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` when card metadata or text exposes them. Mechanics without a documented normal-path VisionAI runtime surface stay visible as `warning_only` or `partial`; they must not block `load_safe_apply` for a technically valid package.
+Modern mechanic visibility is non-blocking. HSConfig names current mechanics such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, `imbue`, `rewind`, `herald`, and `shatter` when card metadata or text exposes them. Mechanics without a documented normal-path VisionAI runtime surface stay visible as `warning_only` or `partial`; they must not block `load_safe_apply` for a technically valid package.
 
 - Open `reports/semantic_enrichment_report.json` when the summary points to static or warning-only mechanic coverage. It explains inferred card semantics, static evidence, linked entities, deckwide effects, and warning-only flags. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.

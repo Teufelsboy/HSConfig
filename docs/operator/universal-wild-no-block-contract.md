@@ -12,6 +12,7 @@ every valid deck input.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
 Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
+`Concede.json` and `Presume.json` are HearthRanger-documented VisionAI surfaces, but normal HSConfig does not emit them. Their absence is not a block for a load-safe deck package.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
 ## Non-Blocking Config Usefulness
@@ -49,7 +50,7 @@ These stay visible, but they do not block a valid package:
 
 Mechanic drift is not a runtime apply gate. `reports/mechanic_drift_report.json` and `mechanic_drift_summary` expose unknown mechanics, text-only mechanics, and unknown card types as warning data. Unknown mechanics are warning-only and do not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
 
-Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` are current/static mechanic visibility labels. They may lower as `partial` when HSConfig has a safe existing VisionAI posture surface, otherwise they stay `warning_only`. Neither state blocks `load_safe_apply` for a technically valid package.
+Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, `imbue`, `rewind`, `herald`, and `shatter` are current/static mechanic visibility labels. They may lower as `partial` when HSConfig has a safe existing VisionAI posture surface, otherwise they stay `warning_only`. Neither state blocks `load_safe_apply` for a technically valid package.
 
 ## Mechanic Support Levels
 

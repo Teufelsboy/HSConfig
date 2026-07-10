@@ -190,14 +190,25 @@ def test_skill_workflow_documents_deckstring_default_and_runtime_mapping():
 
 
 def test_skill_docs_keep_presume_concede_out_of_normal_path():
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
-    surfaces = (SKILL_ROOT / "references" / "visionai-surfaces.md").read_text(encoding="utf-8")
+    active_files = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+        Path(".agents/skills/hsconfig/references/visionai-surfaces.md"),
+    ]
+    required_terms = [
+        "Concede.json",
+        "Presume.json",
+        "documented",
+        "normal HSConfig",
+        "does not emit",
+    ]
 
-    assert "Presume.json` or `Concede.json`" in text
-    assert "normal path" in surfaces
-    assert "Presume.json" not in workflow
-    assert "Concede.json" not in workflow
+    for path in active_files:
+        text = path.read_text(encoding="utf-8")
+        for term in required_terms:
+            assert term in text, f"{path}: {term}"
 
 
 def test_skill_docs_describe_cardid_runtime_block_lowering():
@@ -616,6 +627,9 @@ def test_docs_and_skill_explain_current_modern_mechanic_visibility_without_block
         "`elusive`",
         "`poisonous`",
         "`imbue`",
+        "`rewind`",
+        "`herald`",
+        "`shatter`",
     ]:
         assert mechanic in combined
 
