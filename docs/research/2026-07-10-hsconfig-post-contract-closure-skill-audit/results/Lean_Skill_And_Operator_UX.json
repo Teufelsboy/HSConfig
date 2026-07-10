@@ -1,0 +1,48 @@
+{
+  "item_name": "Lean Skill And Operator UX",
+  "verdict": "Pass. HSConfig currently reads as a narrow and competent pre-run config generator, not as HSTuner, replay analysis, winrate validation, or post-game tuning.",
+  "source_backed_claims": [
+    "README.md, docs/operator/README.md, the repo skill file, the installed skill file, and CLI help all state the pre-run-only boundary.",
+    "The normal operator path is source-manifest, draft-source-documents, research-deck, prepare, validate, apply.",
+    "reports/operator_summary.json is the single operator gate.",
+    "Normal output is GlobalValues.json, Mulligan.json, per-card CardID JSON, and optional Combo.json. Presume.json and Concede.json are legacy/gated, not normal-path output.",
+    "The installed hsconfig skill is synchronized with the repo-local skill copy."
+  ],
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/.codex/skills/hsconfig/SKILL.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/cli_parser.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_cli_help.py"
+  ],
+  "repo_evidence": [
+    "python scripts/sync_installed_skill.py --check returned HSConfig skill is in sync.",
+    "Local focused verification in this audit passed 143 tests.",
+    "Subagent read-only CLI/help audit reported 85 relevant UX/scope tests passing."
+  ],
+  "no_block_implication": "The UX supports the no-block promise because warnings route to inspection reports rather than to stop states. Operators should see a valid load-safe package even when semantic richness is thin.",
+  "mechanic_or_surface_gaps": [
+    "Warning-only mechanics remain intentionally visible but non-blocking.",
+    "Combo detail is only emitted when concrete sequences exist.",
+    "GlobalValues keys needing runtime evidence remain outside HSConfig authority."
+  ],
+  "bloat_or_scope_risk": [
+    "The main current bloat risk is documentation volume, especially untracked historical research folders.",
+    "Expert and legacy surfaces are acceptable but must stay clearly outside the normal path.",
+    "Adding replay/HDT/winrate/candidate-promotion work here would immediately make HSConfig less narrow."
+  ],
+  "recommended_next_actions": [
+    "Keep HSConfig scope unchanged.",
+    "Improve validate and research-contract help text only if operator ambiguity remains.",
+    "Keep old research folders behind docs/research/current-truth.md and do not link them from the normal operator path.",
+    "Avoid adding post-game features to HSConfig."
+  ],
+  "confidence": "high",
+  "uncertain": [
+    "No real runtime apply was performed for this UX item.",
+    "Public docs were handled by the separate External Surface Sanity Check item."
+  ]
+}

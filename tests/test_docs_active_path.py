@@ -96,3 +96,11 @@ def test_research_readme_points_to_current_truth_index():
     assert ("current truth file" in text) or (
         "only place that names the active evidence packages" in text
     )
+
+
+def test_current_truth_names_post_contract_closure_audit():
+    text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+
+    assert "2026-07-10-hsconfig-post-contract-closure-skill-audit" in text
+    assert "Post-contract no-block cleanup evidence" in text
+    assert "per-card-every-card coverage is HSConfig rich output" in text

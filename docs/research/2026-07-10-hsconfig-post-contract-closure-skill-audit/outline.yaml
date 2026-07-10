@@ -1,0 +1,32 @@
+topic: docs/research/2026-07-10-hsconfig-post-contract-closure-skill-audit
+execution:
+  output_dir: docs/research/2026-07-10-hsconfig-post-contract-closure-skill-audit/results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: Current No-Block Runtime Contract
+    category: runtime_contract
+    description: >
+      Audit the current repository state after the no-block contract closure. Verify whether
+      load-safe runtime apply is gated by the minimal VisionAI surfaces needed for a valid
+      package, and whether CardID behavior, source strength, and config usefulness are no
+      longer hard blockers for valid decks.
+  - name: Wild Deck Mechanic Breadth
+    category: mechanic_matrix
+    description: >
+      Audit the provided Wild deck list against current mechanic families and repository
+      coverage. Identify which deck or mechanic families should always produce load-safe
+      output, which should produce rich CardID/Combo output, and which should remain
+      diagnostics-only rather than hard blocks.
+  - name: Lean Skill And Operator UX
+    category: skill_ux
+    description: >
+      Audit whether HSConfig remains narrow, simple, efficient, and competent: pre-run only,
+      no HSTuner/replay/winrate scope creep, clear commands, synced installed skill files,
+      and low operator ambiguity.
+  - name: External Surface Sanity Check
+    category: public_docs
+    description: >
+      Re-check current public HearthRanger VisionAI and HearthstoneJSON documentation surfaces
+      relevant to GlobalValues, Mulligan, per-card CardID JSON, Combo, and card metadata.
+      Separate source-backed claims from assumptions and unknowns.

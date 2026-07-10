@@ -1,0 +1,50 @@
+{
+  "item_name": "External Surface Sanity Check",
+  "verdict": "Pass with source-boundary caveats. Public HearthRanger VisionAI pages support GlobalValues.json, Mulligan.json, per-card CARDID.json behavior files, and optional Combo.json. HearthstoneJSON supports card metadata and option identities. The stronger HSConfig policy that normal prepare emits per-card files for every deck card is repo policy, not a directly documented HearthRanger requirement.",
+  "source_backed_claims": [
+    "HearthRanger documents CustomConfig deck mapping through deck_config.ini and deck-specific directories.",
+    "GlobalValues.json is documented with GameCardId GlobalValues, condition/value rows, and FirstTurnValueWeight plus SecondTurnValueWeight board-value weighting.",
+    "Mulligan.json is documented with GameCardId Mulligan, Mulligan.values rows, mulligan selectors, condition, and hold/discard value.",
+    "Combo.json is documented with GameCardId Combo, ComboList.values, same-turn >>, and across-turn >-> syntax.",
+    "Per-card CARDID.json behavior files are documented with blocks such as InHandPlayPriority and OnDiscoverCardBonus; examples show condition/value rows.",
+    "HearthstoneJSON exposes latest card JSON data with card ids, dbfId, text, mechanics, referencedTags, entourage, playRequirements, and related metadata."
+  ],
+  "source_urls": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://hearthstonejson.com/",
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
+  ],
+  "repo_evidence": [
+    "src/hsconfig/surface_intent.py treats GlobalValues.json and Mulligan.json as universal required surfaces.",
+    "src/hsconfig/package_builder.py emits per-card CardID files, always writes GlobalValues.json and Mulligan.json, and writes Combo.json only when combo payload exists.",
+    "src/hsconfig/apply_gate.py defines load-safe apply around required GlobalValues.json and Mulligan.json.",
+    "tests/test_universal_wild_no_block_matrix.py proves normal prepare emits richer per-card files for the provided Wild decks."
+  ],
+  "no_block_implication": "There is no public-doc reason to block a valid deck when only semantic richness is incomplete. HSConfig should continue to treat load_safe_apply as its own operator policy and not present it as a HearthRanger term.",
+  "mechanic_or_surface_gaps": [
+    "Public proof exists for per-card behavior files, but not for an official requirement that every deck card must always have a per-card file.",
+    "Some accepted registry blocks need explicit source-gap annotation if they are not confirmed from public docs, including OnAdaptCardBonus, BeforeUpgradeCardBonus, and OnBoardPlayPriority.",
+    "Choose One option identity is plausible through HearthstoneJSON, but still requires exact mapping before lowering.",
+    "The public VisionAI pages are legacy-style and undated, so they are syntax evidence rather than a complete versioned contract."
+  ],
+  "bloat_or_scope_risk": [
+    "Treating every-card CardID emission as official external requirement would overstate the evidence.",
+    "Expanding accepted VisionAI blocks without source tracking increases maintenance risk.",
+    "Calling load_safe_apply a HearthRanger concept rather than an HSConfig operator policy would blur responsibility."
+  ],
+  "recommended_next_actions": [
+    "Keep the external surface contract phrased as documented core surfaces: GlobalValues.json, Mulligan.json, per-card CARDID.json, and optional Combo.json.",
+    "Label per-card-every-card coverage as HSConfig rich-output repo policy.",
+    "Add source-gap notes for accepted registry blocks that are not confirmed from public docs.",
+    "Keep warning-only mechanics report-only unless exact documented VisionAI syntax and source-backed identity exist."
+  ],
+  "confidence": "medium-high",
+  "uncertain": [
+    "Whether current live VisionAI supports every block accepted by HSConfig's registry.",
+    "Whether newer non-public HearthRanger documentation supersedes public help pages.",
+    "Whether per-card files for every deck card are practically necessary in runtime or simply useful rich output."
+  ]
+}

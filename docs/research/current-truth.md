@@ -8,6 +8,7 @@ Normal operator path starts at `docs/operator/README.md`.
 
 | Package | Role | Current implication |
 | --- | --- | --- |
+| `docs/research/2026-07-10-hsconfig-post-contract-closure-skill-audit/` | Post-contract no-block cleanup evidence | Keep the core apply gate unchanged; runtime hard blocks are technical only, per-card-every-card coverage is HSConfig rich output, and source-strength gaps are promotion/richness gaps. |
 | `docs/research/2026-07-09-hsconfig-next-recommendation-mechanic-polish/` | Visibility-only Mechanic Polish | Add non-blocking mechanic visibility for `choose_one`, `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool`; do not change apply gates. |
 | `docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/` | No-block Wild mechanic evidence | Valid deck packages should stay load-safe even when mechanic semantics are report-only. |
 | `docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/` | Universal no-block evidence | The no-block promise is implemented through warning visibility, not through broader runtime writes. |

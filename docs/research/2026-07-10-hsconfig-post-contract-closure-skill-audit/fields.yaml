@@ -1,0 +1,36 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: item_name
+        required: true
+        description: Research item name.
+      - name: verdict
+        required: true
+        description: Direct verdict for the audited area.
+      - name: source_backed_claims
+        required: true
+        description: Claims backed by current public sources or local repository evidence.
+      - name: source_urls
+        required: true
+        description: Public URLs or local repo paths used as evidence.
+      - name: repo_evidence
+        required: true
+        description: Local files, tests, or command outputs relevant to the item.
+      - name: no_block_implication
+        required: true
+        description: What this means for the promise that any valid deck should produce a load-safe package.
+      - name: mechanic_or_surface_gaps
+        required: true
+        description: Concrete mechanic families, VisionAI surfaces, edge cases, or unsupported surfaces still visible.
+      - name: bloat_or_scope_risk
+        required: true
+        description: Any scope creep, duplicated docs, stale artifacts, or complexity risks.
+      - name: recommended_next_actions
+        required: true
+        description: Practical next actions that improve competence without making the skill broad.
+      - name: confidence
+        required: true
+        description: high, medium, or low confidence in the findings.
+      - name: uncertain
+        required: true
+        description: Claims or fields that remain uncertain.

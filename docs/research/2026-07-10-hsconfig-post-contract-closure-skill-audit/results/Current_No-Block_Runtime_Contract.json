@@ -1,0 +1,49 @@
+{
+  "item_name": "Current No-Block Runtime Contract",
+  "verdict": "Pass with minor cleanup risks. The current branch gates load-safe apply by structural package validity plus the minimal runtime files GlobalValues.json and Mulligan.json. Per-card CardID files, source strength, and config_usefulness are not hard runtime-write blockers for an otherwise valid load-safe package.",
+  "source_backed_claims": [
+    "apply_gate.py requires CustomConfig, one deck directory, input_manifest.json, and only GlobalValues.json plus Mulligan.json as required runtime files.",
+    "runtime_apply.py validates only GlobalValues.json and Mulligan.json in _validate_complete_source_dir before copying a package.",
+    "validate_package.py aligns with the same required minimal runtime surfaces when complete-package validation is requested.",
+    "Tests cover minimal runtime apply without CardID files, valid-but-not-strong warning packages, non-blocking config_usefulness, and normal Wild prepare output with per-card files."
+  ],
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md"
+  ],
+  "repo_evidence": [
+    "Branch: codex/hsconfig-no-block-contract-closure at 8cc67a5616f965c63d2c62a1d2ce88a456f948a8.",
+    "Focused verification in this audit: 143 passed in 15.03s.",
+    "Installed skill sync check passed: HSConfig skill is in sync.",
+    "Local rg inspection found runtime apply checks for GlobalValues.json and Mulligan.json only."
+  ],
+  "no_block_implication": "A valid package can apply in the normal load-safe lane even when semantic/source-depth debt remains visible as warnings. Missing CardID runtime rows, weak source depth, runtime-surface gaps, warning-only mechanics, or load_safe_but_thin usefulness affect richness, not runtime-write permission.",
+  "mechanic_or_surface_gaps": [
+    "Combo.json remains optional and should only be emitted for concrete valid combo rows.",
+    "Presume.json and Concede.json remain legacy/gated surfaces and are blocked from the normal apply path.",
+    "Choice and discover lowering remains identity-gated; unresolved option identity stays report-visible.",
+    "Board position, generic spell targeting, location activation, secret timing, and random generated pools remain warning-only."
+  ],
+  "bloat_or_scope_risk": [
+    "Legacy source-informed apply wording still exists in some compatibility branches and can confuse the mental model.",
+    "The phrase hard blocker can still be misread when used for source-strength promotion rather than runtime apply.",
+    "The proof-matrix expectation that prepare emits per-card files should stay clearly labeled as repo policy, not a minimal runtime gate."
+  ],
+  "recommended_next_actions": [
+    "Leave the core apply gate unchanged.",
+    "Rename source-strength hard-block wording to promotion-blocker wording where it appears in operator docs.",
+    "Document source-informed compatibility branches as legacy-only or remove them in a separate cleanup if no consumers remain.",
+    "Add this audit path to docs/research/current-truth.md if keeping research artifacts as active evidence."
+  ],
+  "confidence": "high",
+  "uncertain": [
+    "Real HearthRanger runtime behavior was not sampled in this audit.",
+    "Historical research folders were not exhaustively reconciled."
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "item_name": "Wild Deck Mechanic Breadth",
+  "verdict": "Pass for the no-block promise. The 12 provided Wild decks have coverage showing valid deck input can produce a load-safe package. Source-backed richness is strongest for 9 core fixtures; Kingslayer and Boarlock remain source-informed controls; CuteWarrior is supplemental load-safe coverage.",
+  "source_backed_claims": [
+    "All 12 listed decks are covered by test_universal_wild_no_block_matrix.py for VALID_PACKAGE, runtime_load_safe=true, runtime_apply_mode=load_safe_apply, GlobalValues.json, Mulligan.json, per-card JSON in normal prepare output, and no normal-path Presume.json or Concede.json.",
+    "The representative matrix has 11 decks: 9 core_source_backed_fixture rows and 2 source_informed_valid_fixture rows.",
+    "Core source-backed coverage includes hero-power transform, aggro/burn targeting, recruit/aura, pirate/weapon pressure, big/recruit/deathrattle, discard, token/board buff, hero power/spell generation, mech/magnetic, and hero attack.",
+    "Boarlock is the current representative Combo.json control row, but this is narrow combo competence, not proof that every combo archetype is exhausted."
+  ],
+  "source_urls": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_output_competence_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_informed_closure_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py"
+  ],
+  "repo_evidence": [
+    "The local universal Wild no-block test includes ShadowPriest, CtAPaladin, PirateRogue, BigShaman, Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, PirateDH, and CuteWarrior.",
+    "Local focused test run in this audit passed 143 tests including the universal Wild matrix and scope/sync checks.",
+    "Existing fixture scans from subagent audit found representative source-document fixtures for 11 decks; CuteWarrior is supplemental."
+  ],
+  "no_block_implication": "Valid decks should not be blocked just because they are not source-strong, lack broad combo proof, include warning-only mechanics, or still need guide depth. Load-safety is a structural contract; source-strength is a quality label.",
+  "mechanic_or_surface_gaps": [
+    "Kingslayer still needs exact Quick Pick/Kingsbane mulligan evidence for source-strong promotion.",
+    "Boarlock still needs exact Boarlock-relevant Fracking mulligan evidence for source-strong promotion.",
+    "Generated/random pools, board placement, generic targeting, location activation, secret timing, Dredge, Tradeable, and unknown future mechanics remain diagnostics-only unless exact documented VisionAI syntax and identity are available.",
+    "CuteWarrior is not yet a representative mechanic-breadth fixture."
+  ],
+  "bloat_or_scope_risk": [
+    "Expanding the representative matrix without a specific mechanic gap would add maintenance cost.",
+    "Inventing runtime rows for warning-only mechanics would make the skill broader and less reliable.",
+    "Historical research folders can create noise if they are treated as operator guidance."
+  ],
+  "recommended_next_actions": [
+    "Keep the representative matrix at 11 and keep CuteWarrior supplemental unless it is promoted for a specific mechanic family.",
+    "Keep warning-only mechanics report-only until a documented VisionAI surface and exact source-backed identity exist.",
+    "Only close Kingslayer or Boarlock source-informed gaps with exact new guide evidence.",
+    "Maintain the distinction: no-block load safety is broad; source-backed mechanic richness is intentionally narrower."
+  ],
+  "confidence": "high",
+  "uncertain": [
+    "Public guide/source URLs inside fixtures were not refreshed by the local mechanic-breadth subagent.",
+    "Live HearthRanger runtime behavior was not sampled."
+  ]
+}
