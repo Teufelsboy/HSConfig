@@ -387,6 +387,36 @@ def test_skill_docs_explain_load_safe_apply_mode():
     assert "source-backed ready" not in workflow.lower()
 
 
+def test_skill_docs_distinguish_rich_output_from_minimal_apply_gate():
+    docs = "\n".join(
+        [
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+                encoding="utf-8"
+            ),
+            Path(".agents/skills/hsconfig/references/card-behavior-policy.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "HSConfig rich-output repo policy" in docs
+    assert "not the minimal runtime-write gate" in docs
+    assert "not an official HearthRanger minimum" in docs
+    assert "`load_safe_apply` is an HSConfig operator policy" in docs
+
+
+def test_skill_docs_mark_repo_supported_source_gap_blocks():
+    card_policy = Path(
+        ".agents/skills/hsconfig/references/card-behavior-policy.md"
+    ).read_text(encoding="utf-8")
+
+    for block in ["OnAdaptCardBonus", "BeforeUpgradeCardBonus", "OnBoardPlayPriority"]:
+        assert block in card_policy
+    assert "repo-supported source-gap blocks" in card_policy
+    assert "not confirmed in the latest public-doc audit" in card_policy
+
+
 def test_skill_documents_source_builder_lite_workflow():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")

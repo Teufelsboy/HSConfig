@@ -22,6 +22,21 @@ Prefer the most specific documented block:
 - `BeforeUpgradeCardBonus` for documented upgrade behavior.
 - `InHandPlayPriority` and `OnBoardPlayPriority` only for search-order hints.
 
+## Source Backing Notes
+
+The public-doc-confirmed normal card behavior blocks include `BeforePlayCardBonus`,
+`BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`,
+`BeforePhysicalAttackBonus`, `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, and
+`InHandPlayPriority`.
+
+The repo-supported source-gap blocks are `OnAdaptCardBonus`,
+`BeforeUpgradeCardBonus`, and `OnBoardPlayPriority`. Keep them visible as
+supported HSConfig registry blocks, but do not describe them as confirmed in the
+latest public-doc audit. They are not confirmed in the latest public-doc audit.
+
+Per-card-every-card coverage is HSConfig rich-output repo policy. It is not the
+minimal runtime-write gate and not an official HearthRanger minimum.
+
 Guide claims may request a specific `runtime_block` only when the block is part
 of the documented CardID behavior registry. Unsupported blocks stay in reports.
 

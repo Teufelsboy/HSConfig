@@ -42,7 +42,7 @@ For mechanic visibility, use `first_warning_boundary` as the first next-inspecti
 
 For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
 
-`technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` is the normal initial write boundary. `runtime_apply_mode=load_safe_apply` means `hsconfig apply --package <package> --runtime-root <runtime-root> --json` is allowed. `SOURCE_BACKED_STRONG` remains the high-confidence source-backed handoff label. Lower confidence lanes remain visible in reports, but they do not block a load-safe initial package.
+`technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` is the normal initial write boundary. `runtime_apply_mode=load_safe_apply` means `hsconfig apply --package <package> --runtime-root <runtime-root> --json` is allowed. `SOURCE_BACKED_STRONG` remains the high-confidence source-backed handoff label. Lower confidence lanes remain visible in reports, but they do not block a load-safe initial package. `load_safe_apply` is HSConfig's operator policy for structurally valid pre-run packages. It is not a HearthRanger public-doc term. Per-card-every-card coverage is HSConfig rich-output repo policy for stronger control and proof matrices, not the minimal runtime-write gate.
 
 Source-informed apply remains pre-run only. It is not replay analysis, winrate validation, HSTuner candidate promotion, or post-run tuning.
 
