@@ -31,6 +31,10 @@ For source-informed packages, open `source_claim_gap_report.json` first to see t
 
 Read `reports/operator_summary.json` before handoff or runtime apply.
 `reports/operator_summary.json` is the single operator gate for normal handoff or apply decisions. Lower-level reports explain why the package is strong, warning-only, or still needs source work.
+Use `no_block_failure_mode_summary` to separate hard stops from warning work.
+`technical_hard_block` means fix the package before apply. Other categories
+are explanatory and do not create a second apply gate when the package is
+`technical_status=VALID_PACKAGE`.
 `mechanic_visibility_summary` explains mechanic coverage buckets: `direct`, `identity_gated_direct`, `partial`, and `warning_only`. Warning-only mechanics are descriptive and must not block load-safe apply when the package is technically valid.
 
 For mechanic visibility, use `first_warning_boundary` as the first next-inspection item and `warning_boundaries` as the complete alphabetical list of report-only mechanics. Keep the workflow moving when the package is technically valid: warning-only mechanics describe limits, not blocks.

@@ -48,6 +48,15 @@ These stay visible, but they do not block a valid package:
 - partial mechanic support
 - warning-only mechanics
 
+## Failure Mode Summary
+
+`reports/operator_summary.json` includes `no_block_failure_mode_summary`.
+This is an explanatory summary, not a new permission model. It groups real
+technical stops under `technical_hard_block` and non-blocking follow-up work
+under `source_depth_warning`, `warning_only_mechanic`,
+`future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and
+`runtime_evidence_only_tuning`. It does not create a second apply gate.
+
 Mechanic drift is not a runtime apply gate. `reports/mechanic_drift_report.json` and `mechanic_drift_summary` expose unknown mechanics, text-only mechanics, and unknown card types as warning data. Unknown mechanics are warning-only and do not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
 
 Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` are current/static mechanic visibility labels. They may lower as `partial` when HSConfig has a safe existing VisionAI posture surface, otherwise they stay `warning_only`.

@@ -710,3 +710,17 @@ def test_skill_docs_explain_mechanic_drift_is_nonblocking():
     assert "mechanic_drift_summary" in combined
     assert "reports/mechanic_drift_report.json" in combined
     assert "Unknown mechanics are warning-only and do not block load-safe apply" in combined
+
+
+def test_skill_explains_no_block_failure_mode_summary():
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{skill}\n{workflow}"
+
+    assert "no_block_failure_mode_summary" in combined
+    assert "technical_hard_block" in combined
+    assert "warning_only_mechanic" in combined
+    assert "future_mechanic_drift" in combined
+    assert "does not create a second apply gate" in combined

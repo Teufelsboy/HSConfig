@@ -155,3 +155,24 @@ def test_active_docs_do_not_reintroduce_stale_matrix_counts_or_closure_targets()
         assert stale_claim not in active_text
     for current_claim in required:
         assert current_claim in current_truth_text
+
+
+def test_operator_docs_explain_no_block_failure_mode_summary():
+    docs = "\n".join(
+        [
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
+            Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "no_block_failure_mode_summary" in docs
+    assert "technical_hard_block" in docs
+    assert "source_depth_warning" in docs
+    assert "warning_only_mechanic" in docs
+    assert "future_mechanic_drift" in docs
+    assert "guide_strength_gap" in docs
+    assert "combo_uncertainty" in docs
+    assert "runtime_evidence_only_tuning" in docs
+    assert "It does not create a second apply gate." in docs

@@ -46,6 +46,14 @@ Modern mechanic visibility is non-blocking. HSConfig names current mechanics suc
 
 Use `reports/operator_summary.json` as the normal operator gate.
 
+`no_block_failure_mode_summary` is the fastest way to read why a package did
+or did not stop. `technical_hard_block` is the only hard stop category. The
+other categories, `source_depth_warning`, `warning_only_mechanic`,
+`future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and
+`runtime_evidence_only_tuning`, explain source or semantic limits while
+`load_safe_apply` can still proceed for `technical_status=VALID_PACKAGE`.
+It does not create a second apply gate.
+
 `hsconfig apply --fake --json` creates a receipt-bound preview without runtime mutation.
 Normal `hsconfig apply --json` remains autonomous when the gate allows it: it creates
 and verifies the fake receipt in the same invocation, then writes the runtime package.

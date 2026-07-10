@@ -75,6 +75,11 @@ Rules:
 - After `prepare`, inspect `config_usefulness` in `reports/operator_summary.json`.
 - Treat `config_usefulness` as non-blocking: it describes richness across Mulligan, GlobalValues, CardID behavior, and Combo, but it must not prevent load-safe apply.
 - If `config_usefulness.status` is `load_safe_but_thin` or `usable_with_targeted_gaps`, report the first gap and `next_report_to_open`; do not switch to HSTuner or replay analysis inside HSConfig.
+- Inspect `no_block_failure_mode_summary` when a package has warnings. Only
+  `technical_hard_block` stops `hsconfig apply`; `source_depth_warning`,
+  `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`,
+  `combo_uncertainty`, and `runtime_evidence_only_tuning` explain follow-up work.
+  The summary does not create a second apply gate.
 - Runtime apply is always governed by `reports/operator_summary.json`; `apply_package()` and `hsconfig apply` must reject missing, blocked, or forged apply gates before writing HearthRanger runtime files.
 - Keep exact CardID identity, full `GlobalValues` coverage, and the profile report.
 - Keep the pre-run boundary visible in operator-facing copy and tests.
