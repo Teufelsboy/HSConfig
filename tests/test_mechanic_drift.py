@@ -21,6 +21,101 @@ def test_mechanic_drift_detects_text_only_tradeable_without_blocking():
     assert report["support_by_mechanic"]["tradeable"]["support_level"] == "warning_only"
 
 
+def test_mechanic_drift_detects_modern_text_only_mechanics_without_blocking():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "KINDRED_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Kindred: Deal 2 damage.",
+            },
+            {
+                "id": "TOURIST_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Tourist. Your deck can include Paladin cards.",
+            },
+            {
+                "id": "STARSHIP_001",
+                "type": "STARSHIP",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Launch your Starship.",
+            },
+            {
+                "id": "SPELLBURST_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Spellburst: Summon a 1/1.",
+            },
+            {
+                "id": "MINI_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Miniaturize.",
+            },
+            {
+                "id": "QUICK_001",
+                "type": "SPELL",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Quickdraw: Costs (1) less.",
+            },
+            {
+                "id": "HONOR_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Honorable Kill: Draw a card.",
+            },
+            {
+                "id": "ELUSIVE_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Elusive.",
+            },
+            {
+                "id": "POISON_001",
+                "type": "MINION",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Poisonous.",
+            },
+            {
+                "id": "IMBUE_001",
+                "type": "SPELL",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Imbue your Hero Power.",
+            },
+        ]
+    )
+
+    assert report["non_blocking"] is True
+    assert report["unknown_card_types"] == []
+    assert report["unknown_mechanics"] == []
+    assert report["text_only_mechanics"] == [
+        "elusive",
+        "honorable_kill",
+        "imbue",
+        "kindred",
+        "miniaturize",
+        "poisonous",
+        "quickdraw",
+        "spellburst",
+        "starship",
+        "tourist",
+    ]
+    assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
+    assert report["support_by_mechanic"]["spellburst"]["support_level"] == "partial"
+
+
 def test_mechanic_drift_keeps_unknown_mechanics_warning_only():
     report = build_mechanic_drift_report(
         [
@@ -47,7 +142,7 @@ def test_mechanic_drift_reports_unknown_card_types_without_blocking():
             {
                 "id": "FUTURE_TYPE_001",
                 "name": "Future Type Card",
-                "type": "STARSHIP",
+                "type": "LETTUCE_ABILITY",
                 "mechanics": [],
                 "referencedTags": [],
                 "text": "A future card type.",
@@ -56,8 +151,8 @@ def test_mechanic_drift_reports_unknown_card_types_without_blocking():
     )
 
     assert report["non_blocking"] is True
-    assert report["card_types"] == ["starship"]
-    assert report["unknown_card_types"] == ["starship"]
+    assert report["card_types"] == ["lettuce_ability"]
+    assert report["unknown_card_types"] == ["lettuce_ability"]
     assert report["summary"]["unknown_card_type_count"] == 1
 
 

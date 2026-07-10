@@ -13,6 +13,7 @@ KNOWN_CARD_TYPES = {
     "location",
     "minion",
     "spell",
+    "starship",
     "weapon",
 }
 
@@ -35,6 +36,20 @@ TEXT_MECHANIC_PATTERNS: dict[str, tuple[str, ...]] = {
     "questline": ("questline",),
     "titan": ("titan",),
     "colossal": ("colossal",),
+    "kindred": ("kindred",),
+    "tourist": ("tourist",),
+    "starship": ("starship", "launch your starship"),
+    "spellburst": ("spellburst",),
+    "miniaturize": ("miniaturize", "miniaturized"),
+    "quickdraw": ("quickdraw",),
+    "honorable_kill": ("honorable kill",),
+    "elusive": (
+        "elusive",
+        "can't be targeted by spells or hero powers",
+        "cant be targeted by spells or hero powers",
+    ),
+    "poisonous": ("poisonous",),
+    "imbue": ("imbue", "imbued"),
     "highlander": ("if your deck has no duplicates", "no duplicates"),
     "jade": ("jade golem",),
     "cthun_package": ("c'thun", "cthun"),
