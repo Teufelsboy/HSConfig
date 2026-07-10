@@ -74,6 +74,16 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
+    no_block = operator["no_block_failure_mode_summary"]
+    assert no_block["hard_block"] is False
+    assert no_block["runtime_apply_allowed"] is True
+    assert no_block["runtime_apply_mode"] == "load_safe_apply"
+    assert no_block["overall"] in {
+        "load_safe_apply_allowed",
+        "load_safe_apply_allowed_with_warnings",
+    }
+    assert no_block["categories"]["technical_hard_block"] == []
+    assert no_block["operator_message"].startswith("Package is load-safe.")
     assert operator["mechanic_visibility_summary"]["non_blocking"] is True
     assert operator["semantic_enrichment_summary"]["non_blocking"] is True
     assert operator["next_action"] in {"READY_TO_APPLY_OR_HANDOFF", "READY_TO_APPLY_WITH_WARNINGS"}
