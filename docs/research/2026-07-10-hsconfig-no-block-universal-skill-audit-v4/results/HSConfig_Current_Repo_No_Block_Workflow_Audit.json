@@ -56,7 +56,7 @@
   ],
   "gaps_or_risks": [
     "Older docs/research result folders still contain superseded claims such as four core_source_backed_fixture rows and seven source_informed_valid_fixture rows. The current-truth index and active tests contain the damage, but broad search results can still confuse a reader who opens old artifacts directly.",
-    "The current validator for this research framework accepts the simple fields.yaml used here but reports zero defined fields because validate_json.py expects a field_categories schema. This does not block the requested validation pass, but it weakens validation as a semantic coverage check for this task shape.",
+    "The current research schema uses field_categories and validates at 4/4 result files with 100% field coverage. Validation confirms required field coverage, while semantic breadth still depends on the source-backed audit content.",
     "The universal no-block claim is not a mathematical proof over every possible valid future deckcode. It is a maintained implementation contract backed by structural validation, warning-only drift behavior, 12-deck prepare proof, and 703 passing tests.",
     "Mechanic visibility is intentionally non-blocking, which is correct for load safety, but it means decks centered on warning-only mechanics may produce usable but strategically thin packages until exact source-backed runtime surfaces are added.",
     "Per-card every-card output is tested as HSConfig rich-output policy, but the minimal apply gate is narrower. Operators or downstream readers can still confuse rich-output proof with an official HearthRanger minimum if they skip the operator docs.",
