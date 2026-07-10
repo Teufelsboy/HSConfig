@@ -1721,3 +1721,68 @@ def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
     assert payload["status"] == "passed"
     assert not stale_report.exists()
     assert "reports/stale_report.json" not in generated
+
+
+def test_prepare_writes_mechanic_drift_report_and_operator_summary(
+    tmp_path: Path, capsys
+):
+    out = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    cards = tmp_path / "cards.json"
+    cards.write_text(
+        json.dumps(
+            [
+                {
+                    "card_id": "SW_001",
+                    "id": "SW_001",
+                    "name": "Text Trade Card",
+                    "type": "SPELL",
+                    "mechanics": [],
+                    "text": "Tradeable. Deal 2 damage.",
+                },
+                {
+                    "card_id": "FUTURE_001",
+                    "id": "FUTURE_001",
+                    "name": "Future Card",
+                    "type": "STARSHIP",
+                    "mechanics": ["FUTURE_KEYWORD"],
+                    "text": "Future Keyword: Do something.",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "DriftDeck",
+            "--deck-code",
+            "AAECAf0EAAAA",
+            "--out",
+            str(out),
+            "--runtime-root",
+            str(runtime),
+            "--cards-json",
+            str(cards),
+            "--allow-placeholder",
+            "--json",
+        ]
+    )
+
+    assert exit_code == 0
+    reports = out / "reports"
+    drift_report = json.loads(
+        (reports / "mechanic_drift_report.json").read_text(encoding="utf-8")
+    )
+    operator = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    assert drift_report["non_blocking"] is True
+    assert drift_report["text_only_mechanics"] == ["tradeable"]
+    assert drift_report["unknown_mechanics"] == ["future_keyword"]
+    assert drift_report["unknown_card_types"] == ["starship"]
+    assert operator["mechanic_drift_summary"]["unknown_mechanic_count"] == 1
+    assert operator["mechanic_drift_summary"]["unknown_card_type_count"] == 1
+    assert operator["runtime_apply_mode"] == "load_safe_apply"

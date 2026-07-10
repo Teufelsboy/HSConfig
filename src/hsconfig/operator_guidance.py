@@ -21,6 +21,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             "requires_expert_flag": False,
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
+            **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
             **_source_informed_scope_fields(summary),
         }
@@ -39,6 +40,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 **_config_usefulness_fields(summary),
                 **_mechanic_warning_fields(summary),
                 **_mechanic_visibility_fields(summary),
+                **_mechanic_drift_fields(summary),
                 **_runtime_apply_fields(summary),
                 **_source_informed_scope_fields(summary),
             }
@@ -53,6 +55,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
+            **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
             **_source_informed_scope_fields(summary),
         }
@@ -68,6 +71,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_config_usefulness_fields(summary),
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
+            **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
             **_source_informed_scope_fields(summary),
         }
@@ -82,6 +86,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         **_config_usefulness_fields(summary),
         **_mechanic_warning_fields(summary),
         **_mechanic_visibility_fields(summary),
+        **_mechanic_drift_fields(summary),
         **_runtime_apply_fields(summary),
         **_source_informed_scope_fields(summary),
     }
@@ -163,6 +168,24 @@ def _mechanic_visibility_fields(summary: dict[str, Any]) -> dict[str, Any]:
             "warning_only_card_count": 0,
             "first_warning_boundary": None,
             "warning_boundaries": [],
+        }
+    }
+
+
+def _mechanic_drift_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    drift = summary.get("mechanic_drift_summary")
+    if isinstance(drift, dict):
+        return {"mechanic_drift_summary": drift}
+    return {
+        "mechanic_drift_summary": {
+            "non_blocking": True,
+            "mechanic_count": 0,
+            "unknown_mechanic_count": 0,
+            "text_only_mechanic_count": 0,
+            "unknown_card_type_count": 0,
+            "unknown_mechanics": [],
+            "text_only_mechanics": [],
+            "unknown_card_types": [],
         }
     }
 

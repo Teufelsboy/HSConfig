@@ -38,6 +38,7 @@ from hsconfig.input_loading import (
     source_records_from_cards,
 )
 from hsconfig.io import read_json, slugify_deck_name, write_json
+from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.operator_summary import build_operator_summary
@@ -238,6 +239,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
 
     context = build_preconfig_context(args)
     cards_payload = context["cards_payload"]
+    mechanic_drift_report = build_mechanic_drift_report(cards_payload["cards"])
     deck_identity = context["deck_identity"]
     card_metadata = context["card_metadata"]
     semantic_report = context["semantic_report"]
@@ -361,6 +363,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     if cards_payload.get("card_id_map") is not None:
         write_json(reports_dir / "card_id_map.json", cards_payload["card_id_map"])
     write_json(reports_dir / "semantic_enrichment_report.json", semantic_report)
+    write_json(reports_dir / "mechanic_drift_report.json", mechanic_drift_report)
     if context.get("guide_sources_generated") is not None:
         write_json(reports_dir / "guide_sources.json", context["guide_sources_generated"])
     write_json(reports_dir / "deck_fingerprint.json", context["deck_fingerprint"])
@@ -459,6 +462,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "combo_plan_report": combo_plan,
         "globalvalues_profile_report": globalvalues["profile"],
         "semantic_enrichment_report": semantic_report,
+        "mechanic_drift_report": mechanic_drift_report,
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(

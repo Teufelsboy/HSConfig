@@ -60,6 +60,16 @@ def test_guidance_for_source_backed_strong_package():
             "first_warning_boundary": None,
             "warning_boundaries": [],
         },
+        "mechanic_drift_summary": {
+            "non_blocking": True,
+            "mechanic_count": 0,
+            "unknown_mechanic_count": 0,
+            "text_only_mechanic_count": 0,
+            "unknown_card_type_count": 0,
+            "unknown_mechanics": [],
+            "text_only_mechanics": [],
+            "unknown_card_types": [],
+        },
         "runtime_apply_mode": "normal_apply",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
@@ -222,6 +232,36 @@ def test_warning_guidance_carries_mechanic_visibility_summary():
     ]
 
 
+def test_warning_guidance_carries_mechanic_drift_summary():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "mechanic_drift_summary": {
+                "non_blocking": True,
+                "mechanic_count": 3,
+                "unknown_mechanic_count": 1,
+                "text_only_mechanic_count": 1,
+                "unknown_card_type_count": 1,
+                "unknown_mechanics": ["future_keyword"],
+                "text_only_mechanics": ["tradeable"],
+                "unknown_card_types": ["starship"],
+            },
+            "semantic_blockers": [],
+        }
+    )
+
+    assert guidance["safe_to_apply"] is True
+    assert guidance["normal_next_step"] == "apply_with_warnings"
+    assert guidance["mechanic_drift_summary"]["unknown_mechanics"] == [
+        "future_keyword"
+    ]
+    assert guidance["mechanic_drift_summary"]["unknown_card_types"] == ["starship"]
+
+
 def test_guidance_for_valid_warning_package_with_source_gap_readiness():
     guidance = build_operator_guidance(
         {
@@ -275,6 +315,16 @@ def test_guidance_for_valid_warning_package_with_source_gap_readiness():
             "warning_only_card_count": 0,
             "first_warning_boundary": None,
             "warning_boundaries": [],
+        },
+        "mechanic_drift_summary": {
+            "non_blocking": True,
+            "mechanic_count": 0,
+            "unknown_mechanic_count": 0,
+            "text_only_mechanic_count": 0,
+            "unknown_card_type_count": 0,
+            "unknown_mechanics": [],
+            "text_only_mechanics": [],
+            "unknown_card_types": [],
         },
         "runtime_apply_mode": "load_safe_apply",
         "runtime_apply_allowed": True,

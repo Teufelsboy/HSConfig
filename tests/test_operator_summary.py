@@ -1459,3 +1459,45 @@ def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_appl
     assert readiness["runtime_gate_impact"] == "diagnostic_only"
     assert readiness["legacy_flag_scope"] == "backward_compatible_only"
     assert readiness["requires_flag"] == "--allow-source-informed"
+
+
+def test_operator_summary_threads_nonblocking_mechanic_drift_summary():
+    summary = build_operator_summary(
+        deck_name="DriftDeck",
+        deck_code="AAECAf0EAAAA",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "claim_count": 0,
+        },
+        mechanic_drift_report={
+            "non_blocking": True,
+            "summary": {
+                "mechanic_count": 3,
+                "unknown_mechanic_count": 1,
+                "text_only_mechanic_count": 1,
+                "unknown_card_type_count": 1,
+            },
+            "unknown_mechanics": ["future_keyword"],
+            "text_only_mechanics": ["tradeable"],
+            "unknown_card_types": ["starship"],
+        },
+        generated_files=[
+            "CustomConfig/DriftDeck/GlobalValues.json",
+            "CustomConfig/DriftDeck/Mulligan.json",
+            "reports/mechanic_drift_report.json",
+        ],
+    )
+
+    drift = summary["mechanic_drift_summary"]
+    assert drift == {
+        "non_blocking": True,
+        "mechanic_count": 3,
+        "unknown_mechanic_count": 1,
+        "text_only_mechanic_count": 1,
+        "unknown_card_type_count": 1,
+        "unknown_mechanics": ["future_keyword"],
+        "text_only_mechanics": ["tradeable"],
+        "unknown_card_types": ["starship"],
+    }
+    assert summary["runtime_apply_mode"] == "load_safe_apply"

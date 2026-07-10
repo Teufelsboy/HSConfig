@@ -76,6 +76,7 @@ def build_operator_summary(
     combo_plan_report: dict[str, Any] | None = None,
     globalvalues_profile_report: dict[str, Any] | None = None,
     semantic_enrichment_report: dict[str, Any] | None = None,
+    mechanic_drift_report: dict[str, Any] | None = None,
     validation_report: dict[str, Any] | None = None,
     guide_source_depth_report: dict[str, Any] | None = None,
     source_claim_gap_report: dict[str, Any] | None = None,
@@ -192,6 +193,7 @@ def build_operator_summary(
         "semantic_enrichment_summary": _semantic_enrichment_summary(
             semantic_enrichment_report
         ),
+        "mechanic_drift_summary": _mechanic_drift_summary(mechanic_drift_report),
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
@@ -482,6 +484,43 @@ def _semantic_enrichment_summary(report: dict[str, Any] | None) -> dict[str, Any
         ),
         "deckwide_effect_count": _int_value(summary.get("deckwide_effect_count", 0)),
         "warning_count": _int_value(summary.get("warning_count", 0)),
+    }
+
+
+def _mechanic_drift_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "non_blocking": True,
+            "mechanic_count": 0,
+            "unknown_mechanic_count": 0,
+            "text_only_mechanic_count": 0,
+            "unknown_card_type_count": 0,
+            "unknown_mechanics": [],
+            "text_only_mechanics": [],
+            "unknown_card_types": [],
+        }
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    return {
+        "non_blocking": bool(report.get("non_blocking", True)),
+        "mechanic_count": _int_value(summary.get("mechanic_count", 0)),
+        "unknown_mechanic_count": _int_value(
+            summary.get("unknown_mechanic_count", 0)
+        ),
+        "text_only_mechanic_count": _int_value(
+            summary.get("text_only_mechanic_count", 0)
+        ),
+        "unknown_card_type_count": _int_value(
+            summary.get("unknown_card_type_count", 0)
+        ),
+        "unknown_mechanics": [str(item) for item in report.get("unknown_mechanics", [])],
+        "text_only_mechanics": [
+            str(item) for item in report.get("text_only_mechanics", [])
+        ],
+        "unknown_card_types": [
+            str(item) for item in report.get("unknown_card_types", [])
+        ],
     }
 
 

@@ -42,4 +42,14 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "answers": "which GlobalValues keys are source-backed or archetype-inferred",
             "open_order": "6",
         },
+        {
+            "file": "reports/mechanic_drift_report.json",
+            "producer": "prepare",
+            "authority": "non_blocking_mechanic_drift_visibility",
+            "open_when": (
+                "mechanic_drift_summary shows unknown mechanics, text-only mechanics, "
+                "or unknown card types"
+            ),
+            "open_order": "7",
+        },
     ]
