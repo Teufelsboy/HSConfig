@@ -78,3 +78,43 @@ def test_mechanic_drift_treats_registered_future_mechanics_as_known():
     assert report["unknown_mechanics"] == []
     assert report["support_by_mechanic"]["questline"]["support_level"] == "partial"
     assert report["support_by_mechanic"]["manathirst"]["support_level"] == "partial"
+
+
+def test_mechanic_drift_detects_text_only_invoke_as_known_partial():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "ULD_719",
+                "name": "Invoke Card",
+                "type": "SPELL",
+                "mechanics": [],
+                "referencedTags": [],
+                "text": "Invoke Galakrond.",
+            }
+        ]
+    )
+
+    assert report["non_blocking"] is True
+    assert report["text_only_mechanics"] == ["invoke"]
+    assert report["unknown_mechanics"] == []
+    assert report["support_by_mechanic"]["invoke"]["support_level"] == "partial"
+
+
+def test_mechanic_drift_normalizes_explicit_cthun_punctuation_to_package():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "OG_280",
+                "name": "C'Thun",
+                "type": "MINION",
+                "mechanics": ["C'THUN"],
+                "referencedTags": [],
+                "text": "Your C'Thun has +2/+2.",
+            }
+        ]
+    )
+
+    assert report["non_blocking"] is True
+    assert report["unknown_mechanics"] == []
+    assert report["mechanics"] == ["cthun_package"]
+    assert report["support_by_mechanic"]["cthun_package"]["support_level"] == "partial"

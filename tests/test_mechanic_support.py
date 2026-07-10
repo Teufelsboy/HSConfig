@@ -229,3 +229,11 @@ def test_future_wild_mechanics_are_registered_without_blocking():
     for mechanic, support_level in expected.items():
         assert by_mechanic[mechanic]["support_level"] == support_level
         assert by_mechanic[mechanic].get("registered", True) is True
+
+
+def test_cthun_alias_accepts_apostrophe_punctuation():
+    rows = support_for_roles(["C'THUN"])
+
+    assert rows[0]["mechanic"] == "cthun_package"
+    assert rows[0]["support_level"] == "partial"
+    assert rows[0].get("registered", True) is True

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-from hsconfig.mechanic_support import support_for_roles
+from hsconfig.mechanic_support import normalize_role_token, support_for_roles
 
 
 KNOWN_CARD_TYPES = {
@@ -31,6 +31,7 @@ TEXT_MECHANIC_PATTERNS: dict[str, tuple[str, ...]] = {
     "excavate": ("excavate",),
     "plague": ("plague",),
     "dormant": ("dormant",),
+    "invoke": ("invoke",),
     "questline": ("questline",),
     "titan": ("titan",),
     "colossal": ("colossal",),
@@ -106,7 +107,7 @@ def _explicit_mechanics(card: dict[str, Any]) -> list[str]:
     for key in ("mechanics", "referencedTags", "referenced_tags"):
         raw = card.get(key, [])
         if isinstance(raw, list):
-            values.extend(_normalize_token(item) for item in raw if str(item).strip())
+            values.extend(_canonical_token(item) for item in raw if str(item).strip())
     return sorted(set(values))
 
 
@@ -120,4 +121,12 @@ def _text_mechanics(text: str) -> list[str]:
 
 
 def _normalize_token(value: Any) -> str:
-    return str(value).strip().lower().replace(" ", "_").replace("-", "_")
+    return normalize_role_token(value)
+
+
+def _canonical_token(value: Any) -> str:
+    token = _normalize_token(value)
+    rows = support_for_roles([token])
+    if not rows:
+        return token
+    return str(rows[0].get("mechanic", token))

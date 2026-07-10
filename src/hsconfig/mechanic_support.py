@@ -332,6 +332,8 @@ ROLE_ALIASES = {
     "no_duplicate": "highlander",
     "no_duplicates": "highlander",
     "cthun": "cthun_package",
+    "c'thun": "cthun_package",
+    "c’thun": "cthun_package",
     "c_thun": "cthun_package",
     "shadow_hero_power": "hero_power_transform",
     "hero_power_pressure": "hero_power",
@@ -375,11 +377,23 @@ IDENTITY_GATED_DIRECT_MECHANICS = {
 VISIBILITY_BUCKETS = ("direct", "identity_gated_direct", "partial", "warning_only")
 
 
+def normalize_role_token(role: object) -> str:
+    return (
+        str(role)
+        .strip()
+        .lower()
+        .replace("'", "")
+        .replace("’", "")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+
 def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for role in roles:
-        raw_role = str(role).lower()
+        raw_role = normalize_role_token(role)
         if raw_role in NON_MECHANIC_ROLES:
             continue
         mechanic = ROLE_ALIASES.get(raw_role, raw_role)
