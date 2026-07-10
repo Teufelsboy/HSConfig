@@ -1,0 +1,58 @@
+{
+  "verdict": "The current HSConfig runtime boundary is optimal enough and does not show a material gap. Normal-path output should stay limited to GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and exact-sequence Combo.json, while documented Concede.json and Presume.json remain outside the normal apply path and their absence stays non-blocking.",
+  "source_backed_evidence": [
+    "Official HearthRanger card-behavior guide documents per-card CARDID.json under CustomConfig/deck_config.ini mapping: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Official HearthRanger combo guide documents Combo.json and exact >> / >-> sequence syntax: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official HearthRanger docs cache manifest records official-fetched sources for Mulligan, GlobalValues, Concede, and Presume pages on 2026-06-04, including https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm, https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm, https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm, and https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm [public-source cache captured from the official site].",
+    "The cached official Concede and Presume entries prove those are real HearthRanger-documented VisionAI surfaces, not inventions of HSConfig. Repo manifest: C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json"
+  ],
+  "repo_evidence": [
+    "HS repo syntax model exposes supported runtime surfaces as card_behavior, mulligan, combo, and global_values, and lists Concede and Presume only as registry-known unsupported surfaces: C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "HS tests assert supported_runtime_surfaces == [card_behavior, mulligan, combo, global_values] and reject Concede.json and Presume.json in the runtime package: C:/Users/darbo/Documents/HS/tests/test_visionai_syntax.py",
+    "HSConfig README and operator docs say HSConfig is pre-run only, minimal load-safe apply requires GlobalValues.json and Mulligan.json, and normal HSConfig does not emit Presume.json or Concede.json: C:/Users/darbo/Documents/HSConfig/README.md and C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "HSConfig universal no-block contract states per-card <CARDID>.json and Combo.json improve usefulness but are not minimal apply gates; missing Concede.json or Presume.json is not a block: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "HSConfig validator remains registry-aware and recognizes GlobalValues.json, Mulligan.json, Combo.json, Presume.json, and Concede.json as known filenames, which is correct for public-surface awareness: C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "HSConfig apply gate deliberately blocks normal-path Presume.json and Concede.json while requiring only GlobalValues.json and Mulligan.json for load_safe_apply: C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "HSConfig surface intent can model Presume and Concede only when legacy_policy_surfaces_enabled is set, which matches a legacy/gated compatibility lane rather than the normal path: C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_optional_surfaces.py",
+    "Targeted verification passed: pytest tests/test_apply_gate.py tests/test_archetype_fixture_matrix.py tests/test_compile_optional_surfaces.py tests/test_surface_intent.py -q -> 38 passed in 0.67s"
+  ],
+  "no_block_assessment": [
+    "Valid package generation and load-safe apply should mean exact deck identity, normal-path filenames, structurally valid JSON, required GlobalValues.json and Mulligan.json present, and operator summary technical_status=VALID_PACKAGE. It should not mean every card is source-backed or every optional surface exists.",
+    "Source confidence is a separate axis. SOURCE_BACKED_STRONG is desirable, but VALID_BUT_NOT_GUIDE_STRONG or STATIC_SEMANTICS_USABLE can still be load-safe apply states when the package is technically valid.",
+    "Mechanic visibility is descriptive, not blocking. Partial, warning_only, unknown-mechanic, and drift reports explain coverage limits without invalidating an otherwise safe package.",
+    "Combo precision is optional richness. Combo.json should appear only when an exact documented sequence exists; its absence alone must not block load-safe apply for decks that do not need or cannot source-back a concrete combo row.",
+    "Config richness is also separate from minimal apply. Per-card <CARDID>.json files materially improve quality and are expected in normal prepare output when deck-card identity is known, but they are not the minimal gate in the current operator contract.",
+    "Future mechanics and review-only warnings should remain visible but non-blocking unless they force an invalid or unsupported runtime file. Unsupported semantic claims belong in suppression or warning reports, not in the apply gate.",
+    "Documented but outside-normal surfaces should stay asymmetric: missing Concede.json and Presume.json is non-blocking; generating them in the normal path is a block because the current HSConfig promise is narrower than the full HearthRanger registry."
+  ],
+  "hearthstone_semantic_coverage": [
+    "The current boundary is strong for static pre-run semantics that lower cleanly into documented VisionAI surfaces: deckwide posture via GlobalValues.json, mulligan anchors via Mulligan.json, and concrete per-card behavior via <CARDID>.json.",
+    "Combo coverage is intentionally narrow and correct. HSConfig only treats Combo.json as a normal surface when an exact source-backed sequence exists, which avoids inventing symbolic combo logic that the public docs do not guarantee.",
+    "Hero powers, board posture, weapon pressure, recruit, discard, burn, aura pressure, magnetic, deathrattle, and similar static deck semantics can be represented through existing normal-path surfaces or remain visible as partial or report-only when exact lowering is unavailable.",
+    "Generated entities, hidden pools, random outcomes, board position, secret timing, generic spell target choice, and similar ambiguous states should remain identity-gated, partial, or warning-only. That is consistent with a pre-run generator and avoids false precision.",
+    "Wild edge cases and future mechanics do not currently justify widening the runtime surface boundary. The operator contract already treats them as visibility work, not apply blockers, unless HSConfig would have to emit an unsupported filename or invalid block.",
+    "The repo semantic model is broad enough for a no-block package claim because it separates exact lowerable semantics from report-only semantics instead of pretending every Hearthstone behavior has a clean pre-run runtime surface."
+  ],
+  "provided_deck_matrix_assessment": [
+    "The provided matrix is sufficient for the current boundary claim. It spans aggro burn, recruit board flood, pirate tempo, big cheat, discard, token board, hero-power generation, mech scaling, weapon sequence pressure, combo-control resource setup, and hero-attack pressure.",
+    "That spread is enough to prove the important normal-path surfaces without bloating the repo: GlobalValues.json and Mulligan.json are exercised across the matrix, per-card <CARDID>.json is the common rich surface, and Boarlock preserves the single deliberate Combo.json control row.",
+    "The matrix does not exhaust every Wild behavior family, but it does not need to. The current question is load-safe any-deck boundary correctness, not perfect source-backed strong closure for every deck or mechanic.",
+    "Reactive control, deep discover chains, secret timing, and some generated-entity families are underrepresented, but those limits point to warning or report-only semantics, not to a missing runtime surface needed for the no-block contract.",
+    "Keeping Kingslayer and Boarlock as source-informed blocked fixtures is a strength, not a weakness. They preserve visibility into unsupported conditions and combo-control gaps without forcing broader runtime promises."
+  ],
+  "skill_slimness_assessment": [
+    "HSConfig remains narrow. The README and operator docs explicitly say it is pre-run only and does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games.",
+    "The workflow is simple and coherent: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply. There is one guarded apply gate rather than a second hidden permission model.",
+    "The runtime boundary is intentionally slim. Minimal apply requires only GlobalValues.json and Mulligan.json; richer outputs improve usefulness but do not redefine the apply contract.",
+    "Legacy optional-surface helpers exist, but they are fenced. Presume.json and Concede.json can be represented only through legacy-enabled compatibility code, while the live operator path and apply gate block them in normal output.",
+    "The test suite reinforces scope discipline. Dedicated tests check no-block wording, apply-gate behavior, surface intent, fixture matrix expectations, and the absence of replay or HSTuner scope inside HSConfig."
+  ],
+  "gaps_or_risks": [
+    "The biggest remaining risk is wording ambiguity, not a runtime gap. HSConfig contains legacy optional-surface helpers for Presume and Concede, so future maintainers could misread that as a green light for normal-path emission unless the docs stay explicit.",
+    "Public HearthRanger surface knowledge for Concede and Presume is currently proven through the repo official-doc cache and registry, not by a fresh live render of those exact pages in this turn. The boundary recommendation is still stable, but doc drift should be watched when refreshing the registry.",
+    "Combo coverage is intentionally thin in the matrix. That is acceptable for boundary proof, but it means any future attempt to broaden normal Combo.json use should add evidence before expanding operator promises."
+  ],
+  "recommended_next_action": "Keep the runtime boundary as-is and do one small polish only: add a short operator or developer note that compile_optional_surfaces.py and legacy surface_intent support for Presume and Concede are compatibility-only, not normal-path output permission.",
+  "confidence": "high: official HearthRanger docs and cached official-source manifest, live HS and HSConfig operator contracts, and 38 targeted HSConfig tests all align on the same boundary.",
+  "uncertain": []
+}

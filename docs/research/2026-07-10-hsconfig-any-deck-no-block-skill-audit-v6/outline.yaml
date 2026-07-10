@@ -1,0 +1,47 @@
+topic: hsconfig-any-deck-no-block-skill-audit-v6
+created: "2026-07-10"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-any-deck-no-block-skill-audit-v6/results
+  items_per_agent: 1
+  batch_size: 5
+items:
+  - name: Current HSConfig Skill And Repo Contract Audit
+    category: Local Repo
+    description: >
+      Audit the active HSConfig repository, installed skill, operator docs, tests,
+      and apply gate. Determine whether the current no-block contract is slim,
+      efficient, autonomous, and competent for any valid deck input without claiming
+      every package is fully source-backed or optimized.
+  - name: HearthRanger VisionAI Surface Boundary Audit
+    category: HearthRanger VisionAI
+    description: >
+      Verify the relevant public HearthRanger VisionAI CustomConfig surfaces:
+      GlobalValues, Mulligan, per-card CardID behavior files, Combo, and the
+      documented-but-outside-normal Concede and Presume surfaces. Check whether the
+      current HSConfig runtime boundary is still correct and whether unsupported or
+      report-only surfaces should remain non-blocking.
+  - name: Wild Mechanics And Future Drift Audit
+    category: Hearthstone Semantics
+    description: >
+      Audit Wild-relevant Hearthstone mechanics and current card data drift, including
+      Battlecry, Deathrattle, Reborn, Recruit, Discover, Dredge, Tradeable, Overload,
+      Freeze, Lifesteal, Taunt, Rush, Charge, positioning, Locations, Weapons,
+      Secrets, Hero Power swaps, generated entities, aura, discard, destroy, silence,
+      transform, Kindred, Tourist, Starship, Imbue, Rewind, Herald, and Shatter.
+      Decide which are directly lowerable, identity-gated, partial, warning-only, or
+      unknown-warning for a pre-run config generator.
+  - name: Provided Deck Matrix And Any-Deck Proof Audit
+    category: Wild Deck Matrix
+    description: >
+      Assess the provided deck set: ShadowPriest, CtAPaladin, PirateRogue, BigShaman,
+      Discolock, TreantDruid, ImbueMage, MechPala, Kingslayer, Boarlock, PirateDH,
+      and CuteWarrior. Determine whether this is enough proof for the any-valid-deck
+      load-safe package claim without adding fixture bloat, and identify any missing
+      archetype or mechanic family that materially changes the recommendation.
+  - name: Skill Slimness And Next Improvement Recommendation
+    category: Product Boundary
+    description: >
+      Judge whether the skill is now optimal enough as a narrow pre-run config
+      generator. Separate real hard blocks from warnings. Recommend the single best
+      next improvement if any: stronger guide source automation, broader static
+      semantics, clearer operator wording, test coverage, or no immediate change.

@@ -1,0 +1,69 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Short final verdict. State whether the current HSConfig skill is optimal
+          enough, needs small polish, or has a material gap.
+      - name: source_backed_evidence
+        type: array
+        required: true
+        description: >
+          Public, official, source-backed, or repo-backed evidence used for the
+          verdict. Include URLs or file paths and concise claim summaries.
+      - name: repo_evidence
+        type: array
+        required: true
+        description: >
+          Local repository evidence such as files, tests, CLI behavior, reports,
+          matrix fixtures, operator docs, installed skill checks, or current git state.
+      - name: no_block_assessment
+        type: array
+        required: true
+        description: >
+          Explain what "nothing is blocked" can safely mean. Separate valid package
+          generation and load-safe apply from source confidence, mechanic visibility,
+          combo precision, config richness, future mechanics, and review-only warnings.
+      - name: hearthstone_semantic_coverage
+        type: array
+        required: true
+        description: >
+          Coverage of Hearthstone mechanics, card roles, card text, hero powers,
+          generated entities, Wild edge cases, and static semantics relevant to
+          pre-run CustomConfig generation.
+      - name: provided_deck_matrix_assessment
+        type: array
+        required: true
+        description: >
+          Assessment of whether the provided decks exercise enough class, archetype,
+          mechanic, and runtime-surface breadth without bloating the repo.
+      - name: skill_slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assessment of whether HSConfig remains narrow, efficient, understandable,
+          and free of HSranger, HSTuner, replay, winrate, or post-run scope.
+      - name: gaps_or_risks
+        type: array
+        required: true
+        description: >
+          Concrete risks, stale docs, missing tests, future-mechanic drift hazards,
+          terminology confusion, or over-broad tests. Use an empty array if none.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          The single best next action, if any. Prefer small high-leverage changes
+          over broad rewrites unless a material gap is proven.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          Confidence level: high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Field names or claims that could not be verified.

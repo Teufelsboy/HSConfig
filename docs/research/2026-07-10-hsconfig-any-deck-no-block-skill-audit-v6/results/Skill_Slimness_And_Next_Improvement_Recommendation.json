@@ -1,0 +1,62 @@
+{
+  "verdict": "Optimal enough as a narrow pre-run config generator. The current HSConfig skill is slim, explicit about scope, and competent for load-safe initial package generation without pretending that every valid deck is fully source-backed or strategically rich.",
+  "source_backed_evidence": [
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md defines HSConfig as a lean deck-to-HearthRanger-config generator and explicitly excludes replay parsing, HDT parsing, winrate validation, candidate promotion, and post-run tuning.",
+    "C:/Users/darbo/.codex/skills/hsconfig/SKILL.md keeps the operator path narrow: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply, with `reports/operator_summary.json` as the single normal gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md states that HSConfig is pre-run only, treats research artifacts as evidence rather than operator instructions, and separates load safety from config richness and semantic strength.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md defines the no-block contract around `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply`, while keeping `SOURCE_BACKED_STRONG` as a confidence label rather than the runtime-write gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md says the active no-block evidence is the universal no-block audit and the post-contract closure audit, and that the operator docs and installed skill win over older research artifacts when claims conflict.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-universal-no-block-skill-audit-v5/results/hsconfig-current-repo-skill-no-block-audit.json concludes the repo is acceptable with small polish and already correctly separates runtime hard blocks from warning-only source or mechanic debt.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-universal-no-block-skill-audit-v5/results/provided-wild-deck-matrix-and-archetype-coverage-audit.json concludes the 11-deck representative matrix plus supplemental CuteWarrior is broad enough for lean no-block proof without fixture bloat.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-universal-no-block-skill-audit-v5/results/modern-hearthstone-mechanics-coverage-audit.json concludes the mechanic registry already covers the audited modern and awkward mechanics honestly through direct, identity-gated direct, partial, and warning-only buckets."
+  ],
+  "repo_evidence": [
+    "Live check on 2026-07-10: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "Live check on 2026-07-10: `python -m hsconfig.cli --help` still exposes the narrow command set `build, prepare, research-contract, source-manifest, draft-source-documents, research-deck, validate, apply` and repeats the pre-run-only boundary.",
+    "Live check on 2026-07-10: targeted pytest passed with `58 passed in 16.47s` for `tests/test_scope_boundaries.py`, `tests/test_skill_sync.py`, `tests/test_operator_guidance.py`, `tests/test_docs_active_path.py`, `tests/test_static_semantics.py`, and `tests/test_universal_wild_no_block_matrix.py`.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py guards against replay parsing, HDT parsing, Power.log parsing, winrate analysis, post-run tuning, and candidate promotion entering `src/hsconfig` or active docs.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py enforces that the installed skill copy stays byte-synchronized with the repo skill definition and reports drift clearly.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_guidance.py enforces that load-safe warning packages stay apply-eligible, that operator guidance opens `reports/operator_summary.json` first, and that mechanic visibility and drift remain non-blocking.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_docs_active_path.py guards the active documentation against stale matrix-count claims and keeps the current no-block failure-mode wording in the operator path.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py proves the 12-deck no-block prepare contract and requires `VALID_PACKAGE`, `runtime_load_safe=true`, `runtime_apply_mode=load_safe_apply`, required runtime files, and no normal-path `Presume.json` or `Concede.json`.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py shows the static semantic layer already identifies important pre-run families such as `choose_one`, `dredge`, `tradeable`, `location`, `secret`, `generated_entity_random_pool`, and `hero_power_transform` without widening runtime writes.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py already includes explicit visibility entries for `choose_one`, `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, `generated_entity_random_pool`, `kindred`, `tourist`, `starship`, `rewind`, `herald`, and `shatter`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py builds `no_block_failure_mode_summary` and keeps `SOURCE_BACKED_STRONG`, `VALID_BUT_NOT_GUIDE_STRONG`, and `STATIC_SEMANTICS_USABLE` distinct from the runtime apply gate.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py still blocks only technical or forged-package cases and treats `Presume.json` and `Concede.json` as legacy-gated surfaces outside the normal path."
+  ],
+  "no_block_assessment": [
+    "The real hard-block meaning is technical only: malformed or unsupported deck input, invalid JSON shape, missing required minimal runtime files, undeclared or nested runtime files, normal-path `Presume.json` or `Concede.json`, missing or forged apply evidence, and other package-structure failures must still stop apply.",
+    "The valid no-block meaning is narrower than full strategic completeness: if a package is structurally valid and the operator summary yields `runtime_apply_mode=load_safe_apply`, HSConfig should not stop just because source confidence, config richness, combo detail, or mechanic visibility is imperfect.",
+    "Warnings that should remain non-blocking include missing guide claims, source-depth gaps, generic-low-confidence cards, warning-only mechanics, partial mechanics, unknown mechanic drift, unresolved option identity, and `load_safe_but_thin` config usefulness.",
+    "The repo currently enforces this split correctly. `operator_summary.json` carries the gate, while `no_block_failure_mode_summary` explains the reason category without creating a second permission model.",
+    "The current product promise does not mean every package is `SOURCE_BACKED_STRONG`, fully optimized, replay-verified, or rich across every runtime surface. It only means valid deck inputs can still produce a safe initial package and keep their uncertainty visible."
+  ],
+  "hearthstone_semantic_coverage": [
+    "Static and registry coverage are already broad enough for a narrow pre-run generator. The repo distinguishes `direct`, `identity_gated_direct`, `partial`, and `warning_only` support instead of pretending every Hearthstone mechanic can lower cleanly.",
+    "Exact choice-sensitive behavior is already treated conservatively. `choose_one`, `discover`, and transformed hero power flows rely on identity-gated logic rather than generic guessing.",
+    "The semantic layer already recognizes long-tail warning families such as `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool`, which was the main earlier visibility gap.",
+    "Modern and awkward mechanics such as `kindred`, `tourist`, `starship`, `rewind`, `herald`, and `shatter` are already surfaced explicitly as non-blocking visibility rather than falling through silently or forcing unsafe runtime rows.",
+    "This is sufficient for the current product boundary because HSConfig is a pre-run config generator, not a full simulation or post-game optimizer. Broader static semantics would add marginal visibility depth, but it is no longer the highest-value immediate need."
+  ],
+  "provided_deck_matrix_assessment": [
+    "The representative proof remains lean and adequate: 11 representative decks plus supplemental CuteWarrior cover major pre-run families such as aggro burn, recruit flood, pirate tempo, weapon sequencing, big cheat, discard, token board snowball, hero-power generation, mech scaling, combo-control, and hero-attack pressure.",
+    "Keeping Kingslayer and Boarlock as source-informed visible controls is a strength, not a defect. They prove that the repo can preserve honest source-depth warnings without converting them into false hard blocks or bloating the matrix with easier replacement decks.",
+    "CuteWarrior staying supplemental is also the right boundary decision. It proves acceptance and load-safe behavior without forcing a twelfth representative output-competence row.",
+    "Because the matrix is already paired with dedicated mechanic, scope, docs, and operator-guidance tests, there is no current evidence that another representative deck would materially improve the narrow no-block claim."
+  ],
+  "skill_slimness_assessment": [
+    "The installed skill remains narrow and understandable: one normal operator path, one operator gate, and clear separation between normal, expert, and diagnostic surfaces.",
+    "It is still free of HSranger/HSTuner scope creep. The skill and active docs keep replay parsing, runtime-log analysis, winrate validation, candidate promotion, and after-game tuning outside the repo boundary.",
+    "It is also now well-defended against the earlier ambiguity classes. The docs, tests, and operator guidance all reinforce that load safety, semantic strength, config richness, and mechanic visibility are related but not equivalent.",
+    "The remaining density in the skill wording is justified by boundary protection. It explains exactly where users tend to over-read the tool, but it does not currently make the workflow materially confusing enough to justify wording as the top next investment."
+  ],
+  "gaps_or_risks": [
+    "The full test suite was not rerun for this audit; confidence is based on targeted live checks and the currently passing narrow batch most relevant to skill slimness, operator wording, no-block behavior, and static semantics.",
+    "The any-valid-deck promise is still an implementation contract, not a proof over every future Wild mechanic or every possible strategic edge case.",
+    "Some decks built around warning-only families will still produce strategically thin but load-safe packages. That is an accepted product boundary, not a hard block.",
+    "Older research folders can still contain superseded claims, although the active-doc guards and current-truth index now reduce the chance that operators follow stale wording."
+  ],
+  "recommended_next_action": "No immediate change. The strongest current move is to preserve the existing narrow boundary and only invest again when a real uncovered deck family, apply-gate regression, or newly observed mechanic drift proves that stronger guide automation, broader static semantics, clearer wording, or more tests would change operator outcomes materially.",
+  "confidence": "high - live repo checks passed for installed-skill sync, CLI boundary wording, and the targeted scope/docs/operator-guidance/static-semantics/universal-no-block pytest batch; no current evidence shows a material product-boundary gap.",
+  "uncertain": []
+}

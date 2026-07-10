@@ -1,0 +1,81 @@
+{
+  "verdict": "Optimal enough for the intended no-block contract. The active HSConfig repo and installed skill are slim, efficient, autonomous, and competent for valid pre-run deck inputs because load-safe package generation is separated from source strength, config richness, and post-run tuning. The repo does not honestly prove that every package is fully source-backed or optimized, and its current docs, code, and tests correctly avoid making that stronger claim.",
+  "source_backed_evidence": [
+    "C:/Users/darbo/Documents/HSConfig/README.md defines HSConfig as a pre-run HearthRanger VisionAI CustomConfig generator and excludes replay parsing, winrate inspection, runtime-log analysis, candidate promotion, and after-game tuning.",
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md keeps the repo boundary narrow: exact deck and CardID identity, full GlobalValues profiling, every-card gameplan coverage, strict JSON validation, and no HSTuner scope.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md defines the normal operator path as source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply and names reports/operator_summary.json as the single operator gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md states that technical_status=VALID_PACKAGE plus runtime_apply_mode=load_safe_apply is the runtime-write boundary, while SOURCE_BACKED_STRONG is a source-confidence label rather than the write gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md says research artifacts are evidence, not operator instructions, and that active operator docs and the repo skill win over older research packages when they conflict.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md defines the same pre-run-only workflow as the repo docs, keeps operator_summary.json as the single gate, and treats config_usefulness and mechanic visibility as non-blocking explanation layers.",
+    "C:/Users/darbo/.codex/skills/hsconfig/SKILL.md is synchronized with the repo skill and repeats the same boundary: load-safe apply may proceed with warnings, while source depth and mechanic gaps stay visible in reports.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md says lower-confidence lanes remain visible in reports but do not block a load-safe initial package.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/card-behavior-policy.md keeps discover_choice and choose_one_choice conservative: lower only when exact option identity is source-backed, otherwise keep the gap report-visible.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md keeps the normal output limited to GlobalValues.json, Mulligan.json, per-card CARDID.json files, and Combo.json only when concrete combo evidence exists; Presume.json and Concede.json remain outside the normal path."
+  ],
+  "repo_evidence": [
+    "Current git state during the audit was main tracking origin/main, with only the new research folder docs/research/2026-07-10-hsconfig-any-deck-no-block-skill-audit-v6/ untracked.",
+    "python C:/Users/darbo/Documents/HSConfig/scripts/sync_installed_skill.py --check passed and reported that C:/Users/darbo/.codex/skills/hsconfig is in sync.",
+    "src/hsconfig/apply_gate.py allows runtime apply only after reports/operator_summary.json exists, CustomConfig exists with exactly one deck directory, input_manifest.json exists, GlobalValues.json and Mulligan.json are present, no nested runtime files exist, no normal-path Presume.json or Concede.json exists, and generated runtime files match operator_summary.generated_files.",
+    "src/hsconfig/runtime_apply.py revalidates the package before any write, resolves the allowed gate from reports/operator_summary.json, rejects forged or mismatched gates, creates or verifies fake receipts, snapshots runtime state, writes only the target deck folder, updates deck_config.ini, and records apply or rollback history.",
+    "src/hsconfig/no_block_failure_modes.py makes technical_hard_block the only hard stop category and keeps source_depth_warning, warning_only_mechanic, future_mechanic_drift, guide_strength_gap, combo_uncertainty, and runtime_evidence_only_tuning as non-blocking follow-up categories.",
+    "docs/operator/archetype-fixture-matrix.json keeps the representative matrix at 11 rows, with 9 core_source_backed_fixture rows and 2 source_informed_valid_fixture rows: Kingslayer and Boarlock.",
+    "docs/operator/supplemental-proof-decks.json keeps CuteWarrior supplemental with proof_scope=supplemental_load_safe_only and representative_output_competence=false, so it proves load-safe breadth without bloating the representative matrix.",
+    "Focused verification run 1 passed: python -m pytest tests/test_apply_gate.py tests/test_universal_wild_no_block_matrix.py tests/test_docs_active_path.py tests/test_skill_sync.py tests/test_mechanic_support.py tests/test_mechanic_drift.py tests/test_autonomous_guide_workflow_e2e.py tests/test_full_chain_cli_integration.py tests/test_scope_boundaries.py tests/test_matrix_governance.py tests/test_matrix_current_truth.py -> 90 passed in 23.89s.",
+    "Focused verification run 2 passed: python -m pytest tests/test_output_competence_matrix.py tests/test_supplemental_cute_warrior_load_safe.py tests/test_static_semantics.py tests/test_semantic_enrichment.py -> 31 passed in 10.20s.",
+    "tests/test_universal_wild_no_block_matrix.py proves 12 listed Wild decks produce VALID_PACKAGE, runtime_load_safe=true, runtime_apply_mode=load_safe_apply, GlobalValues.json, Mulligan.json, per-card JSON coverage for known deck CardIDs, non-blocking mechanic summaries, and no normal-path Presume.json or Concede.json.",
+    "tests/test_apply_gate.py proves that VALID_BUT_NOT_GUIDE_STRONG, STATIC_SEMANTICS_USABLE, missing CardID rows, runtime-surface gaps, and load_safe_but_thin config_usefulness remain allowed when the package is technically valid, while invalid, stale, nested, missing, or legacy-surface packages stay blocked.",
+    "tests/test_autonomous_guide_workflow_e2e.py and tests/test_full_chain_cli_integration.py prove the documented autonomous chain from research-deck or full source-manifest flow through prepare, validate, fake apply, and guarded runtime apply."
+  ],
+  "no_block_assessment": [
+    "The safe meaning of no-block is technical and structural, not semantic perfection. A valid normal-path package should continue through load_safe_apply when it is structurally sound, load-safe, and gate-approved.",
+    "Minimal load-safe apply is intentionally smaller than normal rich output. GlobalValues.json and Mulligan.json are the required runtime files; per-card CARDID.json files and Combo.json improve competence but are not the minimal write gate by themselves.",
+    "SOURCE_BACKED_STRONG is correctly treated as a confidence label for strong guide-backed handoff, not as the general runtime-write gate.",
+    "VALID_BUT_NOT_GUIDE_STRONG and STATIC_SEMANTICS_USABLE are correctly treated as non-blocking valid states when technical_status=VALID_PACKAGE and runtime_apply_mode=load_safe_apply.",
+    "Warnings that stay visible without blocking include missing guide claims, generic-low-confidence cards, cards needing mulligan claims, cards needing runtime surfaces, cards needing mechanic lowering, cards needing combo detail, warning-only mechanics, unknown mechanics, unknown card types, and load_safe_but_thin config usefulness.",
+    "Hard blocks remain appropriately technical: malformed or unsupported deck input, invalid JSON, missing operator summary, missing input_manifest.json, missing GlobalValues.json or Mulligan.json, nested runtime files, undeclared runtime files, normal-path Presume.json or Concede.json, forged apply gates, or stale receipt evidence.",
+    "The apply path is still guarded after prepare. hsconfig apply re-evaluates the gate, verifies or creates fake apply evidence, and only then writes runtime files.",
+    "Nothing in the current contract claims that a valid load-safe package is fully source-backed, fully optimized, matchup-proven, or replay-proven. That separation is correct and should remain explicit."
+  ],
+  "hearthstone_semantic_coverage": [
+    "Static card semantics are broad enough for a lean pre-run generator: tests/test_static_semantics.py proves inference from card type, mechanics, referenced tags, and card text for weapon, tradeable, overload, battlecry, discover, dredge, silence, location, secret, summon, generated entities, start-of-game, and hero-power transform families.",
+    "Semantic enrichment is competent for linked-entity and deckwide effects: tests/test_semantic_enrichment.py proves Shadowform and Mind Spike linking, fallback linked entities, upstream duplicate suppression, and HearthstoneJSON-backed enrichment without turning missing upstream data into a hard block.",
+    "Mechanic support is intentionally bucketed into direct, identity_gated_direct, partial, and warning_only rather than pretending every Hearthstone mechanic has a safe runtime lowering.",
+    "Direct or identity-gated direct handling exists for common runtime-lowerable decisions such as battlecry, discover, choose_one, and hero_power_transform when exact option identity is known.",
+    "Partial handling exists for many useful pre-run families such as generated_entity, recruit, deathrattle, aura, spell_damage, start_of_game, quickdraw, spellburst, miniaturize, honorable_kill, poisonous, imbue, invoke, plague, highlander, questline, jade, cthun_package, and other posture-oriented mechanics where only part of the behavior safely maps to current VisionAI surfaces.",
+    "Warning-only handling exists for mechanics that should stay report-visible rather than guessed into runtime rows, including board_position, generic_spell_target, location_activation, secret_timing, generated_entity_random_pool, dredge, tradeable, kindred, tourist, starship, rewind, herald, shatter, forge, and titan.",
+    "Mechanic drift is non-blocking by design: tests/test_mechanic_drift.py proves that unknown mechanics, text-only mechanics, and unknown card types become visibility data rather than new apply blockers.",
+    "Choice surfaces are competently conservative. Discover and Choose One claims only lower when exact option identity is resolved from source evidence; unresolved identity stays in suppression reports instead of becoming invented runtime behavior.",
+    "Combo competence is intentionally narrow and honest. Boarlock remains the representative Combo.json control, but combo sequencing still requires explicit evidence before emission and is not overclaimed for every deck.",
+    "This semantic coverage is strong enough for load-safe any-deck posture within a pre-run generator. It is not exhaustive first-class gameplay modeling for every current or future Hearthstone mechanic."
+  ],
+  "provided_deck_matrix_assessment": [
+    "The representative matrix is deliberately slim: 11 decks cover aggro burn, hero-power transform, recruit board flood, pirate tempo, weapon pressure, big recruit and deathrattle cheat, discard, token board snowball, hero-power spell generation, mech scaling, combo-control, and hero-attack pressure without unnecessary fixture sprawl.",
+    "The split is current and honest: 9 representative decks are core_source_backed_fixture rows, while Kingslayer and Boarlock remain source_informed_valid_fixture controls with explicit stop conditions rather than forced promotion.",
+    "Kingslayer is preserved because exact Kingslayer and Quick Pick mulligan evidence is unavailable; keeping it source-informed is more credible than widening the matrix or faking strongness.",
+    "Boarlock is preserved because exact Boarlock-relevant Fracking mulligan evidence and some runtime-surface closure remain incomplete; keeping it source-informed preserves the truth while still proving the no-block package path.",
+    "CuteWarrior is the right supplemental deck. It proves additional load-safe prepare breadth without pretending to be a twelfth representative source-depth row.",
+    "The 12-deck universal no-block test plus the 11-deck representative matrix is enough evidence for a lean any-valid-deck load-safe contract, especially because the contract is deliberately weaker than every-deck source-backed strongness.",
+    "The matrix does not prove that every possible Wild deck family is source-backed or strategically rich. It proves that the repo can keep valid inputs moving through a load-safe package path while exposing remaining confidence gaps honestly.",
+    "The matrix is therefore large enough for the current recommendation and small enough to remain maintainable."
+  ],
+  "skill_slimness_assessment": [
+    "The installed skill remains narrow and understandable. It starts at docs/operator/README.md, uses one normal workflow, and treats lower-level commands or expert inputs as optional diagnostic paths rather than normal operator flow.",
+    "The skill is efficient because it delegates real work to repo code, reports, and tests instead of carrying heavy prompt logic. Its job is to keep the operator on the correct path and boundary.",
+    "The skill is autonomous enough for valid deck input because the documented chain can proceed from source-manifest through research-deck, prepare, validate, and apply without manual gate reinterpretation.",
+    "The skill stays cleanly outside HSranger replay work and HSTuner scope. Repo docs, the skill, and tests all explicitly exclude replay parsing, winrate work, runtime-log analysis, candidate promotion, and after-game tuning.",
+    "The skill is competent because it points operators to operator_summary.json first, then to source depth, strong promotion, claim gaps, config usefulness, mechanic drift, and semantic enrichment only as supporting evidence.",
+    "The skill is honest about warnings. It does not collapse source confidence, config richness, and technical validity into one status, which is the correct design for a no-block contract.",
+    "The wording is somewhat dense because it protects against common misunderstandings around load_safe_apply, per-card rich output, warning-only mechanics, and source-informed compatibility. That density is acceptable and not a scope or architecture problem."
+  ],
+  "gaps_or_risks": [
+    "The any-valid-deck claim is implemented through a representative proof strategy plus non-blocking semantics, not through an exhaustive proof over every future deckcode or every future mechanic.",
+    "Warning-only or partial-mechanic decks can still produce strategically thin but load-safe packages; this is acceptable for the contract, but operators should not confuse it with optimized gameplay logic.",
+    "Kingslayer and Boarlock remain durable source-informed rows, so the matrix still contains known non-strong areas even though the no-block runtime contract is healthy.",
+    "The CLI still exposes expert or legacy-compatible surfaces such as build, research-contract, --cards-json, --claims-json, and --allow-source-informed; they are documented correctly, but they can still confuse new operators if they skip the main guide.",
+    "Older research folders can still contain superseded wording. Active docs and tests guard the main boundary language, but broad text searches across historical artifacts can still surface stale context.",
+    "This audit ran focused contract, semantic, matrix, and workflow tests, not the entire pytest suite, so there is still a small residual verification gap outside the audited surfaces."
+  ],
+  "recommended_next_action": "Keep the core contract unchanged and use the existing narrow pattern for future updates: only add new static-semantic or warning-only mechanic registrations when real card data exposes them, without widening the representative matrix or broadening the runtime apply gate.",
+  "confidence": "medium - The live repo docs, repo skill, installed skill sync check, apply-gate code, runtime-apply code, matrix files, and 121 focused tests support the current contract strongly, but any-valid-deck proof remains representative rather than exhaustive.",
+  "uncertain": []
+}
