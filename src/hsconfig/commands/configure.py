@@ -18,7 +18,10 @@ from hsconfig.package_io import prepare_research_output_dir
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
-    payload, status = configure_payload(args)
+    try:
+        payload, status = configure_payload(args)
+    except Exception as exc:
+        payload, status = _finish_stage_exception_for_args(args, "configure", exc)
     return emit_result(payload, bool(getattr(args, "json", False)), status)
 
 
@@ -41,76 +44,114 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "json": True,
     }
 
-    manifest_payload, manifest_status = source_manifest_payload(
-        SimpleNamespace(**common, out=str(manifest_dir))
-    )
+    try:
+        manifest_payload, manifest_status = source_manifest_payload(
+            SimpleNamespace(**common, out=str(manifest_dir))
+        )
+    except Exception as exc:
+        return _finish_stage_exception(out, "source-manifest", exc)
     if manifest_status != 0:
-        return _finish(out, "failed", manifest_payload, manifest_status)
+        return _finish(
+            out,
+            "failed",
+            {"stage": "source-manifest", **manifest_payload},
+            manifest_status,
+        )
 
     source_documents_json = None
     if getattr(args, "source_evidence_json", None):
-        draft_payload, draft_status = draft_source_documents_payload(
-            SimpleNamespace(
-                **common,
-                source_evidence_json=args.source_evidence_json,
-                out=str(draft_dir),
+        try:
+            draft_payload, draft_status = draft_source_documents_payload(
+                SimpleNamespace(
+                    **common,
+                    source_evidence_json=args.source_evidence_json,
+                    out=str(draft_dir),
+                )
             )
-        )
+        except Exception as exc:
+            return _finish_stage_exception(out, "draft-source-documents", exc)
         if draft_status != 0:
-            return _finish(out, "failed", draft_payload, draft_status)
+            return _finish(
+                out,
+                "failed",
+                {"stage": "draft-source-documents", **draft_payload},
+                draft_status,
+            )
         source_documents_json = draft_dir / "source_documents.json"
 
-    research_payload, research_status = research_deck_payload(
-        SimpleNamespace(
-            **common,
-            out=str(research_dir),
-            source_documents_json=str(source_documents_json) if source_documents_json else None,
-            source_evidence_json=getattr(args, "source_evidence_json", None),
-            guide_sources_json=None,
-            claims_json=None,
-            skip_semantic_fetch=False,
-            auto_research_fallback=True,
+    research_source_evidence_json = None
+    if source_documents_json is None:
+        research_source_evidence_json = getattr(args, "source_evidence_json", None)
+    try:
+        research_payload, research_status = research_deck_payload(
+            SimpleNamespace(
+                **common,
+                out=str(research_dir),
+                source_documents_json=str(source_documents_json) if source_documents_json else None,
+                source_evidence_json=research_source_evidence_json,
+                guide_sources_json=None,
+                claims_json=None,
+                skip_semantic_fetch=False,
+                auto_research_fallback=True,
+            )
         )
-    )
+    except Exception as exc:
+        return _finish_stage_exception(out, "research-deck", exc)
     if research_status != 0:
-        return _finish(out, "failed", research_payload, research_status)
+        return _finish(
+            out,
+            "failed",
+            {"stage": "research-deck", **research_payload},
+            research_status,
+        )
 
-    prepare_status = run_prepare_command(
-        SimpleNamespace(
-            deck_name=args.deck_name,
-            deck_code=args.deck_code,
-            out=str(package_dir),
-            runtime_root=args.runtime_root,
-            guide_sources_json=str(research_dir / "guide_sources.json"),
-            source_documents_json=str(source_documents_json) if source_documents_json else None,
-            cards_json=getattr(args, "cards_json", None),
-            claims_json=None,
-            plan_reports_dir=None,
-            allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
-            auto_research_fallback=True,
-            json=True,
-        ),
-        expert_mode=False,
-    )
+    try:
+        prepare_status = run_prepare_command(
+            SimpleNamespace(
+                deck_name=args.deck_name,
+                deck_code=args.deck_code,
+                out=str(package_dir),
+                runtime_root=args.runtime_root,
+                guide_sources_json=str(research_dir / "guide_sources.json"),
+                source_documents_json=(
+                    str(source_documents_json) if source_documents_json else None
+                ),
+                cards_json=getattr(args, "cards_json", None),
+                claims_json=None,
+                plan_reports_dir=None,
+                allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
+                auto_research_fallback=True,
+                json=True,
+            ),
+            expert_mode=False,
+        )
+    except Exception as exc:
+        return _finish_stage_exception(out, "prepare", exc)
     if prepare_status != 0:
         return _finish(out, "failed", {"stage": "prepare"}, prepare_status)
 
-    validate_status = run_validate_command(SimpleNamespace(package=str(package_dir), json=True))
+    try:
+        validate_status = run_validate_command(SimpleNamespace(package=str(package_dir), json=True))
+    except Exception as exc:
+        return _finish_stage_exception(out, "validate", exc)
     if validate_status != 0:
         return _finish(out, "failed", {"stage": "validate"}, validate_status)
 
     apply_status = None
     if bool(getattr(args, "apply", False)):
-        apply_status = run_apply_command(
-            SimpleNamespace(
-                package=str(package_dir),
-                runtime_root=args.runtime_root,
-                allow_source_informed=False,
-                fake=False,
-                from_fake_receipt=None,
-                json=True,
+        try:
+            apply_status = run_apply_command(
+                SimpleNamespace(
+                    package=str(package_dir),
+                    runtime_root=args.runtime_root,
+                    allow_source_informed=False,
+                    fake=False,
+                    from_fake_receipt=None,
+                    json=True,
+                )
             )
-        )
+        except Exception as exc:
+            return _finish_stage_exception(out, "apply", exc)
         if apply_status != 0:
             return _finish(out, "failed", {"stage": "apply"}, apply_status)
 
@@ -137,3 +178,30 @@ def _finish(
     summary = {"schema_version": 1, "status": status, **payload}
     write_json(out / "configure_summary.json", summary)
     return summary, exit_code
+
+
+def _finish_stage_exception(out: Path, stage: str, exc: Exception) -> tuple[dict[str, Any], int]:
+    return _finish(out, "failed", _stage_exception_payload(stage, exc), 1)
+
+
+def _finish_stage_exception_for_args(
+    args: argparse.Namespace,
+    stage: str,
+    exc: Exception,
+) -> tuple[dict[str, Any], int]:
+    payload = {
+        "schema_version": 1,
+        "status": "failed",
+        **_stage_exception_payload(stage, exc),
+    }
+    out_value = getattr(args, "out", None)
+    if out_value is None:
+        return payload, 1
+    try:
+        return _finish(Path(out_value), "failed", _stage_exception_payload(stage, exc), 1)
+    except Exception:
+        return payload, 1
+
+
+def _stage_exception_payload(stage: str, exc: Exception) -> dict[str, Any]:
+    return {"stage": stage, "errors": [str(exc)]}
