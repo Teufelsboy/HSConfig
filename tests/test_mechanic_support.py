@@ -231,6 +231,48 @@ def test_future_wild_mechanics_are_registered_without_blocking():
         assert by_mechanic[mechanic].get("registered", True) is True
 
 
+def test_current_modern_wild_mechanics_are_registered_without_blocking():
+    rows = support_for_roles(
+        [
+            "kindred",
+            "tourist",
+            "starship",
+            "spellburst",
+            "spell_burst",
+            "miniaturize",
+            "quickdraw",
+            "honorable_kill",
+            "honorablekill",
+            "elusive",
+            "poisonous",
+            "imbue",
+            "hero_power_imbue",
+        ]
+    )
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    expected = {
+        "kindred": "warning_only",
+        "tourist": "warning_only",
+        "starship": "warning_only",
+        "spellburst": "partial",
+        "miniaturize": "partial",
+        "quickdraw": "partial",
+        "honorable_kill": "partial",
+        "elusive": "partial",
+        "poisonous": "partial",
+        "imbue": "partial",
+    }
+
+    assert set(by_mechanic) == set(expected)
+    for mechanic, support_level in expected.items():
+        assert by_mechanic[mechanic]["support_level"] == support_level
+        assert by_mechanic[mechanic].get("registered", True) is True
+        if support_level == "warning_only":
+            assert by_mechanic[mechanic]["normal_path_surfaces"] == ["report-only"]
+            assert operator_visibility_bucket(by_mechanic[mechanic]) == "warning_only"
+
+
 def test_cthun_alias_accepts_apostrophe_punctuation():
     rows = support_for_roles(["C'THUN"])
 
