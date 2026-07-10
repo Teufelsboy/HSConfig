@@ -76,14 +76,12 @@ def test_root_help_states_negative_scope():
     assert "does not parse replays, inspect winrate, or tune after games" in help_text
 
 
-def test_apply_help_keeps_source_informed_pre_run_scope(capsys):
+def test_apply_help_marks_allow_source_informed_as_legacy_diagnostic_flag(capsys):
     parser = build_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(["apply", "--help"])
     help_text = capsys.readouterr().out
 
-    assert "--fake" in help_text
-    assert "--from-fake-receipt" in help_text
     assert "--allow-source-informed" in help_text
-    assert "Backward-compatible source-informed apply flag." in help_text
-    assert "Normal load-safe packages do not require this flag." in help_text
+    assert "legacy diagnostic compatibility" in help_text
+    assert "Normal load-safe packages do not require this flag" in help_text

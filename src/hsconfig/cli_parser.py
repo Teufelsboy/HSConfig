@@ -129,12 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
         "apply",
         description=(
             "Apply a validated pre-run CustomConfig package. "
-            "Backward-compatible source-informed apply flag. Normal load-safe "
-            "packages do not require this flag."
+            "--allow-source-informed is retained for legacy diagnostic compatibility. "
+            "Normal load-safe packages do not require this flag."
         ),
         epilog=(
-            "Backward-compatible source-informed apply flag. Normal load-safe "
-            "packages do not require this flag."
+            "Legacy diagnostic compatibility: --allow-source-informed is not the normal "
+            "runtime write gate. Normal load-safe packages do not require this flag; "
+            "runtime_apply_mode=load_safe_apply is the operator-facing write mode."
         ),
     )
     apply.add_argument("--package", required=True)

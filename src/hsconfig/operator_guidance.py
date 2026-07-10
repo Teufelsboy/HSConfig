@@ -22,6 +22,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
+            **_source_informed_scope_fields(summary),
         }
 
     if bool(summary.get("runtime_apply_allowed")) and str(
@@ -39,6 +40,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 **_mechanic_warning_fields(summary),
                 **_mechanic_visibility_fields(summary),
                 **_runtime_apply_fields(summary),
+                **_source_informed_scope_fields(summary),
             }
         return {
             "first_report_to_open": "reports/operator_summary.json",
@@ -52,6 +54,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
+            **_source_informed_scope_fields(summary),
         }
 
     if semantic_status == "SOURCE_BACKED_STRONG" and apply_policy == "ALLOWED":
@@ -66,6 +69,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_warning_fields(summary),
             **_mechanic_visibility_fields(summary),
             **_runtime_apply_fields(summary),
+            **_source_informed_scope_fields(summary),
         }
 
     return {
@@ -79,6 +83,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         **_mechanic_warning_fields(summary),
         **_mechanic_visibility_fields(summary),
         **_runtime_apply_fields(summary),
+        **_source_informed_scope_fields(summary),
     }
 
 
@@ -101,6 +106,25 @@ def _runtime_apply_fields(summary: dict[str, Any]) -> dict[str, Any]:
         "runtime_apply_mode": summary.get("runtime_apply_mode", "blocked"),
         "runtime_apply_allowed": bool(summary.get("runtime_apply_allowed", False)),
         "runtime_apply_requires_flag": summary.get("runtime_apply_requires_flag"),
+    }
+
+
+def _source_informed_scope_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    readiness = summary.get("source_informed_apply_readiness")
+    if not isinstance(readiness, dict):
+        return {
+            "runtime_gate_truth": "runtime_apply_mode",
+            "source_informed_readiness_scope": "not_present",
+            "legacy_source_informed_flag_scope": "not_present",
+        }
+    return {
+        "runtime_gate_truth": "runtime_apply_mode",
+        "source_informed_readiness_scope": str(
+            readiness.get("runtime_gate_impact", "diagnostic_only")
+        ),
+        "legacy_source_informed_flag_scope": str(
+            readiness.get("legacy_flag_scope", "backward_compatible_only")
+        ),
     }
 
 

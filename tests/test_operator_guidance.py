@@ -63,6 +63,9 @@ def test_guidance_for_source_backed_strong_package():
         "runtime_apply_mode": "normal_apply",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
+        "runtime_gate_truth": "runtime_apply_mode",
+        "source_informed_readiness_scope": "not_present",
+        "legacy_source_informed_flag_scope": "not_present",
     }
 
 
@@ -276,6 +279,9 @@ def test_guidance_for_valid_warning_package_with_source_gap_readiness():
         "runtime_apply_mode": "load_safe_apply",
         "runtime_apply_allowed": True,
         "runtime_apply_requires_flag": None,
+        "runtime_gate_truth": "runtime_apply_mode",
+        "source_informed_readiness_scope": "diagnostic_only",
+        "legacy_source_informed_flag_scope": "backward_compatible_only",
     }
 
 
@@ -390,3 +396,31 @@ def test_guidance_for_invalid_package():
     assert guidance["runtime_apply_mode"] == "blocked"
     assert guidance["runtime_apply_allowed"] is False
     assert guidance["runtime_apply_requires_flag"] is None
+
+
+def test_operator_guidance_names_runtime_apply_mode_as_gate_truth():
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "runtime_apply_requires_flag": None,
+            "source_informed_apply_readiness": {
+                "status": "blocked",
+                "requires_flag": "--allow-source-informed",
+                "runtime_gate_impact": "diagnostic_only",
+                "legacy_flag_scope": "backward_compatible_only",
+                "allowed_blocker_reasons": ["cards_need_guide_claims"],
+                "blocking_reasons": ["cards_need_runtime_surface"],
+                "source_gap_count": 0,
+            },
+        }
+    )
+
+    assert guidance["safe_to_apply"] is True
+    assert guidance["runtime_apply_mode"] == "load_safe_apply"
+    assert guidance["runtime_gate_truth"] == "runtime_apply_mode"
+    assert guidance["source_informed_readiness_scope"] == "diagnostic_only"
+    assert guidance["legacy_source_informed_flag_scope"] == "backward_compatible_only"

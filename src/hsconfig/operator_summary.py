@@ -37,6 +37,9 @@ SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS = [
     "cards_need_guide_claims",
     "cards_need_mulligan_claims",
 ]
+LEGACY_SOURCE_INFORMED_FLAG = "--allow-source-informed"
+SOURCE_INFORMED_RUNTIME_GATE_IMPACT = "diagnostic_only"
+SOURCE_INFORMED_LEGACY_FLAG_SCOPE = "backward_compatible_only"
 SOURCE_INFORMED_BLOCKING_REASONS = {
     "cards_need_runtime_surface",
     "cards_need_combo_sequence",
@@ -647,7 +650,9 @@ def _source_informed_apply_readiness(
     if technical_status != "VALID_PACKAGE":
         return {
             "status": "not_applicable",
-            "requires_flag": "--allow-source-informed",
+            "requires_flag": LEGACY_SOURCE_INFORMED_FLAG,
+            "runtime_gate_impact": SOURCE_INFORMED_RUNTIME_GATE_IMPACT,
+            "legacy_flag_scope": SOURCE_INFORMED_LEGACY_FLAG_SCOPE,
             "allowed_blocker_reasons": allowed_reasons,
             "blocking_reasons": ["invalid_package"],
             "source_gap_count": 0,
@@ -655,7 +660,9 @@ def _source_informed_apply_readiness(
     if semantic_status != "VALID_BUT_NOT_GUIDE_STRONG":
         return {
             "status": "not_applicable",
-            "requires_flag": "--allow-source-informed",
+            "requires_flag": LEGACY_SOURCE_INFORMED_FLAG,
+            "runtime_gate_impact": SOURCE_INFORMED_RUNTIME_GATE_IMPACT,
+            "legacy_flag_scope": SOURCE_INFORMED_LEGACY_FLAG_SCOPE,
             "allowed_blocker_reasons": allowed_reasons,
             "blocking_reasons": [],
             "source_gap_count": 0,
@@ -691,7 +698,9 @@ def _source_informed_apply_readiness(
     )
     return {
         "status": "blocked" if hard_reasons else "ready",
-        "requires_flag": "--allow-source-informed",
+        "requires_flag": LEGACY_SOURCE_INFORMED_FLAG,
+        "runtime_gate_impact": SOURCE_INFORMED_RUNTIME_GATE_IMPACT,
+        "legacy_flag_scope": SOURCE_INFORMED_LEGACY_FLAG_SCOPE,
         "allowed_blocker_reasons": allowed_reasons,
         "blocking_reasons": sorted(set(hard_reasons)),
         "source_gap_count": source_gap_count,

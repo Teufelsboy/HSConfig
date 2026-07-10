@@ -424,13 +424,15 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
         assert summary["source_informed_apply_readiness"] == {
             "status": "ready",
             "requires_flag": "--allow-source-informed",
+            "runtime_gate_impact": "diagnostic_only",
+            "legacy_flag_scope": "backward_compatible_only",
             "allowed_blocker_reasons": [
                 "cards_need_guide_claims",
                 "cards_need_mulligan_claims",
             ],
-                "blocking_reasons": [],
-                "source_gap_count": 1,
-            }
+            "blocking_reasons": [],
+            "source_gap_count": 1,
+        }
         assert summary["runtime_apply_mode"] == "load_safe_apply"
         assert summary["runtime_apply_allowed"] is True
         assert summary["runtime_apply_requires_flag"] is None
@@ -1071,6 +1073,8 @@ def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
     assert summary["source_informed_apply_readiness"] == {
         "status": "ready",
         "requires_flag": "--allow-source-informed",
+        "runtime_gate_impact": "diagnostic_only",
+        "legacy_flag_scope": "backward_compatible_only",
         "allowed_blocker_reasons": [
             "cards_need_guide_claims",
             "cards_need_mulligan_claims",
@@ -1387,3 +1391,71 @@ def test_operator_summary_thin_usefulness_does_not_block_apply():
     assert summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert summary["runtime_apply_allowed"] is True
+
+
+def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():
+    summary = build_operator_summary(
+        deck_name="DiagnosticDeck",
+        deck_code="AAECAf0EAAAA",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 1,
+            "source_evidence": {"warnings_count": 0},
+        },
+        config_readiness_summary={
+            "total_cards": 1,
+            "runtime_emitted": 1,
+            "cards_needing_runtime_surface": 1,
+        },
+        config_readiness_report={
+            "cards": {
+                "TEST_001": {
+                    "first_missing_link": "needs_runtime_surface",
+                    "name": "Test Card",
+                }
+            },
+            "summary": {
+                "mechanic_support": {
+                    "support_level_counts": {
+                        "direct": 0,
+                        "partial": 0,
+                        "warning_only": 0,
+                    },
+                    "warning_only_mechanics": [],
+                    "warning_only_card_count": 0,
+                },
+                "mechanic_visibility": {
+                    "non_blocking": True,
+                    "bucket_counts": {
+                        "direct": 0,
+                        "identity_gated_direct": 0,
+                        "partial": 0,
+                        "warning_only": 0,
+                    },
+                    "mechanics_by_bucket": {
+                        "direct": [],
+                        "identity_gated_direct": [],
+                        "partial": [],
+                        "warning_only": [],
+                    },
+                    "warning_only_card_count": 0,
+                    "first_warning_boundary": None,
+                    "warning_boundaries": [],
+                },
+            },
+        },
+        claim_coverage_report={"summary": {"guide_backed": 1}},
+        generated_files=[
+            "CustomConfig/DiagnosticDeck/GlobalValues.json",
+            "CustomConfig/DiagnosticDeck/Mulligan.json",
+        ],
+    )
+
+    readiness = summary["source_informed_apply_readiness"]
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert readiness["status"] == "blocked"
+    assert readiness["runtime_gate_impact"] == "diagnostic_only"
+    assert readiness["legacy_flag_scope"] == "backward_compatible_only"
+    assert readiness["requires_flag"] == "--allow-source-informed"
