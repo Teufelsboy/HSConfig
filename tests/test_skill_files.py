@@ -101,11 +101,15 @@ def test_active_docs_show_normal_source_document_operator_path():
     }
 
     assert "docs/operator/README.md" in root_readme
+    assert "Preferred normal path: `hsconfig configure`" in root_readme
+    assert "Lower-level inspected path:" in root_readme
     assert "hsconfig source-manifest" in root_readme
     assert "only when requested" in root_readme
 
     for path in operator_path_files:
         text = path.read_text(encoding="utf-8")
+        assert "Preferred normal path: `hsconfig configure`" in text
+        assert "Lower-level inspected path:" in text
         for term in required_terms:
             assert term in text
 

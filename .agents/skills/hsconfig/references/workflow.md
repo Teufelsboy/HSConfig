@@ -1,6 +1,12 @@
 # Workflow
 
-Normal flow: deck input -> `hsconfig source-manifest` -> short evidence rows -> `hsconfig draft-source-documents` -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
+Preferred normal path: `hsconfig configure`.
+
+`hsconfig configure` is the one-command pre-run package path: deck input -> manifest output -> source-document output folder -> research output -> prepared package -> validation -> `reports/operator_summary.json` -> `hsconfig apply ...` only when requested.
+
+Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+
+Use the lower-level inspected path when source evidence or research outputs must be reviewed between stages: deck input -> `hsconfig source-manifest` -> short evidence rows -> `hsconfig draft-source-documents` -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 

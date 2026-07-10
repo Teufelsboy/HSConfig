@@ -5,11 +5,23 @@ HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a d
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
-The normal path is: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+Preferred normal path: `hsconfig configure`.
+`hsconfig configure` is the one-command pre-run package path. It decodes the deck, builds source and research artifacts, creates the pre-run package, validates it, and only applies through the guarded apply gate when `--apply` is explicitly requested.
+Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+Use the lower-level inspected path when the source evidence, source documents, or research outputs need operator inspection before package preparation.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
 
 ## Normal Operator Path
+
+1. Run `hsconfig configure --deck-name <deck> --deck-code <code> --runtime-root <runtime-root> --out <out> --json`.
+2. Add `--source-evidence-json <file>` when current guide evidence rows are already available.
+3. Open `reports/operator_summary.json` first.
+4. Run `hsconfig apply` only when the operator summary allows it, or use `hsconfig configure --apply` when the same guarded apply should happen in the configure run.
+
+## Lower-Level Inspected Path
+
+Use this path when each source and research stage must be inspected before package preparation.
 
 1. Run `hsconfig source-manifest` to get aliases, card targets, and research questions.
 2. Write short source evidence rows from current guide, archetype, mulligan, card-text, and metadata sources.

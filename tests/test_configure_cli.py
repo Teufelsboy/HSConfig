@@ -92,6 +92,8 @@ def test_configure_builds_valid_load_safe_package_without_source_evidence(
 
     assert summary["status"] == "OK"
     assert summary["package_path"] == str(package)
+    for dirname in ("01_manifest", "02_source_documents", "03_research", "04_package"):
+        assert (out / dirname).is_dir()
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"

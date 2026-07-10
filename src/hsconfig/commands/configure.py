@@ -33,6 +33,8 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     draft_dir = out / "02_source_documents"
     research_dir = out / "03_research"
     package_dir = out / "04_package"
+    for stage_dir in (manifest_dir, draft_dir, research_dir, package_dir):
+        stage_dir.mkdir(parents=True, exist_ok=True)
 
     common = {
         "deck_name": args.deck_name,
