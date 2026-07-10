@@ -292,11 +292,16 @@ def build_no_block_failure_mode_summary(
 ) -> dict[str, Any]:
     categories = {
         "technical_hard_block": _technical_hard_blocks(primary_blockers),
-        "source_depth_warning": _source_depth_warnings(semantic_blockers),
+        "source_depth_warning": _source_depth_warnings(
+            warnings,
+            semantic_status=semantic_status,
+            guide_strength_summary=guide_strength_summary,
+        ),
         "warning_only_mechanic": _warning_only_mechanics(mechanic_visibility_summary),
         "future_mechanic_drift": _future_mechanic_drift(mechanic_drift_summary),
         "guide_strength_gap": _guide_strength_gaps(
             semantic_status=semantic_status,
+            semantic_blockers=semantic_blockers,
             guide_strength_summary=guide_strength_summary,
             warnings=warnings,
             config_usefulness=config_usefulness,
@@ -307,6 +312,9 @@ def build_no_block_failure_mode_summary(
     }
     hard_block = bool(categories["technical_hard_block"]) or technical_status != "VALID_PACKAGE"
     if hard_block:
+        for category in categories:
+            if category != "technical_hard_block":
+                categories[category] = []
         overall = "technical_hard_block"
         operator_message = (
             "Package is not load-safe. Fix technical_hard_block items before hsconfig apply."
@@ -332,7 +340,9 @@ def build_no_block_failure_mode_summary(
         "apply_policy": apply_policy,
         "operator_message": operator_message,
         "categories": categories,
-        "first_non_blocking_followup": _first_non_blocking_followup(categories),
+        "first_non_blocking_followup": (
+            None if hard_block else _first_non_blocking_followup(categories)
+        ),
     }
 
 
@@ -347,23 +357,27 @@ def _technical_hard_blocks(primary_blockers: list[dict[str, Any]]) -> list[dict[
     return rows
 
 
-def _source_depth_warnings(semantic_blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _source_depth_warnings(
+    warnings: list[dict[str, Any]],
+    *,
+    semantic_status: str,
+    guide_strength_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
     rows = []
-    for blocker in semantic_blockers:
-        if not isinstance(blocker, dict):
+    if (
+        semantic_status == "STATIC_SEMANTICS_USABLE"
+        or _int_value(guide_strength_summary.get("static_semantics_cards", 0)) > 0
+    ):
+        rows.append({"reason": "static_semantics_only"})
+    elif semantic_status == "NEEDS_MORE_RESEARCH":
+        rows.append({"reason": "needs_more_research"})
+    for warning in warnings:
+        if not isinstance(warning, dict):
             continue
-        reason = str(blocker.get("reason", "")).strip()
-        if not reason:
+        if str(warning.get("reason", "")) not in SOURCE_DEPTH_WARNING_REASONS:
             continue
-        rows.append(
-            {
-                "reason": reason,
-                "count": _int_value(blocker.get("count", 0)),
-                "blocking_strength": str(blocker.get("blocking_strength", "")),
-                "report": str(blocker.get("report", "")),
-            }
-        )
-    return rows
+        rows.append(dict(warning))
+    return _dedupe_rows(rows)
 
 
 def _warning_only_mechanics(mechanic_visibility_summary: dict[str, Any]) -> list[dict[str, Any]]:
@@ -393,21 +407,19 @@ def _future_mechanic_drift(mechanic_drift_summary: dict[str, Any]) -> list[dict[
 def _guide_strength_gaps(
     *,
     semantic_status: str,
+    semantic_blockers: list[dict[str, Any]],
     guide_strength_summary: dict[str, Any],
     warnings: list[dict[str, Any]],
     config_usefulness: dict[str, Any],
     source_informed_apply_readiness: dict[str, Any],
 ) -> list[dict[str, Any]]:
     rows = []
-    if semantic_status in {"VALID_BUT_NOT_GUIDE_STRONG", "STATIC_SEMANTICS_USABLE", "NEEDS_MORE_RESEARCH"}:
+    if semantic_status == "VALID_BUT_NOT_GUIDE_STRONG":
         rows.append({"reason": semantic_status.lower()})
     for key in (
         "generic_low_confidence_cards",
         "uncovered_cards",
-        "source_evidence_warnings",
         "claim_conflicts",
-        "cards_needing_guide_claims",
-        "cards_needing_mulligan_claims",
     ):
         count = _int_value(guide_strength_summary.get(key, 0))
         if count:
@@ -418,10 +430,20 @@ def _guide_strength_gaps(
             {
                 "reason": "config_usefulness_gap",
                 "status": status,
-                "first_gap": str(config_usefulness.get("first_gap", "")),
+                "first_usefulness_gap": str(config_usefulness.get("first_usefulness_gap", "")),
                 "next_report_to_open": str(config_usefulness.get("next_report_to_open", "")),
             }
         )
+    for blocker in semantic_blockers:
+        if not isinstance(blocker, dict):
+            continue
+        if str(blocker.get("reason", "")) not in GUIDE_STRENGTH_BLOCKER_REASONS:
+            continue
+        rows.append({
+            "reason": str(blocker["reason"]),
+            "count": _int_value(blocker.get("count", 0)),
+            "report": str(blocker.get("report", "")),
+        })
     blocking_reasons = source_informed_apply_readiness.get("blocking_reasons", [])
     if isinstance(blocking_reasons, list):
         for reason in blocking_reasons:
@@ -430,7 +452,7 @@ def _guide_strength_gaps(
         if not isinstance(warning, dict):
             continue
         reason = str(warning.get("reason", ""))
-        if reason in {"static_semantics_only", "needs_more_research", "valid_but_not_guide_strong", "cards_still_low_confidence"}:
+        if reason in {"valid_but_not_guide_strong", "cards_still_low_confidence"}:
             rows.append({"reason": reason, "count": _int_value(warning.get("card_count", 0))})
     return _dedupe_rows(rows)
 
@@ -478,15 +500,27 @@ def _first_non_blocking_followup(categories: dict[str, list[dict[str, Any]]]) ->
 
 
 def _dedupe_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen = set()
+    positions = {}
     result = []
     for row in rows:
-        key = tuple(sorted((str(k), str(v)) for k, v in row.items()))
-        if key in seen:
+        reason = str(row.get("reason", "")).strip()
+        if not reason:
+            result.append(row)
             continue
-        seen.add(key)
-        result.append(row)
+        position = positions.get(reason)
+        if position is None:
+            positions[reason] = len(result)
+            result.append(row)
+        elif _row_count(row) > _row_count(result[position]):
+            result[position] = row
     return result
+
+
+def _row_count(row: dict[str, Any]) -> int:
+    return max(
+        _int_value(row.get(key, 0))
+        for key in ("count", "card_count", "conflict_count")
+    )
 
 
 def _int_value(value: Any) -> int:

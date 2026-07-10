@@ -1540,7 +1540,16 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
         deck_name="Warning Deck",
         deck_code="AAEBAQAAAA==",
         technical_validation={"status": "passed", "errors": []},
-        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "claim_count": 0,
+            "warnings": [
+                {
+                    "reason": "source_url_not_public_https",
+                    "document_index": 1,
+                }
+            ],
+        },
         claim_coverage_report={
             "summary": {
                 "guide_backed": 1,
@@ -1647,12 +1656,12 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
         "they do not block hsconfig apply."
     )
     assert no_block["categories"]["technical_hard_block"] == []
-    assert {row["reason"] for row in no_block["categories"]["source_depth_warning"]} >= {
-        "cards_need_guide_claims",
-        "cards_need_runtime_surface",
-        "cards_need_mulligan_claims",
-        "cards_need_combo_sequence",
-        "cards_need_mechanic_lowering",
+    assert no_block["categories"]["source_depth_warning"] == [
+        {"reason": "static_semantics_only"},
+        {"reason": "source_url_not_public_https", "document_index": 1},
+    ]
+    assert "cards_need_combo_sequence" not in {
+        row["reason"] for row in no_block["categories"]["source_depth_warning"]
     }
     assert no_block["categories"]["warning_only_mechanic"] == [
         {"mechanic": "dredge"},
@@ -1666,6 +1675,22 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
     assert any(
         row["reason"] == "generic_low_confidence_cards"
         for row in no_block["categories"]["guide_strength_gap"]
+    )
+    assert {
+        "cards_need_runtime_surface",
+        "cards_need_mechanic_lowering",
+        "source_informed_apply_gap",
+    } <= {
+        row["reason"] for row in no_block["categories"]["guide_strength_gap"]
+    }
+    usefulness_gap = next(
+        row
+        for row in no_block["categories"]["guide_strength_gap"]
+        if row["reason"] == "config_usefulness_gap"
+    )
+    assert usefulness_gap["first_usefulness_gap"] == "runtime_surface_gap"
+    assert usefulness_gap["next_report_to_open"] == (
+        "reports/per_card_config_readiness_report.json"
     )
     assert no_block["categories"]["combo_uncertainty"] == [
         {"reason": "cards_need_combo_sequence", "count": 1}
@@ -1696,6 +1721,12 @@ def test_no_block_failure_mode_summary_marks_invalid_package_as_hard_block():
     assert no_block["categories"]["technical_hard_block"] == [
         {"reason": "missing_required_runtime_file"}
     ]
+    assert all(
+        no_block["categories"][category] == []
+        for category in no_block["categories"]
+        if category != "technical_hard_block"
+    )
+    assert no_block["first_non_blocking_followup"] is None
     assert no_block["operator_message"] == (
         "Package is not load-safe. Fix technical_hard_block items before hsconfig apply."
     )
@@ -1736,4 +1767,36 @@ def test_no_block_summary_surfaces_future_mechanic_drift_without_blocking_apply(
         {"kind": "text_only_mechanic", "value": "rewind"},
         {"kind": "text_only_mechanic", "value": "shatter"},
         {"kind": "text_only_mechanic", "value": "tourist"},
+    ]
+
+
+def test_no_block_summary_surfaces_runtime_evidence_only_tuning_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="Runtime Evidence Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 1,
+            "source_evidence": {"warnings_count": 0},
+        },
+        globalvalue_authority={
+            "blocked_until_runtime_evidence": [{"key": "LowHpBoardValuePenalty"}]
+        },
+        generated_files=[
+            "CustomConfig/runtimeevidencedeck/GlobalValues.json",
+            "CustomConfig/runtimeevidencedeck/Mulligan.json",
+        ],
+    )
+
+    no_block = summary["no_block_failure_mode_summary"]
+
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert no_block["hard_block"] is False
+    assert no_block["categories"]["runtime_evidence_only_tuning"] == [
+        {
+            "reason": "globalvalue_runtime_evidence_required",
+            "key": "LowHpBoardValuePenalty",
+        }
     ]
