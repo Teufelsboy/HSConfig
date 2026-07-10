@@ -1142,13 +1142,15 @@ Expected: PASS.
 Run:
 
 ```powershell
-rg -n "source_informed_apply_readiness.*runtime gate|--allow-source-informed --json|Unknown mechanics.*must block|Unknown mechanics.*do block|Mechanic drift is a runtime apply gate|Mechanic drift.*must block" README.md docs .agents src tests
+rg -n -- "--allow-source-informed --json" README.md docs/operator .agents src
+rg -n "source_informed_apply_readiness.*runtime gate|Unknown mechanics.*must block|Unknown mechanics.*do block|Mechanic drift is a runtime apply gate|Mechanic drift.*must block" README.md docs/operator .agents src tests
 ```
 
 Expected:
 - No `--allow-source-informed --json` normal-path command appears.
 - No active doc says unknown mechanics must block load-safe apply.
 - Active docs explicitly say mechanic drift is not a runtime apply gate.
+- Historical plan files under `docs/superpowers/plans/` are not operator guidance and are excluded from this active-path scan.
 
 - [ ] **Step 4: Check generated skill sync**
 
