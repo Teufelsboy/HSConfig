@@ -209,7 +209,7 @@ def test_apply_gate_allows_source_informed_apply_ready_without_flag(tmp_path: Pa
     assert compatibility_gate["mode"] == "load_safe_apply"
 
 
-def test_apply_gate_allows_load_safe_apply_when_legacy_source_informed_readiness_is_blocked(
+def test_apply_gate_allows_load_safe_apply_when_source_gap_readiness_is_blocked(
     tmp_path: Path,
 ):
     package = tmp_path / "package"
@@ -219,11 +219,11 @@ def test_apply_gate_allows_load_safe_apply_when_legacy_source_informed_readiness
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "SOURCE_INFORMED_APPLY_READY",
-            "apply_policy": "ALLOWED_SOURCE_INFORMED",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
             "source_informed_apply_readiness": {
                 "status": "blocked",
-                "requires_flag": "--allow-source-informed",
+                "requires_flag": None,
                 "source_gap_count": 2,
                 "blocking_reasons": ["cards_need_runtime_surface"],
             },

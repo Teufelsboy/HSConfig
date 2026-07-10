@@ -219,19 +219,19 @@ def test_warning_guidance_carries_mechanic_visibility_summary():
     ]
 
 
-def test_guidance_for_source_informed_apply_ready_package():
+def test_guidance_for_valid_warning_package_with_source_gap_readiness():
     guidance = build_operator_guidance(
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-            "next_action": "SOURCE_INFORMED_APPLY_READY",
-            "apply_policy": "ALLOWED_SOURCE_INFORMED",
-            "runtime_apply_mode": "source_informed_apply_requires_flag",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
             "runtime_apply_allowed": True,
-            "runtime_apply_requires_flag": "--allow-source-informed",
+            "runtime_apply_requires_flag": None,
             "source_informed_apply_readiness": {
                 "status": "ready",
-                "requires_flag": "--allow-source-informed",
+                "requires_flag": None,
                 "source_gap_count": 2,
             },
             "semantic_blockers": [
@@ -244,13 +244,10 @@ def test_guidance_for_source_informed_apply_ready_package():
     assert guidance == {
         "first_report_to_open": "reports/operator_summary.json",
         "next_report_to_open": "reports/source_claim_gap_report.json",
-        "normal_next_step": "apply_source_informed",
-        "normal_next_command": (
-            "hsconfig apply --package <package> --runtime-root <runtime-root> "
-            "--allow-source-informed --json"
-        ),
+        "normal_next_step": "apply_with_warnings",
+        "normal_next_command": "hsconfig apply --package <package> --runtime-root <runtime-root> --json",
         "safe_to_apply": True,
-        "requires_expert_flag": True,
+        "requires_expert_flag": False,
         "config_usefulness_status": "unknown",
         "config_usefulness_next_report": "reports/operator_summary.json",
         "mechanic_warning_summary": {
@@ -276,9 +273,9 @@ def test_guidance_for_source_informed_apply_ready_package():
             "first_warning_boundary": None,
             "warning_boundaries": [],
         },
-        "runtime_apply_mode": "source_informed_apply_requires_flag",
+        "runtime_apply_mode": "load_safe_apply",
         "runtime_apply_allowed": True,
-        "runtime_apply_requires_flag": "--allow-source-informed",
+        "runtime_apply_requires_flag": None,
     }
 
 
