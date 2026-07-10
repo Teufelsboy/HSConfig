@@ -110,3 +110,8 @@ set. This command is a read-only diagnostic surface for package status,
 runtime-file coverage, CardID file counts, and warning boundaries.
 It does not change the apply gate. Runtime permission still comes only from
 `reports/operator_summary.json` and the guarded `hsconfig apply` path.
+
+The matrix-level `status` is the diagnostic authority for the matrix output.
+Per-row fields are intentionally verbose so a failed matrix can still show
+which lower-level checks were already true. Detail fields never override
+`status` or `matrix_row_status`.

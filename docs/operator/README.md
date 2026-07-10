@@ -113,9 +113,13 @@ hsconfig acceptance-matrix --package outputs/ShadowPriest --package outputs/BigS
 
 The matrix summarizes `technical_status`, `runtime_apply_mode`, runtime file
 coverage, CardID file count, `config_usefulness`, and warning boundaries across
-packages. It is diagnostic only. It does not write runtime files, does not parse
-replays, and does not replace `reports/operator_summary.json` as the single
-operator gate.
+packages. It is diagnostic only. It does not write runtime files, and it does not replace `reports/operator_summary.json`
+as the single operator gate.
+
+Read `status` first. The matrix-level `status` is authoritative for the
+matrix diagnostic. Row fields such as `apply_gate_allowed`,
+`runtime_apply_mode`, and `validation_status` explain why a package passed or
+failed, but they do not override `status` or `matrix_row_status`.
 
 ## Expert Paths
 

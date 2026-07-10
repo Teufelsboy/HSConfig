@@ -19,7 +19,10 @@ SPECIAL_RUNTIME_FILES = {
 
 
 def build_acceptance_matrix(package_paths: Sequence[str | Path]) -> dict[str, Any]:
-    rows = [_inspect_package(Path(package_path)) for package_path in package_paths]
+    rows = [
+        _with_matrix_row_status(_inspect_package(Path(package_path)))
+        for package_path in package_paths
+    ]
     hard_block_count = sum(
         int(row.get("technical_hard_block_count", 0)) for row in rows
     )
@@ -49,6 +52,18 @@ def build_acceptance_matrix(package_paths: Sequence[str | Path]) -> dict[str, An
     return {
         "schema_version": 1,
         "status": status,
+        "status_authority": {
+            "field": "status",
+            "passed_meaning": (
+                "Every row is technically valid, validation passed, "
+                "runtime_apply_mode is load_safe_apply, and apply_gate_allowed is true."
+            ),
+            "failed_meaning": (
+                "At least one row failed matrix acceptance; row detail fields are "
+                "diagnostic and do not override the matrix status."
+            ),
+            "detail_fields_are_diagnostic": True,
+        },
         "summary": {
             "package_count": len(rows),
             "valid_package_count": valid_count,
@@ -60,6 +75,34 @@ def build_acceptance_matrix(package_paths: Sequence[str | Path]) -> dict[str, An
         },
         "packages": rows,
     }
+
+
+def _with_matrix_row_status(row: dict[str, Any]) -> dict[str, Any]:
+    reasons = _matrix_row_failure_reasons(row)
+    enriched = dict(row)
+    enriched["matrix_row_status"] = "passed" if not reasons else "failed"
+    enriched["matrix_row_failure_reasons"] = reasons
+    enriched["matrix_row_interpretation"] = (
+        "Row passed matrix acceptance; detail fields remain diagnostic."
+        if not reasons
+        else "Row failed matrix acceptance; inspect matrix_row_failure_reasons before detail fields."
+    )
+    return enriched
+
+
+def _matrix_row_failure_reasons(row: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if row.get("technical_status") != "VALID_PACKAGE":
+        reasons.append("technical_status_not_valid")
+    if row.get("runtime_apply_mode") != "load_safe_apply":
+        reasons.append("runtime_apply_mode_not_load_safe_apply")
+    if row.get("validation_status") != "passed":
+        reasons.append("validation_not_passed")
+    if row.get("apply_gate_allowed") is not True:
+        reasons.append("apply_gate_not_allowed")
+    if int(row.get("technical_hard_block_count", 0)) > 0:
+        reasons.append("technical_hard_block_present")
+    return reasons
 
 
 def _inspect_package(package: Path) -> dict[str, Any]:

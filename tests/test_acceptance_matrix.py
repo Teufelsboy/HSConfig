@@ -196,6 +196,73 @@ def test_build_acceptance_matrix_fails_when_operator_runtime_mode_is_blocked(
     assert row["apply_gate_allowed"] is True
 
 
+def test_acceptance_matrix_status_is_authoritative_when_detail_fields_conflict(
+    tmp_path: Path,
+):
+    package = tmp_path / "missing-baseline"
+    deck_dir = package / "CustomConfig" / "deck"
+    reports = package / "reports"
+    write_json(
+        deck_dir / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "new"},
+    )
+    write_json(
+        deck_dir / "Mulligan.json",
+        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    )
+    write_json(reports / "input_manifest.json", {"deck_name": "deck"})
+    write_json(
+        reports / "operator_summary.json",
+        {
+            "deck": {"name": "MissingBaseline"},
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+            ],
+            "config_usefulness": {"status": "guide_aligned"},
+            "no_block_failure_mode_summary": {
+                "categories": {"technical_hard_block": []}
+            },
+        },
+    )
+
+    matrix = build_acceptance_matrix([package])
+    row = matrix["packages"][0]
+
+    assert matrix["status"] == "failed"
+    assert matrix["status_authority"]["field"] == "status"
+    assert matrix["status_authority"]["detail_fields_are_diagnostic"] is True
+    assert row["apply_gate_allowed"] is True
+    assert row["matrix_row_status"] == "failed"
+    assert "validation_not_passed" in row["matrix_row_failure_reasons"]
+    assert row["matrix_row_interpretation"].startswith(
+        "Row failed matrix acceptance"
+    )
+
+
+def test_acceptance_matrix_passing_row_has_empty_failure_reasons(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    package = _prepare_package(tmp_path, "ShadowPriest", SHADOWPRIEST_CODE)
+
+    matrix = build_acceptance_matrix([package])
+    row = matrix["packages"][0]
+
+    assert matrix["status"] == "passed"
+    assert row["matrix_row_status"] == "passed"
+    assert row["matrix_row_failure_reasons"] == []
+    assert row["matrix_row_interpretation"] == (
+        "Row passed matrix acceptance; detail fields remain diagnostic."
+    )
+
+
 def test_acceptance_matrix_cli_outputs_json_and_optional_file(
     tmp_path: Path, capsys, monkeypatch
 ):
