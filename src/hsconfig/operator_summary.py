@@ -174,6 +174,7 @@ def build_operator_summary(
         )
     )
     mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
+    source_depth_status = _source_depth_status(guide_source_depth or {})
     no_block_failure_mode_summary = build_no_block_failure_mode_summary(
         technical_status=technical_status,
         runtime_apply_mode=runtime_apply_mode,
@@ -183,6 +184,7 @@ def build_operator_summary(
         primary_blockers=primary_blockers,
         warnings=warnings,
         semantic_status=semantic_status,
+        source_depth_status=source_depth_status,
         semantic_blockers=semantic_blockers,
         guide_strength_summary=guide_strength_summary,
         config_usefulness=config_usefulness,

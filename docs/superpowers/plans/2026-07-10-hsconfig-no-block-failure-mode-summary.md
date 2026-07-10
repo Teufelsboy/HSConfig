@@ -283,6 +283,7 @@ def build_no_block_failure_mode_summary(
     primary_blockers: list[dict[str, Any]],
     warnings: list[dict[str, Any]],
     semantic_status: str,
+    source_depth_status: str,
     semantic_blockers: list[dict[str, Any]],
     guide_strength_summary: dict[str, Any],
     config_usefulness: dict[str, Any],
@@ -294,8 +295,7 @@ def build_no_block_failure_mode_summary(
         "technical_hard_block": _technical_hard_blocks(primary_blockers),
         "source_depth_warning": _source_depth_warnings(
             warnings,
-            semantic_status=semantic_status,
-            guide_strength_summary=guide_strength_summary,
+            source_depth_status=source_depth_status,
         ),
         "warning_only_mechanic": _warning_only_mechanics(mechanic_visibility_summary),
         "future_mechanic_drift": _future_mechanic_drift(mechanic_drift_summary),
@@ -360,16 +360,12 @@ def _technical_hard_blocks(primary_blockers: list[dict[str, Any]]) -> list[dict[
 def _source_depth_warnings(
     warnings: list[dict[str, Any]],
     *,
-    semantic_status: str,
-    guide_strength_summary: dict[str, Any],
+    source_depth_status: str,
 ) -> list[dict[str, Any]]:
     rows = []
-    if (
-        semantic_status == "STATIC_SEMANTICS_USABLE"
-        or _int_value(guide_strength_summary.get("static_semantics_cards", 0)) > 0
-    ):
+    if source_depth_status == "static_semantics_only":
         rows.append({"reason": "static_semantics_only"})
-    elif semantic_status == "NEEDS_MORE_RESEARCH":
+    elif source_depth_status == "needs_more_research":
         rows.append({"reason": "needs_more_research"})
     for warning in warnings:
         if not isinstance(warning, dict):
@@ -446,8 +442,20 @@ def _guide_strength_gaps(
         })
     blocking_reasons = source_informed_apply_readiness.get("blocking_reasons", [])
     if isinstance(blocking_reasons, list):
-        for reason in blocking_reasons:
-            rows.append({"reason": "source_informed_apply_gap", "value": str(reason)})
+        source_informed_reasons = list(
+            dict.fromkeys(
+                str(reason)
+                for reason in blocking_reasons
+                if str(reason) != "cards_need_combo_sequence"
+            )
+        )
+        if source_informed_reasons:
+            rows.append(
+                {
+                    "reason": "source_informed_apply_gap",
+                    "values": source_informed_reasons,
+                }
+            )
     for warning in warnings:
         if not isinstance(warning, dict):
             continue
@@ -541,6 +549,7 @@ from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 Inside `build_operator_summary()`, after `runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = _runtime_apply_contract(...)`, create:
 
 ```python
+    source_depth_status = _source_depth_status(guide_source_depth or {})
     no_block_failure_mode_summary = build_no_block_failure_mode_summary(
         technical_status=technical_status,
         runtime_apply_mode=runtime_apply_mode,
@@ -550,6 +559,7 @@ Inside `build_operator_summary()`, after `runtime_apply_mode, runtime_apply_allo
         primary_blockers=primary_blockers,
         warnings=warnings,
         semantic_status=semantic_status,
+        source_depth_status=source_depth_status,
         semantic_blockers=semantic_blockers,
         guide_strength_summary=guide_strength_summary,
         config_usefulness=config_usefulness,

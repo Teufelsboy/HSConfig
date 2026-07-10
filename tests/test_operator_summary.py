@@ -1676,13 +1676,16 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
         row["reason"] == "generic_low_confidence_cards"
         for row in no_block["categories"]["guide_strength_gap"]
     )
+    source_informed_gap = next(
+        row
+        for row in no_block["categories"]["guide_strength_gap"]
+        if row["reason"] == "source_informed_apply_gap"
+    )
     assert {
         "cards_need_runtime_surface",
         "cards_need_mechanic_lowering",
-        "source_informed_apply_gap",
-    } <= {
-        row["reason"] for row in no_block["categories"]["guide_strength_gap"]
-    }
+    } <= set(source_informed_gap["values"])
+    assert "cards_need_combo_sequence" not in source_informed_gap["values"]
     usefulness_gap = next(
         row
         for row in no_block["categories"]["guide_strength_gap"]
@@ -1696,6 +1699,42 @@ def test_no_block_failure_mode_summary_keeps_valid_warning_package_applyable():
         {"reason": "cards_need_combo_sequence", "count": 1}
     ]
     assert no_block["categories"]["runtime_evidence_only_tuning"] == []
+    assert no_block["first_non_blocking_followup"]["category"] == "source_depth_warning"
+
+
+def test_no_block_summary_keeps_authoritative_static_source_depth_when_not_guide_strong():
+    summary = build_operator_summary(
+        deck_name="Static Depth Gap Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "claim_count": 0,
+        },
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 0,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 1,
+            },
+            "uncovered_cards": ["CARD_A"],
+        },
+        config_readiness_summary={
+            "total_cards": 1,
+            "generic_low_confidence": 1,
+        },
+        generated_files=[
+            "CustomConfig/staticdepthgapdeck/GlobalValues.json",
+            "CustomConfig/staticdepthgapdeck/Mulligan.json",
+        ],
+    )
+
+    no_block = summary["no_block_failure_mode_summary"]
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert no_block["categories"]["source_depth_warning"] == [
+        {"reason": "static_semantics_only"}
+    ]
     assert no_block["first_non_blocking_followup"]["category"] == "source_depth_warning"
 
 
