@@ -435,4 +435,3 @@ Two execution options:
 
 1. **Subagent-Driven (recommended)** - Dispatch a fresh subagent per task, review between tasks, fast iteration.
 2. **Inline Execution** - Execute tasks in this session using executing-plans, batch execution with checkpoints.
-
