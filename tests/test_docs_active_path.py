@@ -119,3 +119,39 @@ def test_operator_docs_explain_mechanic_drift_without_new_gate():
     assert "mechanic_drift_summary" in docs
     assert "Unknown mechanics are warning-only and do not block load-safe apply" in docs
     assert "Mechanic drift is not a runtime apply gate" in docs
+
+
+def test_active_docs_do_not_reintroduce_stale_matrix_counts_or_closure_targets():
+    active_files = [
+        "README.md",
+        "docs/operator/README.md",
+        "docs/operator/universal-wild-no-block-contract.md",
+        "docs/operator/source-backed-strong-closure.md",
+        ".agents/skills/hsconfig/SKILL.md",
+        ".agents/skills/hsconfig/references/workflow.md",
+        "docs/research/current-truth.md",
+    ]
+    forbidden = [
+        "four core_source_backed_fixture rows",
+        "4 core_source_backed_fixture rows",
+        "seven source_informed_valid_fixture rows",
+        "7 source_informed_valid_fixture rows",
+        "Next actionable closure target after durable Boarlock preservation",
+        "Close the current Kingslayer and Boarlock",
+    ]
+    required = [
+        "After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.",
+        "Research artifacts are evidence, not operator instructions.",
+    ]
+
+    active_text = "\n".join(
+        Path(active_file).read_text(encoding="utf-8") for active_file in active_files
+    )
+    current_truth_text = Path("docs/research/current-truth.md").read_text(
+        encoding="utf-8"
+    )
+
+    for stale_claim in forbidden:
+        assert stale_claim not in active_text
+    for current_claim in required:
+        assert current_claim in current_truth_text

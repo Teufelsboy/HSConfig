@@ -1,0 +1,39 @@
+topic: hsconfig-no-block-universal-skill-audit-v4
+created: "2026-07-10"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/results
+  items_per_agent: 1
+  batch_size: 4
+items:
+  - name: HSConfig Current Repo No-Block Workflow Audit
+    category: Local Repo
+    description: >
+      Audit the active HSConfig repository, installed skill, operator docs, tests,
+      CLI command surfaces, representative fixture matrix, supplemental proof decks,
+      runtime apply gate, mechanic visibility reports, and historical-doc noise.
+      Determine whether the current skill is slim, autonomous, no-block for valid
+      deck packages, and still honest about source-confidence debt.
+  - name: HearthRanger VisionAI Public Surface Audit
+    category: HearthRanger VisionAI
+    description: >
+      Verify the documented HearthRanger VisionAI CustomConfig surfaces that HSConfig
+      should produce before games are played: GlobalValues, Mulligan, per-card CardID
+      behavior files, and Combo. Check whether Presume/Concede should remain out of
+      the normal path, and whether any documented surface changes the no-block apply
+      interpretation.
+  - name: Modern Hearthstone Mechanics And Wild Deck Coverage Audit
+    category: Hearthstone Semantics
+    description: >
+      Audit whether current Hearthstone mechanics and Wild deck archetypes are
+      represented well enough for HSConfig's pre-run static semantics. Focus on
+      mechanics that should be direct, identity-gated direct, partial, warning-only,
+      or unknown-warning, and whether the provided deck list plus supplemental
+      CuteWarrior exercise enough families without over-expanding the repo.
+  - name: Universal Any-Deck No-Block Proof Strategy
+    category: Proof Strategy
+    description: >
+      Define what "nothing is blocked; any valid deck should work" can safely mean
+      for HSConfig. Separate package load-safety and runtime apply from guide-source
+      strength, exact combo/mulligan confidence, and unsupported future mechanics.
+      Identify the smallest proof strategy that keeps HSConfig lean while preventing
+      false claims.

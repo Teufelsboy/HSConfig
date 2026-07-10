@@ -1,0 +1,62 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Short final verdict for this research item. State whether the current design
+          is acceptable, needs small polish, or has a material gap.
+      - name: source_backed_evidence
+        type: array
+        required: true
+        description: >
+          Public, official, or source-backed evidence used for the verdict. Include
+          URLs or file paths and concise claim summaries.
+      - name: repo_evidence
+        type: array
+        required: true
+        description: >
+          Local repository evidence such as files, tests, CLI behavior, or reports that
+          support the verdict.
+      - name: deck_matrix_observations
+        type: array
+        required: true
+        description: >
+          Observations about the provided decks, representative matrix, supplemental
+          proofs, archetype coverage, and whether the matrix is too narrow or too broad.
+      - name: no_block_assessment
+        type: array
+        required: true
+        description: >
+          Claims about what is and is not blocked. Distinguish runtime package generation
+          or load-safe apply from source-confidence, mechanic-warning, and review-only
+          surfaces.
+      - name: skill_slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assessment of whether the skill remains narrow, efficient, understandable,
+          and free of unnecessary HSranger/HSTuner/post-run scope.
+      - name: gaps_or_risks
+        type: array
+        required: true
+        description: >
+          Concrete risks, ambiguities, outdated claims, stale docs, missing tests, or
+          future-mechanic drift hazards. Use an empty array if none.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          The single best next action based on this item. Prefer small, high-leverage
+          recommendations over broad rewrites.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          Confidence level: high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Field names or claims that could not be verified.
