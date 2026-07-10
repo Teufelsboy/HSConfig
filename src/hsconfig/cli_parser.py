@@ -16,7 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="HSConfig builds lean HearthRanger VisionAI CustomConfig packages before games are played.",
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
-            "Normal path: source-manifest -> draft-source-documents -> research-deck -> "
+            "Preferred normal path: configure.\n"
+            "Lower-level normal path: source-manifest -> draft-source-documents -> research-deck -> "
             f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
             "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
@@ -24,6 +25,27 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    configure = subparsers.add_parser(
+        "configure",
+        help="preferred one-command pre-run package path",
+        description=(
+            "Preferred one-command pre-run package path. Decode a deck, build "
+            "source/research artifacts, prepare a load-safe package, validate it, "
+            "and optionally apply it through the existing guarded apply gate."
+        ),
+    )
+    configure.add_argument("--deck-name", required=True)
+    configure.add_argument("--deck-code", required=True)
+    configure.add_argument("--out", required=True)
+    configure.add_argument("--runtime-root", required=True)
+    configure.add_argument("--source-evidence-json")
+    configure.add_argument("--cards-json")
+    configure.add_argument("--collectible-cards-json")
+    configure.add_argument("--full-cards-json")
+    configure.add_argument("--allow-placeholder", action="store_true")
+    configure.add_argument("--apply", action="store_true")
+    configure.add_argument("--json", action="store_true")
 
     build = subparsers.add_parser(
         "build",

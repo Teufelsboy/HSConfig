@@ -6,6 +6,7 @@ from hsconfig.cli_parser import build_parser
 from hsconfig.commands.apply import run_apply_command, run_validate_command
 from hsconfig.commands.acceptance_matrix import run_acceptance_matrix_command
 from hsconfig.commands.common import emit_result, run_payload_command
+from hsconfig.commands.configure import run_configure_command
 from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
@@ -19,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "configure":
+        return run_configure_command(args)
     if args.command == "apply":
         return run_apply_command(args)
     if args.command == "build":
