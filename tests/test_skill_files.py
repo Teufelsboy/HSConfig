@@ -596,6 +596,35 @@ def test_docs_and_skill_explain_mechanic_visibility_without_blocking_apply():
     assert "must not block load-safe apply" in combined
 
 
+def test_docs_and_skill_explain_current_modern_mechanic_visibility_without_blocking():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    for mechanic in [
+        "`kindred`",
+        "`tourist`",
+        "`starship`",
+        "`spellburst`",
+        "`miniaturize`",
+        "`quickdraw`",
+        "`honorable_kill`",
+        "`elusive`",
+        "`poisonous`",
+        "`imbue`",
+    ]:
+        assert mechanic in combined
+
+    assert "modern mechanic visibility is non-blocking" in combined.lower()
+    assert "reports/mechanic_drift_report.json" in combined
+    assert "reports/semantic_enrichment_report.json" in combined
+    assert "source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply" in combined
+
+
 def test_universal_wild_contract_keeps_generated_entity_partial():
     text = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
         encoding="utf-8"
