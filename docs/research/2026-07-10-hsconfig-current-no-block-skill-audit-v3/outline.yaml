@@ -1,0 +1,18 @@
+topic: hsconfig-current-no-block-skill-audit-v3
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-10-hsconfig-current-no-block-skill-audit-v3\results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: VisionAI Runtime Surface And Load Safety
+    category: HearthRanger VisionAI
+    description: Audit whether HSConfig's normal runtime package surfaces and no-block apply boundary match the documented HearthRanger VisionAI surfaces for GlobalValues, Mulligan, Combo, and per-card JSON without inventing unsupported runtime gates.
+  - name: Wild Mechanics And HearthstoneJSON Drift
+    category: Hearthstone Semantics
+    description: Audit whether HSConfig's mechanic drift and support model is broad enough for Wild decks, current Hearthstone mechanics, card text, HearthstoneJSON metadata style, unknown mechanics, and future card types while keeping unknowns warning-only.
+  - name: Representative Deck Matrix No-Block Coverage
+    category: Repository Proof
+    description: Audit whether the current representative and supplemental deck set is adequate to prove that valid Wild deck inputs produce load-safe packages without requiring every mechanic to be fully lowered.
+  - name: Lean Skill And Operator UX
+    category: Skill Architecture
+    description: Audit whether the installed HSConfig skill, operator guide, and report ownership path stay slim, understandable, and action-oriented while avoiding old HSTuner, replay, winrate, Presume, Concede, or source-informed-gate confusion.

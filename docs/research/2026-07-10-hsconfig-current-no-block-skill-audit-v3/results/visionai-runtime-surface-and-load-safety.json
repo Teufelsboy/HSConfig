@@ -1,0 +1,41 @@
+{
+  "verdict": "HSConfig's current no-block runtime boundary is sound for the documented VisionAI package surface: it matches HearthRanger's live public documentation for `GlobalValues.json`, `Mulligan.json`, `Combo.json`, `deck_config.ini` mapping, and per-card `CARDID.json`, while keeping unsupported normal-path gates out of the apply decision.",
+  "source_backed_evidence": [
+    "On 2026-07-10, the live HearthRanger VisionAI help index listed current public pages for JSON config, Mulligan, Card Behavior, Combo, Concede, Global Values, and config-set import under `https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm`.",
+    "The live Mulligan help page says to map a deck through `CustomConfig\\\\deck_config.ini` and create `Mulligan.json` inside the selected config directory.",
+    "The live Card Behavior help page says to create `CARDID.json` files in the selected config directory, which matches HSConfig's per-card runtime surface.",
+    "The live Combo help page says to create `Combo.json` and encode explicit combo/value segment pairs, which matches HSConfig's choice to emit Combo only when a concrete combo sequence exists.",
+    "The live Global Values help page says to create `GlobalValues.json` and strongly recommends copying the default `GlobalValues.json` first, which matches HSConfig's baseline-copy and overlay approach.",
+    "The live config-set import help page still shows copied deck folders containing `GlobalValues.json`, `Mulligan.json`, `Concede.json`, and other `.json` files, confirming that HearthRanger still recognizes a file-based config directory model.",
+    "The current official forum tutorial `[HowTo] Set Vision A.I Custom Config` still says a minimal custom config can consist of `GlobalValues.json` and `Mulligan.json` plus a `deck_config.ini` mapping, which supports HSConfig's load-safe minimum package boundary.",
+    "Current HSConfig code enforces the same shape: `surface_intent.py` always requires `GlobalValues.json` and `Mulligan.json`, adds one `CARDID.json` per covered card, and only adds `Combo.json` when the contract contains combos.",
+    "Current HSConfig apply safety is computed from actual package validity rather than invented flags: `apply_gate.py` allows `load_safe_apply` whenever `technical_status` is `VALID_PACKAGE`, required runtime files are present, runtime files are reported consistently, and legacy gated surfaces are absent.",
+    "Targeted repository checks passed on 2026-07-10: `tests/test_visionai_registry.py`, `tests/test_surface_intent.py`, `tests/test_validate_package.py`, `tests/test_apply_gate.py`, `tests/test_e2e_preview.py`, and the `runtime_load_safe` plus `timed_combo_emits_combo_json` coverage in `tests/test_prepare_cli.py`."
+  ],
+  "repo_observations": [
+    "HSConfig's normal runtime planner is intentionally narrow. `src/hsconfig/surface_intent.py` requires `GlobalValues.json` and `Mulligan.json`, emits per-card `CARDID.json` rows for covered cards, and makes `Combo.json` optional only when exact combo data exists.",
+    "Legacy policy surfaces are still compiled only behind an explicit enable switch. `src/hsconfig/compile_optional_surfaces.py` returns no `Presume` or `Concede` config unless the surface is enabled.",
+    "The registry separates parser support from normal-path permission. `src/hsconfig/visionai_registry.py` marks `Presume.json` and `Concede.json` as known surfaces but sets `normal_path_runtime` to `false` for both.",
+    "Package validation is broader than the normal apply path. `src/hsconfig/validate_package.py` recognizes `GlobalValues.json`, `Mulligan.json`, `Combo.json`, `Presume.json`, `Concede.json`, and `CARDID.json`, but validation support alone does not authorize normal-path emission.",
+    "The real no-block boundary is implemented in `src/hsconfig/apply_gate.py`: it recomputes load safety from actual package structure, requires `GlobalValues.json` and `Mulligan.json`, ignores forged runtime-apply fields, and blocks `Presume.json` and `Concede.json` in the normal path.",
+    "Operator-facing repo docs and fixture metadata match this narrowing. `docs/operator/source-backed-strong-closure.md` says runtime apply is no longer blocked by source strength, and `docs/operator/archetype-fixture-matrix.json` models most decks as `GlobalValues.json`, `Mulligan.json`, and `CARDID.json`, with `Combo.json` only on the combo-control fixture."
+  ],
+  "no_block_implications": [
+    "HSConfig can keep no-block apply tied to documented file surfaces and package validity rather than to source-strongness, speculative gameplay confidence, or invented runtime gate fields.",
+    "For valid deck inputs, the load-safe package minimum remains `GlobalValues.json` plus `Mulligan.json` with a correct `deck_config.ini` mapping; per-card `CARDID.json` files and `Combo.json` extend that package when concrete covered behavior exists.",
+    "HSConfig should continue emitting `Combo.json` only when it has an explicit combo sequence to encode, because the public Combo documentation is sequence-based rather than a generic strategy container.",
+    "HSConfig should continue treating `Presume.json` and `Concede.json` as outside the normal no-block path even though `Concede.json` is still publicly documented and both file names are validator-recognized internally.",
+    "No-block apply should continue to mean load-safe structure only. It should not claim gameplay correctness, post-run confirmation, or support for undocumented card-behavior blocks that HearthRanger public docs do not describe."
+  ],
+  "gaps_or_risks": [
+    "[uncertain] HearthRanger's public help is old and not fully symmetrical: `Concede.json` is still documented live, but the expected public `Presume` help page returned HTTP 404 on 2026-07-10, so public-doc coverage is narrower than HSConfig's internal parser support.",
+    "The public pages document file names and sample grammar, not a formal `load_safe_apply` contract. HSConfig's no-block rule is therefore a repo policy built on documented package shape, not a HearthRanger term of art.",
+    "Because `validate_package.py` and `visionai_registry.py` still recognize `Presume.json` and `Concede.json`, future contributors could mistake validator support for normal-path permission unless the current apply-gate and operator wording stay explicit.",
+    "Some repo-supported card-behavior blocks remain marked as source-gap support rather than latest-public-doc confirmed support. That does not weaken the core `GlobalValues`/`Mulligan`/`Combo`/`CARDID` verdict, but it is a separate documentation drift risk."
+  ],
+  "recommended_next_action": "Keep the current no-block boundary unchanged and add one short operator note that says `validator-supported` does not mean `normal-path allowed`, explicitly naming `Presume.json` and `Concede.json` as legacy-gated exceptions.",
+  "confidence": "medium",
+  "uncertain": [
+    "gaps_or_risks"
+  ]
+}

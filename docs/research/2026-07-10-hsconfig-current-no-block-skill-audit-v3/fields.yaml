@@ -1,0 +1,25 @@
+fields:
+  - name: verdict
+    type: string
+    description: Concise judgment on whether this area is sound for a no-block, pre-run HSConfig workflow.
+  - name: source_backed_evidence
+    type: array
+    description: Evidence from public documentation, local repository docs, or tests that supports the verdict.
+  - name: repo_observations
+    type: array
+    description: Observations from the current HSConfig repository state that matter for this area.
+  - name: no_block_implications
+    type: array
+    description: How this area should or should not affect load-safe apply for valid deck inputs.
+  - name: gaps_or_risks
+    type: array
+    description: Remaining gaps, risks, or edge cases. Use an empty array only if there are no meaningful risks.
+  - name: recommended_next_action
+    type: string
+    description: One specific recommended next action, or none if no action is needed.
+  - name: confidence
+    type: string
+    description: high, medium, or low confidence in the verdict.
+  - name: uncertain
+    type: array
+    description: Field names whose values are uncertain.
