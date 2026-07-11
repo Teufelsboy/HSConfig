@@ -57,6 +57,12 @@ READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
     "cards_need_condition_lowering": "cards_needing_condition_lowering",
     "cards_need_mechanic_lowering": "cards_needing_mechanic_lowering",
 }
+SURFACE_REJECTION_REASONS = {
+    "claim_kind_not_mulligan_surface",
+    "claim_kind_not_globalvalues_surface",
+    "claim_kind_not_combo_surface",
+    "claim_kind_not_cardid_surface",
+}
 
 
 def build_operator_summary(
@@ -101,6 +107,7 @@ def build_operator_summary(
     generated_files = generated_files or []
     deck_name = deck_name or ""
     deck_code = deck_code or ""
+    unsupported_conditions = _runtime_unsupported_condition_rows(unsupported_conditions)
 
     technical_status = _technical_status(technical_validation)
     effective_config_readiness_summary = _effective_config_readiness_summary(
@@ -224,6 +231,14 @@ def build_operator_summary(
     }
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
+
+
+def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if isinstance(row, dict) and str(row.get("reason", "")) not in SURFACE_REJECTION_REASONS
+    ]
 
 
 def _technical_status(report: dict[str, Any]) -> str:

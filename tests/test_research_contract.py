@@ -47,7 +47,10 @@ def test_research_contract_emits_all_operator_artifacts():
                 "url": "https://example.invalid/fixture-guide",
                 "claim": "Always keep Pressure One and push face damage early.",
                 "cards": ["EX1_001"],
+                "claim_kind": "mulligan_keep",
                 "claim_type": "mulligan_and_gameplan",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
                 "retrieved_at": "2026-07-05",
             },
             {
@@ -63,7 +66,10 @@ def test_research_contract_emits_all_operator_artifacts():
                 "url": "https://example.invalid/fixture-guide",
                 "claim": "Never keep Expensive Three in the opener.",
                 "cards": ["EX1_003"],
+                "claim_kind": "mulligan_discard",
                 "claim_type": "bad_pattern",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
             },
         ]
     )

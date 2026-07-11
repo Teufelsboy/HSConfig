@@ -1,0 +1,44 @@
+{
+  "current_truth": "Darkbishop Benedictus is a canonical Hearthstone example of a card whose gameplay value can be source-backed because it is present in the deck and its Start of Game condition is met, without that implying the card belongs in opening-hand mulligan keeps. The same semantic split appears in other official examples such as Baku the Mooneater, Genn Greymane, Hamuul Runetotem, Prince Renathal, and start-of-game ordering notes like Souleater Scythe: these effects are tied to deck composition or game-start processing, not to whether the enabler card should be held in the initial hand. For HSConfig, the safe contract is to separate effect-enabler evidence from mulligan advice and never let deck-state or Start of Game semantics auto-lower into mulligan retention.",
+  "source_backed_claims": [
+    "Darkbishop Benedictus official card text is a Start of Game deck-condition effect: \"If the spells in your deck are all Shadow, enter Shadowform.\" Source: https://playhearthstone.com/en-us/cards/64443-darkbishop-benedictus/",
+    "Blizzard's Year of the Wolf Core Set update says Darkbishop Benedictus was added to Core \"to keep the Shadow identity consistent,\" which supports archetype-level identity/effect significance rather than opening-hand guidance. Source: https://hearthstone.blizzard.com/en-us/news/23921495",
+    "Blizzard's Hearthside Chat says Baku the Mooneater and Genn Greymane each produce their effect \"at the start of the game\" and that this happens \"just for including one of these minions in your deck,\" which is direct evidence that deck inclusion and deck legality are the triggering semantics. Source: https://hearthstone.blizzard.com/en-us/news/21614308",
+    "Blizzard's Witchwood launch article explains that adding Genn Greymane to your deck reduces your Hero Power cost and constructing a deck with Baku upgrades your Hero Power, again framing the payoff around deck construction rather than mulligan retention. Source: https://hearthstone.blizzard.com/en-us/news/21694422",
+    "Prince Renathal official card text is a deck-state rule, not a hand-state rule: \"Your deck size and starting Health are 40.\" Source: https://playhearthstone.com/en-us/cards/79767-prince-renathal/",
+    "Blizzard later preserved Prince Renathal's \"core effect\" while changing only the starting Health number, confirming that the semantic payload is the deck-size and game-start rule itself. Source: https://hearthstone.blizzard.com/en-us/news/23892223",
+    "Hamuul Runetotem is a recent official example of the same pattern: \"Start of Game: If each spell in your deck is Nature, Imbue your Hero Power.\" Source: https://hearthstone.blizzard.com/en-gb/news/24271854",
+    "Blizzard patch notes say \"Souleater Scythe's effect will now trigger after any Start of Game effects,\" which confirms Start of Game is a distinct rules phase that other effects can be ordered around. Source: https://hearthstone.blizzard.com/en-us/news/23913671",
+    "Blizzard's mulligan article defines mulligan as the opening-hand replacement step before play begins, which is a separate concern from deck-construction and Start of Game semantics. Source: https://hearthstone.blizzard.com/en-us/news/21363040"
+  ],
+  "risk_to_hsconfig": [
+    "HSConfig can misclassify an effect-enabler as a mulligan keep when source text proves only that the card must be present in deck or that its Start of Game condition matters.",
+    "Generic words such as \"keep,\" \"core,\" \"identity,\" or payoff descriptions can be overread as mulligan evidence even when the source is actually describing archetype structure or game-start behavior.",
+    "Deck-condition cards that alter hero powers, deck size, starting health, or other game-start state can be incorrectly lowered into Mulligan.json if the contract does not separate effect rows from opening-hand advice.",
+    "A narrow fix that removes a mistaken mulligan keep can accidentally erase the real runtime effect if compilation logic assumes one source claim must drive both mulligan and effect behavior.",
+    "Order-sensitive start-of-game interactions can be broken if HSConfig treats all deck-based effects as equivalent text decorations instead of preserving their distinct timing and lowering paths."
+  ],
+  "recommended_contract_rule": [
+    "Treat Start of Game and deck-state semantics as their own claim kinds, separate from mulligan_keep.",
+    "Allow a card to be required in source-backed runtime behavior while being absent from Mulligan.json when the evidence shows deck-enabler semantics but not hand-retention advice.",
+    "Only lower a card into mulligan output when the source explicitly gives mulligan guidance or an equivalent opening-hand recommendation, not merely because the card is important to the archetype.",
+    "Map deck-condition phrases such as \"if your deck,\" \"your deck size,\" \"starting Health,\" \"upgrade your Hero Power,\" or \"enter Shadowform\" to effect/deckbuilding logic rather than mulligan logic by default.",
+    "Preserve dual verification for Darkbishop-like cases: the card should disappear from mulligan output if wrongly inferred there, while its card-specific runtime effect row must remain present."
+  ],
+  "never_infer": [
+    "Never infer mulligan_keep from the presence of the phrase \"Start of Game\" alone.",
+    "Never infer mulligan_keep from deck-condition text such as \"If the spells in your deck...\", \"If your deck has only...\", or \"If each spell in your deck...\".",
+    "Never infer mulligan_keep from deck-size, starting-health, or hero-power-modification text alone.",
+    "Never infer mulligan_keep from archetype identity statements such as a card being added to keep an archetype or class identity consistent.",
+    "Never infer mulligan_keep from weak descriptive prose that mentions a card's importance without explicit opening-hand or mulligan context."
+  ],
+  "confidence_model": "High confidence for effect-presence should come from direct card text, official patch notes, or official design articles that describe Start of Game or deck-state behavior. High confidence for mulligan_keep should require separate explicit evidence about the opening hand. If a source only proves deck inclusion, deck legality, hero-power transformation, starting-health changes, or other game-start processing, HSConfig should assign high confidence to the runtime effect path and zero confidence to mulligan retention.",
+  "validation_implications": [
+    "Fixture and compiler tests should assert that Darkbishop Benedictus-like enablers can remain in card-specific behavior output while being excluded from Mulligan.json.",
+    "Parser tests should ensure Start of Game and deck-condition language lowers to effect/deckbuilding claim kinds instead of mulligan_keep.",
+    "Regression coverage should include Baku/Genn-style hero-power modifiers, Prince Renathal-style deck-state rules, and Hamuul-style deck-spell conditions so the contract does not regress toward mulligan inference.",
+    "Compilation tests should verify that removing mistaken mulligan output does not delete the corresponding runtime effect row.",
+    "Order-sensitive tests should preserve distinctions between Start of Game effects and later in-deck effects, using evidence such as the Souleater Scythe ordering note."
+  ],
+  "uncertain": []
+}

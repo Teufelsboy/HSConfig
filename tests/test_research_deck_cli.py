@@ -68,9 +68,9 @@ def test_research_deck_accepts_source_documents_json(tmp_path: Path, capsys):
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["SW_448"],
+                                "cards": ["SW_446"],
                                 "condition": {"coin": True},
-                                "reason": "Keep Darkbishop Benedictus.",
+                                "reason": "Keep Voidtouched Attendant as an early pressure amplifier.",
                                 "source_confidence": "high",
                             },
                             {

@@ -235,3 +235,90 @@ def test_compile_globalvalues_accepts_operation_value_authority_rows():
 
     assert result["config"]["FirstTurnValueWeight"]["values"][0]["value"] == "0.70"
     assert result["config"]["MyWeaponValue"]["values"][0]["value"] == "1.15"
+
+
+def test_compile_globalvalues_authority_matrix_baseline_blocks_implicit_overlays():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+        "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+        "MyHeroPowerValue": {"values": [{"condition": "*", "value": "1.00"}]},
+        "GlobalDivineShield": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {
+                "MyHeroPowerValue": "increase",
+                "GlobalDivineShield": "increase",
+            },
+            "mechanic_priorities": {"SecondTurnValueWeight": "set:0.25"},
+        },
+        "global_values_authority_matrix": {
+            "posture": "baseline",
+            "allowed_step1_overlays": [
+                {
+                    "key": "baseline",
+                    "overlay": "none",
+                    "operation": "none",
+                    "value": None,
+                    "authority": "baseline_default",
+                    "reason": "no_source_backed_posture_overlay",
+                }
+            ],
+            "blocked_until_runtime_evidence": [],
+        },
+    }
+
+    result = compile_globalvalues(baseline, contract)
+
+    assert result["config"]["FirstTurnValueWeight"]["values"][0]["value"] == "0"
+    assert result["config"]["SecondTurnValueWeight"]["values"][0]["value"] == "1"
+    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.00"
+    assert result["config"]["GlobalDivineShield"]["values"][0]["value"] == "1.00"
+    assert result["profile"]["changed_keys"] == []
+    assert result["profile"]["keys"]["MyHeroPowerValue"]["decision"] == "baseline_confirmed"
+
+
+def test_compile_globalvalues_authority_matrix_uses_only_allowed_rows_and_reasons():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+        "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+        "MyHeroPowerValue": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+    contract = {
+        "aggression_profile": {
+            "speed": "aggro",
+            "global_value_overlays": {"MyHeroPowerValue": "decrease"},
+            "global_value_overlay_reasons": {
+                "MyHeroPowerValue": "legacy aggression-profile reason"
+            },
+        },
+        "global_values_authority_matrix": {
+            "posture": "hero_power_pressure",
+            "allowed_step1_overlays": [
+                {
+                    "key": "MyHeroPowerValue",
+                    "overlay": "increase",
+                    "operation": "increase",
+                    "value": None,
+                    "authority": "step1_source_backed_posture",
+                    "reason": "hero_power_pressure_prioritizes_hero_power",
+                }
+            ],
+            "blocked_until_runtime_evidence": [],
+        },
+    }
+
+    result = compile_globalvalues(baseline, contract)
+
+    assert result["config"]["FirstTurnValueWeight"]["values"][0]["value"] == "0"
+    assert result["config"]["SecondTurnValueWeight"]["values"][0]["value"] == "1"
+    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
+    assert result["profile"]["changed_keys"] == ["MyHeroPowerValue"]
+    profile = result["profile"]["keys"]["MyHeroPowerValue"]
+    assert profile["decision"] == "overlay_changed"
+    assert profile["reason"] == "hero_power_pressure_prioritizes_hero_power"

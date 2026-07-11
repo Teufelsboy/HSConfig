@@ -5,6 +5,7 @@ from typing import Any
 
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.io import write_json
+from hsconfig.source_document_model import runtime_claim_kind
 
 
 NEGATIVE_KEEP_MARKERS = (
@@ -186,10 +187,7 @@ def _roles_from_claims_and_semantics(
 ) -> list[str]:
     text = _claim_text(claims)
     claim_types = {str(claim.get("claim_type", "")).lower() for claim in claims}
-    claim_kinds = {
-        str(claim.get("claim_kind", claim.get("claim_type", ""))).lower()
-        for claim in claims
-    }
+    claim_kinds = {runtime_claim_kind(claim) for claim in claims}
     roles = set(semantic_families)
     if "mulligan_keep" in claim_kinds and not _has_negative_keep(text):
         roles.add("mulligan_anchor")

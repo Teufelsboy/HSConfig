@@ -6,6 +6,13 @@ Normal operator path starts at `docs/operator/README.md`.
 
 After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
 
+## 2026-07-11 Surface authority split
+
+Current HSConfig truth: source claims are normalized first, then lowered through
+surface-specific authority gates. This preserves no-block deck generation while
+preventing source-backed effects such as Darkbishop Benedictus start-of-game
+Hero Power transformation from becoming false opening-hand Mulligan keeps.
+
 ## How To Read Historical Evidence
 
 Active docs win over historical evidence. Do not start a new architecture wave from superseded research alone. Use real deck output or live mechanic drift as the trigger for new implementation work.
@@ -16,6 +23,7 @@ Older research packages can explain why a decision happened, but they do not ove
 
 | Package | Role | Current implication |
 | --- | --- | --- |
+| `docs/research/2026-07-11-hsconfig-source-contract-logic-audit/` | Source and runtime contract evidence | Treat `claim_kind` as semantic input to the runtime surface gates; broad guide text and start-of-game effects must not become Mulligan keeps without explicit mulligan claims. |
 | `docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/` | Post-hardening skill audit evidence | Keep the current lean HSConfig boundary, correct Presume surface wording, preserve no-block apply behavior, and use real decks for targeted defects instead of another broad architecture wave. |
 | `docs/research/2026-07-11-hsconfig-current-skill-audit/` | Current skill contract and slimness evidence | Keep HSConfig narrow; harden the no-block apply gate with executable tests, correct Presume/Concede wording, and keep the active skill/workflow docs compact. |
 | `docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/` | No-block universal skill posture evidence | Add visibility-only warning rows for `rewind`, `herald`, and `shatter`; keep the normal package path limited to load-safe HSConfig surfaces. |

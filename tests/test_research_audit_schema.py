@@ -149,3 +149,31 @@ def test_post_hardening_skill_audit_is_indexed_as_evidence_only():
     assert "Normal operation starts at `README.md` and `docs/operator/README.md`." in readme
     assert "post-hardening skill audit evidence" in current_truth.lower()
     assert "2026-07-11-hsconfig-post-hardening-skill-audit" in current_truth
+
+
+def test_source_contract_logic_audit_validates_and_is_indexed_as_evidence():
+    root = Path("docs/research/2026-07-11-hsconfig-source-contract-logic-audit")
+    fields = root / "fields.yaml"
+    results = root / "results"
+    result_files = sorted(results.glob("*.json"))
+    assert len(result_files) == 3
+
+    command = [
+        sys.executable,
+        str(Path.home() / ".codex/skills/research/validate_json.py"),
+        "-f",
+        str(fields),
+        "-j",
+        *[str(path) for path in result_files],
+    ]
+    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "Total fields: 8" in completed.stdout
+    assert "Validation passed: 3/3" in completed.stdout
+
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    current_truth = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+    assert "Research artifacts are evidence, not operator instructions." in readme
+    assert "claim-kind runtime contract closure" in readme
+    assert "2026-07-11-hsconfig-source-contract-logic-audit" in current_truth

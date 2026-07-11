@@ -121,3 +121,51 @@ def test_source_posture_claim_overrides_generic_aggro_profile():
     assert matrix["posture"] == "weapon_pressure"
     assert "MyWeaponValue" in allowed
     assert "MyHeroPowerValue" not in allowed
+
+
+def test_globalvalues_ignores_card_role_claims_even_when_source_backed():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="unknown",
+        claims=[
+            {
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "stance": "aggro_burn",
+                "cards": ["CARD_001"],
+            }
+        ],
+    )
+
+    assert matrix["posture"] == "baseline"
+    assert matrix["allowed_step1_overlays"][0]["reason"] == "no_source_backed_posture_overlay"
+
+
+def test_globalvalues_ignores_aggro_profile_without_authorized_posture_claims():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggro",
+        claims=[
+            {
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "stance": "aggro_burn",
+                "cards": ["CARD_001"],
+                "source_refs": ["guide:1"],
+            }
+        ],
+    )
+
+    assert matrix["posture"] == "baseline"
+    assert matrix["allowed_step1_overlays"] == [
+        {
+            "key": "baseline",
+            "overlay": "none",
+            "operation": "none",
+            "value": None,
+            "authority": "baseline_default",
+            "key_authority": authority_for_key("baseline"),
+            "claim_refs": [],
+            "reason": "no_source_backed_posture_overlay",
+        }
+    ]

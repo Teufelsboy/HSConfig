@@ -65,6 +65,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         (reports / "research" / "globalvalue_intent.json").read_text(encoding="utf-8")
     )
     contract = json.loads((reports / "gameplan_contract.json").read_text(encoding="utf-8"))
+    globalvalues_authority = json.loads(
+        (reports / "global_values_authority_matrix.json").read_text(encoding="utf-8")
+    )
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
@@ -114,9 +117,17 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert research_card_roles["SW_448"]["confidence"] == "source_backed_static_semantics"
     assert "hero_power_transform" in research_card_roles["SW_448"]["roles"]
     assert research_globalvalues["overlays"]["MyHeroPowerValue"] == "increase"
+    assert globalvalues_authority["posture"] == "baseline"
+    assert globalvalues_authority["allowed_step1_overlays"][0]["key"] == "baseline"
+    assert (
+        globalvalues_authority["allowed_step1_overlays"][0]["reason"]
+        == "no_source_backed_posture_overlay"
+    )
+    assert "MyHeroPowerValue" not in {
+        row["key"] for row in globalvalues_authority["allowed_step1_overlays"]
+    }
     hero_power_profile = globalvalues_profile["keys"]["MyHeroPowerValue"]
-    assert hero_power_profile["decision"] == "overlay_changed"
-    assert "Mind Spike" in hero_power_profile["reason"]
+    assert hero_power_profile["decision"] != "overlay_changed"
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert (deck_dir / "DS1_233.json").exists()

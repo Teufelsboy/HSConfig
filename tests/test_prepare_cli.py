@@ -340,9 +340,9 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["SW_448"],
+                                "cards": ["SW_446"],
                                 "condition": {"coin": True},
-                                "reason": "Keep Darkbishop Benedictus.",
+                                "reason": "Keep Voidtouched Attendant as an early pressure amplifier.",
                                 "source_confidence": "high",
                             }
                         ],
@@ -924,6 +924,99 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert (reports / "global_values_authority_matrix.json").exists()
     assert (reports / "global_values_key_profile_report.json").exists()
     assert card_behavior_suppressions == card_behavior.get("suppressed", [])
+
+
+def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
+    tmp_path: Path, capsys
+):
+    runtime_default = tmp_path / "runtime" / "CustomConfig" / "default"
+    runtime_default.mkdir(parents=True)
+    runtime_default.joinpath("GlobalValues.json").write_text(
+        json.dumps(
+            {
+                "GameCardId": "GlobalValues",
+                "ConfigComment": "Runtime baseline",
+                "LowHpBoardValuePenalty": {
+                    "values": [{"condition": "*", "value": "1.00"}]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/runtime-notes",
+                        "source_title": "Runtime Notes",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-06T00:00:00Z",
+                        "deck_name": "ShadowPriest",
+                        "claims": [
+                            {
+                                "claim_kind": "globalvalue_numeric_tuning",
+                                "scope": "deck",
+                                "key": "LowHpBoardValuePenalty",
+                                "runtime_value": "0.25",
+                                "reason": "Lower low-health board penalty only after runtime evidence.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    capsys.readouterr()
+    reports = package / "reports"
+    authority = json.loads(
+        (reports / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    unsupported = json.loads(
+        (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
+    )
+    globalvalues = json.loads(
+        (
+            package / "CustomConfig" / "shadowpriest" / "GlobalValues.json"
+        ).read_text(encoding="utf-8")
+    )
+    blocked = [
+        row
+        for row in authority["blocked_until_runtime_evidence"]
+        if row["key"] == "LowHpBoardValuePenalty"
+    ]
+
+    assert code == 0
+    assert unsupported == []
+    assert any(
+        row["reason"] == "requires_runtime_evidence" and row["claim_refs"]
+        for row in blocked
+    )
+    assert globalvalues["LowHpBoardValuePenalty"]["values"][0]["value"] == "1.00"
 
 
 def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):

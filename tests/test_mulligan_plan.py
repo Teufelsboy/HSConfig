@@ -2,6 +2,66 @@ from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.mulligan_plan import build_mulligan_plan
 
 
+def test_mulligan_plan_reports_non_mulligan_claim_surface_rejection():
+    plan = build_mulligan_plan(
+        deck_name="ShadowPriest",
+        claims=[
+            {
+                "claim_kind": "hero_power_transform",
+                "claim_readiness": "source_backed_static_semantics",
+                "trust_ceiling": "runtime_candidate",
+                "cards": ["SW_448"],
+                "claim_id": "darkbishop_transform",
+            }
+        ],
+        card_roles={
+            "SW_448": {
+                "roles": ["start_of_game", "hero_power_transform"],
+                "semantic_families": ["start_of_game", "hero_power_transform"],
+            }
+        },
+    )
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"][0]["reason"] == "claim_kind_not_mulligan_surface"
+    assert plan["suppressed_rules"][0]["card"] == "SW_448"
+    assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
+
+
+def test_mulligan_plan_rejects_start_of_game_deckbuilding_modifier_keep():
+    plan = build_mulligan_plan(
+        deck_name="RenathalDeck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "cards": ["REV_018"],
+                "claim_id": "renathal_effect_keep",
+            }
+        ],
+        card_roles={
+            "REV_018": {
+                "roles": ["start_of_game", "deckbuilding_modifier"],
+                "semantic_families": ["start_of_game", "deckbuilding_modifier"],
+            }
+        },
+    )
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"] == [
+        {
+            "card": "REV_018",
+            "action": "hold",
+            "reason": "start_of_game_effect_does_not_require_opening_hand",
+            "source_claim_ids": ["renathal_effect_keep"],
+        }
+    ]
+    assert plan["quality"]["first_gap_reason"] == (
+        "start_of_game_effect_does_not_require_opening_hand"
+    )
+
+
 def test_mulligan_plan_has_concrete_keeps_before_wildcard_discard():
     claims = [
         {"claim_kind": "mulligan_keep", "cards": ["SW_448"], "stance": "keep", "claim_confidence": "high"},
@@ -34,7 +94,7 @@ def test_mulligan_plan_blocks_lone_wildcard_discard():
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
 
 
-def test_mulligan_plan_uses_early_role_fallback_without_source_claims():
+def test_mulligan_plan_does_not_create_holds_from_early_roles_without_source_claims():
     plan = build_mulligan_plan(
         deck_name="CurveDeck",
         claims=[],
@@ -47,10 +107,7 @@ def test_mulligan_plan_uses_early_role_fallback_without_source_claims():
         },
     )
 
-    assert plan["rules"][0]["card"] == "CARD_001"
-    assert plan["rules"][0]["action"] == "hold"
-    assert plan["rules"][0]["confidence"] == "archetype_inferred"
-    assert plan["rules"][-1]["card"] == "*"
+    assert plan["rules"] == []
     assert plan["quality"]["status"] == "thin"
     assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
     assert plan["quality"]["source_backed_rule_count"] == 0

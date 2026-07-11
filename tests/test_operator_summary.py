@@ -293,6 +293,37 @@ def test_static_semantics_valid_package_is_ready_with_warnings():
     assert any(warning["reason"] == "static_semantics_only" for warning in summary["warnings"])
 
 
+def test_surface_rejection_rows_do_not_degrade_static_semantics_status():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="deck-code",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "source_count": 0},
+        unsupported_conditions=[
+            {
+                "card": "SW_448",
+                "action": "none",
+                "reason": "claim_kind_not_mulligan_surface",
+                "source_claim_ids": ["claim_static_hero_power_transform"],
+            }
+        ],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=[],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert summary["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert not any(
+        blocker["reason"] == "unsupported_conditions_present"
+        for blocker in summary["semantic_blockers"]
+    )
+    assert not any(
+        warning["reason"] == "claim_kind_not_mulligan_surface"
+        for warning in summary["warnings"]
+    )
+
+
 def test_missing_guide_depth_requests_more_research_without_invalidating_package():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

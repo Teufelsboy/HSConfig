@@ -26,7 +26,10 @@ def test_gameplan_contract_covers_every_card_with_source_confidence():
                 "url": "https://example.invalid/deck",
                 "claim": "Always keep One and push face damage early.",
                 "cards": ["EX1_001"],
+                "claim_kind": "mulligan_keep",
                 "claim_type": "mulligan_and_gameplan",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
             },
             {
                 "source": "guide",
@@ -40,7 +43,10 @@ def test_gameplan_contract_covers_every_card_with_source_confidence():
                 "url": "https://example.invalid/deck",
                 "claim": "Never keep Three in the opener.",
                 "cards": ["EX1_003"],
+                "claim_kind": "mulligan_discard",
                 "claim_type": "bad_pattern",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
             },
         ]
     )
@@ -200,7 +206,10 @@ def test_gameplan_contract_preserves_guide_backed_confidence_lane():
                 "source": "guide",
                 "claim": "Always keep One and push face damage early.",
                 "cards": ["EX1_001"],
+                "claim_kind": "mulligan_keep",
                 "claim_type": "mulligan_and_gameplan",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
                 "confidence": "guide_backed",
             }
         ]
@@ -226,7 +235,10 @@ def test_gameplan_contract_treats_guide_sources_as_guide_backed_without_explicit
                 "url": "https://example.invalid/deck-guide",
                 "claim": "Always keep One and push face damage early.",
                 "cards": ["EX1_001"],
+                "claim_kind": "mulligan_keep",
                 "claim_type": "mulligan_and_gameplan",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
             }
         ]
     )

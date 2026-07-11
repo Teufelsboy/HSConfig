@@ -4,7 +4,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.combo_sequence_contract import build_combo_sequence_contract
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import can_lower_to_combo, normalized_claim_kind
 
 
 def build_combo_plan(
@@ -16,17 +16,17 @@ def build_combo_plan(
     suppressed: list[dict[str, Any]] = []
 
     for claim in claims:
-        claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
-        if claim_kind != "combo_sequence":
-            continue
-        if not claim_can_lower_to_runtime(claim):
-            suppressed.append(
-                _suppression(
-                    claim,
-                    _claim_cards(claim),
-                    "claim_not_runtime_lowerable",
+        claim_kind = normalized_claim_kind(claim)
+        gate = can_lower_to_combo(claim)
+        if not gate.allowed:
+            if _is_combo_surface_candidate(claim, claim_kind):
+                suppressed.append(
+                    _suppression(
+                        claim,
+                        _claim_cards(claim),
+                        gate.reason,
+                    )
                 )
-            )
             continue
 
         contract = build_combo_sequence_contract(claim, deck_cards)
@@ -76,6 +76,21 @@ def _claim_cards(claim: dict[str, Any]) -> list[str]:
     if isinstance(cards, str):
         cards = [cards]
     return [str(card) for card in cards if str(card)]
+
+
+def _is_combo_surface_candidate(claim: dict[str, Any], claim_kind: str) -> bool:
+    if claim_kind == "combo_sequence":
+        return True
+    surface_fields = (
+        "surface",
+        "target_surface",
+        "runtime_surface",
+        "runtime_surface_family",
+    )
+    for field in surface_fields:
+        if "combo" in str(claim.get(field, "")).lower():
+            return True
+    return False
 
 
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:

@@ -70,9 +70,10 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "runtime_value": "9",
         },
         {
-            "claim_id": "claim_in_hand",
-            "claim_kind": "in_hand_value",
+            "claim_id": "claim_hero_power",
+            "claim_kind": "hero_power_transform",
             "cards": ["CARD_A"],
+            "stance": "use_hero_power_pressure",
             "runtime_value": "4",
         },
         {
@@ -91,13 +92,13 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
 
     assert [row["claim_id"] for row in plan["rows"]] == [
         "claim_choose_one",
-        "claim_in_hand",
+        "claim_hero_power",
         "claim_target",
     ]
     assert [row["card_id"] for row in plan["rows"]] == ["CARD_Z", "CARD_A", "CARD_B"]
     assert [row["behavior_block"] for row in plan["rows"]] == [
         "OnChooseOneCardBonus",
-        "InHandBonus",
+        "BeforeUseHeroPowerBonus",
         "BeforeBattlecryTargetBonus",
     ]
     assert plan["option_resolution"] == [
@@ -500,7 +501,7 @@ def test_blocks_unsupported_claim_from_runtime_rows():
     )
 
     assert routed["card_rows"] == {}
-    assert routed["suppressed"][0]["reason"] == "no_documented_card_behavior_surface"
+    assert routed["suppressed"][0]["reason"] == "claim_kind_not_cardid_surface"
 
 
 def test_card_role_fallback_does_not_override_stronger_targeting_row():
@@ -930,3 +931,21 @@ def test_router_suppresses_unsupported_explicit_runtime_block():
             "runtime_block": "NotARealVisionAIBlock",
         }
     ]
+
+
+def test_cardid_router_reports_mulligan_claim_as_wrong_surface():
+    routed = route_card_behavior_surfaces(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "cards": ["CARD_001"],
+                "claim_id": "keep_card",
+            }
+        ]
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "claim_kind_not_cardid_surface"
+    assert routed["suppressed"][0]["claim_kind"] == "mulligan_keep"

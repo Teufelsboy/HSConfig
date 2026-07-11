@@ -10,7 +10,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -52,12 +52,13 @@ def route_card_behavior_surfaces(
     resolved_discover_choice_cards = _resolved_choice_cards(claims, identity_links)
 
     for claim in claims:
-        claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
+        claim_kind = normalized_claim_kind(claim)
         cards = _claim_cards(claim)
-        if not claim_can_lower_to_runtime(claim):
-            suppressed.append(
-                _suppressed_row(claim, claim_kind, cards, "claim_not_runtime_lowerable")
-            )
+        gate = can_lower_to_cardid(claim)
+        if not gate.allowed:
+            if _belongs_to_dedicated_non_cardid_surface(claim_kind):
+                continue
+            suppressed.append(_suppressed_row(claim, claim_kind, cards, gate.reason))
             continue
         condition, condition_error = _condition(claim)
         if condition_error is not None:
@@ -348,6 +349,14 @@ def _claim_cards(claim: dict[str, Any]) -> list[str]:
     return [str(card) for card in cards if str(card)]
 
 
+def _belongs_to_dedicated_non_cardid_surface(claim_kind: str) -> bool:
+    return claim_kind in {
+        "combo_sequence",
+        "gameplan_posture",
+        "globalvalue_numeric_tuning",
+    }
+
+
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
     if isinstance(claim.get("source_claim_ids"), list):
         return [str(item) for item in claim["source_claim_ids"]]
@@ -462,10 +471,10 @@ def _resolved_choice_cards(
 ) -> set[str]:
     resolved_cards: set[str] = set()
     for claim in claims:
-        claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
+        claim_kind = normalized_claim_kind(claim)
         if claim_kind != "discover_choice":
             continue
-        if not claim_can_lower_to_runtime(claim):
+        if not can_lower_to_cardid(claim).allowed:
             continue
         cards = _claim_cards(claim)
         if not cards:

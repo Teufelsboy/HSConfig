@@ -13,7 +13,11 @@ from hsconfig.source_document_model import (
 )
 
 
-DECK_SCOPED_CLAIM_KINDS = {"archetype", "gameplan_posture"}
+DECK_SCOPED_CLAIM_KINDS = {
+    "archetype",
+    "gameplan_posture",
+    "globalvalue_numeric_tuning",
+}
 
 
 def classify_freshness(
@@ -256,6 +260,8 @@ def _normalize_source_claim(
         claim["runtime_block"] = _clean_text(raw_claim["runtime_block"])
     if "runtime_value" in raw_claim:
         claim["runtime_value"] = _clean_text(raw_claim["runtime_value"])
+    if "key" in raw_claim:
+        claim["key"] = _clean_text(raw_claim["key"])
     if "mechanic" in raw_claim:
         claim["mechanic"] = _clean_text(raw_claim["mechanic"]).lower()
     if "selector_kind" in raw_claim:
@@ -453,6 +459,7 @@ def _legacy_claim_type(claim_kind: str) -> str:
         "archetype": "archetype",
         "discover_choice": "discover_choice",
         "choose_one_choice": "choose_one_choice",
+        "globalvalue_numeric_tuning": "globalvalue_numeric_tuning",
     }.get(claim_kind, "general")
 
 

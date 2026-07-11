@@ -28,6 +28,8 @@ def _normalize_claim(raw_claim: dict[str, Any]) -> dict[str, Any]:
         or "source_backed",
     }
     for optional_key in (
+        "claim_kind",
+        "claim_readiness",
         "condition",
         "matchup",
         "operator",
@@ -35,6 +37,7 @@ def _normalize_claim(raw_claim: dict[str, Any]) -> dict[str, Any]:
         "policy",
         "retrieved_at",
         "source_title",
+        "trust_ceiling",
         "values",
     ):
         if optional_key in raw_claim:

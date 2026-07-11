@@ -4,7 +4,7 @@ from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
-from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS, runtime_claim_kind
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -136,13 +136,17 @@ def verify_source_documents(source_documents: list[dict[str, Any]]) -> dict[str,
 
 def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> dict[str, Any]:
     warnings: list[dict[str, Any]] = []
-    claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
+    claim_kind = runtime_claim_kind(claim) or str(claim.get("claim_kind", claim.get("claim_type", "")))
     cards = _cards(claim)
     has_runtime_lowering_hint = any(key in claim for key in RUNTIME_HINT_KEYS)
 
     if claim_kind not in SUPPORTED_ATOMIC_CLAIM_KINDS:
         warnings.append({"reason": "unsupported_claim_kind", "claim_kind": claim_kind})
-    if not cards and claim_kind not in {"archetype", "gameplan_posture"}:
+    if not cards and claim_kind not in {
+        "archetype",
+        "gameplan_posture",
+        "globalvalue_numeric_tuning",
+    }:
         warnings.append({"reason": "claim_missing_cards", "claim_kind": claim_kind})
     if not _claim_evidence_text(claim):
         warnings.append({"reason": "claim_missing_evidence_text_short", "claim_kind": claim_kind})

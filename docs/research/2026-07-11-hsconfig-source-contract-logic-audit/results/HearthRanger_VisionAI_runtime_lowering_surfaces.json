@@ -1,0 +1,51 @@
+{
+  "current_truth": "In the public HearthRanger materials reviewed, the runtime lowering surfaces relevant to HSConfig are deck-to-config routing in `CustomConfig\\\\deck_config.ini`, deck-level `Mulligan.json`, deck-level `GlobalValues.json`, optional deck-level `Combo.json`, and per-card `<CardID>.json` behavior files. The official docs explain concrete JSON syntax for mulligan rules, global board-value weights, combo sequences, and card-specific bonus or priority keys. No separate public HSConfig-style claim taxonomy or dedicated start-of-game-only runtime file was found in the materials reviewed, so direct lowering should stay constrained to explicit, surface-backed semantics and leave weak or under-specified guidance in reports.",
+  "source_backed_claims": [
+    "Official setup guidance shows that custom runtime lowering starts in `CustomConfig\\\\deck_config.ini`, where `[CONFIGS]` maps the in-game deck name to a custom config directory. A minimal custom deck folder can contain `GlobalValues.json` and `Mulligan.json`. Source: https://www.hearthranger.com/forum/yaf_postst8783_-HowTo--Set-Vision-A-I-Custom-Config.aspx",
+    "Official mulligan guidance defines `Mulligan.json` as the opening-hand rules surface. Entries use `mulligan`, `condition`, and `value`, with examples for exact card IDs, grouped holds such as `CS2_146 + OG_312`, wildcards such as `*`, mana buckets such as `DROP1` and `DROP3`, and conditions such as `coin`, `nocoin`, and opponent hero filters. It also states that hold rules have higher priority than discard rules. Source: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Official global-values guidance defines `GlobalValues.json` as a board-evaluation tuning surface. It recommends copying the default file and editing numeric values such as `FirstTurnValueWeight`, `SecondTurnValueWeight`, and global trait weights like `GlobalDivineShield`. Source: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official combo guidance defines an optional `Combo.json` file with `ComboList.values`, where each entry has `condition`, `combo`, and `value`. The doc states that same-turn chains use `>>` and across-turn chains use `>->`. Source: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official JSON-config guidance states that `GameCardId` should match the JSON file name, which makes `<CardID>.json` the public per-card runtime surface. The documented per-card keys include `InHandBonus`, `OnBoardBonus`, `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `BeforeOverkilledBonus`, `BeforeEndTurnBonus`, `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, `OnAdaptCardBonus`, `BeforeUpgradeCardBonus`, `InHandPlayPriority`, and `OnBoardPlayPriority`. Source: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official JSON-config guidance shows that Choose One options are lowered as separate card IDs such as `CFM_602a` and `CFM_602b`, and that those option IDs can be configured through their own per-card JSON files. Source: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "A 2025 HearthRanger community support thread shows a maintainer-level user pointing a hero-power tuning case at `HERO_11bpt.json`, which is evidence that hero-power-specific behavior can also be expressed through the same per-card CardID file pattern. Source: https://www.hearthranger.com/forum/yaf_postsm63876_Need-help-configuring-bot.aspx?find=lastunread"
+  ],
+  "risk_to_hsconfig": [
+    "If HSConfig treats generic prose such as \"the effect matters\" or \"key card\" as an opening-hand rule, it can incorrectly lower effect-enabler semantics into `Mulligan.json` instead of keeping them out of mulligan logic.",
+    "If HSConfig lowers narrative archetype advice into `GlobalValues.json` without explicit numeric grounding, it will invent board-evaluation math that the public runtime surface expects as numeric tuning rather than qualitative text.",
+    "If HSConfig turns any synergy mention into `Combo.json`, it will over-lower loose strategy language into a surface that expects ordered card-ID chains and explicit combo values.",
+    "If HSConfig collapses card-specific semantics into deck-level globals, it can lose the target surface that the public runtime actually exposes through `<CardID>.json` files.",
+    "If HSConfig chooses a per-card key from vague prose alone, it can create false precision because the public docs explain syntax families but not an authoritative source-to-key lowering policy.",
+    "If HSConfig assumes every effect should become a runtime file, it may invent undocumented surfaces instead of keeping under-specified advice as report-only guidance."
+  ],
+  "recommended_contract_rule": [
+    "Lower direct mulligan output only from explicit keep or discard claims with a clear opening-hand meaning. Generic importance, payoff, or effect-enabler language should not become `Mulligan.json` by itself.",
+    "Treat `Mulligan.json` as the exclusive direct runtime surface for opening-hand holds and discards.",
+    "Treat `GlobalValues.json` as a numeric tuning surface. Emit it directly only from explicit numeric defaults, approved templates, or already curated archetype baselines; otherwise keep the recommendation report-only.",
+    "Lower to `Combo.json` only when the source describes an ordered sequence or scoped multi-turn combo that can be expressed as card IDs plus combo values.",
+    "Lower card-specific operational behavior to `<CardID>.json` only when the source identifies a concrete runtime entity and the claim maps to a documented bonus or priority family.",
+    "When a source describes Choose One behavior, lower it as separate option card IDs such as `a` or `b` variants instead of burying that logic in the base card claim.",
+    "For start-of-game or hero-power-transform semantics, require a documented runtime surface or an already established CardID mapping before direct output. If that mapping is missing, keep the advice report-only until a documented runtime pattern is proven.",
+    "Keep direct runtime output lean: if a claim does not map cleanly to a documented file family or a curated repository template backed by documented syntax, do not lower it."
+  ],
+  "never_infer": [
+    "Never infer a mulligan hold from phrases like \"the effect matters\", \"important card\", or \"core engine\" unless the source explicitly discusses opening-hand keep or discard behavior.",
+    "Never infer `GlobalValues.json` numbers from qualitative words such as \"aggro\", \"tempo\", \"control\", or \"value\" alone.",
+    "Never infer `Combo.json` from unordered synergy text or from two cards merely being listed together.",
+    "Never infer a per-card key name when the source only describes a desired outcome but does not identify a runtime action surface.",
+    "Never infer that a start-of-game effect implies the card itself should be held in mulligan.",
+    "Never infer undocumented runtime files for semantics that the public materials only express through deck-level JSON or per-card CardID JSON.",
+    "Never turn report-style commentary into runtime output unless a documented or validated surface is available."
+  ],
+  "confidence_model": "Confidence should flow from source clarity into surface specificity. Highest confidence applies when a source already matches public HearthRanger syntax directly: explicit mulligan keep or discard rules, explicit numeric global weights, ordered combo chains, or a concrete CardID behavior surface. Medium confidence applies when the source is card-specific and maps cleanly to a documented per-card bonus or priority family. Low confidence applies when the source is qualitative strategy prose, matchup guidance, or effect-only text that would require invented numbers, invented key selection, or an undocumented runtime surface. Low-confidence claims should stay report-only until they are validated against a documented syntax family or a curated repository template backed by documented syntax.",
+  "validation_implications": [
+    "Fixture and compiler tests should assert that opening-hand claims compile only into `Mulligan.json` and do not leak into per-card behavior files unless there is a separate explicit behavior claim.",
+    "Contract tests should fail if the compiler emits runtime files outside the public file families observed here: `Mulligan.json`, `GlobalValues.json`, `Combo.json`, and `<CardID>.json` including option-ID variants.",
+    "For every emitted per-card file, tests should verify that the filename and top-level `GameCardId` stay aligned, because the public docs treat that as a core contract.",
+    "Template tests should distinguish numeric-global lowering from report-only strategy guidance so qualitative text does not silently produce invented `GlobalValues.json` numbers.",
+    "Combo lowering tests should require ordered card IDs and preserve the documented same-turn `>>` versus across-turn `>->` syntax.",
+    "Per-card lowering tests should include non-base IDs such as Choose One option IDs and hero-power IDs when those surfaces are used, because public materials show those IDs can be valid runtime entities.",
+    "Regression tests should cover the split between effect-preserving per-card behavior and mulligan suppression for cards whose effect matters more than their opening-hand retention.",
+    "Validation should downgrade under-specified or undocumented mappings to report-only guidance instead of inventing a runtime key."
+  ],
+  "uncertain": []
+}

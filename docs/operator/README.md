@@ -6,6 +6,23 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
+Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, and guide gameplan text remain contract evidence unless they are separately backed by explicit Mulligan guidance.
+
+### Source claim vs runtime surface
+
+`claim_kind` describes what the source says. It does not by itself authorize a
+runtime write. Runtime output is decided by surface-specific gates:
+
+- `Mulligan.json`: only explicit `mulligan_keep` or `mulligan_discard` claims.
+- `GlobalValues.json`: curated `gameplan_posture` overlays plus full baseline keys.
+- `Combo.json`: exact `combo_sequence` claims with valid CardID sequences.
+- `<CARDID>.json`: documented CardID behavior claims such as targeting,
+  mechanic usage, hero-power transform, discover, choose-one, and known bad
+  patterns.
+
+Wrong-surface or low-confidence claims do not block deck generation. They are
+reported as suppressed/report-only rows with explicit reasons.
+
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
@@ -77,7 +94,7 @@ Modern mechanic visibility is non-blocking. HSConfig names current mechanics suc
 
 - Open `reports/semantic_enrichment_report.json` when the summary points to static or warning-only mechanic coverage. It explains inferred card semantics, static evidence, linked entities, deckwide effects, and warning-only flags. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
-- A thin Mulligan means the package fell back to static/archetype early-role logic or wildcard discard behavior because guide evidence did not name enough concrete keep rules. It is a source-quality signal, not a HearthRanger load error.
+- A thin Mulligan means guide evidence did not name enough explicit `mulligan_keep` or `mulligan_discard` claims. It is a source-quality signal, not a HearthRanger load error, and HSConfig does not invent opening-hand holds from card importance or early-role hints.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
 ## Single Gate

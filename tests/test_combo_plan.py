@@ -98,3 +98,22 @@ def test_combo_plan_emits_cross_turn_operator_when_source_backed():
 
     assert plan["combos"][0]["operator"] == ">->"
     assert plan["combos"][0]["cards"] == ["CARD_A", "CARD_B"]
+
+
+def test_combo_plan_reports_non_combo_claim_surface_rejection():
+    plan = build_combo_plan(
+        deck_cards={"A", "B"},
+        claims=[
+            {
+                "claim_kind": "card_role",
+                "runtime_surface": "Combo.json",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "cards": ["A"],
+                "claim_id": "not_combo",
+            }
+        ],
+    )
+
+    assert plan["combos"] == []
+    assert plan["suppressed"][0]["reason"] == "claim_kind_not_combo_surface"

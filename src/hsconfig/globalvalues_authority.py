@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import can_lower_to_globalvalues, normalized_claim_kind
 
 
 POSTURE_OVERLAYS = {
@@ -54,7 +54,9 @@ def build_globalvalues_authority_matrix(
     aggression_profile: str,
     claims: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    lowerable_claims = [claim for claim in claims if claim_can_lower_to_runtime(claim)]
+    lowerable_claims = [
+        claim for claim in claims if can_lower_to_globalvalues(claim).allowed
+    ]
     claim_refs = _claim_refs(lowerable_claims)
     posture = _resolve_posture(aggression_profile, lowerable_claims)
     overlays = POSTURE_OVERLAYS.get(posture or "", {})
@@ -94,8 +96,8 @@ def build_globalvalues_authority_matrix(
         }
         for key in sorted(RUNTIME_EVIDENCE_KEYS)
     ]
-    for claim in lowerable_claims:
-        if str(claim.get("claim_kind", claim.get("claim_type", ""))) == "globalvalue_numeric_tuning":
+    for claim in claims:
+        if normalized_claim_kind(claim) == "globalvalue_numeric_tuning":
             blocked.append(
                 {
                     "key": str(claim.get("key", "runtime_numeric_tuning")),
@@ -138,14 +140,11 @@ def _allowed_row(
 
 def _resolve_posture(aggression_profile: str, claims: list[dict[str, Any]]) -> str | None:
     for claim in claims:
-        if str(claim.get("claim_kind", claim.get("claim_type", ""))) != "gameplan_posture":
+        if normalized_claim_kind(claim) != "gameplan_posture":
             continue
         stance = _normalize_posture(str(claim.get("stance", "")))
         if stance in POSTURE_OVERLAYS:
             return stance
-    profile = _normalize_posture(aggression_profile)
-    if profile in POSTURE_OVERLAYS:
-        return profile
     return None
 
 

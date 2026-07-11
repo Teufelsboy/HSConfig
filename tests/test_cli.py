@@ -307,7 +307,7 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
                     "url": "https://example.invalid/deck-guide",
                     "claim": "Always keep Pressure One and push face damage early.",
                     "cards": ["EX1_001"],
-                    "claim_type": "mulligan_and_gameplan",
+                    "claim_type": "mulligan_keep",
                 },
                 {
                     "source": "guide",

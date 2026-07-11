@@ -1,0 +1,27 @@
+topic: hsconfig-source-contract-logic-audit
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-11-hsconfig-source-contract-logic-audit\results
+  batch_size: 3
+  items_per_agent: 1
+items:
+  - name: HearthRanger VisionAI runtime lowering surfaces
+    category: VisionAI
+    description: >
+      Research public HearthRanger VisionAI CustomConfig surfaces relevant to
+      HSConfig source claims lowering into Mulligan, GlobalValues, per-card
+      CardID behavior, and Combo. Focus on what should be direct runtime output
+      versus report-only guidance.
+  - name: Hearthstone start-of-game and mulligan semantics
+    category: Hearthstone
+    description: >
+      Research Hearthstone card semantics where an effect matters because the
+      card is in the deck or has a start-of-game/deckbuilding effect, not
+      because the card should be kept in opening hand. Include Darkbishop
+      Benedictus as the primary example and generalize the contract risk.
+  - name: Autonomous guide claim contract quality model
+    category: Source contract
+    description: >
+      Research best-practice structure for converting deck guides and static
+      card data into atomic machine-readable claims without over-inference.
+      Focus on strict claim_kind usage, confidence labels, negative evidence,
+      and non-blocking fallbacks for any deck.

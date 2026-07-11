@@ -295,7 +295,12 @@ def _cards_from_globalvalues(
     gameplan_contract: dict[str, Any],
     global_values_authority_matrix: dict[str, Any],
 ) -> set[str]:
-    if not global_values_authority_matrix.get("allowed_step1_overlays"):
+    allowed_overlays = [
+        row
+        for row in global_values_authority_matrix.get("allowed_step1_overlays", [])
+        if isinstance(row, dict) and row.get("key") != "baseline"
+    ]
+    if not allowed_overlays:
         return set()
 
     cards: set[str] = set()

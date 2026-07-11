@@ -4,11 +4,12 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import can_lower_to_mulligan, normalized_claim_kind
 
 
-EARLY_HOLD_ROLES = {"one_drop", "early_pressure", "early_curve", "mulligan_anchor"}
-
+SURFACE_REJECTION_REASONS = {
+    "claim_kind_not_mulligan_surface",
+}
 
 def build_mulligan_plan(
     *,
@@ -19,24 +20,23 @@ def build_mulligan_plan(
     rules: list[dict[str, Any]] = []
     suppressed_rules: list[dict[str, Any]] = []
     seen_rule_keys: set[tuple[Any, ...]] = set()
-    claimed_cards: set[str] = set()
 
     for claim in claims:
-        claim_kind = str(claim.get("claim_kind", claim.get("claim_type", "")))
-        if claim_kind not in {"mulligan_keep", "mulligan_discard"}:
+        claim_kind = normalized_claim_kind(claim)
+        claim_cards = _claim_cards(claim)
+        gate = can_lower_to_mulligan(claim, card_roles=card_roles)
+        if not gate.allowed:
+            if claim_cards:
+                suppressed_rules.append(
+                    {
+                        "card": claim_cards[0],
+                        "action": "hold" if claim_kind == "mulligan_keep" else "none",
+                        "reason": gate.reason,
+                        "source_claim_ids": _source_claim_ids(claim),
+                    }
+                )
             continue
         action = "hold" if claim_kind == "mulligan_keep" else "discard"
-        claim_cards = _claim_cards(claim)
-        if not claim_can_lower_to_runtime(claim):
-            suppressed_rules.append(
-                {
-                    "card": claim_cards[0] if claim_cards else "*",
-                    "action": action,
-                    "reason": "claim_not_runtime_lowerable",
-                    "source_claim_ids": _source_claim_ids(claim),
-                }
-            )
-            continue
         condition, unsupported_reason = lower_runtime_condition(
             claim.get("conditions", claim.get("condition", "*"))
         )
@@ -82,18 +82,6 @@ def build_mulligan_plan(
                 continue
             if explicit_selector and selector_cards:
                 card_id = selector_cards[0]
-            if action == "hold" and _is_start_of_game_transform_card(card_id, card_roles):
-                suppressed_rules.append(
-                    {
-                        "card": card_id,
-                        "selector_kind": selector_info["selector_kind"],
-                        "selector": selector_info["selector"],
-                        "action": action,
-                        "reason": "start_of_game_effect_does_not_require_opening_hand",
-                        "source_claim_ids": _source_claim_ids(claim),
-                    }
-                )
-                continue
             if unsupported_reason is not None:
                 suppressed_rules.append(
                     {
@@ -128,33 +116,7 @@ def build_mulligan_plan(
             if key in seen_rule_keys:
                 continue
             seen_rule_keys.add(key)
-            claimed_cards.update(claim_cards or [card_id])
             rules.append(rule)
-
-    for card_id, role_row in sorted(card_roles.items()):
-        if card_id in claimed_cards:
-            continue
-        roles = set(str(role) for role in role_row.get("roles", []))
-        if not roles & EARLY_HOLD_ROLES:
-            continue
-        rule = {
-            "card": str(card_id),
-            "selector_kind": "card",
-            "selector": str(card_id),
-            "selector_cards": [str(card_id)],
-            "action": "hold",
-            "condition": "*",
-            "reason": "early_curve_role_fallback",
-            "confidence": str(role_row.get("confidence", "archetype_inferred")),
-            "source_claim_ids": [str(item) for item in role_row.get("source_claim_ids", [])],
-            "source_type": "fallback",
-        }
-        key = mulligan_rule_key(rule)
-        if key in seen_rule_keys:
-            continue
-        seen_rule_keys.add(key)
-        claimed_cards.add(card_id)
-        rules.append(rule)
 
     rules = _apply_mulligan_precedence(rules)
     has_concrete_keeps = any(
@@ -174,9 +136,14 @@ def build_mulligan_plan(
         and row.get("action") == "hold"
     )
     has_source_backed_keeps = source_backed_keep_rule_count > 0
+    actionable_suppressed_rules = [
+        row
+        for row in suppressed_rules
+        if str(row.get("reason")) not in SURFACE_REJECTION_REASONS
+    ]
     first_gap_reason = (
-        str(suppressed_rules[0]["reason"])
-        if suppressed_rules
+        str(actionable_suppressed_rules[0]["reason"])
+        if actionable_suppressed_rules
         else ("none" if has_source_backed_keeps else "no_source_backed_mulligan_keeps")
     )
     quality: dict[str, Any] = {
@@ -269,15 +236,6 @@ def _mulligan_condition_reason(reason: str) -> str:
     if reason == "unsupported_condition":
         return "unsupported_mulligan_condition"
     return reason
-
-
-def _is_start_of_game_transform_card(card_id: str, card_roles: dict[str, Any]) -> bool:
-    role_row = card_roles.get(str(card_id), {})
-    roles = {
-        *[str(role) for role in role_row.get("roles", [])],
-        *[str(role) for role in role_row.get("semantic_families", [])],
-    }
-    return {"start_of_game", "hero_power_transform"} <= roles
 
 
 def _suppressed_reason_counts(suppressed_rules: list[dict[str, Any]]) -> dict[str, int]:

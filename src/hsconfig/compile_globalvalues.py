@@ -37,24 +37,28 @@ def compile_globalvalues(
     contract = contract or {"aggression_profile": posture or {}}
     aggression_profile = contract.get("aggression_profile", posture or {})
 
-    overlays = dict(aggression_profile.get("global_value_overlays", {}))
-    overlays.update(aggression_profile.get("mechanic_priorities", {}))
     authority_matrix = contract.get("global_values_authority_matrix", {})
+    has_authority_overlays = (
+        isinstance(authority_matrix, dict)
+        and isinstance(authority_matrix.get("allowed_step1_overlays"), list)
+    )
     key_authorities = _key_authorities_from_matrix(authority_matrix)
-    if isinstance(authority_matrix, dict) and authority_matrix.get("allowed_step1_overlays"):
-        allowed_overlays = {
-            str(row["key"]): _overlay_from_authority_row(row)
+    if has_authority_overlays:
+        allowed_rows = [
+            row
             for row in authority_matrix.get("allowed_step1_overlays", [])
             if isinstance(row, dict) and row.get("key") not in {None, "baseline"}
+        ]
+        overlays = {str(row["key"]): _overlay_from_authority_row(row) for row in allowed_rows}
+        overlay_reasons = {
+            str(row["key"]): str(row["reason"])
+            for row in allowed_rows
+            if row.get("reason") is not None
         }
-        overlays = {
-            key: allowed_overlays.get(key, value)
-            for key, value in overlays.items()
-            if key in allowed_overlays
-        }
-        for key, value in allowed_overlays.items():
-            overlays.setdefault(key, value)
-    overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
+    else:
+        overlays = dict(aggression_profile.get("global_value_overlays", {}))
+        overlays.update(aggression_profile.get("mechanic_priorities", {}))
+        overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
     generated_overlay_keys = sorted(
         key
         for key in overlays
@@ -102,7 +106,12 @@ def compile_globalvalues(
         if key in generated_overlay_keys:
             decision["generated_overlay_key"] = True
             decision["reason"] = "Known deck-specific overlay key was absent from runtime default."
-        overlay = _overlay_for_key(key, aggression_profile, overlays)
+        overlay = _overlay_for_key(
+            key,
+            aggression_profile,
+            overlays,
+            allow_speed_fallback=not has_authority_overlays,
+        )
         if overlay is not None:
             after = _apply_overlay(config[key], overlay)
             decision.update(
@@ -162,12 +171,15 @@ def _overlay_for_key(
     key: str,
     aggression_profile: dict[str, Any],
     overlays: dict[str, Any],
+    *,
+    allow_speed_fallback: bool = True,
 ) -> str | None:
     speed = str(aggression_profile.get("speed", "balanced")).lower()
-    if key == "FirstTurnValueWeight" and speed in {"aggro", "aggressive", "tempo"}:
-        return "set:0.75"
-    if key == "SecondTurnValueWeight" and speed in {"aggro", "aggressive", "tempo"}:
-        return "set:0.25"
+    if allow_speed_fallback:
+        if key == "FirstTurnValueWeight" and speed in {"aggro", "aggressive", "tempo"}:
+            return "set:0.75"
+        if key == "SecondTurnValueWeight" and speed in {"aggro", "aggressive", "tempo"}:
+            return "set:0.25"
     if key in overlays:
         return str(overlays[key])
     return None

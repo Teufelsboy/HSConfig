@@ -6,6 +6,7 @@ from typing import Any
 
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
+from hsconfig.source_document_model import runtime_claim_kind
 
 LEGACY_CLAIMS_RETRIEVED_AT = "1970-01-01T00:00:00Z"
 
@@ -166,18 +167,16 @@ def _legacy_claim_retrieved_at(claim: dict[str, Any]) -> str:
 
 def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     text = str(claim.get("claim", ""))
-    claim_type = str(claim.get("claim_type", "general")).lower()
     cards = [str(card) for card in claim.get("cards", [])]
-    if "combo" in claim_type:
-        claim_kind = "combo_sequence"
-    elif "mulligan" in claim_type or "keep" in text.lower():
-        claim_kind = "mulligan_keep"
-    elif any(marker in text.lower() for marker in ("face", "target", "enemy hero")):
-        claim_kind = "targeting_rule"
-    elif any(marker in text.lower() for marker in ("pressure", "aggressive", "aggro", "burn")):
-        claim_kind = "gameplan_posture"
-    else:
-        claim_kind = "card_role"
+    lowered = text.lower()
+    claim_kind = runtime_claim_kind(claim)
+    if not claim_kind:
+        if any(marker in lowered for marker in ("face", "target", "enemy hero")):
+            claim_kind = "targeting_rule"
+        elif any(marker in lowered for marker in ("pressure", "aggressive", "aggro", "burn")):
+            claim_kind = "gameplan_posture"
+        else:
+            claim_kind = "card_role"
     converted = {
         "claim_kind": claim_kind,
         "cards": cards,

@@ -1,0 +1,35 @@
+field_categories:
+  - category: source_contract_logic
+    fields:
+      - name: current_truth
+        required: true
+        type: string
+        description: Source-backed factual summary relevant to HSConfig source and contract logic.
+      - name: source_backed_claims
+        required: true
+        type: list
+        description: Concrete claims supported by sources, with source names or URLs.
+      - name: risk_to_hsconfig
+        required: true
+        type: list
+        description: Ways HSConfig could misclassify source text, card semantics, or runtime lowering.
+      - name: recommended_contract_rule
+        required: true
+        type: list
+        description: Narrow rules HSConfig should preserve or adopt to keep logic competent and lean.
+      - name: never_infer
+        required: true
+        type: list
+        description: Semantics that should not be inferred from weak text alone.
+      - name: confidence_model
+        required: true
+        type: string
+        description: How confidence should flow from source claim to contract to runtime output.
+      - name: validation_implications
+        required: true
+        type: list
+        description: Test or fixture implications for the repository.
+      - name: uncertain
+        required: true
+        type: list
+        description: Field names or claims that remain uncertain.
