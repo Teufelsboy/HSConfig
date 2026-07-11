@@ -25,7 +25,7 @@ Lower-level inspected path: `source-manifest -> draft-source-documents -> resear
 Use the lower-level inspected path when you need to review or edit source evidence between stages. It starts with `hsconfig source-manifest`, continues through `hsconfig prepare`, and still ends at `reports/operator_summary.json` plus the guarded apply gate.
 
 Runtime apply is guarded: `hsconfig apply` validates the package, checks `reports/operator_summary.json`, creates a fake apply receipt, verifies the package hash, and then writes only when runtime apply is explicitly requested.
-Runtime writes remain only when requested through `hsconfig apply`.
+Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
 Keep the installed skill synchronized with:
 

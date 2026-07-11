@@ -37,6 +37,8 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 3. Open `reports/operator_summary.json` first.
 4. Run `hsconfig apply` only when the operator summary allows it, or use `hsconfig configure --apply` when the same guarded apply should happen in the configure run.
 
+Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
+
 ## Lower-Level Inspected Path
 
 Lower-level inspected path: `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.

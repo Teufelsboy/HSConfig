@@ -96,7 +96,7 @@ def test_skill_content_sets_direct_config_boundary():
     assert "validate" in text.lower()
     assert "runtime apply is guarded" in text.lower()
     assert "guarded apply" in text.lower()
-    assert "runtime writes remain only when requested" in text
+    assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in text
     assert "--allow-placeholder" in text
     assert "hsconfig prepare" in text
     assert "hsconfig research-deck" in text
@@ -181,7 +181,7 @@ def test_active_docs_show_normal_source_document_operator_path():
     assert "Preferred normal path: `hsconfig configure`" in root_readme
     assert "Lower-level inspected path:" in root_readme
     assert "hsconfig source-manifest" in root_readme
-    assert "only when requested" in root_readme
+    assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in root_readme
 
     for path in operator_path_files:
         text = path.read_text(encoding="utf-8")

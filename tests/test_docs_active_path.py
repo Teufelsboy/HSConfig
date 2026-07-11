@@ -60,11 +60,23 @@ def test_preferred_path_docs_use_single_lower_level_chain_label():
     assert operator_readme.count(exact_chain) == 1
     assert "Lower-level inspected path:" in root_readme
     assert "## Lower-Level Inspected Path" in operator_readme
+    assert "Lower-level normal path:" not in root_readme
+    assert "Lower-level normal path:" not in operator_readme
     assert "The lower-level normal path remains available for inspected work:" not in root_readme
     assert (
         "The lower-level normal path remains available for inspected work:"
         not in operator_readme
     )
+
+
+def test_runtime_write_wording_names_apply_and_configure_apply():
+    root_readme = Path("README.md").read_text(encoding="utf-8")
+    operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    expected = "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`."
+    assert expected in root_readme
+    assert expected in operator_readme
+    assert "Runtime writes remain only when requested through `hsconfig apply`." not in root_readme
 
 
 def test_operator_docs_keep_source_backed_strong_out_of_apply_permission():

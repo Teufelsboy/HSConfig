@@ -6,6 +6,13 @@ Lower-level inspected path: source-manifest -> draft-source-documents -> researc
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 
+Normal workflow:
+
+1. Prefer `hsconfig configure ...` for normal operation.
+2. Use lower-level commands only when inspecting a stage:
+   `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
+3. Open `reports/operator_summary.json` first.
+
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
@@ -27,6 +34,8 @@ Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_rec
 `reports/operator_summary.json` is the single operator gate. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid. `SOURCE_BACKED_STRONG` means source depth supports a strong initial config. `STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline. `VALID_BUT_NOT_GUIDE_STRONG` means open `guide_strength_summary` and `semantic_blockers`.
 
 `runtime_apply_mode` is the human-readable write mode. `hsconfig apply` and `apply_package()` still re-evaluate the operator gate before writing. `technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` and `runtime_apply_mode=load_safe_apply` is the normal initial write boundary. `SOURCE_BACKED_STRONG` is the confidence label, not the runtime-write gate.
+
+Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
 Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`. `per-card <CARDID>.json` files, `Combo.json`, and source-backed choice lowering make the package richer, but they are HSConfig rich-output repo policy rather than the minimal runtime-write gate.
 
