@@ -58,20 +58,87 @@ def _write_source_evidence_json(path: Path) -> None:
     )
 
 
-def test_configure_writes_card_data_intake_report(tmp_path: Path, monkeypatch):
+def _stub_empty_card_fetches(monkeypatch) -> None:
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
-    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", lambda timeout=10.0: [])
-    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_collectible_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
+
+
+def _write_intake_cards_json(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "HSC_INTAKE_001",
+                        "dbf_id": 91001,
+                        "count": 1,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_configure_fetches_card_data_and_writes_intake_counts(tmp_path: Path, monkeypatch):
+    source_fetches = {"collectible": [], "full": []}
+
+    def fake_collectible_cards(timeout=10.0):
+        source_fetches["collectible"].append(timeout)
+        return [
+            {
+                "id": "HSC_INTAKE_001",
+                "dbf_id": 91001,
+                "name": "Recognizable Deck Card",
+                "type": "MINION",
+                "text": "Creates a recognizable helper.",
+                "child_ids": ["HSC_INTAKE_TOKEN"],
+                "mechanics": [],
+                "referenced_tags": [],
+            }
+        ]
+
+    def fake_full_cards(timeout=10.0):
+        source_fetches["full"].append(timeout)
+        return [
+            {
+                "id": "HSC_INTAKE_TOKEN",
+                "dbf_id": 91002,
+                "name": "Recognizable Companion",
+                "type": "MINION",
+                "text": "Companion from the full feed.",
+                "mechanics": [],
+                "referenced_tags": [],
+            }
+        ]
+
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", fake_full_cards)
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        fake_collectible_cards,
+    )
 
     out = tmp_path / "configure"
+    cards_json = tmp_path / "cards.json"
+    _write_intake_cards_json(cards_json)
 
     assert main(
         [
             "configure",
             "--deck-name",
-            "ShadowPriest",
+            "IntakeDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            "fixture-code",
+            "--cards-json",
+            str(cards_json),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -81,19 +148,20 @@ def test_configure_writes_card_data_intake_report(tmp_path: Path, monkeypatch):
     ) == 0
 
     report = _read_json(out / "03_research" / "card_data_intake_report.json")
+    assert source_fetches == {"collectible": [10.0], "full": [10.0]}
     assert report["non_blocking"] is True
-    assert "summary" in report
+    assert report["summary"]["deck_cards"] == 1
+    assert report["summary"]["matched_deck_cards"] == 1
+    assert report["summary"]["missing_deck_cards"] == 0
+    assert report["summary"]["companion_records"] == 1
+    assert report["summary"]["missing_companion_records"] == 0
 
 
 def test_configure_builds_valid_load_safe_package_without_source_evidence(
     tmp_path: Path,
     monkeypatch,
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
-    monkeypatch.setattr(
-        "hsconfig.commands.source_workflow.fetch_latest_cards",
-        lambda timeout=10.0: [],
-    )
+    _stub_empty_card_fetches(monkeypatch)
 
     out = tmp_path / "configure"
     runtime_root = tmp_path / "runtime"
@@ -133,11 +201,7 @@ def test_configure_source_evidence_is_not_reingested_after_drafting(
     tmp_path: Path,
     monkeypatch,
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
-    monkeypatch.setattr(
-        "hsconfig.commands.source_workflow.fetch_latest_cards",
-        lambda timeout=10.0: [],
-    )
+    _stub_empty_card_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
     source_evidence_json = tmp_path / "source_evidence.json"
     _write_cards_json(cards_json)
@@ -210,11 +274,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
     tmp_path: Path,
     monkeypatch,
 ):
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
-    monkeypatch.setattr(
-        "hsconfig.commands.source_workflow.fetch_latest_cards",
-        lambda timeout=10.0: [],
-    )
+    _stub_empty_card_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
     _write_cards_json(cards_json)
     out = tmp_path / "configure"

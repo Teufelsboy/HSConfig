@@ -146,7 +146,8 @@ def draft_source_documents_payload(args: argparse.Namespace) -> tuple[dict[str, 
 def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     prepare_research_output_dir(out)
-    args.skip_semantic_fetch = True
+    if not hasattr(args, "skip_semantic_fetch"):
+        args.skip_semantic_fetch = True
 
     context = _build_research_context(args)
     deck_identity = context["deck_identity"]

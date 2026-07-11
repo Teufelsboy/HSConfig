@@ -10,7 +10,16 @@ SHADOWPRIEST_CODE = (
 )
 
 
-def test_research_deck_writes_static_fallback_artifacts(tmp_path: Path, capsys):
+def test_research_deck_writes_static_fallback_artifacts(tmp_path: Path, capsys, monkeypatch):
+    def fail_fetch(timeout=10.0):
+        raise AssertionError("direct research-deck should not fetch HearthstoneJSON by default")
+
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", fail_fetch)
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        fail_fetch,
+    )
+
     out = tmp_path / "research"
 
     code = main(
