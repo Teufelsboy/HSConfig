@@ -58,6 +58,33 @@ def _write_source_evidence_json(path: Path) -> None:
     )
 
 
+def test_configure_writes_card_data_intake_report(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_collectible_cards", lambda timeout=10.0: [])
+
+    out = tmp_path / "configure"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    report = _read_json(out / "03_research" / "card_data_intake_report.json")
+    assert report["non_blocking"] is True
+    assert "summary" in report
+
+
 def test_configure_builds_valid_load_safe_package_without_source_evidence(
     tmp_path: Path,
     monkeypatch,

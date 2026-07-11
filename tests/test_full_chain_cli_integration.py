@@ -30,6 +30,10 @@ def test_documented_operator_chain_reaches_guarded_apply(tmp_path: Path, monkeyp
         "hsconfig.commands.source_workflow.fetch_latest_cards",
         lambda timeout=10.0: [],
     )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
 
     runtime_root = tmp_path / "runtime"
     manifest_out = tmp_path / "01_manifest"
@@ -105,7 +109,10 @@ def test_documented_operator_chain_reaches_guarded_apply(tmp_path: Path, monkeyp
         ]
     ) == 0
     guide_sources = research_out / "guide_sources.json"
+    card_data_intake_report = research_out / "card_data_intake_report.json"
     assert guide_sources.exists()
+    assert card_data_intake_report.exists()
+    assert _read_json(card_data_intake_report)["non_blocking"] is True
 
     assert main(
         [

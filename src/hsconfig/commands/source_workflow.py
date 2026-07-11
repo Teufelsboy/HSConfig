@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from hsconfig.card_data_intake import build_card_data_context
 from hsconfig.card_metadata import hydrate_card_metadata
 from hsconfig.commands.common import run_payload_command
 from hsconfig.package_io import prepare_research_output_dir
@@ -16,7 +17,7 @@ from hsconfig.guide_source_builder import (
     build_guide_sources,
     research_required_guide_sources,
 )
-from hsconfig.hearthstonejson import fetch_latest_cards
+from hsconfig.hearthstonejson import fetch_latest_cards, fetch_latest_collectible_cards
 from hsconfig.identity_graph import build_identity_gap_report, build_identity_graph_report
 from hsconfig.input_loading import (
     fixture_row_for,
@@ -155,6 +156,7 @@ def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     write_json(out / "guide_builder_receipt.json", context["guide_builder_receipt"])
     write_json(out / "identity_graph_report.json", context["identity_graph_report"])
     write_json(out / "identity_gap_report.json", context["identity_gap_report"])
+    write_json(out / "card_data_intake_report.json", context["card_data_intake_report"])
     write_json(out / "source_evidence_verification_report.json", context["source_evidence_report"])
     if context.get("source_document_draft_report") is not None:
         report = context["source_document_draft_report"]
@@ -180,6 +182,8 @@ def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         },
         0,
     )
+
+
 def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
     cards_payload = load_cards(
         args.cards_json,
@@ -188,11 +192,34 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         allow_placeholder=args.allow_placeholder,
     )
     cards = cards_payload["cards"]
+    collectible_cards: list[dict[str, Any]] = []
+    full_cards: list[dict[str, Any]] = []
+    card_data_fetch_error: str | None = None
+    semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
+    if not semantic_fetch_skipped:
+        try:
+            collectible_cards = fetch_latest_collectible_cards(timeout=10.0)
+            full_cards = fetch_latest_cards(timeout=10.0)
+        except Exception as exc:
+            card_data_fetch_error = str(exc)
     claims = load_claims(getattr(args, "claims_json", None))
     source_documents_input = load_source_documents(getattr(args, "source_documents_json", None))
     source_evidence_rows = load_source_evidence(getattr(args, "source_evidence_json", None))
     guide_sources = load_guide_sources(getattr(args, "guide_sources_json", None))
-    source_records = source_records_from_cards(cards)
+    card_data_context = build_card_data_context(
+        deck_cards=cards,
+        collectible_cards=collectible_cards,
+        full_cards=full_cards,
+    )
+    source_records = {
+        **source_records_from_cards(cards),
+        **card_data_context["deck_source_records"],
+        **card_data_context["companion_source_records"],
+    }
+    if card_data_fetch_error is not None:
+        card_data_context["card_data_intake_report"]["warnings"].append(
+            {"reason": "hearthstonejson_fetch_failed", "message": card_data_fetch_error}
+        )
     deck_identity = build_deck_identity(
         deck_name=args.deck_name,
         deck_code=args.deck_code,
@@ -205,14 +232,8 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         cards=deck_identity["cards"],
         source_records=source_records,
     )
-    hearthstonejson_cards: list[dict[str, Any]] = []
-    semantic_fetch_error: str | None = None
-    semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
-    if not semantic_fetch_skipped:
-        try:
-            hearthstonejson_cards = fetch_latest_cards(timeout=10.0)
-        except Exception as exc:
-            semantic_fetch_error = str(exc)
+    hearthstonejson_cards = [*collectible_cards, *full_cards]
+    semantic_fetch_error = card_data_fetch_error
     semantic_report = enrich_card_metadata(
         card_metadata,
         hearthstonejson_cards=hearthstonejson_cards,
@@ -327,6 +348,7 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         "candidate_archetypes": candidate_archetypes,
         "identity_graph_report": identity_graph_report,
         "identity_gap_report": build_identity_gap_report(identity_graph_report),
+        "card_data_intake_report": card_data_context["card_data_intake_report"],
         "source_evidence_report": verify_source_documents(source_documents),
         "source_document_draft_report": source_document_draft_report,
     }
