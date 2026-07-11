@@ -14,10 +14,11 @@ items:
   - name: Runtime Surface And VisionAI Correctness
     category: HearthRanger VisionAI
     description: >
-      Audit whether HSConfig's normal runtime surface matches documented
-      HearthRanger VisionAI CustomConfig surfaces: GlobalValues, Mulligan,
-      per-card CardID JSON, Combo, Presume, and Concede. Check whether Presume
-      and Concede are correctly documented without becoming normal outputs.
+      Audit all documented or known HearthRanger VisionAI CustomConfig surfaces,
+      while distinguishing HSConfig's approved normal output surface:
+      GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and supported
+      Combo.json. Presume.json and Concede.json are documented/non-normal or
+      legacy/non-normal surfaces and must not be described as normal outputs.
   - name: No Block Apply Gate And Tests
     category: Local Repo
     description: >
