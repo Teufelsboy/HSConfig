@@ -10,6 +10,7 @@ After durable Boarlock and Kingslayer preservation, there is no current actionab
 
 | Package | Role | Current implication |
 | --- | --- | --- |
+| `docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/` | Post-hardening skill audit evidence | Keep the current lean HSConfig boundary, correct Presume surface wording, preserve no-block apply behavior, and use real decks for targeted defects instead of another broad architecture wave. |
 | `docs/research/2026-07-11-hsconfig-current-skill-audit/` | Current skill contract and slimness evidence | Keep HSConfig narrow; harden the no-block apply gate with executable tests, correct Presume/Concede wording, and keep the active skill/workflow docs compact. |
 | `docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/` | No-block universal skill posture evidence | Add visibility-only warning rows for `rewind`, `herald`, and `shatter`; keep the normal package path limited to load-safe HSConfig surfaces. |
 | `docs/research/2026-07-10-hsconfig-post-contract-closure-skill-audit/` | Post-contract no-block cleanup evidence | Keep the core apply gate unchanged; runtime hard blocks are technical only, per-card-every-card coverage is HSConfig rich output, and source-strength gaps are promotion/richness gaps. |

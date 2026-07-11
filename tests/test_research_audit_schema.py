@@ -138,3 +138,14 @@ def test_new_research_fields_are_not_empty_contracts():
         if not names:
             names = list(payload.get("fields", {}))
         assert names, f"{fields} must define required research fields"
+
+
+def test_post_hardening_skill_audit_is_indexed_as_evidence_only():
+    root = Path("docs/research/2026-07-11-hsconfig-post-hardening-skill-audit")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    current_truth = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+
+    assert "Research artifacts are evidence, not operator instructions." in readme
+    assert "Normal operation starts at `README.md` and `docs/operator/README.md`." in readme
+    assert "post-hardening skill audit evidence" in current_truth.lower()
+    assert "2026-07-11-hsconfig-post-hardening-skill-audit" in current_truth
