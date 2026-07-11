@@ -1,6 +1,15 @@
 from pathlib import Path
 
 
+OLD_LOWER_LEVEL_LABEL = "Lower-level " + "normal path:"
+OLD_LOWER_LEVEL_SENTENCE = (
+    "The lower-level " + "normal path remains available for inspected work:"
+)
+OLD_RUNTIME_WRITE_SENTENCE = (
+    "Runtime writes remain only when requested through `hsconfig " + "apply`."
+)
+
+
 def test_research_docs_are_marked_as_evidence_not_operator_path():
     text = Path("docs/research/README.md").read_text(encoding="utf-8")
 
@@ -60,13 +69,10 @@ def test_preferred_path_docs_use_single_lower_level_chain_label():
     assert operator_readme.count(exact_chain) == 1
     assert "Lower-level inspected path:" in root_readme
     assert "## Lower-Level Inspected Path" in operator_readme
-    assert "Lower-level normal path:" not in root_readme
-    assert "Lower-level normal path:" not in operator_readme
-    assert "The lower-level normal path remains available for inspected work:" not in root_readme
-    assert (
-        "The lower-level normal path remains available for inspected work:"
-        not in operator_readme
-    )
+    assert OLD_LOWER_LEVEL_LABEL not in root_readme
+    assert OLD_LOWER_LEVEL_LABEL not in operator_readme
+    assert OLD_LOWER_LEVEL_SENTENCE not in root_readme
+    assert OLD_LOWER_LEVEL_SENTENCE not in operator_readme
 
 
 def test_runtime_write_wording_names_apply_and_configure_apply():
@@ -76,7 +82,7 @@ def test_runtime_write_wording_names_apply_and_configure_apply():
     expected = "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`."
     assert expected in root_readme
     assert expected in operator_readme
-    assert "Runtime writes remain only when requested through `hsconfig apply`." not in root_readme
+    assert OLD_RUNTIME_WRITE_SENTENCE not in root_readme
 
 
 def test_operator_docs_keep_source_backed_strong_out_of_apply_permission():

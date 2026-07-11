@@ -3,6 +3,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = REPO_ROOT / ".agents" / "skills" / "hsconfig"
+OLD_PRESUME_CONCEDE_NORMAL_OUTPUTS = (
+    "Presume/Concede are " + "documented normal outputs"
+)
 
 
 def test_skill_has_required_files():
@@ -74,7 +77,7 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
         "without a current verified first-party help-page citation",
         "does not currently verify a current first-party help-page citation",
         "lacks a current verified first-party help-page citation",
-        "Presume/Concede are documented normal outputs",
+        OLD_PRESUME_CONCEDE_NORMAL_OUTPUTS,
     ]
 
     for path in active_files:

@@ -8,6 +8,7 @@ INSPECTED_PATH = (
     "source-manifest -> draft-source-documents -> research-deck -> "
     "prepare -> validate -> apply"
 )
+OLD_LOWER_LEVEL_LABEL = "Lower-level " + "normal path:"
 
 
 def test_cli_parser_module_builds_same_root_help():
@@ -18,7 +19,7 @@ def test_cli_parser_module_builds_same_root_help():
     assert "Preferred normal path: configure" in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
-    assert "Lower-level normal path:" not in help_text
+    assert OLD_LOWER_LEVEL_LABEL not in help_text
 
 
 def test_root_help_names_preferred_lower_level_and_expert_paths():
@@ -27,7 +28,7 @@ def test_root_help_names_preferred_lower_level_and_expert_paths():
     assert "Preferred normal path: configure" in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
-    assert "Lower-level normal path:" not in help_text
+    assert OLD_LOWER_LEVEL_LABEL not in help_text
     assert "Expert and legacy path:" in help_text
     assert "build, --claims-json, --cards-json, --plan-reports-dir" in help_text
 
@@ -38,7 +39,7 @@ def test_root_help_names_configure_as_preferred_normal_path():
     assert "Preferred normal path: configure" in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
-    assert "Lower-level normal path:" not in help_text
+    assert OLD_LOWER_LEVEL_LABEL not in help_text
 
 
 def test_root_help_points_to_operator_docs():
@@ -48,7 +49,7 @@ def test_root_help_points_to_operator_docs():
     assert "Preferred normal path: configure" in help_text
     assert "Lower-level inspected path:" in help_text
     assert INSPECTED_PATH in help_text
-    assert "Lower-level normal path:" not in help_text
+    assert OLD_LOWER_LEVEL_LABEL not in help_text
     assert "Expert and legacy path:" in help_text
 
 
