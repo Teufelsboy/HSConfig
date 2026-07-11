@@ -344,3 +344,41 @@ def test_superpowers_artifacts_are_historical_not_operator_guidance():
     assert "docs/research/current-truth.md" in combined
     assert "Do not use old Superpowers plans as the normal command path." in plans
     assert "normal command path is `hsconfig configure`" in plans
+
+
+def test_historical_design_spec_carries_strong_superseded_warning():
+    text = Path("docs/superpowers/specs/2026-07-05-hsconfig-design.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Superseded normal-path warning" in text
+    assert (
+        "Later references to optional `Presume.json` or `Concede.json` are historical"
+        in text
+    )
+    assert (
+        "normal HSConfig output must not emit `Presume.json` or `Concede.json`"
+        in text
+    )
+    assert "docs/operator/README.md" in text
+    assert ".agents/skills/hsconfig/SKILL.md" in text
+
+
+def test_current_truth_prevents_old_evidence_from_overriding_operator_path():
+    text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+
+    assert "Active docs win over historical evidence" in text
+    assert "Do not start a new architecture wave from superseded research alone." in text
+    assert (
+        "Use real deck output or live mechanic drift as the trigger for new implementation work."
+        in text
+    )
+    assert "replay tuning, winrate gates, or candidate promotion" in text
+    assert "unless the active docs explicitly reintroduce it" in text
+
+
+def test_research_readme_names_current_truth_as_only_active_evidence_index():
+    text = Path("docs/research/README.md").read_text(encoding="utf-8")
+
+    assert "only active evidence index" in text
+    assert "older research folders are historical evidence" in text

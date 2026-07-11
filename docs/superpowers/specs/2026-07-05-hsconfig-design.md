@@ -11,6 +11,8 @@ Local workspace: `C:\Users\darbo\Documents\HSConfig`
 > emitted and `SOURCE_BACKED_STRONG` is source confidence, not the runtime-write
 > gate.
 
+> **Superseded normal-path warning:** Later references to optional `Presume.json` or `Concede.json` are historical design exploration. The live normal path is `hsconfig configure`, and normal HSConfig output must not emit `Presume.json` or `Concede.json`. Use `docs/operator/README.md`, `.agents/skills/hsconfig/SKILL.md`, and `docs/operator/universal-wild-no-block-contract.md` as the active contract.
+
 ## 1. Purpose
 
 HSConfig is a lean Codex skill and supporting Python toolchain for one job:

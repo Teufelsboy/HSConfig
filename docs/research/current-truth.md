@@ -6,6 +6,12 @@ Normal operator path starts at `docs/operator/README.md`.
 
 After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
 
+## How To Read Historical Evidence
+
+Active docs win over historical evidence. Do not start a new architecture wave from superseded research alone. Use real deck output or live mechanic drift as the trigger for new implementation work.
+
+Older research packages can explain why a decision happened, but they do not override the operator path, installed skill, or universal Wild no-block contract. If old evidence mentions normal `Presume.json`, `Concede.json`, replay tuning, winrate gates, or candidate promotion, treat that as historical context unless the active docs explicitly reintroduce it.
+
 ## Current Active Evidence
 
 | Package | Role | Current implication |
