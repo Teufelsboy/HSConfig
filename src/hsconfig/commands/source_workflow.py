@@ -29,7 +29,7 @@ from hsconfig.input_loading import (
     load_source_evidence,
     source_records_from_cards,
 )
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.semantic_enrichment import append_semantic_warning, enrich_card_metadata
 from hsconfig.source_document_drafter import draft_source_documents
@@ -193,16 +193,20 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         allow_placeholder=args.allow_placeholder,
     )
     cards = cards_payload["cards"]
-    collectible_cards: list[dict[str, Any]] = []
-    full_cards: list[dict[str, Any]] = []
+    collectible_cards = _load_optional_card_feed(getattr(args, "collectible_cards_json", None))
+    full_cards = _load_optional_card_feed(getattr(args, "full_cards_json", None))
     card_data_fetch_error: str | None = None
     semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
     if not semantic_fetch_skipped:
         try:
-            collectible_cards = fetch_latest_collectible_cards(timeout=10.0)
-            full_cards = fetch_latest_cards(timeout=10.0)
+            if collectible_cards is None:
+                collectible_cards = fetch_latest_collectible_cards(timeout=10.0)
+            if full_cards is None:
+                full_cards = fetch_latest_cards(timeout=10.0)
         except Exception as exc:
             card_data_fetch_error = str(exc)
+    collectible_cards = collectible_cards or []
+    full_cards = full_cards or []
     claims = load_claims(getattr(args, "claims_json", None))
     source_documents_input = load_source_documents(getattr(args, "source_documents_json", None))
     source_evidence_rows = load_source_evidence(getattr(args, "source_evidence_json", None))
@@ -323,14 +327,12 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
     identity_graph_report = build_identity_graph_report(
         deck_identity=deck_identity,
         hearthstonejson_receipt={
-            "source": "hearthstonejson_latest_enus_cards",
+            "source": _hearthstonejson_receipt_source(args),
             "card_count": len(hearthstonejson_cards),
-            "status": (
-                "skipped"
-                if semantic_fetch_skipped
-                else "fetched"
-                if semantic_fetch_error is None
-                else "fetch_failed"
+            "status": _hearthstonejson_receipt_status(
+                args,
+                semantic_fetch_skipped=semantic_fetch_skipped,
+                semantic_fetch_error=semantic_fetch_error,
             ),
             "error": semantic_fetch_error,
         },
@@ -353,3 +355,54 @@ def _build_research_context(args: argparse.Namespace) -> dict[str, Any]:
         "source_evidence_report": verify_source_documents(source_documents),
         "source_document_draft_report": source_document_draft_report,
     }
+
+
+def _load_optional_card_feed(path_value: str | None) -> list[dict[str, Any]] | None:
+    if not path_value:
+        return None
+    payload = read_json(Path(path_value))
+    if isinstance(payload, list):
+        return _require_card_feed_list(payload, path_value)
+    if isinstance(payload, dict) and isinstance(payload.get("cards"), list):
+        return _require_card_feed_list(payload["cards"], path_value)
+    raise ValueError(
+        f"Card feed must be a JSON list or an object with a cards list: {path_value}"
+    )
+
+
+def _require_card_feed_list(payload: list[Any], path_value: str) -> list[dict[str, Any]]:
+    cards: list[dict[str, Any]] = []
+    for index, row in enumerate(payload):
+        if not isinstance(row, dict):
+            raise ValueError(f"Card feed row {index} must be an object: {path_value}")
+        cards.append(row)
+    return cards
+
+
+def _hearthstonejson_receipt_source(args: argparse.Namespace) -> str:
+    has_collectible = bool(getattr(args, "collectible_cards_json", None))
+    has_full = bool(getattr(args, "full_cards_json", None))
+    if has_collectible and has_full:
+        return "local_card_feed_files"
+    if has_collectible or has_full:
+        return "local_card_feed_files_and_hearthstonejson_latest_enus_cards"
+    return "hearthstonejson_latest_enus_cards"
+
+
+def _hearthstonejson_receipt_status(
+    args: argparse.Namespace,
+    *,
+    semantic_fetch_skipped: bool,
+    semantic_fetch_error: str | None,
+) -> str:
+    has_collectible = bool(getattr(args, "collectible_cards_json", None))
+    has_full = bool(getattr(args, "full_cards_json", None))
+    if semantic_fetch_error is not None:
+        return "fetch_failed"
+    if has_collectible and has_full:
+        return "local_files"
+    if has_collectible or has_full:
+        return "local_files_with_fetch"
+    if semantic_fetch_skipped:
+        return "skipped"
+    return "fetched"

@@ -5,14 +5,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from hsconfig.commands.apply import run_apply_command, run_validate_command
+from hsconfig.commands.apply import apply_payload, validate_payload
 from hsconfig.commands.common import emit_result
-from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
     draft_source_documents_payload,
     research_deck_payload,
     source_manifest_payload,
 )
+from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import write_json
 from hsconfig.package_io import prepare_research_output_dir
 
@@ -108,7 +108,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         )
 
     try:
-        prepare_status = run_prepare_command(
+        prepare_payload, prepare_status = prepare_package_payload(
             SimpleNamespace(
                 deck_name=args.deck_name,
                 deck_code=args.deck_code,
@@ -124,25 +124,31 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
                 auto_research_fallback=True,
                 json=True,
-            ),
-            expert_mode=False,
+            )
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)
     if prepare_status != 0:
-        return _finish(out, "failed", {"stage": "prepare"}, prepare_status)
+        return _finish(out, "failed", {"stage": "prepare", **prepare_payload}, prepare_status)
 
     try:
-        validate_status = run_validate_command(SimpleNamespace(package=str(package_dir), json=True))
+        validate_payload_result, validate_status = validate_payload(
+            SimpleNamespace(package=str(package_dir), json=True)
+        )
     except Exception as exc:
         return _finish_stage_exception(out, "validate", exc)
     if validate_status != 0:
-        return _finish(out, "failed", {"stage": "validate"}, validate_status)
+        return _finish(
+            out,
+            "failed",
+            {"stage": "validate", **validate_payload_result},
+            validate_status,
+        )
 
     apply_status = None
     if bool(getattr(args, "apply", False)):
         try:
-            apply_status = run_apply_command(
+            apply_payload_result, apply_status = apply_payload(
                 SimpleNamespace(
                     package=str(package_dir),
                     runtime_root=args.runtime_root,
@@ -155,7 +161,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         except Exception as exc:
             return _finish_stage_exception(out, "apply", exc)
         if apply_status != 0:
-            return _finish(out, "failed", {"stage": "apply"}, apply_status)
+            return _finish(out, "failed", {"stage": "apply", **apply_payload_result}, apply_status)
 
     return _finish(
         out,

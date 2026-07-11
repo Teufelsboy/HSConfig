@@ -157,6 +157,108 @@ def test_configure_fetches_card_data_and_writes_intake_counts(tmp_path: Path, mo
     assert report["summary"]["missing_companion_records"] == 0
 
 
+def test_configure_json_outputs_single_parseable_payload(tmp_path: Path, monkeypatch, capsys):
+    _stub_empty_card_fetches(monkeypatch)
+
+    out = tmp_path / "configure"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "OK"
+    assert payload["manifest_path"] == str(out / "01_manifest" / "source_research_manifest.json")
+    assert payload["research_path"] == str(out / "03_research")
+    assert payload["package_path"] == str(out / "04_package")
+    assert payload["apply_performed"] is False
+
+
+def test_configure_uses_local_card_feed_files_without_fetching(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    def fail_fetch(timeout=10.0):
+        raise AssertionError("configure should use supplied local card feeds")
+
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", fail_fetch)
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        fail_fetch,
+    )
+
+    cards_json = tmp_path / "cards.json"
+    _write_intake_cards_json(cards_json)
+    collectible_cards_json = tmp_path / "collectible_cards.json"
+    collectible_cards_json.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "HSC_INTAKE_001",
+                    "dbf_id": 91001,
+                    "name": "Recognizable Deck Card",
+                    "type": "MINION",
+                    "text": "Creates a recognizable helper.",
+                    "child_ids": ["HSC_INTAKE_TOKEN"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    full_cards_json = tmp_path / "full_cards.json"
+    full_cards_json.write_text(
+        json.dumps(
+            {"cards": [{"id": "HSC_INTAKE_TOKEN", "name": "Recognizable Companion"}]}
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "configure"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "IntakeDeck",
+            "--deck-code",
+            "fixture-code",
+            "--cards-json",
+            str(cards_json),
+            "--collectible-cards-json",
+            str(collectible_cards_json),
+            "--full-cards-json",
+            str(full_cards_json),
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    report = _read_json(out / "03_research" / "card_data_intake_report.json")
+    identity = _read_json(out / "03_research" / "identity_graph_report.json")
+
+    assert payload["status"] == "OK"
+    assert report["summary"]["matched_deck_cards"] == 1
+    assert report["summary"]["companion_records"] == 1
+    assert identity["hearthstonejson_receipt"]["status"] == "local_files"
+
+
 def test_configure_builds_valid_load_safe_package_without_source_evidence(
     tmp_path: Path,
     monkeypatch,
@@ -281,16 +383,16 @@ def test_configure_apply_uses_existing_apply_command_gate(
     runtime_root = tmp_path / "runtime"
     captured = {}
 
-    def fake_run_apply_command(args):
+    def fake_apply_payload(args):
         captured["package"] = args.package
         captured["runtime_root"] = args.runtime_root
         captured["allow_source_informed"] = args.allow_source_informed
         captured["fake"] = args.fake
         captured["from_fake_receipt"] = args.from_fake_receipt
         captured["json"] = args.json
-        return 0
+        return {"status": "applied"}, 0
 
-    monkeypatch.setattr("hsconfig.commands.configure.run_apply_command", fake_run_apply_command)
+    monkeypatch.setattr("hsconfig.commands.configure.apply_payload", fake_apply_payload)
 
     code = main(
         [

@@ -4,6 +4,13 @@ Date: 2026-07-05
 Repository target: `Teufelsboy/HSConfig`
 Local workspace: `C:\Users\darbo\Documents\HSConfig`
 
+> Historical note: this design spec is superseded for normal operator usage by
+> `docs/operator/README.md` and
+> `docs/operator/universal-wild-no-block-contract.md`. The current normal path
+> is `hsconfig configure`, where `Presume.json` and `Concede.json` are not
+> emitted and `SOURCE_BACKED_STRONG` is source confidence, not the runtime-write
+> gate.
+
 ## 1. Purpose
 
 HSConfig is a lean Codex skill and supporting Python toolchain for one job:
@@ -694,4 +701,3 @@ Important external source families:
 HSConfig should be a direct, aggressive, guide-aligned config authoring skill.
 
 It should generate a fully reasoned initial config, not a cautious starter package. The system must use all relevant HearthRanger config surfaces and must fully profile `GlobalValues.json`. It remains safe by validating syntax, preserving provenance, and reporting unsupported claims, not by avoiding strong config decisions.
-
