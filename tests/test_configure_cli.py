@@ -323,3 +323,37 @@ def test_configure_apply_uses_existing_apply_command_gate(
         "from_fake_receipt": None,
         "json": True,
     }
+
+
+def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch):
+    _stub_empty_card_fetches(monkeypatch)
+
+    out = tmp_path / "configure"
+    runtime_root = tmp_path / "runtime"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(runtime_root),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    assert main(
+        [
+            "apply",
+            "--package",
+            str(out / "04_package"),
+            "--runtime-root",
+            str(runtime_root),
+            "--fake",
+            "--json",
+        ]
+    ) == 0

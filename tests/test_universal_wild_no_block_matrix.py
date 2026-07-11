@@ -22,6 +22,15 @@ DECKS = [
 ]
 
 
+def _stub_empty_card_fetches(monkeypatch) -> None:
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
+
+
 @pytest.mark.parametrize(("deck_name", "deck_code"), DECKS)
 def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     tmp_path: Path,
@@ -95,3 +104,34 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert card_files == deck_card_ids
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
+
+
+def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeypatch):
+    _stub_empty_card_fetches(monkeypatch)
+
+    for deck_name, deck_code in DECKS:
+        out = tmp_path / deck_name
+        assert main(
+            [
+                "configure",
+                "--deck-name",
+                deck_name,
+                "--deck-code",
+                deck_code,
+                "--runtime-root",
+                str(tmp_path / "runtime"),
+                "--out",
+                str(out),
+                "--json",
+            ]
+        ) == 0
+
+        operator = json.loads(
+            (out / "04_package" / "reports" / "operator_summary.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert operator["technical_status"] == "VALID_PACKAGE"
+        assert operator["runtime_load_safe"] is True
+        assert operator["runtime_apply_mode"] == "load_safe_apply"
+        assert operator["mechanic_visibility_summary"]["non_blocking"] is True
