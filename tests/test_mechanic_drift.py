@@ -17,17 +17,57 @@ def test_text_only_new_mechanics_are_visible_and_non_blocking():
         assert report["support_by_mechanic"][mechanic]["support_level"] == "warning_only"
 
 
-def test_starship_and_imbue_are_detected_from_referenced_tags():
+def test_starship_piece_mechanic_canonicalizes_to_starship():
     report = build_mechanic_drift_report(
         [
-            {"id": "S1", "type": "MINION", "text": "", "mechanics": ["STARSHIP_PIECE"], "referencedTags": ["STARSHIP"]},
-            {"id": "I1", "type": "HERO_POWER", "text": "", "mechanics": [], "referencedTags": ["IMBUE"]},
+            {
+                "id": "S1",
+                "type": "MINION",
+                "text": "",
+                "mechanics": ["STARSHIP_PIECE"],
+                "referencedTags": [],
+            },
         ]
     )
 
     assert "starship" in report["mechanics"]
-    assert "imbue" in report["mechanics"]
+    assert report["mechanics_by_card"]["S1"] == ["starship"]
     assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
+
+
+def test_starship_piece_referenced_tag_canonicalizes_to_starship():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "S1",
+                "type": "MINION",
+                "text": "",
+                "mechanics": [],
+                "referencedTags": ["STARSHIP_PIECE"],
+            },
+        ]
+    )
+
+    assert "starship" in report["mechanics"]
+    assert report["mechanics_by_card"]["S1"] == ["starship"]
+    assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
+
+
+def test_imbue_is_detected_from_referenced_tags():
+    report = build_mechanic_drift_report(
+        [
+            {
+                "id": "I1",
+                "type": "HERO_POWER",
+                "text": "",
+                "mechanics": [],
+                "referencedTags": ["IMBUE"],
+            },
+        ]
+    )
+
+    assert "imbue" in report["mechanics"]
+    assert report["mechanics_by_card"]["I1"] == ["imbue"]
     assert report["support_by_mechanic"]["imbue"]["support_level"] == "partial"
 
 
