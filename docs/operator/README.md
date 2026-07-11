@@ -6,6 +6,14 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
+## Quick Start
+
+- Run `hsconfig configure` for normal operation.
+- Open `reports/operator_summary.json` first.
+- `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
+- Warnings are follow-up work, not a second apply gate.
+- HSTuner owns post-run logs, winrate, candidates, and tuning.
+
 ## Preferred Normal Path
 
 Preferred normal path: `hsconfig configure`.

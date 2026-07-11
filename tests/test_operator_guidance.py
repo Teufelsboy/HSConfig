@@ -14,6 +14,24 @@ def test_operator_docs_point_to_research_index_without_making_it_operator_path()
     )
 
 
+def test_operator_readme_has_compact_quick_start_before_details():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    quick_start_index = text.index("## Quick Start")
+    preferred_path_index = text.index("## Preferred Normal Path")
+    expert_path_index = text.index("## Expert Paths")
+
+    assert quick_start_index < preferred_path_index < expert_path_index
+    quick_start = text[quick_start_index:preferred_path_index]
+
+    assert "Run `hsconfig configure` for normal operation." in quick_start
+    assert "Open `reports/operator_summary.json` first." in quick_start
+    assert "`technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed." in quick_start
+    assert "Warnings are follow-up work, not a second apply gate." in quick_start
+    assert "HSTuner owns post-run logs, winrate, candidates, and tuning." in quick_start
+    assert len([line for line in quick_start.splitlines() if line.strip().startswith("- ")]) <= 6
+
+
 def test_guidance_for_source_backed_strong_package():
     guidance = build_operator_guidance(
         {
