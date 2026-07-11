@@ -41,6 +41,19 @@ def test_skill_content_sets_direct_config_boundary():
     assert "--guide-sources-json" in text
 
 
+def test_skill_names_configure_normal_workflow():
+    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Normal workflow:" in text
+    assert "1. Prefer `hsconfig configure ...` for normal operation." in text
+    assert (
+        "2. Use lower-level commands only when inspecting a stage:\n"
+        "   `source-manifest -> draft-source-documents -> research-deck -> "
+        "prepare -> validate -> apply`."
+    ) in text
+    assert "3. Open `reports/operator_summary.json` first." in text
+
+
 def test_skill_docs_preserve_hsconfig_boundaries_without_verbatim_duplication():
     docs = [
         Path("README.md").read_text(encoding="utf-8"),

@@ -12,7 +12,17 @@ Start with `docs/operator/README.md`.
 
 Preferred normal path: `hsconfig configure`.
 
-`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and only writes runtime files when `--apply` is explicitly requested.
+Use `hsconfig configure` for normal operation:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
+```
+
+`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`. It only writes runtime files when `--apply` is explicitly requested.
+
+The lower-level normal path remains available for inspected work:
+
+`source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`
 
 Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 

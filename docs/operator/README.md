@@ -5,9 +5,25 @@ HSConfig creates pre-game HearthRanger VisionAI `CustomConfig` packages from a d
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
+
+## Preferred Normal Path
+
 Preferred normal path: `hsconfig configure`.
-`hsconfig configure` is the one-command pre-run package path. It decodes the deck, builds source and research artifacts, creates the pre-run package, validates it, and only applies through the guarded apply gate when `--apply` is explicitly requested.
+
+Use `hsconfig configure` for normal operation:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json
+```
+
+This command runs the lower-level pre-run chain, writes a validated package, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`.
+
+The lower-level normal path remains available for inspected work:
+
+`source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`
+
 Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+
 Use the lower-level inspected path when the source evidence, source documents, or research outputs need operator inspection before package preparation.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.

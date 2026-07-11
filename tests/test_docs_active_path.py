@@ -26,6 +26,28 @@ def test_operator_docs_mark_research_artifacts_as_evidence():
     assert "Research artifacts are evidence, not operator instructions." in text
 
 
+def test_operator_docs_name_configure_as_preferred_normal_path():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "## Preferred Normal Path" in text
+    assert "Use `hsconfig configure` for normal operation:" in text
+    assert (
+        'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
+        '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --json'
+    ) in text
+    assert (
+        "This command runs the lower-level pre-run chain, writes a validated "
+        "package, and leaves the final decision in "
+        "`outputs/<DeckName>/04_package/reports/operator_summary.json`."
+    ) in text
+    assert "The lower-level normal path remains available for inspected work:" in text
+    assert (
+        "source-manifest -> draft-source-documents -> research-deck -> "
+        "prepare -> validate -> apply"
+    ) in text
+    assert "HSConfig is pre-run only" in text
+
+
 def test_operator_docs_explain_runtime_apply_mode_is_descriptive():
     operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
@@ -47,6 +69,31 @@ def test_universal_no_block_contract_labels_per_card_every_card_as_rich_policy()
     assert "not the minimal runtime-apply gate" in text
     assert "not an official HearthRanger minimum" in text
     assert "one per-card JSON file for every unique deck CardID" in text
+
+
+def test_universal_no_block_contract_documents_card_data_intake_layers():
+    text = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "## Card Data Intake" in text
+    assert "HSConfig uses a three-layer intake policy:" in text
+    assert (
+        "Layer 1: deck-card identity is gated through collectible deck-card metadata."
+        in text
+    )
+    assert (
+        "Layer 2: directly referenced companion entities are enriched from full "
+        "`cards.json` metadata when available."
+    ) in text
+    assert (
+        "Layer 3: text-only or rule-only mechanics stay visible in mechanic-drift "
+        "reports."
+    ) in text
+    assert (
+        "Layer 2 and Layer 3 gaps are warning-only. They must not block "
+        "`load_safe_apply` when the package is otherwise `VALID_PACKAGE`."
+    ) in text
 
 
 def test_source_backed_closure_uses_promotion_blocker_language():

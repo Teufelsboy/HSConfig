@@ -24,6 +24,13 @@ Inputs:
 - optional source evidence rows or researched `source_documents.json`
 - normalized guide sources from `hsconfig research-deck`
 
+Normal workflow:
+
+1. Prefer `hsconfig configure ...` for normal operation.
+2. Use lower-level commands only when inspecting a stage:
+   `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
+3. Open `reports/operator_summary.json` first.
+
 Preferred normal workflow:
 
 1. Run `hsconfig configure --deck-name <deck> --deck-code <code> --runtime-root <runtime-root> --out <out> --json`.

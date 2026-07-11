@@ -15,6 +15,16 @@ Minimal load-safe runtime apply is deliberately narrower than normal prepare ric
 `Concede.json` and `Presume.json` are HearthRanger-documented VisionAI surfaces, but normal HSConfig does not emit them. Their absence is not a block for a load-safe deck package.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
+## Card Data Intake
+
+HSConfig uses a three-layer intake policy:
+
+- Layer 1: deck-card identity is gated through collectible deck-card metadata.
+- Layer 2: directly referenced companion entities are enriched from full `cards.json` metadata when available.
+- Layer 3: text-only or rule-only mechanics stay visible in mechanic-drift reports.
+
+Layer 2 and Layer 3 gaps are warning-only. They must not block `load_safe_apply` when the package is otherwise `VALID_PACKAGE`.
+
 ## Non-Blocking Config Usefulness
 
 `config_usefulness` is descriptive. It must not change the no-block contract:
