@@ -194,7 +194,7 @@ def test_configure_uses_local_card_feed_files_without_fetching(
     def fail_fetch(timeout=10.0):
         raise AssertionError("configure should use supplied local card feeds")
 
-    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", fail_fetch)
     monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", fail_fetch)
     monkeypatch.setattr(
         "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
@@ -251,12 +251,14 @@ def test_configure_uses_local_card_feed_files_without_fetching(
 
     payload = json.loads(capsys.readouterr().out)
     report = _read_json(out / "03_research" / "card_data_intake_report.json")
-    identity = _read_json(out / "03_research" / "identity_graph_report.json")
+    research_identity = _read_json(out / "03_research" / "identity_graph_report.json")
+    package_identity = _read_json(out / "04_package" / "reports" / "identity_graph_report.json")
 
     assert payload["status"] == "OK"
     assert report["summary"]["matched_deck_cards"] == 1
     assert report["summary"]["companion_records"] == 1
-    assert identity["hearthstonejson_receipt"]["status"] == "local_files"
+    assert research_identity["hearthstonejson_receipt"]["status"] == "local_files"
+    assert package_identity["hearthstonejson_receipt"]["status"] == "local_files"
 
 
 def test_configure_builds_valid_load_safe_package_without_source_evidence(

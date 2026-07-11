@@ -5,6 +5,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from hsconfig.card_feed_loading import (
+    card_feed_receipt_source,
+    card_feed_receipt_status,
+    load_optional_card_feed,
+)
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_metadata import hydrate_card_metadata
 from hsconfig.combo_plan import build_combo_plan
@@ -84,14 +89,19 @@ def build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
         cards=deck_identity["cards"],
         source_records=source_records,
     )
-    hearthstonejson_cards: list[dict[str, Any]] = []
+    collectible_cards = load_optional_card_feed(getattr(args, "collectible_cards_json", None))
+    full_cards = load_optional_card_feed(getattr(args, "full_cards_json", None))
     semantic_fetch_error: str | None = None
     semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
     if not semantic_fetch_skipped:
         try:
-            hearthstonejson_cards = fetch_latest_cards(timeout=10.0)
+            if full_cards is None:
+                full_cards = fetch_latest_cards(timeout=10.0)
         except Exception as exc:
             semantic_fetch_error = str(exc)
+    collectible_cards = collectible_cards or []
+    full_cards = full_cards or []
+    hearthstonejson_cards = [*collectible_cards, *full_cards]
     semantic_report = enrich_card_metadata(
         card_metadata,
         hearthstonejson_cards=hearthstonejson_cards,
@@ -184,14 +194,16 @@ def build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
     identity_graph_report = build_identity_graph_report(
         deck_identity=deck_identity,
         hearthstonejson_receipt={
-            "source": "hearthstonejson_latest_enus_cards",
+            "source": card_feed_receipt_source(
+                collectible_cards_json=getattr(args, "collectible_cards_json", None),
+                full_cards_json=getattr(args, "full_cards_json", None),
+            ),
             "card_count": len(hearthstonejson_cards),
-            "status": (
-                "skipped"
-                if semantic_fetch_skipped
-                else "fetched"
-                if semantic_fetch_error is None
-                else "fetch_failed"
+            "status": card_feed_receipt_status(
+                collectible_cards_json=getattr(args, "collectible_cards_json", None),
+                full_cards_json=getattr(args, "full_cards_json", None),
+                semantic_fetch_skipped=semantic_fetch_skipped,
+                semantic_fetch_error=semantic_fetch_error,
             ),
             "error": semantic_fetch_error,
         },

@@ -119,6 +119,8 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                     str(source_documents_json) if source_documents_json else None
                 ),
                 cards_json=getattr(args, "cards_json", None),
+                collectible_cards_json=getattr(args, "collectible_cards_json", None),
+                full_cards_json=getattr(args, "full_cards_json", None),
                 claims_json=None,
                 plan_reports_dir=None,
                 allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
