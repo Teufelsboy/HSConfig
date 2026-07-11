@@ -56,7 +56,7 @@ def test_skill_and_workflow_stay_compact_and_canonical():
         assert duplicate_section not in combined
 
 
-def test_active_docs_do_not_overclaim_presume_first_party_documentation():
+def test_active_docs_document_presume_aoe_surface_without_normal_output():
     active_files = [
         Path("docs/operator/README.md"),
         Path("docs/operator/universal-wild-no-block-contract.md"),
@@ -64,17 +64,23 @@ def test_active_docs_do_not_overclaim_presume_first_party_documentation():
         SKILL_ROOT / "references" / "workflow.md",
         SKILL_ROOT / "references" / "visionai-surfaces.md",
     ]
+    required = [
+        "`Concede.json` is publicly documented",
+        "`Presume.json` is publicly documented on HearthRanger's AOE play-around page",
+        "normal HSConfig does not emit `Presume.json` or `Concede.json`",
+        "absence never blocks a valid load-safe package",
+    ]
     forbidden = [
-        "Concede.json and Presume.json are documented HearthRanger surfaces",
-        "Concede.json and Presume.json are HearthRanger-documented VisionAI surfaces",
-        "Presume.json and Concede.json are documented HearthRanger surfaces",
-        "Presume.json and Concede.json are HearthRanger-documented VisionAI surfaces",
-        "Presume.json and Concede.json are publicly documented",
+        "without a current verified first-party help-page citation",
+        "does not currently verify a current first-party help-page citation",
+        "lacks a current verified first-party help-page citation",
         "Presume/Concede are documented normal outputs",
     ]
 
     for path in active_files:
-        text = path.read_text(encoding="utf-8").replace("`", "")
+        text = path.read_text(encoding="utf-8")
+        for phrase in required:
+            assert phrase in text, f"{path}: {phrase}"
         for phrase in forbidden:
             assert phrase not in text, f"{path}: {phrase}"
 

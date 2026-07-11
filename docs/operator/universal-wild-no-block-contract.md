@@ -12,7 +12,7 @@ every valid deck input.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
 Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
-`Concede.json` is a publicly documented HearthRanger VisionAI surface. `Presume.json` is treated as known legacy/public compatibility; this repo does not currently verify a current first-party help-page citation for it, and normal HSConfig does not emit either surface. Their absence is not a block for a load-safe deck package.
+`Concede.json` is publicly documented as a HearthRanger VisionAI surface. `Presume.json` is publicly documented on HearthRanger's AOE play-around page for opponent hand-card assumptions, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
 ## Card Data Intake

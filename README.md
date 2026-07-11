@@ -2,7 +2,7 @@
 
 HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from a Hearthstone deck name and deck code.
 
-HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those are HSTuner concerns. `Presume.json` and `Concede.json` are not emitted in the normal path.
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those are HSTuner concerns. `Concede.json` is publicly documented; `Presume.json` is publicly documented on HearthRanger's AOE play-around page, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 
 ## Bootstrap
 
