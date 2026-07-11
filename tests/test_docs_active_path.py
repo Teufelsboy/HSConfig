@@ -331,3 +331,16 @@ def test_acceptance_matrix_is_documented_as_diagnostic_only():
     assert "does not replace `reports/operator_summary.json`" in operator
     assert "does not change the apply gate" in contract
     assert "guarded `hsconfig apply` path" in contract
+
+
+def test_superpowers_artifacts_are_historical_not_operator_guidance():
+    root = Path("docs/superpowers/README.md").read_text(encoding="utf-8")
+    plans = Path("docs/superpowers/plans/README.md").read_text(encoding="utf-8")
+    combined = f"{root}\n{plans}"
+
+    assert "Historical planning artifacts" in root
+    assert "not operator instructions" in combined
+    assert "docs/operator/README.md" in combined
+    assert "docs/research/current-truth.md" in combined
+    assert "Do not use old Superpowers plans as the normal command path." in plans
+    assert "normal command path is `hsconfig configure`" in plans
