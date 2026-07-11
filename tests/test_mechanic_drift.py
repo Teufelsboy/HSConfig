@@ -1,6 +1,36 @@
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 
 
+def test_text_only_new_mechanics_are_visible_and_non_blocking():
+    report = build_mechanic_drift_report(
+        [
+            {"id": "T1", "type": "MINION", "text": "Kindred: Gain +1/+1.", "mechanics": []},
+            {"id": "T2", "type": "SPELL", "text": "Rewind this.", "mechanics": []},
+            {"id": "T3", "type": "SPELL", "text": "Prepare a spell.", "mechanics": []},
+            {"id": "T4", "type": "MINION", "text": "Tourist", "mechanics": []},
+        ]
+    )
+
+    assert report["non_blocking"] is True
+    assert {"kindred", "rewind", "prepare", "tourist"} <= set(report["text_only_mechanics"])
+    for mechanic in ("kindred", "rewind", "prepare", "tourist"):
+        assert report["support_by_mechanic"][mechanic]["support_level"] == "warning_only"
+
+
+def test_starship_and_imbue_are_detected_from_referenced_tags():
+    report = build_mechanic_drift_report(
+        [
+            {"id": "S1", "type": "MINION", "text": "", "mechanics": ["STARSHIP_PIECE"], "referencedTags": ["STARSHIP"]},
+            {"id": "I1", "type": "HERO_POWER", "text": "", "mechanics": [], "referencedTags": ["IMBUE"]},
+        ]
+    )
+
+    assert "starship" in report["mechanics"]
+    assert "imbue" in report["mechanics"]
+    assert report["support_by_mechanic"]["starship"]["support_level"] == "warning_only"
+    assert report["support_by_mechanic"]["imbue"]["support_level"] == "partial"
+
+
 def test_mechanic_drift_detects_text_only_tradeable_without_blocking():
     report = build_mechanic_drift_report(
         [

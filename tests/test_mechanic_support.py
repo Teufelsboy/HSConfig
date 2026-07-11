@@ -293,6 +293,18 @@ def test_current_modern_wild_mechanics_are_registered_without_blocking():
         assert operator_visibility_bucket(summary) == "warning_only"
 
 
+def test_prepare_and_starship_aliases_are_registered_without_blocking():
+    rows = support_for_roles(["prepare", "prepare_keyword", "starship_piece_tag"])
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    assert set(by_mechanic) == {"prepare", "starship"}
+    assert by_mechanic["prepare"]["support_level"] == "warning_only"
+    assert by_mechanic["prepare"]["normal_path_surfaces"] == ["report-only"]
+    assert by_mechanic["prepare"].get("registered", True) is True
+    assert operator_visibility_bucket(by_mechanic["prepare"]) == "warning_only"
+    assert by_mechanic["starship"]["support_level"] == "warning_only"
+
+
 def test_cthun_alias_accepts_apostrophe_punctuation():
     rows = support_for_roles(["C'THUN"])
 

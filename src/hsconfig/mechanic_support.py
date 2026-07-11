@@ -263,6 +263,13 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "proof_basis": "text drift visibility only; no documented VisionAI temporal prior-state surface in the normal package",
         "never_autopatch_reason": "Do not lower temporal replay/prior-state effects into card values without exact public VisionAI support.",
     },
+    "prepare": {
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Prepare is a pre-play setup action with no documented normal-path VisionAI runtime block.",
+        "proof_basis": "text drift visibility only; no documented VisionAI prepare action surface",
+        "never_autopatch_reason": "Do not lower Prepare into card values without exact public VisionAI support.",
+    },
     "herald": {
         "support_level": "warning_only",
         "normal_path_surfaces": ["report-only"],
@@ -412,7 +419,9 @@ ROLE_ALIASES = {
     "honorablekill": "honorable_kill",
     "honorable_kill": "honorable_kill",
     "starship_piece": "starship",
+    "starship_piece_tag": "starship",
     "starship_launch": "starship",
+    "prepare_keyword": "prepare",
     "hero_power_imbue": "imbue",
     "shadow_hero_power": "hero_power_transform",
     "hero_power_pressure": "hero_power",

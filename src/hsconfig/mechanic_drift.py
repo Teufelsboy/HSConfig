@@ -40,6 +40,7 @@ TEXT_MECHANIC_PATTERNS: dict[str, tuple[str, ...]] = {
     "tourist": ("tourist",),
     "starship": ("starship", "launch your starship"),
     "rewind": ("rewind",),
+    "prepare": ("prepare",),
     "herald": ("herald",),
     "shatter": ("shatter",),
     "spellburst": ("spellburst",),
