@@ -223,3 +223,91 @@ def test_summary_runtime_file_drift_blocks(tmp_path: Path):
             "generated_file": str(package / "CustomConfig" / "deck" / "EX1_001.json"),
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "name": "clean_source_backed",
+            "summary_payload": {
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "SOURCE_BACKED_STRONG",
+                "next_action": "READY_TO_APPLY_OR_HANDOFF",
+                "apply_policy": "ALLOWED",
+                "semantic_blockers": [],
+            },
+            "mutate": None,
+            "expected_status": "allowed",
+            "expected_reason": "runtime_load_safe_package",
+        },
+        {
+            "name": "valid_with_warning_only_mechanics",
+            "summary_payload": {
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+                "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+                "apply_policy": "ALLOWED_WITH_WARNINGS",
+                "semantic_blockers": [
+                    {"reason": "warning_only_mechanic", "mechanic": "secret_timing"},
+                    {"reason": "future_mechanic_drift", "mechanic": "rewind"},
+                ],
+            },
+            "mutate": None,
+            "expected_status": "allowed",
+            "expected_reason": "runtime_load_safe_package",
+        },
+        {
+            "name": "stale_summary_missing_actual_cardid",
+            "summary_payload": {
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "SOURCE_BACKED_STRONG",
+                "next_action": "READY_TO_APPLY_OR_HANDOFF",
+                "apply_policy": "ALLOWED",
+                "semantic_blockers": [],
+                "generated_files": [
+                    "CustomConfig/deck/GlobalValues.json",
+                    "CustomConfig/deck/Mulligan.json",
+                ],
+            },
+            "mutate": lambda package: write_json(
+                package / "CustomConfig" / "deck" / "EX1_777.json",
+                {"GameCardId": "EX1_777"},
+            ),
+            "expected_status": "blocked",
+            "expected_reason": "actual_runtime_file_not_in_operator_summary",
+        },
+        {
+            "name": "legacy_optional_surface",
+            "summary_payload": {
+                "technical_status": "VALID_PACKAGE",
+                "semantic_status": "SOURCE_BACKED_STRONG",
+                "next_action": "READY_TO_APPLY_OR_HANDOFF",
+                "apply_policy": "ALLOWED",
+                "semantic_blockers": [],
+            },
+            "mutate": lambda package: write_json(
+                package / "CustomConfig" / "deck" / "Presume.json",
+                {},
+            ),
+            "expected_status": "blocked",
+            "expected_reason": "normal_path_optional_surface_present",
+        },
+    ],
+    ids=lambda case: case["name"],
+)
+def test_apply_gate_contract_matrix_keeps_warnings_open_and_technical_blocks_closed(
+    tmp_path: Path,
+    case: dict[str, Any],
+):
+    package = _write_package(
+        tmp_path / "package",
+        summary_payload=case["summary_payload"],
+    )
+    if case["mutate"] is not None:
+        case["mutate"](package)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["status"] == case["expected_status"]
+    assert gate["reasons"][0]["reason"] == case["expected_reason"]
