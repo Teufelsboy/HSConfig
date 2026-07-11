@@ -285,6 +285,58 @@ def test_shadowpriest_fixture_closes_known_audit_gaps():
     )
 
 
+def test_shadowpriest_fixture_does_not_mulligan_keep_darkbishop_start_of_game_effect():
+    bundle = _source_bundle_for_fixture("ShadowPriest")
+    darkbishop_claims = [
+        claim
+        for claim in bundle["claims"]
+        if "SW_448" in claim.get("cards", [])
+    ]
+
+    assert any(claim["claim_kind"] == "hero_power_transform" for claim in darkbishop_claims)
+    assert not any(
+        claim["claim_kind"] == "mulligan_keep" for claim in darkbishop_claims
+    )
+
+
+def test_start_of_game_hero_power_transform_keep_claim_is_suppressed():
+    plan = build_mulligan_plan(
+        deck_name="ShadowPriest",
+        claims=[
+            {
+                "claim_id": "claim_darkbishop_keep",
+                "claim_kind": "mulligan_keep",
+                "claim_type": "mulligan_keep",
+                "cards": ["SW_448"],
+                "claim": "Keep Darkbishop Benedictus because it enables the hero power plan.",
+                "confidence": "guide_backed",
+                "source_confidence": "high",
+            }
+        ],
+        card_roles={
+            "SW_448": {
+                "roles": ["hero_power_transform", "hero_power_pressure", "start_of_game"],
+                "semantic_families": [
+                    "hero_power_transform",
+                    "hero_power_pressure",
+                    "start_of_game",
+                ],
+                "confidence": "guide_backed",
+            }
+        },
+    )
+
+    assert not any(
+        rule.get("card") == "SW_448" and rule.get("action") == "hold"
+        for rule in plan["rules"]
+    )
+    assert any(
+        rule.get("card") == "SW_448"
+        and rule.get("reason") == "start_of_game_effect_does_not_require_opening_hand"
+        for rule in plan["suppressed_rules"]
+    )
+
+
 def test_bigshaman_fixture_covers_big_cheat_and_bad_target_patterns():
     claims = _claims("BigShaman")
     text = " ".join(str(claim.get("evidence_text_short", "")) for claim in claims).lower()

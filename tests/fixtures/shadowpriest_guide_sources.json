@@ -6,10 +6,13 @@
     "retrieved_at": "2026-07-06T12:00:00Z",
     "claims": [
       {
-        "claim_kind": "mulligan_keep",
+        "claim_kind": "hero_power_transform",
         "cards": ["SW_448"],
-        "stance": "keep",
-        "evidence_text_short": "Keep Darkbishop Benedictus because it enables the Shadow Priest hero power package.",
+        "stance": "shadowform_mind_spike",
+        "runtime_block": "BeforeUseHeroPowerBonus",
+        "runtime_value": "6",
+        "condition": "*",
+        "evidence_text_short": "Darkbishop Benedictus enables Shadowform and the Mind Spike hero power at Start of Game; the effect matters without keeping the card in the opening hand.",
         "source_confidence": "high"
       },
       {

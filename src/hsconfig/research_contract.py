@@ -186,8 +186,12 @@ def _roles_from_claims_and_semantics(
 ) -> list[str]:
     text = _claim_text(claims)
     claim_types = {str(claim.get("claim_type", "")).lower() for claim in claims}
+    claim_kinds = {
+        str(claim.get("claim_kind", claim.get("claim_type", ""))).lower()
+        for claim in claims
+    }
     roles = set(semantic_families)
-    if "keep" in text and not _has_negative_keep(text):
+    if "mulligan_keep" in claim_kinds and not _has_negative_keep(text):
         roles.add("mulligan_anchor")
     if any(marker in text for marker in ("face", "damage", "pressure", "push", "burst")):
         roles.add("pressure")

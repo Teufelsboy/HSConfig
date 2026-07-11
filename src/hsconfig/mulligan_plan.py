@@ -82,6 +82,18 @@ def build_mulligan_plan(
                 continue
             if explicit_selector and selector_cards:
                 card_id = selector_cards[0]
+            if action == "hold" and _is_start_of_game_transform_card(card_id, card_roles):
+                suppressed_rules.append(
+                    {
+                        "card": card_id,
+                        "selector_kind": selector_info["selector_kind"],
+                        "selector": selector_info["selector"],
+                        "action": action,
+                        "reason": "start_of_game_effect_does_not_require_opening_hand",
+                        "source_claim_ids": _source_claim_ids(claim),
+                    }
+                )
+                continue
             if unsupported_reason is not None:
                 suppressed_rules.append(
                     {
@@ -257,6 +269,15 @@ def _mulligan_condition_reason(reason: str) -> str:
     if reason == "unsupported_condition":
         return "unsupported_mulligan_condition"
     return reason
+
+
+def _is_start_of_game_transform_card(card_id: str, card_roles: dict[str, Any]) -> bool:
+    role_row = card_roles.get(str(card_id), {})
+    roles = {
+        *[str(role) for role in role_row.get("roles", [])],
+        *[str(role) for role in role_row.get("semantic_families", [])],
+    }
+    return {"start_of_game", "hero_power_transform"} <= roles
 
 
 def _suppressed_reason_counts(suppressed_rules: list[dict[str, Any]]) -> dict[str, int]:

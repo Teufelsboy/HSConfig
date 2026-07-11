@@ -109,7 +109,13 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
     assert code == 0
     assert payload["status"] == "passed"
     assert guide_claims["claims"]
-    assert [row["mulligan"] for row in mulligan_values[:2]] == ["SW_448", "SW_446"]
+    concrete_keeps = [
+        row["mulligan"]
+        for row in mulligan_values
+        if row["value"] == "hold" and row["mulligan"] != "*"
+    ]
+    assert "SW_448" not in concrete_keeps
+    assert "SW_446" in concrete_keeps
     assert mulligan_values[-1]["mulligan"] == "*"
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
     assert "BeforePlayCardBonus" in cardid
@@ -131,10 +137,10 @@ def test_real_shadowpriest_deckcode_depth_prepare_has_clean_runtime(tmp_path: Pa
                     "retrieved_at": "2026-07-07T00:00:00Z",
                     "claims": [
                         {
-                            "claim_kind": "mulligan_keep",
+                            "claim_kind": "hero_power_transform",
                             "cards": ["SW_448"],
-                            "stance": "keep",
-                            "evidence_text_short": "Keep Darkbishop Benedictus to enable the hero power plan.",
+                            "stance": "shadowform_mind_spike",
+                            "evidence_text_short": "Darkbishop Benedictus enables the Start of Game hero power plan without needing to be kept.",
                             "source_confidence": "high",
                         },
                         {
