@@ -131,6 +131,66 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
     ]
 
 
+def test_mixed_mechanic_visibility_fixture_keeps_runtime_surface_narrow():
+    rows = support_for_roles(
+        [
+            "discover",
+            "choose_one",
+            "hero_power_transform",
+            "generated_entity",
+            "secret_timing",
+            "location_activation",
+            "kindred",
+            "rewind",
+        ]
+    )
+    by_mechanic = {row["mechanic"]: row for row in rows}
+
+    for mechanic in ["discover", "choose_one", "hero_power_transform"]:
+        assert operator_visibility_bucket(by_mechanic[mechanic]) == "identity_gated_direct"
+        assert by_mechanic[mechanic]["support_level"] == "direct"
+
+    assert operator_visibility_bucket(by_mechanic["generated_entity"]) == "partial"
+    assert by_mechanic["generated_entity"]["support_level"] == "partial"
+
+    for mechanic in ["secret_timing", "location_activation", "kindred", "rewind"]:
+        assert operator_visibility_bucket(by_mechanic[mechanic]) == "warning_only"
+        assert by_mechanic[mechanic]["support_level"] == "warning_only"
+        assert by_mechanic[mechanic]["normal_path_surfaces"] == ["report-only"]
+
+    summary = summarize_mechanic_visibility(
+        [
+            {"card_id": "DISCOVER_CARD", "mechanic_support": support_for_roles(["discover"])},
+            {"card_id": "CHOOSE_CARD", "mechanic_support": support_for_roles(["choose_one"])},
+            {
+                "card_id": "TRANSFORM_CARD",
+                "mechanic_support": support_for_roles(["hero_power_transform"]),
+            },
+            {
+                "card_id": "GENERATED_CARD",
+                "mechanic_support": support_for_roles(["generated_entity"]),
+            },
+            {
+                "card_id": "WARNING_CARD",
+                "mechanic_support": support_for_roles(
+                    ["secret_timing", "location_activation", "kindred", "rewind"]
+                ),
+            },
+        ]
+    )
+
+    assert summary["non_blocking"] is True
+    assert summary["bucket_counts"]["identity_gated_direct"] == 3
+    assert summary["bucket_counts"]["partial"] == 1
+    assert summary["bucket_counts"]["warning_only"] == 4
+    assert summary["mechanics_by_bucket"]["warning_only"] == [
+        "kindred",
+        "location_activation",
+        "rewind",
+        "secret_timing",
+    ]
+
+
 def test_visibility_slice_classifies_choose_one_and_warning_boundaries():
     rows = support_for_roles(
         [
