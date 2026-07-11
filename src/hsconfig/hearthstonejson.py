@@ -9,6 +9,9 @@ from urllib.request import Request, urlopen
 HEARTHSTONEJSON_LATEST_ENUS_CARDS_URL = (
     "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
 )
+HEARTHSTONEJSON_LATEST_ENUS_COLLECTIBLE_CARDS_URL = (
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json"
+)
 USER_AGENT = "HSConfig/0.1 semantic-enrichment"
 
 
@@ -28,6 +31,18 @@ def fetch_latest_cards(timeout: float = 10.0) -> list[dict[str, Any]]:
         payload = json.load(response)
     if not isinstance(payload, list):
         raise ValueError("HearthstoneJSON latest cards response must be a list")
+    return [normalize_card_row(row) for row in payload]
+
+
+def fetch_latest_collectible_cards(timeout: float = 10.0) -> list[dict[str, Any]]:
+    request = Request(
+        HEARTHSTONEJSON_LATEST_ENUS_COLLECTIBLE_CARDS_URL,
+        headers={"User-Agent": USER_AGENT},
+    )
+    with urlopen(request, timeout=timeout) as response:
+        payload = json.load(response)
+    if not isinstance(payload, list):
+        raise ValueError("HearthstoneJSON latest collectible cards response must be a list")
     return [normalize_card_row(row) for row in payload]
 
 
