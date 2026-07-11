@@ -325,7 +325,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
     }
 
 
-def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch):
+def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, capsys):
     _stub_empty_card_fetches(monkeypatch)
 
     out = tmp_path / "configure"
@@ -345,15 +345,29 @@ def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch):
             "--json",
         ]
     ) == 0
+    capsys.readouterr()
+
+    package = out / "04_package"
+    operator = _read_json(package / "reports" / "operator_summary.json")
+    mechanic_visibility = operator["mechanic_visibility_summary"]
+
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert mechanic_visibility["non_blocking"] is True
+    assert mechanic_visibility["warning_only_card_count"] > 0
+    assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
 
     assert main(
         [
             "apply",
             "--package",
-            str(out / "04_package"),
+            str(package),
             "--runtime-root",
             str(runtime_root),
             "--fake",
             "--json",
         ]
     ) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "fake_apply_ready"
+    assert payload["receipt"]["runtime_write_performed"] is False
