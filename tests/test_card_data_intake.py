@@ -84,6 +84,48 @@ def test_card_data_context_enriches_referenced_companions_from_full_feed():
     assert context["card_data_intake_report"]["summary"]["companion_records"] == 2
 
 
+def test_card_data_context_enriches_child_id_companions_from_full_feed():
+    deck_cards = [{"card_id": "PARENT_01", "dbf_id": 100, "count": 1}]
+    collectible = [
+        {
+            "id": "PARENT_01",
+            "dbf_id": 100,
+            "name": "Parent Card",
+            "type": "SPELL",
+            "text": "Creates a helper.",
+            "mechanics": [],
+            "referenced_tags": [],
+            "entourage": [],
+            "childIds": ["CHILD_01"],
+            "hero_power_dbf_id": None,
+        }
+    ]
+    full = [
+        {
+            "id": "CHILD_01",
+            "dbf_id": 101,
+            "name": "Child Token",
+            "type": "MINION",
+            "text": "Created helper.",
+            "mechanics": [],
+            "referenced_tags": [],
+            "entourage": [],
+            "hero_power_dbf_id": None,
+        }
+    ]
+
+    context = build_card_data_context(
+        deck_cards=deck_cards,
+        collectible_cards=collectible,
+        full_cards=full,
+    )
+
+    assert context["deck_source_records"]["PARENT_01"]["child_ids"] == ["CHILD_01"]
+    assert context["companion_source_records"]["CHILD_01"]["name"] == "Child Token"
+    assert context["card_data_intake_report"]["summary"]["companion_records"] == 1
+    assert context["card_data_intake_report"]["summary"]["missing_companion_records"] == 0
+
+
 def test_card_data_context_keeps_missing_companions_non_blocking():
     deck_cards = [{"card_id": "HERO_01", "dbf_id": 10, "count": 1}]
     collectible = [
@@ -113,6 +155,38 @@ def test_card_data_context_keeps_missing_companions_non_blocking():
         "missing_companion_card",
         "missing_companion_dbf_id",
     }
+
+
+def test_card_data_context_keeps_missing_child_id_companions_non_blocking():
+    deck_cards = [{"card_id": "PARENT_01", "dbf_id": 100, "count": 1}]
+    collectible = [
+        {
+            "id": "PARENT_01",
+            "dbf_id": 100,
+            "name": "Parent Card",
+            "type": "SPELL",
+            "text": "Creates a helper.",
+            "mechanics": [],
+            "referenced_tags": [],
+            "entourage": [],
+            "child_ids": ["MISSING_CHILD"],
+            "hero_power_dbf_id": None,
+        }
+    ]
+
+    context = build_card_data_context(
+        deck_cards=deck_cards,
+        collectible_cards=collectible,
+        full_cards=[],
+    )
+
+    report = context["card_data_intake_report"]
+    assert report["non_blocking"] is True
+    assert report["summary"]["missing_companion_records"] == 1
+    assert {
+        "reason": "missing_companion_card",
+        "card_id": "MISSING_CHILD",
+    } in report["warnings"]
 
 
 def test_fetch_latest_collectible_cards_uses_collectible_feed(monkeypatch):

@@ -57,6 +57,7 @@ def test_normalize_card_row_preserves_semantic_fields():
         "spell_damage": None,
         "targeting_arrow_text": "",
         "hero_power_dbf_id": None,
+        "child_ids": [],
         "quest_reward": None,
         "play_requirements": {},
         "entourage": [],
@@ -122,6 +123,30 @@ def test_normalize_card_row_preserves_identity_link_fields():
     assert row["quest_reward"] == "QUEST_REWARD_CARD"
     assert row["play_requirements"] == {"REQ_TARGET_TO_PLAY": 0}
     assert row["entourage"] == ["TOKEN_001"]
+
+
+def test_normalize_card_row_preserves_child_ids_as_canonical_list():
+    camel_case_row = normalize_card_row(
+        {
+            "id": "PARENT_01",
+            "dbfId": 100,
+            "name": "Parent Card",
+            "type": "SPELL",
+            "childIds": ["CHILD_01"],
+        }
+    )
+    snake_case_row = normalize_card_row(
+        {
+            "id": "PARENT_02",
+            "dbf_id": 200,
+            "name": "Parent Card",
+            "type": "SPELL",
+            "child_ids": ["CHILD_02"],
+        }
+    )
+
+    assert camel_case_row["child_ids"] == ["CHILD_01"]
+    assert snake_case_row["child_ids"] == ["CHILD_02"]
 
 
 def test_index_cards_by_id_supports_id_and_dbf_lookup():

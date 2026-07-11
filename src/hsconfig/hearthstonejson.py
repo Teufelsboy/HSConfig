@@ -81,6 +81,7 @@ def normalize_card_row(row: dict[str, Any]) -> dict[str, Any]:
             row.get("targetingArrowText", row.get("targeting_arrow_text", "")) or ""
         ),
         "hero_power_dbf_id": _int_or_none(hero_power_dbf_id),
+        "child_ids": _string_list(row.get("childIds", row.get("child_ids", []))),
         "quest_reward": row.get("questReward", row.get("quest_reward")),
         "play_requirements": dict(
             row.get("playRequirements", row.get("play_requirements", {})) or {}
