@@ -1,0 +1,55 @@
+{
+  "verdict": "Needs small polish: the current HSConfig normal runtime surface is correctly narrow and repo-enforced, but the wording around Presume.json being publicly documented is slightly stronger than the public first-party evidence I could verify.",
+  "evidence": [
+    "C:/Users/darbo/Documents/HSConfig/README.md:3-5 defines HSConfig as a pre-run HearthRanger VisionAI CustomConfig generator and states that Presume.json and Concede.json are not emitted in the normal path.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:22 and 51-54 define the normal runtime surface as per-card <CARDID>.json plus GlobalValues.json and Mulligan.json, with Combo.json as useful but not minimal, and state that Concede.json and Presume.json are not emitted in the normal path.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md:3-10 limits normal HSConfig output to GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json when a concrete valid combo exists.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py:9-10 and 43-59 require GlobalValues.json and Mulligan.json for load_safe_apply and treat Presume.json and Concede.json as legacy-gated surfaces that block the normal apply path when present.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py:16-18, 19-33, and 49-79 always routes GlobalValues.json, Mulligan.json, and per-card CardID files, adds Combo.json only when combos exist, and only routes Presume.json or Concede.json when legacy_policy_surfaces_enabled is explicitly enabled.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py:4-39 and 42-58 proves the default contract excludes Presume.json and Concede.json, and only includes them in an explicit legacy lane.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py:304-367 proves Presume.json and Concede.json block the normal path whether they appear in operator_summary.generated_files or only on disk.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py:72-106 proves representative normal packages contain GlobalValues.json and Mulligan.json, match deck CardIDs with per-card files, and do not emit Presume.json or Concede.json.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md:110-114 requires explicit sequence, timing_kind, operator, and values before Combo.json emission; incomplete combo claims stay report-only.",
+    "Pytest on 2026-07-11 in C:/Users/darbo/Documents/HSConfig: tests/test_apply_gate.py -k \"optional_surface or allows_source_backed_ready_package\" passed 5/5 selected tests, and tests/test_universal_wild_no_block_matrix.py passed 13/13 tests.",
+    "Public HearthRanger VisionAI help index lists official help pages for JSON config, Mulligan, card behavior, Combo, Concede, and Global Values: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "Public help pages confirm official surfaces for per-card <CARDID>.json, Mulligan.json, Combo.json, Concede.json, and GlobalValues.json: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm ; https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm ; https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm ; https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm ; https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "[uncertain] Public evidence for Presume.json is weaker: I could verify a public HearthRanger forum post discussing Presume.json and saying it can presume opponent cards in hand, but I could not verify a dedicated first-party VisionAI help page for Presume.json in the public help index: https://www.hearthranger.com/forum/yaf_postsm56382_more-presume-options.aspx?find=unread"
+  ],
+  "what_is_strong": [
+    "The normal runtime package boundary is clear and internally consistent: GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json only when combo claims actually exist.",
+    "The apply gate enforces a genuinely narrow normal path by requiring only the minimal load-safe files and by hard-blocking Presume.json and Concede.json when they appear in a normal package.",
+    "The surface-intent layer keeps legacy policy surfaces out of the default route and requires an explicit opt-in before Presume.json or Concede.json can even be targeted.",
+    "Combo handling is intentionally exact instead of aspirational: the repo contract requires explicit ordered combo data before Combo.json is emitted.",
+    "The matrix and gate tests directly verify the runtime boundary, so the contract is not only documented but executable."
+  ],
+  "what_is_not_optimal": [
+    "[uncertain] The operator docs and skill reference say Presume.json is a HearthRanger-documented public surface, but the publicly accessible first-party help index I could verify exposes Concede.json and the other main surfaces, not a Presume.json help page.",
+    "The repo intentionally keeps validator and registry awareness for Presume.json and Concede.json for compatibility, which is acceptable, but it means the codebase is slightly broader than the operator-approved normal path and therefore needs careful wording to avoid drift.",
+    "The term load_safe_apply is correctly labeled as HSConfig policy, but readers can still conflate the repo's rich-output expectation of per-card-every-card coverage with HearthRanger's public minimum unless they read the contract sections closely."
+  ],
+  "no_block_assessment": [
+    "The no-block contract is technically narrow and correct. Minimal normal load-safe apply requires GlobalValues.json and Mulligan.json, not Combo.json or universal per-card completeness.",
+    "Per-card <CARDID>.json files are repo-rich output for stronger control and proof, but the contract correctly separates that richness from the minimal runtime gate.",
+    "Combo.json is useful but non-minimal. The repo correctly treats missing exact combo evidence as a confidence or usefulness gap, not as a reason to block an otherwise valid package.",
+    "The current contract correctly treats normal-path Presume.json and Concede.json as hard-stop drift, because their appearance would broaden the approved runtime surface.",
+    "This means the current skill really does avoid blocking valid decks for source-depth or mechanic-warning reasons while still preserving hard blocks for malformed structure, unsupported runtime files, and illegal normal-path surfaces."
+  ],
+  "hearthstone_semantic_assessment": [
+    "Public HearthRanger help clearly confirms the main semantic families that HSConfig relies on for the normal path: Mulligan.json, per-card CARDID behavior files, Combo.json, Concede.json, and GlobalValues.json.",
+    "The repo's per-card behavior registry includes public-doc-confirmed blocks such as InHandBonus, OnBoardBonus, BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, BeforeEndTurnBonus, BeforeOverkilledBonus, OnDiscoverCardBonus, OnChooseOneCardBonus, and InHandPlayPriority.",
+    "Choice handling remains semantically disciplined: discover and choose-one lowering stays inside per-card <CARDID>.json and only lowers when option identity is source-backed.",
+    "Combo semantics are correctly fail-closed. The repo only emits Combo.json when the claim carries explicit sequence, timing_kind, operator, and value data, and the Boarlock fixture test proves this exact-sequence path is exercised.",
+    "GlobalValues authority is intentionally narrow: baseline keys are copied and profiled, a limited Step 1 overlay lane exists, and runtime-evidence-only keys stay outside this pre-run workflow.",
+    "[uncertain] Presume.json is semantically treated as a known legacy surface in the repo, but I could only verify public forum evidence for it rather than a current first-party help page."
+  ],
+  "slimness_assessment": [
+    "The repo remains lean in scope. The top-level README and operator guide keep HSConfig pre-run only and exclude replay parsing, winrate inspection, post-game tuning, candidate promotion, and HSTuner scope.",
+    "The approved runtime surface is still narrow and purpose-built for pre-run package generation rather than runtime experimentation.",
+    "The only mild scope expansion is compatibility awareness for Presume.json and Concede.json in the registry, validator, and explicit legacy surface routing, but those surfaces are still kept out of the normal path and are therefore not a material bloat problem."
+  ],
+  "recommended_next_action": "Keep the normal runtime surface unchanged and make one documentation polish pass: replace wording that says Presume.json is publicly documented with wording such as publicly known legacy surface or first-party-public-doc not currently verified, unless you can add a direct official help-page citation.",
+  "confidence": "medium: the repo contract is strongly verified by current docs, code, and passing tests, but the public first-party documentation trail for Presume.json is incomplete in the currently accessible help pages.",
+  "uncertain": [
+    "public_doc_status_of_Presume.json"
+  ]
+}

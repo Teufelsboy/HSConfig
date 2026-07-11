@@ -21,6 +21,64 @@ def test_skill_has_required_files():
         assert (SKILL_ROOT / relative_path).exists(), relative_path
 
 
+def test_skill_and_workflow_stay_compact_and_canonical():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    combined = f"{skill}\n{workflow}"
+
+    assert skill.count("\n") < 80
+    assert workflow.count("\n") < 80
+    for text in (skill, workflow):
+        assert "docs/operator/README.md" in text
+        assert "hsconfig configure" in text
+        assert "reports/operator_summary.json" in text
+        assert "VALID_PACKAGE" in text
+        assert "load_safe_apply" in text
+    assert "HSConfig is pre-run only" in combined
+    assert "does not parse replays" in combined
+    assert "`GlobalValues.json`" in combined
+    assert "`Mulligan.json`" in combined
+    assert "`per-card <CARDID>.json`" in combined
+    assert "`Combo.json`" in combined
+    assert "does not emit `Presume.json` or `Concede.json`" in combined
+    for duplicate_section in [
+        "Preferred normal workflow:",
+        "Lower-level inspected workflow:",
+        "Status meaning:",
+        "Fixture stage meaning:",
+        "## Research Normalization",
+        "## Package Preparation",
+        "## Readiness Interpretation",
+        "## Fixture Stage Semantics",
+        "## Diagnostic And Expert Paths",
+        "Current closure truth is",
+    ]:
+        assert duplicate_section not in combined
+
+
+def test_active_docs_do_not_overclaim_presume_first_party_documentation():
+    active_files = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/universal-wild-no-block-contract.md"),
+        SKILL_ROOT / "SKILL.md",
+        SKILL_ROOT / "references" / "workflow.md",
+        SKILL_ROOT / "references" / "visionai-surfaces.md",
+    ]
+    forbidden = [
+        "Concede.json and Presume.json are documented HearthRanger surfaces",
+        "Concede.json and Presume.json are HearthRanger-documented VisionAI surfaces",
+        "Presume.json and Concede.json are documented HearthRanger surfaces",
+        "Presume.json and Concede.json are HearthRanger-documented VisionAI surfaces",
+        "Presume.json and Concede.json are publicly documented",
+        "Presume/Concede are documented normal outputs",
+    ]
+
+    for path in active_files:
+        text = path.read_text(encoding="utf-8").replace("`", "")
+        for phrase in forbidden:
+            assert phrase not in text, f"{path}: {phrase}"
+
+
 def test_skill_content_sets_direct_config_boundary():
     text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 

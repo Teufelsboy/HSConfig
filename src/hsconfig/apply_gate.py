@@ -26,7 +26,17 @@ def evaluate_apply_gate(
             },
         )
 
-    summary = read_json(operator_path)
+    try:
+        summary = read_json(operator_path)
+    except ValueError as error:
+        return _blocked(
+            operator_path,
+            {
+                "reason": "invalid_operator_summary_json",
+                "path": str(operator_path),
+                "error": str(error),
+            },
+        )
     if not isinstance(summary, dict):
         return _blocked(
             operator_path,
@@ -44,9 +54,14 @@ def evaluate_apply_gate(
         *_summary_optional_surface_reasons(summary),
         *_actual_optional_surface_reasons(package),
         *_actual_files_missing_from_summary_reasons(package, summary),
+        *_summary_files_missing_from_actual_reasons(package, summary),
     ]
     if optional_surface_reasons:
         return _blocked(operator_path, *optional_surface_reasons)
+
+    runtime_json_reasons = _actual_runtime_json_reasons(package)
+    if runtime_json_reasons:
+        return _blocked(operator_path, *runtime_json_reasons)
 
     technical_status = str(summary.get("technical_status", ""))
     semantic_status = str(summary.get("semantic_status", ""))
@@ -218,6 +233,58 @@ def _actual_files_missing_from_summary_reasons(
                 {
                     "reason": "actual_runtime_file_not_in_operator_summary",
                     "generated_file": str(path),
+                }
+            )
+    return reasons
+
+
+def _summary_files_missing_from_actual_reasons(
+    package: Path, summary: dict[str, Any]
+) -> list[dict[str, str]]:
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return []
+
+    actual_files = {
+        _normalize_generated_file_path(path.relative_to(package))
+        for path in custom_config.rglob("*")
+        if path.is_file()
+    }
+    reasons: list[dict[str, str]] = []
+    for generated_file in sorted(_summary_generated_file_set(summary)):
+        if generated_file.replace("\\", "/").rsplit("/", 1)[-1] in LEGACY_GATED_SURFACES:
+            continue
+        if generated_file not in actual_files:
+            reasons.append(
+                {
+                    "reason": "operator_summary_runtime_file_missing",
+                    "generated_file": generated_file,
+                }
+            )
+    return reasons
+
+
+def _actual_runtime_json_reasons(package: Path) -> list[dict[str, str]]:
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return []
+
+    reasons: list[dict[str, str]] = []
+    for path in sorted(path for path in custom_config.rglob("*") if path.is_file()):
+        relative_parts = path.relative_to(custom_config).parts
+        if len(relative_parts) != 2 or path.name in LEGACY_GATED_SURFACES:
+            continue
+        try:
+            read_json(path)
+        except ValueError as error:
+            reasons.append(
+                {
+                    "reason": "invalid_runtime_json",
+                    "generated_file": _normalize_generated_file_path(
+                        path.relative_to(package)
+                    ),
+                    "path": str(path),
+                    "error": str(error),
                 }
             )
     return reasons

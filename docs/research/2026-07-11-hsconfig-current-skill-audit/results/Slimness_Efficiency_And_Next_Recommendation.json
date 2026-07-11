@@ -1,0 +1,54 @@
+{
+  "verdict": "Needs small polish, not a rewrite. The current HSConfig skill is competent, narrowly scoped, efficient enough in code and dependency footprint, and maintainable under test, but the active skill/docs surface is no longer truly lean because too much detailed policy and legacy closure wording is duplicated across operator-facing files.",
+  "evidence": [
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md defines HSConfig as a lean deck-to-HearthRanger-config generator and explicitly forbids replay parsing, HDT parsing, winrate validation, candidate promotion, and post-run tuning.",
+    "C:/Users/darbo/Documents/HSConfig/README.md keeps the root entrypoint short at 32 lines and routes normal usage to docs/operator/README.md with `hsconfig configure` as the preferred path.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md is the real operator manual at 200 lines and repeatedly states that research artifacts are evidence, not operator instructions, and that `reports/operator_summary.json` is the single gate.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md is 124 lines and C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md is 88 lines, which is heavier than a minimal trigger-and-workflow skill surface.",
+    "Live metric check in this audit: `src/` has 75 Python files and about 14343 lines; `tests/` has 93 Python files and about 22949 lines; `docs/operator/` has 8 Markdown files and about 790 lines; `docs/superpowers/plans/` has 54 Markdown files and about 52832 lines; `docs/research/` has 113 JSON result files and about 8748 lines, showing that archive and plan weight is much larger than the active operator docs.",
+    "Live metric check in this audit: `src/hsconfig/operator_summary.py` is 972 lines, `mechanic_support.py` is 756 lines, `source_document_builder.py` is 583 lines, `package_builder.py` is 575 lines, and `gameplan_contract.py` is 571 lines, so the implementation has some dense policy hubs but keeps that density concentrated instead of spread through the CLI.",
+    "Live count check in this audit: active files still repeat detailed wording heavily. `docs/operator/README.md` mentions `operator_summary.json` 13 times and `source-informed` 6 times; `.agents/skills/hsconfig/SKILL.md` mentions `operator_summary.json` 12 times and `source-informed` 5 times; `references/workflow.md` mentions `operator_summary.json` 8 times and `source-informed` 6 times.",
+    "Live command in this audit: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "Live command in this audit: `python -m pytest tests/test_scope_boundaries.py tests/test_docs_active_path.py tests/test_skill_files.py tests/test_skill_sync.py` passed with `71 passed in 3.78s`.",
+    "Live command in this audit: `python -m pytest tests/test_cli_help.py tests/test_configure_cli.py tests/test_apply_gate.py tests/test_universal_wild_no_block_matrix.py` passed with `57 passed in 25.58s`.",
+    "C:/Users/darbo/Documents/HSConfig/pyproject.toml keeps dependencies lean: only `hearthstone>=9.0.0` at runtime and `pytest>=8.0` in dev extras.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py, tests/test_docs_active_path.py, and tests/test_skill_files.py actively enforce the pre-run boundary, installed-skill sync, active-doc wording, and many duplicated detail statements across README, operator docs, SKILL.md, and workflow.md."
+  ],
+  "what_is_strong": [
+    "The product boundary is clear and consistently enforced: HSConfig is pre-run only, while replay analysis, winrate work, runtime-log analysis, candidate promotion, and after-game tuning stay outside the repo and belong to HSTuner.",
+    "The normal operator story is simple at the top level: README points to docs/operator/README.md, `hsconfig configure` is the preferred command, and `reports/operator_summary.json` remains the single operator gate.",
+    "The runtime safety model is competent and conservative. The apply gate separates technical validity from semantic richness and allows load-safe initial packages without pretending they are always source-backed strong.",
+    "The implementation keeps complexity behind a small CLI surface. Dense policy logic is concentrated in a few modules rather than leaking into many commands or extra runtime dependencies.",
+    "The repo is well-defended by tests. Boundary wording, legacy-surface exclusions, installed-skill sync, CLI help, configure/apply behavior, and no-block matrix expectations are all exercised by passing targeted pytest batches.",
+    "The repo successfully quarantines most research/archive noise from the normal operator path. `docs/research/README.md` and `docs/research/current-truth.md` explicitly frame research as evidence, not instructions."
+  ],
+  "what_is_not_optimal": [
+    "The active skill surface is not truly minimal anymore. `.agents/skills/hsconfig/SKILL.md` and `references/workflow.md` contain large amounts of detailed policy, status taxonomy, matrix-closure truth, and mechanic wording that go beyond a lean trigger-and-entrypoint skill.",
+    "Documentation duplication is actively institutionalized by tests. Many assertions in `tests/test_skill_files.py` and `tests/test_docs_active_path.py` require overlapping phrases and repeated detailed concepts across README, operator docs, SKILL.md, and workflow.md, which raises maintenance cost for every wording change.",
+    "Legacy `source-informed` terminology is still prominent in active docs and code even though the normal path is now load-safe apply with warnings. That leaves a mild naming-confusion surface between legacy diagnostic compatibility and the actual current operator model.",
+    "Research and plan archive size is materially larger than the active operator docs. The archive is mostly contained, but the repo as a whole is not slim in documentation footprint.",
+    "The policy core is somewhat over-concentrated in `operator_summary.py`. It is test-backed and working, but nearly 1000 lines in one status-building module is a maintainability pressure point if more terminology or branches are added."
+  ],
+  "no_block_assessment": [
+    "The current repo correctly treats no-block as a technical/runtime contract, not a promise of perfect guide strength. A valid package can still be applied when it is load-safe and warnings remain visible.",
+    "The live-tested operator model keeps `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` separate from `SOURCE_BACKED_STRONG`, `VALID_BUT_NOT_GUIDE_STRONG`, and config-richness judgments.",
+    "Warning-only mechanic visibility, guide-depth gaps, combo uncertainty, and thin-but-load-safe configuration remain non-blocking in the current surface, which matches the intended product boundary.",
+    "The remaining no-block weakness is wording complexity, not gate correctness. Legacy `source-informed` language can make the story sound more layered than the runtime gate really is, but the code and tests still enforce the right behavior."
+  ],
+  "hearthstone_semantic_assessment": [
+    "Semantic coverage is competent for the current product boundary. The repo visibly handles GlobalValues, Mulligan, per-card CardID outputs, Combo, hero power transforms, choice surfaces, semantic enrichment, and mechanic drift reporting.",
+    "The mechanic model is honest instead of over-claiming. It uses direct, identity-gated direct, partial, and warning-only buckets rather than pretending every Hearthstone behavior has a safe runtime lowering.",
+    "Modern and awkward mechanic visibility is already present for families such as `kindred`, `tourist`, `starship`, `rewind`, `herald`, `shatter`, `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` through reports rather than unsafe runtime writes.",
+    "The current semantic gap is not missing whole categories so much as the communication burden around them. The repo is competent, but the active docs spend a lot of space re-explaining nuanced status and closure concepts."
+  ],
+  "slimness_assessment": [
+    "The code and dependency footprint are reasonably lean for the job: one runtime dependency, a compact CLI entrypoint, and strong scope boundaries that keep HSTuner and replay concerns out.",
+    "The user-facing top-level path is also reasonably lean: short root README, one operator guide, and one preferred command.",
+    "The repo is not slim in total documentation mass. `docs/superpowers/plans/` and historical research results are much larger than the active guidance surface, even if they are partially quarantined.",
+    "The biggest current inefficiency is active-doc duplication rather than algorithmic inefficiency. The same boundary, status, closure, and mechanic language is repeated across operator docs, skill docs, workflow docs, and tests.",
+    "Overall judgment: the skill is competent and maintainable, but only conditionally lean. It is lean in product scope, not lean in active policy wording."
+  ],
+  "recommended_next_action": "Make `docs/operator/README.md` the only detailed active policy manual, then slim `.agents/skills/hsconfig/SKILL.md` and `.agents/skills/hsconfig/references/workflow.md` down to trigger conditions, the preferred command path, the single gate, and hard boundaries; update the doc tests to assert canonical links and a few critical phrases instead of enforcing large duplicated policy blocks and repeated legacy `source-informed` wording.",
+  "confidence": "high - this audit is grounded in live repo inspection, line-count and term-count checks, installed-skill sync verification, dependency inspection, and two passing targeted pytest batches focused on scope boundaries, active docs, skill sync, CLI, apply gate, and no-block matrix behavior.",
+  "uncertain": []
+}

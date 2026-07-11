@@ -1,0 +1,63 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Short final verdict. State whether the current HSConfig skill is optimal
+          enough, needs small polish, or has a material gap.
+      - name: evidence
+        type: array
+        required: true
+        description: >
+          Source-backed or repo-backed evidence used for the verdict. Include URLs,
+          file paths, test names, command outputs, or concise observed facts.
+      - name: what_is_strong
+        type: array
+        required: true
+        description: >
+          Concrete strengths of the current skill, workflow, implementation, tests,
+          docs, and operator path.
+      - name: what_is_not_optimal
+        type: array
+        required: true
+        description: >
+          Concrete limitations, bloat, confidence gaps, drift risks, or misleading
+          UX/documentation points. Use an empty array if none are found.
+      - name: no_block_assessment
+        type: array
+        required: true
+        description: >
+          Explain whether the current skill really avoids blocking any valid deck,
+          while separating hard technical invalidity from non-blocking confidence,
+          source-depth, mechanic, combo, and usefulness warnings.
+      - name: hearthstone_semantic_assessment
+        type: array
+        required: true
+        description: >
+          Assess current Hearthstone mechanic and card-behavior coverage, including
+          GlobalValues, Mulligan, CardID rows, Combo, Hero Power, options, generated
+          entities, and Wild mechanic drift.
+      - name: slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether the repo and installed skill remain lean, simple,
+          efficient, and free of HSTuner/replay/winrate/post-run scope.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          The single best next action, if any. Prefer small, high-leverage work over
+          broad rewrites unless a material gap is proven.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          Confidence level: high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Field names or claims that could not be verified.

@@ -1,0 +1,43 @@
+topic: hsconfig-current-skill-audit-2026-07-11
+created: "2026-07-11"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-11-hsconfig-current-skill-audit/results
+  items_per_agent: 1
+  batch_size: 5
+items:
+  - name: Current Skill Contract And No-Block Gate
+    category: Local Repo
+    description: >
+      Audit the current HSConfig repository, installed skill, operator docs,
+      configure command, operator_summary, apply_gate, and no-block tests. Decide
+      whether every valid deck can produce a load-safe package without semantic
+      warnings becoming hard blocks.
+  - name: VisionAI Runtime Surface Correctness
+    category: HearthRanger VisionAI
+    description: >
+      Verify whether the normal runtime package surface remains correct and narrow:
+      GlobalValues.json, Mulligan.json, per-card CARDID.json, Combo.json only when
+      exact sequence evidence exists, and no normal-path Presume.json or Concede.json.
+      Compare the repo contract with public HearthRanger VisionAI documentation.
+  - name: Hearthstone Semantics And Wild Mechanic Coverage
+    category: Hearthstone Semantics
+    description: >
+      Audit current mechanic coverage for Wild pre-run config generation. Include
+      Battlecry, target behavior, Discover, Choose One, Hero Power transforms,
+      weapons, locations, secrets, generated entities, aura, discard, destroy,
+      silence, transform, Dredge, Tradeable, Kindred, Tourist, Starship, Imbue,
+      Rewind, Herald, Shatter, and unknown future mechanics.
+  - name: Representative Deck Proof And Output Competence
+    category: Deck Matrix
+    description: >
+      Check whether the representative and supplemental deck proof set is adequate
+      for the product claim. Assess whether source depth, GlobalValues profiling,
+      Mulligan richness, per-card CardID output, Combo narrowness, and config
+      usefulness are visible enough without adding fixture bloat.
+  - name: Slimness Efficiency And Next Recommendation
+    category: Product Boundary
+    description: >
+      Judge whether the skill is now lean, simple, efficient, competent, and
+      maintainable. Identify documentation or research bloat, over-engineering,
+      stale surfaces, or naming confusion, and recommend the single best next
+      improvement if any.

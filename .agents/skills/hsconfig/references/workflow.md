@@ -2,11 +2,7 @@
 
 Preferred normal path: `hsconfig configure`.
 
-`hsconfig configure` is the one-command pre-run package path: deck input -> manifest output -> source-document output folder -> research output -> prepared package -> validation -> `reports/operator_summary.json` -> `hsconfig apply ...` only when requested.
-
 Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
-
-Use the lower-level inspected path when source evidence or research outputs must be reviewed between stages: deck input -> `hsconfig source-manifest` -> short evidence rows -> `hsconfig draft-source-documents` -> `source_documents.json` -> `hsconfig research-deck --source-documents-json ...` -> normalized guide sources -> `hsconfig prepare --guide-sources-json ...` -> `reports/operator_summary.json` -> validation -> `hsconfig apply ...` only when requested.
 
 For the normal operator entry point, start at `docs/operator/README.md`.
 
@@ -14,75 +10,44 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
 
-## Research Normalization
+## Five-Step Sequence
 
-Use `hsconfig source-manifest` first to get aliases, card targets, and research questions. Codex then writes short evidence rows. Use `hsconfig draft-source-documents` to turn those rows into strict `source_documents.json`.
+1. Decode deck input and run `hsconfig source-manifest` when aliases, card targets, or research questions need inspection.
+2. Collect guide, archetype, mulligan, card-text, and metadata evidence as short rows; run `hsconfig draft-source-documents` to create strict `source_documents.json`.
+3. Run `hsconfig research-deck --source-documents-json ...` to write `deck_fingerprint.json`, `candidate_archetypes.json`, `guide_sources.json`, `guide_builder_receipt.json`, `source_evidence_verification_report.json`, and identity reports without runtime config.
+4. Run `hsconfig prepare --guide-sources-json ...` to perform HearthSim deckstring decode, exact identity resolution, static semantic enrichment, research-contract compilation, `CustomConfig` output, and validation reports.
+5. Read `reports/operator_summary.json` first, then run `hsconfig validate` or guarded `hsconfig apply` only when runtime writes are intended.
 
-Use `hsconfig research-deck --source-documents-json ...` after Codex has collected guide, archetype, mulligan, card-text, and metadata evidence. It writes `deck_fingerprint.json`, `candidate_archetypes.json`, `guide_sources.json`, `guide_builder_receipt.json`, `source_evidence_verification_report.json`, and identity reports, but no runtime package.
+Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_builder_receipt.json`, `candidate_archetypes.json`, `identity_graph_report.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
 
-Every card should land in a visible source-depth lane before preparation: guide-backed claim, source-backed static semantics, archetype-inferred role, explicit low confidence, generic low confidence, or contract gap.
-When a guide-backed card surface is documented, the runtime file family is `per-card <CARDID>.json`.
+`Concede.json` is publicly documented; `Presume.json` is legacy/public compatibility without a current verified first-party help-page citation, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 
-## Package Preparation
+## Gate And Readiness
 
-Use `hsconfig prepare --guide-sources-json ...` for normal package creation. It performs HearthSim deckstring decode, resolves exact identity, enriches card metadata, builds the guide/static research contract, compiles runtime config, validates JSON, and writes the operator reports.
+`reports/operator_summary.json` is the single operator gate. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid. `SOURCE_BACKED_STRONG` means source depth supports a strong initial config. `STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline. `VALID_BUT_NOT_GUIDE_STRONG` means open `guide_strength_summary` and `semantic_blockers`.
 
-Important outputs include `operator_summary.json`, `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_builder_receipt.json`, `candidate_archetypes.json`, `identity_graph_report.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
-`Concede.json` and `Presume.json` are documented HearthRanger surfaces, but normal HSConfig does not emit them; absence never blocks a valid load-safe package.
+`runtime_apply_mode` is the human-readable write mode. `hsconfig apply` and `apply_package()` still re-evaluate the operator gate before writing. `technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` and `runtime_apply_mode=load_safe_apply` is the normal initial write boundary. `SOURCE_BACKED_STRONG` is the confidence label, not the runtime-write gate.
 
-For source-informed packages, open `source_claim_gap_report.json` first to see the card-level missing link, then open `strong_promotion_report.json` for the promotion verdict.
-`source_depth_lane` is the readable alias for the first missing source-to-runtime link in those source-informed reports. It does not grant apply permission; `reports/operator_summary.json` remains the single operator gate.
+Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`. `per-card <CARDID>.json` files, `Combo.json`, and source-backed choice lowering make the package richer, but they are HSConfig rich-output repo policy rather than the minimal runtime-write gate.
 
-## Readiness Interpretation
+`config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `no_block_failure_mode_summary`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/mechanic_drift_report.json`, and `reports/semantic_enrichment_report.json` explain source, mechanic, and richness gaps. `technical_hard_block` stops apply; warning categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` do not create a second apply gate. This does not create a second apply gate when `technical_status=VALID_PACKAGE`.
 
-Read `reports/operator_summary.json` before handoff or runtime apply.
-`reports/operator_summary.json` is the single operator gate for normal handoff or apply decisions. Lower-level reports explain why the package is strong, warning-only, or still needs source work.
-Use `no_block_failure_mode_summary` to separate hard stops from warning work.
-`technical_hard_block` means fix the package before apply. Other categories
-are explanatory and do not create a second apply gate when the package is
-`technical_status=VALID_PACKAGE`.
-`mechanic_visibility_summary` explains mechanic coverage buckets: `direct`, `identity_gated_direct`, `partial`, and `warning_only`. Warning-only mechanics are descriptive and must not block load-safe apply when the package is technically valid.
+## Mechanic Visibility
 
-The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only; they do not increment `cards_needing_mechanic_lowering`.
+The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only and do not increment `cards_needing_mechanic_lowering`.
 
-For mechanic visibility, use `first_warning_boundary` as the first next-inspection item and `warning_boundaries` as the complete alphabetical list of report-only mechanics. Keep the workflow moving when the package is technically valid: warning-only mechanics describe limits, not blocks.
+Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` surface as partial or warning-only visibility labels, not runtime write blockers. Unknown mechanics are warning-only and do not block load-safe apply.
 
-Open `reports/mechanic_drift_report.json` when `mechanic_drift_summary` shows unknown mechanics, text-only mechanics, or unknown card types. Unknown mechanics are warning-only and do not block load-safe apply.
+`rewind`, `herald`, and `shatter` are warning-only report-only visibility labels. HSConfig names them in reports and does not map them to runtime surfaces.
 
-Modern mechanic visibility is non-blocking: `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` surface as partial or warning-only visibility labels, not runtime write blockers.
-`rewind`, `herald`, and `shatter` are warning-only report-only visibility labels; HSConfig names them in reports and does not map them to runtime surfaces.
+Use `first_warning_boundary` as the first next-inspection item and `warning_boundaries` as the complete alphabetical list of report-only mechanics. `choose_one` is identity-gated direct; `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only. `generated_entity` and its `spell_generation` alias stay in `partial` visibility unless exact option or transformed-identity resolution exists.
 
-1. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid.
-2. `semantic_status=SOURCE_BACKED_STRONG` means the card-level source coverage supports a strong initial config.
-3. `semantic_status=STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline, not guide-depth confidence.
-4. `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid but the operator should open `guide_strength_summary` and `semantic_blockers`.
-5. `runtime_apply_mode` is the human-readable write mode. It is descriptive; `hsconfig apply` and `apply_package()` still re-evaluate the operator gate before writing.
+## Source-Depth And Diagnostics
 
-For blockers, improve `source_documents.json` for `cards_need_guide_claims`; improve claim lowering or keep report-only for `cards_need_runtime_surface`; add exact sequence data for `cards_need_combo_sequence`; resolve source conflicts before calling the package source-backed strong.
+Every card should land in a visible source-depth lane before preparation: guide-backed claim, source-backed static semantics, archetype-inferred role, explicit low confidence, generic low confidence, or contract gap. When a guide-backed card surface is documented, the runtime file family is `per-card <CARDID>.json`.
 
-`technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` is the normal initial write boundary. `runtime_apply_mode=load_safe_apply` means `hsconfig apply --package <package> --runtime-root <runtime-root> --json` is allowed. `SOURCE_BACKED_STRONG` remains the high-confidence source-backed handoff label. Lower confidence lanes remain visible in reports, but they do not block a load-safe initial package. `load_safe_apply` is HSConfig's operator policy for structurally valid pre-run packages. It is not a HearthRanger public-doc term. Per-card-every-card coverage is HSConfig rich-output repo policy for stronger control and proof matrices, not the minimal runtime-write gate.
+Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks. `core_source_backed_fixture` rows are strict controls; `source_informed_valid_fixture` rows are valid packages with visible gaps. After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
 
-Source-informed apply remains pre-run only. It is not replay analysis, winrate validation, HSTuner candidate promotion, or post-run tuning.
+Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
-Guarded apply is still pre-run. It protects the write step with fake receipts, package hashes, snapshots, rollback evidence, and write history; it does not inspect games or tune from logs.
-Use fake apply for receipt-bound previews before any requested runtime write.
-
-## Fixture Stage Semantics
-
-`core_source_backed_fixture` means the fixture produces `SOURCE_BACKED_STRONG` and can be used as a strict control example. `source_informed_valid_fixture` means it produces a valid package but still has source-depth or lowering gaps. Treat `operator_summary.json` as the single operator gate for both stages. Do not claim a source-informed fixture is optimized or strong until its blockers are closed.
-Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks.
-Current closure truth is Boarlock first, Kingslayer second. Boarlock stays first
-because it is the only representative `Combo.json` control row, but its current
-Fracking source is durably preserved as source-informed unless exact
-Boarlock-relevant Fracking mulligan evidence appears.
-Kingslayer is also durably preserved as source-informed unless exact Kingslayer/Kingsbane `DEEP_014` / `Quick Pick` mulligan evidence appears.
-After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
-
-## Diagnostic And Expert Paths
-
-Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. It writes no `CustomConfig` runtime package.
-
-Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. It still writes `reports/research/*`. Use `--allow-placeholder` only for deterministic fixture or preview tests.
-
-When apply is allowed, it copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder.
-Use `hsconfig validate` before handoff or apply. Use `hsconfig apply` only when runtime writes are intended; it enforces `reports/operator_summary.json`, and the normal initial write boundary is `technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` / `runtime_apply_mode=load_safe_apply`. `SOURCE_BACKED_STRONG` is the confidence label, not the runtime-write gate; invalid or load-unsafe packages stay blocked.
+Guarded apply copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder. Use fake apply for receipt-bound previews before any requested runtime write.

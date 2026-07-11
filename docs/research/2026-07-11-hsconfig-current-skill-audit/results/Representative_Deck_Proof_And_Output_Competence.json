@@ -1,0 +1,54 @@
+{
+  "verdict": "The current representative and supplemental deck proof set is optimal enough for the current HSConfig product claim. It makes source depth, GlobalValues profiling, Mulligan richness, per-card CardID output, combo narrowness, and config usefulness visible at the operator surface without needing more representative fixture rows.",
+  "evidence": [
+    "docs/operator/archetype-fixture-matrix.json defines exactly 11 representative decks, with 9 core_source_backed_fixture rows and 2 source_informed_valid_fixture rows (Boarlock and Kingslayer) that keep explicit stop conditions instead of being silently promoted.",
+    "docs/operator/supplemental-proof-decks.json defines exactly 3 supplemental rows: CuteWarrior as load-safe-only proof, plus SecretMage and HighlanderPriest as visibility-only proof that must not widen representative output-competence coverage.",
+    "docs/operator/README.md states that the representative matrix proves source-depth breadth, existing matrix gaps must be closed before adding more representative decks, and supplemental decks must not be counted as new representative rows.",
+    "tests/test_output_competence_matrix.py verifies the exact 11-deck representative set and runs prepare across every representative deck, asserting visible config_usefulness surface summaries including mulligan status, changed_key_count for GlobalValues, meaningful_cardid_row_count for per-card output, and combo_row_count.",
+    "tests/test_config_usefulness.py verifies that operator_summary.json distinguishes guide_aligned, usable_with_targeted_gaps, and load_safe_but_thin packages and explicitly exposes mulligan, GlobalValues, CardID, and combo richness at the surface level.",
+    "tests/test_mulligan_richness_e2e.py proves that rich mulligan evidence emits rich keeps, while thin mulligan evidence still yields VALID_PACKAGE and load_safe_apply with a non-blocking mulligan_gap diagnosis.",
+    "tests/test_source_informed_closure_contract.py proves that Boarlock and Kingslayer stay VALID_PACKAGE and READY_TO_APPLY_WITH_WARNINGS while exposing the first missing mulligan claim chain instead of pretending strong closure.",
+    "tests/test_supplemental_visibility_decks.py proves that SecretMage and HighlanderPriest stay supplemental_visibility_only, generate load-safe packages, and do not become representative output-competence rows.",
+    "tests/test_matrix_governance.py and tests/test_source_depth_closure_index.py enforce that the representative matrix remains 11 rows, CuteWarrior stays supplemental, and preserved source-informed targets remain explicit rather than being hidden by matrix expansion.",
+    "Live validation run on 2026-07-11 passed: pytest tests/test_output_competence_matrix.py tests/test_supplemental_visibility_decks.py tests/test_config_usefulness.py tests/test_mulligan_richness_e2e.py tests/test_source_informed_closure_contract.py tests/test_matrix_governance.py tests/test_source_depth_closure_index.py -> 34 passed in 42.15s."
+  ],
+  "what_is_strong": [
+    "The representative set is governed tightly. Eleven rows are kept as the exact output-competence matrix, so the proof surface is stable and reviewable.",
+    "The operator surface is genuinely useful, not just technically passing. config_usefulness reports visible mulligan, GlobalValues, CardID, and combo richness signals instead of hiding them in internal artifacts.",
+    "Boarlock is a deliberate combo control row, so combo competence is proven by an actual representative deck without forcing Combo.json into unrelated decks.",
+    "Kingslayer and Boarlock keep honest source-depth debt visible through first-missing-chain reporting, which prevents false SOURCE_BACKED_STRONG claims while still proving usable package generation.",
+    "Supplemental decks are scoped correctly. CuteWarrior adds acceptance breadth, and SecretMage plus HighlanderPriest add visibility-only Wild surface proof, without inflating the representative matrix.",
+    "The matrix covers a broad spread of runtime families already: aggro burn, recruit flood, pirate tempo, big cheat, discard, token board, hero-power generation, mech scaling, weapon sequencing, combo control, and hero-attack pressure."
+  ],
+  "what_is_not_optimal": [
+    "Combo proof is intentionally narrow. Boarlock is the only representative Combo.json control row, so combo richness is proven clearly but not broadly across multiple combo archetypes.",
+    "Two representative rows are still source_informed_valid_fixture rather than SOURCE_BACKED_STRONG, so representative source-depth closure is honest but not fully complete.",
+    "Secret, Highlander, and location-heavy control visibility are supplemental and load-safe only. They show current behavior, but they do not become representative output-competence proof.",
+    "Options, generated-entity identity, and future Wild mechanic drift are proven more by targeted semantic tests and registries than by deck-row variety, which is the right lean boundary but means the matrix itself is not exhaustive semantic proof."
+  ],
+  "no_block_assessment": [
+    "The current proof set separates technical no-block validity from source-backed strength correctly. Representative and supplemental decks can still reach VALID_PACKAGE and load_safe_apply even when source depth remains warning-visible.",
+    "Boarlock and Kingslayer show the intended boundary: missing exact mulligan evidence is treated as a non-blocking usefulness and source-depth gap, not as a package-invalidating failure.",
+    "GlobalValues.json and Mulligan.json remain the minimum visible load-safe surfaces, while per-card CardID output and Combo.json increase usefulness when supported by the deck and evidence rather than becoming universal blockers.",
+    "For the current product claim, the proof set is adequate because it demonstrates that useful output can remain honest and applyable without requiring every representative row to be fully strong or every supplemental row to become representative."
+  ],
+  "hearthstone_semantic_assessment": [
+    "The representative matrix proves several important Hearthstone semantic families directly through deck rows: hero power transform and generation, recruit, discard, weapon sequencing, mech scaling, token boards, big cheat, pirate pressure, and combo control.",
+    "GlobalValues profiling is visible enough because config_usefulness exposes changed_key_count, unchanged_key_count, and profiled_key_count rather than only saying that GlobalValues exists.",
+    "Mulligan richness is visible enough because the operator summary distinguishes rich, thin, and report_only mulligan states and points to the next source need when exact keeps are missing.",
+    "Per-card CardID usefulness is visible enough because meaningful_cardid_row_count and cards_with_meaningful_cardid_rows show whether runtime behavior is actually being emitted or only diagnosed.",
+    "Combo handling is deliberately narrow and visible enough for the claim: combo_row_count and combo_expected make the boundary explicit, and Boarlock acts as the single representative exact-sequence control.",
+    "Supplemental SecretMage and HighlanderPriest rows are a good visibility-only addition for secret timing, highlander, and location-heavy control behavior because they prove current load-safe output without forcing a larger representative matrix.",
+    "Option identity, generated entities, and linked hero-power or entourage resolution are not primarily proven by more deck rows; they are supported by targeted semantic logic and tests such as tests/test_option_identity_resolver.py, tests/test_static_semantics.py, and tests/test_semantic_audit.py.",
+    "Wild mechanic drift is intentionally handled by targeted drift coverage instead of deck sprawl. tests/test_mechanic_drift.py shows modern and unknown mechanics stay visible and non-blocking, which is the correct complement to the lean deck matrix."
+  ],
+  "slimness_assessment": [
+    "The repo stays lean because representative proof, supplemental visibility, and semantic drift checks are split into different evidence layers instead of being collapsed into a larger deck matrix.",
+    "The current governance explicitly resists fixture bloat: existing matrix gaps must be preserved or closed before adding more representative decks, and supplemental decks are prevented from silently becoming matrix rows.",
+    "Using targeted semantic and drift tests for options, generated entities, and future mechanics is materially leaner than adding more archetype fixtures for every narrow behavior family.",
+    "There is no live evidence that a twelfth representative output-competence deck would materially sharpen the current claim more than it would increase maintenance and review cost."
+  ],
+  "recommended_next_action": "Keep the current 11 representative plus 3 supplemental proof layout unchanged, and only widen the representative matrix if a future missing runtime family cannot be demonstrated by the existing rows and targeted semantic tests.",
+  "confidence": "high - The live matrix files, operator docs, config_usefulness implementation, semantic boundary tests, and the focused 34-test pytest run all support this conclusion directly.",
+  "uncertain": []
+}

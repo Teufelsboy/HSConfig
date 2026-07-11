@@ -1,0 +1,67 @@
+{
+  "verdict": "Needs small polish, not a material gap. The current HSConfig skill explicitly registers every named mechanic in this audit, preserves a non-blocking Wild pre-run contract, and routes only documented runtime surfaces; the remaining limits are deliberate identity-gated or warning-only boundaries rather than missing mechanic awareness.",
+  "evidence": [
+    "Repo authority: C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py registers the named mechanics across direct, identity-gated, partial, and warning-only support levels, and reserves the unregistered fallback for genuinely unknown future mechanics only.",
+    "Repo authority: C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py lowers only documented CardID runtime blocks, suppresses unresolved Discover and Choose One option identity, and keeps report-only mechanics from emitting fabricated rows.",
+    "Repo authority: C:/Users/darbo/Documents/HSConfig/src/hsconfig/static_semantics.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_drift.py detect Battlecry, Discover, Choose One, Dredge, Tradeable, Secret, Location, Starship, Kindred, Tourist, Imbue, Rewind, Herald, and Shatter as static visibility families without turning drift into a hard block.",
+    "Operator contract: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md states that partial and warning-only mechanics are descriptive, `runtime_apply_mode=load_safe_apply` is the decisive apply truth, and unknown mechanics remain warning-only rather than blocking a valid package.",
+    "Targeting and option proof: C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py verifies `BeforeBattlecryTargetBonus`, `OnDiscoverCardBonus`, `OnChooseOneCardBonus`, `BeforeUseHeroPowerBonus`, suppression of unresolved option identity, and suppression of report-only mechanics such as Dredge and Tradeable.",
+    "Registry proof: C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py verifies direct support for Battlecry, identity-gated-direct visibility for Discover and Hero Power transforms, partial support for generated entities and Locations, warning-only visibility for Dredge, Tradeable, Kindred, Tourist, Starship, Rewind, Herald, and Shatter, and warning-only fallback for `future_keyword`.",
+    "Static drift proof: C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_drift.py verifies that Kindred, Tourist, Starship, Imbue, Rewind, Herald, and Shatter are known non-blocking mechanics rather than unknown drift, while truly unknown mechanics still land in `unknown_mechanics` as warning-only.",
+    "Semantic proof: C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py verifies static inference for weapon plus Tradeable, Battlecry plus Discover plus Dredge, Secret plus generated entities, and Start of Game plus Hero Power transform.",
+    "Runtime no-block proof: `python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_drift.py C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py -q` passed with `78 passed in 42.85s` on 2026-07-11."
+  ],
+  "what_is_strong": [
+    "Every named mechanic in this audit is explicitly registered. There is no gap where Kindred, Tourist, Starship, Imbue, Rewind, Herald, or Shatter fall through to unnamed fallback handling.",
+    "The support model is honest and operator-readable: `direct`, `identity_gated_direct`, `partial`, and `warning_only` are separated cleanly instead of overstating runtime competence.",
+    "Target behavior is not flattened into vague value rows. Source-backed targeting can lower through `BeforeBattlecryTargetBonus`, while generic spell targeting remains visible as `generic_spell_target` warning-only.",
+    "Discover and Choose One are handled conservatively. Exact option identity can lower to `OnDiscoverCardBonus` or `OnChooseOneCardBonus`, and unresolved option identity is suppressed instead of guessed.",
+    "Hero Power transforms are explicitly modeled through `hero_power_transform`, with a documented route to `BeforeUseHeroPowerBonus` and supporting static semantic coverage for Start of Game Shadowform-style cards.",
+    "Locations, Secrets, generated entities, and aura effects are not hidden. HSConfig represents the lowerable part while keeping repeated activation, secret timing, random pools, and continuous board-state math inside visible warning boundaries.",
+    "The no-block contract is consistent across code, tests, and operator docs. A valid deck package can remain load-safe even when some semantics are partial or warning-only."
+  ],
+  "what_is_not_optimal": [
+    "Choose One is registered as `support_level=direct` in the registry, but its actual lowering policy is identity-gated with no generic default runtime block. The operator bucket communicates this correctly, but the raw support label alone can be misread if viewed in isolation.",
+    "Target behavior coverage is asymmetric by design. Battlecry-target and explicit targeting claims lower well, but generic spell-target selection remains report-only and therefore cannot express the full targeting space of Destroy, Silence, Transform, or Freeze cards.",
+    "Locations and Secrets are only partially represented. Play timing is lowerable, but repeated location activation, hidden-information sequencing, and exact trap timing remain warning-only.",
+    "Generated entities are only partially represented. Exact resolved identity can lower, but random generation pools remain report-only, which limits pre-run richness for highly stochastic cards.",
+    "Several modern or future-facing mechanics remain visibility-only: Dredge, Tradeable, Kindred, Tourist, Starship, Rewind, Herald, Shatter, and truly unknown future mechanics do not have first-class runtime action surfaces.",
+    "The strongest proof is registry and unit-test based. The representative deck matrix proves the no-block contract, but it is thinner as a deck-fixture proof set for Secret-heavy, Location-heavy, Dredge, Tradeable, and newer warning-only mechanics."
+  ],
+  "no_block_assessment": [
+    "The current skill does avoid blocking valid decks for the requested mechanic set. The decisive contract is structural package validity plus `runtime_apply_mode=load_safe_apply`, not full strategic lowering for every mechanic.",
+    "Direct mechanics such as Battlecry, Weapons, and Discard can emit meaningful runtime rows today, so these are not just visible labels.",
+    "Identity-gated mechanics such as Discover, Choose One, and Hero Power transforms do not block the package when identity is unresolved; the runtime rows are simply suppressed until exact option identity is known.",
+    "Partial mechanics such as Locations, Secrets, generated entities, aura, Destroy, Silence, Transform, and Imbue can still contribute useful pre-run posture without claiming a full action tree.",
+    "Warning-only mechanics such as Dredge, Tradeable, Kindred, Tourist, Starship, Rewind, Herald, and Shatter remain visible and non-blocking by design. Their absence from runtime rows is a safety boundary, not a package-invalidating failure.",
+    "Unknown future mechanics still degrade safely. `future_keyword` falls back to registered=false, `warning_only`, `report-only`, and `unregistered_mechanic_runtime_surface`, which preserves the any-valid-deck promise."
+  ],
+  "hearthstone_semantic_assessment": [
+    "Battlecry support is strong. Static semantics detect it, the registry marks it direct, and targeting-aware claims can lower through `BeforeBattlecryTargetBonus` while generic play timing can lower through `BeforePlayCardBonus`.",
+    "Target behavior is split correctly. Exact targeting claims are runtime-lowerable, while the broader unresolved targeting class is represented by `generic_spell_target` warning-only. This is conservative but technically coherent.",
+    "Discover is strong but identity-gated. Static semantics detect it, the registry exposes `OnDiscoverCardBonus`, resolved option identity can emit `my_discover(...)` conditions, and unresolved choice identity is explicitly suppressed.",
+    "Choose One follows the same safety model as Discover. The mechanic is recognized and can lower to `OnChooseOneCardBonus` only when the chosen option is resolved.",
+    "Hero Power transforms are well covered for a pre-run generator. Static semantics infer Start of Game and hero-power-transform families, and runtime lowering routes to `BeforeUseHeroPowerBonus` when the transformed identity is known.",
+    "Weapons are direct and practical. The registry allows `BeforePhysicalAttackBonus`, `BeforePlayCardBonus`, and combo participation, which is enough for common Wild weapon-pressure and weapon-combo shells.",
+    "Locations are partial. The play card itself is visible and lowerable, but repeated activation and exact activation targeting remain warning-only through `location_activation`.",
+    "Secrets are partial. Secret cards and mulligan posture are represented, but hidden-information sequencing remains warning-only through `secret_timing`.",
+    "Generated entities are partial. Exact generated identity can be represented when linked, but random pools remain warning-only through `generated_entity_random_pool`.",
+    "Aura is partial but correctly scoped. Persistent board-value posture is representable through `OnBoardBonus` and `BeforePlayCardBonus`, while continuous stacked board-state math is intentionally not treated as a dedicated runtime planner.",
+    "Discard is direct enough for pre-run use. The enabler timing can lower to `BeforePlayCardBonus`, even though specific discard outcomes still remain in the card rules rather than HSConfig state simulation.",
+    "Destroy, Silence, and Transform are partial. Battlecry-target variants and explicit source-backed targeting can lower, but generic spell-target versions and random outcomes remain outside safe default lowering.",
+    "Dredge and Tradeable are correctly warning-only. Both are alternate decision surfaces without a documented normal-path VisionAI choice block, so report-only handling is the right boundary.",
+    "Kindred, Tourist, Starship, Rewind, Herald, and Shatter are explicitly covered as known mechanics rather than unknown drift. Today they remain warning-only because their signature behavior depends on prior-turn state, deck-construction crossover, build-and-launch state, temporal replay, card-specific scaling, or conditional frozen-target semantics.",
+    "Imbue is partial and sensibly placed. The current skill can represent Hero Power posture and upgraded-hero-power pressure without pretending it owns exact upgrade-state tracking.",
+    "Unknown future mechanics are handled safely but not richly. They stay visible in drift reporting and operator summaries without emitting runtime rows until a documented surface is added."
+  ],
+  "slimness_assessment": [
+    "The current design stays lean because mechanic breadth is mostly handled by one registry plus drift reporting, not by expanding runtime write scope.",
+    "Modern mechanic coverage did not drag HSTuner, replay parsing, winrate logic, or post-run tuning into the repo. The implementation remains inside the intended pre-run HSConfig boundary.",
+    "Warning-only coverage is a slim solution. Adding visibility for Rewind, Herald, Shatter, Dredge, Tradeable, Kindred, Tourist, and Starship is cheaper and safer than inventing speculative runtime rows.",
+    "The routing layer is disciplined. Only documented VisionAI blocks are emitted, and unsupported explicit blocks or unknown mechanics are suppressed with explicit reasons.",
+    "The current repo is efficient enough for maintenance because future mechanic drift can usually be handled with a small registry row and a focused test instead of a broad architecture change."
+  ],
+  "recommended_next_action": "Add one small supplemental visibility fixture or matrix check centered on Secret-heavy, Location-heavy, and Dredge or Tradeable cards, so the current warning-only and partial boundaries stay live against Wild drift without broadening runtime lowering.",
+  "confidence": "high - the verdict is supported by the current mechanic registry, the runtime surface router, the static semantic and drift detectors, the operator no-block contract, and 78 passing targeted tests on 2026-07-11",
+  "uncertain": []
+}
