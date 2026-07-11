@@ -1,0 +1,53 @@
+{
+  "verdict": "The current apply gate and Step 2 no-block contract are sound: load-safe semantic suppression stays non-blocking, while stale, drifted, malformed, or runtime-unsafe artifacts still fail closed before runtime mutation.",
+  "evidence": [
+    "Load-safe semantic suppression is treated as documentation/status coverage, not a hard blocker: src/hsranger_core/acceptance_readiness.py:676-705 validates suppression report shape and status without requiring suppressed_count to be zero.",
+    "Operator docs explicitly state that non-zero mulligan suppression means richer Gameplan logic was intentionally not emitted to runtime because it is not load-safe: docs/operator/cta-paladin-first-run.md:51-67.",
+    "Step 1 preview/apply readiness requires SYNTAX_OK, CONFIG_ROW_PROVENANCE_OK, fake-runtime proof, and guarded live-write evidence: src/hsranger_core/acceptance.py:329-381 and skills/hearthranger-config/SKILL.md:61-74.",
+    "Guarded live apply fails closed on stale source hashes, missing or bad fake receipts, and runtime surface snapshot mismatch: src/hsranger_core/acceptance_readiness.py:939-998 and 1031-1041.",
+    "Step 2 freshness drift blocks approval at the bundle gate: src/hsranger_core/approved_patch_bundle.py:245-274 and tests/test_approved_patch_bundle.py:320-343.",
+    "Runtime/apply execution blocks on active-config fingerprint mismatch, decklist mismatch, invalid runtime file layout, symlinked runtime paths, and GameCardId drift before invoking the writer: src/hsranger_core/apply_approved_patch.py:127-169, 271-296, 396-422, 486-493 and tests/test_apply_approved_patch.py:129-157, 159-216, 269-290.",
+    "Post-run summary relaxes unrelated blocked rows into PATCH_PREVIEW_PARTIAL when a clean promoted candidate still exists: src/hsranger_core/blocker_summary.py:141-216 and tests/test_step2_partial_preview_positive.py:252-377.",
+    "Technical defects still block tuning readiness, including malformed evidence graphs, malformed runtime statuses, parser gaps, stale freshness, and runtime failure context: src/hsranger_core/tuning_recommendations.py:315-429 and tests/test_tuning_recommendations.py:1735-1964.",
+    "Operator summary is explicitly read-only, requires semantic_completeness_queue, visible_work_count, and first_next_action, and is validated by schema/tests: src/hsranger_core/operator_candidate_summary.py:130-285 and 1179-1225; src/hsranger_core/schemas/operator_candidate_summary.schema.json:7-47; tests/test_workflow_polish_contract.py:172-175.",
+    "The normal operator path says Step 2 artifacts remain read-only and zero strict patch candidates are not equal to zero useful signal: docs/operator/README.md:90-106 and docs/operator/semantic-closure-live-evidence.md:7-18.",
+    "Direct verification run passed: python -m unittest tests.test_apply_approved_patch tests.test_approved_patch_bundle tests.test_step2_partial_preview_positive tests.test_tuning_recommendations tests.test_workflow_polish_contract tests.test_autonomous_multi_deck_e2e -> Ran 82 tests in 10.002s, OK.",
+    "No true Hypothesis/property-based test framework is present in the repo scan: rg -n \"@given|from hypothesis|import hypothesis|hypothesis\" tests src returned no matches."
+  ],
+  "strengths": [
+    "The apply path is genuinely fail-closed. It checks preview provenance, fake-receipt lineage, source hashes, active-config fingerprint, deck fingerprint, runtime path safety, target-file scope, and GameCardId consistency before live mutation.",
+    "Semantic warnings are intentionally separated from hard technical blockers. Mulligan and combo suppression reports are part of the contract, but suppressed runtime-unsafe richness does not block a load-safe package by itself.",
+    "The no-block behavior is implemented at row/window scope rather than as a blunt global block. Clean promoted rows can still surface useful partial preview states when unrelated windows are dirty or blocked.",
+    "The operator summary contract is strong. It forces a first-read queue, visible-work accounting, semantic completeness queue entries, and first-next-action output while keeping runtime_write_performed=false.",
+    "Semantic coverage is broad and deck-neutral across review, parser-gap, contract-gap, runtime-blocked, never-autopatch, proposal, and strict-patch lanes instead of only optimizing for auto-apply.",
+    "The guarded Step 3 boundary is well documented and enforced: approve bundle, fake apply, real apply, then post-apply validation handoff and fresh validation games."
+  ],
+  "gaps": [
+    "There are no true generative/property-based tests. Coverage is strong but deterministic and fixture-driven, so blocker combinations are exhaustively curated rather than probabilistically explored.",
+    "The semantic coverage story is broad in schemas, docs, and fixture suites, but most proof is contract-level and fixture-level rather than fresh live-runtime proof for every supported mechanic family.",
+    "The contract is spread across several layers: acceptance, freshness guard, approved bundle, apply adapter, blocker summary, and operator docs. That is coherent, but it raises maintenance cost when one layer changes terminology."
+  ],
+  "no_block_contract_assessment": [
+    "Pass: valid Step 1 packages with semantic suppression remain load-safe. The readiness code only requires suppression reports to be structurally valid and documented; it does not require semantic suppression counts to be zero.",
+    "Pass: Step 2 preserves useful clean-row output even when other rows are blocked. PATCH_PREVIEW_PARTIAL is produced when a promoted clean candidate exists and the blockers are outside that promoted scope.",
+    "Pass: runtime no-result markers are scoped. Dirty or hard-blocked windows stay blocked, but they do not automatically erase unrelated clean-window work once clean_window_manifest and candidate promotion prove scope separation.",
+    "Pass: technical invalidity still blocks. Stale hashes, fake-receipt mismatch, runtime surface mismatch, config drift, deck drift, malformed evidence graph data, malformed runtime failure data, invalid runtime files, and GameCardId drift all fail closed."
+  ],
+  "hearthstone_semantics_assessment": [
+    "Mulligan is explicitly covered as a dedicated runtime surface. Load-safe Mulligan.json rows are allowed, richer matchup logic can stay in Gameplan/suppression artifacts, and unsupported richness is intentionally suppressed instead of causing a bad runtime write.",
+    "GlobalValues is treated as high-risk rather than casually auto-patched. The repo requires baseline-key profiling, documented key authority, and repeated clean evidence before broad global tuning is allowed.",
+    "Combo is intentionally narrow. Empty Combo.json is acceptable, combo rows appear only when a concrete documented sequence maps to VisionAI syntax, and broad combo changes route to manual review.",
+    "Per-card CardID behavior is strongly guarded. The apply path only supports allowed JSON targets, rejects aggregate CardBehavior.json in runtime packages, and enforces GameCardId consistency for loaded documents.",
+    "Hero Power, weapon, targeting, secret, discover, dredge, tradeable, overload, generated_entity, aura, freeze, lifesteal, taunt, rush, charge, positioning, and related combat families are visible in schemas, semantic contracts, or semantic fixture suites, which is consistent with a broad Wild-facing audit surface.",
+    "Generated entities and other hidden-information surfaces are handled conservatively. The repo surfaces them as visible work, parser work, review work, or never-autopatch lanes rather than pretending they are strict auto-apply material without lineage and option proof."
+  ],
+  "slimness_assessment": [
+    "The apply gate itself is appropriately narrow: approved_patch_bundle is read-only classification, apply_approved_patch is a guarded adapter, and runtime mutation stays isolated in the runtime writer.",
+    "The operator workflow is compact at the top level. README.md and docs/operator/README.md push operators toward a first-read summary, not toward raw internals first.",
+    "Step 2 remains correctly scoped as read-only. The summary, tuning, blocker, and diagnostics artifacts all keep runtime_write_performed=false and avoid silently crossing into HSTuner-style post-run mutation.",
+    "The skill/docs surface is reasonably lean for a safety-critical workflow, although the implementation contract is necessarily split across multiple files because it has to defend several different failure modes."
+  ],
+  "recommended_next_action": "Add one small generative regression suite for approved bundle and guarded apply blocker combinations; no contract change is required based on the current audit.",
+  "confidence": "high: the main claims are directly supported by current implementation, contract tests, operator docs, and a passing targeted 82-test verification run.",
+  "uncertain": []
+}

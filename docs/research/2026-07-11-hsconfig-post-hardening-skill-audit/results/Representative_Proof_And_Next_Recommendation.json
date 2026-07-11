@@ -1,0 +1,57 @@
+{
+  "verdict": "HSConfig's current representative and supplemental proof posture is sufficient for its bounded product claim. The repo is functionally competent, the installed skill is synchronized, the no-block contract is heavily tested, and another broad implementation wave is not justified before real-deck usage reveals a specific defect.",
+  "evidence": [
+    "Representative proof set: C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json defines 11 representative decks, with 9 `core_source_backed_fixture` rows and 2 preserved `source_informed_valid_fixture` rows: Kingslayer and Boarlock.",
+    "Supplemental proof set: C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json keeps CuteWarrior as `supplemental_load_safe_only` and SecretMage plus HighlanderPriest as `supplemental_visibility_only`, without widening the representative matrix.",
+    "Operator truth is explicit: C:/Users/darbo/Documents/HSConfig/docs/operator/README.md and C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md both state that after durable Boarlock and Kingslayer preservation there is no current actionable source-informed closure target.",
+    "No-block boundary is explicit: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md says valid decks must still reach `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply`, while source depth, mechanic visibility, and thin usefulness remain warning surfaces instead of apply blockers.",
+    "Skill sync is current: `python C:/Users/darbo/Documents/HSConfig/scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:/Users/darbo/.codex/skills/hsconfig` on 2026-07-11.",
+    "Skill drift and compactness are enforced by tests such as C:/Users/darbo/Documents/HSConfig/tests/test_skill_sync.py and C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py.",
+    "Representative-matrix truth is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_matrix_current_truth.py, which locks the matrix at 11 rows and confirms that only Kingslayer and Boarlock remain source-informed.",
+    "Universal no-block breadth is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py, which exercises 12 decks including CuteWarrior across both `prepare` and `configure` paths.",
+    "Supplemental visibility behavior is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_supplemental_visibility_decks.py, which proves SecretMage and HighlanderPriest remain load-safe and non-representative.",
+    "Scope discipline is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_scope_boundaries.py, which rejects replay parsing, Power.log parsing, winrate validation, post-run tuning, and candidate-promotion scope inside HSConfig.",
+    "Output competence is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_output_competence_matrix.py, which checks representative deck usefulness summaries and keeps CuteWarrior supplemental-only.",
+    "Mechanic boundary behavior is enforced by C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_lowering_parity.py, which proves direct, identity-gated, partial, and warning-only mechanic lanes without inventing runtime blocks for Dredge or Tradeable.",
+    "Current test breadth is substantial: `(rg -n \"^def test_\" C:/Users/darbo/Documents/HSConfig/tests | Measure-Object).Count` returned 723 test functions, and `python -m pytest -q` passed with `810 passed, 2 skipped in 176.33s` on 2026-07-11.",
+    "Repo hygiene is acceptable: `git -C C:/Users/darbo/Documents/HSConfig status --short` showed only the task-local untracked audit folder `docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/`, and C:/Users/darbo/Documents/HSConfig/docs/research/README.md keeps research artifacts clearly subordinate to operator guidance."
+  ],
+  "strengths": [
+    "The proof model is disciplined: representative breadth, supplemental visibility, and universal no-block proof are separated instead of being blurred into one oversized deck matrix.",
+    "The repo tells the truth about the remaining closure debt. Kingslayer and Boarlock stay visible as preserved source-informed controls with explicit stop conditions instead of being over-promoted.",
+    "The operator contract is narrow and coherent: `hsconfig configure` is the preferred path, `reports/operator_summary.json` is the single normal gate, and HSTuner or post-run behavior is kept outside HSConfig.",
+    "Skill synchronization is not hand-waved. There is both a sync script and dedicated tests that detect byte drift and newline-only drift between the repo skill and the installed skill.",
+    "The test surface covers both policy and behavior: docs pathing, matrix truth, scope boundaries, runtime load safety, supplemental decks, output usefulness, and mechanic-lowering parity all have direct tests.",
+    "The no-block product boundary is strong enough for use: the full local suite passed, and the universal matrix proves the package can stay load-safe even when source confidence or mechanic richness is incomplete."
+  ],
+  "gaps": [
+    "Two representative rows are still intentionally not strong: Kingslayer remains blocked on exact Quick Pick mulligan evidence, and Boarlock remains blocked on exact Fracking mulligan evidence plus preserved unsupported-condition truth.",
+    "Some Wild families are still proven more by registry, warning lanes, and supplemental visibility tests than by representative deck variety. Secret-heavy, Highlander or location-heavy, and similar control shells are visible but not representative competence rows.",
+    "This audit is still fixture-heavy. It proves boundary correctness and repo posture, but it does not add fresh real-operator evidence from a batch of live decks beyond the local automated prepare or configure tests.",
+    "The research archive is large, which creates some documentation mass. The repo mitigates that with `docs/research/README.md` and `docs/research/current-truth.md`, but the archive still adds cognitive load when exploring history."
+  ],
+  "no_block_contract_assessment": [
+    "The current contract is correctly non-blocking for valid decks. `docs/operator/universal-wild-no-block-contract.md` and `tests/test_universal_wild_no_block_matrix.py` align on the rule that valid packages stay writable when they are structurally safe, even if source depth or mechanic richness is incomplete.",
+    "Thin usefulness is treated as follow-up work, not as a hard stop. `config_usefulness`, `load_safe_but_thin`, and `usable_with_targeted_gaps` remain descriptive surfaces, and the output competence tests confirm they have `runtime_permission_impact = none`.",
+    "Semantic warnings are intentionally visible but non-fatal. Warning-only mechanics, partial mechanics, generic-low-confidence cards, and suppressed unsupported claims are explained in reports instead of being allowed to silently mutate the apply gate.",
+    "Technical invalidity still blocks as it should. The documented hard blocks remain malformed deck input, invalid JSON, unsupported runtime files, missing `GlobalValues.json` or `Mulligan.json`, nested runtime files, normal-path `Presume.json` or `Concede.json`, and forged or stale apply evidence."
+  ],
+  "hearthstone_semantics_assessment": [
+    "Mulligan, GlobalValues, per-card CardID output, and Combo are all first-class audited surfaces. The repo has direct compile or plan tests for each family, and `tests/test_output_competence_matrix.py` checks that representative decks expose surface-specific usefulness summaries rather than only a binary pass or fail.",
+    "Representative deck semantics are broad enough for the current product claim. ShadowPriest and ImbueMage cover hero-power transform pressure, CtAPaladin and BigShaman cover recruit families, Kingslayer and PirateRogue cover weapon sequencing, Discolock covers discard, Boarlock covers combo, TreantDruid and MechPala cover board or aura snowball, and PirateDH covers aggressive hero-attack posture.",
+    "Choice and identity boundaries are honest. Discover and Choose One behavior remain identity-gated direct surfaces, and unresolved option identity stays suppressed instead of being emitted as invented runtime behavior.",
+    "Generated-entity and spell-generation semantics stay partial rather than overclaimed. The operator docs keep `generated_entity` and `spell_generation` in the partial lane, which is the correct product boundary for pre-run config generation.",
+    "Modern Wild mechanic handling is appropriate for the current scope. `tests/test_mechanic_lowering_parity.py` shows direct lowering where documented, warning-only handling for Dredge and Tradeable, and no false increment of `cards_needing_mechanic_lowering` when a mechanic is intentionally report-only.",
+    "The main semantics weakness is not correctness but proof richness. Some visibility families are covered through supplemental or warning-based truth instead of more representative deck rows, which is acceptable for the no-block promise but not a reason to expand the matrix without a concrete failure."
+  ],
+  "slimness_assessment": [
+    "The product boundary remains slim and appropriate. README, operator docs, and skill docs all repeat the same pre-run-only contract and keep replay analysis, winrate inspection, candidate promotion, and post-game tuning out of HSConfig.",
+    "The normal UX is intentionally narrow: `hsconfig configure` is the preferred entry point, while the longer `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply` path is reserved for inspected work.",
+    "Skill sync and skill wording are under control. The repo skill and installed skill matched exactly in the live sync check, and `tests/test_skill_files.py` keeps the skill compact and canonical.",
+    "Repo hygiene is good enough for continued use. The working tree was clean aside from the task-local audit folder, and the research area is explicitly marked evidence-only so it does not compete with operator guidance.",
+    "Another implementation wave would likely add maintenance cost faster than product value right now. The remaining debt is narrow, explicit, and already named in the matrix and closure docs."
+  ],
+  "recommended_next_action": "Use HSConfig on real decks and collect only targeted defects. Do not start another broad implementation wave unless real-deck runs repeatedly expose a concrete product-boundary failure such as wrong load-safe gating, an incorrect mechanic bucket, or exact source-depth closure becoming newly possible for Kingslayer or Boarlock.",
+  "confidence": "high: local docs, matrix files, skill sync state, targeted audit tests, and the full local pytest run all agree that the system is already within its intended boundary and that the highest-value next step is real-deck usage rather than more broad implementation.",
+  "uncertain": []
+}

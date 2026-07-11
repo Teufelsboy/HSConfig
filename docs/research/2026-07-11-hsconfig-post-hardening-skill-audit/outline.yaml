@@ -1,0 +1,43 @@
+topic: hsconfig-post-hardening-skill-audit-2026-07-11
+created: "2026-07-11"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/results
+  items_per_agent: 1
+  batch_size: 5
+items:
+  - name: Skill Slimness And Operator Usability
+    category: Local Repo
+    description: >
+      Audit the active HSConfig skill and workflow reference after the no-block
+      hardening commit. Decide whether the skill is lean, easy to use, and still
+      competent enough for autonomous deck-to-config work.
+  - name: Apply Gate And No-Block Contract
+    category: Local Repo
+    description: >
+      Audit the current apply gate, property tests, operator summary contract,
+      and no-block behavior. Verify that valid packages with semantic warnings
+      are load-safe while technical defects such as invalid JSON or runtime file
+      drift still block.
+  - name: VisionAI Runtime Surface Correctness
+    category: HearthRanger VisionAI
+    description: >
+      Compare the HSConfig runtime surface contract with public HearthRanger
+      VisionAI documentation. Focus on GlobalValues.json, Mulligan.json,
+      per-card CARDID.json, Combo.json, Concede.json, Presume.json, and whether
+      HSConfig's normal output remains narrow and source-honest.
+  - name: Hearthstone Semantics And Wild Coverage
+    category: Hearthstone Semantics
+    description: >
+      Audit whether HSConfig covers enough Hearthstone semantics for pre-run
+      configuration without becoming a replay/tuning system. Include Mulligan,
+      GlobalValues, CardID behavior, Combo, Hero Power transforms, target/options,
+      generated entities, weapons, secrets, locations, Dredge, Tradeable,
+      Kindred, Tourist, Starship, Imbue, Rewind, Herald, Shatter, and unknown
+      future mechanics.
+  - name: Representative Proof And Next Recommendation
+    category: Product Boundary
+    description: >
+      Audit the representative/supplemental deck proof posture, current test
+      breadth, skill sync, and repo hygiene. Decide whether another implementation
+      wave is justified or whether the best next step is to use the skill on
+      real decks and collect only targeted defects.

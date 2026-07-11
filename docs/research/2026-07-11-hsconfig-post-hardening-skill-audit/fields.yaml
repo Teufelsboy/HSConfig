@@ -1,0 +1,62 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Concise verdict on whether the audited HSConfig area is currently lean,
+          functional, competent, and appropriately scoped.
+      - name: evidence
+        type: array
+        required: true
+        description: >
+          Source-backed or repo-backed evidence. Include URLs, local file paths,
+          tests, commands, or observed facts.
+      - name: strengths
+        type: array
+        required: true
+        description: >
+          Concrete strengths found in the current implementation, docs, tests,
+          skill wording, and operator workflow.
+      - name: gaps
+        type: array
+        required: true
+        description: >
+          Concrete gaps, bloat, stale claims, correctness risks, or missing proof.
+          Use an empty array if none were found.
+      - name: no_block_contract_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether valid decks are not blocked by source confidence,
+          mechanic uncertainty, thin usefulness, or semantic warnings, while
+          technical invalidity still blocks.
+      - name: hearthstone_semantics_assessment
+        type: array
+        required: true
+        description: >
+          Assess coverage of Mulligan, GlobalValues, CardID behavior, Combo,
+          Hero Power, options, generated entities, and relevant Wild mechanics.
+      - name: slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether the skill and docs are narrow, easy to use, efficient,
+          and free of post-run HSTuner scope.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          Single best next action. Prefer no action or small targeted polish when
+          the system is already good enough.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          Confidence level: high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Field names or claims that could not be verified.

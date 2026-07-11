@@ -1,0 +1,77 @@
+{
+  "verdict": "Pass with narrow-scope caveats. HSConfig now covers the pre-run Hearthstone semantics that matter most for an initial VisionAI package through Mulligan, full-baseline GlobalValues, per-card CardID behavior, exact-sequence Combo, identity-gated choice lowering, and explicit direct/partial/warning-only mechanic labels. It stays appropriately scoped by refusing to invent runtime rows for temporal, hidden-information, repeated-activation, or replay-style mechanics that would turn the system into a tuning or simulator layer.",
+  "evidence": [
+    "Local executable support matrix: C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py registers direct, partial, and warning-only handling for classic and modern mechanics, including Kindred, Tourist, Starship, Imbue, Rewind, Herald, and Shatter.",
+    "Local runtime-lowering boundary: C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py gives `report_only` lowering to warning-only mechanics and unknown future mechanics through `UNKNOWN_MECHANIC_LOWERING_POLICY`.",
+    "Local no-block operator contract: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md says partial mechanics, warning-only mechanics, and suppressed semantic claims must not block `load_safe_apply` for an otherwise valid package.",
+    "Local routing policy: C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md limits normal runtime output to documented blocks such as `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `BeforeOverkilledBonus`, and `OnDiscoverCardBonus`, and says unsupported blocks are suppressed into reports.",
+    "Local suppression behavior: C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py suppresses claims that are not runtime-lowerable, lack exact option identity, or request report-only mechanics instead of emitting guessed runtime JSON.",
+    "Current regression proof: `python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py -q` passed with `47 passed in 1.29s` on 2026-07-11.",
+    "Official Hearthstone Kindred definition: https://hearthstone.blizzard.com/en-us/news/24204896/adventure-calls-from-the-lost-city-of-un-goro-hearthstone-s-next-expansion and https://hearthstone.blizzard.com/en-us/news/24217084/the-lost-city-of-un-goro-is-now-live describe Kindred as gaining a bonus if a card of the same minion type or spell school was played on the previous turn.",
+    "Official Hearthstone Tourist definition: https://hearthstone.blizzard.com/en-us/expansions-adventures/perils-in-paradise explains Tourist as a deckbuilding rule that lets a deck include another class's Perils in Paradise cards.",
+    "Official Hearthstone Starship definition: https://hearthstone.blizzard.com/en-us/news/24145979/announcing-the-great-dark-beyond-hearthstones-next-expansion explains Starship Pieces dying, storing stats/effects, and later launching a built Starship onto the board.",
+    "Official Hearthstone Imbue definition: https://news.blizzard.com/en-us/article/24179067/step-into-the-emerald-dream-hearthstones-next-expansion explains that the first Imbue grants a new Hero Power and later Imbues upgrade that Hero Power's numbers.",
+    "Official Hearthstone Rewind definition: https://hearthstone.blizzard.com/en-us/news/24226328/warcraft-heroes-past-and-future-unite-in-across-the-timeways-hearthstone-s-next-expansion explains Rewind as replaying cards with random effects for another outcome, and https://hearthstone.blizzard.com/en-us/news/24241327/across-the-timeways-community-events says the effect reloads game state.",
+    "Official Hearthstone Herald and Shatter definitions: https://hearthstone.blizzard.com/en-us/news/24245219/deathwing-strikes-back-in-cataclysm-hearthstone-s-next-expansion and https://hearthstone.blizzard.com/en-us/news/24250357/cataclysm-is-now-live explain Herald's Soldier summoning and progressive scaling plus Shatter's hand-splitting and recombination behavior.",
+    "Official Escape from Violet Hold scope: https://hearthstone.blizzard.com/en-us/expansions-adventures/escape-from-violet-hold shows Prepare as the expansion's new runtime-facing keyword and confirms that some newer mechanics are deckbuilding or alternate-action systems rather than simple per-card value rows."
+  ],
+  "strengths": [
+    "The foundation surfaces are strong and appropriately concrete: Mulligan, GlobalValues, CardID behavior, and exact-sequence Combo are all explicit first-class outputs instead of vague heuristics.",
+    "Hero Power handling is correctly split between ordinary hero-power usage and transformed or upgraded Hero Powers, which keeps Shadow Priest style transforms and Imbue posture inside pre-run scope without claiming full runtime state tracking.",
+    "Choice mechanics are handled honestly: Discover and Choose One can lower directly only when exact option identity is known, while unresolved options are suppressed instead of guessed.",
+    "Generated entities are handled with a useful middle ground: deterministic linked entities can be represented, while random pools remain visible as warnings rather than fabricated runtime rows.",
+    "The mechanic registry already includes newer and Wild-facing labels such as Kindred, Tourist, Starship, Rewind, Herald, Shatter, Quickdraw, Miniaturize, and Spellburst, so future decks are explainable even when they are not fully lowerable.",
+    "The repo explicitly keeps unknown future mechanics non-blocking and report-only by default, which is the correct fail-safe for a pre-run generator.",
+    "The no-block contract is well documented: warning-only mechanics, partial mechanic support, and suppressed semantic claims stay descriptive and do not become runtime-write blockers.",
+    "Tests cover both the registry classification and the routing behavior, including hero-power transforms, Discover option identity, generated-entity suppression, and current modern mechanic registration."
+  ],
+  "gaps": [
+    "Generic target selection is still intentionally incomplete. HSConfig does not have a general normal-path surface for arbitrary spell targets, board positioning, repeated location activation, or secret ordering.",
+    "Dredge and Tradeable remain report-only because their signature actions are separate player decisions, not just generic card timing. HSConfig can describe them, but it does not encode when to Dredge-select or when to Trade.",
+    "Kindred currently stays warning-only because it depends on previous-turn type or spell-school state across turns, and the current normal package has no dedicated stateful runtime row for that condition.",
+    "Tourist is correctly treated as mostly deck-construction identity, but that also means there is no deeper runtime semantic handling beyond the deck already containing the enabled cross-class cards.",
+    "Starship, Rewind, Herald, and Shatter are all too stateful to lower safely with the current VisionAI surfaces. They require stored build state, whole-state replay, scaling counters, or hand-position recombination that go beyond today's normal package.",
+    "Generated entities remain only partially covered because exact runtime behavior still depends on source-backed identity for the generated card; random pools are not automatically resolved.",
+    "The audit proves repo posture and source-backed game-mechanic definitions, not live HearthRanger runtime behavior for every modern mechanic. That is acceptable for this scope, but it means the evidence is package-policy proof rather than exhaustive runtime sampling."
+  ],
+  "no_block_contract_assessment": [
+    "The repo now clearly separates runtime correctness from semantic richness. A package is blocked only for technical invalidity such as malformed deckcode, invalid JSON, unsupported runtime files or blocks, missing required `GlobalValues.json` or `Mulligan.json`, or other structural drift.",
+    "Source confidence is not the runtime gate. `SOURCE_BACKED_STRONG` and related strength labels describe evidence depth, but they do not by themselves deny `load_safe_apply` when the package is otherwise valid.",
+    "Mechanic uncertainty is also not the runtime gate. Unknown mechanics, text-only mechanics, partial coverage, and warning-only coverage remain visible in reports while a technically valid package can still apply.",
+    "Thin usefulness is not the runtime gate. The contract explicitly says `load_safe_but_thin` is descriptive rather than blocking.",
+    "Suppressed semantic claims are intentionally non-blocking. If a claim cannot lower safely, HSConfig suppresses it into reports rather than turning it into a failure unless the package itself becomes structurally invalid.",
+    "This is the right contract for pre-run configuration: valid decks should not be refused just because they include state-heavy or newly added mechanics that do not have a clean documented VisionAI row."
+  ],
+  "hearthstone_semantics_assessment": [
+    "Mulligan coverage is direct and sufficient. HSConfig emits the documented Mulligan row shape and can express keep, discard, and situational opening-hand guidance without needing replay evidence.",
+    "GlobalValues coverage is direct and stronger than the public baseline-copy advice because HSConfig preserves a full baseline and validates key completeness instead of treating deck posture as a handful of loose overrides.",
+    "Per-card CardID behavior coverage is direct where a documented block exists. Normal-path lowering already covers play timing, battlecry target posture, physical attack posture, on-board posture, overkill, Discover choice, and Hero Power use through documented blocks.",
+    "Combo coverage is appropriately narrow. Exact known sequences belong in `Combo.json`; speculative lines, branching trees, or matchup-dependent tactical loops do not.",
+    "Hero Power transforms are handled well for pre-run scope. Exact transformed Hero Power identity can lower through the hero-power surface, and Imbue can be represented as partial Hero Power and deck-posture guidance without pretending to know exact upgrade state every turn.",
+    "Targets and options are split at the correct seam. Discover and Choose One are identity-gated direct mechanics, while generic spell targeting stays warning-only unless a documented card-specific target surface exists.",
+    "Generated entities are partial by design. Deterministic linked entities can be represented when identity is known, but random generation pools remain warning-only and should stay that way in a pre-run system.",
+    "Weapons are direct enough for pre-run config. Weapon timing, attack posture, and exact weapon combo sequences can already lower to existing VisionAI surfaces.",
+    "Secrets are partial, which is the right boundary. Secret play timing and mulligan value can be encoded, but hidden-information timing and ordering remain outside safe pre-run lowering.",
+    "Locations are partial at play time and warning-only at activation depth. Playing a Location can be valued, but repeated activations and target choice should not be invented as generic runtime rows.",
+    "Dredge is correctly warning-only because the core mechanic is choosing among the bottom three cards of the deck, which is a live decision surface rather than a simple card-value bias.",
+    "Tradeable is correctly warning-only because the core mechanic is deciding whether to spend one mana to cycle the card back into the deck, which is a distinct action rather than normal play timing.",
+    "Kindred is correctly warning-only in the current repo. Because its payoff depends on what was played on the previous turn with matching minion type or spell school, safe support would require temporal state reasoning that normal HSConfig should not guess.",
+    "Tourist is correctly warning-only and mostly resolved by deck identity. Its meaningful effect happens during deckbuilding, not as a separate runtime card-behavior row.",
+    "Starship is correctly warning-only. Starship Pieces die, contribute stats and effects to a stored construction, and later launch as a built object; that is beyond the normal package's card-by-card runtime surfaces.",
+    "Imbue is correctly partial. The system can encourage the deck posture and upgraded Hero Power lane, but exact cumulative upgrade state should remain broader bot evaluation.",
+    "Rewind is correctly warning-only. Official Blizzard notes describe it as replaying random-effect cards and even reloading game state, which is far beyond a safe static config lowering.",
+    "Herald is correctly warning-only. It summons Colossal Soldiers, scales those Soldiers and appendages across repeated Herald uses, and also changes Deathwing's later Cataclysm count; that is a live counter-and-scaling system, not a lean pre-run row.",
+    "Shatter is correctly warning-only. The mechanic physically splits a card in hand, moves the fragments to opposite ends, and recombines them only after intervening hand actions, which is a hand-state choreography problem rather than a normal static posture surface.",
+    "Unknown future mechanics are handled with the correct default: they stay registered as report-only warning data until there is a documented VisionAI surface plus a safe lowering rule. That keeps Wild and future coverage broad without turning HSConfig into a replay or tuning engine."
+  ],
+  "slimness_assessment": [
+    "The implementation stays lean because it uses a registry-plus-suppression model instead of one bespoke planner per keyword.",
+    "The normal path remains easy to reason about: documented runtime files, explicit support levels, and report-visible suppressions are simpler for operators than hidden fallback magic.",
+    "The design is still clearly pre-run only. It does not drift into HSTuner-style post-game tuning, replay mining, or strategy-simulator behavior.",
+    "The operator contract is efficient because it lets valid packages apply while still surfacing mechanic debt in reports for later inspection.",
+    "The main complexity cost is the growing mechanic registry, but that is still preferable to expanding the executable runtime surface without proof."
+  ],
+  "recommended_next_action": "Keep the current semantic boundary and add only small operator-facing polish: expose a compact per-deck mechanic summary that groups direct, partial, and warning-only mechanics so operators can immediately see why a package is load-safe without expecting replay-level coverage.",
+  "confidence": "high - the conclusion is backed by current local source files, current passing tests, and official Blizzard mechanic descriptions for the listed modern keywords.",
+  "uncertain": []
+}

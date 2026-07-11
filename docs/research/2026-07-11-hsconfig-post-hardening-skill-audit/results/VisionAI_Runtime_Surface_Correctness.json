@@ -1,0 +1,53 @@
+{
+  "verdict": "HSConfig's current runtime surface contract is lean and largely correct: normal output stays limited to GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json when source-backed, while Concede.json and Presume.json remain documented-but-gated surfaces. The main correctness gap is documentation drift around Presume.json, because the repo still describes it as lacking a current verified first-party citation even though the official HearthRanger page is live.",
+  "evidence": [
+    "Official HearthRanger card-behavior help page confirms per-card CARDID.json, GameCardId matching the file name, and public card-behavior blocks such as InHandPlayPriority and OnDiscoverCardBonus: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Official HearthRanger JSON-config help page states GameCardId should be the same as the json file name and explains values-array rule evaluation: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official HearthRanger mulligan help page documents Mulligan.json with hold/discard rows: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Official HearthRanger combo help page documents Combo.json and the same-turn >> and cross-turn >-> separators: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official HearthRanger global-values help page documents GlobalValues.json and explicitly recommends copying the default file before editing it: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official HearthRanger concede help page documents Concede.json and its ExtraConcdeSettings block: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "Official HearthRanger AOE page documents Presume.json, PresumeOppInHandCard, and its tie to SecondTurnValueWeight: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "Official HearthRanger setup tutorial shows the simple custom-config path as only GlobalValues.json and Mulligan.json for the example deck, which supports a narrow default path: https://www.hearthranger.com/forum/yaf_postst8783_-HowTo--Set-Vision-A-I-Custom-Config.aspx",
+    "Local normal-path contract keeps HSConfig pre-run only and separates it from HSTuner: C:/Users/darbo/Documents/HSConfig/README.md and C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "Local runtime gate requires only GlobalValues.json and Mulligan.json and blocks normal-path Presume.json and Concede.json: C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "Local prepare path writes GlobalValues.json, Mulligan.json, per-card CARDID files, and Combo.json when available; it does not write Presume.json or Concede.json in the normal path: C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py",
+    "Local registry and tests treat Presume.json and Concede.json as known non-normal surfaces: C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py and C:/Users/darbo/Documents/HSConfig/tests/test_visionai_registry.py"
+  ],
+  "strengths": [
+    "The normal-path story is consistent across README, operator guide, skill text, and apply gate: HSConfig is pre-run only, separate from HSTuner, and not a replay or winrate tool.",
+    "The narrow default runtime surface is honest: GlobalValues.json and Mulligan.json are the minimal load-safe gate, while per-card CARDID.json and Combo.json are richer but still normal-path surfaces when evidence supports them.",
+    "The contract does not pretend that HSConfig's load_safe_apply policy is a HearthRanger public-doc term; it clearly labels that as local operator policy.",
+    "GlobalValues handling is source-aligned with public docs because HSConfig materializes from a baseline and validates full-key coverage instead of inventing a tiny custom shape.",
+    "Validator and registry logic are strict about supported file names, GameCardId identity, top-level block shape, and Combo row parity, which keeps the contract runtime-safe and source-honest.",
+    "Reports stay outside runtime deck folders, so evidence and operator diagnostics do not pollute the actual VisionAI runtime surface."
+  ],
+  "gaps": [
+    "Local docs still say Presume.json lacks a current verified first-party help-page citation, but the official HearthRanger Presume/AOE page was reachable on 2026-07-11; that wording is now stale.",
+    "surface_intent.py can still advertise Presume.json and Concede.json as optional surfaces when legacy_policy_surfaces_enabled is set, which slightly muddies the otherwise clear message that normal HSConfig output stays narrow.",
+    "The repo keeps compile and validation support for Presume.json and Concede.json behind gated or legacy paths. That is defensible, but it should stay explicitly labeled as non-normal to avoid future scope drift."
+  ],
+  "no_block_contract_assessment": [
+    "The no-block contract is correctly narrow for runtime safety: a valid package can remain load-safe with GlobalValues.json and Mulligan.json even when source depth, mechanic richness, or combo detail is still incomplete.",
+    "HSConfig correctly avoids blocking on thin usefulness, warning-only mechanics, or missing strong source confidence once the package is technically valid; those stay visible in reports instead of becoming false runtime blockers.",
+    "HSConfig still hard-blocks real technical faults such as invalid JSON, unsupported surfaces, missing required minimal runtime files, undeclared runtime files, nested runtime files, and normal-path Presume.json or Concede.json.",
+    "This split is source-honest because HearthRanger public docs describe the file surfaces, while HSConfig clearly marks its stricter load_safe_apply gate as local operator policy rather than official HearthRanger doctrine."
+  ],
+  "hearthstone_semantics_assessment": [
+    "GlobalValues.json alignment is strong: official docs describe it as a broad board-value control surface and recommend copying the default file; HSConfig's baseline-first, full-key profile matches that model well.",
+    "Mulligan.json alignment is strong: official docs show hold/discard rows with condition and mulligan selectors, and HSConfig validates exactly that kind of structure.",
+    "Per-card CARDID.json alignment is strong for the core public blocks: official docs confirm file-per-card identity, GameCardId=file name, and public blocks such as BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, BeforePhysicalAttackBonus, OnDiscoverCardBonus, OnChooseOneCardBonus, and InHandPlayPriority.",
+    "Combo.json alignment is strong: official docs define ordered card chains and the >> versus >-> separators, and HSConfig validates matching segment counts instead of inventing loose synergy surfaces.",
+    "Concede.json and Presume.json are real public HearthRanger surfaces, so HSConfig is correct to classify them as known surfaces. The remaining question is path policy, not documentation existence.",
+    "HSConfig's modern mechanic handling is intentionally narrower than full game semantics: when exact runtime lowering is not documented or not identity-safe, the repo keeps the behavior in reports or partial lowering instead of guessing unsupported VisionAI rows. That is conservative in the right place and still source-honest."
+  ],
+  "slimness_assessment": [
+    "The skill and operator docs are lean: they center the user on one normal command, one operator gate, and one pre-run responsibility boundary.",
+    "The repo stays free of post-run HSTuner scope in its main operator story; replay parsing, winrate analysis, candidate promotion, and after-game tuning are repeatedly excluded.",
+    "The normal runtime output remains narrow in practice: package_builder writes GlobalValues.json, Mulligan.json, per-card CARDID files, and Combo.json when supported, while apply-gate logic rejects Presume.json and Concede.json in normal path packages.",
+    "The only notable slimness leak is internal legacy awareness of Presume/Concede. That does not currently widen normal output, but it does leave small narrative drift that should be kept under control."
+  ],
+  "recommended_next_action": "Update the README, operator guide, skill references, and VisionAI surface wording to replace the stale Presume.json citation caveat with a verified official-link statement while keeping Presume.json and Concede.json explicitly marked as non-normal HSConfig output.",
+  "confidence": "high: the key local contract files, runtime gate code, validators, normal package writer, tests, and the relevant official HearthRanger pages were all read directly on 2026-07-11.",
+  "uncertain": []
+}

@@ -1,0 +1,54 @@
+{
+  "verdict": "Yes. After the no-block hardening commit, the active HSConfig skill is lean enough for normal use, easy enough to operate through `hsconfig configure`, and still competent for autonomous deck-to-config work. The remaining weakness is not correctness but operator-doc density in `docs/operator/README.md`.",
+  "evidence": [
+    "Active branch and hardening head: `git -C C:/Users/darbo/Documents/HSConfig log --oneline -n 1` shows `7973dd3 test: harden hsconfig no-block contract`.",
+    "Hardening diff evidence: `git -C C:/Users/darbo/Documents/HSConfig diff --unified=0 2436bc5..7973dd3 -- .agents/skills/hsconfig/SKILL.md .agents/skills/hsconfig/references/workflow.md docs/operator/README.md` shows the skill and workflow references were slimmed and the Presume/Concede wording was corrected after the hardening wave.",
+    "Current active-file size check: `C:/Users/darbo/Documents/HSConfig/README.md` has 32 lines, `C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md` has 58 lines, `C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md` has 53 lines, and `C:/Users/darbo/Documents/HSConfig/docs/operator/README.md` has 200 lines.",
+    "Active skill sync check passed: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "CLI usability evidence: `python -m hsconfig --help` exposes a narrow command set with `configure` as the preferred one-command path and keeps lower-level commands available only as inspected or expert surfaces.",
+    "CLI usability evidence: `python -m hsconfig configure --help` shows a compact normal surface limited to deck identity, output path, runtime root, optional source/card feeds, `--apply`, and `--json`.",
+    "Active-doc contract evidence: `C:/Users/darbo/Documents/HSConfig/README.md`, `C:/Users/darbo/Documents/HSConfig/docs/operator/README.md`, `C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/SKILL.md`, and `C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md` all point normal usage to `hsconfig configure` and `reports/operator_summary.json`.",
+    "Operator-density evidence: `docs/operator/README.md` still mentions `operator_summary.json` 13 times and `source-informed` 6 times, while `SKILL.md` and `references/workflow.md` are down to 3 `operator_summary.json` mentions and 1 `source-informed` mention each.",
+    "Targeted operator/skill verification passed: `python -m pytest tests/test_skill_sync.py tests/test_docs_active_path.py tests/test_operator_guidance.py tests/test_skill_files.py tests/test_property_no_block_apply_gate.py tests/test_configure_cli.py tests/test_output_competence_matrix.py -q` finished with `121 passed in 16.83s`.",
+    "Targeted semantic and autonomy verification passed: `python -m pytest tests/test_compile_mulligan.py tests/test_compile_globalvalues.py tests/test_compile_cardid.py tests/test_compile_combo.py tests/test_compile_optional_surfaces.py tests/test_option_identity_resolver.py tests/test_semantic_enrichment.py tests/test_static_semantics.py tests/test_mechanic_support.py tests/test_universal_wild_no_block_matrix.py tests/test_autonomous_guide_workflow_e2e.py -q` finished with `82 passed in 21.71s`.",
+    "Compactness is executable, not just editorial: `C:/Users/darbo/Documents/HSConfig/tests/test_skill_files.py` asserts that `SKILL.md` and `references/workflow.md` each stay under 80 lines and keep only the canonical operator path and boundary wording.",
+    "No-block behavior is executable, not just descriptive: `C:/Users/darbo/Documents/HSConfig/tests/test_property_no_block_apply_gate.py` proves valid packages remain `load_safe_apply` while technical defects such as invalid JSON, missing required runtime files, undeclared runtime files, nested runtime files, and normal-path `Presume.json` or `Concede.json` stay blocked."
+  ],
+  "strengths": [
+    "The active skill surface is actually slim again. `SKILL.md` is 58 lines and `references/workflow.md` is 53 lines, with the normal story centered on one preferred command and one gate.",
+    "The operator path is straightforward: root README points to `docs/operator/README.md`, the preferred command is `hsconfig configure`, and the final decision lives in `reports/operator_summary.json`.",
+    "The repo now separates runtime validity from semantic strength cleanly. `VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` governs runtime permission, while `SOURCE_BACKED_STRONG`, `STATIC_SEMANTICS_USABLE`, and `VALID_BUT_NOT_GUIDE_STRONG` stay confidence labels.",
+    "The skill remains pre-run only and stays free of replay parsing, winrate analysis, runtime-log tuning, candidate promotion, and HSTuner scope creep.",
+    "The installed skill copy is synchronized with the repo copy, so the audited skill is also the active skill Codex would use locally.",
+    "Autonomous deck-to-config competence is backed by passing configure, apply-gate, acceptance, semantic, and end-to-end workflow tests rather than doc claims alone."
+  ],
+  "gaps": [
+    "The operator manual is still comparatively dense at 200 lines, so the easiest path is slim but the detailed policy explanation remains heavier than the skill surface itself.",
+    "Legacy `source-informed` terminology is not gone from the operator manual, which can still add mild naming friction even though the runtime gate is now clearly `load_safe_apply`."
+  ],
+  "no_block_contract_assessment": [
+    "The current no-block contract is correctly implemented as a technical validity contract, not as a promise that every package is guide-strong or strategically rich.",
+    "Valid packages with semantic warnings remain apply-eligible. The property tests explicitly keep `SOURCE_BACKED_STRONG`, `STATIC_SEMANTICS_USABLE`, `VALID_BUT_NOT_GUIDE_STRONG`, `NEEDS_MORE_RESEARCH`, and `LOW_CONFIDENCE_BUT_STRUCTURALLY_VALID` on the `load_safe_apply` lane when the package is structurally valid.",
+    "The operator-facing warning surfaces are non-blocking by design: source-depth gaps, mechanic visibility warnings, mechanic drift, combo uncertainty, and `config_usefulness` warnings explain follow-up work without creating a second gate.",
+    "Technical invalidity still blocks as required. The property tests still hard-block missing `operator_summary.json`, missing `input_manifest.json`, missing `GlobalValues.json`, missing `Mulligan.json`, invalid JSON, undeclared runtime files, nested runtime files, and normal-path `Presume.json` or `Concede.json`.",
+    "The universal matrix remains aligned with the contract: listed valid decks must still produce `VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` without broadening the normal runtime surface."
+  ],
+  "hearthstone_semantics_assessment": [
+    "The repo still covers the core pre-run semantics families needed for autonomous package generation: Mulligan, GlobalValues, per-card CardID behavior, Combo, option identity, static semantics, and semantic enrichment all have direct targeted test coverage.",
+    "Hero power transform handling remains part of the intended competence surface. The configure tests include source-evidence handling for transformed hero-power guidance, and the semantic layer still treats that as a pre-run config concern rather than a post-run analysis concern.",
+    "Choice and option behavior are handled conservatively. `choose_one` and similar option-sensitive surfaces stay identity-gated rather than guessed, which is the right tradeoff for autonomous but safe pre-run generation.",
+    "Generated-entity and awkward-target mechanics are visible rather than silently dropped. The active docs and tests keep `generated_entity`, `generated_entity_random_pool`, `board_position`, `generic_spell_target`, `location_activation`, and `secret_timing` in explicit visibility buckets.",
+    "Wild and modern mechanic breadth is still competent for the current product boundary. The active contract and tests keep Dredge, Tradeable, Kindred, Tourist, Starship, Imbue, Rewind, Herald, Shatter, and unknown future mechanics visible as direct, partial, identity-gated, or warning-only rather than forcing unsafe lowerings.",
+    "This is sufficient for autonomous deck-to-config work because HSConfig is not trying to be a simulator or a post-game tuner. It names uncertainty honestly while still producing a valid initial package."
+  ],
+  "slimness_assessment": [
+    "The skill itself is lean. After hardening, the active trigger file and workflow reference are short, canonical, and focused on normal entry conditions, boundaries, and the one operator gate.",
+    "The CLI is easy to use for the normal case. `configure` is clearly the default path, and the lower-level chain remains available only when a user deliberately wants stage-by-stage inspection.",
+    "The repo keeps complexity behind the CLI instead of exposing it to the operator. That is the right kind of slimness for this product: dense internal policy, small external surface.",
+    "The remaining bulk sits mostly in `docs/operator/README.md`, which is a documentation-weight issue rather than a workflow-shape issue. Normal operation is still simple even if the full policy manual is longer than ideal.",
+    "The hardening branch improved slimness materially. The current `SKILL.md` and `references/workflow.md` are much shorter than the heavier earlier variants that duplicated long status-taxonomy and closure-truth sections."
+  ],
+  "recommended_next_action": "Keep the current skill as-is for normal use and start using it on real deck requests; only do a small follow-up polish later if operator feedback shows that `docs/operator/README.md` still needs a shorter quick-start subsection or lighter `source-informed` wording.",
+  "confidence": "high - this audit is based on the live post-hardening branch, installed-skill sync verification, direct CLI inspection, hardening diff review, active-file size checks, and 203 passing targeted tests across skill sync, docs, operator guidance, configure flow, no-block gating, semantic coverage, and autonomous workflow.",
+  "uncertain": []
+}
