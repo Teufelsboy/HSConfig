@@ -12,7 +12,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 - Open `reports/operator_summary.json` first.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
 - Warnings are follow-up work, not a second apply gate.
-- HSTuner owns post-run logs, winrate, candidates, and tuning.
+- HSTuner owns post-run evaluation and tuning.
 
 ## Preferred Normal Path
 
