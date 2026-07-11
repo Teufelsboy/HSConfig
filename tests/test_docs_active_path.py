@@ -189,6 +189,20 @@ def test_current_truth_names_post_contract_closure_audit():
     assert "per-card-every-card coverage is HSConfig rich output" in text
 
 
+def test_current_truth_names_live_skill_audit_without_operator_drift():
+    current_truth = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+    audit_readme = Path(
+        "docs/research/2026-07-11-hsconfig-live-skill-audit/README.md"
+    ).read_text(encoding="utf-8")
+
+    assert "2026-07-11-hsconfig-live-skill-audit" in current_truth
+    assert "Live skill audit evidence" in current_truth
+    assert "Research evidence only" in audit_readme
+    assert "not operator instructions" in audit_readme
+    assert "not runtime input" in audit_readme
+    assert "Presume/Concede stale citation notes are superseded" in current_truth
+
+
 def test_operator_docs_explain_mechanic_drift_without_new_gate():
     docs = "\n".join(
         [

@@ -1,0 +1,64 @@
+{
+  "verdict": "needs narrow polish",
+  "evidence": [
+    "Installed skill and source skill are synchronized: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "Installed skill path audited: `C:\\Users\\darbo\\.codex\\skills\\hsconfig\\SKILL.md`; source skill path audited: `C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\SKILL.md`.",
+    "Skill entry point is 44 lines in both installed and source copies, while `C:\\Users\\darbo\\Documents\\HSConfig\\README.md` is 18 lines and `C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md` is 148 lines.",
+    "`C:\\Users\\darbo\\Documents\\HSConfig\\README.md` states the preferred normal path is `hsconfig configure`, gives the single command, and says the final decision is in `outputs/<DeckName>/04_package/reports/operator_summary.json`.",
+    "`C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md` Quick Start says to run `hsconfig configure`, open `reports/operator_summary.json` first, and treat warnings as follow-up work rather than a second apply gate.",
+    "`python -m hsconfig.cli --help` lists `configure` as the preferred one-command pre-run package path and points normal operators to `docs/operator/README.md`.",
+    "`python -m hsconfig.cli configure --help` describes `configure` as decoding a deck, building source and research artifacts, preparing a load-safe package, validating it, and optionally applying through the guarded gate.",
+    "Targeted verification passed: `python -m pytest tests/test_skill_files.py tests/test_universal_wild_no_block_matrix.py tests/test_static_semantics.py tests/test_shadowpriest_e2e.py -q` completed with `64 passed in 31.95s`.",
+    "`tests/test_skill_files.py` asserts that the skill and docs name `hsconfig configure`, `reports/operator_summary.json`, `load_safe_apply`, `ALLOWED_WITH_WARNINGS`, modern mechanic labels, warning-only mechanics, and `no_block_failure_mode_summary`.",
+    "`tests/test_universal_wild_no_block_matrix.py` verifies valid matrix packages keep `runtime_apply_mode=load_safe_apply`, `runtime_apply_allowed=true`, no `technical_hard_block`, and a load-safe operator message.",
+    "`tests/test_shadowpriest_e2e.py` verifies a real configure-to-apply path where `technical_status=VALID_PACKAGE`, `next_action=READY_TO_APPLY_WITH_WARNINGS`, `apply_policy=ALLOWED_WITH_WARNINGS`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply`.",
+    "`tests/test_static_semantics.py` verifies Dredge and Tradeable remain warning-only rather than invented blocking runtime mappings."
+  ],
+  "strengths": [
+    "The normal user path is clear and repeated in all audited operator surfaces: run `hsconfig configure`, then open `reports/operator_summary.json`.",
+    "The README is appropriately slim. It provides installation, the one-command path, the single report to open, the inspected lower-level chain, guarded apply behavior, and skill sync checking without historical-plan detail.",
+    "The installed skill is short enough to be usable as an operational memory: it names the pre-run boundary, excludes HSTuner scope, names the preferred command, and preserves the single-report gate.",
+    "The installed and source skill copies are synchronized, so there is no live-vs-source drift for Codex operators.",
+    "The CLI help reinforces the same UX as the docs: `configure` is the preferred path and staged commands are available for inspection rather than normal use.",
+    "The operator guide starts with a compact Quick Start before explaining lower-level stages, load-safety semantics, report ownership, fixture matrices, and expert paths.",
+    "The apply model is autonomous but guarded: normal users can use `configure` without runtime mutation, then use `apply` or `configure --apply` only when `operator_summary.json` allows it.",
+    "The docs separate runtime load safety from source confidence. `SOURCE_BACKED_STRONG` is not treated as the apply gate; `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` is the normal runtime criterion.",
+    "The docs explicitly say research artifacts are evidence, not operator instructions, which helps normal users avoid historical-plan reading.",
+    "The no-block contract is visible in both docs and tests: warning-only mechanics and source-depth gaps do not block valid packages, while technical invalidity still blocks."
+  ],
+  "gaps": [
+    "The installed skill is slim by line count, but the `Operator rules` section is dense. It contains many mechanism names, report names, and policy labels that are useful for Codex but may be heavy for a normal human operator.",
+    "The operator guide keeps the right Quick Start at the top, but its 148-line length mixes normal operation, warning taxonomy, report ownership, fixture policy, and expert paths in one file. This is acceptable, but the normal path would be stronger if the detailed fixture and mechanic policy sections were moved behind a clearly named advanced appendix.",
+    "The README says `Runtime writes remain only when requested through hsconfig apply`, while the same README also says `configure --apply` can explicitly request runtime writes. The practical meaning is clear from the surrounding text, but this wording could be tightened to `apply or configure --apply`.",
+    "The CLI top-level help says `prepare`, `source-manifest`, `draft-source-documents`, and `research-deck` are `normal path` commands, while the docs frame them as lower-level inspected stages. That is not a functional bug, but the wording weakens the one-command UX.",
+    "The skill references five additional policy files. That is good for detailed Codex behavior, but normal users should not need those references; the current entry point should keep resisting further expansion.",
+    "The audit did not run the full repository test suite, only targeted skill, no-block, semantic, and e2e tests. This is enough for the requested operator UX audit but not a complete release certification."
+  ],
+  "no_block_assessment": [
+    "Valid decks remain unblocked in the audited docs and tests: `technical_status=VALID_PACKAGE` with `runtime_apply_mode=load_safe_apply` allows runtime apply even when warnings remain.",
+    "`ALLOWED_WITH_WARNINGS` is documented as runtime-write permission when the package is technically valid; warnings are source or semantic confidence debt, not a second gate.",
+    "`technical_hard_block` is the only hard-stop category in `no_block_failure_mode_summary`; other categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` are follow-up labels.",
+    "Targeted tests verify the no-block behavior for universal Wild matrix cases and the ShadowPriest e2e path, including load-safe apply with warnings.",
+    "Technical invalidity still blocks through the apply gate: the audited test references include missing or invalid `operator_summary.json`, missing required runtime files, forged allowed gates, and blocked runtime modes."
+  ],
+  "skill_slimness_assessment": [
+    "The installed skill is currently slim enough for Codex use: 44 lines, synchronized with source, and anchored to a single normal command and one operator report.",
+    "The skill correctly excludes HSTuner scope: no replay analysis, winrate analysis, runtime log analysis, candidate promotion, or after-game tuning.",
+    "The skill is autonomous: it tells Codex to prefer `hsconfig configure`, use inspected stages only for diagnostics or source review, open `reports/operator_summary.json` first, and report whether the result is guide-backed, static-semantics-backed, or still needs research.",
+    "The main bloat risk is policy accumulation inside `Operator rules`. The section is still manageable, but future additions should usually go into referenced policy files or reports rather than into the skill entry point.",
+    "The README is very slim and operator-oriented. It does not require reading historical plans.",
+    "The operator guide is clear but no longer slim. Its first screen is suitable for normal users, while later sections are advanced policy and fixture detail."
+  ],
+  "hearthstone_coverage_assessment": [
+    "The audited surfaces cover the expected pre-run runtime package concepts: Mulligan, GlobalValues, per-card CardID JSON, Combo, guarded apply, and operator summary reporting.",
+    "The docs correctly distinguish minimal load-safe apply from richer HSConfig output: `GlobalValues.json` and `Mulligan.json` are the minimal load-safe files, while per-card CardID files and `Combo.json` improve control and proof but are not the minimal runtime-write gate.",
+    "Presume and Concede are documented without becoming normal outputs. Their absence does not block valid load-safe packages.",
+    "Modern Wild mechanic visibility is represented at the right non-blocking depth. Kindred, Tourist, Starship, Spellburst, Miniaturize, Quickdraw, Honorable Kill, Elusive, Poisonous, and Imbue are named when detected, but unmapped mechanics must not block valid packages.",
+    "Rewind, Herald, and Shatter are explicitly warning-only report-only labels; HSConfig names them in reports and does not invent runtime mappings.",
+    "Generated entities and choice surfaces are treated conservatively: exact identity can lower when source-backed, while unresolved generation, option identity, board position, generic spell target, location activation, secret timing, and random generated pools stay warning-only or partial.",
+    "The coverage depth is appropriate for a pre-run package generator, not a post-game tuner. The remaining risk is practical deck quality, which should be captured through real-deck use and targeted defect reports rather than another broad docs expansion."
+  ],
+  "recommended_next_action": "Tighten two wording points only: change README runtime-write wording to explicitly say `hsconfig apply` or `hsconfig configure --apply`, and adjust CLI help labels so lower-level inspected commands are not described as the normal user path. Avoid broad skill expansion.",
+  "confidence": "high: the audit checked the installed skill, source skill, README, operator guide, CLI help, sync status, and targeted tests that cover the operator UX, no-block gate, and modern mechanic visibility.",
+  "uncertain": []
+}

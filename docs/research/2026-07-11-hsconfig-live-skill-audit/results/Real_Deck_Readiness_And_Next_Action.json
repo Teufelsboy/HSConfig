@@ -1,0 +1,63 @@
+{
+  "verdict": "Good enough for real-deck usage with targeted defect capture. The current HSConfig boundary, installed skill, operator docs, representative matrix, supplemental proof decks, no-block contract, and targeted test coverage all point to use rather than another broad implementation wave.",
+  "evidence": [
+    "Installed skill sync is current: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync: C:\\Users\\darbo\\.codex\\skills\\hsconfig`.",
+    "Repo and installed skill directories are content-identical in the current audit: `git diff --no-index -- .agents/skills/hsconfig C:/Users/darbo/.codex/skills/hsconfig` produced no content diff, only CRLF warnings.",
+    "Normal CLI surface is narrow: `python -m hsconfig --help` lists `configure` as the preferred one-command pre-run package path and names the lower-level path as inspected workflow.",
+    "Configure help is compact and operational: `python -m hsconfig configure --help` exposes deck name, deck code, output path, runtime root, optional evidence/card feeds, `--apply`, and `--json`.",
+    "Root docs and operator docs are aligned: `C:/Users/darbo/Documents/HSConfig/README.md` routes to `docs/operator/README.md`, names `hsconfig configure` as preferred normal path, and states HSConfig is pre-run only.",
+    "Operator docs are current-truth oriented: `C:/Users/darbo/Documents/HSConfig/docs/operator/README.md` says to open `reports/operator_summary.json` first, treats warnings as follow-up work, and keeps HSTuner/post-game work outside HSConfig.",
+    "Representative evidence is explicit: `C:/Users/darbo/Documents/HSConfig/docs/operator/archetype-fixture-matrix.json` contains 11 representative decks across aggro, recruit, weapon, discard, token, hero-power, mech, combo, and hero-attack families.",
+    "The matrix does not hide remaining source-depth debt: Kingslayer and Boarlock are still `source_informed_valid_fixture` rows with explicit stop conditions for Quick Pick and Fracking mulligan evidence.",
+    "Supplemental evidence is bounded: `C:/Users/darbo/Documents/HSConfig/docs/operator/supplemental-proof-decks.json` keeps CuteWarrior as supplemental load-safe proof and SecretMage/HighlanderPriest as visibility-only proof without widening the representative matrix.",
+    "No-block product boundary is documented: `C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md` states valid decks should produce `VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` while source confidence remains separate.",
+    "Targeted operator/no-block verification passed: `python -m pytest tests/test_skill_sync.py tests/test_docs_active_path.py tests/test_operator_guidance.py tests/test_skill_files.py tests/test_property_no_block_apply_gate.py tests/test_configure_cli.py tests/test_output_competence_matrix.py tests/test_universal_wild_no_block_matrix.py tests/test_supplemental_visibility_decks.py -q` returned `138 passed in 31.13s`.",
+    "Targeted semantic/mechanic verification passed: `python -m pytest tests/test_compile_mulligan.py tests/test_compile_globalvalues.py tests/test_compile_cardid.py tests/test_compile_combo.py tests/test_compile_optional_surfaces.py tests/test_option_identity_resolver.py tests/test_semantic_enrichment.py tests/test_static_semantics.py tests/test_mechanic_support.py tests/test_mechanic_lowering_parity.py -q` returned `67 passed in 6.32s`.",
+    "Active skill surface is compact: current line counts are README 32 lines, operator README 208 lines, `.agents/skills/hsconfig/SKILL.md` 58 lines, and `.agents/skills/hsconfig/references/workflow.md` 53 lines.",
+    "The operator manual is the only clearly dense active surface: it currently contains 14 `operator_summary.json` mentions and 8 `source-informed` or `source_informed` mentions, while the skill and workflow reference each contain only 3 operator-summary mentions and 1 source-informed mention."
+  ],
+  "strengths": [
+    "The product boundary is now coherent: HSConfig is a pre-run deck-to-CustomConfig generator, not a replay parser, winrate analyzer, candidate promoter, or post-game tuner.",
+    "The operator workflow is usable: `hsconfig configure` is the normal path, lower-level commands remain available for inspected work, and `reports/operator_summary.json` is the single normal gate.",
+    "The installed Codex skill is synchronized with the repo skill, so local Codex behavior should reflect the audited current truth.",
+    "Representative proof is broad enough for the stated product claim without pretending to cover every possible Wild archetype as source-backed strong.",
+    "Supplemental decks add narrow load-safe and visibility proof without bloating the representative matrix or avoiding known Kingslayer and Boarlock stop conditions.",
+    "No-block behavior is both documented and tested: valid load-safe packages remain apply-eligible even when guide strength, config richness, mechanic visibility, or source depth has warnings.",
+    "Technical invalidity still blocks through the apply gate, preserving safety while avoiding false semantic blockers.",
+    "Core Hearthstone config outputs are covered by tests: Mulligan, GlobalValues, per-card CardID files, Combo, optional surfaces, option identity, semantic enrichment, static semantics, mechanic support, and mechanic-lowering parity.",
+    "The skill surface is compact enough for normal autonomous use after prior slimming; detailed policy lives mostly in operator docs instead of being duplicated heavily inside the skill."
+  ],
+  "gaps": [
+    "There is still no fresh real-operator batch in this audit proving how the current skill behaves across newly requested live decks outside the fixture and supplemental proof sets.",
+    "Kingslayer and Boarlock remain intentionally source-informed rather than source-backed strong because exact Quick Pick and Fracking mulligan evidence is still unavailable in the current matrix truth.",
+    "Some Wild families remain visibility-only or warning-only rather than representative competence rows, including secret timing, highlander/location control, generated-entity random pools, board-position requirements, and generic spell targeting.",
+    "The operator manual is still dense at 208 lines and retains legacy `source-informed` terminology, which can add mild cognitive load even though the runtime gate is now clearly `load_safe_apply`.",
+    "A broad implementation wave would likely add policy surface area faster than it would add proven value unless real deck usage first exposes repeated concrete defects."
+  ],
+  "no_block_assessment": [
+    "The no-block contract is ready for real use. Current docs and tests agree that `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` govern runtime permission.",
+    "The contract correctly separates runtime validity from semantic confidence. `SOURCE_BACKED_STRONG`, source-depth warnings, mechanic visibility, config usefulness, and combo uncertainty are confidence or follow-up labels, not a second apply gate.",
+    "Valid decks remain unblocked when they are load-safe but thin. Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`; per-card files and `Combo.json` improve richness but do not define the minimal runtime-write permission.",
+    "Technical invalidity still blocks as required. The documented hard blocks include malformed deck codes, invalid JSON, unsupported VisionAI files or blocks, missing `GlobalValues.json` or `Mulligan.json`, undeclared runtime files, nested runtime files, normal-path `Presume.json` or `Concede.json`, and forged or stale apply evidence.",
+    "The tested property/no-block and universal-matrix coverage is strong enough to proceed to real-deck defect capture instead of building another abstract safety layer."
+  ],
+  "skill_slimness_assessment": [
+    "The installed skill is short enough for autonomous operation: the active `SKILL.md` is 58 lines and the workflow reference is 53 lines.",
+    "The skill is synchronized with the repo copy, so there is no current installed-skill drift to fix before use.",
+    "The skill keeps the HSTuner boundary intact: replay parsing, Power.log analysis, winrate inspection, post-run tuning, and candidate promotion remain out of scope.",
+    "The normal skill instruction path is efficient: use `hsconfig configure`, inspect `reports/operator_summary.json`, and use lower-level commands only for staged inspection or diagnostics.",
+    "The active operator docs are heavier than ideal, but the detail is concentrated in `docs/operator/README.md` rather than spread across a bloated skill. This supports use now, with possible later doc polish only if users struggle."
+  ],
+  "hearthstone_coverage_assessment": [
+    "Pre-run Mulligan, GlobalValues, per-card CardID behavior, Combo, optional surfaces, option identity, static semantics, semantic enrichment, and mechanic support all have direct targeted test coverage in the current audit.",
+    "The representative matrix covers a practical spread of deck families: aggro burn, recruit board flood, pirate/weapon tempo, big recruit/deathrattle cheat, discard hand mutation, token board snowball, hero-power/spell generation, mech board scaling, combo control, and hero-attack pressure.",
+    "Hero Power and transformed-identity concerns are represented through decks such as ShadowPriest, ImbueMage, PirateDH, and HighlanderPriest visibility proof.",
+    "Modern Wild mechanics are handled at the right depth for a pre-run generator: direct where there is a documented safe runtime surface, identity-gated where exact option identity is needed, partial where only part of the behavior maps, and warning-only where HSConfig must not invent runtime rows.",
+    "Generated entities and spell generation are kept in partial coverage unless exact generated identity exists, which is the right boundary for avoiding invented runtime behavior.",
+    "Warning-only mechanics such as secret timing, generic spell targeting, board position, location activation, generated-entity random pools, rewind, herald, and shatter remain visible without blocking valid load-safe packages.",
+    "The remaining coverage gap is proof freshness, not obvious missing implementation: the next meaningful evidence should come from real-deck use and targeted defect records rather than adding more broad representative decks up front."
+  ],
+  "recommended_next_action": "Start using HSConfig on real deck requests and capture only targeted defects with exact deck code, package output, `reports/operator_summary.json`, relevant lower-level report, expected behavior, and observed failure. Do not start another broad implementation wave unless repeated real-deck runs expose a concrete class of failure in load-safe gating, CardID identity, mechanic bucketing, output usefulness, or newly available source-depth closure for Kingslayer or Boarlock.",
+  "confidence": "high: current repo docs, installed skill sync, content comparison, CLI help, representative and supplemental matrix files, no-block contract docs, and 205 targeted passing tests all support the same conclusion that the best next step is real-deck usage with targeted defect capture.",
+  "uncertain": []
+}

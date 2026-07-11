@@ -1,0 +1,85 @@
+{
+  "verdict": "good enough",
+  "evidence": [
+    "docs/operator/semantic-coverage.md:26 states the no-block contract directly: runtime failure markers are row- and window-scoped, hard failures block only affected windows, and clean windows may still surface review, parser, runtime, or strict patch candidates when the evidence chain is complete.",
+    "docs/operator/README.md:92 documents that analyze-step2 writes the Step 2 artifact family as read-only artifacts with runtime_write_performed=false.",
+    "docs/operator/README.md:104 separates PATCH_PROPOSAL, review, parser-gap, contract-gap, runtime, never-autopatch, and strict PATCH_CANDIDATE lanes, preventing zero strict patch candidates from becoming a blanket no-signal result.",
+    "docs/operator/README.md:154 states that algorithm_result_none and bot_player_no_result require remediation before gameplay tuning but dirty windows do not suppress unrelated clean-window work after clean_window_manifest scopes the affected windows.",
+    "docs/operator/guarded-auto-apply.md:39 requires approved_patch_bundle.json to be read-only, target-sample matched, and free of manual-review or blocked changes before apply.",
+    "docs/operator/guarded-auto-apply.md:56 states that runtime mutation after Step 2 is allowed only through approve-patch-bundle and apply-approved-patch, while PATCH_PROPOSAL, PATCH_PREVIEW_PARTIAL, and PATCH_PREVIEW_READY remain read-only and are not runtime apply authority.",
+    "skills/hearthranger-config/SKILL.md:69 repeats the operational no-block rule: hard no-result markers require inspection, but dirty windows do not suppress unrelated clean-window work once clean_window_manifest proves row/window scope.",
+    "src/hsranger_core/approved_patch_bundle.py:47 builds the read-only approval artifact; src/hsranger_core/approved_patch_bundle.py:245 adds global blockers for stale freshness, non-v2 patchability, deck fingerprint mismatch, and non-read-only source artifacts.",
+    "src/hsranger_core/approved_patch_bundle.py:347 implements candidate runtime scoping: RUNTIME_CLEAN returns no blocker, dirty/hard/unknown-turn rows block, and missing clean-window proof blocks conservatively.",
+    "src/hsranger_core/approved_patch_bundle.py:289 and src/hsranger_core/approved_patch_bundle.py:306 enforce strict patch candidate requirements and manual-review or never-autopatch surfaces before approval.",
+    "src/hsranger_core/apply_approved_patch.py:27 is the guarded adapter into runtime_writer; src/hsranger_core/apply_approved_patch.py:127 rejects not-ready bundles, blocked changes, manual-review changes, missing approved operations, active-config mismatches, and decklist fingerprint mismatches before runtime write.",
+    "src/hsranger_core/apply_approved_patch.py:271 and src/hsranger_core/apply_approved_patch.py:402 reject unsafe runtime/package surfaces such as symlinks, nested runtime paths, aggregate CardBehavior.json, non-json targets, unsupported special files, unsupported card IDs, and GameCardId mismatches.",
+    "src/hsranger_core/operator_candidate_summary.py:130 builds the first-read operator summary with visible non-patch work queues and runtime_write_performed=false.",
+    "tests/test_approved_patch_bundle.py:13 verifies a strict clean candidate becomes APPROVED_PATCH_BUNDLE_READY in auto-low-risk mode.",
+    "tests/test_approved_patch_bundle.py:39 verifies a dirty runtime candidate becomes APPROVED_PATCH_BUNDLE_BLOCKED with runtime_window_dirty in blocking reasons.",
+    "tests/test_approved_patch_bundle.py:320 verifies freshness guard mismatch blocks approval.",
+    "tests/test_apply_approved_patch.py:100 verifies unsafe operations and runtime surfaces are rejected before runtime_writer.write_runtime is invoked.",
+    "tests/test_apply_approved_patch.py:159 verifies not-ready, manual-review, blocked, missing-operation, and fingerprint-mismatch bundles block before writer invocation.",
+    "tests/test_guarded_auto_apply_e2e.py:15 verifies a clean Step 2 candidate can flow through approve-patch-bundle, fake apply, real apply, and post_apply_validation_handoff.",
+    "tests/test_blocker_summary.py:324 verifies a hard runtime failure in another window still allows PATCH_PREVIEW_PARTIAL.",
+    "tests/test_blocker_summary.py:1304 verifies a hard runtime failure touching the promoted candidate blocks partial preview.",
+    "tests/test_blocker_summary.py:1445 verifies non-hard runtime failures do not globally block partial preview.",
+    "tests/test_blocker_summary.py:1522 verifies false parser capabilities not referenced by active rows do not create a global block.",
+    "tests/test_postrun_blocker_summary.py:123 verifies irrelevant semantic families do not create global blockers.",
+    "tests/test_operator_candidate_summary.py:20 verifies the operator summary leads with visible candidates rather than strict blocked count.",
+    "tests/test_operator_candidate_summary.py:634 verifies never-autopatch-only mechanic candidates remain visible review work.",
+    "tests/test_operator_candidate_summary.py:818 verifies zero-row identity and trace gaps count as visible non-patch work without emitting PATCH_CANDIDATE or PATCH_PREVIEW_READY.",
+    "Focused verification command passed: PYTHONPATH=src; python -m unittest tests.test_approved_patch_bundle tests.test_apply_approved_patch tests.test_guarded_auto_apply_e2e tests.test_operator_candidate_summary tests.test_postrun_blocker_summary tests.test_blocker_summary -v. Result: Ran 95 tests in 6.098s, OK.",
+    "Property-test search command found no Hypothesis/property-based tests: rg -n \"hypothesis|@given|strategies|property|property-based|test_.*property\" tests src pyproject.toml -S returned only ordinary @property and schema propertyNames references.",
+    "Full-suite discovery was attempted with PYTHONPATH=src; python -m unittest discover -v. It began passing acceptance tests but stopped producing progress for several polls and was terminated; therefore full-suite completion is not proven in this audit."
+  ],
+  "strengths": [
+    "The no-block contract is explicit in both operator docs and installed skill guidance: dirty or hard runtime windows are scoped and do not automatically suppress unrelated clean-window work.",
+    "Approval is conservative: only strict PATCH_CANDIDATE rows with repeat evidence, documented VisionAI surface, low-risk file targets, clean runtime scope, and an approved operation become auto-approved.",
+    "PATCH_PROPOSAL is clearly treated as concrete read-only configuration work, not runtime apply authority.",
+    "Guarded apply is split into approval, fake apply, and real apply, with fake apply required before real apply.",
+    "Invalid packages fail closed before writer invocation for stale fingerprints, manual-review changes, blocked changes, missing approved operations, unsafe target files, aggregate CardBehavior.json, symlinks, invalid deck slugs, nested runtime paths, unsupported special files, and GameCardId mismatches.",
+    "The apply path writes post_apply_validation_handoff.json after real apply, forcing fresh validation games before gameplay-improvement claims.",
+    "Operator summary exposes non-patch work queues, including review, parser work, contract-gap work, runtime work, never-autopatch work, and identity/decision-trace work, which reduces false no-signal outcomes.",
+    "Focused regression coverage directly tests valid clean candidate flow, dirty candidate blocking, unrelated hard runtime failures allowing partial preview, same-window hard failures blocking, stale freshness blocking, and invalid package blocking.",
+    "The skill file is short and operationally usable: it points to authoritative docs, keeps command order compact, and avoids embedding a large HSTuner-style scope."
+  ],
+  "gaps": [
+    "No actual property-based test framework coverage was found; the requested property-test dimension is covered by deterministic unit/integration tests, not Hypothesis-style generative properties.",
+    "Full unittest discovery could not be completed during this audit because python -m unittest discover -v became quiet/hung after initial acceptance tests and was terminated. Focused gate coverage passed, but full-suite pass is [uncertain].",
+    "The approval gate depends on artifacts already encoding correct clean-window and candidate scope. The gate is fail-closed when that proof is missing, but this audit did not replay a live analyze-step2 run end to end from fresh HearthRanger/HDT evidence.",
+    "The installed skill is slim, but it still references many operator artifacts and commands; the docs are necessary for correctness, yet a new operator could still need the README and operator docs to understand all boundary details.",
+    "Hearthstone mechanic coverage is broad in docs and operator summary vocabulary, but this audit focused on no-block/apply behavior rather than proving every modern Wild mechanic with fresh live examples."
+  ],
+  "no_block_assessment": [
+    "Valid decks or Step 2 runs with warning-only or unrelated blocked areas can proceed as visible work: docs/operator/semantic-coverage.md:26 and docs/operator/README.md:154 state row/window scoping, and tests/test_blocker_summary.py:324 plus tests/test_blocker_summary.py:1445 verify partial preview is still allowed when hard/non-hard failures are outside the promoted candidate scope.",
+    "Valid clean strict candidates can proceed through approval and guarded apply: tests/test_approved_patch_bundle.py:13 produces APPROVED_PATCH_BUNDLE_READY and tests/test_guarded_auto_apply_e2e.py:15 proves the approve, fake apply, apply, and post-apply handoff path.",
+    "Warning and review-only surfaces do not silently become auto-apply authority: tests/test_approved_patch_bundle.py covers manual-review flags, review-only patchability, target uncertainty, GlobalValues, generated entities, secrets, aura ambiguity, random discard ambiguity, and single-event broad GlobalValues as blocked or manual-review rather than approved.",
+    "Invalid packages still block: src/hsranger_core/apply_approved_patch.py:127 validates bundle readiness and fingerprints, while src/hsranger_core/apply_approved_patch.py:271 and :402 validate runtime/package shape before writer invocation; tests/test_apply_approved_patch.py:100 and :159 verify these blocks.",
+    "Technical hard-block behavior is appropriately scoped: a hard runtime failure touching a promoted candidate blocks partial preview, an unrelated hard failure can allow partial preview, unknown or unscoped hard failures block conservatively, and false parser capabilities only block when referenced by active rows.",
+    "The current contract is not a blanket no-block policy. It is a scoped no-block policy: warnings, non-hard failures, irrelevant semantic families, and unrelated dirty windows do not globally block, but stale evidence, unknown runtime scope, touched hard failures, invalid runtime files, unsafe operations, and manual-review surfaces still block."
+  ],
+  "skill_slimness_assessment": [
+    "The repo skill at skills/hearthranger-config/SKILL.md is concise for the amount of workflow it controls: it lists required inputs, authoritative docs, command order, Step 2 command shape, and report checklist without embedding large implementation logic.",
+    "It is autonomous enough for Codex operation because it states exact command order, exact artifacts to read first, and exact readiness/status labels.",
+    "It is efficient because the skill delegates detail to docs/operator/README.md, docs/operator/new-deck-checklist.md, docs/operator/guarded-auto-apply.md, and references/post-run-finetuning.md instead of duplicating all content.",
+    "It is not overloaded with HSTuner scope in the inspected file; it stays focused on hsranger-core, HearthRanger runtime writes, Step 2 analysis, guarded apply, and validation handoff.",
+    "Slimness is good enough rather than optimal because the report checklist is still dense and includes many artifact names; a one-page quick decision tree could further reduce operator load."
+  ],
+  "hearthstone_coverage_assessment": [
+    "Pre-run runtime package surfaces are represented in the workflow through Mulligan.json, GlobalValues.json, per-card CardID JSON files, Combo.json handling, config preview reports, syntax reports, and guarded write receipts.",
+    "The apply gate intentionally allows only low-risk per-card CardBehavior append rows and simple Mulligan append rows for auto-apply; GlobalValues and Combo surfaces are manual-review or unsupported for automatic mutation, which is conservative and appropriate for broad/high-impact mechanics.",
+    "Hero Power and weapon semantics are treated cautiously: approval marks unclear weapon or hero-power semantics for manual review unless action semantics are clear.",
+    "Modern and Wild mechanic families are visible in operator summary and never-autopatch handling, including generated_entity, aura_ongoing, secret, discard, deathrattle, reborn, recruit, summon_from_deck, discover, dredge, tradeable, overload, freeze, lifesteal, taunt, rush, charge, positioning, location, weapon, weapon_attack, hero_power_swap, destroy, silence, transform, resurrection_resolution, and lethal_setup.",
+    "Generated entities, hidden secrets, unclear aura causality, random discard without discarded-card identity, discover/dredge without option payloads, target uncertainty, and broad single-event GlobalValues are warning/manual-review/never-autopatch cases rather than auto-applied changes.",
+    "Coverage depth is right for the no-block/apply boundary: the system surfaces mechanic work and review queues without pretending every mechanic is safe to patch automatically.",
+    "This audit did not prove every listed mechanic against fresh live HearthRanger/HDT samples, so full live mechanic coverage remains [uncertain]."
+  ],
+  "recommended_next_action": "Add a small deterministic or Hypothesis-style property test module for approved_patch_bundle/apply_approved_patch that generates clean, dirty, hard-blocked, manual-review, stale-fingerprint, and invalid-target cases, then fix the full unittest discovery hang or document the required shard command as the supported full-suite equivalent.",
+  "confidence": "medium, because source, docs, and 95 focused no-block/apply tests strongly support the verdict, but full unittest discovery did not complete and no property-based tests were found.",
+  "uncertain": [
+    "full test suite pass",
+    "property tests",
+    "fresh live analyze-step2 end-to-end proof",
+    "full live mechanic coverage"
+  ]
+}

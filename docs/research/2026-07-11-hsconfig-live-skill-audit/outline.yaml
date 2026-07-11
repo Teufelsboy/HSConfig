@@ -1,0 +1,41 @@
+topic: hsconfig-live-skill-audit-2026-07-11
+created: "2026-07-11"
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-11-hsconfig-live-skill-audit/results
+  items_per_agent: 1
+  batch_size: 5
+items:
+  - name: Skill Slimness And Operator UX
+    category: Local Repo
+    description: >
+      Audit the installed HSConfig skill, source skill, README, and operator
+      guide for slimness, autonomy, clarity, and bloat. Verify that normal users
+      can start with one command and one report without reading historical plans.
+  - name: Runtime Surface And VisionAI Correctness
+    category: HearthRanger VisionAI
+    description: >
+      Audit whether HSConfig's normal runtime surface matches documented
+      HearthRanger VisionAI CustomConfig surfaces: GlobalValues, Mulligan,
+      per-card CardID JSON, Combo, Presume, and Concede. Check whether Presume
+      and Concede are correctly documented without becoming normal outputs.
+  - name: No Block Apply Gate And Tests
+    category: Local Repo
+    description: >
+      Audit the no-block contract, apply gate, operator summary, property tests,
+      full test suite, and technical hard-block behavior. Verify that valid
+      decks with warnings can proceed and invalid packages still block.
+  - name: Hearthstone Semantic Coverage
+    category: Hearthstone Semantics
+    description: >
+      Audit whether the pre-run system covers the right level of Hearthstone
+      semantics for direct config generation: Mulligan anchors, GlobalValues,
+      CardID behavior, Combo, Hero Power transforms, target/options, generated
+      entities, weapons, secrets, locations, Dredge, Tradeable, Kindred,
+      Tourist, Starship, Imbue, Rewind, Herald, Shatter, and unknown mechanics.
+  - name: Real Deck Readiness And Next Action
+    category: Product Boundary
+    description: >
+      Audit whether the best next step is more implementation or real-deck usage
+      with targeted defect capture. Consider representative deck evidence,
+      installed skill sync, docs current-truth, and whether another broad wave
+      would add bloat.

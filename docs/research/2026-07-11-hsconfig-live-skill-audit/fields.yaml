@@ -1,0 +1,61 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        type: string
+        required: true
+        description: >
+          Concise verdict on the audited area: optimal, good enough, needs narrow
+          polish, or needs redesign.
+      - name: evidence
+        type: array
+        required: true
+        description: >
+          Repo-backed or public-source-backed evidence, including local paths,
+          tests, commands, or URLs.
+      - name: strengths
+        type: array
+        required: true
+        description: >
+          Concrete strengths in the current skill, CLI, docs, runtime package,
+          tests, and operator workflow.
+      - name: gaps
+        type: array
+        required: true
+        description: >
+          Concrete bloat, stale wording, missing proof, missing card/mechanic
+          understanding, or UX risks. Use an empty array if none were found.
+      - name: no_block_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether valid decks remain unblocked while technical invalidity
+          still blocks.
+      - name: skill_slimness_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether the installed skill is short, usable, autonomous,
+          efficient, and not overloaded with HSTuner scope.
+      - name: hearthstone_coverage_assessment
+        type: array
+        required: true
+        description: >
+          Assess whether pre-run Mulligan, GlobalValues, per-card CardID,
+          Combo, Hero Power, modern Wild mechanics, generated entities, and
+          warning-only mechanics are represented at the right depth.
+      - name: recommended_next_action
+        type: string
+        required: true
+        description: >
+          The single best next action after the audit.
+      - name: confidence
+        type: string
+        required: true
+        description: >
+          high, medium, low, or [uncertain], with a brief reason.
+      - name: uncertain
+        type: array
+        required: true
+        description: >
+          Claims or fields that could not be verified.
