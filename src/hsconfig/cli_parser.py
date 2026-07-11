@@ -17,7 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
             "Preferred normal path: configure.\n"
-            "Lower-level normal path: source-manifest -> draft-source-documents -> research-deck -> "
+            "Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> "
             f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
             "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
@@ -66,19 +66,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     prepare = subparsers.add_parser(
         "prepare",
-        help="normal package creation path",
+        help="inspected package creation stage",
         description=(
-            "Normal package creation path. Use deck identity, source-backed guide "
+            "Inspected package creation stage. Use deck identity, source-backed guide "
             "documents, and a runtime root to compile a pre-run CustomConfig package."
         ),
     )
-    prepare_normal = prepare.add_argument_group("normal required inputs")
+    prepare_normal = prepare.add_argument_group("required package inputs")
     prepare_normal.add_argument("--deck-name", required=True)
     prepare_normal.add_argument("--deck-code", required=True)
     prepare_normal.add_argument("--out", required=True)
     prepare_normal.add_argument("--runtime-root", required=True)
 
-    prepare_source = prepare.add_argument_group("normal source inputs")
+    prepare_source = prepare.add_argument_group("source inputs")
     prepare_source.add_argument("--guide-sources-json")
     prepare_source.add_argument("--source-documents-json")
 
@@ -109,7 +109,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     source_manifest = subparsers.add_parser(
         "source-manifest",
-        help="normal path source research manifest",
+        help="inspected source research manifest stage",
+        description="Inspected source research manifest stage.",
     )
     source_manifest.add_argument("--deck-name", required=True)
     source_manifest.add_argument("--deck-code", required=True)
@@ -120,7 +121,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     draft_source_documents = subparsers.add_parser(
         "draft-source-documents",
-        help="normal path source document drafting",
+        help="inspected source document drafting stage",
+        description="Inspected source document drafting stage.",
     )
     draft_source_documents.add_argument("--deck-name", required=True)
     draft_source_documents.add_argument("--deck-code", required=True)
@@ -132,7 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     research_deck = subparsers.add_parser(
         "research-deck",
-        help="normal path source document normalization",
+        help="inspected source document normalization stage",
+        description="Inspected source document normalization stage.",
     )
     research_deck.add_argument("--deck-name", required=True)
     research_deck.add_argument("--deck-code", required=True)
