@@ -20,11 +20,7 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 `hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`. It only writes runtime files when `--apply` is explicitly requested.
 
-The lower-level normal path remains available for inspected work:
-
-`source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`
-
-Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+Lower-level inspected path: `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 
 Use the lower-level inspected path when you need to review or edit source evidence between stages. It starts with `hsconfig source-manifest`, continues through `hsconfig prepare`, and still ends at `reports/operator_summary.json` plus the guarded apply gate.
 

@@ -40,12 +40,48 @@ def test_operator_docs_name_configure_as_preferred_normal_path():
         "package, and leaves the final decision in "
         "`outputs/<DeckName>/04_package/reports/operator_summary.json`."
     ) in text
-    assert "The lower-level normal path remains available for inspected work:" in text
+    assert "For staged inspection, use the Lower-Level Inspected Path below." in text
     assert (
         "source-manifest -> draft-source-documents -> research-deck -> "
         "prepare -> validate -> apply"
     ) in text
     assert "HSConfig is pre-run only" in text
+
+
+def test_preferred_path_docs_use_single_lower_level_chain_label():
+    exact_chain = (
+        "source-manifest -> draft-source-documents -> research-deck -> "
+        "prepare -> validate -> apply"
+    )
+    root_readme = Path("README.md").read_text(encoding="utf-8")
+    operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert root_readme.count(exact_chain) == 1
+    assert operator_readme.count(exact_chain) == 1
+    assert "Lower-level inspected path:" in root_readme
+    assert "## Lower-Level Inspected Path" in operator_readme
+    assert "The lower-level normal path remains available for inspected work:" not in root_readme
+    assert (
+        "The lower-level normal path remains available for inspected work:"
+        not in operator_readme
+    )
+
+
+def test_operator_docs_keep_source_backed_strong_out_of_apply_permission():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert (
+        "`semantic_status=SOURCE_BACKED_STRONG` means source coverage and "
+        "per-card closure support source-backed confidence and handoff."
+    ) in text
+    assert (
+        "`semantic_status=SOURCE_BACKED_STRONG` means source coverage and "
+        "per-card closure are strong enough for normal apply or handoff."
+    ) not in text
+    assert (
+        "`runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` "
+        "is allowed."
+    ) in text
 
 
 def test_operator_docs_explain_runtime_apply_mode_is_descriptive():

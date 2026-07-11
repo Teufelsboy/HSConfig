@@ -18,13 +18,7 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 This command runs the lower-level pre-run chain, writes a validated package, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`.
 
-The lower-level normal path remains available for inspected work:
-
-`source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`
-
-Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
-
-Use the lower-level inspected path when the source evidence, source documents, or research outputs need operator inspection before package preparation.
+For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
 
@@ -36,6 +30,8 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 4. Run `hsconfig apply` only when the operator summary allows it, or use `hsconfig configure --apply` when the same guarded apply should happen in the configure run.
 
 ## Lower-Level Inspected Path
+
+Lower-level inspected path: `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 
 Use this path when each source and research stage must be inspected before package preparation.
 
@@ -100,7 +96,7 @@ For the durable no-block contract across valid Wild decks, see
 - `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` is allowed.
 - `runtime_apply_mode=blocked` means no runtime write should happen because the package is invalid or load-unsafe.
 - `runtime_apply_allowed=true` is descriptive; the CLI and `apply_package()` still re-evaluate the gate before writing.
-- `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure are strong enough for normal apply or handoff.
+- `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure support source-backed confidence and handoff. It is not a runtime apply permission; use `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` for normal guarded apply.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid and load-safe, but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work before it can be called source-backed strong.
 - `apply_policy=ALLOWED` marks the no-warning source-strong path; it is not the only normal apply permission.
 - `next_action=READY_TO_APPLY_WITH_WARNINGS` plus `apply_policy=ALLOWED_WITH_WARNINGS` means the package is still allowed to write at runtime when `technical_status=VALID_PACKAGE`, while semantic warnings remain visible in the reports.
