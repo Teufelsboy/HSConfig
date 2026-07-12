@@ -14,8 +14,13 @@ def build_report_ownership() -> list[dict[str, Any]]:
         },
         {
             "file": "reports/source_contract_audit.json",
-            "authority": "source_to_runtime_explanation",
+            "authority": "diagnostic_source_to_runtime_explanation",
             "answers": "why each source claim did or did not lower to runtime config",
+            "contains": "claim lanes, surface gate decisions, policy lanes, first missing links",
+            "notes": (
+                "diagnostic only; does not grant apply permission; "
+                "does not replace operator_summary.json"
+            ),
             "open_order": "2",
         },
         {

@@ -1908,3 +1908,34 @@ def test_operator_summary_exposes_source_contract_audit_without_blocking_apply()
     assert audit["runtime_lowered_claims"] == 1
     assert audit["suppressed_claims"] == 1
     assert audit["next_report_to_open"] == "reports/source_contract_audit.json"
+
+
+def test_source_contract_policy_counts_do_not_block_valid_package():
+    summary = build_operator_summary(
+        deck_name="FixtureDeck",
+        technical_validation={"status": "passed"},
+        source_contract_audit_report={
+            "summary": {
+                "claims_total": 2,
+                "runtime_lowered_claims": 0,
+                "suppressed_claims": 1,
+                "runtime_evidence_required_claims": 1,
+                "report_only_claims": 0,
+                "unsupported_or_unmapped_claims": 0,
+                "cards_total": 1,
+                "cards_with_missing_links": 1,
+                "claim_kind_policy_counts": {
+                    "runtime_evidence_required": 1,
+                    "suppressed_or_conditional": 1,
+                },
+            }
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert summary["next_action"] in {
+        "READY_TO_APPLY_OR_HANDOFF",
+        "READY_TO_APPLY_WITH_WARNINGS",
+    }

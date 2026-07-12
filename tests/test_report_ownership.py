@@ -40,3 +40,14 @@ def test_report_ownership_includes_mechanic_diagnostics():
     assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "8"
     assert by_file["reports/semantic_enrichment_report.json"]["authority"] == "semantic_mechanic_diagnostics"
     assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "9"
+
+
+def test_source_contract_audit_is_diagnostic_not_gate():
+    rows = build_report_ownership()
+    by_file = {row["file"]: row for row in rows}
+
+    audit = by_file["reports/source_contract_audit.json"]
+
+    assert audit["authority"] == "diagnostic_source_to_runtime_explanation"
+    assert audit["open_order"] != "1"
+    assert "does not grant apply permission" in audit["notes"]
