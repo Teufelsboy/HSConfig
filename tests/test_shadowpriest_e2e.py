@@ -157,6 +157,30 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         for row in source_contract_audit["claim_lifecycle_rows"]
         if row.get("claim_id") in darkbishop_claim_ids
     ]
+    darkbishop_mulligan_lifecycle = [
+        row
+        for row in darkbishop_lifecycle_rows
+        if row["claim_kind"] == "mulligan_keep"
+    ]
+    darkbishop_effect_lifecycle = [
+        row
+        for row in darkbishop_lifecycle_rows
+        if row["claim_kind"] == "hero_power_transform"
+    ]
+
+    assert darkbishop_effect_lifecycle
+    assert all(
+        row["builder_or_router_decision"] == "emitted"
+        for row in darkbishop_effect_lifecycle
+    )
+    assert all(
+        row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
+        or "SW_448.json" in row["emitted_files"]
+        for row in darkbishop_effect_lifecycle
+    )
+    assert darkbishop_mulligan_lifecycle == []
+    assert "Darkbishop Benedictus" not in mulligan_text
+    assert "Mind Spike" in semantic_audit
     assert any(
         row["claim_kind"] == "hero_power_transform"
         and row["lane"] == "runtime_lowered"
