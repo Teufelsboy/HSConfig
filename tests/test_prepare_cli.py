@@ -1856,11 +1856,17 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert audit["schema_version"] == 1
     assert audit["summary"]["claims_total"] > 0
     assert audit["summary"]["runtime_lowered_claims"] > 0
+    assert "claim_kind_policy_counts" in audit["summary"]
+    assert all("policy_lane" in row for row in audit["claim_rows"].values())
     assert "SW_448" in audit["card_rows"]
     assert (reports / "source_contract_audit.md").is_file()
     assert "reports/source_contract_audit.json" in generated
     assert "reports/source_contract_audit.md" in generated
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert (
+        operator_summary["source_contract_audit_summary"]["next_report_to_open"]
+        in {None, "reports/source_contract_audit.json"}
+    )
     assert (
         operator_summary["source_contract_audit_summary"]["runtime_lowered_claims"]
         == audit["summary"]["runtime_lowered_claims"]
