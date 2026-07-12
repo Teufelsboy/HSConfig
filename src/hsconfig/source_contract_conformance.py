@@ -171,7 +171,7 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         surface: _decision_row(surface_gate_decision(claim, surface, context=context))
         for surface in SURFACES
     }
-    return {
+    row = {
         "claim_kind": claim_kind,
         "policy_lane": str(policy_row.get("lane", "")),
         "allowed_surfaces": list(policy_row.get("allowed_surfaces", ())),
@@ -179,6 +179,84 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         "surface_gates": gates,
         "builder_router": _builder_router_expectation(claim_kind),
     }
+    row["lifecycle"] = _claim_lifecycle(row)
+    return row
+
+
+def _claim_lifecycle(row: Mapping[str, Any]) -> dict[str, Any]:
+    allowed_surfaces = [str(surface) for surface in row.get("allowed_surfaces", [])]
+    return {
+        "policy_lane": str(row.get("policy_lane", "")),
+        "allowed_surfaces": allowed_surfaces,
+        "surface_gate_status": _surface_gate_status(row),
+        "builder_status": _builder_status(row.get("builder_router", {})),
+        "final_runtime_effect": _final_runtime_effect(row),
+        "operator_meaning": str(row.get("operator_meaning", "")),
+    }
+
+
+def _surface_gate_status(row: Mapping[str, Any]) -> str:
+    allowed_surfaces = [str(surface) for surface in row.get("allowed_surfaces", [])]
+    if not allowed_surfaces:
+        return "no_allowed_surface"
+    gates = row.get("surface_gates", {})
+    if not isinstance(gates, Mapping):
+        return "missing_surface_gates"
+    statuses = []
+    for surface in allowed_surfaces:
+        gate = gates.get(surface, {})
+        if not isinstance(gate, Mapping):
+            statuses.append(f"{surface}:missing")
+            continue
+        statuses.append(f"{surface}:{gate.get('decision', '')}")
+    return "; ".join(statuses)
+
+
+def _builder_status(builder_router: Any) -> str:
+    if not isinstance(builder_router, Mapping):
+        return "no_builder_router"
+    runner = str(builder_router.get("runner", ""))
+    complete = builder_router.get("complete", {})
+    if not isinstance(complete, Mapping):
+        return f"{runner}:missing_complete_exemplar"
+    status = f"{runner}:{complete.get('outcome', '')}"
+    incomplete = builder_router.get("incomplete")
+    if isinstance(incomplete, Mapping):
+        status = (
+            f"{status}; incomplete:{incomplete.get('outcome', '')}:"
+            f"{incomplete.get('reason', '')}"
+        )
+    elif complete.get("reason") and complete.get("reason") != complete.get("outcome"):
+        status = f"{status}:{complete.get('reason')}"
+    return status
+
+
+def _final_runtime_effect(row: Mapping[str, Any]) -> str:
+    claim_kind = str(row.get("claim_kind", ""))
+    builder_router = row.get("builder_router", {})
+    if claim_kind == "globalvalue_numeric_tuning":
+        return "suppressed_until_runtime_evidence"
+    if claim_kind == "combo_sequence":
+        return "emits_when_builder_prerequisites_are_complete"
+    if claim_kind in {"archetype", "tech_slot", "replacement_option"}:
+        return "report_only_no_runtime_row"
+    if not isinstance(builder_router, Mapping):
+        return "unknown_runtime_effect"
+    surface = builder_router.get("surface")
+    complete = builder_router.get("complete", {})
+    if not isinstance(complete, Mapping):
+        return "unknown_runtime_effect"
+    if complete.get("outcome") != "emitted":
+        return f"suppressed:{complete.get('reason', '')}"
+    if surface == "mulligan":
+        return "emits_mulligan_runtime_row"
+    if surface == "globalvalues":
+        return "emits_globalvalues_posture_overlay"
+    if surface == "cardid":
+        return "emits_cardid_runtime_row"
+    if surface == "combo":
+        return "emits_combo_runtime_row"
+    return "report_only_no_runtime_row"
 
 
 def _builder_router_expectation(claim_kind: str) -> dict[str, Any]:

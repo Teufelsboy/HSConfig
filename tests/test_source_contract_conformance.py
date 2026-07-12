@@ -213,3 +213,36 @@ def test_conformance_snapshot_keeps_legacy_mismatch_keys_as_attention_aliases():
         "builder_prerequisite_gaps"
     ]
     assert summary["pipeline_mismatch_count"] == summary["pipeline_attention_count"]
+
+
+def test_conformance_snapshot_exposes_claim_lifecycle_for_key_claims():
+    rows = build_source_contract_conformance_snapshot()["claim_kind_rows"]
+
+    assert rows["hero_power_transform"]["lifecycle"] == {
+        "policy_lane": "suppressed_or_conditional",
+        "allowed_surfaces": ["cardid"],
+        "surface_gate_status": "cardid:allowed",
+        "builder_status": "route_card_behavior_surfaces:emitted",
+        "final_runtime_effect": "emits_cardid_runtime_row",
+        "operator_meaning": (
+            "Preserve hero-power-transform semantics; it is not a mulligan keep by itself."
+        ),
+    }
+    assert rows["globalvalue_numeric_tuning"]["lifecycle"] == {
+        "policy_lane": "runtime_evidence_required",
+        "allowed_surfaces": [],
+        "surface_gate_status": "no_allowed_surface",
+        "builder_status": "build_globalvalues_authority_matrix:suppressed:requires_runtime_evidence",
+        "final_runtime_effect": "suppressed_until_runtime_evidence",
+        "operator_meaning": (
+            "Valid evidence, but Step 1 must wait for runtime evidence before numeric tuning."
+        ),
+    }
+    assert rows["combo_sequence"]["lifecycle"] == {
+        "policy_lane": "runtime_lowerable",
+        "allowed_surfaces": ["combo"],
+        "surface_gate_status": "combo:allowed",
+        "builder_status": "build_combo_plan:emitted; incomplete:suppressed:sequence_too_short",
+        "final_runtime_effect": "emits_when_builder_prerequisites_are_complete",
+        "operator_meaning": "Can lower only as an explicit ordered Combo.json sequence.",
+    }
