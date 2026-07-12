@@ -93,3 +93,17 @@ def test_conformance_markdown_is_compact_and_diagnostic_only():
     assert "| mulligan_keep | runtime_lowerable | mulligan |" in markdown
     assert "| globalvalue_numeric_tuning | runtime_evidence_required | none |" in markdown
     assert "operator_summary.json remains the apply authority" in markdown
+
+
+def test_conformance_snapshot_contains_no_apply_authority_fields():
+    snapshot = build_source_contract_conformance_snapshot()
+
+    forbidden_keys = {
+        "runtime_apply_allowed",
+        "runtime_apply_mode",
+        "apply_policy",
+        "next_action",
+        "technical_status",
+    }
+    assert forbidden_keys.isdisjoint(snapshot)
+    assert snapshot["operator_gate_impact"] == "diagnostic_only"

@@ -51,3 +51,12 @@ def test_source_contract_audit_is_diagnostic_not_gate():
     assert audit["authority"] == "diagnostic_source_to_runtime_explanation"
     assert audit["open_order"] != "1"
     assert "does not grant apply permission" in audit["notes"]
+
+
+def test_source_contract_conformance_is_not_operator_report():
+    ownership = build_report_ownership()
+    files = {row["file"] for row in ownership}
+
+    assert "reports/source_contract_conformance.json" not in files
+    assert "reports/operator_summary.json" in files
+    assert "reports/source_contract_audit.json" in files
