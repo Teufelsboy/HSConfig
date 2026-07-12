@@ -78,6 +78,7 @@ def build_source_contract_conformance_snapshot() -> dict[str, Any]:
             "pipeline_mismatch_count": pipeline_attention_count,
         },
         "claim_kind_rows": rows,
+        "contract_spine_rows": _contract_spine_rows(rows),
         "start_of_game_mulligan_suppression": _start_of_game_suppression_row(),
     }
 
@@ -90,6 +91,9 @@ def render_source_contract_conformance_markdown(snapshot: Mapping[str, Any]) -> 
     summary = snapshot.get("summary", {})
     if not isinstance(summary, Mapping):
         summary = {}
+    spine_rows = snapshot.get("contract_spine_rows", [])
+    if not isinstance(spine_rows, list):
+        spine_rows = []
     lines = [
         "# Source Contract Conformance Snapshot",
         "",
@@ -107,9 +111,33 @@ def render_source_contract_conformance_markdown(snapshot: Mapping[str, Any]) -> 
             count=summary.get("pipeline_attention_count", 0)
         ),
         "",
+        "## Contract Spine",
+        "",
+        "| Claim Kind | Policy Lane | Surface Gate | Builder Status | Final Runtime Effect | Operator Gate Impact |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for row in spine_rows:
+        if not isinstance(row, Mapping):
+            continue
+        lines.append(
+            "| {claim} | {lane} | {gate} | {builder} | {effect} | {impact} |".format(
+                claim=_escape_table(row.get("claim_kind", "")),
+                lane=_escape_table(row.get("policy_lane", "")),
+                gate=_escape_table(row.get("surface_gate_status", "")),
+                builder=_escape_table(row.get("builder_status", "")),
+                effect=_escape_table(row.get("final_runtime_effect", "")),
+                impact=_escape_table(row.get("operator_gate_impact", "")),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            "## Claim Kind Surface Matrix",
+            "",
         "| Claim Kind | Policy Lane | Allowed Surfaces | Gate Summary |",
         "| --- | --- | --- | --- |",
-    ]
+        ]
+    )
     for claim_kind, row in sorted(rows.items()):
         if not isinstance(row, Mapping):
             continue
@@ -257,6 +285,30 @@ def _claim_lifecycle(row: Mapping[str, Any]) -> dict[str, Any]:
         "final_runtime_effect": _final_runtime_effect(row),
         "operator_meaning": str(row.get("operator_meaning", "")),
     }
+
+
+def _contract_spine_rows(rows: Mapping[str, Any]) -> list[dict[str, Any]]:
+    spine: list[dict[str, Any]] = []
+    for claim_kind, row in sorted(rows.items()):
+        if not isinstance(row, Mapping):
+            continue
+        lifecycle = row.get("lifecycle", {})
+        if not isinstance(lifecycle, Mapping):
+            lifecycle = {}
+        spine.append(
+            {
+                "claim_kind": str(claim_kind),
+                "policy_lane": str(lifecycle.get("policy_lane", "")),
+                "allowed_surfaces": [
+                    str(surface) for surface in lifecycle.get("allowed_surfaces", [])
+                ],
+                "surface_gate_status": str(lifecycle.get("surface_gate_status", "")),
+                "builder_status": str(lifecycle.get("builder_status", "")),
+                "final_runtime_effect": str(lifecycle.get("final_runtime_effect", "")),
+                "operator_gate_impact": OPERATOR_GATE_IMPACT,
+            }
+        )
+    return spine
 
 
 def _surface_gate_status(row: Mapping[str, Any]) -> str:

@@ -248,6 +248,34 @@ def test_conformance_snapshot_exposes_claim_lifecycle_for_key_claims():
     }
 
 
+def test_conformance_snapshot_exposes_flat_contract_spine_rows():
+    snapshot = build_source_contract_conformance_snapshot()
+    spine_rows = snapshot["contract_spine_rows"]
+
+    assert len(spine_rows) == len(SUPPORTED_ATOMIC_CLAIM_KINDS)
+    assert {row["claim_kind"] for row in spine_rows} == set(SUPPORTED_ATOMIC_CLAIM_KINDS)
+
+    hero_power = next(
+        row for row in spine_rows if row["claim_kind"] == "hero_power_transform"
+    )
+    assert hero_power == {
+        "claim_kind": "hero_power_transform",
+        "policy_lane": "suppressed_or_conditional",
+        "allowed_surfaces": ["cardid"],
+        "surface_gate_status": "cardid:allowed",
+        "builder_status": "route_card_behavior_surfaces:emitted",
+        "final_runtime_effect": "emits_cardid_runtime_row",
+        "operator_gate_impact": "diagnostic_only",
+    }
+
+    numeric = next(
+        row for row in spine_rows if row["claim_kind"] == "globalvalue_numeric_tuning"
+    )
+    assert numeric["surface_gate_status"] == "no_allowed_surface"
+    assert numeric["final_runtime_effect"] == "suppressed_until_runtime_evidence"
+    assert numeric["operator_gate_impact"] == "diagnostic_only"
+
+
 def test_conformance_markdown_uses_drift_and_prerequisite_language():
     markdown = render_source_contract_conformance_markdown(
         build_source_contract_conformance_snapshot()
@@ -266,4 +294,23 @@ def test_conformance_markdown_uses_drift_and_prerequisite_language():
     assert (
         "| hero_power_transform | suppressed_or_conditional | cardid:allowed | "
         "route_card_behavior_surfaces:emitted | emits_cardid_runtime_row |"
+    ) in markdown
+
+
+def test_conformance_markdown_renders_contract_spine_section():
+    markdown = render_source_contract_conformance_markdown(
+        build_source_contract_conformance_snapshot()
+    )
+
+    assert "## Contract Spine" in markdown
+    assert (
+        "| hero_power_transform | suppressed_or_conditional | cardid:allowed | "
+        "route_card_behavior_surfaces:emitted | emits_cardid_runtime_row | "
+        "diagnostic_only |"
+    ) in markdown
+    assert (
+        "| globalvalue_numeric_tuning | runtime_evidence_required | "
+        "no_allowed_surface | "
+        "build_globalvalues_authority_matrix:suppressed:requires_runtime_evidence | "
+        "suppressed_until_runtime_evidence | diagnostic_only |"
     ) in markdown
