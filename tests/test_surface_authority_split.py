@@ -7,6 +7,7 @@ from hsconfig.source_document_model import (
     can_lower_to_mulligan,
     normalized_claim_kind,
     runtime_claim_kind,
+    surface_gate_decision,
 )
 
 
@@ -146,3 +147,41 @@ def test_contract_policy_keeps_numeric_tuning_and_start_effect_boundaries_explic
     assert policy["hero_power_transform"]["lane"] == "suppressed_or_conditional"
     assert policy["hero_power_transform"]["allowed_surfaces"] == ("cardid",)
     assert "not a mulligan keep" in policy["hero_power_transform"]["operator_meaning"]
+
+
+def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
+    policy = source_contract_policy_by_claim_kind()
+    surfaces = ("mulligan", "globalvalues", "cardid", "combo")
+    card_roles = {
+        "CARD_001": {
+            "roles": ["mulligan_anchor"],
+            "semantic_families": [],
+        }
+    }
+
+    unconditional_allowed = {
+        "mulligan_keep": ("mulligan",),
+        "mulligan_discard": ("mulligan",),
+        "targeting_rule": ("cardid",),
+        "combo_sequence": ("combo",),
+        "gameplan_posture": ("globalvalues",),
+    }
+
+    for claim_kind, row in policy.items():
+        claim = {
+            "claim_kind": claim_kind,
+            "claim_readiness": "guide_backed",
+            "trust_ceiling": "runtime_candidate",
+            "cards": ["CARD_001"],
+        }
+        for surface in surfaces:
+            decision = surface_gate_decision(
+                claim,
+                surface,
+                context={"card_roles": card_roles},
+            )
+            expected_unconditional = surface in unconditional_allowed.get(claim_kind, ())
+            if expected_unconditional:
+                assert decision.allowed is True, (claim_kind, surface, decision.reason)
+            elif surface not in row["allowed_surfaces"]:
+                assert decision.allowed is False, (claim_kind, surface)
