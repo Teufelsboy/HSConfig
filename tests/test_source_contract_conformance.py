@@ -58,13 +58,20 @@ def test_conformance_snapshot_records_builder_router_expectations_and_combo_prer
     assert combo["incomplete"]["outcome"] == "suppressed"
     assert combo["incomplete"]["reason"] == "sequence_too_short"
 
-    assert snapshot["summary"]["surface_gate_builder_mismatch_count"] >= 1
+    assert snapshot["summary"]["builder_prerequisite_gap_count"] >= 1
     assert {
         "claim_kind": "combo_sequence",
         "surface": "combo",
         "builder_outcome": "suppressed",
         "reason": "sequence_too_short",
-    } in snapshot["summary"]["surface_gate_builder_mismatches"]
+    } in [
+        {
+            key: value
+            for key, value in row.items()
+            if key in {"claim_kind", "surface", "builder_outcome", "reason"}
+        }
+        for row in snapshot["summary"]["builder_prerequisite_gaps"]
+    ]
 
 
 def test_conformance_snapshot_describes_a_policy_gate_mismatch(monkeypatch):
@@ -170,3 +177,39 @@ def test_conformance_snapshot_contains_no_apply_authority_fields():
     }
     assert forbidden_keys.isdisjoint(snapshot)
     assert snapshot["operator_gate_impact"] == "diagnostic_only"
+
+
+def test_conformance_snapshot_distinguishes_drift_from_builder_prerequisites():
+    summary = build_source_contract_conformance_snapshot()["summary"]
+
+    assert summary["policy_gate_mismatch_count"] == 0
+    assert summary["builder_router_expectation_mismatch_count"] == 0
+    assert summary["unexpected_contract_drift_count"] == 0
+    assert summary["unexpected_contract_drifts"] == []
+
+    assert summary["builder_prerequisite_gap_count"] == 1
+    assert summary["builder_prerequisite_gaps"] == [
+        {
+            "claim_kind": "combo_sequence",
+            "surface": "combo",
+            "builder_outcome": "suppressed",
+            "reason": "sequence_too_short",
+            "operator_meaning": (
+                "Surface gate allows this claim kind, but the builder still needs "
+                "a complete sequence before runtime JSON can be emitted."
+            ),
+        }
+    ]
+    assert summary["pipeline_attention_count"] == 1
+
+
+def test_conformance_snapshot_keeps_legacy_mismatch_keys_as_attention_aliases():
+    summary = build_source_contract_conformance_snapshot()["summary"]
+
+    assert summary["surface_gate_builder_mismatch_count"] == summary[
+        "builder_prerequisite_gap_count"
+    ]
+    assert summary["surface_gate_builder_mismatches"] == summary[
+        "builder_prerequisite_gaps"
+    ]
+    assert summary["pipeline_mismatch_count"] == summary["pipeline_attention_count"]

@@ -48,7 +48,14 @@ def build_source_contract_conformance_snapshot() -> dict[str, Any]:
     lane_counts = Counter(str(row["policy_lane"]) for row in rows.values())
     policy_gate_mismatches = _policy_gate_mismatches(rows)
     builder_expectation_mismatches = _builder_expectation_mismatches(rows)
-    surface_gate_builder_mismatches = _surface_gate_builder_mismatches(rows)
+    builder_prerequisite_gaps = _builder_prerequisite_gaps(rows)
+    unexpected_contract_drifts = [
+        *policy_gate_mismatches,
+        *builder_expectation_mismatches,
+    ]
+    pipeline_attention_count = len(unexpected_contract_drifts) + len(
+        builder_prerequisite_gaps
+    )
     return {
         "schema_version": 1,
         "operator_gate_impact": OPERATOR_GATE_IMPACT,
@@ -61,11 +68,14 @@ def build_source_contract_conformance_snapshot() -> dict[str, Any]:
             "policy_gate_mismatches": policy_gate_mismatches,
             "builder_router_expectation_mismatch_count": len(builder_expectation_mismatches),
             "builder_router_expectation_mismatches": builder_expectation_mismatches,
-            "surface_gate_builder_mismatch_count": len(surface_gate_builder_mismatches),
-            "surface_gate_builder_mismatches": surface_gate_builder_mismatches,
-            "pipeline_mismatch_count": len(policy_gate_mismatches)
-            + len(builder_expectation_mismatches)
-            + len(surface_gate_builder_mismatches),
+            "unexpected_contract_drift_count": len(unexpected_contract_drifts),
+            "unexpected_contract_drifts": unexpected_contract_drifts,
+            "builder_prerequisite_gap_count": len(builder_prerequisite_gaps),
+            "builder_prerequisite_gaps": builder_prerequisite_gaps,
+            "pipeline_attention_count": pipeline_attention_count,
+            "surface_gate_builder_mismatch_count": len(builder_prerequisite_gaps),
+            "surface_gate_builder_mismatches": builder_prerequisite_gaps,
+            "pipeline_mismatch_count": pipeline_attention_count,
         },
         "claim_kind_rows": rows,
         "start_of_game_mulligan_suppression": _start_of_game_suppression_row(),
@@ -374,9 +384,9 @@ def _builder_expectation_mismatches(rows: Mapping[str, Any]) -> list[dict[str, A
     return mismatches
 
 
-def _surface_gate_builder_mismatches(rows: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Expose builder prerequisites beyond an allowed runtime-surface gate."""
-    mismatches = []
+def _builder_prerequisite_gaps(rows: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Expose expected builder prerequisites beyond an allowed surface gate."""
+    gaps = []
     for claim_kind, row in sorted(rows.items()):
         if not isinstance(row, Mapping):
             continue
@@ -396,15 +406,19 @@ def _surface_gate_builder_mismatches(rows: Mapping[str, Any]) -> list[dict[str, 
                 continue
             if exemplar.get("outcome") == "emitted":
                 continue
-            mismatches.append(
+            gaps.append(
                 {
                     "claim_kind": claim_kind,
                     "surface": surface,
                     "builder_outcome": exemplar.get("outcome", ""),
                     "reason": exemplar.get("reason", ""),
+                    "operator_meaning": (
+                        "Surface gate allows this claim kind, but the builder still needs "
+                        "a complete sequence before runtime JSON can be emitted."
+                    ),
                 }
             )
-    return mismatches
+    return gaps
 
 
 def _gate_summary(gates: Any) -> str:
