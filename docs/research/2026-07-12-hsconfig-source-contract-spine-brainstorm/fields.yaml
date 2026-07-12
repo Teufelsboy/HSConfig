@@ -1,0 +1,43 @@
+field_categories:
+  - category: source_contract_spine_audit
+    fields:
+      - name: current_truth
+        required: true
+        type: string
+        description: Source-backed factual summary relevant to HSConfig source-contract logic.
+      - name: checked_sources
+        required: true
+        type: list
+        description: Public URLs, local files, tests, or docs checked.
+      - name: source_backed_claims
+        required: true
+        type: list
+        description: Concrete claims supported by sources or local repository evidence.
+      - name: risk_to_hsconfig
+        required: true
+        type: list
+        description: Ways HSConfig could misclassify source text, card semantics, or runtime lowering.
+      - name: recommended_contract_rule
+        required: true
+        type: list
+        description: Narrow rules HSConfig should preserve or adopt to stay competent and lean.
+      - name: autonomy_implication
+        required: true
+        type: list
+        description: What the finding means for fully autonomous deck-to-config operation.
+      - name: validation_implications
+        required: true
+        type: list
+        description: Tests, fixtures, scans, or reports that should prove the rule.
+      - name: keep_out_of_scope
+        required: true
+        type: list
+        description: Things that should remain out of the normal source-contract path to keep it slim.
+      - name: confidence_model
+        required: true
+        type: string
+        description: How confidence should flow from source claim to contract to runtime output.
+      - name: uncertain
+        required: true
+        type: list
+        description: Field names or claims that remain uncertain.

@@ -23,6 +23,7 @@ Older research packages can explain why a decision happened, but they do not ove
 
 | Package | Role | Current implication |
 | --- | --- | --- |
+| `docs/research/2026-07-12-hsconfig-source-contract-spine-brainstorm/` | Contract-spine freeze and no-second-gate evidence | Keep `operator_summary.json` as the normal apply authority; `source_contract_audit.json` and `contract_spine_rows` remain diagnostic explanations of source -> policy -> surface gate -> builder/router -> runtime effect. |
 | `docs/research/2026-07-11-hsconfig-source-contract-logic-audit/` | Source and runtime contract evidence | Treat `claim_kind` as semantic input to the runtime surface gates; broad guide text and start-of-game effects must not become Mulligan keeps without explicit mulligan claims. |
 | `docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/` | Post-hardening skill audit evidence | Keep the current lean HSConfig boundary, correct Presume surface wording, preserve no-block apply behavior, and use real decks for targeted defects instead of another broad architecture wave. |
 | `docs/research/2026-07-11-hsconfig-current-skill-audit/` | Current skill contract and slimness evidence | Keep HSConfig narrow; harden the no-block apply gate with executable tests, correct Presume/Concede wording, and keep the active skill/workflow docs compact. |
@@ -31,6 +32,8 @@ Older research packages can explain why a decision happened, but they do not ove
 | `docs/research/2026-07-09-hsconfig-next-recommendation-mechanic-polish/` | Visibility-only Mechanic Polish | Add non-blocking mechanic visibility for `choose_one`, `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool`; do not change apply gates. |
 | `docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/` | No-block Wild mechanic evidence | Valid deck packages should stay load-safe even when mechanic semantics are report-only. |
 | `docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/` | Universal no-block evidence | The no-block promise is implemented through warning visibility, not through broader runtime writes. |
+
+operator_summary.json remains the normal apply authority; source_contract_audit.json remains diagnostic.
 
 - `2026-07-11-hsconfig-live-skill-audit`: Live skill audit evidence. Confirms HSConfig is ready for real-deck usage with narrow polish only: normal runtime surface unchanged, `hsconfig configure` preferred, warning-only mechanics remain non-blocking, and Presume/Concede stale citation notes are superseded by the active operator docs and runtime-surface audit.
 

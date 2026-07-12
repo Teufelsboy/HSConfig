@@ -1,0 +1,83 @@
+{
+  "current_truth": "Public HearthRanger VisionAI documentation still exposes the core CustomConfig surface family as `Mulligan.json`, `GlobalValues.json`, per-card `CARDID.json`, `Combo.json`, `Presume.json`, and `Concede.json`. HSConfig's current runtime contract should keep `Mulligan.json`, `GlobalValues.json`, per-card `CARDID.json`, and exact `Combo.json` as the normal direct outputs because those are the surfaces that map cleanly to pre-run source claims and normal package generation. `Presume.json` and `Concede.json` should remain legacy diagnostic surfaces in HSConfig because they are publicly documented but intentionally outside the normal path, behind explicit legacy policy handling, and blocked by the normal apply gate when they appear in a standard package. `operator_summary.json` should remain the only normal apply authority, while `source_contract_audit.json` and `contract_spine_rows` should remain diagnostic explanation surfaces rather than a second operator gate.",
+  "checked_sources": [
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "Public official URL: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Local source manifest: C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "HSConfig runtime boundary: C:/Users/darbo/Documents/HSConfig/README.md",
+    "HSConfig source-contract and no-second-gate policy: C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "HSConfig no-block and normal-path runtime contract: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "HSConfig surface registry: C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "HSConfig surface-intent builder: C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py",
+    "HSConfig apply authority gate: C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "HSConfig acceptance-matrix diagnostic authority: C:/Users/darbo/Documents/HSConfig/src/hsconfig/acceptance_matrix.py",
+    "Tests for apply gate: C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "Tests for normal surface intent: C:/Users/darbo/Documents/HSConfig/tests/test_surface_intent.py",
+    "Tests for registry classification: C:/Users/darbo/Documents/HSConfig/tests/test_visionai_registry.py",
+    "Tests for expected fixture runtime surfaces: C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_matrix.py",
+    "Tests for normal package output shape: C:/Users/darbo/Documents/HSConfig/tests/test_autonomous_guide_workflow_e2e.py"
+  ],
+  "source_backed_claims": [
+    "The official mulligan help page defines `Mulligan.json` as a dedicated file with `GameCardId` `Mulligan`, explicit hold and discard rows, and opening-hand conditions such as coin and opponent class.",
+    "The official global-values help page defines `GlobalValues.json` as a dedicated file with `GameCardId` `GlobalValues`, recommends copying the default baseline, and frames it as deck-wide board-value and weighting posture.",
+    "The official card-behavior help page defines per-card `CARDID.json` files as the main carrier for card-specific behavior blocks such as `BeforePlayCardBonus`, `BeforeBattlecryTargetBonus`, `BeforeUseHeroPowerBonus`, `BeforePhysicalAttackBonus`, `OnDiscoverCardBonus`, and `OnChooseOneCardBonus`.",
+    "The official combo help page defines `Combo.json` as a dedicated file with `GameCardId` `Combo`, `ComboList`, explicit sequence order, and exact value-token parity, which supports keeping combo output narrow and exact.",
+    "The official AOE play-around page defines `Presume.json` as opponent-hand presumption logic tied to second-turn simulation, which makes it a special policy surface rather than a normal direct output for HSConfig's pre-run path.",
+    "The official concede help page defines `Concede.json` as extra auto-concede policy, which is a separate policy surface rather than core initial deck behavior output.",
+    "HSConfig's `visionai_registry.py` recognizes `GlobalValues.json`, `Mulligan.json`, `Combo.json`, and per-card `CARDID.json` as normal-path runtime surfaces, but marks `Presume.json` and `Concede.json` as `known_non_normal_surface` with `normal_path_runtime` set to `False`.",
+    "HSConfig's `surface_intent.py` always includes `GlobalValues.json` and `Mulligan.json`, emits per-card `CARDID.json` rows from card contracts, emits `Combo.json` only when concrete combos exist, and only routes `Presume.json` or `Concede.json` when `legacy_policy_surfaces_enabled` is explicitly enabled.",
+    "HSConfig's `apply_gate.py` requires `GlobalValues.json` and `Mulligan.json` for minimal normal load-safe apply, and blocks packages that contain `Presume.json` or `Concede.json` in the normal path.",
+    "HSConfig's `guide-research-policy.md` explicitly says `source_contract_audit.json.claim_lifecycle_rows` and `contract_spine_rows` are diagnostic only and that `operator_summary.json` remains the normal apply authority.",
+    "HSConfig's `universal-wild-no-block-contract.md` explicitly says `Presume.json` and `Concede.json` are legacy or diagnostic VisionAI surfaces outside the normal HSConfig output path and that their absence never blocks a valid load-safe package.",
+    "HSConfig's fixture and workflow tests expect `GlobalValues.json`, `Mulligan.json`, and per-card JSON richness in normal packages, while treating `Combo.json` as conditional and excluding `Presume.json` and `Concede.json` from the default normal output."
+  ],
+  "risk_to_hsconfig": [
+    "If HSConfig treats every publicly documented VisionAI file as a normal direct output, it will blur the boundary between core pre-run deck behavior surfaces and legacy policy surfaces, which would widen the package scope unnecessarily.",
+    "If HSConfig lets `Presume.json` or `Concede.json` enter the normal path implicitly, the normal apply gate and operator contract will drift out of sync with the documented repo policy.",
+    "If HSConfig treats `source_contract_audit.json` or `contract_spine_rows` as an authority surface instead of a diagnostic surface, operators could face contradictory readiness decisions between audit detail and `operator_summary.json`.",
+    "If HSConfig lowers generic importance, hero-power-transform text, or vague combo advice directly into `Mulligan.json` or `Combo.json`, it will misclassify source semantics into the wrong runtime surface.",
+    "If HSConfig weakens the exactness rule for `Combo.json`, symbolic synergy claims could become runtime rows even when the public VisionAI combo syntax expects explicit ordered sequences.",
+    "If HSConfig stops treating `GlobalValues.json` as a baseline-backed full-key profile surface, it risks emitting partial or semantically broad deck posture changes without clear authority."
+  ],
+  "recommended_contract_rule": [
+    "Keep the normal direct output family limited to `GlobalValues.json`, `Mulligan.json`, per-card `CARDID.json`, and exact `Combo.json`.",
+    "Keep `Presume.json` and `Concede.json` classified as known but non-normal surfaces, available only behind explicit legacy policy routing and never part of the default normal package.",
+    "Keep `operator_summary.json` as the only normal apply authority for HSConfig packages.",
+    "Keep `source_contract_audit.json` and `contract_spine_rows` diagnostic-only, with no power to allow or block apply independently.",
+    "Require explicit source-to-surface matching: only opening-hand claims lower to `Mulligan.json`, only concrete combo sequences lower to `Combo.json`, only posture overlays lower to `GlobalValues.json`, and only card-behavior claims lower to per-card `CARDID.json`.",
+    "Continue blocking normal-path packages that include `Presume.json` or `Concede.json` unless the repo intentionally changes the apply contract and operator documentation together.",
+    "Continue treating aggregate explanation artifacts as visibility tools, not second-gate readiness artifacts."
+  ],
+  "autonomy_implication": [
+    "This boundary is favorable for autonomous deck-to-config operation because it keeps the runtime-authority target small, explicit, and aligned with public VisionAI files that have stable syntax and clear semantics.",
+    "Autonomous research can stay aggressive in the diagnostic lane by generating rich source-contract traces, suppression reasons, and contract spine explanations without expanding runtime apply authority.",
+    "Autonomous package generation remains simpler and safer when operator-facing readiness comes from one file, `operator_summary.json`, rather than from multiple competing status surfaces.",
+    "Keeping `Presume.json` and `Concede.json` outside the normal path avoids hidden-information and concession-policy decisions from contaminating the baseline pre-run configuration workflow.",
+    "The model supports full automation without a second gate: source claims can be normalized, lowered, suppressed, and explained automatically while final runtime permission still flows through the same apply summary."
+  ],
+  "validation_implications": [
+    "Keep tests that prove `GlobalValues.json` and `Mulligan.json` are the required minimal normal apply files.",
+    "Keep tests that prove per-card `CARDID.json` files are normal runtime outputs for card behavior rather than report-only artifacts.",
+    "Keep tests that prove `Combo.json` is emitted only when concrete combo rows exist and stays absent when sequence authority is incomplete.",
+    "Keep tests that prove `Presume.json` and `Concede.json` are recognized surfaces but blocked in the normal path.",
+    "Keep tests that prove `operator_summary.json` controls apply readiness and that diagnostic detail files do not override it.",
+    "Keep contract-audit tests that verify `claim_lifecycle_rows` and `contract_spine_rows` remain visible even when claims are suppressed, without turning those rows into apply blockers.",
+    "Keep fixture-matrix or workflow tests that show normal packages across representative decks still center on `GlobalValues.json`, `Mulligan.json`, optional exact `Combo.json`, and per-card outputs."
+  ],
+  "keep_out_of_scope": [
+    "`Presume.json` as a default normal-path output.",
+    "`Concede.json` as a default normal-path output.",
+    "Any second readiness or apply gate derived from `source_contract_audit.json`.",
+    "Any second readiness or apply gate derived from `contract_spine_rows`.",
+    "Runtime-log or replay-tuning authority inside HSConfig's pre-run package contract.",
+    "Broad or symbolic combo ideas that do not meet exact `Combo.json` sequence requirements.",
+    "Wrong-surface lowering such as using hero-power-transform text or generic card importance as direct `Mulligan.json` authority."
+  ],
+  "confidence_model": "Confidence should flow in one direction: public HearthRanger surface documentation and current source claims establish what kind of runtime surface is allowed; HSConfig's source-contract policy decides whether a claim is lowerable to that surface; compilers and validators decide whether the concrete runtime row is structurally correct; `operator_summary.json` then becomes the single normal apply authority. Diagnostic artifacts such as `source_contract_audit.json` and `contract_spine_rows` should increase explainability and debugging depth, but they should never add a second independent permission model.",
+  "uncertain": []
+}

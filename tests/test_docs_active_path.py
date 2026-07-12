@@ -189,6 +189,31 @@ def test_research_current_truth_index_exists_and_keeps_operator_boundary():
     assert "Visibility-only Mechanic Polish" in text
 
 
+def test_current_truth_names_source_contract_spine_brainstorm_package():
+    text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+
+    assert "2026-07-12-hsconfig-source-contract-spine-brainstorm" in text
+    assert "Contract-spine freeze and no-second-gate evidence" in text
+    assert "operator_summary.json remains the normal apply authority" in text
+    assert "source_contract_audit.json remains diagnostic" in text
+
+
+def test_source_contract_spine_brainstorm_readme_marks_evidence_only():
+    root = Path("docs/research/2026-07-12-hsconfig-source-contract-spine-brainstorm")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+
+    assert "Research evidence only" in readme
+    assert "not operator instructions" in readme
+    assert "not runtime input" in readme
+    assert "does not grant runtime apply permission" in readme
+    assert "operator_summary.json remains the normal apply authority" in readme
+    assert "source_contract_audit.json remains diagnostic" in readme
+    assert "contract_spine_rows remain diagnostic" in readme
+    assert (root / "fields.yaml").exists()
+    assert (root / "outline.yaml").exists()
+    assert len(list((root / "results").glob("*.json"))) == 3
+
+
 def test_research_readme_points_to_current_truth_index():
     text = Path("docs/research/README.md").read_text(encoding="utf-8")
 

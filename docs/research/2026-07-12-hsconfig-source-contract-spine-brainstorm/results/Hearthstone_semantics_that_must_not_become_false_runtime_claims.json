@@ -1,0 +1,84 @@
+{
+  "current_truth": "HSConfig must keep Hearthstone semantics in separate lanes instead of collapsing them into runtime claims. Start-of-game and deckbuilding effects, hero power transforms, card-role importance, generated-card pools, Discover choices, Recruit pulls, Deathrattle value, auras, weapons, locations, and mulligan guidance all carry different certainty levels. The safe rule is: preserve real semantic importance in contract and report layers, but only lower to runtime rows when the source gives an exact, current, typed claim for that exact surface. Darkbishop Benedictus is the concrete example: the Start of Game Shadowform or Mind Spike effect matters and should stay encoded as hero_power_transform and deck posture, but the card itself must not become a mulligan hold unless explicit opening-hand evidence says to keep it.",
+  "checked_sources": [
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game",
+    "https://hearthstone.wiki.gg/wiki/Darkbishop_Benedictus",
+    "https://hearthstone.wiki.gg/wiki/Discover",
+    "https://hearthstone.wiki.gg/wiki/Generate",
+    "https://hearthstone.wiki.gg/wiki/Recruit",
+    "https://hearthstone.wiki.gg/wiki/Deathrattle",
+    "https://hearthstone.wiki.gg/wiki/Weapon",
+    "https://hearthstone.wiki.gg/wiki/Location",
+    "https://hearthstone.wiki.gg/wiki/Ongoing_effect",
+    "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+    "https://www.icy-veins.com/hearthstone/shadow-priest-deck",
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_shadowpriest_depth_e2e.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/shadowpriest_guide_sources.json"
+  ],
+  "source_backed_claims": [
+    "Start of Game effects trigger before the mulligan, so mulligan swaps do not decide whether a Start of Game condition is active.",
+    "Darkbishop Benedictus is a Start of Game hero-power-transform enabler, and current Shadow Priest mulligan evidence says the effect matters while the card itself should not be kept in the opening hand.",
+    "Discover presents one of three eligible cards, so HSConfig should not invent the chosen option or its runtime value unless exact option identity is source-resolved.",
+    "Recruit summons a random minion from the player's deck, so HSConfig can model recruiter timing but not truthfully claim which target will be pulled unless the identity is fixed by stronger evidence.",
+    "Deathrattle resolves when a minion, weapon, or location is destroyed, so timing, trigger order, resurrection quality, and downstream board state are broader than a simple one-line runtime claim.",
+    "Auras are ongoing effects tied to the provider staying in play, so they should be represented as posture or on-board value rather than as permanent facts that survive provider loss.",
+    "Generated cards and random pools are distinct from the starting list, so only exact generated identity or exact chosen-option identity should lower to runtime surfaces.",
+    "Weapon play has a dedicated runtime lane, but exact weapon combo timing still needs explicit sequence evidence rather than generic card-role text.",
+    "Locations are persistent board objects with repeat activations, so a play recommendation is not enough to claim full location-activation or targeting logic.",
+    "Mulligan runtime rows require explicit mulligan_keep or mulligan_discard evidence; absent keep text, generic importance, or generic gameplan language do not justify a hold or throw claim."
+  ],
+  "risk_to_hsconfig": [
+    "Confusing deckbuilding or Start of Game eligibility with a mulligan hold creates false opening-hand claims.",
+    "Treating phrases like core card, engine card, important card, or keep the effect active as if they were typed mulligan evidence will over-lower semantic importance into Mulligan.json.",
+    "Lowering Discover, generated-card, or Recruit text into exact future card identity invents information the source did not prove.",
+    "Treating auras, Deathrattles, and locations as fixed deterministic value ignores board presence, removal timing, repeat activations, and trigger order.",
+    "Treating transformed Hero Powers as generic hero power advice without exact resolved identity can leak false runtime rows into the wrong surface.",
+    "Treating a weapon mention as proof of full combo sequencing can invent order, target, or lethal assumptions that were not source-backed.",
+    "Borrowing runtime confidence from static semantics or guide prose can make a package look stronger than the underlying claim evidence supports.",
+    "Inferring discard from the absence of keep text or from stale guides can silently encode wrong mulligan behavior."
+  ],
+  "recommended_contract_rule": [
+    "Require exact typed mulligan evidence: only claim_kind mulligan_keep or mulligan_discard may create Mulligan.json rows.",
+    "Preserve Start of Game, deckbuilding, and hero-power-transform meaning as contract evidence, per-card behavior, or deck posture unless the source separately gives opening-hand instructions.",
+    "Encode Darkbishop Benedictus as start_of_game plus hero_power_transform plus deck-pressure semantics, but keep it out of Mulligan.json unless a current source explicitly says to keep it.",
+    "Treat Discover and other choice mechanics as identity-gated direct: lower only exact chosen or recommended option identity, and suppress unresolved options.",
+    "Treat generated-card and random-pool mechanics as report-visible or resolved-identity only; do not claim a random future card as certain runtime truth.",
+    "Treat Recruit as recruiter-timing support only on the normal path; the pulled card identity stays out of runtime claims unless stronger deterministic evidence exists.",
+    "Treat Deathrattle, aura, and location mechanics as partial support lanes that may express deploy, preserve, or posture value without claiming full resolution order or repeated activation logic.",
+    "Keep explicit freshness and conflict handling for mulligan claims: current contradicting keep versus discard evidence must block strong readiness instead of being merged into a guessed rule.",
+    "Separate static semantic authority, source-backed runtime-lowerable claims, and runtime proof as three different confidence layers."
+  ],
+  "autonomy_implication": [
+    "A fully autonomous deck-to-config run can stay strong without pretending every semantic fact is a runtime command; suppression is often the correct autonomous action.",
+    "Negative evidence and explicit non-keep guidance must be first-class, especially for enabler cards whose effect matters more than their opening-hand presence.",
+    "Autonomous lowering should prefer exact identity and typed claim surfaces over broad prose, even when that leaves some mechanics report-only.",
+    "The agent should surface unresolved Discover, Recruit, generated-card, location, aura, and Deathrattle gaps in reports rather than filling them with guessed rows.",
+    "A deck can be semantically understood and still have a thin mulligan surface; autonomy should report that honestly instead of inventing keeps.",
+    "Conservative separation between contract evidence and runtime authority keeps later operator corrections narrow, auditable, and regression-testable."
+  ],
+  "validation_implications": [
+    "Keep the regression that a broad mulligan_and_gameplan or other non-exact mulligan claim on SW_448 does not create a hold.",
+    "Keep the regression that an explicit mulligan_keep claim does create a hold for the exact selector or CardID.",
+    "Verify the Shadow Priest package split end to end: SW_448 stays out of Mulligan.json while the hero-power-transform effect remains present in card-specific or posture outputs.",
+    "Audit mechanic_support.py for the requested families so support levels stay explicit for discover, generated_entity, recruit, deathrattle, aura, weapon, location, start_of_game, and hero_power_transform.",
+    "Add or retain conflict tests that block strong readiness when the same selector has current keep and discard evidence from competing sources.",
+    "Assert that unresolved Discover, Recruit, or generated random-pool claims are suppressed with a visible reason instead of silently lowered.",
+    "Assert that location and aura claims do not become fake repeated-activation or permanent-state runtime rows without a documented supported surface.",
+    "Validate freshness handling so stale guide text cannot override newer card text or newer mulligan guidance."
+  ],
+  "keep_out_of_scope": [
+    "Replay winrate proof, ladder statistics, and post-game tuning should remain outside normal source-contract lowering.",
+    "Exact random outcomes for Discover, Recruit, generated-card pools, and Deathrattle chains should stay out of deterministic runtime claims unless identity is explicitly resolved.",
+    "Full board-state aura math, stacked enchantment accounting, and complete location-activation planners should remain outside the slim normal path.",
+    "Implicit discard inference from missing keep text should stay out of the normal path.",
+    "General guide praise, card importance, archetype overview text, and deck-role prose should not become runtime rows unless converted into supported typed claims.",
+    "Runtime confirmation claims such as sampled, load-ok, or gameplay-improved should remain separate from static semantic correctness."
+  ],
+  "confidence_model": "Use a three-layer confidence flow. Layer 1 is static semantic truth: card text, Start of Game timing, deckbuilding restrictions, and linked identities such as transformed Hero Powers. Layer 2 is source-backed lowering authority: only current, typed, exact claims may create runtime rows on the matching surface. Layer 3 is runtime proof: only live validation can confirm that the lowered surface behaved as intended. Never let Layer 1 or generic guide prose masquerade as Layer 2, and never let Layer 2 masquerade as Layer 3.",
+  "uncertain": []
+}

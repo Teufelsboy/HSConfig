@@ -1,0 +1,33 @@
+topic: hsconfig-source-contract-spine-brainstorm
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-12-hsconfig-source-contract-spine-brainstorm\results
+  batch_size: 3
+  items_per_agent: 1
+items:
+  - name: HearthRanger VisionAI surface authority and no-second-gate boundary
+    category: VisionAI
+    description: >
+      Research public HearthRanger VisionAI CustomConfig surfaces and compare them
+      with HSConfig's current runtime surfaces. Focus on whether Mulligan,
+      GlobalValues, per-card CardID behavior, and Combo should remain the normal
+      direct outputs; whether Presume/Concede should stay legacy diagnostic; and
+      whether operator_summary should remain the only apply authority while
+      source_contract_audit and contract_spine_rows stay diagnostic.
+  - name: Hearthstone semantics that must not become false runtime claims
+    category: Hearthstone
+    description: >
+      Research Hearthstone semantic cases that commonly cause over-inference:
+      start-of-game/deckbuilding effects, hero power transforms, card importance,
+      generated cards, discover, recruit, deathrattle, auras, weapons, locations,
+      and mulligan guidance. Include Darkbishop Benedictus as a concrete example:
+      the effect matters, but the card itself should not be kept unless explicit
+      mulligan evidence says so.
+  - name: HSConfig repository contract spine quality and autonomy audit
+    category: Repository
+    description: >
+      Audit the current HSConfig repository implementation around
+      source_contract_matrix, source_document_model, source_contract_audit,
+      source_contract_conformance, operator_summary, apply_gate, mulligan_plan,
+      card behavior, combo, global values, and docs. Determine whether the logic
+      is slim, competent, autonomous, non-blocking for any valid deck, and proven
+      by tests without creating a second apply gate.
