@@ -361,3 +361,64 @@ def test_conformance_markdown_renders_contract_spine_section():
         "build_globalvalues_authority_matrix:suppressed:requires_runtime_evidence | "
         "suppressed_until_runtime_evidence | diagnostic_only |"
     ) in markdown
+
+
+def _spine_row(snapshot: dict, claim_kind: str) -> dict:
+    for row in snapshot["contract_spine_rows"]:
+        if row["claim_kind"] == claim_kind:
+            return row
+    raise AssertionError(f"missing contract spine row for {claim_kind}")
+
+
+def test_contract_spine_keeps_critical_runtime_boundaries_explicit():
+    snapshot = build_source_contract_conformance_snapshot()
+
+    assert snapshot["operator_gate_impact"] == "diagnostic_only"
+
+    expectations = {
+        "mulligan_keep": {
+            "policy_lane": "runtime_lowerable",
+            "allowed_surfaces": ["mulligan"],
+            "surface_gate_status": "mulligan:allowed",
+            "final_runtime_effect": "emits_mulligan_runtime_row",
+        },
+        "hero_power_transform": {
+            "policy_lane": "suppressed_or_conditional",
+            "allowed_surfaces": ["cardid"],
+            "surface_gate_status": "cardid:allowed",
+            "final_runtime_effect": "emits_cardid_runtime_row",
+        },
+        "globalvalue_numeric_tuning": {
+            "policy_lane": "runtime_evidence_required",
+            "allowed_surfaces": [],
+            "surface_gate_status": "no_allowed_surface",
+            "final_runtime_effect": "suppressed_until_runtime_evidence",
+        },
+        "combo_sequence": {
+            "policy_lane": "runtime_lowerable",
+            "allowed_surfaces": ["combo"],
+            "surface_gate_status": "combo:allowed",
+            "final_runtime_effect": "emits_when_builder_prerequisites_are_complete",
+        },
+        "archetype": {
+            "policy_lane": "report_only",
+            "allowed_surfaces": [],
+            "surface_gate_status": "no_allowed_surface",
+            "final_runtime_effect": "report_only_no_runtime_row",
+        },
+    }
+
+    for claim_kind, expected in expectations.items():
+        row = _spine_row(snapshot, claim_kind)
+        for key, value in expected.items():
+            assert row[key] == value, (claim_kind, key, row)
+        assert row["operator_gate_impact"] == "diagnostic_only"
+
+
+def test_contract_spine_start_of_game_boundary_is_not_a_mulligan_exception():
+    snapshot = build_source_contract_conformance_snapshot()
+    suppression = snapshot["start_of_game_mulligan_suppression"]
+
+    assert suppression["decision"] == "rejected"
+    assert suppression["reason"] == "start_of_game_effect_does_not_require_opening_hand"
+    assert "do not become opening-hand keeps" in suppression["operator_meaning"]
