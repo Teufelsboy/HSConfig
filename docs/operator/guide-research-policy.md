@@ -98,6 +98,14 @@ claim should end in one visible state:
 Use `operator_summary.json` for normal readiness and apply decisions. Do not use
 `source_contract_audit.json` as an apply gate.
 
+### Contract Conformance Snapshot
+
+The contract conformance snapshot is documentation-as-code for the source
+contract. It proves that each supported `claim_kind` has one policy lane,
+surface-gate outcome, and diagnostic operator impact. It does not create a
+second operator gate: `source_contract_audit.json` stays diagnostic and
+operator_summary.json remains the normal apply authority.
+
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
 

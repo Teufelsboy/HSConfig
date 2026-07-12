@@ -29,6 +29,8 @@ Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_rec
 
 `source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only: it traces source -> policy -> surface gate -> builder/router -> emitted/suppressed. `policy_lane` is static policy, not runtime emission; readiness and apply authority stay in `operator_summary.json`.
 
+The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator gate, and operator_summary.json remains the normal apply authority.
+
 `Concede.json` is publicly documented; `Presume.json` is publicly documented on HearthRanger's AOE play-around page, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 
 ## Gate And Readiness

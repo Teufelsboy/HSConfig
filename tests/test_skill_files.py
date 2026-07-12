@@ -426,6 +426,23 @@ def test_docs_make_operator_summary_the_single_normal_gate():
     assert "does not parse replays" in docs
 
 
+def test_docs_and_skill_explain_contract_conformance_snapshot():
+    combined = (
+        Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "contract conformance snapshot" in combined.lower()
+    assert "documentation-as-code" in combined
+    assert "does not create a second operator gate" in combined
+    assert "operator_summary.json remains the normal apply authority" in combined
+
+
 def test_docs_do_not_advertise_presume_concede_as_normal_outputs():
     active_docs = [
         Path("README.md"),
