@@ -8,8 +8,6 @@ Normal operator guidance remains `docs/operator/README.md`.
 `source_contract_audit.json` remains diagnostic.
 `contract_spine_rows` remain diagnostic.
 
-operator_summary.json remains the normal apply authority; source_contract_audit.json remains diagnostic; contract_spine_rows remain diagnostic.
-
 ## Evidence Files
 
 - `results/HearthRanger_VisionAI_surface_authority_and_no-second-gate_boundary.json`

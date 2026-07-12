@@ -33,8 +33,6 @@ Older research packages can explain why a decision happened, but they do not ove
 | `docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/` | No-block Wild mechanic evidence | Valid deck packages should stay load-safe even when mechanic semantics are report-only. |
 | `docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/` | Universal no-block evidence | The no-block promise is implemented through warning visibility, not through broader runtime writes. |
 
-operator_summary.json remains the normal apply authority; source_contract_audit.json remains diagnostic.
-
 - `2026-07-11-hsconfig-live-skill-audit`: Live skill audit evidence. Confirms HSConfig is ready for real-deck usage with narrow polish only: normal runtime surface unchanged, `hsconfig configure` preferred, warning-only mechanics remain non-blocking, and Presume/Concede stale citation notes are superseded by the active operator docs and runtime-surface audit.
 
 - `2026-07-10-hsconfig-universal-no-block-skill-audit-v5` - No-block failure-mode summary evidence.

@@ -194,8 +194,8 @@ def test_current_truth_names_source_contract_spine_brainstorm_package():
 
     assert "2026-07-12-hsconfig-source-contract-spine-brainstorm" in text
     assert "Contract-spine freeze and no-second-gate evidence" in text
-    assert "operator_summary.json remains the normal apply authority" in text
-    assert "source_contract_audit.json remains diagnostic" in text
+    assert "Keep `operator_summary.json` as the normal apply authority" in text
+    assert "`source_contract_audit.json` and `contract_spine_rows` remain diagnostic" in text
 
 
 def test_source_contract_spine_brainstorm_readme_marks_evidence_only():
@@ -206,9 +206,9 @@ def test_source_contract_spine_brainstorm_readme_marks_evidence_only():
     assert "not operator instructions" in readme
     assert "not runtime input" in readme
     assert "does not grant runtime apply permission" in readme
-    assert "operator_summary.json remains the normal apply authority" in readme
-    assert "source_contract_audit.json remains diagnostic" in readme
-    assert "contract_spine_rows remain diagnostic" in readme
+    assert "`operator_summary.json` remains the normal apply authority." in readme
+    assert "`source_contract_audit.json` remains diagnostic." in readme
+    assert "`contract_spine_rows` remain diagnostic." in readme
     assert (root / "fields.yaml").exists()
     assert (root / "outline.yaml").exists()
     assert len(list((root / "results").glob("*.json"))) == 3
