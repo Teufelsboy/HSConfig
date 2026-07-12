@@ -12,6 +12,7 @@ from hsconfig.source_document_model import (
 
 
 SURFACES = ("mulligan", "globalvalues", "cardid", "combo")
+_DIAGNOSTIC_OPERATOR_IMPACT = "diagnostic_only"
 
 
 def build_source_contract_audit(
@@ -24,6 +25,7 @@ def build_source_contract_audit(
     combo_plan: Mapping[str, Any] | None = None,
     global_values_authority_matrix: Mapping[str, Any] | None = None,
     config_readiness_report: Mapping[str, Any] | None = None,
+    runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Explain why source claims did or did not lower into runtime surfaces."""
     deck_identity = deck_identity or {}
@@ -47,6 +49,12 @@ def build_source_contract_audit(
         global_values_authority_matrix=global_values_authority_matrix,
     )
     card_roles = _card_roles_from_readiness(config_readiness_report)
+    runtime_emission_index = runtime_emission_index or _runtime_emission_index(
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan=card_behavior_plan,
+        combo_plan=combo_plan,
+        global_values_authority_matrix=global_values_authority_matrix,
+    )
 
     claim_rows: dict[str, dict[str, Any]] = {}
     card_claim_lanes: dict[str, Counter[str]] = defaultdict(Counter)
@@ -125,11 +133,16 @@ def build_source_contract_audit(
         card_rows=card_rows,
         policy_lane_counts=policy_lane_counts,
     )
+    claim_lifecycle_rows = _build_claim_lifecycle_rows(
+        list(claim_rows.values()),
+        runtime_emission_index=runtime_emission_index,
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
         "summary": summary,
         "claim_rows": claim_rows,
+        "claim_lifecycle_rows": claim_lifecycle_rows,
         "card_rows": card_rows,
     }
 
@@ -188,6 +201,35 @@ def render_source_contract_audit_markdown(report: Mapping[str, Any]) -> str:
                 )
             )
     lines.append("")
+    lifecycle_rows = report.get("claim_lifecycle_rows", [])
+    if isinstance(lifecycle_rows, list):
+        lines.extend(
+            [
+                "## Claim Lifecycle Trace",
+                "",
+                "This section is diagnostic only. `operator_summary.json` remains the normal apply gate.",
+                "",
+                "| Claim | Kind | Policy Lane | Surface Gate | Builder/Router | Runtime Surface | First Missing Link |",
+                "| --- | --- | --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in lifecycle_rows[:30]:
+            if not isinstance(row, Mapping):
+                continue
+            lines.append(
+                "| {claim} | {kind} | {policy} | {gate} | {builder} | {surface} | {missing} |".format(
+                    claim=_escape_table(row.get("claim_id", "")),
+                    kind=_escape_table(row.get("claim_kind", "")),
+                    policy=_escape_table(row.get("policy_lane", "")),
+                    gate=_escape_table(
+                        f"{row.get('surface_gate_decision', '')}:{row.get('surface_gate_reason', '')}"
+                    ),
+                    builder=_escape_table(row.get("builder_or_router_decision", "")),
+                    surface=_escape_table(row.get("runtime_surface", "")),
+                    missing=_escape_table(row.get("first_missing_link", "")),
+                )
+            )
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -233,10 +275,10 @@ def _claim_lane(
 ) -> str:
     if emitted_surfaces:
         return "runtime_lowered"
-    if suppressed_reason:
-        return "suppressed_with_reason"
     if any(row.get("reason") == "requires_runtime_evidence" for row in decisions.values()):
         return "runtime_evidence_required"
+    if suppressed_reason:
+        return "suppressed_with_reason"
     if not claim_can_lower_to_runtime(dict(claim)):
         return "report_only"
     return "unsupported_or_unmapped"
@@ -279,12 +321,328 @@ def _suppressed_reasons(
         mulligan_plan.get("suppressed_rules", []),
         card_behavior_plan.get("suppressed", []),
         combo_plan.get("suppressed", []),
+        global_values_authority_matrix.get("blocked_until_runtime_evidence", []),
     ):
         for row in _rows(rows):
-            reason = str(row.get("reason", "") or "suppressed")
+            reason = _normalized_suppression_reason(row)
             for claim_id in _row_claim_ids(row):
                 reasons.setdefault(claim_id, reason)
     return reasons
+
+
+def _runtime_emission_index(
+    *,
+    mulligan_plan: Mapping[str, Any],
+    card_behavior_plan: Mapping[str, Any],
+    combo_plan: Mapping[str, Any],
+    global_values_authority_matrix: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    index: dict[str, dict[str, Any]] = {}
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=mulligan_plan.get("rules", []),
+            decision="emitted",
+            surface="mulligan",
+            runtime_surface="Mulligan.json",
+            emitted_files=["Mulligan.json"],
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=mulligan_plan.get("suppressed_rules", []),
+            decision="suppressed",
+            surface="mulligan",
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _cardid_runtime_rows(card_behavior_plan.get("rows", [])),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=card_behavior_plan.get("suppressed", []),
+            decision="suppressed",
+            surface="cardid",
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=combo_plan.get("combos", []),
+            decision="emitted",
+            surface="combo",
+            runtime_surface="Combo.json",
+            emitted_files=["Combo.json"],
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=combo_plan.get("suppressed", []),
+            decision="suppressed",
+            surface="combo",
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=global_values_authority_matrix.get("allowed_step1_overlays", []),
+            decision="emitted",
+            surface="globalvalues",
+            runtime_surface="GlobalValues.json",
+            emitted_files=["GlobalValues.json"],
+        ),
+    )
+    _merge_emission_rows(
+        index,
+        _runtime_rows(
+            rows=global_values_authority_matrix.get("blocked_until_runtime_evidence", []),
+            decision="suppressed",
+            surface="globalvalues",
+        ),
+    )
+    return index
+
+
+def _runtime_rows(
+    *,
+    rows: Any,
+    decision: str,
+    surface: str,
+    runtime_surface: str | None = None,
+    emitted_files: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for row in _rows(rows):
+        claim_ids = _row_claim_ids(row)
+        if not claim_ids:
+            continue
+        for claim_id in claim_ids:
+            result.append(
+                {
+                    "claim_id": claim_id,
+                    "decision": decision,
+                    "surface": surface,
+                    "runtime_surface": runtime_surface,
+                    "emitted_files": list(emitted_files or []),
+                    "suppressed_reason": None
+                    if decision == "emitted"
+                    else _normalized_suppression_reason(row),
+                }
+            )
+    return result
+
+
+def _cardid_runtime_rows(rows: Any) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for row in _rows(rows):
+        claim_ids = _row_claim_ids(row)
+        if not claim_ids:
+            continue
+        card_id = str(row.get("card_id", "")).strip()
+        meaningful = bool(row.get("meaningful_runtime_surface", True))
+        if meaningful and card_id:
+            runtime_surface = f"{card_id}.json"
+            decision = "emitted"
+            emitted_files = [runtime_surface]
+            suppressed_reason = None
+        else:
+            runtime_surface = None
+            decision = "suppressed"
+            emitted_files = []
+            suppressed_reason = "no_meaningful_runtime_surface"
+        for claim_id in claim_ids:
+            result.append(
+                {
+                    "claim_id": claim_id,
+                    "decision": decision,
+                    "surface": "cardid",
+                    "runtime_surface": runtime_surface,
+                    "emitted_files": emitted_files,
+                    "suppressed_reason": suppressed_reason,
+                }
+            )
+    return result
+
+
+def _merge_emission_rows(
+    index: dict[str, dict[str, Any]],
+    rows: list[dict[str, Any]],
+) -> None:
+    for row in rows:
+        claim_id = str(row.get("claim_id", "")).strip()
+        if not claim_id:
+            continue
+        current = index.get(claim_id)
+        if current is None:
+            index[claim_id] = {
+                "decision": str(row.get("decision", "")),
+                "surface": row.get("surface"),
+                "runtime_surface": row.get("runtime_surface"),
+                "emitted_files": list(row.get("emitted_files", [])),
+                "suppressed_reason": row.get("suppressed_reason"),
+            }
+            continue
+        current_files = {
+            str(item) for item in current.get("emitted_files", []) if str(item)
+        }
+        current_files.update(str(item) for item in row.get("emitted_files", []) if str(item))
+        current["emitted_files"] = sorted(current_files)
+        if row.get("decision") == "emitted":
+            current["decision"] = "emitted"
+            current["suppressed_reason"] = None
+            if row.get("runtime_surface"):
+                current["runtime_surface"] = row["runtime_surface"]
+            if row.get("surface"):
+                current["surface"] = row["surface"]
+            continue
+        if current.get("decision") != "emitted":
+            reason = _more_specific_suppression_reason(
+                str(current.get("suppressed_reason", "") or ""),
+                str(row.get("suppressed_reason", "") or ""),
+            )
+            current["decision"] = "suppressed"
+            current["suppressed_reason"] = reason
+            if row.get("surface") and not current.get("surface"):
+                current["surface"] = row["surface"]
+
+
+def _more_specific_suppression_reason(current: str, incoming: str) -> str:
+    priority = {
+        "runtime_evidence_required": 0,
+        "requires_runtime_evidence": 1,
+        "source_evidence_required": 2,
+        "surface_gate_rejected": 3,
+        "builder_or_router_missing": 4,
+    }
+    if not current:
+        return incoming or "suppressed"
+    if not incoming:
+        return current
+    return min((current, incoming), key=lambda value: priority.get(value, 100))
+
+
+def _normalized_suppression_reason(row: Mapping[str, Any]) -> str:
+    reason = str(row.get("reason") or row.get("blocked_reason") or "suppressed")
+    if reason == "requires_runtime_evidence":
+        return "runtime_evidence_required"
+    return reason
+
+
+def _build_claim_lifecycle_rows(
+    claim_rows: list[dict[str, Any]],
+    *,
+    runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    runtime_emission_index = runtime_emission_index or {}
+    rows: list[dict[str, Any]] = []
+    for index, claim_row in enumerate(claim_rows, start=1):
+        claim_id = str(claim_row.get("claim_id") or f"claim_{index:04d}")
+        emission = runtime_emission_index.get(claim_id, {})
+        emitted_surfaces = [
+            str(surface) for surface in claim_row.get("lowered_surfaces", []) if str(surface)
+        ]
+        surface = _lifecycle_surface(
+            emission=emission,
+            emitted_surfaces=emitted_surfaces,
+            claim_row=claim_row,
+        )
+        gate = _lifecycle_gate(claim_row, surface)
+        decision = str(emission.get("decision", ""))
+        if not decision:
+            decision = _fallback_builder_decision(gate)
+        suppressed_reason = emission.get("suppressed_reason")
+        if decision == "emitted":
+            suppressed_reason = None
+        elif suppressed_reason is None:
+            suppressed_reason = _fallback_suppressed_reason(gate, decision)
+        runtime_surface = emission.get("runtime_surface")
+        emitted_files = list(emission.get("emitted_files", []))
+        rows.append(
+            {
+                "claim_id": claim_id,
+                "claim_kind": str(claim_row.get("claim_kind", "")),
+                "policy_lane": str(claim_row.get("policy_lane", "")),
+                "surface_gate_decision": "allowed" if gate.get("allowed") else "rejected",
+                "surface_gate_reason": str(gate.get("reason", "")),
+                "builder_or_router_decision": decision,
+                "runtime_surface": runtime_surface if runtime_surface else None,
+                "emitted_files": emitted_files,
+                "suppressed_reason": suppressed_reason,
+                "first_missing_link": None
+                if decision == "emitted"
+                else _first_missing_link_for_suppression(str(suppressed_reason or "")),
+                "operator_impact": _DIAGNOSTIC_OPERATOR_IMPACT,
+            }
+        )
+    return rows
+
+
+def _lifecycle_surface(
+    *,
+    emission: Mapping[str, Any],
+    emitted_surfaces: list[str],
+    claim_row: Mapping[str, Any],
+) -> str:
+    surface = str(emission.get("surface", "") or "")
+    if surface:
+        return surface
+    if emitted_surfaces:
+        return emitted_surfaces[0]
+    surfaces = claim_row.get("surfaces", {})
+    if isinstance(surfaces, Mapping):
+        for name, row in surfaces.items():
+            if isinstance(row, Mapping) and row.get("reason") == "requires_runtime_evidence":
+                return str(name)
+        for name, row in surfaces.items():
+            if isinstance(row, Mapping) and row.get("allowed"):
+                return str(name)
+        for name in SURFACES:
+            if name in surfaces:
+                return name
+    return ""
+
+
+def _lifecycle_gate(claim_row: Mapping[str, Any], surface: str) -> Mapping[str, Any]:
+    surfaces = claim_row.get("surfaces", {})
+    if isinstance(surfaces, Mapping):
+        gate = surfaces.get(surface)
+        if isinstance(gate, Mapping):
+            return gate
+    return {"allowed": False, "reason": str(claim_row.get("first_reason", ""))}
+
+
+def _fallback_builder_decision(gate: Mapping[str, Any]) -> str:
+    if not bool(gate.get("allowed")):
+        return "suppressed"
+    return "not_seen_by_builder"
+
+
+def _fallback_suppressed_reason(gate: Mapping[str, Any], decision: str) -> str:
+    if decision == "not_seen_by_builder":
+        return "builder_or_router_missing"
+    reason = str(gate.get("reason", "") or "surface_gate_rejected")
+    if reason == "requires_runtime_evidence":
+        return "runtime_evidence_required"
+    return reason
+
+
+def _first_missing_link_for_suppression(reason: str | None) -> str | None:
+    if not reason:
+        return None
+    lowered = reason.lower()
+    if "runtime_evidence" in lowered or "requires_runtime_evidence" in lowered:
+        return "runtime_evidence"
+    if "source" in lowered or "guide" in lowered:
+        return "source_evidence"
+    if "surface_gate" in lowered:
+        return "surface_gate"
+    if "builder" in lowered or "router" in lowered:
+        return "builder_or_router"
+    return "runtime_surface"
 
 
 def _claim_lowered_to_surface(

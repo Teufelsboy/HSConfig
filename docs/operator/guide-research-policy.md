@@ -76,6 +76,13 @@ runtime-lowerable `gameplan_posture`; `Combo.json` only lowers complete
 claim kinds. Wrong-surface claims stay suppressed or report-only with explicit
 reasons.
 
+`policy_lane` is static source policy, not runtime emission. Use
+`source_contract_audit.json.claim_lifecycle_rows` for the generated trace from
+source -> policy -> surface gate -> builder/router -> emitted/suppressed. A
+no-block deck can still include suppressed diagnostics when a source claim has
+no documented runtime surface; readiness and apply authority remain in
+`operator_summary.json`.
+
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
 
@@ -189,7 +196,7 @@ For each card, prefer claims that answer at least one of these questions:
 - `source_evidence_index.json`: source-level summary.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
 - `unsupported_claims_report.json`: rejected source claims with reasons.
-- `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; diagnostic only.
+- `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.
 - `source_claim_gap_report.json`: first missing source or lowering link per card.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 - `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.

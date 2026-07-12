@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
 )
+
+
+REQUIRED_LIFECYCLE_FIELDS = {
+    "claim_id",
+    "claim_kind",
+    "policy_lane",
+    "surface_gate_decision",
+    "surface_gate_reason",
+    "builder_or_router_decision",
+    "runtime_surface",
+    "emitted_files",
+    "suppressed_reason",
+    "first_missing_link",
+    "operator_impact",
+}
 
 
 def test_source_contract_audit_explains_surface_gate_lanes():
@@ -88,6 +104,115 @@ def test_source_contract_audit_explains_surface_gate_lanes():
     )
     assert report["card_rows"]["CARD_KEEP"]["first_missing_link"] == "needs_runtime_surface"
     assert report["card_rows"]["CARD_KEEP"]["claim_lanes"]["runtime_lowered"] == 1
+
+
+def test_claim_lifecycle_rows_explain_static_policy_and_runtime_outcome():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [
+                {"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2},
+                {"card_id": "CARD_NUM", "name": "Numeric Card", "count": 1},
+            ],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "keep_claim",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_KEEP"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Keep CARD_KEEP.",
+                },
+                {
+                    "claim_id": "numeric_claim",
+                    "claim_kind": "globalvalue_numeric_tuning",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_NUM"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Tune LowHpBoardValuePenalty after games.",
+                },
+            ]
+        },
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_KEEP",
+                    "action": "hold",
+                    "source_claim_ids": ["keep_claim"],
+                }
+            ],
+            "suppressed_rules": [],
+        },
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [
+                {
+                    "key": "LowHpBoardValuePenalty",
+                    "claim_id": "numeric_claim",
+                    "reason": "runtime_evidence_required",
+                }
+            ],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_KEEP": {
+                    "name": "Keep Card",
+                    "roles": ["mulligan_anchor"],
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "readiness_lane": "mulligan_only",
+                    "first_missing_link": "none",
+                },
+                "CARD_NUM": {
+                    "name": "Numeric Card",
+                    "roles": [],
+                    "runtime_surfaces": [],
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "runtime_evidence",
+                },
+            }
+        },
+    )
+    policy_by_claim_kind = source_contract_policy_by_claim_kind()
+
+    lifecycle_rows = report["claim_lifecycle_rows"]
+    assert lifecycle_rows
+    assert all(REQUIRED_LIFECYCLE_FIELDS <= set(row) for row in lifecycle_rows)
+    assert all(row["operator_impact"] == "diagnostic_only" for row in lifecycle_rows)
+
+    rows_by_claim_id = {row["claim_id"]: row for row in lifecycle_rows}
+    assert rows_by_claim_id["keep_claim"] == {
+        "claim_id": "keep_claim",
+        "claim_kind": "mulligan_keep",
+        "policy_lane": policy_by_claim_kind["mulligan_keep"]["lane"],
+        "surface_gate_decision": "allowed",
+        "surface_gate_reason": "allowed",
+        "builder_or_router_decision": "emitted",
+        "runtime_surface": "Mulligan.json",
+        "emitted_files": ["Mulligan.json"],
+        "suppressed_reason": None,
+        "first_missing_link": None,
+        "operator_impact": "diagnostic_only",
+    }
+    assert rows_by_claim_id["numeric_claim"] == {
+        "claim_id": "numeric_claim",
+        "claim_kind": "globalvalue_numeric_tuning",
+        "policy_lane": policy_by_claim_kind["globalvalue_numeric_tuning"]["lane"],
+        "surface_gate_decision": "rejected",
+        "surface_gate_reason": "requires_runtime_evidence",
+        "builder_or_router_decision": "suppressed",
+        "runtime_surface": None,
+        "emitted_files": [],
+        "suppressed_reason": "runtime_evidence_required",
+        "first_missing_link": "runtime_evidence",
+        "operator_impact": "diagnostic_only",
+    }
 
 
 def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():

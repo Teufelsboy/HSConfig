@@ -24,6 +24,9 @@ Wrong-surface or low-confidence claims do not block deck generation. They are
 reported as suppressed/report-only rows with explicit reasons.
 `reports/source_contract_audit.json` explains those source-to-runtime decisions
 per claim and per card; it does not replace `reports/operator_summary.json`.
+`source_contract_audit.json` is diagnostic. Its `claim_lifecycle_rows` explain
+source -> policy -> surface gate -> builder/router -> emitted/suppressed.
+Runtime readiness still comes from `operator_summary.json`.
 
 Source-contract invariant: effect semantics are preserved on supported effect
 and CardID surfaces, but only exact runtime-surface claims lower into matching

@@ -1858,10 +1858,18 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert audit["summary"]["runtime_lowered_claims"] > 0
     assert "claim_kind_policy_counts" in audit["summary"]
     assert all("policy_lane" in row for row in audit["claim_rows"].values())
+    lifecycle_rows = audit["claim_lifecycle_rows"]
+    assert lifecycle_rows
+    assert all(row["operator_impact"] == "diagnostic_only" for row in lifecycle_rows)
+    assert any(
+        row["builder_or_router_decision"] in {"emitted", "suppressed"}
+        for row in lifecycle_rows
+    )
     assert "SW_448" in audit["card_rows"]
     assert (reports / "source_contract_audit.md").is_file()
     assert "reports/source_contract_audit.json" in generated
     assert "reports/source_contract_audit.md" in generated
+    assert "claim_lifecycle_rows" not in operator_summary
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
     assert (
         operator_summary["source_contract_audit_summary"]["next_report_to_open"]

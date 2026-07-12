@@ -838,6 +838,30 @@ def test_skill_explains_source_contract_audit_without_new_gate():
     assert "source_contract_audit_summary" in combined
     assert "does not replace `operator_summary.json`" in skill
     assert "does not create a second apply gate" in combined
+    assert "claim_lifecycle_rows" in combined
+    assert "policy_lane" in combined
+    assert "source -> policy -> surface gate -> builder/router -> emitted/suppressed" in combined
+    assert "runtime emission" in combined
+
+
+def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/guide-research-policy.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+    combined_lower = combined.lower()
+
+    assert "claim_lifecycle_rows" in combined
+    assert "operator_summary.json" in combined
+    assert "diagnostic" in combined_lower
+    assert "policy_lane" in combined
+    assert "source -> policy -> surface gate -> builder/router -> emitted/suppressed" in combined
+    assert "source_contract_audit.json` is diagnostic" in combined
+    assert "audit is an apply gate" not in combined_lower
+    assert "source_contract_audit.json remains the normal apply authority" not in combined
 
 
 def test_docs_and_skill_state_source_contract_invariant_rule():

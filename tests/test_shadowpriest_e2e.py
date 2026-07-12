@@ -151,6 +151,12 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         for row in source_contract_audit["claim_rows"].values()
         if "SW_448" in row.get("cards", [])
     ]
+    darkbishop_claim_ids = {row["claim_id"] for row in darkbishop_claims}
+    darkbishop_lifecycle_rows = [
+        row
+        for row in source_contract_audit["claim_lifecycle_rows"]
+        if row.get("claim_id") in darkbishop_claim_ids
+    ]
     assert any(
         row["claim_kind"] == "hero_power_transform"
         and row["lane"] == "runtime_lowered"
@@ -161,6 +167,20 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         row["claim_kind"] == "mulligan_keep"
         and row["lane"] == "runtime_lowered"
         for row in darkbishop_claims
+    )
+    assert any(
+        row["claim_kind"] == "hero_power_transform"
+        and (
+            row["builder_or_router_decision"] in {"emitted", "lowered"}
+            or row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
+            or "SW_448.json" in row["emitted_files"]
+        )
+        for row in darkbishop_lifecycle_rows
+    )
+    assert not any(
+        row["claim_kind"] == "mulligan_keep"
+        and row["builder_or_router_decision"] in {"emitted", "lowered"}
+        for row in darkbishop_lifecycle_rows
     )
     assert not any(row.get("mulligan") == "SW_448" for row in mulligan_values)
     assert "SW_448" not in mulligan_text
