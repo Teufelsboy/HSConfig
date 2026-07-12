@@ -1,5 +1,6 @@
 import pytest
 
+from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.input_loading import guide_documents_from_legacy_claims
@@ -196,6 +197,29 @@ def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():
 
     assert decision.allowed is False
     assert decision.reason == "claim_kind_not_mulligan_surface"
+
+
+def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
+    claim = {
+        "claim_id": "hero_power_transform_fixture",
+        "claim_kind": "hero_power_transform",
+        "claim_readiness": "source_backed_static_semantics",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_HP"],
+        "runtime_block": "BeforeUseHeroPowerBonus",
+        "runtime_value": 25,
+    }
+
+    cardid_decision = surface_gate_decision(claim, "cardid")
+    mulligan_decision = surface_gate_decision(claim, "mulligan")
+    routed = route_card_behavior_surfaces([claim])
+
+    assert cardid_decision.allowed is True
+    assert mulligan_decision.allowed is False
+    assert mulligan_decision.reason == "claim_kind_not_mulligan_surface"
+    assert routed["rows"][0]["card_id"] == "CARD_HP"
+    assert routed["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
+    assert routed["suppressed"] == []
 
 
 def test_legacy_claims_json_broad_keep_text_stays_non_mulligan_runtime():

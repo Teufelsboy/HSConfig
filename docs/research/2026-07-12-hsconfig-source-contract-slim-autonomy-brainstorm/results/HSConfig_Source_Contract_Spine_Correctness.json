@@ -1,0 +1,42 @@
+{
+  "claim_scope": "Audit whether the HSConfig source-contract spine forms one clear source-to-runtime chain without a hidden second apply gate. The audited chain is: atomic claim_kind in source_document_model.py -> claim-kind policy in source_contract_matrix.py -> executable surface_gate_decision() -> builder or router emission on the matching runtime surface -> source_contract_audit.py claim_lifecycle_rows and source_contract_conformance.py contract_spine_rows -> non-blocking operator_summary summary -> apply_gate.py and runtime_apply.py.",
+  "runtime_surface_implication": "The current spine separates runtime surface routing from apply authority. Mulligan, GlobalValues, Combo, and CardID lowering are decided by claim_kind-specific gates and builder/router outcomes. Diagnostic artifacts explain those decisions but do not mutate runtime state and do not grant runtime writes. Runtime apply remains anchored to reports/operator_summary.json plus package structure validation.",
+  "safe_to_emit_step1": "Step 1 emission is safe when a claim has an explicit supported claim_kind, passes runtime-lowerable readiness checks, passes the matching surface gate, and the builder/router has enough exact information to emit a row. It is not safe to emit from broad prose alone, wrong-surface claims, runtime-evidence-only numeric GlobalValues tuning, or start-of-game non-hand effects as opening-hand keeps.",
+  "blocked_or_report_only_cases": [
+    "Future builders or routers that bypass surface_gate_decision() and write runtime rows directly from claim prose.",
+    "New claim kinds added without synchronized updates to SUPPORTED_ATOMIC_CLAIM_KINDS, source_contract_matrix.py, surface gates, builder/router expectations, and tests.",
+    "Any future edit that promotes source_contract_audit_summary.next_report_to_open into primary_blockers or apply_policy.",
+    "Policy drift falling back to unsupported_or_unmapped and becoming noisy diagnostics rather than an intentional contract update.",
+    "Loosening start-of-game, option-choice, or runtime-evidence-only gates so internally consistent reports can still emit the wrong runtime behavior.",
+    "Any future contract_doctor behavior that emits apply recommendations beyond summarizing operator_summary.json."
+  ],
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_doctor.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_second_gate_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_contract_doctor.py",
+    "Focused verification: python -m pytest tests/test_source_contract_conformance.py tests/test_source_contract_audit.py tests/test_claim_kind_runtime_contract.py tests/test_apply_authority_boundary.py tests/test_contract_doctor.py -q -> 65 passed."
+  ],
+  "autonomy_risk": "Autonomy fails if source evidence, diagnostic reports, or rich-output expectations become runtime-write authority. The most likely future mistakes are bypassing central surface gates, treating diagnostic audit counts as blockers, or over-inferencing broad guide prose into runtime JSON. The current code avoids that by centralizing claim_kind, making audit/conformance diagnostic-only, and enforcing apply through operator_summary.json.",
+  "recommended_contract_rule": "Keep a single spine and a single gate. claim_kind defines source semantics; source_contract_matrix defines policy lane and allowed surfaces; executable surface gates decide whether a claim may lower; builders emit only matching supported runtime rows; audit, conformance, and contract-doctor explain outcomes; operator_summary.json remains the only normal apply authority; apply_gate.py and runtime_apply.py enforce the runtime write.",
+  "tests_or_artifacts_to_check": [
+    "tests/test_apply_authority_boundary.py should keep proving active apply paths do not consume source_contract_audit, contract_spine_rows, claim_lifecycle_rows, or source_contract_conformance.",
+    "tests/test_no_second_gate_contract.py should keep proving contract_spine_rows never appear in apply or runtime-write paths.",
+    "tests/test_source_contract_conformance.py should keep proving contract_spine_rows are diagnostic lifecycle projections with no apply-authority fields.",
+    "tests/test_source_contract_audit.py should keep proving emitted, suppressed, unsupported, and runtime-evidence-required outcomes remain explanatory.",
+    "tests/test_operator_summary.py should keep proving source_contract_audit_summary stays non-blocking.",
+    "tests/test_contract_doctor.py should keep proving contract-doctor is read-only and operator-summary-led."
+  ],
+  "uncertain": []
+}

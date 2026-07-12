@@ -16,6 +16,15 @@ DIAGNOSTIC_ONLY_TOKENS = [
     "source_contract_conformance",
 ]
 
+FORBIDDEN_DIAGNOSTIC_IMPORTS = [
+    "from hsconfig.contract_doctor",
+    "import hsconfig.contract_doctor",
+    "from hsconfig.source_contract_audit",
+    "import hsconfig.source_contract_audit",
+    "from hsconfig.source_contract_conformance",
+    "import hsconfig.source_contract_conformance",
+]
+
 
 def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -35,3 +44,10 @@ def test_apply_gate_uses_operator_summary_as_single_authority():
     assert "technical_status" in content
     assert '"VALID_PACKAGE"' in content
     assert "source_contract_audit" not in content
+
+
+def test_active_apply_paths_do_not_import_diagnostic_authorities():
+    for relative_path in ACTIVE_APPLY_PATHS:
+        content = _read(relative_path)
+        for token in FORBIDDEN_DIAGNOSTIC_IMPORTS:
+            assert token not in content, (relative_path, token)

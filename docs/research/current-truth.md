@@ -23,6 +23,7 @@ Older research packages can explain why a decision happened, but they do not ove
 
 | Package | Role | Current implication |
 | --- | --- | --- |
+| `docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/` | Source-contract spine evidence | Keep source truth separate from runtime authority: `claim_kind` routes through policy, surface gates, builder/router decisions, and diagnostics; operator_summary.json remains the only normal apply authority. |
 | `docs/research/2026-07-12-hsconfig-source-contract-spine-brainstorm/` | Contract-spine freeze and no-second-gate evidence | Keep `operator_summary.json` as the normal apply authority; `source_contract_audit.json` and `contract_spine_rows` remain diagnostic explanations of source -> policy -> surface gate -> builder/router -> runtime effect. |
 | `docs/research/2026-07-11-hsconfig-source-contract-logic-audit/` | Source and runtime contract evidence | Treat `claim_kind` as semantic input to the runtime surface gates; broad guide text and start-of-game effects must not become Mulligan keeps without explicit mulligan claims. |
 | `docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/` | Post-hardening skill audit evidence | Keep the current lean HSConfig boundary, correct Presume surface wording, preserve no-block apply behavior, and use real decks for targeted defects instead of another broad architecture wave. |
@@ -52,6 +53,22 @@ Older research packages can explain why a decision happened, but they do not ove
 - Role: active evidence for no-block universal skill posture, modern mechanic visibility, and public VisionAI surface boundaries.
 - Operator implication: add visibility-only warning rows for `rewind`, `herald`, and `shatter`; keep the normal package path limited to load-safe HSConfig surfaces.
 - Boundary: research artifacts are evidence, not operator instructions.
+
+## 2026-07-12 Source-Contract Spine Truth
+
+Active research package:
+`docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/`.
+
+This package is the current source-contract spine reference for HSConfig. It
+confirms that source claims route through `claim_kind`, the policy matrix,
+surface gates, builder/router decisions, and diagnostic reports before any
+runtime package is considered. `operator_summary.json remains the only normal
+apply authority`.
+
+Research and diagnostics explain source quality and runtime-surface decisions;
+they do not authorize runtime writes. A valid package may still be
+`READY_TO_APPLY_WITH_WARNINGS` when source debt is visible but the runtime
+package is load-safe.
 
 ## Superseded Evidence
 

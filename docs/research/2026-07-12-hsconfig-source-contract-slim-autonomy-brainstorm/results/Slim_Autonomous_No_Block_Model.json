@@ -1,0 +1,43 @@
+{
+  "claim_scope": "Audit whether HSConfig can keep a slim autonomous no-block workflow for valid deck inputs while remaining honest about `SOURCE_BACKED_STRONG`, warnings, low-confidence claims, unsupported mechanics, and diagnostic-only evidence surfaces. The boundary is not whether every valid deck becomes `SOURCE_BACKED_STRONG`; the boundary is whether every valid deck can still reach a truthful load-safe package without false promotion, hidden blockers, or invented runtime claims.",
+  "runtime_surface_implication": "The normal runtime surfaces should stay narrow and explicit. `GlobalValues.json` and `Mulligan.json` remain the required load-safe files, per-card `<CARDID>.json` files remain normal rich output when supported, and `Combo.json` is allowed only for exact supported combo evidence. `reports/operator_summary.json` stays the only normal apply authority. `source_contract_audit.json`, contract spine rows, source-informed readiness, and mechanic visibility remain diagnostic-only and must not become a second apply gate. Unsupported or weak claims should be suppressed, downgraded, or reported instead of being written into runtime files.",
+  "safe_to_emit_step1": "Yes. HSConfig can stay no-block for valid decks if Step1 emission is tied to technical load-safe package validity rather than source-strong perfection. The current repository already follows that rule: `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`, and `runtime_apply_mode=load_safe_apply` are enough for a guarded initial package even when `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` or `next_action=READY_TO_APPLY_WITH_WARNINGS`. This is still honest because source strength, source-informed debt, low-confidence claims, and warning-only mechanics remain separately visible instead of being collapsed into the apply permission.",
+  "blocked_or_report_only_cases": [
+    "Low-confidence guide claims remain visible as explicit low-confidence or uncovered-low-confidence lanes instead of being promoted into strong runtime behavior.",
+    "Unsupported claim kinds, off-deck claims, missing source metadata, and missing confidence fields must remain in explicit unsupported or rejected lanes instead of being silently normalized.",
+    "Source-informed but not strong representative rows such as Kingslayer and Boarlock stay warning-safe and load-safe, but their missing claim chains remain visible and they must not be promoted to `SOURCE_BACKED_STRONG`.",
+    "Warning-only and partial mechanics remain descriptive rather than runtime-authoritative when HSConfig lacks a documented VisionAI lowering surface.",
+    "Start-of-game, deckbuilding, deck-state, passive, and hero-power-transform effects may remain effect-visible but must not become opening-hand keeps unless separate mulligan evidence exists.",
+    "Diagnostic artifacts such as `source_contract_audit.json`, claim lifecycle rows, contract spine rows, matrix diagnostics, and readiness summaries must remain report-only and must not create a second apply gate.",
+    "Post-game tuning, runtime evidence, replay interpretation, winrate claims, and gameplay-improvement claims remain outside the slim Step1 workflow."
+  ],
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-backed-strong-closure.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/source-builder-workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-12-hsconfig-source-contract-spine-brainstorm/results/HSConfig_repository_contract_spine_quality_and_autonomy_audit.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-11-hsconfig-source-contract-logic-audit/results/Autonomous_guide_claim_contract_quality_model.json",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-10-hsconfig-any-deck-no-block-skill-audit-v6/results/Current_HSConfig_Skill_And_Repo_Contract_Audit.json",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_informed_closure_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py",
+    "Command: python -m pytest C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py C:/Users/darbo/Documents/HSConfig/tests/test_source_informed_closure_contract.py C:/Users/darbo/Documents/HSConfig/tests/test_source_document_builder.py C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py -q -> 65 passed in 12.50s"
+  ],
+  "autonomy_risk": "The model fails if HSConfig collapses technical validity and semantic confidence into one status. The highest-risk failures are: broad prose or start-of-game semantics being lowered directly into runtime behavior; unsupported or low-confidence claims disappearing instead of staying visible; source-informed valid rows being auto-promoted to strong; warning-only mechanics being treated as runtime-authoritative; or diagnostic reports being allowed to deny or grant runtime writes. A smaller residual risk remains that the any-valid-deck promise is representative rather than exhaustive, so future mechanic or metadata drift could expose a new edge case even though the current no-block matrix and focused contract tests pass.",
+  "recommended_contract_rule": "Preserve a single-gate model. Step1 may stay autonomous and no-block for valid decks only when runtime permission comes exclusively from technical load-safe package validity in `operator_summary.json`, while `SOURCE_BACKED_STRONG` remains a stricter confidence label and all weak, unsupported, unresolved, or runtime-evidence-only claims remain warning-only, suppressed, or diagnostic. In practice this means: keep the runtime surface set narrow, keep unsupported and low-confidence claims visible rather than guessed, keep source-informed rows honest, keep warning-only mechanics descriptive, and never let research or audit artifacts become a second apply gate.",
+  "tests_or_artifacts_to_check": [
+    "`tests/test_universal_wild_no_block_matrix.py` to prove twelve current decks still produce `VALID_PACKAGE`, `load_safe_apply`, required runtime files, and non-blocking summaries.",
+    "`tests/test_source_informed_closure_contract.py` to prove Kingslayer and Boarlock remain valid warning-safe control rows without false strong promotion.",
+    "`tests/test_source_document_builder.py` to prove low-confidence, unsupported, stale, missing-source, and off-deck claims remain visible in the correct lanes rather than being promoted.",
+    "`tests/test_source_contract_conformance.py` to prove contract spine rows and operator impact stay diagnostic-only.",
+    "`tests/test_source_contract_audit.py` to prove emitted, suppressed, unsupported, and runtime-evidence-required claim outcomes remain report-only explanations rather than write gates.",
+    "`docs/research/current-truth.md` and the active operator docs to ensure historical research packages do not silently redefine the current no-block boundary.",
+    "The required schema validation command for this artifact: `python ~/.codex/skills/research/validate_json.py -f C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/fields.yaml -j C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/results/Slim_Autonomous_No_Block_Model.json`."
+  ],
+  "uncertain": []
+}

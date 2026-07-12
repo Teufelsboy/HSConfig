@@ -206,3 +206,29 @@ def test_contract_doctor_keeps_darkbishop_boundary_visible(tmp_path: Path):
     assert "Mulligan.json" not in report["claim_lifecycle"]["runtime_surfaces"]
     assert report["card_diagnostics"]["rows"][0]["runtime_surfaces"] == ["SW_448.json"]
     assert report["authority"]["diagnostic_only"] is True
+
+
+def test_contract_doctor_exposes_spine_summary_without_apply_policy(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+        },
+    )
+
+    report = build_contract_doctor_report(package)
+
+    assert report["contract_spine"]["operator_gate_impact"] == "diagnostic_only"
+    assert report["contract_spine"]["claim_kind_count"] >= 1
+    assert "mulligan_keep" in report["contract_spine"]["claim_kinds"]
+    assert "hero_power_transform" in report["contract_spine"]["claim_kinds"]
+    assert report["contract_spine"]["unexpected_contract_drift_count"] == 0
+    assert report["authority"]["apply_authority"] == "reports/operator_summary.json"
+
+    serialized = json.dumps(report)
+    assert '"apply_allowed"' not in serialized
+    assert '"runtime_apply_allowed"' not in serialized
+    assert '"runtime_apply_mode"' not in serialized

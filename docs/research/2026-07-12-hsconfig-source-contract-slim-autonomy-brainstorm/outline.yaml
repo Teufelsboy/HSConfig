@@ -1,0 +1,18 @@
+topic: hsconfig-source-contract-slim-autonomy-brainstorm
+execution:
+  output_dir: C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: HSConfig Source Contract Spine Correctness
+    category: repo-audit
+    description: Audit whether claim_kind, source_contract_matrix, surface gates, source_contract_audit, contract_doctor, and operator_summary form one clear source-to-runtime chain without hidden second gates.
+  - name: HearthRanger VisionAI Runtime Surface Boundary
+    category: external-surface
+    description: Verify how HSConfig should separate Mulligan, GlobalValues, per-card CardID json, Combo, and excluded Presume/Concede surfaces while keeping operator_summary as the only apply authority.
+  - name: Hearthstone Semantics False Lowering Risk
+    category: gameplay-semantics
+    description: Audit mechanics and examples where source guide text can be true but must not lower to the wrong runtime surface, including start-of-game hero power transforms, mulligan keeps, discover choices, targeting, weapons, secrets, and global numeric tuning.
+  - name: Slim Autonomous No Block Model
+    category: workflow-architecture
+    description: Audit whether HSConfig can remain no-block for any valid deck while staying honest about SOURCE_BACKED_STRONG, warnings, low confidence claims, unsupported mechanics, and diagnostic-only reports.

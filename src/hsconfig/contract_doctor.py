@@ -56,6 +56,7 @@ def build_contract_doctor_report(package: Path) -> dict[str, Any]:
 
     conformance = build_source_contract_conformance_snapshot()
     summary = conformance.get("summary", {}) if isinstance(conformance, Mapping) else {}
+    contract_spine = _contract_spine_summary(conformance)
 
     return {
         "schema_version": 1,
@@ -81,6 +82,7 @@ def build_contract_doctor_report(package: Path) -> dict[str, Any]:
             "rows": claim_rows,
         },
         "card_diagnostics": card_diagnostics,
+        "contract_spine": contract_spine,
         "conformance": {
             "operator_gate_impact": conformance.get("operator_gate_impact"),
             "unexpected_contract_drift_count": summary.get(
@@ -100,6 +102,7 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
     operator = _mapping(report.get("operator"))
     lifecycle = _mapping(report.get("claim_lifecycle"))
     card_diagnostics = _mapping(report.get("card_diagnostics"))
+    contract_spine = _mapping(report.get("contract_spine"))
     conformance = _mapping(report.get("conformance"))
     lines = [
         "# Contract Doctor",
@@ -132,6 +135,14 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
         f"- First missing links: {card_diagnostics.get('first_missing_links', {})}",
         f"- Cards with missing links: {card_diagnostics.get('cards_with_missing_links', [])}",
         "",
+        "## Contract Spine",
+        "",
+        f"- Operator gate impact: {contract_spine.get('operator_gate_impact', '')}",
+        f"- Claim kinds: {contract_spine.get('claim_kind_count', 0)}",
+        f"- Policy lanes: {contract_spine.get('policy_lane_counts', {})}",
+        f"- Unexpected contract drift: {contract_spine.get('unexpected_contract_drift_count', 0)}",
+        f"- Builder prerequisite gaps: {contract_spine.get('builder_prerequisite_gap_count', 0)}",
+        "",
         "## Conformance",
         "",
         f"- Operator gate impact: {conformance.get('operator_gate_impact', '')}",
@@ -146,6 +157,38 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
     return {}
+
+
+def _contract_spine_summary(conformance: Mapping[str, Any]) -> dict[str, Any]:
+    summary = _mapping(conformance.get("summary"))
+    rows = conformance.get("contract_spine_rows", [])
+    if not isinstance(rows, list):
+        rows = []
+    claim_kinds = [
+        str(row.get("claim_kind", ""))
+        for row in rows
+        if isinstance(row, Mapping) and str(row.get("claim_kind", ""))
+    ]
+    policy_lane_counts = summary.get("policy_lane_counts", {})
+    if not isinstance(policy_lane_counts, Mapping):
+        policy_lane_counts = {}
+    return {
+        "operator_gate_impact": str(
+            conformance.get("operator_gate_impact", "diagnostic_only")
+        ),
+        "claim_kind_count": len(claim_kinds),
+        "claim_kinds": sorted(claim_kinds),
+        "policy_lane_counts": dict(policy_lane_counts),
+        "unexpected_contract_drift_count": _int_value(
+            summary.get("unexpected_contract_drift_count", 0)
+        ),
+        "builder_prerequisite_gap_count": _int_value(
+            summary.get("builder_prerequisite_gap_count", 0)
+        ),
+        "pipeline_attention_count": _int_value(
+            summary.get("pipeline_attention_count", 0)
+        ),
+    }
 
 
 def _claim_lifecycle_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -205,6 +248,13 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _read_json(path: Path) -> Any:

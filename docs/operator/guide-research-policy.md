@@ -48,6 +48,24 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 ]
 ```
 
+## Source Truth Is Not Runtime Authority
+
+Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may
+lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
+`Combo.json`. `operator_summary.json` remains the only normal apply authority.
+
+Examples:
+
+- Darkbishop Benedictus can preserve the Shadowform / Mind Spike effect through
+  `hero_power_transform` and CardID behavior, but this does not become a mulligan keep unless a separate current mulligan source explicitly says to
+  keep the card in the opening hand.
+- `globalvalue_numeric_tuning` is valid source evidence for future tuning, but
+  Step 1 requires runtime evidence before numeric GlobalValues changes.
+- Discover and Choose One claims require exact option identity before lowering.
+
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
 Accepted source document fields:
 
 - `source_url`: stable URL or local source identifier.

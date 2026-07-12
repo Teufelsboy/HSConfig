@@ -1,0 +1,318 @@
+{
+  "claim_scope": {
+    "topic": "Hearthstone gameplay semantics that can be truthfully described by source text but must not lower onto the wrong HSConfig Step1 runtime surface.",
+    "boundary": "Audit the false-lowering risk for start-of-game hero-power transforms, explicit mulligan keeps, discover choices, targeting guidance, weapon pressure, secret timing, and global numeric tuning. The question is not whether the guide text is true; the question is whether the truth belongs in Mulligan.json, GlobalValues.json, per-card CARDID.json behavior, or only in report-visible diagnostics.",
+    "verified_false_lowering_cases": [
+      {
+        "semantic_family": "Start-of-game hero-power transform and brought-deck state",
+        "truthful_source_statement": "A card such as Darkbishop Benedictus, Baku the Mooneater, or Genn Greymane changes the starting Hero Power or start-of-game state because it is in the deck.",
+        "false_lowering_to_avoid": "Do not lower that truth into Mulligan.json as an opening-hand keep.",
+        "correct_surface_or_visibility": "Keep it as hero_power_transform or start_of_game semantics, emit CARDID.json BeforeUseHeroPowerBonus only when transformed identity is exact, or keep it as deck posture / static semantics."
+      },
+      {
+        "semantic_family": "Explicit mulligan keeps and discards",
+        "truthful_source_statement": "A current mulligan guide explicitly says to keep or throw away a concrete card or supported selector.",
+        "false_lowering_to_avoid": "Do not lower mulligan advice into CARDID.json or GlobalValues.json.",
+        "correct_surface_or_visibility": "Lower only to Mulligan.json, and only when the claim kind is exact mulligan_keep or mulligan_discard and survives surface gates."
+      },
+      {
+        "semantic_family": "Discover choice guidance",
+        "truthful_source_statement": "A guide says to pick a specific Discover option when that option appears.",
+        "false_lowering_to_avoid": "Do not lower unresolved Discover prose as a generic always-on card value row, mulligan hold, or arbitrary targeting rule.",
+        "correct_surface_or_visibility": "Lower to CARDID.json OnDiscoverCardBonus only when the option identity is source-backed and resolved; otherwise suppress or keep as weaker visibility."
+      },
+      {
+        "semantic_family": "Targeting guidance",
+        "truthful_source_statement": "A guide says to target face, prefer enemy minions, or avoid friendly targets with a specific card or action.",
+        "false_lowering_to_avoid": "Do not convert generic targeting prose into Mulligan.json, broad GlobalValues numeric tuning, or undocumented generic spell-target runtime rows.",
+        "correct_surface_or_visibility": "Use targeting_rule on documented card-behavior blocks such as BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, or BeforePhysicalAttackBonus when the card and target surface are exact."
+      },
+      {
+        "semantic_family": "Weapon pressure and hero-attack sequencing",
+        "truthful_source_statement": "A deck wins through weapon pressure, repeated hero attacks, or weapon sequencing.",
+        "false_lowering_to_avoid": "Do not infer a mulligan keep just because a weapon line matters, and do not invent secret timing or raw numeric tuning from weapon prose alone.",
+        "correct_surface_or_visibility": "Use mechanic_usage or targeting_rule on BeforePhysicalAttackBonus or BeforePlayCardBonus, and use posture overlays only through an authorized gameplan_posture claim such as weapon_pressure."
+      },
+      {
+        "semantic_family": "Secrets and hidden-information timing",
+        "truthful_source_statement": "Secret decks care about when Secrets are played and how hidden triggers line up.",
+        "false_lowering_to_avoid": "Do not invent a dedicated runtime timing row for secret ordering or trap timing.",
+        "correct_surface_or_visibility": "Explicit secret keeps may still lower to Mulligan.json, and generic secret usage may lower partially through CARDID.json BeforePlayCardBonus, but secret_timing remains warning-only and report-visible."
+      },
+      {
+        "semantic_family": "Global numeric tuning",
+        "truthful_source_statement": "A guide recommends numeric GlobalValues adjustments such as hero-power weighting or low-health penalty tuning.",
+        "false_lowering_to_avoid": "Do not emit raw numeric GlobalValues tuning in Step1 just because the guide recommendation is plausible.",
+        "correct_surface_or_visibility": "Only gameplan_posture may emit Step1 posture overlays; globalvalue_numeric_tuning stays blocked_until_runtime_evidence with reason requires_runtime_evidence."
+      }
+    ],
+    "confirmed_rule": "Truthful guide text must be classified by claim kind and runtime authority before emission. The durable boundary is surface correctness, not semantic truth alone."
+  },
+  "runtime_surface_implication": [
+    {
+      "semantic_family": "Start-of-game hero-power transforms",
+      "wrong_surface_to_avoid": [
+        "Mulligan.json"
+      ],
+      "allowed_step1_surfaces": [
+        "CARDID.json:BeforeUseHeroPowerBonus when transformed Hero Power identity is exact",
+        "GlobalValues.json:deck_posture when only deckwide posture is supported",
+        "report-visible start_of_game or hero_power_transform semantics"
+      ],
+      "repo_evidence": "source_document_model.py suppresses mulligan_keep for start_of_game non-hand effects with reason start_of_game_effect_does_not_require_opening_hand."
+    },
+    {
+      "semantic_family": "Explicit mulligan keeps and discards",
+      "wrong_surface_to_avoid": [
+        "CARDID.json",
+        "GlobalValues.json",
+        "Combo.json"
+      ],
+      "allowed_step1_surfaces": [
+        "Mulligan.json"
+      ],
+      "repo_evidence": "guide-research-policy.md and test_claim_kind_runtime_contract.py state that only exact mulligan_keep and mulligan_discard lower to Mulligan.json."
+    },
+    {
+      "semantic_family": "Discover choices",
+      "wrong_surface_to_avoid": [
+        "Mulligan.json",
+        "GlobalValues.json",
+        "generic CARDID.json value rows without option identity"
+      ],
+      "allowed_step1_surfaces": [
+        "CARDID.json:OnDiscoverCardBonus when option identity is resolved",
+        "suppressed or report-visible diagnostics when option identity is unresolved"
+      ],
+      "repo_evidence": "card_behavior router tests require option_card_id resolution and suppress unresolved_option_identity or covered_by_resolved_choice_surface."
+    },
+    {
+      "semantic_family": "Targeting rules",
+      "wrong_surface_to_avoid": [
+        "Mulligan.json",
+        "GlobalValues.json numeric tuning",
+        "undocumented generic spell-target rows"
+      ],
+      "allowed_step1_surfaces": [
+        "CARDID.json:BeforeBattlecryTargetBonus",
+        "CARDID.json:BeforeUseHeroPowerBonus",
+        "CARDID.json:BeforePhysicalAttackBonus",
+        "CARDID.json:BeforePlayCardBonus when the card-specific block is documented"
+      ],
+      "repo_evidence": "guide-research-policy.md lists documented target blocks, while mechanic_support.py keeps generic_spell_target as warning_only report-only."
+    },
+    {
+      "semantic_family": "Weapon pressure",
+      "wrong_surface_to_avoid": [
+        "fake secret timing rows",
+        "fake mulligan keeps inferred from strategic importance",
+        "raw GlobalValues numeric tuning"
+      ],
+      "allowed_step1_surfaces": [
+        "CARDID.json:BeforePhysicalAttackBonus",
+        "CARDID.json:BeforePlayCardBonus",
+        "Combo.json when there is an exact sequence claim",
+        "GlobalValues.json posture overlay through gameplan_posture weapon_pressure"
+      ],
+      "repo_evidence": "mechanic_support.py registers weapon as direct on physical attack and play timing; tests for Kingslayer and PirateDH assert these runtime blocks."
+    },
+    {
+      "semantic_family": "Secrets",
+      "wrong_surface_to_avoid": [
+        "invented secret-ordering runtime rows"
+      ],
+      "allowed_step1_surfaces": [
+        "Mulligan.json for exact secret keeps or discards",
+        "CARDID.json:BeforePlayCardBonus for partial secret usage value",
+        "report-only warning visibility for secret_timing"
+      ],
+      "repo_evidence": "mechanic_support.py marks secret as partial and secret_timing as warning_only with no normal-path runtime surface."
+    },
+    {
+      "semantic_family": "Global numeric tuning",
+      "wrong_surface_to_avoid": [
+        "Step1 GlobalValues.json raw numeric writes"
+      ],
+      "allowed_step1_surfaces": [
+        "GlobalValues.json posture overlays from gameplan_posture only",
+        "blocked_until_runtime_evidence diagnostics for explicit numeric tuning"
+      ],
+      "repo_evidence": "can_lower_to_globalvalues() rejects globalvalue_numeric_tuning with reason requires_runtime_evidence; globalvalues_authority.py records the blocked rows."
+    }
+  ],
+  "safe_to_emit_step1": {
+    "overall_rule": "Step1 may emit truthful semantics only through the documented runtime surface for that claim kind. It is safe to emit exact mulligan claims, exact targeting rules, resolved Discover choices, supported weapon behavior, and posture overlays. It is not safe to emit start-of-game non-hand effects as mulligan holds, unresolved Discover identities, generic secret timing, generic spell targeting, or raw numeric tuning.",
+    "case_matrix": [
+      {
+        "case": "Darkbishop Benedictus / Baku / Genn start-of-game hero-power transform",
+        "step1_safe": true,
+        "allowed_output": "hero_power_transform semantics and exact Hero Power runtime behavior when identity is known",
+        "not_allowed_output": "automatic Mulligan.json keep"
+      },
+      {
+        "case": "Guide explicitly says keep this card in the opening hand",
+        "step1_safe": true,
+        "allowed_output": "Mulligan.json hold or discard",
+        "not_allowed_output": "CARDID.json or GlobalValues.json lowering for the same claim"
+      },
+      {
+        "case": "Guide says pick specific Discover option",
+        "step1_safe": true,
+        "allowed_output": "OnDiscoverCardBonus when option_card_id is resolved",
+        "not_allowed_output": "unresolved generic always-on Discover row"
+      },
+      {
+        "case": "Guide says target face or prefer enemy minion",
+        "step1_safe": true,
+        "allowed_output": "documented targeting_rule card-behavior block",
+        "not_allowed_output": "generic spell-target runtime row without documented block"
+      },
+      {
+        "case": "Guide recommends secret timing or trap-order heuristics",
+        "step1_safe": false,
+        "allowed_output": "warning-only visibility",
+        "not_allowed_output": "new runtime row for secret_timing"
+      },
+      {
+        "case": "Guide recommends numeric GlobalValues numbers",
+        "step1_safe": false,
+        "allowed_output": "blocked_until_runtime_evidence report row",
+        "not_allowed_output": "Step1 numeric GlobalValues write"
+      }
+    ],
+    "why": [
+      "HSConfig surface gates are claim-kind-specific, not prose-driven.",
+      "Some Hearthstone truths are brought-deck or hidden-information semantics rather than executable opening-hand or card-behavior actions.",
+      "The repo explicitly treats unresolved identity and runtime-evidence-required tuning as visible but non-emittable."
+    ]
+  },
+  "blocked_or_report_only_cases": [
+    {
+      "case": "A mulligan_keep claim is attached to a card whose effect is Start of Game and does not require drawing the card.",
+      "classification": "suppress_from_mulligan_runtime",
+      "visibility_surface": "Mulligan suppressed_rules",
+      "why": "This is a false lowering from deck-state truth to hand-state action."
+    },
+    {
+      "case": "A guide describes Discover preference but the option identity is not linked to the Discover source card.",
+      "classification": "suppress_until_identity_resolution",
+      "visibility_surface": "card_behavior suppressed rows",
+      "why": "Discover is identity-gated direct; unresolved options are semantically true but not runtime-safe."
+    },
+    {
+      "case": "A guide describes generic spell targeting or board positioning without a documented card-specific runtime block.",
+      "classification": "warning_only",
+      "visibility_surface": "mechanic_visibility warning boundaries and report-only diagnostics",
+      "why": "generic_spell_target and board_position have no documented normal-path runtime surface."
+    },
+    {
+      "case": "A guide describes secret ordering, bluff, or hidden trigger timing.",
+      "classification": "warning_only",
+      "visibility_surface": "secret_timing warning boundary",
+      "why": "The mechanic is real, but the normal package has no dedicated secret_timing runtime row."
+    },
+    {
+      "case": "A guide recommends exact GlobalValues numbers rather than broad posture.",
+      "classification": "runtime_evidence_required",
+      "visibility_surface": "global_values_authority_matrix.blocked_until_runtime_evidence",
+      "why": "HSConfig accepts the claim kind but blocks Step1 emission until runtime evidence exists."
+    },
+    {
+      "case": "Low-confidence or report_only mulligan advice for a strategically important card.",
+      "classification": "suppress_from_runtime_but_keep_visible",
+      "visibility_surface": "suppressed_rules and source-depth reports",
+      "why": "Importance alone does not create runtime authority."
+    }
+  ],
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - authoritative surface gates for mulligan, GlobalValues, Combo, and CARDID lowering, including start-of-game non-hand suppression.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py - authoritative mechanic-to-surface map for discover, hero_power_transform, weapon, secret, secret_timing, generic_spell_target, and report-only boundaries.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/globalvalues_authority.py - authoritative Step1 posture overlay logic and blocked_until_runtime_evidence handling.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md - operator contract for accepted claim kinds, documented runtime blocks, and wrong-surface suppression.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - durable no-block statement for partial or warning-only mechanics and runtime-evidence-only tuning.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - regression coverage for exact mulligan authority and wrong-surface rejection.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_semantic_runtime_negative_boundaries.py - regression coverage for start-of-game mulligan suppression, unresolved Discover suppression, and numeric tuning runtime-evidence requirements.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py - regression coverage for resolved Discover choice lowering and generic fallback suppression.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py - regression coverage for identity-gated direct, partial, and warning-only mechanic boundaries including secret_timing and generic_spell_target.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_globalvalues_authority.py - regression coverage for posture overlays versus blocked numeric tuning.",
+    "https://hearthstone.blizzard.com/en-us/news/21363040/opening-moves-mulligans - official Hearthstone mulligan article describing the opening-hand phase before play begins.",
+    "https://hearthstone.blizzard.com/en-us/news/21614308/hearthside-chat-with-dean-ayala-even-and-odd - official Blizzard article stating Baku and Genn effects occur at the start of the game simply by being in the deck.",
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game - public rules reference stating Start of Game triggers before the mulligan, so mulligan choices cannot create or remove the effect.",
+    "https://hearthstone.wiki.gg/wiki/Discover - public rules reference describing Discover as choosing one of three eligible cards, which supports identity-gated lowering.",
+    "https://hearthstone.wiki.gg/wiki/Secret - public rules reference describing Secrets as delayed hidden effects, which supports keeping secret timing out of explicit runtime rows.",
+    "https://hearthstone.wiki.gg/wiki/Weapon - public rules reference describing weapons as equippable hero attack tools, which supports weapon-specific attack surfaces rather than generic prose lowering.",
+    "https://hearthstone.wiki.gg/wiki/Gameplay - public rules reference covering gameplay order and mulligan phase context.",
+    "https://hearthstone.blizzard.com/en-us/cards/48158-baku-the-mooneater - official card library page for Baku the Mooneater.",
+    "https://hearthstone.blizzard.com/de-de/cards/47693-genn-greymane?set=wild&textFilter=genn - official card library page for Genn Greymane.",
+    "https://hearthstone.blizzard.com/pt-br/cards/64443-darkbishop-benedictus/ - official card library page for Darkbishop Benedictus."
+  ],
+  "autonomy_risk": [
+    {
+      "risk": "Deck-only generation treats strategic importance as runtime authority.",
+      "failure_mode": "A start-of-game enabler or important weapon card becomes a fake mulligan keep.",
+      "control": "Require exact claim_kind authority and preserve start-of-game non-hand suppression."
+    },
+    {
+      "risk": "Identity-gated mechanics are over-lowered without resolved option identity.",
+      "failure_mode": "Discover prose becomes a generic always-on CARDID.json row even though the option is unknown.",
+      "control": "Require option_card_id resolution and suppress unresolved_option_identity."
+    },
+    {
+      "risk": "Generic targeting advice is mistaken for a documented runtime block.",
+      "failure_mode": "HSConfig invents generic spell-target or secret-order rows that the normal VisionAI surface does not support.",
+      "control": "Allow only documented targeting blocks and keep generic_spell_target and secret_timing warning-only."
+    },
+    {
+      "risk": "Guide posture language is mistaken for permission to write raw numbers.",
+      "failure_mode": "Step1 emits numeric GlobalValues tuning that should have remained runtime-evidence-only.",
+      "control": "Separate gameplan_posture from globalvalue_numeric_tuning and enforce requires_runtime_evidence."
+    },
+    {
+      "risk": "Operators read suppression as semantic deletion.",
+      "failure_mode": "A correct suppression of Mulligan.json or secret timing is misread as losing the deck's true plan.",
+      "control": "Keep the truth visible in reports, CARDID behavior, or deck posture while suppressing only the wrong runtime surface."
+    }
+  ],
+  "recommended_contract_rule": {
+    "overall_rule": "HSConfig should classify source truth in two passes: first, determine the semantic family; second, determine the one allowed runtime surface, if any. A claim may be true and still be forbidden from a specific Step1 runtime file.",
+    "decision_order": [
+      "Ask whether the claim is about hand action, card-behavior action, deck posture, exact combo sequence, or only descriptive gameplay truth.",
+      "Allow Mulligan.json only for exact mulligan_keep or mulligan_discard claims that survive runtime-lowerable checks and start-of-game non-hand suppression.",
+      "Allow CARDID.json only for documented card-behavior claim kinds such as targeting_rule, hero_power_transform, discover_choice, choose_one_choice, mechanic_usage, or known_bad_pattern.",
+      "Allow GlobalValues.json only for gameplan_posture overlays; keep globalvalue_numeric_tuning blocked until runtime evidence exists.",
+      "When the claim depends on hidden information, unresolved identity, or an undocumented runtime action surface, keep it visible as suppression or warning-only output instead of guessing."
+    ],
+    "canonical_examples": [
+      {
+        "example": "Darkbishop Benedictus",
+        "rule_application": "Preserve the start-of-game hero-power-transform truth, but do not create an opening-hand hold."
+      },
+      {
+        "example": "Resolved Discover option",
+        "rule_application": "Lower to OnDiscoverCardBonus for that option only; suppress unresolved generic fallback on the same resolved card."
+      },
+      {
+        "example": "Secret timing advice",
+        "rule_application": "Keep as warning-only hidden-information guidance; do not invent a secret timing row."
+      },
+      {
+        "example": "Weapon pressure deck posture",
+        "rule_application": "Use weapon_pressure posture and physical-attack behavior blocks, not raw Step1 numeric tuning."
+      }
+    ]
+  },
+  "tests_or_artifacts_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - proves exact mulligan authority and wrong-surface rejection.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_semantic_runtime_negative_boundaries.py - proves start-of-game mulligan suppression, unresolved Discover suppression, and numeric tuning runtime-evidence blocking.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py - proves resolved Discover and Choose One identities lower to exact behavior blocks and suppress unresolved or redundant fallbacks.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py - proves ShadowPriest, Kingslayer, ImbueMage, PirateRogue, and PirateDH fixture examples sit on the intended runtime surfaces.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mechanic_support.py - proves secret_timing and generic_spell_target remain warning-only while discover and hero_power_transform stay identity-gated direct.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_globalvalues_authority.py - proves posture overlays can emit while numeric tuning stays blocked.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md - durable operator-facing source-contract policy.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - durable non-blocking mechanic boundary policy.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - executable authority for claim-kind normalization and surface gates.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py - executable authority for mechanic support levels and documented runtime surfaces.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/globalvalues_authority.py - executable authority for Step1 posture overlays and blocked numeric tuning."
+  ],
+  "uncertain": []
+}
