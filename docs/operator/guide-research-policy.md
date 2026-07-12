@@ -106,6 +106,14 @@ surface-gate outcome, and diagnostic operator impact. It does not create a
 second operator gate: `source_contract_audit.json` stays diagnostic and
 operator_summary.json remains the normal apply authority.
 
+The snapshot separates unexpected contract drift from expected builder
+prerequisite gaps. Unexpected contract drift means the policy matrix, surface
+gate, or builder expectation disagrees and should be fixed. A builder
+prerequisite gap means the surface is allowed, but the concrete row is still
+missing required structure, such as a complete `Combo.json` sequence. These
+gaps support no-block package generation by staying visible without becoming a
+second apply gate.
+
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
 

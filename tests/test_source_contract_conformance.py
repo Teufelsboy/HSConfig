@@ -246,3 +246,24 @@ def test_conformance_snapshot_exposes_claim_lifecycle_for_key_claims():
         "final_runtime_effect": "emits_when_builder_prerequisites_are_complete",
         "operator_meaning": "Can lower only as an explicit ordered Combo.json sequence.",
     }
+
+
+def test_conformance_markdown_uses_drift_and_prerequisite_language():
+    markdown = render_source_contract_conformance_markdown(
+        build_source_contract_conformance_snapshot()
+    )
+
+    assert "## Summary" in markdown
+    assert "- Unexpected contract drift: 0" in markdown
+    assert "- Builder prerequisite gaps: 1" in markdown
+    assert "## Builder Prerequisite Gaps" in markdown
+    assert (
+        "| combo_sequence | combo | suppressed | sequence_too_short | "
+        "Surface gate allows this claim kind, but the builder still needs a complete "
+        "sequence before runtime JSON can be emitted. |"
+    ) in markdown
+    assert "## Claim Lifecycle" in markdown
+    assert (
+        "| hero_power_transform | suppressed_or_conditional | cardid:allowed | "
+        "route_card_behavior_surfaces:emitted | emits_cardid_runtime_row |"
+    ) in markdown

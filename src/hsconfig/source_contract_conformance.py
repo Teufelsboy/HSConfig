@@ -87,10 +87,25 @@ def render_source_contract_conformance_markdown(snapshot: Mapping[str, Any]) -> 
     rows = snapshot.get("claim_kind_rows", {})
     if not isinstance(rows, Mapping):
         rows = {}
+    summary = snapshot.get("summary", {})
+    if not isinstance(summary, Mapping):
+        summary = {}
     lines = [
         "# Source Contract Conformance Snapshot",
         "",
         "Diagnostic only. operator_summary.json remains the apply authority.",
+        "",
+        "## Summary",
+        "",
+        "- Unexpected contract drift: {count}".format(
+            count=summary.get("unexpected_contract_drift_count", 0)
+        ),
+        "- Builder prerequisite gaps: {count}".format(
+            count=summary.get("builder_prerequisite_gap_count", 0)
+        ),
+        "- Pipeline attention rows: {count}".format(
+            count=summary.get("pipeline_attention_count", 0)
+        ),
         "",
         "| Claim Kind | Policy Lane | Allowed Surfaces | Gate Summary |",
         "| --- | --- | --- | --- |",
@@ -133,6 +148,55 @@ def render_source_contract_conformance_markdown(snapshot: Mapping[str, Any]) -> 
                 incomplete=_escape_table(
                     _builder_outcome_summary(builder_router.get("incomplete"))
                 ),
+            )
+        )
+    gaps = summary.get("builder_prerequisite_gaps", [])
+    lines.extend(
+        [
+            "",
+            "## Builder Prerequisite Gaps",
+            "",
+            "| Claim Kind | Surface | Builder Outcome | Reason | Operator Meaning |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    if isinstance(gaps, list) and gaps:
+        for gap in gaps:
+            if not isinstance(gap, Mapping):
+                continue
+            lines.append(
+                "| {claim} | {surface} | {outcome} | {reason} | {meaning} |".format(
+                    claim=_escape_table(gap.get("claim_kind", "")),
+                    surface=_escape_table(gap.get("surface", "")),
+                    outcome=_escape_table(gap.get("builder_outcome", "")),
+                    reason=_escape_table(gap.get("reason", "")),
+                    meaning=_escape_table(gap.get("operator_meaning", "")),
+                )
+            )
+    else:
+        lines.append("| none | none | none | none | none |")
+    lines.extend(
+        [
+            "",
+            "## Claim Lifecycle",
+            "",
+            "| Claim Kind | Policy Lane | Surface Gate | Builder Status | Final Runtime Effect |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for claim_kind, row in sorted(rows.items()):
+        if not isinstance(row, Mapping):
+            continue
+        lifecycle = row.get("lifecycle", {})
+        if not isinstance(lifecycle, Mapping):
+            continue
+        lines.append(
+            "| {claim} | {lane} | {gate} | {builder} | {effect} |".format(
+                claim=_escape_table(claim_kind),
+                lane=_escape_table(lifecycle.get("policy_lane", "")),
+                gate=_escape_table(lifecycle.get("surface_gate_status", "")),
+                builder=_escape_table(lifecycle.get("builder_status", "")),
+                effect=_escape_table(lifecycle.get("final_runtime_effect", "")),
             )
         )
     lines.append("")

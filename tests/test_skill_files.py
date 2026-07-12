@@ -443,6 +443,23 @@ def test_docs_and_skill_explain_contract_conformance_snapshot():
     assert "operator_summary.json remains the normal apply authority" in combined
 
 
+def test_docs_and_skill_distinguish_contract_drift_from_builder_prerequisites():
+    combined = (
+        Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert "unexpected contract drift" in combined.lower()
+    assert "builder prerequisite gap" in combined.lower()
+    assert "no-block package generation" in combined.lower()
+    assert "operator_summary.json remains the normal apply authority" in combined
+
+
 def test_docs_do_not_advertise_presume_concede_as_normal_outputs():
     active_docs = [
         Path("README.md"),
