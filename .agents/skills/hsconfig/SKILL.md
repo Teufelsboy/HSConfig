@@ -37,21 +37,28 @@ Operator rules:
 - Minimal `load_safe_apply` requires `GlobalValues.json` and `Mulligan.json`. `per-card <CARDID>.json` files and `Combo.json` are HSConfig rich-output repo policy, not the minimal runtime-write gate and not an official HearthRanger minimum.
 - Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 - `globalvalue_numeric_tuning` is valid source evidence, but Step 1 treats it as runtime-evidence-required and report-visible. Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
-- Source-contract invariant: effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON. `source_contract_audit.json` is diagnostic; `operator_summary.json` remains the normal apply authority.
+- Source-contract invariant: effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON. `source_contract_audit.json` is diagnostic; runtime-write authority stays in `operator_summary.json`.
 - `operator_summary.json` remains the only normal apply authority.
 - `source_contract_audit.json` explains why each claim did or did not lower.
 - `contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
 - Warnings are follow-up work, not a runtime apply blocker.
 - Do not use `source_contract_audit.json` as an apply gate.
+- When adding a claim kind, update all four boundaries together:
+  `SUPPORTED_ATOMIC_CLAIM_KINDS`, `source_contract_matrix.py`,
+  the matching surface gate, and a builder/router or diagnostic test.
+- New claim kinds must not create an additional runtime-write gate.
+  `operator_summary.json` remains the only normal runtime-write/apply authority.
+- If the VisionAI surface or identity is unresolved, keep the claim visible in
+  reports and do not emit runtime JSON from it.
 - The contract conformance snapshot is documentation-as-code for claim-kind policy, surface gates, and diagnostic impact. It does not create a second operator gate; operator_summary.json remains the normal apply authority.
-`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not authorize runtime writes, and operator_summary.json remains the normal apply authority.
 - Treat unexpected contract drift as an implementation defect, but treat builder prerequisite gaps as visible no-block diagnostics. A builder prerequisite gap means the surface is allowed but the concrete claim is missing required structure, such as a complete combo sequence.
 - Never treat `policy_lane` alone as runtime emission. Check `source_contract_audit.json.claim_lifecycle_rows` for source -> policy -> surface gate -> builder/router -> emitted/suppressed diagnostics, and use `operator_summary.json` for normal readiness.
 - `reports/source_contract_audit.json` explains why each claim did or did not lower to `Mulligan.json`, `GlobalValues.json`, `Combo.json`, or `per-card <CARDID>.json`; it is diagnostic and does not replace `operator_summary.json`.
 - When a package is technically valid but source depth is weak, continue and report the debt. Do not block valid deck packages because a claim is low confidence, report-only, unsupported by a runtime surface, or visible only in `source_contract_audit.json`.
 - `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term.
-- Inspect `config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `next_report_to_open`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/mechanic_drift_report.json`, `reports/semantic_enrichment_report.json`, and `no_block_failure_mode_summary` when a package has warnings. warning-only mechanics do not block load-safe apply, and this does not create a second apply gate.
+- Inspect `config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `next_report_to_open`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/mechanic_drift_report.json`, `reports/semantic_enrichment_report.json`, and `no_block_failure_mode_summary` when a package has warnings. warning-only mechanics do not block load-safe apply, and this does not add another runtime-write gate.
 - `technical_hard_block` stops apply. `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` are follow-up labels.
 - The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`: `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only and do not increment `cards_needing_mechanic_lowering`.
 - Modern mechanic visibility is non-blocking. `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` should be named in reports when detected, but they must not block load-safe apply unless the package is technically invalid.

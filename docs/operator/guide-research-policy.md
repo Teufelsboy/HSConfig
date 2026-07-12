@@ -106,7 +106,7 @@ surface-gate outcome, and diagnostic operator impact. It does not create a
 second operator gate: `source_contract_audit.json` stays diagnostic and
 operator_summary.json remains the normal apply authority.
 
-`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not authorize runtime writes, and operator_summary.json remains the normal apply authority.
 
 `operator_summary.json` remains the only normal apply authority.
 `source_contract_audit.json` explains why each claim did or did not lower.
@@ -120,7 +120,7 @@ gate, or builder expectation disagrees and should be fixed. A builder
 prerequisite gap means the surface is allowed, but the concrete row is still
 missing required structure, such as a complete `Combo.json` sequence. These
 gaps support no-block package generation by staying visible without becoming a
-second apply gate.
+additional runtime-write gate.
 
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
@@ -187,6 +187,24 @@ GlobalValues key authority:
 - `copy_baseline` keys are copied and profiled, not tuned.
 - `step1_posture_overlay_allowed` keys may change only when source posture supports them.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
+
+## Adding A New Claim Kind
+
+New claim kinds must follow the same compact spine:
+
+1. Add the atomic claim kind to `SUPPORTED_ATOMIC_CLAIM_KINDS`.
+2. Add exactly one policy row in `source_contract_matrix.py`.
+3. Decide the allowed surface: `mulligan`, `globalvalues`, `cardid`, `combo`, or none.
+4. Add or update the matching surface-gate test.
+5. Add builder/router coverage only when the VisionAI surface is documented and syntax-safe.
+6. Keep report-only, runtime-evidence-required, unresolved-identity, and warning-only mechanics non-blocking.
+7. Keep `operator_summary.json` as the only normal apply authority.
+
+New claim kinds must not create an additional runtime-write gate or bypass or
+replace the apply authority.
+
+Do not add broad wildcard claim kinds such as `globalvalue_*` or prose-driven
+claims that bypass the surface gates.
 
 ## Per-Card Depth Rule
 
