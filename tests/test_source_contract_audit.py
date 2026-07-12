@@ -490,3 +490,122 @@ def test_source_contract_audit_policy_matrix_failure_is_nonblocking(monkeypatch)
     assert report["summary"]["claim_kind_policy_counts"] == {
         "unsupported_or_unmapped": 1
     }
+
+
+def test_claim_lifecycle_marks_allowed_claim_without_builder_emission_as_not_seen_by_builder():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={"deck_name": "FixtureDeck", "cards": []},
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "posture_claim",
+                    "claim_kind": "gameplan_posture",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": [],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Use a more aggressive posture.",
+                }
+            ]
+        },
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={"cards": {}},
+    )
+
+    row = report["claim_lifecycle_rows"][0]
+
+    assert row["claim_id"] == "posture_claim"
+    assert row["claim_kind"] == "gameplan_posture"
+    assert row["surface_gate_decision"] == "allowed"
+    assert row["surface_gate_reason"] == "allowed"
+    assert row["builder_or_router_decision"] == "not_seen_by_builder"
+    assert row["suppressed_reason"] == "builder_or_router_missing"
+    assert row["first_missing_link"] == "builder_or_router"
+    assert row["operator_impact"] == "diagnostic_only"
+
+
+def test_source_contract_audit_summarizes_claim_lifecycle_decisions():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2}],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "keep_claim",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_KEEP"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Keep CARD_KEEP.",
+                },
+                {
+                    "claim_id": "posture_claim",
+                    "claim_kind": "gameplan_posture",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": [],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Use a more aggressive posture.",
+                },
+                {
+                    "claim_id": "numeric_claim",
+                    "claim_kind": "globalvalue_numeric_tuning",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": [],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Tune a numeric GlobalValues key only after games.",
+                },
+            ]
+        },
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_KEEP",
+                    "action": "hold",
+                    "source_claim_ids": ["keep_claim"],
+                }
+            ],
+            "suppressed_rules": [],
+        },
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [
+                {
+                    "key": "LowHpBoardValuePenalty",
+                    "claim_id": "numeric_claim",
+                    "reason": "runtime_evidence_required",
+                }
+            ],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_KEEP": {
+                    "name": "Keep Card",
+                    "roles": ["mulligan_anchor"],
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "readiness_lane": "mulligan_only",
+                    "first_missing_link": "none",
+                }
+            }
+        },
+    )
+
+    assert report["summary"]["claim_lifecycle_decision_counts"] == {
+        "emitted": 1,
+        "not_seen_by_builder": 1,
+        "suppressed": 1,
+    }

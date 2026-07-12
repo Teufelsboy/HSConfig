@@ -83,6 +83,21 @@ no-block deck can still include suppressed diagnostics when a source claim has
 no documented runtime surface; readiness and apply authority remain in
 `operator_summary.json`.
 
+### Claim Lifecycle End States
+
+`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only. Each source
+claim should end in one visible state:
+
+- `emitted`: a source claim reached a runtime file.
+- `suppressed`: a source claim was intentionally not emitted because the source,
+  confidence, runtime evidence, or VisionAI surface did not allow it.
+- `not_seen_by_builder`: the source and surface gate allowed a claim, but no
+  builder/router emitted it. Treat this as implementation debt, not an operator
+  apply block.
+
+Use `operator_summary.json` for normal readiness and apply decisions. Do not use
+`source_contract_audit.json` as an apply gate.
+
 For CardID behavior claims, prefer source-backed `runtime_block` when the guide
 or card text clearly maps to a documented VisionAI block. Examples:
 

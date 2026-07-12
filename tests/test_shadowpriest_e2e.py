@@ -170,16 +170,16 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     )
     assert any(
         row["claim_kind"] == "hero_power_transform"
+        and row["builder_or_router_decision"] == "emitted"
         and (
-            row["builder_or_router_decision"] in {"emitted", "lowered"}
-            or row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
+            row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
             or "SW_448.json" in row["emitted_files"]
         )
         for row in darkbishop_lifecycle_rows
     )
     assert not any(
         row["claim_kind"] == "mulligan_keep"
-        and row["builder_or_router_decision"] in {"emitted", "lowered"}
+        and row["builder_or_router_decision"] == "emitted"
         for row in darkbishop_lifecycle_rows
     )
     assert not any(row.get("mulligan") == "SW_448" for row in mulligan_values)

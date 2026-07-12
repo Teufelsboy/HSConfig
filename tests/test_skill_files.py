@@ -845,6 +845,10 @@ def test_skill_explains_source_contract_audit_without_new_gate():
 
 
 def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
+    operator_policy = Path("docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
     paths = [
         Path("docs/operator/README.md"),
         Path("docs/operator/guide-research-policy.md"),
@@ -862,6 +866,19 @@ def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
     assert "source_contract_audit.json` is diagnostic" in combined
     assert "audit is an apply gate" not in combined_lower
     assert "source_contract_audit.json remains the normal apply authority" not in combined
+
+    assert "### Claim Lifecycle End States" in operator_policy
+    assert "`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only" in operator_policy
+    for state in ("`emitted`", "`suppressed`", "`not_seen_by_builder`"):
+        assert state in operator_policy
+    assert "implementation debt, not an operator" in operator_policy
+    assert "Do not use\n`source_contract_audit.json` as an apply gate." in operator_policy
+
+    assert "technically valid but source depth is weak" in skill
+    assert "low confidence" in skill
+    assert "report-only" in skill
+    assert "unsupported by a runtime surface" in skill
+    assert "visible only in `source_contract_audit.json`" in skill
 
 
 def test_docs_and_skill_state_source_contract_invariant_rule():

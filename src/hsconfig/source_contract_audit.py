@@ -137,6 +137,9 @@ def build_source_contract_audit(
         list(claim_rows.values()),
         runtime_emission_index=runtime_emission_index,
     )
+    summary["claim_lifecycle_decision_counts"] = _claim_lifecycle_decision_counts(
+        claim_lifecycle_rows
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -554,6 +557,7 @@ def _build_claim_lifecycle_rows(
         decision = str(emission.get("decision", ""))
         if not decision:
             decision = _fallback_builder_decision(gate)
+        decision = _normalized_lifecycle_decision(decision, gate)
         suppressed_reason = emission.get("suppressed_reason")
         if decision == "emitted":
             suppressed_reason = None
@@ -579,6 +583,29 @@ def _build_claim_lifecycle_rows(
             }
         )
     return rows
+
+
+def _claim_lifecycle_decision_counts(
+    claim_lifecycle_rows: list[Mapping[str, Any]],
+) -> dict[str, int]:
+    counts = Counter(
+        str(row.get("builder_or_router_decision", ""))
+        for row in claim_lifecycle_rows
+        if isinstance(row, Mapping)
+    )
+    allowed_order = ("emitted", "not_seen_by_builder", "suppressed")
+    return {decision: counts[decision] for decision in allowed_order if counts[decision]}
+
+
+def _normalized_lifecycle_decision(
+    decision: str,
+    gate: Mapping[str, Any],
+) -> str:
+    if decision == "lowered":
+        return "emitted"
+    if decision in {"emitted", "suppressed", "not_seen_by_builder"}:
+        return decision
+    return _fallback_builder_decision(gate)
 
 
 def _lifecycle_surface(

@@ -539,6 +539,7 @@ def _source_contract_audit_summary(report: dict[str, Any] | None) -> dict[str, A
             "report_only_claims": 0,
             "cards_total": 0,
             "cards_with_missing_links": 0,
+            "claim_lifecycle_decision_counts": {},
             "next_report_to_open": None,
         }
     summary = report.get("summary", {})
@@ -569,10 +570,18 @@ def _source_contract_audit_summary(report: dict[str, Any] | None) -> dict[str, A
         "cards_with_missing_links": _int_value(
             summary.get("cards_with_missing_links", 0)
         ),
+        "claim_lifecycle_decision_counts": _source_contract_lifecycle_counts(summary),
         "next_report_to_open": (
             "reports/source_contract_audit.json" if followup_count else None
         ),
     }
+
+
+def _source_contract_lifecycle_counts(summary: dict[str, Any]) -> dict[str, int]:
+    counts = summary.get("claim_lifecycle_decision_counts", {})
+    if not isinstance(counts, dict):
+        return {}
+    return {str(key): _int_value(value) for key, value in counts.items()}
 
 
 def _mechanic_drift_summary(report: dict[str, Any] | None) -> dict[str, Any]:

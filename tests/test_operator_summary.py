@@ -1910,6 +1910,27 @@ def test_operator_summary_exposes_source_contract_audit_without_blocking_apply()
     assert audit["next_report_to_open"] == "reports/source_contract_audit.json"
 
 
+@pytest.mark.parametrize("malformed_counts", [None, [], "emitted"])
+def test_operator_summary_ignores_malformed_source_contract_lifecycle_counts(
+    malformed_counts,
+):
+    summary = build_operator_summary(
+        deck_name="Audit Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        source_contract_audit_report={
+            "summary": {
+                "claim_lifecycle_decision_counts": malformed_counts,
+            }
+        },
+    )
+
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["source_contract_audit_summary"][
+        "claim_lifecycle_decision_counts"
+    ] == {}
+
+
 def test_source_contract_policy_counts_do_not_block_valid_package():
     summary = build_operator_summary(
         deck_name="FixtureDeck",
