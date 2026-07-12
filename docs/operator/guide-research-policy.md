@@ -106,7 +106,7 @@ surface-gate outcome, and diagnostic operator impact. It does not create a
 second operator gate: `source_contract_audit.json` stays diagnostic and
 operator_summary.json remains the normal apply authority.
 
-`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not authorize runtime writes, and operator_summary.json remains the normal apply authority.
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
 
 `operator_summary.json` remains the only normal apply authority.
 `source_contract_audit.json` explains why each claim did or did not lower.

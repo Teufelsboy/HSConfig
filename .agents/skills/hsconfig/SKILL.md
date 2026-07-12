@@ -43,15 +43,10 @@ Operator rules:
 - `contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
 - Warnings are follow-up work, not a runtime apply blocker.
 - Do not use `source_contract_audit.json` as an apply gate.
-- When adding a claim kind, update all four boundaries together:
-  `SUPPORTED_ATOMIC_CLAIM_KINDS`, `source_contract_matrix.py`,
-  the matching surface gate, and a builder/router or diagnostic test.
-- New claim kinds must not create an additional runtime-write gate.
-  `operator_summary.json` remains the only normal runtime-write/apply authority.
-- If the VisionAI surface or identity is unresolved, keep the claim visible in
-  reports and do not emit runtime JSON from it.
+- When adding a claim kind, update all four boundaries together: `SUPPORTED_ATOMIC_CLAIM_KINDS`, `source_contract_matrix.py`, the matching surface gate, and a builder/router or diagnostic test; new claim kinds must not create another runtime-write gate, and `operator_summary.json` remains the only normal runtime-write/apply authority.
+- If the VisionAI surface or identity is unresolved, keep the claim visible in reports and do not emit runtime JSON from it.
 - The contract conformance snapshot is documentation-as-code for claim-kind policy, surface gates, and diagnostic impact. It does not create a second operator gate; operator_summary.json remains the normal apply authority.
-`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not authorize runtime writes, and operator_summary.json remains the normal apply authority.
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
 - Treat unexpected contract drift as an implementation defect, but treat builder prerequisite gaps as visible no-block diagnostics. A builder prerequisite gap means the surface is allowed but the concrete claim is missing required structure, such as a complete combo sequence.
 - Never treat `policy_lane` alone as runtime emission. Check `source_contract_audit.json.claim_lifecycle_rows` for source -> policy -> surface gate -> builder/router -> emitted/suppressed diagnostics, and use `operator_summary.json` for normal readiness.
 - `reports/source_contract_audit.json` explains why each claim did or did not lower to `Mulligan.json`, `GlobalValues.json`, `Combo.json`, or `per-card <CARDID>.json`; it is diagnostic and does not replace `operator_summary.json`.
