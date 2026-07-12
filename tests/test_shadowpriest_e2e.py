@@ -54,6 +54,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    source_contract_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
@@ -90,6 +93,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"]
     assert operator_summary["source_informed_apply_readiness"]["status"] == "not_applicable"
     assert apply_code == 0
     assert apply_out["status"] == "applied"
@@ -141,6 +146,22 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert darkbishop_card_config.exists()
     assert darkbishop_runtime_config["GameCardId"] == "SW_448"
     assert darkbishop_runtime_config["BeforeUseHeroPowerBonus"]["values"]
+    darkbishop_claims = [
+        row
+        for row in source_contract_audit["claim_rows"].values()
+        if "SW_448" in row.get("cards", [])
+    ]
+    assert any(
+        row["claim_kind"] == "hero_power_transform"
+        and row["lane"] == "runtime_lowered"
+        and "cardid" in row["lowered_surfaces"]
+        for row in darkbishop_claims
+    )
+    assert not any(
+        row["claim_kind"] == "mulligan_keep"
+        and row["lane"] == "runtime_lowered"
+        for row in darkbishop_claims
+    )
     assert not any(row.get("mulligan") == "SW_448" for row in mulligan_values)
     assert "SW_448" not in mulligan_text
     assert not (deck_dir / "Presume.json").exists()

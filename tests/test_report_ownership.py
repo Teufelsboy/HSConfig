@@ -6,6 +6,9 @@ def test_report_ownership_covers_operator_reports():
     by_file = {row["file"]: row for row in rows}
 
     assert by_file["reports/operator_summary.json"]["authority"] == "normal_operator_gate"
+    assert by_file["reports/source_contract_audit.json"]["answers"] == (
+        "why each source claim did or did not lower to runtime config"
+    )
     assert by_file["reports/source_claim_gap_report.json"]["answers"] == "which card link is missing first"
     assert by_file["reports/strong_promotion_report.json"]["answers"] == "whether the package can be called source-backed strong"
     assert by_file["reports/per_card_config_readiness_report.json"]["answers"] == "which lane each card occupies"
@@ -34,6 +37,6 @@ def test_report_ownership_includes_mechanic_diagnostics():
     by_file = {row["file"]: row for row in rows}
 
     assert by_file["reports/mechanic_drift_report.json"]["authority"] == "non_blocking_mechanic_drift_visibility"
-    assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "7"
+    assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "8"
     assert by_file["reports/semantic_enrichment_report.json"]["authority"] == "semantic_mechanic_diagnostics"
-    assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "8"
+    assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "9"

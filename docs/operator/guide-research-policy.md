@@ -189,6 +189,7 @@ For each card, prefer claims that answer at least one of these questions:
 - `source_evidence_index.json`: source-level summary.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
 - `unsupported_claims_report.json`: rejected source claims with reasons.
+- `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; diagnostic only.
 - `source_claim_gap_report.json`: first missing source or lowering link per card.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 - `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.

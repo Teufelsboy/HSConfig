@@ -61,6 +61,9 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
 
     payload = json.loads(capsys.readouterr().out)
     operator = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
+    source_contract_audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
     semantic_report = json.loads(
         (out / "reports" / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
@@ -93,6 +96,9 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     }
     assert no_block["categories"]["technical_hard_block"] == []
     assert no_block["operator_message"].startswith("Package is load-safe.")
+    assert operator["source_contract_audit_summary"]["non_blocking"] is True
+    assert source_contract_audit["schema_version"] == 1
+    assert source_contract_audit["summary"]["cards_total"] == len(deck_card_ids)
     assert operator["mechanic_visibility_summary"]["non_blocking"] is True
     assert operator["semantic_enrichment_summary"]["non_blocking"] is True
     assert operator["next_action"] in {"READY_TO_APPLY_OR_HANDOFF", "READY_TO_APPLY_WITH_WARNINGS"}
@@ -131,7 +137,14 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
                 encoding="utf-8"
             )
         )
+        source_contract_audit = json.loads(
+            (out / "04_package" / "reports" / "source_contract_audit.json").read_text(
+                encoding="utf-8"
+            )
+        )
         assert operator["technical_status"] == "VALID_PACKAGE"
         assert operator["runtime_load_safe"] is True
         assert operator["runtime_apply_mode"] == "load_safe_apply"
+        assert operator["source_contract_audit_summary"]["non_blocking"] is True
+        assert source_contract_audit["schema_version"] == 1
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True

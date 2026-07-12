@@ -22,6 +22,8 @@ runtime write. Runtime output is decided by surface-specific gates:
 
 Wrong-surface or low-confidence claims do not block deck generation. They are
 reported as suppressed/report-only rows with explicit reasons.
+`reports/source_contract_audit.json` explains those source-to-runtime decisions
+per claim and per card; it does not replace `reports/operator_summary.json`.
 
 ## Quick Start
 
@@ -147,6 +149,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | File | Authority | Answers |
 | --- | --- | --- |
 | `reports/operator_summary.json` | normal operator gate | what to do next |
+| `reports/source_contract_audit.json` | source-to-runtime explanation | why each source claim did or did not lower to runtime config |
 | `reports/source_claim_gap_report.json` | repair contract | which card link is missing first |
 | `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |
 | `reports/per_card_config_readiness_report.json` | card lane diagnostics | which lane each card occupies |

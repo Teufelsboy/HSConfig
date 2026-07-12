@@ -1818,6 +1818,55 @@ def test_prepare_clears_stale_reports_before_operator_summary_generated_files(
     assert "reports/stale_report.json" not in generated
 
 
+def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    generated = {path.replace("\\", "/") for path in operator_summary["generated_files"]}
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert audit["schema_version"] == 1
+    assert audit["summary"]["claims_total"] > 0
+    assert audit["summary"]["runtime_lowered_claims"] > 0
+    assert "SW_448" in audit["card_rows"]
+    assert (reports / "source_contract_audit.md").is_file()
+    assert "reports/source_contract_audit.json" in generated
+    assert "reports/source_contract_audit.md" in generated
+    assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert (
+        operator_summary["source_contract_audit_summary"]["runtime_lowered_claims"]
+        == audit["summary"]["runtime_lowered_claims"]
+    )
+
+
 def test_prepare_writes_mechanic_drift_report_and_operator_summary(
     tmp_path: Path, capsys
 ):

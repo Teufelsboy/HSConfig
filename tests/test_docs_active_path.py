@@ -311,6 +311,14 @@ def test_operator_docs_explain_no_block_failure_mode_summary():
     assert "It does not create a second apply gate." in docs
 
 
+def test_operator_docs_explain_source_contract_audit_as_diagnostic_only():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "reports/source_contract_audit.json" in text
+    assert "why each source claim did or did not lower to runtime config" in text
+    assert "does not replace `reports/operator_summary.json`" in text
+
+
 def test_current_truth_names_no_block_failure_mode_audit_v5():
     text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
 

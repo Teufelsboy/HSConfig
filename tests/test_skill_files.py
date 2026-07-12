@@ -825,3 +825,16 @@ def test_skill_explains_no_block_failure_mode_summary():
     assert "warning_only_mechanic" in combined
     assert "future_mechanic_drift" in combined
     assert "does not create a second apply gate" in combined
+
+
+def test_skill_explains_source_contract_audit_without_new_gate():
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{skill}\n{workflow}"
+
+    assert "reports/source_contract_audit.json" in combined
+    assert "source_contract_audit_summary" in combined
+    assert "does not replace `operator_summary.json`" in skill
+    assert "does not create a second apply gate" in combined

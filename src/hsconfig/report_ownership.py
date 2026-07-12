@@ -13,34 +13,40 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "contains": ["config_usefulness"],
         },
         {
+            "file": "reports/source_contract_audit.json",
+            "authority": "source_to_runtime_explanation",
+            "answers": "why each source claim did or did not lower to runtime config",
+            "open_order": "2",
+        },
+        {
             "file": "reports/source_claim_gap_report.json",
             "authority": "repair_contract",
             "answers": "which card link is missing first",
-            "open_order": "2",
+            "open_order": "3",
         },
         {
             "file": "reports/strong_promotion_report.json",
             "authority": "promotion_confirmation",
             "answers": "whether the package can be called source-backed strong",
-            "open_order": "3",
+            "open_order": "4",
         },
         {
             "file": "reports/per_card_config_readiness_report.json",
             "authority": "card_lane_diagnostics",
             "answers": "which lane each card occupies",
-            "open_order": "4",
+            "open_order": "5",
         },
         {
             "file": "reports/guide_source_depth_report.json",
             "authority": "source_depth_diagnostics",
             "answers": "how strong the guide and source coverage is",
-            "open_order": "5",
+            "open_order": "6",
         },
         {
             "file": "reports/global_values_authority_matrix.json",
             "authority": "globalvalues_diagnostics",
             "answers": "which GlobalValues keys are source-backed or archetype-inferred",
-            "open_order": "6",
+            "open_order": "7",
         },
         {
             "file": "reports/mechanic_drift_report.json",
@@ -50,7 +56,7 @@ def build_report_ownership() -> list[dict[str, Any]]:
                 "mechanic_drift_summary shows unknown mechanics, text-only mechanics, "
                 "or unknown card types"
             ),
-            "open_order": "7",
+            "open_order": "8",
         },
         {
             "file": "reports/semantic_enrichment_report.json",
@@ -60,6 +66,6 @@ def build_report_ownership() -> list[dict[str, Any]]:
                 "mechanic_visibility_summary or config_usefulness points to static, "
                 "partial, or warning-only mechanic coverage"
             ),
-            "open_order": "8",
+            "open_order": "9",
         },
     ]

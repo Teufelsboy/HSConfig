@@ -56,6 +56,10 @@ from hsconfig.research_contract import (
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.semantic_enrichment import append_semantic_warning, enrich_card_metadata
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
+from hsconfig.source_contract_audit import (
+    build_source_contract_audit,
+    render_source_contract_audit_markdown,
+)
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.source_evidence_verifier import verify_source_documents
@@ -438,6 +442,22 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         combo_plan=combo_plan,
     )
     write_json(reports_dir / "source_claim_gap_report.json", source_claim_gap_report)
+    source_contract_audit_report = build_source_contract_audit(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        guide_claim_bundle=guide_claim_bundle,
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan=card_behavior_plan,
+        combo_plan=combo_plan,
+        global_values_authority_matrix=global_values_authority_matrix,
+        config_readiness_report=config_readiness_report,
+    )
+    write_json(reports_dir / "source_contract_audit.json", source_contract_audit_report)
+    (reports_dir / "source_contract_audit.md").write_text(
+        render_source_contract_audit_markdown(source_contract_audit_report),
+        encoding="utf-8",
+        newline="\n",
+    )
     write_json(
         reports_dir / "global_values_blocked_changes.json",
         global_values_authority_matrix["blocked_until_runtime_evidence"],
@@ -475,6 +495,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "globalvalues_profile_report": globalvalues["profile"],
         "semantic_enrichment_report": semantic_report,
         "mechanic_drift_report": mechanic_drift_report,
+        "source_contract_audit_report": source_contract_audit_report,
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(

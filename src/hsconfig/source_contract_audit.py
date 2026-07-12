@@ -1,0 +1,465 @@
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from typing import Any, Mapping
+
+from hsconfig.source_document_model import (
+    claim_can_lower_to_runtime,
+    normalized_claim_kind,
+    surface_gate_decision,
+)
+
+
+SURFACES = ("mulligan", "globalvalues", "cardid", "combo")
+
+
+def build_source_contract_audit(
+    *,
+    deck_name: str,
+    deck_identity: Mapping[str, Any] | None = None,
+    guide_claim_bundle: Mapping[str, Any] | None = None,
+    mulligan_plan: Mapping[str, Any] | None = None,
+    card_behavior_plan: Mapping[str, Any] | None = None,
+    combo_plan: Mapping[str, Any] | None = None,
+    global_values_authority_matrix: Mapping[str, Any] | None = None,
+    config_readiness_report: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Explain why source claims did or did not lower into runtime surfaces."""
+    deck_identity = deck_identity or {}
+    guide_claim_bundle = guide_claim_bundle or {}
+    mulligan_plan = mulligan_plan or {}
+    card_behavior_plan = card_behavior_plan or {}
+    combo_plan = combo_plan or {}
+    global_values_authority_matrix = global_values_authority_matrix or {}
+    config_readiness_report = config_readiness_report or {}
+
+    emitted_claim_ids = _emitted_claim_ids(
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan=card_behavior_plan,
+        combo_plan=combo_plan,
+        global_values_authority_matrix=global_values_authority_matrix,
+    )
+    suppressed_reasons = _suppressed_reasons(
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan=card_behavior_plan,
+        combo_plan=combo_plan,
+        global_values_authority_matrix=global_values_authority_matrix,
+    )
+    card_roles = _card_roles_from_readiness(config_readiness_report)
+
+    claim_rows: dict[str, dict[str, Any]] = {}
+    card_claim_lanes: dict[str, Counter[str]] = defaultdict(Counter)
+    claims = _guide_claims(guide_claim_bundle)
+    for index, claim in enumerate(claims, start=1):
+        claim_id = _claim_id(claim, index)
+        cards = _claim_cards(claim)
+        decisions = {
+            surface: _decision_row(
+                surface_gate_decision(
+                    claim,
+                    surface,
+                    context={"card_roles": card_roles},
+                )
+            )
+            for surface in SURFACES
+        }
+        suppressed_reason = suppressed_reasons.get(claim_id)
+        emitted_surfaces = [
+            surface
+            for surface in SURFACES
+            if decisions[surface]["allowed"]
+            if _claim_lowered_to_surface(
+                claim_id=claim_id,
+                claim=claim,
+                surface=surface,
+                emitted_claim_ids=emitted_claim_ids,
+                mulligan_plan=mulligan_plan,
+                card_behavior_plan=card_behavior_plan,
+                combo_plan=combo_plan,
+                allow_legacy_card_fallback=suppressed_reason is None,
+            )
+        ]
+        first_reason = suppressed_reason or _first_gate_reason(decisions)
+        lane = _claim_lane(
+            claim=claim,
+            emitted_surfaces=emitted_surfaces,
+            suppressed_reason=suppressed_reason,
+            decisions=decisions,
+        )
+        claim_rows[claim_id] = {
+            "claim_id": claim_id,
+            "claim_kind": normalized_claim_kind(claim),
+            "claim_readiness": str(claim.get("claim_readiness", "")),
+            "trust_ceiling": str(claim.get("trust_ceiling", "")),
+            "source_title": str(claim.get("source_title", "")),
+            "evidence_text_short": str(claim.get("evidence_text_short", "")),
+            "cards": cards,
+            "lane": lane,
+            "first_reason": first_reason,
+            "lowered_surfaces": emitted_surfaces,
+            "surfaces": decisions,
+        }
+        for card_id in cards:
+            card_claim_lanes[card_id][lane] += 1
+
+    card_rows = _card_rows(
+        deck_identity=deck_identity,
+        config_readiness_report=config_readiness_report,
+        card_claim_lanes=card_claim_lanes,
+    )
+    summary = _summary(claim_rows=claim_rows, card_rows=card_rows)
+    return {
+        "schema_version": 1,
+        "deck_name": deck_name,
+        "summary": summary,
+        "claim_rows": claim_rows,
+        "card_rows": card_rows,
+    }
+
+
+def render_source_contract_audit_markdown(report: Mapping[str, Any]) -> str:
+    """Render the audit as a compact operator-readable Markdown report."""
+    summary = report.get("summary", {})
+    if not isinstance(summary, Mapping):
+        summary = {}
+    lines = [
+        f"# Source Contract Audit - {report.get('deck_name', '')}",
+        "",
+        "This report is diagnostic only. It explains the existing source-to-runtime gates and does not grant apply permission.",
+        "",
+        "## Summary",
+        "",
+        f"- Claims total: {_int(summary.get('claims_total'))}",
+        f"- Runtime-lowered claims: {_int(summary.get('runtime_lowered_claims'))}",
+        f"- Suppressed claims: {_int(summary.get('suppressed_claims'))}",
+        f"- Runtime-evidence-required claims: {_int(summary.get('runtime_evidence_required_claims'))}",
+        f"- Report-only claims: {_int(summary.get('report_only_claims'))}",
+        f"- Cards with missing links: {_int(summary.get('cards_with_missing_links'))}",
+        "",
+        "## First Card Gaps",
+        "",
+        "| Card | Lane | First Missing Link | Runtime Surfaces | Claim Lanes |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+
+    rows = report.get("card_rows", {})
+    if isinstance(rows, Mapping):
+        sorted_rows = sorted(
+            rows.items(),
+            key=lambda item: (
+                str(item[1].get("first_missing_link", "none")) in {"none", "closed", ""},
+                str(item[1].get("name", item[0])),
+            )
+            if isinstance(item[1], Mapping)
+            else (True, str(item[0])),
+        )
+        for card_id, row in sorted_rows[:20]:
+            if not isinstance(row, Mapping):
+                continue
+            claim_lanes = row.get("claim_lanes", {})
+            claim_lane_text = ", ".join(
+                f"{key}:{value}" for key, value in sorted(claim_lanes.items())
+            )
+            surfaces = ", ".join(str(surface) for surface in row.get("runtime_surfaces", []))
+            lines.append(
+                "| {card} | {lane} | {missing} | {surfaces} | {claim_lanes} |".format(
+                    card=_escape_table(f"{card_id} {row.get('name', '')}".strip()),
+                    lane=_escape_table(row.get("readiness_lane", "")),
+                    missing=_escape_table(row.get("first_missing_link", "")),
+                    surfaces=_escape_table(surfaces),
+                    claim_lanes=_escape_table(claim_lane_text),
+                )
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _guide_claims(bundle: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    claims = bundle.get("claims", [])
+    if not isinstance(claims, list):
+        return []
+    return [claim for claim in claims if isinstance(claim, Mapping)]
+
+
+def _claim_id(claim: Mapping[str, Any], index: int) -> str:
+    explicit = str(claim.get("claim_id", "")).strip()
+    return explicit or f"claim_{index:04d}"
+
+
+def _claim_cards(claim: Mapping[str, Any]) -> list[str]:
+    cards = claim.get("cards", [])
+    if isinstance(cards, str):
+        cards = [cards]
+    if not isinstance(cards, list):
+        cards = []
+    for fallback_key in ("card_id", "card"):
+        if not cards and claim.get(fallback_key):
+            cards = [claim[fallback_key]]
+    return sorted({str(card) for card in cards if str(card)})
+
+
+def _decision_row(decision: Any) -> dict[str, Any]:
+    return {
+        "allowed": bool(decision.allowed),
+        "reason": str(decision.reason),
+        "claim_kind": str(decision.claim_kind),
+        "surface": str(decision.surface),
+    }
+
+
+def _claim_lane(
+    *,
+    claim: Mapping[str, Any],
+    emitted_surfaces: list[str],
+    suppressed_reason: str | None,
+    decisions: Mapping[str, Mapping[str, Any]],
+) -> str:
+    if emitted_surfaces:
+        return "runtime_lowered"
+    if suppressed_reason:
+        return "suppressed_with_reason"
+    if any(row.get("reason") == "requires_runtime_evidence" for row in decisions.values()):
+        return "runtime_evidence_required"
+    if not claim_can_lower_to_runtime(dict(claim)):
+        return "report_only"
+    return "unsupported_or_unmapped"
+
+
+def _first_gate_reason(decisions: Mapping[str, Mapping[str, Any]]) -> str:
+    for row in decisions.values():
+        reason = str(row.get("reason", ""))
+        if reason and reason != "allowed":
+            return reason
+    return "allowed"
+
+
+def _emitted_claim_ids(
+    *,
+    mulligan_plan: Mapping[str, Any],
+    card_behavior_plan: Mapping[str, Any],
+    combo_plan: Mapping[str, Any],
+    global_values_authority_matrix: Mapping[str, Any],
+) -> dict[str, set[str]]:
+    return {
+        "mulligan": _ids_from_rows(mulligan_plan.get("rules", [])),
+        "cardid": _ids_from_rows(card_behavior_plan.get("rows", [])),
+        "combo": _ids_from_rows(combo_plan.get("combos", [])),
+        "globalvalues": _ids_from_rows(
+            global_values_authority_matrix.get("allowed_step1_overlays", [])
+        ),
+    }
+
+
+def _suppressed_reasons(
+    *,
+    mulligan_plan: Mapping[str, Any],
+    card_behavior_plan: Mapping[str, Any],
+    combo_plan: Mapping[str, Any],
+    global_values_authority_matrix: Mapping[str, Any],
+) -> dict[str, str]:
+    reasons: dict[str, str] = {}
+    for rows in (
+        mulligan_plan.get("suppressed_rules", []),
+        card_behavior_plan.get("suppressed", []),
+        combo_plan.get("suppressed", []),
+    ):
+        for row in _rows(rows):
+            reason = str(row.get("reason", "") or "suppressed")
+            for claim_id in _row_claim_ids(row):
+                reasons.setdefault(claim_id, reason)
+    return reasons
+
+
+def _claim_lowered_to_surface(
+    *,
+    claim_id: str,
+    claim: Mapping[str, Any],
+    surface: str,
+    emitted_claim_ids: Mapping[str, set[str]],
+    mulligan_plan: Mapping[str, Any],
+    card_behavior_plan: Mapping[str, Any],
+    combo_plan: Mapping[str, Any],
+    allow_legacy_card_fallback: bool,
+) -> bool:
+    if _claim_reference_keys(claim_id, claim) & emitted_claim_ids.get(surface, set()):
+        return True
+    if surface == "globalvalues":
+        return False
+    if not allow_legacy_card_fallback:
+        return False
+    cards = set(_claim_cards(claim))
+    if not cards:
+        return False
+    if surface == "mulligan":
+        return any(str(row.get("card", "")) in cards for row in _rows(mulligan_plan.get("rules", [])))
+    if surface == "cardid":
+        return any(
+            str(row.get("card_id", "")) in cards
+            and bool(row.get("meaningful_runtime_surface", True))
+            for row in _rows(card_behavior_plan.get("rows", []))
+        )
+    if surface == "combo":
+        return any(
+            bool(cards & set(_combo_cards(row)))
+            for row in _rows(combo_plan.get("combos", []))
+        )
+    return False
+
+
+def _claim_reference_keys(claim_id: str, claim: Mapping[str, Any]) -> set[str]:
+    keys = {claim_id}
+    explicit = str(claim.get("claim_id", "")).strip()
+    if explicit:
+        keys.add(explicit)
+    refs = claim.get("source_refs", [])
+    if isinstance(refs, str):
+        refs = [refs]
+    if isinstance(refs, list):
+        keys.update(str(ref) for ref in refs if str(ref))
+    return keys
+
+
+def _ids_from_rows(rows: Any) -> set[str]:
+    ids: set[str] = set()
+    for row in _rows(rows):
+        ids.update(_row_claim_ids(row))
+    return ids
+
+
+def _row_claim_ids(row: Mapping[str, Any]) -> set[str]:
+    ids: set[str] = set()
+    for key in ("claim_id", "source_claim_id"):
+        value = row.get(key)
+        if value:
+            ids.add(str(value))
+    for key in ("claim_ids", "source_claim_ids"):
+        value = row.get(key, [])
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, list):
+            ids.update(str(item) for item in value if str(item))
+    claim_refs = row.get("claim_refs", [])
+    if isinstance(claim_refs, str):
+        claim_refs = [claim_refs]
+    if isinstance(claim_refs, list):
+        ids.update(str(item) for item in claim_refs if str(item))
+    return ids
+
+
+def _combo_cards(row: Mapping[str, Any]) -> list[str]:
+    cards = row.get("cards", [])
+    if isinstance(cards, str):
+        cards = [cards]
+    if isinstance(cards, list) and cards:
+        return [str(card) for card in cards if str(card)]
+    combo = str(row.get("combo", ""))
+    if ">>" in combo:
+        return [part.strip() for part in combo.split(">>") if part.strip()]
+    return []
+
+
+def _rows(rows: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, Mapping)]
+
+
+def _card_roles_from_readiness(report: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    cards = report.get("cards", {})
+    if not isinstance(cards, Mapping):
+        return {}
+    return {
+        str(card_id): row
+        for card_id, row in cards.items()
+        if isinstance(row, Mapping)
+    }
+
+
+def _card_rows(
+    *,
+    deck_identity: Mapping[str, Any],
+    config_readiness_report: Mapping[str, Any],
+    card_claim_lanes: Mapping[str, Counter[str]],
+) -> dict[str, dict[str, Any]]:
+    readiness_cards = config_readiness_report.get("cards", {})
+    if not isinstance(readiness_cards, Mapping):
+        readiness_cards = {}
+    deck_cards = _deck_cards(deck_identity)
+    all_card_ids = sorted({*deck_cards, *[str(card_id) for card_id in readiness_cards]})
+    rows: dict[str, dict[str, Any]] = {}
+    for card_id in all_card_ids:
+        readiness = readiness_cards.get(card_id, {})
+        if not isinstance(readiness, Mapping):
+            readiness = {}
+        deck_card = deck_cards.get(card_id, {})
+        rows[card_id] = {
+            "card_id": card_id,
+            "name": str(readiness.get("name") or deck_card.get("name") or ""),
+            "roles": list(readiness.get("roles", []))
+            if isinstance(readiness.get("roles", []), list)
+            else [],
+            "runtime_surfaces": list(readiness.get("runtime_surfaces", []))
+            if isinstance(readiness.get("runtime_surfaces", []), list)
+            else [],
+            "readiness_lane": str(readiness.get("readiness_lane", "")),
+            "first_missing_link": str(readiness.get("first_missing_link", "")),
+            "claim_lanes": dict(sorted(card_claim_lanes.get(card_id, Counter()).items())),
+        }
+    return rows
+
+
+def _deck_cards(deck_identity: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    cards = deck_identity.get("cards", [])
+    if not isinstance(cards, list):
+        return {}
+    result: dict[str, Mapping[str, Any]] = {}
+    for row in cards:
+        if not isinstance(row, Mapping):
+            continue
+        card_id = str(row.get("card_id", "")).strip()
+        if card_id:
+            result[card_id] = row
+    return result
+
+
+def _summary(
+    *,
+    claim_rows: Mapping[str, Mapping[str, Any]],
+    card_rows: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    claim_lanes = Counter(str(row.get("lane", "")) for row in claim_rows.values())
+    return {
+        "claims_total": len(claim_rows),
+        "runtime_lowered_claims": claim_lanes["runtime_lowered"],
+        "suppressed_claims": claim_lanes["suppressed_with_reason"],
+        "runtime_evidence_required_claims": claim_lanes["runtime_evidence_required"],
+        "report_only_claims": claim_lanes["report_only"],
+        "unsupported_or_unmapped_claims": claim_lanes["unsupported_or_unmapped"],
+        "cards_total": len(card_rows),
+        "cards_with_missing_links": sum(
+            1
+            for row in card_rows.values()
+            if str(row.get("first_missing_link", "")).lower() not in {"", "none", "closed"}
+        ),
+        "cards_with_runtime_lowered_claims": sum(
+            1
+            for row in card_rows.values()
+            if _int(row.get("claim_lanes", {}).get("runtime_lowered", 0)) > 0
+        ),
+        "cards_with_suppressed_claims": sum(
+            1
+            for row in card_rows.values()
+            if _int(row.get("claim_lanes", {}).get("suppressed_with_reason", 0)) > 0
+        ),
+    }
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _escape_table(value: Any) -> str:
+    return str(value).replace("|", "\\|")

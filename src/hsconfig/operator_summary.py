@@ -87,6 +87,7 @@ def build_operator_summary(
     validation_report: dict[str, Any] | None = None,
     guide_source_depth_report: dict[str, Any] | None = None,
     source_claim_gap_report: dict[str, Any] | None = None,
+    source_contract_audit_report: dict[str, Any] | None = None,
     strong_promotion_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
@@ -169,6 +170,9 @@ def build_operator_summary(
         guide_strength_summary=guide_strength_summary,
         semantic_blockers=semantic_blockers,
     )
+    source_contract_audit_summary = _source_contract_audit_summary(
+        source_contract_audit_report
+    )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
@@ -226,6 +230,7 @@ def build_operator_summary(
         "config_usefulness": config_usefulness,
         "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
+        "source_contract_audit_summary": source_contract_audit_summary,
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
     }
@@ -520,6 +525,53 @@ def _semantic_enrichment_summary(report: dict[str, Any] | None) -> dict[str, Any
         ),
         "deckwide_effect_count": _int_value(summary.get("deckwide_effect_count", 0)),
         "warning_count": _int_value(summary.get("warning_count", 0)),
+    }
+
+
+def _source_contract_audit_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "non_blocking": True,
+            "claims_total": 0,
+            "runtime_lowered_claims": 0,
+            "suppressed_claims": 0,
+            "runtime_evidence_required_claims": 0,
+            "report_only_claims": 0,
+            "cards_total": 0,
+            "cards_with_missing_links": 0,
+            "next_report_to_open": None,
+        }
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    followup_count = sum(
+        _int_value(summary.get(key, 0))
+        for key in (
+            "suppressed_claims",
+            "runtime_evidence_required_claims",
+            "report_only_claims",
+            "unsupported_or_unmapped_claims",
+            "cards_with_missing_links",
+        )
+    )
+    return {
+        "non_blocking": True,
+        "claims_total": _int_value(summary.get("claims_total", 0)),
+        "runtime_lowered_claims": _int_value(
+            summary.get("runtime_lowered_claims", 0)
+        ),
+        "suppressed_claims": _int_value(summary.get("suppressed_claims", 0)),
+        "runtime_evidence_required_claims": _int_value(
+            summary.get("runtime_evidence_required_claims", 0)
+        ),
+        "report_only_claims": _int_value(summary.get("report_only_claims", 0)),
+        "cards_total": _int_value(summary.get("cards_total", 0)),
+        "cards_with_missing_links": _int_value(
+            summary.get("cards_with_missing_links", 0)
+        ),
+        "next_report_to_open": (
+            "reports/source_contract_audit.json" if followup_count else None
+        ),
     }
 
 

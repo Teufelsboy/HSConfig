@@ -1870,3 +1870,41 @@ def test_no_block_summary_surfaces_runtime_evidence_only_tuning_without_blocking
             "key": "LowHpBoardValuePenalty",
         }
     ]
+
+
+def test_operator_summary_exposes_source_contract_audit_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="Audit Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        source_contract_audit_report={
+            "summary": {
+                "claims_total": 2,
+                "runtime_lowered_claims": 1,
+                "suppressed_claims": 1,
+                "runtime_evidence_required_claims": 0,
+                "report_only_claims": 0,
+                "cards_total": 1,
+                "cards_with_missing_links": 1,
+            }
+        },
+        generated_files=[
+            "CustomConfig/auditdeck/GlobalValues.json",
+            "CustomConfig/auditdeck/Mulligan.json",
+        ],
+    )
+
+    audit = summary["source_contract_audit_summary"]
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert audit["non_blocking"] is True
+    assert audit["runtime_lowered_claims"] == 1
+    assert audit["suppressed_claims"] == 1
+    assert audit["next_report_to_open"] == "reports/source_contract_audit.json"
