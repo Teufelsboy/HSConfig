@@ -25,6 +25,13 @@ reported as suppressed/report-only rows with explicit reasons.
 `reports/source_contract_audit.json` explains those source-to-runtime decisions
 per claim and per card; it does not replace `reports/operator_summary.json`.
 
+Source-contract invariant: effect semantics are preserved on supported effect
+and CardID surfaces, but only exact runtime-surface claims lower into matching
+runtime JSON. Start-of-game, deckbuilding, deck-state, and hero-power-transform
+facts do not become Mulligan keeps unless there is separate exact hand-keep
+authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
+remains the normal apply authority.
+
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
@@ -149,7 +156,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | File | Authority | Answers |
 | --- | --- | --- |
 | `reports/operator_summary.json` | normal operator gate | what to do next |
-| `reports/source_contract_audit.json` | source-to-runtime explanation | why each source claim did or did not lower to runtime config |
+| `reports/source_contract_audit.json` | diagnostic source-to-runtime explanation | why each source claim did or did not lower to runtime config |
 | `reports/source_claim_gap_report.json` | repair contract | which card link is missing first |
 | `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |
 | `reports/per_card_config_readiness_report.json` | card lane diagnostics | which lane each card occupies |

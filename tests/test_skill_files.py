@@ -838,3 +838,21 @@ def test_skill_explains_source_contract_audit_without_new_gate():
     assert "source_contract_audit_summary" in combined
     assert "does not replace `operator_summary.json`" in skill
     assert "does not create a second apply gate" in combined
+
+
+def test_docs_and_skill_state_source_contract_invariant_rule():
+    docs = (
+        Path("docs/operator/README.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+            encoding="utf-8"
+        )
+    )
+    normalized = docs.replace("`", "")
+
+    assert "effect semantics are preserved" in normalized
+    assert "only exact runtime-surface claims lower" in normalized
+    assert "source_contract_audit.json is diagnostic" in normalized
+    assert "operator_summary.json remains the normal apply authority" in normalized

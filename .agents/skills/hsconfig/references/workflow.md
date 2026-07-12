@@ -41,6 +41,8 @@ Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`
 
 `config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `source_contract_audit_summary`, `no_block_failure_mode_summary`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/source_contract_audit.json`, `reports/mechanic_drift_report.json`, and `reports/semantic_enrichment_report.json` explain source, mechanic, and richness gaps. `technical_hard_block` stops apply; warning categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` do not create a second apply gate. This does not create a second apply gate when `technical_status=VALID_PACKAGE`.
 
+Effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON; `source_contract_audit.json` is diagnostic and `operator_summary.json` remains the normal apply authority.
+
 ## Mechanic Visibility
 
 The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only and do not increment `cards_needing_mechanic_lowering`.
