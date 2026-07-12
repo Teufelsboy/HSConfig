@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any, Mapping
 
+from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
     normalized_claim_kind,
@@ -50,6 +51,8 @@ def build_source_contract_audit(
     claim_rows: dict[str, dict[str, Any]] = {}
     card_claim_lanes: dict[str, Counter[str]] = defaultdict(Counter)
     claims = _guide_claims(guide_claim_bundle)
+    policy_by_claim_kind = source_contract_policy_by_claim_kind()
+    policy_lane_counts: Counter[str] = Counter()
     for index, claim in enumerate(claims, start=1):
         claim_id = _claim_id(claim, index)
         cards = _claim_cards(claim)
@@ -86,6 +89,12 @@ def build_source_contract_audit(
             suppressed_reason=suppressed_reason,
             decisions=decisions,
         )
+        policy_lane = str(
+            policy_by_claim_kind.get(normalized_claim_kind(claim), {}).get(
+                "lane", "unsupported_or_unmapped"
+            )
+        )
+        policy_lane_counts[policy_lane] += 1
         claim_rows[claim_id] = {
             "claim_id": claim_id,
             "claim_kind": normalized_claim_kind(claim),
@@ -95,6 +104,7 @@ def build_source_contract_audit(
             "evidence_text_short": str(claim.get("evidence_text_short", "")),
             "cards": cards,
             "lane": lane,
+            "policy_lane": policy_lane,
             "first_reason": first_reason,
             "lowered_surfaces": emitted_surfaces,
             "surfaces": decisions,
@@ -107,7 +117,11 @@ def build_source_contract_audit(
         config_readiness_report=config_readiness_report,
         card_claim_lanes=card_claim_lanes,
     )
-    summary = _summary(claim_rows=claim_rows, card_rows=card_rows)
+    summary = _summary(
+        claim_rows=claim_rows,
+        card_rows=card_rows,
+        policy_lane_counts=policy_lane_counts,
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -426,6 +440,7 @@ def _summary(
     *,
     claim_rows: Mapping[str, Mapping[str, Any]],
     card_rows: Mapping[str, Mapping[str, Any]],
+    policy_lane_counts: Counter[str],
 ) -> dict[str, Any]:
     claim_lanes = Counter(str(row.get("lane", "")) for row in claim_rows.values())
     return {
@@ -435,6 +450,7 @@ def _summary(
         "runtime_evidence_required_claims": claim_lanes["runtime_evidence_required"],
         "report_only_claims": claim_lanes["report_only"],
         "unsupported_or_unmapped_claims": claim_lanes["unsupported_or_unmapped"],
+        "claim_kind_policy_counts": dict(sorted(policy_lane_counts.items())),
         "cards_total": len(card_rows),
         "cards_with_missing_links": sum(
             1

@@ -268,3 +268,69 @@ def test_source_contract_audit_markdown_is_compact_and_operator_readable():
     assert "# Source Contract Audit - FixtureDeck" in markdown
     assert "Runtime-lowered claims: 1" in markdown
     assert "| CARD_001 Fixture Card | report_only_supported | needs_runtime_surface |" in markdown
+
+
+def test_source_contract_audit_adds_policy_lane_for_each_claim():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "CARD_001", "name": "Fixture", "count": 1}],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "posture",
+                    "claim_kind": "gameplan_posture",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_001"],
+                    "source_title": "Fixture",
+                    "evidence_text_short": "Push aggressive posture.",
+                },
+                {
+                    "claim_id": "numeric",
+                    "claim_kind": "globalvalue_numeric_tuning",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_001"],
+                    "source_title": "Fixture",
+                    "evidence_text_short": "Tune a numeric key after games.",
+                },
+            ]
+        },
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [
+                {"key": "MyHeroPowerValue", "claim_refs": ["posture"]}
+            ],
+            "blocked_until_runtime_evidence": [
+                {"key": "LowHpBoardValuePenalty", "claim_id": "numeric"}
+            ],
+        },
+    )
+
+    assert report["claim_rows"]["posture"]["policy_lane"] == "runtime_lowerable"
+    assert report["claim_rows"]["numeric"]["policy_lane"] == "runtime_evidence_required"
+    assert report["summary"]["claim_kind_policy_counts"]["runtime_lowerable"] == 1
+    assert report["summary"]["claim_kind_policy_counts"]["runtime_evidence_required"] == 1
+
+
+def test_source_contract_audit_marks_unknown_claim_kind_as_unsupported_or_unmapped():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "unknown",
+                    "claim_kind": "future_claim_kind",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_title": "Fixture",
+                    "evidence_text_short": "Future claim.",
+                }
+            ]
+        },
+    )
+
+    assert report["claim_rows"]["unknown"]["policy_lane"] == "unsupported_or_unmapped"
+    assert report["claim_rows"]["unknown"]["lane"] == "unsupported_or_unmapped"
