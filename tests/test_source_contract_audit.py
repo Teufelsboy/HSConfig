@@ -334,3 +334,34 @@ def test_source_contract_audit_marks_unknown_claim_kind_as_unsupported_or_unmapp
 
     assert report["claim_rows"]["unknown"]["policy_lane"] == "unsupported_or_unmapped"
     assert report["claim_rows"]["unknown"]["lane"] == "unsupported_or_unmapped"
+
+
+def test_source_contract_audit_policy_matrix_failure_is_nonblocking(monkeypatch):
+    def fail_policy_matrix():
+        raise RuntimeError("stale source contract policy")
+
+    monkeypatch.setattr(
+        "hsconfig.source_contract_audit.source_contract_policy_by_claim_kind",
+        fail_policy_matrix,
+    )
+
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "posture",
+                    "claim_kind": "gameplan_posture",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_title": "Fixture",
+                    "evidence_text_short": "Aggressive posture.",
+                }
+            ]
+        },
+    )
+
+    assert report["claim_rows"]["posture"]["policy_lane"] == "unsupported_or_unmapped"
+    assert report["summary"]["claim_kind_policy_counts"] == {
+        "unsupported_or_unmapped": 1
+    }

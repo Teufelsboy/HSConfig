@@ -51,7 +51,10 @@ def build_source_contract_audit(
     claim_rows: dict[str, dict[str, Any]] = {}
     card_claim_lanes: dict[str, Counter[str]] = defaultdict(Counter)
     claims = _guide_claims(guide_claim_bundle)
-    policy_by_claim_kind = source_contract_policy_by_claim_kind()
+    try:
+        policy_by_claim_kind = source_contract_policy_by_claim_kind()
+    except RuntimeError:
+        policy_by_claim_kind = {}
     policy_lane_counts: Counter[str] = Counter()
     for index, claim in enumerate(claims, start=1):
         claim_id = _claim_id(claim, index)
