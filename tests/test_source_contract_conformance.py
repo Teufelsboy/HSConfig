@@ -83,6 +83,16 @@ def test_conformance_snapshot_proves_start_of_game_effect_is_not_hand_keep():
     )
 
 
+def test_darkbishop_effect_boundary_is_visible_in_conformance_contract():
+    snapshot = build_source_contract_conformance_snapshot()
+    hero_power_row = snapshot["claim_kind_rows"]["hero_power_transform"]
+    suppression = snapshot["start_of_game_mulligan_suppression"]
+
+    assert hero_power_row["surface_gates"]["cardid"]["decision"] == "allowed"
+    assert hero_power_row["surface_gates"]["mulligan"]["decision"] == "rejected"
+    assert suppression["reason"] == "start_of_game_effect_does_not_require_opening_hand"
+
+
 def test_conformance_markdown_is_compact_and_diagnostic_only():
     markdown = render_source_contract_conformance_markdown(
         build_source_contract_conformance_snapshot()
