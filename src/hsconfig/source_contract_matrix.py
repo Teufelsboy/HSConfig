@@ -115,4 +115,3 @@ def source_contract_policy_by_claim_kind() -> dict[str, dict[str, object]]:
             f"missing={sorted(missing)} extra={sorted(extra)}"
         )
     return {claim_kind: dict(row) for claim_kind, row in sorted(_POLICY.items())}
-
