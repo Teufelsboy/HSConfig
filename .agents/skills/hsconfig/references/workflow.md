@@ -31,6 +31,8 @@ Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_rec
 
 The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator gate, and operator_summary.json remains the normal apply authority.
 
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+
 Unexpected contract drift is a defect in the source-contract spine. A builder prerequisite gap is different: it means the surface is allowed, but the concrete claim still lacks required structure. Builder prerequisite gaps stay visible and support no-block package generation; they do not create a second operator gate.
 
 `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.

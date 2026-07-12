@@ -474,6 +474,30 @@ def test_docs_and_skill_explain_contract_conformance_snapshot():
     assert "operator_summary.json remains the normal apply authority" in combined
 
 
+def test_docs_explain_contract_spine_without_new_apply_gate():
+    active_paths = [
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "workflow.md",
+        REPO_ROOT / "docs" / "operator" / "guide-research-policy.md",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
+    required_paragraph = (
+        "`contract_spine_rows` are diagnostic. They provide the compact "
+        "source -> policy -> surface gate -> builder/router -> runtime effect "
+        "chain for each claim kind. They do not grant apply permission, and "
+        "operator_summary.json remains the normal apply authority."
+    )
+
+    assert "contract_spine_rows" in combined
+    assert "source -> policy -> surface gate -> builder/router -> runtime effect" in combined
+    assert "operator_summary.json remains the normal apply authority" in combined
+    for path in active_paths:
+        text = path.read_text(encoding="utf-8")
+        assert required_paragraph in text, path
+        assert text.count(required_paragraph) == 1, path
+    assert "contract_spine_rows are an apply gate" not in combined
+
+
 def test_docs_and_skill_distinguish_contract_drift_from_builder_prerequisites():
     combined = (
         Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")

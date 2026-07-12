@@ -106,6 +106,8 @@ surface-gate outcome, and diagnostic operator impact. It does not create a
 second operator gate: `source_contract_audit.json` stays diagnostic and
 operator_summary.json remains the normal apply authority.
 
+`contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+
 The snapshot separates unexpected contract drift from expected builder
 prerequisite gaps. Unexpected contract drift means the policy matrix, surface
 gate, or builder expectation disagrees and should be fixed. A builder
