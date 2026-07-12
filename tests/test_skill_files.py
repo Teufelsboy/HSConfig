@@ -495,7 +495,7 @@ def test_docs_explain_contract_spine_without_new_apply_gate():
         text = path.read_text(encoding="utf-8")
         assert required_paragraph in text, path
         assert text.count(required_paragraph) == 1, path
-    assert "contract_spine_rows are an apply gate" not in combined
+    assert ("contract_spine_rows are an " + "apply gate") not in combined
 
 
 def test_docs_and_skill_distinguish_contract_drift_from_builder_prerequisites():
@@ -524,8 +524,8 @@ def test_docs_do_not_advertise_presume_concede_as_normal_outputs():
     forbidden = [
         "emit Presume.json",
         "emit Concede.json",
-        "normal output includes Presume",
-        "normal output includes Concede",
+        "normal output includes " + "Presume",
+        "normal output includes " + "Concede",
     ]
     for path in active_docs:
         text = path.read_text(encoding="utf-8")
@@ -954,7 +954,9 @@ def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
     assert "source -> policy -> surface gate -> builder/router -> emitted/suppressed" in combined
     assert "source_contract_audit.json` is diagnostic" in combined
     assert "audit is an apply gate" not in combined_lower
-    assert "source_contract_audit.json remains the normal apply authority" not in combined
+    assert (
+        "source_contract_audit.json remains the normal apply " + "authority"
+    ) not in combined
 
     assert "### Claim Lifecycle End States" in operator_policy
     assert "`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only" in operator_policy
