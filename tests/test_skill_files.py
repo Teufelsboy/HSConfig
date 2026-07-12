@@ -43,7 +43,11 @@ def test_skill_and_workflow_stay_compact_and_canonical():
     assert "`Mulligan.json`" in combined
     assert "`per-card <CARDID>.json`" in combined
     assert "`Combo.json`" in combined
-    assert "does not emit `Presume.json` or `Concede.json`" in combined
+    assert (
+        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
+        "outside the normal HSConfig output path; their absence never blocks a "
+        "valid load-safe package."
+    ) in combined
     for duplicate_section in [
         "Preferred normal workflow:",
         "Lower-level inspected workflow:",
@@ -68,10 +72,9 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
         SKILL_ROOT / "references" / "visionai-surfaces.md",
     ]
     required = [
-        "`Concede.json` is publicly documented",
-        "`Presume.json` is publicly documented on HearthRanger's AOE play-around page",
-        "normal HSConfig does not emit `Presume.json` or `Concede.json`",
-        "absence never blocks a valid load-safe package",
+        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
+        "outside the normal HSConfig output path; their absence never blocks a "
+        "valid load-safe package.",
     ]
     forbidden = [
         "without a current verified first-party help-page citation",
@@ -86,6 +89,34 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
             assert phrase in text, f"{path}: {phrase}"
         for phrase in forbidden:
             assert phrase not in text, f"{path}: {phrase}"
+
+
+def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
+    active_paths = [
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "workflow.md",
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "visionai-surfaces.md",
+        REPO_ROOT / "docs" / "operator" / "README.md",
+        REPO_ROOT / "docs" / "operator" / "universal-wild-no-block-contract.md",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
+
+    required_sentence = (
+        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
+        "outside the normal HSConfig output path; their absence never blocks a "
+        "valid load-safe package."
+    )
+    for path in active_paths:
+        text = path.read_text(encoding="utf-8")
+        assert required_sentence in text, path
+
+    forbidden_phrases = [
+        "`Concede.json` is publicly documented",
+        "`Presume.json` is publicly documented",
+        "normal HSConfig does not emit `Presume.json` or `Concede.json`; absence",
+    ]
+    for phrase in forbidden_phrases:
+        assert phrase not in combined
 
 
 def test_skill_content_sets_direct_config_boundary():
@@ -284,9 +315,9 @@ def test_skill_docs_keep_presume_concede_out_of_normal_path():
     required_terms = [
         "Concede.json",
         "Presume.json",
-        "documented",
+        "legacy/diagnostic VisionAI surfaces",
         "normal HSConfig",
-        "does not emit",
+        "outside the normal HSConfig output path",
     ]
 
     for path in active_files:
