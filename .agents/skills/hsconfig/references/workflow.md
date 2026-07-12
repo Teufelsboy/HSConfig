@@ -27,7 +27,7 @@ Identity fields such as `hs_id` keep deck rows and examples unambiguous before g
 
 Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_receipt.json`, `card_id_map.json`, `guide_builder_receipt.json`, `candidate_archetypes.json`, `identity_graph_report.json`, `guide_claim_bundle.json`, `claim_coverage_report.json`, `source_contract_audit.json`, `source_claim_gap_report.json`, `strong_promotion_report.json`, `mulligan_plan_report.json`, `card_behavior_plan_report.json`, `combo_plan_report.json`, `global_values_authority_matrix.json`, `per_card_config_readiness_report.json`, `guide_source_depth_report.json`, `gameplan_contract.json`, `surface_intent.json`, validation reports, and `reports/research/*`.
 
-`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only: it traces source -> policy -> surface gate -> builder/router -> emitted/suppressed. `policy_lane` is static policy, not runtime emission; readiness and apply authority stay in `operator_summary.json`.
+`source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only: it traces source -> policy -> surface gate -> builder/router -> emitted/suppressed. `policy_lane` is static policy, not runtime emission; readiness and apply authority stay in `operator_summary.json`. `hsconfig contract-doctor --package <package> --json` is optional runtime-read-only diagnostics; operator_summary.json remains the only normal apply authority.
 
 The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator gate, and operator_summary.json remains the normal apply authority.
 

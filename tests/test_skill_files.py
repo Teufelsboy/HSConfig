@@ -990,6 +990,20 @@ def test_docs_and_skill_state_source_contract_invariant_rule():
     assert "operator_summary.json remains the normal apply authority" in normalized
 
 
+def test_docs_and_skill_describe_contract_doctor_as_diagnostic_only():
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join([operator, skill, workflow])
+
+    assert "hsconfig contract-doctor" in combined
+    assert "diagnostic" in combined.lower()
+    assert "operator_summary.json remains the only normal apply authority" in combined
+    assert "contract-doctor is an apply gate" not in combined
+
+
 def test_docs_explain_apply_authority_and_diagnostic_chain_in_one_place():
     paths = [
         Path("docs/operator/README.md"),

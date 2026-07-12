@@ -128,6 +128,28 @@ def test_cli_main_dispatches_validate_without_changing_public_command_shape(
     assert captured == {"package": str(package), "json": True}
 
 
+def test_cli_main_dispatches_contract_doctor_without_apply_authority(
+    tmp_path: Path, monkeypatch
+):
+    package = tmp_path / "package"
+    package.mkdir()
+    captured = {}
+
+    def fake_run_contract_doctor_command(args):
+        captured["package"] = args.package
+        captured["out"] = args.out
+        captured["json"] = args.json
+        return 0
+
+    monkeypatch.setattr(
+        "hsconfig.cli.run_contract_doctor_command",
+        fake_run_contract_doctor_command,
+    )
+
+    assert main(["contract-doctor", "--package", str(package), "--json"]) == 0
+    assert captured == {"package": str(package), "out": None, "json": True}
+
+
 def test_readme_documents_prepare_as_normal_path():
     root_readme = Path("README.md").read_text(encoding="utf-8")
     operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")

@@ -164,6 +164,19 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_matrix.add_argument("--out", help="Optional JSON output path.")
     acceptance_matrix.add_argument("--json", action="store_true")
 
+    contract_doctor = subparsers.add_parser(
+        "contract-doctor",
+        help="read-only source-contract diagnostic for prepared packages",
+        description=(
+            "Read a prepared package and explain source -> claim_kind -> surface "
+            "gate -> builder/router -> runtime effect diagnostics. This command "
+            "does not grant apply permission and never writes runtime files."
+        ),
+    )
+    contract_doctor.add_argument("--package", required=True)
+    contract_doctor.add_argument("--out", help="Optional Markdown output path.")
+    contract_doctor.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")

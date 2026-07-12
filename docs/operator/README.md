@@ -193,6 +193,14 @@ matrix diagnostic. Row fields such as `apply_gate_allowed`,
 `runtime_apply_mode`, and `validation_status` explain why a package passed or
 failed, but they do not override `status` or `matrix_row_status`.
 
+## Optional Contract Doctor
+
+Use `hsconfig contract-doctor --package <package> --json` when a prepared package
+is valid but you want a compact explanation of source -> claim_kind -> surface
+gate -> builder/router -> runtime effect diagnostics. It does not write runtime
+files; `--out` only writes the requested Markdown diagnostic.
+operator_summary.json remains the only normal apply authority.
+
 ## Expert Paths
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
