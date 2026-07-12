@@ -89,6 +89,14 @@ Accepted atomic claim fields:
 - `runtime_block`, `runtime_value`: optional CardID behavior lowering hints.
 - `sequence`, `timing_kind`, `operator`, and `values`: optional Combo timing fields.
 
+A `runtime_block` or `runtime_value` hint never overrides `claim_kind`.
+Runtime lowering is surface-gated: `Mulligan.json` only lowers explicit
+`mulligan_keep` or `mulligan_discard`; `GlobalValues.json` only lowers
+runtime-lowerable `gameplan_posture`; `Combo.json` only lowers complete
+`combo_sequence`; and per-card `<CARDID>.json` only lowers CardID behavior
+claim kinds. Wrong-surface claims stay suppressed or report-only with explicit
+reasons.
+
 Optional CardID lowering fields for card-specific claims:
 
 - `runtime_block`: documented CardID block to use, for example
@@ -100,7 +108,7 @@ Optional CardID lowering fields for card-specific claims:
 Use `runtime_block` only for guide-backed or static-semantics-backed claims. If
 the exact block is uncertain, omit it and let HSConfig route or report the gap.
 
-Supported `claim_kind` values:
+Supported source claim kinds for normal Step1 routing:
 
 - `archetype`
 - `mulligan_keep`
@@ -114,6 +122,14 @@ Supported `claim_kind` values:
 - `known_bad_pattern`
 - `tech_slot`
 - `replacement_option`
+- `discover_choice`
+- `choose_one_choice`
+
+`globalvalue_numeric_tuning` is accepted source evidence for explicit numeric
+GlobalValues recommendations, but it is not Step1 runtime-lowerable. It must
+stay report-visible with `requires_runtime_evidence` until HSTuner or another
+runtime-evidence workflow owns the change. Do not introduce wildcard
+`globalvalue_*` claim kinds.
 
 Claim freshness and conflicts:
 
@@ -130,6 +146,12 @@ Mulligan selector support:
 - Use wildcard selectors only when the source applies broadly to a known hand class.
 - Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
 
+Do not infer `mulligan_keep` from card importance, start-of-game effects,
+deckbuilding effects, hero-power-transform text, or generic "keep" wording.
+Preserve those effects as `hero_power_transform`, CardID behavior, or
+report-visible contract evidence. Emit a Mulligan keep only when a current
+mulligan source explicitly says the card should be kept in the opening hand.
+
 Combo timing support:
 
 - `combo_sequence` claims must include explicit `sequence`, `timing_kind`, `operator`, and `values` before runtime `Combo.json` emission.
@@ -139,6 +161,8 @@ GlobalValues key authority:
 
 - `global_values_authority_matrix.json` records Step1 posture overlays and runtime-evidence-only blocked changes.
 - `global_values_key_profile_report.json` records every key with `authority_category` and `board_value_component`.
+- Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
+- `globalvalue_numeric_tuning` is a valid source claim kind for explicit numeric GlobalValues recommendations. It is report-visible but Step1 runtime-blocked with `requires_runtime_evidence` until HSTuner or another runtime-evidence workflow owns the change.
 - `copy_baseline` keys are copied and profiled, not tuned.
 - `step1_posture_overlay_allowed` keys may change only when source posture supports them.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.

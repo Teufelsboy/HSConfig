@@ -1,9 +1,11 @@
+import pytest
+
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
-from hsconfig.source_document_model import runtime_claim_kind
+from hsconfig.source_document_model import runtime_claim_kind, surface_gate_decision
 
 
 def test_broad_legacy_mulligan_claim_type_does_not_create_hold():
@@ -121,6 +123,79 @@ def test_runtime_claim_kind_maps_only_exact_legacy_runtime_types():
     assert runtime_claim_kind({"claim_type": "bad_pattern"}) == "known_bad_pattern"
     assert runtime_claim_kind({"claim_type": "mulligan"}) == ""
     assert runtime_claim_kind({"claim_type": "mulligan_and_gameplan"}) == ""
+
+
+def test_globalvalue_numeric_tuning_is_valid_but_requires_runtime_evidence():
+    claim = {
+        "claim_kind": "globalvalue_numeric_tuning",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": [],
+    }
+
+    decision = surface_gate_decision(claim, "globalvalues")
+
+    assert decision.allowed is False
+    assert decision.claim_kind == "globalvalue_numeric_tuning"
+    assert decision.reason == "requires_runtime_evidence"
+
+
+def test_gameplan_posture_can_lower_to_globalvalues_when_runtime_lowerable():
+    claim = {
+        "claim_kind": "gameplan_posture",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+    }
+
+    decision = surface_gate_decision(claim, "globalvalues")
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+def test_mulligan_claim_does_not_lower_to_cardid_or_globalvalues():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["EX1_001"],
+    }
+
+    cardid_decision = surface_gate_decision(claim, "cardid")
+    globalvalues_decision = surface_gate_decision(claim, "globalvalues")
+
+    assert cardid_decision.allowed is False
+    assert cardid_decision.reason == "claim_kind_not_cardid_surface"
+    assert globalvalues_decision.allowed is False
+    assert globalvalues_decision.reason == "claim_kind_not_globalvalues_surface"
+
+
+def test_mulligan_discard_can_lower_to_mulligan_surface():
+    claim = {
+        "claim_kind": "mulligan_discard",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["EX1_001"],
+    }
+
+    decision = surface_gate_decision(claim, "mulligan")
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():
+    claim = {
+        "claim_kind": "hero_power_transform",
+        "claim_readiness": "source_backed_static_semantics",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["SW_448"],
+    }
+
+    decision = surface_gate_decision(claim, "mulligan")
+
+    assert decision.allowed is False
+    assert decision.reason == "claim_kind_not_mulligan_surface"
 
 
 def test_legacy_claims_json_broad_keep_text_stays_non_mulligan_runtime():
@@ -242,3 +317,102 @@ def test_explicit_start_of_game_mulligan_keep_is_suppressed():
     assert plan["suppressed_rules"][0]["reason"] == (
         "start_of_game_effect_does_not_require_opening_hand"
     )
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "deck_state_modifier",
+        "deckbuilding_modifier",
+        "deck_size_modifier",
+        "even_odd_modifier",
+        "highlander_modifier",
+        "hero_power_transform",
+        "passive_start_effect",
+        "start_in_deck_requirement",
+        "start_of_game_modifier",
+    ],
+)
+def test_start_of_game_non_hand_roles_suppress_mulligan_keep(role):
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_001"],
+    }
+    context = {
+        "card_roles": {
+            "CARD_001": {
+                "roles": ["start_of_game", role],
+            }
+        }
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_start_of_game_without_mulligan_anchor_suppresses_mulligan_keep():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_001"],
+    }
+    context = {
+        "card_roles": {
+            "CARD_001": {
+                "roles": ["start_of_game"],
+            }
+        }
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_start_of_game_with_mulligan_anchor_allows_explicit_mulligan_keep():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_001"],
+    }
+    context = {
+        "card_roles": {
+            "CARD_001": {
+                "roles": ["start_of_game", "mulligan_anchor"],
+            }
+        }
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context)
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+def test_start_of_game_semantic_family_suppresses_mulligan_keep():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_001"],
+    }
+    context = {
+        "card_roles": {
+            "CARD_001": {
+                "roles": ["start_of_game"],
+                "semantic_families": ["passive_start_effect"],
+            }
+        }
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"

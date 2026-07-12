@@ -1,0 +1,43 @@
+field_categories:
+  - category: contract_boundary
+    fields:
+      - name: claim_scope
+        description: The exact source/contract boundary being researched.
+        detail_level: moderate
+        required: true
+      - name: runtime_surface_implication
+        description: Which HSConfig runtime surface may be affected, if any.
+        detail_level: detailed
+        required: true
+      - name: safe_to_emit_step1
+        description: Whether a guide/static claim can be emitted before games are played.
+        detail_level: detailed
+        required: true
+      - name: blocked_or_report_only_cases
+        description: Cases that must stay visible but not lower directly into runtime config.
+        detail_level: detailed
+        required: true
+  - category: evidence_and_autonomy
+    fields:
+      - name: primary_sources
+        description: Official, public, or repository-local sources that support the finding.
+        detail_level: detailed
+        required: true
+      - name: autonomy_risk
+        description: How this can fail when the user only provides a deck.
+        detail_level: detailed
+        required: true
+      - name: recommended_contract_rule
+        description: The durable rule HSConfig should use.
+        detail_level: detailed
+        required: true
+      - name: tests_or_artifacts_to_check
+        description: Existing or suggested tests/docs/artifacts that prove the rule.
+        detail_level: detailed
+        required: true
+  - category: uncertainty
+    fields:
+      - name: uncertain
+        description: Field names whose values could not be fully verified.
+        detail_level: brief
+        required: true

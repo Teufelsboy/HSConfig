@@ -1,0 +1,217 @@
+{
+  "claim_scope": {
+    "topic": "Hearthstone Start of Game, deckbuilding, hero-power-transform, and deck-state semantics as they relate to HSConfig mulligan lowering.",
+    "boundary": "Verify whether effects that are determined by the deck brought into the match, such as Darkbishop Benedictus, Baku/Genn-style hero-power modifiers, Renathal-like deckbuilding modifiers, and similar deck-state checks, should ever be treated as automatic opening-hand keeps.",
+    "verified_examples": [
+      {
+        "card_or_family": "Darkbishop Benedictus",
+        "finding": "Verified as a Start of Game hero-power-transform effect that matters for pre-game semantics and runtime behavior, but not as an automatic mulligan keep."
+      },
+      {
+        "card_or_family": "Baku the Mooneater and Genn Greymane",
+        "finding": "Verified as Start of Game deck checks that modify the starting Hero Power based on the decklist, not on whether the enabling card is drawn or kept."
+      },
+      {
+        "card_or_family": "Prince Renathal-like deckbuilding or deck-state modifiers",
+        "finding": "Verified as pre-game deck-state effects that change deck construction or starting state, not as cards that need to be held in the opening hand."
+      },
+      {
+        "card_or_family": "Highlander and other no-duplicate deck checks",
+        "finding": "These are deck-state conditions tied to the brought deck and should remain posture or semantic evidence unless there is separate exact mulligan guidance for another card."
+      }
+    ],
+    "confirmed_rule": "Start-of-game and deckbuilding semantics may be emitted as Step 1 static contract knowledge, but they are not by themselves authority to create opening-hand hold rows in Mulligan.json."
+  },
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md - runtime Mulligan writes require explicit mulligan claim kinds; start-of-game effects and gameplan text remain contract evidence unless separately backed by explicit Mulligan guidance.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - executable source of truth for `START_OF_GAME_NON_HAND_EFFECT_ROLES`, `can_lower_to_mulligan()`, and the suppression reason `start_of_game_effect_does_not_require_opening_hand`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py - concrete Mulligan.json planner that records suppressed non-hand effects instead of emitting hold rules.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py - runtime-surface map showing `hero_power_transform` as direct or identity-gated direct support, `start_of_game` as partial, and `highlander` as partial deck-posture support.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py - regression tests proving Darkbishop Benedictus remains `hero_power_transform` without becoming a mulligan keep and that explicit keep claims for the start-of-game effect are suppressed.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - regression tests proving a start-of-game transform remains effect semantics, not a mulligan hold, and that explicit start-of-game mulligan keeps are suppressed.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mulligan_plan.py - regression test proving a Renathal-style `deckbuilding_modifier` keep is suppressed with `start_of_game_effect_does_not_require_opening_hand`.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py - readiness test proving source-backed hero-power-transform semantics can satisfy Step 1 through GlobalValues rather than Mulligan.json.",
+    "https://hearthstone.blizzard.com/en-us/news/21363040/opening-moves-mulligans - official mulligan article defining the opening-hand selection stage before play begins.",
+    "https://hearthstone.blizzard.com/cards/48158-baku-the-mooneater - official card text source for Baku the Mooneater.",
+    "https://hearthstone.blizzard.com/en-us/cards/47693-genn-greymane/ - official card text source for Genn Greymane.",
+    "https://playhearthstone.com/pt-br/cards/64443-darkbishop-benedictus/ - official card text source for Darkbishop Benedictus.",
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game - rules reference stating Start of Game triggers before the mulligan, so mulligan choices cannot change whether the effect applies.",
+    "https://hearthstone.wiki.gg/wiki/Deckbuilding_effect - rules reference stating deckbuilding effects trigger before the game begins and are tied to deck construction rather than hand state.",
+    "https://hearthstone.wiki.gg/wiki/Template:Prince_Renathal_notes - rules note stating Renathal changes deck size in deckbuilding and applies 40 health when the game begins, functioning like a Start of Game effect.",
+    "https://us.forums.blizzard.com/en/hearthstone/t/darkbishop-benedictus-mission/135411 - current player-facing evidence that Benedictus deck checks are treated from the starting deck state even when post-mulligan wording confuses players.",
+    "https://www.bluetracker.gg/hearthstone/topic/us-en/143615-3202-hotfix-patch/ - patch-note mirror quoting Blizzard that Hamuul Runetotem now checks spell schools before the mulligan, corroborating Start of Game timing."
+  ],
+  "runtime_surface_implication": [
+    {
+      "semantic_family": "Start-of-game hero-power-transform effects",
+      "examples": [
+        "Darkbishop Benedictus",
+        "Baku the Mooneater",
+        "Genn Greymane"
+      ],
+      "mulligan_surface": "Do not emit as automatic opening-hand holds in Mulligan.json.",
+      "allowed_step1_surfaces": [
+        "CARDID.json:BeforeUseHeroPowerBonus when exact transformed Hero Power identity or exact supported behavior is known.",
+        "GlobalValues.json:deck_posture when the effect is represented as deckwide posture rather than as a concrete per-card mulligan instruction."
+      ],
+      "notes": "These effects are tied to the deck brought into the game. The enabling card does not need to be drawn, kept, or even remain in the deck after mulligan for the semantic fact to matter."
+    },
+    {
+      "semantic_family": "Deckbuilding or deck-state modifiers",
+      "examples": [
+        "Prince Renathal-like effects",
+        "Highlander or no-duplicate checks",
+        "Other `deckbuilding_modifier` or `deck_state_modifier` roles"
+      ],
+      "mulligan_surface": "Do not emit as opening-hand keep rows in Mulligan.json.",
+      "allowed_step1_surfaces": [
+        "Deck identity and source-contract metadata.",
+        "GlobalValues.json:deck_posture only when the repo has a documented posture representation.",
+        "Report-only or static-semantic visibility when no exact normal-path runtime row exists."
+      ],
+      "notes": "Deck size, starting health, no-duplicate status, and similar state are properties of the deck and game start, not reasons to hold the enabler in hand."
+    },
+    {
+      "semantic_family": "Generic Start of Game effects without explicit hand interaction",
+      "examples": [
+        "Spell-school deck checks",
+        "Pre-game hero-power swaps",
+        "Start-of-game structural effects"
+      ],
+      "mulligan_surface": "Suppress mulligan holds unless there is separate exact mulligan evidence for a different reason.",
+      "allowed_step1_surfaces": [
+        "Static semantics in research and gameplan contract.",
+        "CardID or GlobalValues lowering only when the effect cleanly maps to a documented runtime surface."
+      ],
+      "notes": "The durable rule is not card-name-specific; it is role-specific."
+    }
+  ],
+  "safe_to_emit_step1": {
+    "overall_rule": "Yes. These semantics are safe to emit in Step 1 as pre-game contract facts, but no, they are not safe to emit as automatic opening-hand keeps unless there is independent exact mulligan guidance.",
+    "why": [
+      "HSConfig explicitly limits runtime Mulligan writes to `mulligan_keep` and `mulligan_discard` authority.",
+      "HSConfig explicitly suppresses `mulligan_keep` claims when the card is a Start of Game non-hand effect such as `hero_power_transform`, `deckbuilding_modifier`, or `deck_state_modifier`.",
+      "The game semantics themselves are pre-mulligan or brought-deck-state semantics, so keeping the card in hand is not required for the effect to exist."
+    ],
+    "examples": [
+      {
+        "case": "Darkbishop Benedictus effect exists",
+        "step1_safe": true,
+        "allowed_output": "Static semantics, card-role map, hero-power expectation, and possibly Hero Power runtime behavior.",
+        "not_allowed_output": "Automatic Mulligan.json hold for SW_448."
+      },
+      {
+        "case": "Baku or Genn deck condition exists",
+        "step1_safe": true,
+        "allowed_output": "Deck-state or hero-power-transform semantics.",
+        "not_allowed_output": "Automatic opening-hand keep for Baku or Genn just because the deck condition matters."
+      },
+      {
+        "case": "Renathal-like deckbuilding modifier exists",
+        "step1_safe": true,
+        "allowed_output": "Deck-state or deck-posture visibility.",
+        "not_allowed_output": "Opening-hand hold for the Renathal enabler card."
+      }
+    ]
+  },
+  "blocked_or_report_only_cases": [
+    {
+      "case": "A guide or source says to keep a Start of Game enabler only because it enables the pre-game effect.",
+      "classification": "suppress_from_mulligan_runtime",
+      "visibility_surface": "mulligan suppressed_rules",
+      "why": "The repo-wide gate returns `start_of_game_effect_does_not_require_opening_hand`."
+    },
+    {
+      "case": "A claim uses `hero_power_transform`, `deckbuilding_modifier`, or `deck_state_modifier` semantics without being an exact mulligan claim.",
+      "classification": "not_a_mulligan_surface",
+      "visibility_surface": "research contract, card-role map, readiness reports, and possibly CardID or GlobalValues depending on the exact effect",
+      "why": "These semantics describe the deck or starting state, not a hand-retention instruction."
+    },
+    {
+      "case": "A hero-power-transform effect is known semantically but the exact transformed identity is not fully resolved.",
+      "classification": "static_or_posture_only_until_exact_identity",
+      "visibility_surface": "source-backed static semantics, deck posture, or suppression reports",
+      "why": "HSConfig treats hero-power-transform as identity-gated direct support and avoids inventing exact runtime rows."
+    },
+    {
+      "case": "A deck-state effect has no documented normal-path runtime row.",
+      "classification": "report_only_or_contract_only",
+      "visibility_surface": "research outputs, gameplan contract, readiness lane, and operator-facing reports",
+      "why": "The repo keeps unsupported or partial semantics visible instead of silently converting them into Mulligan.json."
+    },
+    {
+      "case": "Generic text such as `keep because it is important` appears without exact mulligan authority.",
+      "classification": "insufficient_for_mulligan_lowering",
+      "visibility_surface": "source-depth or claim-gap follow-up",
+      "why": "The repo requires exact mulligan claim kinds and does not infer a mulligan hold from general plan language."
+    }
+  ],
+  "autonomy_risk": [
+    {
+      "risk": "A deck-only workflow can misread a pre-game enabler as a hand keep.",
+      "failure_mode": "The planner emits a fake hold because the card is strategically important, even though its effect happens from deck state.",
+      "control": "Keep the generic non-hand suppression rule keyed off Start of Game plus `hero_power_transform`, `deckbuilding_modifier`, or `deck_state_modifier` roles."
+    },
+    {
+      "risk": "Hero-power-transform semantics can be over-lowered when exact identity is incomplete.",
+      "failure_mode": "The system invents a per-card runtime action instead of preserving a weaker but truthful posture or static-semantic fact.",
+      "control": "Treat these effects as identity-gated direct support and only lower exact rows when the transformed Hero Power is resolved."
+    },
+    {
+      "risk": "Renathal-like or Highlander-like deck-state facts can be pushed into Mulligan.json because they matter to the deck.",
+      "failure_mode": "A deckbuilding effect becomes a bogus opening-hand recommendation.",
+      "control": "Keep deck-state modifiers on deck-posture, research, or contract surfaces unless separate exact mulligan evidence exists."
+    },
+    {
+      "risk": "Guide prose that uses the word `keep` can be confused with exact mulligan authority.",
+      "failure_mode": "General gameplan language creates a runtime mulligan row without a real mulligan claim.",
+      "control": "Require exact `claim_kind=mulligan_keep` or `mulligan_discard`, then still apply the Start of Game non-hand suppression gate."
+    },
+    {
+      "risk": "Operators may think suppression means the effect was lost.",
+      "failure_mode": "A correct non-mulligan suppression is mistaken for deleting the deck's important semantic fact.",
+      "control": "Verify both sides: not present in Mulligan.json, still present in card-role, hero-power, deck-posture, or readiness artifacts where appropriate."
+    }
+  ],
+  "recommended_contract_rule": {
+    "overall_rule": "If a card's effect is determined by the starting deck or by the pre-game state, the effect may be represented in Step 1 semantics, but the card must not become an automatic mulligan keep unless a separate exact mulligan instruction exists for playing the card from hand.",
+    "decision_order": [
+      "First classify whether the claim describes deck-state, deckbuilding, or Start of Game semantics rather than a true opening-hand action.",
+      "Then allow Mulligan.json lowering only for exact mulligan claim kinds that survive the Start of Game non-hand suppression gate.",
+      "Route hero-power-transform semantics to Hero Power or deck-posture surfaces when exact runtime lowering is supported.",
+      "Keep Renathal-like, Highlander-like, and other deck-state modifiers visible in contract or posture outputs rather than inventing hand keeps.",
+      "When in doubt, preserve the semantic fact and suppress the mulligan hold."
+    ],
+    "canonical_examples": [
+      {
+        "example": "Darkbishop Benedictus",
+        "rule_application": "Preserve `hero_power_transform` semantics and possible Hero Power runtime behavior; suppress any automatic opening-hand keep."
+      },
+      {
+        "example": "Baku or Genn",
+        "rule_application": "Treat as starting-deck hero-power modifiers, not as cards that must be held in the opening hand."
+      },
+      {
+        "example": "Prince Renathal-like deckbuilding modifier",
+        "rule_application": "Treat as deck-state or deckbuilding semantics, not as an opening-hand hold."
+      }
+    ]
+  },
+  "tests_or_artifacts_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/README.md - top-level contract statement separating explicit mulligan authority from start-of-game semantics.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - authoritative implementation of `START_OF_GAME_NON_HAND_EFFECT_ROLES` and `can_lower_to_mulligan()`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py - confirms suppressed non-hand effects do not become Mulligan.json rules.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py - confirms `hero_power_transform`, `start_of_game`, and `highlander` runtime-surface boundaries.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py - verifies Darkbishop remains `hero_power_transform` without becoming a mulligan keep.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - verifies start-of-game transform claims remain effect semantics, not mulligan holds.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_mulligan_plan.py - verifies a Renathal-style keep is rejected with `start_of_game_effect_does_not_require_opening_hand`.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py - verifies hero-power-transform can satisfy Step 1 via GlobalValues instead of Mulligan.json.",
+    "https://hearthstone.blizzard.com/cards/48158-baku-the-mooneater - official Baku card text.",
+    "https://hearthstone.blizzard.com/en-us/cards/47693-genn-greymane/ - official Genn card text.",
+    "https://playhearthstone.com/pt-br/cards/64443-darkbishop-benedictus/ - official Darkbishop Benedictus card text.",
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game - reference for Start of Game timing before mulligan.",
+    "https://hearthstone.wiki.gg/wiki/Deckbuilding_effect - reference for deckbuilding effect timing.",
+    "https://hearthstone.wiki.gg/wiki/Template:Prince_Renathal_notes - reference for Renathal deck-size and starting-health semantics."
+  ],
+  "uncertain": []
+}

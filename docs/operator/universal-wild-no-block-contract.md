@@ -53,10 +53,16 @@ These stay visible, but they do not block a valid package:
 
 - missing guide claims
 - generic-low-confidence cards
+- weak or missing source evidence
 - runtime-surface gaps that stay report-only
 - unsupported semantic claims that are suppressed instead of emitted
 - partial mechanic support
 - warning-only mechanics
+
+Unsupported, low-confidence, or runtime-evidence-only source claims must stay
+visible as report-only, suppressed, or gap rows with explicit reasons. They must
+not block package creation when `GlobalValues.json`, `Mulligan.json`, and the
+runtime structure are otherwise valid.
 
 ## Failure Mode Summary
 

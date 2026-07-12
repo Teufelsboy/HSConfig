@@ -1,0 +1,232 @@
+{
+  "claim_scope": {
+    "topic": "HSConfig source-claim quality classification for pre-run package generation.",
+    "boundary": "Verify how HSConfig should classify source-backed static semantics, guide-backed mulligan claims, runtime-evidence-only numeric tuning, low-confidence claims, and unsupported claims without ever turning semantic weakness into a deck-generation blocker.",
+    "verified_classes": [
+      {
+        "claim_class": "source_backed_static_semantics",
+        "classification": "Treat as pre-run usable semantics when the claim is explicitly static-semantics-backed or when static card metadata proves a safe semantic family such as start-of-game hero power transform.",
+        "repo_behavior": "This class may support runtime lowering only through documented surfaces and only when the claim kind is runtime-lowerable."
+      },
+      {
+        "claim_class": "guide_backed_mulligan_claim",
+        "classification": "Treat as the strongest normal Step 1 mulligan input when the claim kind is an exact mulligan keep or discard claim and the selector and condition are supported.",
+        "repo_behavior": "This class lowers into Mulligan.json unless the keep would incorrectly represent a non-hand start-of-game effect."
+      },
+      {
+        "claim_class": "runtime_evidence_only_numeric_tuning",
+        "classification": "Treat as report-visible but Step 1 write-blocked tuning.",
+        "repo_behavior": "This class is carried in GlobalValues authority warnings and blocked-until-runtime-evidence rows rather than emitted as Step 1 numeric overlays."
+      },
+      {
+        "claim_class": "low_confidence_claim",
+        "classification": "Treat as review-only source depth debt.",
+        "repo_behavior": "This class stays visible in coverage, warnings, and gap reports but must not lower into runtime config."
+      },
+      {
+        "claim_class": "unsupported_claim",
+        "classification": "Treat as explicit suppression, not silent fallback.",
+        "repo_behavior": "This class records a concrete suppression reason and remains non-blocking unless the package becomes technically invalid for separate reasons."
+      }
+    ],
+    "no_block_boundary": "HSConfig must keep `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply` separate from semantic strength labels such as `SOURCE_BACKED_STRONG` or `VALID_BUT_NOT_GUIDE_STRONG`."
+  },
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - authoritative no-block rule: semantic warnings do not block a technically valid package.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - executable gate for which claim kinds may lower to Mulligan, GlobalValues, Combo, or CardID surfaces and why some claims must be suppressed.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py - classification of per-card confidence into `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, and low-confidence buckets.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py - downstream contract bundle that keeps unsupported or review-only claims visible while still building the deck package.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py - concrete Mulligan.json lowering path and suppression handling for non-lowerable mulligan claims.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py - CardID.json routing and suppression for unsupported claim kinds, unsupported conditions, unresolved identity, and unsupported explicit runtime blocks.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/globalvalues_authority.py - Step 1 posture overlays versus `blocked_until_runtime_evidence` handling for numeric tuning.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py - semantic status and warning policy proving that non-strong packages can still be ready to apply with warnings.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/boarlock-fracking-source-decision.md - exact repo-local policy showing that low-confidence mulligan advice stays visible and blocks strongness, not package generation."
+  ],
+  "runtime_surface_implication": [
+    {
+      "claim_class": "source_backed_static_semantics",
+      "step1_emit": "Conditional yes",
+      "runtime_surfaces": [
+        "CardID.json when the claim kind maps to a documented card-behavior surface such as `hero_power_transform`.",
+        "GlobalValues.json posture overlays only when the input is `gameplan_posture`, not raw numeric tuning."
+      ],
+      "notes": "Static semantics can also remain purely classificatory in research and confidence summaries when no documented runtime row exists."
+    },
+    {
+      "claim_class": "guide_backed_mulligan_claim",
+      "step1_emit": "Yes",
+      "runtime_surfaces": [
+        "Mulligan.json"
+      ],
+      "notes": "Requires exact mulligan claim kind, supported selector, supported condition, and no start-of-game non-hand effect misuse."
+    },
+    {
+      "claim_class": "runtime_evidence_only_numeric_tuning",
+      "step1_emit": "No",
+      "runtime_surfaces": [
+        "No direct Step 1 runtime write.",
+        "Visible in `global_values_authority_matrix.blocked_until_runtime_evidence` and operator warnings."
+      ],
+      "notes": "Baseline GlobalValues plus source-backed posture overlays may still emit; runtime-only numeric tuning may not."
+    },
+    {
+      "claim_class": "low_confidence_claim",
+      "step1_emit": "No",
+      "runtime_surfaces": [
+        "No direct runtime surface."
+      ],
+      "notes": "These claims stay in claim coverage, closure routing, and warning summaries."
+    },
+    {
+      "claim_class": "unsupported_claim",
+      "step1_emit": "No",
+      "runtime_surfaces": [
+        "No direct runtime surface."
+      ],
+      "notes": "Suppression is explicit per surface, for example `claim_kind_not_cardid_surface`, `unsupported_condition`, or `unsupported_mechanic_runtime_block`."
+    }
+  ],
+  "safe_to_emit_step1": {
+    "overall_rule": "Yes for runtime-lowerable guide-backed or static-semantics-backed claims; no for runtime-evidence-only numeric tuning, low-confidence claims, and unsupported claims.",
+    "by_claim_class": [
+      {
+        "claim_class": "source_backed_static_semantics",
+        "safe": true,
+        "reason": "`claim_readiness=source_backed_static_semantics` is runtime-lowerable when the claim kind is supported and the runtime row is documented."
+      },
+      {
+        "claim_class": "guide_backed_mulligan_claim",
+        "safe": true,
+        "reason": "Exact guide-backed mulligan claims are the normal Step 1 authority for Mulligan.json."
+      },
+      {
+        "claim_class": "runtime_evidence_only_numeric_tuning",
+        "safe": false,
+        "reason": "The gate explicitly returns `requires_runtime_evidence` and the authority matrix records the row under `blocked_until_runtime_evidence`."
+      },
+      {
+        "claim_class": "low_confidence_claim",
+        "safe": false,
+        "reason": "Report-only readiness labels and report-only trust ceilings are not runtime-lowerable."
+      },
+      {
+        "claim_class": "unsupported_claim",
+        "safe": false,
+        "reason": "Unsupported claim kinds, unsupported conditions, or unsupported runtime blocks must be suppressed instead of guessed."
+      }
+    ],
+    "deck_generation_impact": "Unsafe claim classes must not block base deck generation; they only reduce semantic strength and add warnings or gap reports."
+  },
+  "blocked_or_report_only_cases": [
+    {
+      "case": "GlobalValues numeric tuning that requires live runtime evidence",
+      "classification": "report_only_until_runtime_evidence",
+      "visibility_surface": "GlobalValues authority matrix and operator warnings",
+      "why": "The source gate marks `globalvalue_numeric_tuning` as `requires_runtime_evidence`."
+    },
+    {
+      "case": "Claims with `claim_readiness` of `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`",
+      "classification": "report_only",
+      "visibility_surface": "coverage status, warnings, and source-claim-gap follow-up",
+      "why": "Low-confidence and contract-gap labels are explicitly outside the runtime-lowerable readiness set."
+    },
+    {
+      "case": "Claims with `trust_ceiling=report_only`",
+      "classification": "report_only",
+      "visibility_surface": "coverage and review-only claim bundles",
+      "why": "The trust ceiling is an explicit ban on runtime lowering."
+    },
+    {
+      "case": "Mulligan keep claims for start-of-game non-hand effects such as hero power transforms",
+      "classification": "suppress_from_mulligan_keep_but_keep_effect_semantics",
+      "visibility_surface": "mulligan suppressed rules plus CardID effect rows when separately supported",
+      "why": "The repo suppresses the opening-hand keep because the effect does not require drawing the card."
+    },
+    {
+      "case": "Unsupported selectors, unsupported structured conditions, unsupported explicit runtime blocks, and warning-only mechanics without a documented lowering path",
+      "classification": "surface_specific_suppression",
+      "visibility_surface": "surface plan suppression reports",
+      "why": "HSConfig must preserve provenance and explicit reasons instead of inventing JSON."
+    },
+    {
+      "case": "Identity-gated mechanics with unresolved identity",
+      "classification": "suppress_until_exact_identity",
+      "visibility_surface": "card behavior option-resolution and suppression outputs",
+      "why": "Resolved identity may lower later, but unresolved identity must not be guessed."
+    }
+  ],
+  "autonomy_risk": [
+    {
+      "risk": "A start-of-game enabler can be misclassified as an opening-hand keep.",
+      "failure_mode": "Generic wording like `keep` creates a fake mulligan anchor.",
+      "control": "Require exact `claim_kind=mulligan_keep` and suppress non-hand start-of-game effects from Mulligan.json."
+    },
+    {
+      "risk": "Deck-only generation can over-promote generic or adjacent guide advice.",
+      "failure_mode": "A package looks strong even though a key mulligan or combo claim is only weakly sourced.",
+      "control": "Keep low-confidence rows visible, maintain first-missing-chain routing, and refuse `SOURCE_BACKED_STRONG` when guide gaps remain."
+    },
+    {
+      "risk": "Runtime-only numeric tuning leaks into Step 1.",
+      "failure_mode": "GlobalValues numbers are emitted as if they were source-backed posture decisions.",
+      "control": "Keep raw numeric tuning in `blocked_until_runtime_evidence`; only posture overlays may change Step 1 GlobalValues."
+    },
+    {
+      "risk": "Unsupported conditions or mechanics are silently converted into guessed runtime rows.",
+      "failure_mode": "The package becomes semantically dishonest or technically unsafe.",
+      "control": "Emit explicit suppression reasons and preserve the no-block promise only for technically valid packages."
+    },
+    {
+      "risk": "Operators confuse semantic weakness with runtime apply authority.",
+      "failure_mode": "Valid packages are wrongly blocked because they are not guide-strong.",
+      "control": "Keep `VALID_PACKAGE` and `load_safe_apply` as the runtime gate and treat semantic debt as warnings."
+    }
+  ],
+  "recommended_contract_rule": {
+    "overall_rule": "Classify every claim twice: first by semantic quality, then by runtime-lowering authority. Only technically invalid packages may block generation or apply. Everything else must either lower through a documented surface or stay visible as a warning, suppression, or gap report.",
+    "classification_rules": [
+      {
+        "claim_class": "source_backed_static_semantics",
+        "quality_label": "source_backed_static_semantics",
+        "lowering_rule": "Allow Step 1 lowering only when the claim kind is one of the supported runtime surfaces and the row can be represented with documented syntax.",
+        "status_effect": "Can contribute to `STATIC_SEMANTICS_USABLE`; can also participate in stronger statuses if all other gaps are closed."
+      },
+      {
+        "claim_class": "guide_backed_mulligan_claim",
+        "quality_label": "guide_backed",
+        "lowering_rule": "Lower to Mulligan.json only from explicit mulligan keep or discard claim kinds with supported selectors and conditions.",
+        "status_effect": "Helps satisfy mulligan coverage needed for `SOURCE_BACKED_STRONG`."
+      },
+      {
+        "claim_class": "runtime_evidence_only_numeric_tuning",
+        "quality_label": "runtime_evidence_only_tuning",
+        "lowering_rule": "Never lower directly in Step 1; record the key and reason under `blocked_until_runtime_evidence`.",
+        "status_effect": "Adds warnings but must not block a technically valid package."
+      },
+      {
+        "claim_class": "low_confidence_claim",
+        "quality_label": "explicit_low_confidence or generic_low_confidence",
+        "lowering_rule": "Do not lower to runtime config; retain as review-only evidence and closure work.",
+        "status_effect": "Prevents `SOURCE_BACKED_STRONG`, often yields `VALID_BUT_NOT_GUIDE_STRONG`, but does not block deck generation."
+      },
+      {
+        "claim_class": "unsupported_claim",
+        "quality_label": "unsupported_or_review_only_claim",
+        "lowering_rule": "Suppress with a concrete surface-specific reason; never emit guessed runtime JSON.",
+        "status_effect": "May add semantic blockers for strongness, but remains non-blocking for the base package unless technical validation fails."
+      }
+    ],
+    "operator_meaning": "The durable product meaning is: every valid deck gets a load-safe initial package; not every valid deck is guide-strong, fully lowered, or runtime-tuned."
+  },
+  "tests_or_artifacts_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py - proves Darkbishop-style start-of-game hero-power-transform cards stay out of Mulligan keeps and that low-confidence Kingslayer Quick Pick advice does not lower.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py - proves unsupported claim kinds, unsupported conditions, unsupported explicit blocks, and unsupported mechanics are suppressed instead of emitted.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_boarlock_closure_wave.py - proves low-confidence Fracking mulligan evidence keeps Boarlock valid but not incorrectly promoted.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_fixture_e2e.py - proves valid packages can still carry `blocked_until_runtime_evidence` warnings and non-strong semantic states.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - authoritative artifact for separating semantic warnings from the runtime apply gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/boarlock-fracking-source-decision.md - authoritative artifact for exact mulligan-evidence standards and rejection of runtime evidence as a pre-run source substitute.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - authoritative code for supported claim-readiness classes and surface-gate decisions.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py - authoritative code for `SOURCE_BACKED_STRONG`, `VALID_BUT_NOT_GUIDE_STRONG`, and `READY_TO_APPLY_WITH_WARNINGS` behavior."
+  ],
+  "uncertain": []
+}

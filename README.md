@@ -4,7 +4,7 @@ HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those are HSTuner concerns. `Concede.json` is publicly documented; `Presume.json` is publicly documented on HearthRanger's AOE play-around page, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 
-Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, and guide gameplan text remain contract evidence unless they are separately backed by explicit Mulligan guidance.
+Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 
 HSConfig separates source semantics from runtime authority. A claim such as
 `hero_power_transform` or `card_role` can enrich the every-card contract and

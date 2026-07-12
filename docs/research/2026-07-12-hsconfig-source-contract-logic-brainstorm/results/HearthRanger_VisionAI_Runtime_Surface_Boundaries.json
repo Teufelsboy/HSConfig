@@ -1,0 +1,272 @@
+{
+  "claim_scope": {
+    "topic": "HearthRanger VisionAI Runtime Surface Boundaries for HSConfig Step 1 source lowering.",
+    "boundary": "Verify which source claims may safely lower into Mulligan.json, GlobalValues.json, per-card CARDID.json, and Combo.json before any games are played, using only the current HSConfig repository and public HearthRanger VisionAI documentation as evidence.",
+    "supported_runtime_surfaces": [
+      "Mulligan.json",
+      "GlobalValues.json",
+      "per-card CARDID.json",
+      "Combo.json"
+    ],
+    "core_rule": "HSConfig should lower only claims that already match a documented VisionAI surface and a repo-local contract gate. Broad text, weak strategy prose, unsupported mechanics, and unresolved identities must stay visible in reports instead of becoming runtime JSON."
+  },
+  "runtime_surface_implication": [
+    {
+      "surface": "Mulligan.json",
+      "documented_public_surface": "Public HearthRanger docs define Mulligan.json as opening-hand rules using explicit selectors and explicit values of hold or discard.",
+      "hsconfig_step1_boundary": "HSConfig may lower only explicit mulligan_keep and mulligan_discard authority here. Start-of-game semantics, card importance, and general gameplan text are not enough by themselves.",
+      "safe_inputs": [
+        "Exact keep or discard claims for concrete CardIDs",
+        "Documented DROPn selectors",
+        "Documented plus-combo keeps such as CARD_A + CARD_B",
+        "Documented coin or opponent-class conditions when they map to the supported Mulligan syntax"
+      ],
+      "blocked_inputs": [
+        "Generic statements such as core card, key card, premium card, or important card",
+        "Start-of-game effects that do not require drawing or keeping the card",
+        "Broad matchup prose that does not resolve to a documented Mulligan selector and condition"
+      ]
+    },
+    {
+      "surface": "GlobalValues.json",
+      "documented_public_surface": "Public HearthRanger docs define GlobalValues.json as a full copied-and-edited board-value baseline and explicitly recommend copying the default file before editing.",
+      "hsconfig_step1_boundary": "HSConfig must preserve the full baseline and may change only source-backed Step 1 posture keys that are explicitly allowed by the authority model. Runtime-evidence-only numeric tuning stays blocked.",
+      "safe_inputs": [
+        "Deck posture claims that map to documented Step 1 posture overlay keys",
+        "Baseline preservation decisions for every loaded key",
+        "Source-backed changes for keys classified as step1_posture_overlay_allowed"
+      ],
+      "blocked_inputs": [
+        "Synthetic numeric tuning created from broad archetype text alone",
+        "Any key classified as runtime_evidence_required",
+        "Any change that does not start from the loaded baseline"
+      ]
+    },
+    {
+      "surface": "per-card CARDID.json",
+      "documented_public_surface": "Public HearthRanger docs define per-card CARDID.json as the card-specific behavior surface and show documented blocks such as InHandPlayPriority, OnDiscoverCardBonus, BeforePhysicalAttackBonus, BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, and OnChooseOneCardBonus.",
+      "hsconfig_step1_boundary": "HSConfig may lower only card-specific claims that map to a documented block, resolve to an exact runtime CardID, and express clear behavior rather than general strategy text.",
+      "safe_inputs": [
+        "Targeting_rule claims with a documented card-behavior block",
+        "Mechanic_usage or card_role claims when static card text or guide text gives clear per-card behavior",
+        "Choice lowering only when option identity is source-backed",
+        "Hero Power related behavior only when the exact supported behavior is clear enough to map to a documented card-behavior block"
+      ],
+      "blocked_inputs": [
+        "Tech-slot advice",
+        "Replacement-option advice",
+        "Unresolved choice identity",
+        "Unsupported explicit runtime blocks",
+        "Warning-only mechanics with no documented card-specific surface"
+      ]
+    },
+    {
+      "surface": "Combo.json",
+      "documented_public_surface": "Public HearthRanger docs define Combo.json as explicit ordered sequences whose card-id segment count must match the value segment count, with same-turn >> and cross-turn >-> syntax.",
+      "hsconfig_step1_boundary": "HSConfig may lower only concrete combo_sequence claims with explicit order, explicit sequence members, and enough structure to emit valid Combo.json rows.",
+      "safe_inputs": [
+        "Two-or-more-card sequences with exact CardIDs",
+        "Explicit same-turn or cross-turn order",
+        "Structured combo timing fields that let HSConfig emit valid combo and value segment parity"
+      ],
+      "blocked_inputs": [
+        "Vague synergy language",
+        "General payoff package descriptions",
+        "Combo claims that name cards but do not define explicit sequence order"
+      ]
+    }
+  ],
+  "safe_to_emit_step1": {
+    "overall_rule": "Yes, but only when the source claim is already narrow, surface-matching, and syntax-safe. The Step 1 policy is not broad text-driven lowering; it is guarded pre-game authoring into the strongest documented runtime surface that the evidence actually supports.",
+    "claim_kind_matrix": [
+      {
+        "claim_kind": "archetype",
+        "step1_emit": "No direct runtime lowering by itself.",
+        "allowed_surface": "Report and research context only; it may inform posture selection but is not by itself a runtime row."
+      },
+      {
+        "claim_kind": "mulligan_keep",
+        "step1_emit": "Yes, conditionally.",
+        "allowed_surface": "Mulligan.json only, using documented selectors and supported conditions."
+      },
+      {
+        "claim_kind": "mulligan_discard",
+        "step1_emit": "Yes, conditionally.",
+        "allowed_surface": "Mulligan.json only, using documented selectors and supported conditions."
+      },
+      {
+        "claim_kind": "card_role",
+        "step1_emit": "Conditional only.",
+        "allowed_surface": "per-card CARDID.json only when the role resolves to a clear documented behavior; otherwise report-only."
+      },
+      {
+        "claim_kind": "targeting_rule",
+        "step1_emit": "Yes, conditionally.",
+        "allowed_surface": "per-card CARDID.json when the claim maps to a documented target, play, attack, Discover, Choose One, or Hero Power block."
+      },
+      {
+        "claim_kind": "combo_sequence",
+        "step1_emit": "Yes, conditionally.",
+        "allowed_surface": "Combo.json only when exact order, exact members, and valid sequence structure exist."
+      },
+      {
+        "claim_kind": "gameplan_posture",
+        "step1_emit": "Yes, but narrowly.",
+        "allowed_surface": "GlobalValues.json only through source-backed Step 1 posture overlay keys, not through free-form numeric invention."
+      },
+      {
+        "claim_kind": "hero_power_transform",
+        "step1_emit": "Conditional only.",
+        "allowed_surface": "per-card CARDID.json only when the exact supported behavior can map to a documented block; otherwise keep it as contract or report evidence. It must not become Mulligan.json authority by itself."
+      },
+      {
+        "claim_kind": "mechanic_usage",
+        "step1_emit": "Conditional only.",
+        "allowed_surface": "per-card CARDID.json only when the mechanic has a documented lowering path and the behavior is clear enough to express safely."
+      },
+      {
+        "claim_kind": "known_bad_pattern",
+        "step1_emit": "Usually no direct runtime lowering.",
+        "allowed_surface": "Report-only unless it can map to a documented negative-value row."
+      },
+      {
+        "claim_kind": "tech_slot",
+        "step1_emit": "No.",
+        "allowed_surface": "Report and operator context only."
+      },
+      {
+        "claim_kind": "replacement_option",
+        "step1_emit": "No.",
+        "allowed_surface": "Report and operator context only."
+      }
+    ]
+  },
+  "blocked_or_report_only_cases": [
+    {
+      "case": "Broad text-driven lowering from general guide prose",
+      "classification": "report_only",
+      "why": "HSConfig separates source semantics from runtime authority. General prose may inform the contract, but it does not directly authorize Mulligan, GlobalValues, Combo, or CARDID rows."
+    },
+    {
+      "case": "Card importance or start-of-game effect text treated as automatic mulligan authority",
+      "classification": "blocked_from_mulligan_runtime",
+      "why": "The repo explicitly states that start-of-game effects and gameplan text remain contract evidence unless separate explicit Mulligan guidance exists."
+    },
+    {
+      "case": "GlobalValues changes that require runtime evidence",
+      "classification": "report_only_until_runtime_evidence",
+      "why": "The authority model reserves runtime_evidence_required keys for HSTuner or another runtime-evidence workflow."
+    },
+    {
+      "case": "Choice lowering without exact option identity",
+      "classification": "suppressed",
+      "why": "choose_one_choice and discover_choice require source-backed identity resolution. Unresolved option identity must stay visible in suppression reports."
+    },
+    {
+      "case": "Warning-only mechanics such as board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool",
+      "classification": "warning_only_report_surface",
+      "why": "Current HSConfig policy says these mechanics must not invent runtime rows."
+    },
+    {
+      "case": "Dredge, Tradeable, rewind, herald, shatter, and unknown future mechanics without a documented lowering target",
+      "classification": "report_only_or_warning_only",
+      "why": "Current workflow and operator contract keep these visible without turning them into runtime write blockers or guessed runtime rows."
+    },
+    {
+      "case": "Unsupported explicit CARDID blocks or unsupported conditions",
+      "classification": "suppressed",
+      "why": "HSConfig requires documented block support and explicit suppression when a row cannot be expressed safely."
+    },
+    {
+      "case": "Vague combo language without exact sequence order",
+      "classification": "report_only",
+      "why": "Combo.json is for concrete ordered sequences, not general synergy descriptions."
+    },
+    {
+      "case": "Repo-supported but not latest-public-doc-confirmed blocks such as OnAdaptCardBonus, BeforeUpgradeCardBonus, and OnBoardPlayPriority",
+      "classification": "blocked_from_normal_automatic_lowering",
+      "why": "The current card-behavior policy keeps these visible as repo-supported source-gap blocks but does not describe them as confirmed in the latest public-doc audit."
+    }
+  ],
+  "primary_sources": [
+    "C:/Users/darbo/Documents/HSConfig/README.md - HSConfig boundary that runtime Mulligan writes require explicit mulligan claim kinds and that start-of-game effects or general gameplan text stay contract-only unless separately backed by explicit Mulligan guidance.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md - repo-local list of normal HSConfig runtime files and the explicit boundary that reports stay out of runtime deck folders.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/globalvalues-policy.md - mandatory full-baseline GlobalValues policy, key preservation, and authority categories including step1_posture_overlay_allowed and runtime_evidence_required.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/card-behavior-policy.md - documented per-card lowering rules, supported claim-to-block mapping, choice identity gating, and explicit report-only categories such as tech_slot and replacement_option.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/guide-research-policy.md - accepted claim kinds, Combo timing requirements, and GlobalValues authority rules.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md - current no-block runtime contract, minimal required runtime files, and warning-only mechanic boundaries.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - active operator contract for load-safe apply, report-only mechanics, and identity-gated direct boundaries.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm - public HearthRanger VisionAI help index naming the official help pages for Mulligan, Card Behavior, Combo, Global Values, and AOE play-around surfaces.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm - public Mulligan.json documentation showing explicit hold and discard values, CardID selectors, DROPn selectors, plus-combo selectors, and supported condition examples.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm - public CARDID.json documentation showing exact per-card file naming and concrete card-behavior blocks such as InHandPlayPriority, OnDiscoverCardBonus, and BeforePhysicalAttackBonus.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm - public Combo.json documentation showing explicit ordered combo syntax and the requirement that combo segments match value segments.",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm - public GlobalValues.json documentation stating that the default file should be copied and then edited.",
+    "Search snippet for official page https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm - public-doc evidence that the normal documented block registry includes BeforePlayCardBonus, BeforeBattlecryTargetBonus, BeforeUseHeroPowerBonus, and OnChooseOneCardBonus.",
+    "Search snippet for official page https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm - public-doc evidence that OnAdaptCardBonus and BeforeUpgradeCardBonus appear in the broader syntax reference, while the current HSConfig repo still treats them as not confirmed in the latest public-doc audit for normal automatic lowering."
+  ],
+  "autonomy_risk": [
+    {
+      "risk": "Broad guide prose can be mistaken for runtime authority.",
+      "failure_mode": "HSConfig invents Mulligan, CARDID, or GlobalValues rows from text that only describes general strategy.",
+      "control": "Require claim_kind, exact runtime surface match, and documented syntax before emitting a runtime row."
+    },
+    {
+      "risk": "Archetype labels can be converted into synthetic GlobalValues tuning.",
+      "failure_mode": "Aggro, tempo, or control language becomes made-up numeric values instead of source-backed posture overlays.",
+      "control": "Start from the full baseline and only change Step 1 posture keys explicitly allowed by the authority model."
+    },
+    {
+      "risk": "Card-specific semantics can be over-lowered without exact identity.",
+      "failure_mode": "HSConfig writes the wrong CARDID.json row or guesses a choice result.",
+      "control": "Keep choice lowering identity-gated and suppress unresolved option identity."
+    },
+    {
+      "risk": "Vague synergy becomes Combo.json.",
+      "failure_mode": "A deck package contains invented combo rows that do not represent an explicit ordered sequence.",
+      "control": "Require exact sequence structure, exact CardIDs, and valid segment parity before writing Combo.json."
+    },
+    {
+      "risk": "Unsupported or warning-only mechanics become guessed runtime rows.",
+      "failure_mode": "The package becomes semantically dishonest or technically unsafe.",
+      "control": "Use suppression reports and warning boundaries instead of guessed lowering."
+    },
+    {
+      "risk": "Minimal load-safe requirements are confused with rich-output expectations.",
+      "failure_mode": "A technically valid package is incorrectly blocked because Combo.json or meaningful CARDID behavior is thin.",
+      "control": "Keep the minimal runtime gate separate from richness and source-depth reporting."
+    }
+  ],
+  "recommended_contract_rule": {
+    "overall_rule": "Keep HSConfig narrow: lower only explicit, surface-matching, syntax-safe claims into pre-game runtime files. Everything broader should remain visible as contract evidence, suppression, or warning output.",
+    "durable_rules": [
+      "Mulligan.json should be written only from explicit mulligan_keep and mulligan_discard authority that fits documented selectors and conditions.",
+      "GlobalValues.json should always start from the loaded baseline and should change only keys whose Step 1 authority explicitly allows source-backed posture overlays.",
+      "per-card CARDID.json should require exact CardID identity, a documented behavior block, and clear per-card behavior rather than general deck strategy text.",
+      "Combo.json should require explicit ordered sequence evidence and should never be created from vague synergy language.",
+      "tech_slot, replacement_option, unresolved choice identity, warning-only mechanics, and unsupported runtime blocks should stay report-only or suppressed.",
+      "Do not widen lowering just because a claim sounds strategically correct. Strategic correctness is not the same thing as documented runtime-surface authority."
+    ],
+    "practical_step1_policy": [
+      "Use the strongest documented VisionAI surface available when the evidence is exact.",
+      "Prefer suppression with provenance over guessed JSON when the surface is unclear.",
+      "Treat rich-output gaps as warnings, not as permission to invent rows."
+    ]
+  },
+  "tests_or_artifacts_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/globalvalues-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/card-behavior-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/workflow.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm"
+  ],
+  "uncertain": []
+}

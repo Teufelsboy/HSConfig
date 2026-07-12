@@ -71,7 +71,14 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     darkbishop_contract = contract["cards"]["SW_448"]
+    darkbishop_card_config = deck_dir / "SW_448.json"
+    darkbishop_runtime_config = json.loads(
+        darkbishop_card_config.read_text(encoding="utf-8")
+    )
+    mulligan_values = mulligan["Mulligan"]["values"]
+    mulligan_text = json.dumps(mulligan, sort_keys=True)
 
     assert build_code == 0
     assert validate_code == 0
@@ -131,6 +138,11 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert (deck_dir / "DS1_233.json").exists()
+    assert darkbishop_card_config.exists()
+    assert darkbishop_runtime_config["GameCardId"] == "SW_448"
+    assert darkbishop_runtime_config["BeforeUseHeroPowerBonus"]["values"]
+    assert not any(row.get("mulligan") == "SW_448" for row in mulligan_values)
+    assert "SW_448" not in mulligan_text
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
     assert runtime.exists()

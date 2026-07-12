@@ -6,7 +6,7 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
-Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, and guide gameplan text remain contract evidence unless they are separately backed by explicit Mulligan guidance.
+Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 
 ### Source claim vs runtime surface
 

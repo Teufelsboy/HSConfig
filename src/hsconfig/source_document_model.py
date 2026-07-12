@@ -93,7 +93,13 @@ START_OF_GAME_NON_HAND_EFFECT_ROLES = frozenset(
     {
         "deck_state_modifier",
         "deckbuilding_modifier",
+        "deck_size_modifier",
+        "even_odd_modifier",
+        "highlander_modifier",
         "hero_power_transform",
+        "passive_start_effect",
+        "start_in_deck_requirement",
+        "start_of_game_modifier",
     }
 )
 CARDID_SURFACE_CLAIM_KINDS = frozenset(

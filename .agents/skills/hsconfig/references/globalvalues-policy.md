@@ -17,6 +17,11 @@ Rules:
 - Record `authority_category` and `board_value_component` for every key.
 - Use `copy_baseline` for keys that HSConfig must preserve unchanged.
 - Use `step1_posture_overlay_allowed` only for source-backed Step1 posture keys.
+- Only `gameplan_posture` may drive Step1 GlobalValues posture overlays.
+- `globalvalue_numeric_tuning` is accepted source evidence for explicit numeric
+  recommendations, but it is `runtime_evidence_required` and must remain
+  blocked/report-visible until runtime evidence owns it.
+- Do not use generic `globalvalue_*` claim kinds.
 - Use `runtime_evidence_required` for keys that require HSTuner or other runtime evidence before changing.
 - Treat GlobalValues reports as supporting evidence for `operator_summary.json`, not as a separate apply gate.
 - Validate with both baseline and profile before apply.

@@ -1,0 +1,26 @@
+topic: hsconfig-source-contract-logic-brainstorm
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-12-hsconfig-source-contract-logic-brainstorm\results
+  batch_size: 3
+  items_per_agent: 1
+items:
+  - name: HearthRanger VisionAI Runtime Surface Boundaries
+    category: HearthRanger VisionAI
+    description: >
+      Verify which source claims can safely lower into Mulligan.json, GlobalValues.json,
+      per-card CardID.json, and Combo.json before games are played. Focus on avoiding
+      broad text-driven lowering and keeping HSConfig narrow. Use only the current
+      C:\Users\darbo\Documents\HSConfig repository and public HearthRanger VisionAI
+      documentation as evidence; do not cite HSranger or hsranger_core artifacts.
+  - name: Hearthstone Start Of Game And Mulligan Semantics
+    category: Hearthstone Semantics
+    description: >
+      Verify that start-of-game, deckbuilding, hero-power-transform, deck-state, and
+      similar effects are not automatically opening-hand keeps. Include Darkbishop
+      Benedictus, Baku/Genn-like effects, and Renathal-like deck-state effects.
+  - name: Autonomous Source Claim Quality Model
+    category: Contract Quality
+    description: >
+      Verify how HSConfig should classify source-backed static semantics, guide-backed
+      mulligan claims, runtime-evidence-only numeric tuning, low-confidence claims,
+      and unsupported claims while still never blocking deck generation.
