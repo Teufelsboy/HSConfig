@@ -261,10 +261,14 @@ def test_conformance_snapshot_exposes_flat_contract_spine_rows():
     assert hero_power == {
         "claim_kind": "hero_power_transform",
         "policy_lane": "suppressed_or_conditional",
+        "semantic_lane": "suppressed_or_conditional",
         "allowed_surfaces": ["cardid"],
+        "required_fields": ["claim_kind", "claim_readiness", "trust_ceiling", "cards"],
+        "runtime_lowerable": True,
         "surface_gate_status": "cardid:allowed",
         "builder_status": "route_card_behavior_surfaces:emitted",
         "final_runtime_effect": "emits_cardid_runtime_row",
+        "default_suppression_reason": "requires_supported_cardid_surface",
         "operator_gate_impact": "diagnostic_only",
     }
 
@@ -273,6 +277,8 @@ def test_conformance_snapshot_exposes_flat_contract_spine_rows():
     )
     assert numeric["surface_gate_status"] == "no_allowed_surface"
     assert numeric["final_runtime_effect"] == "suppressed_until_runtime_evidence"
+    assert numeric["runtime_lowerable"] is False
+    assert numeric["default_suppression_reason"] == "requires_runtime_evidence"
     assert numeric["operator_gate_impact"] == "diagnostic_only"
 
 
@@ -283,10 +289,14 @@ def test_contract_spine_rows_are_exact_lifecycle_projection():
     expected_keys = {
         "claim_kind",
         "policy_lane",
+        "semantic_lane",
         "allowed_surfaces",
+        "required_fields",
+        "runtime_lowerable",
         "surface_gate_status",
         "builder_status",
         "final_runtime_effect",
+        "default_suppression_reason",
         "operator_gate_impact",
     }
 
@@ -299,10 +309,16 @@ def test_contract_spine_rows_are_exact_lifecycle_projection():
 
         assert set(row) == expected_keys
         assert row["policy_lane"] == lifecycle["policy_lane"]
+        assert row["semantic_lane"] == claim_rows[claim_kind]["semantic_lane"]
         assert row["allowed_surfaces"] == lifecycle["allowed_surfaces"]
+        assert row["required_fields"] == claim_rows[claim_kind]["required_fields"]
+        assert row["runtime_lowerable"] == claim_rows[claim_kind]["runtime_lowerable"]
         assert row["surface_gate_status"] == lifecycle["surface_gate_status"]
         assert row["builder_status"] == lifecycle["builder_status"]
         assert row["final_runtime_effect"] == lifecycle["final_runtime_effect"]
+        assert row["default_suppression_reason"] == claim_rows[claim_kind][
+            "default_suppression_reason"
+        ]
         assert row["operator_gate_impact"] == "diagnostic_only"
 
 
@@ -422,3 +438,87 @@ def test_contract_spine_start_of_game_boundary_is_not_a_mulligan_exception():
     assert suppression["decision"] == "rejected"
     assert suppression["reason"] == "start_of_game_effect_does_not_require_opening_hand"
     assert "do not become opening-hand keeps" in suppression["operator_meaning"]
+
+
+def test_source_contract_policy_rows_expose_complete_runtime_contract_metadata():
+    from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
+
+    policy = source_contract_policy_by_claim_kind()
+    required_keys = {
+        "lane",
+        "semantic_lane",
+        "allowed_surfaces",
+        "required_fields",
+        "runtime_lowerable",
+        "default_suppression_reason",
+        "operator_meaning",
+        "operator_gate_impact",
+    }
+
+    assert set(policy) == set(SUPPORTED_ATOMIC_CLAIM_KINDS)
+    for claim_kind, row in policy.items():
+        assert required_keys <= set(row), claim_kind
+        assert row["semantic_lane"] == row["lane"]
+        assert row["operator_gate_impact"] == "diagnostic_only"
+        assert isinstance(row["required_fields"], tuple), claim_kind
+        assert isinstance(row["runtime_lowerable"], bool), claim_kind
+
+    assert policy["mulligan_keep"]["required_fields"] == (
+        "claim_kind",
+        "claim_readiness",
+        "trust_ceiling",
+        "cards",
+    )
+    assert policy["mulligan_keep"]["runtime_lowerable"] is True
+    assert policy["hero_power_transform"]["runtime_lowerable"] is True
+    assert policy["hero_power_transform"]["default_suppression_reason"] == (
+        "requires_supported_cardid_surface"
+    )
+    assert policy["globalvalue_numeric_tuning"]["runtime_lowerable"] is False
+    assert policy["globalvalue_numeric_tuning"]["default_suppression_reason"] == (
+        "requires_runtime_evidence"
+    )
+    assert policy["archetype"]["runtime_lowerable"] is False
+    assert policy["archetype"]["default_suppression_reason"] == "report_only"
+
+
+def test_contract_spine_rows_include_policy_metadata_without_apply_authority():
+    snapshot = build_source_contract_conformance_snapshot()
+    rows_by_kind = {row["claim_kind"]: row for row in snapshot["contract_spine_rows"]}
+
+    required_keys = {
+        "claim_kind",
+        "policy_lane",
+        "semantic_lane",
+        "allowed_surfaces",
+        "required_fields",
+        "runtime_lowerable",
+        "surface_gate_status",
+        "builder_status",
+        "final_runtime_effect",
+        "default_suppression_reason",
+        "operator_gate_impact",
+    }
+    forbidden_keys = {
+        "apply_allowed",
+        "apply_gate",
+        "apply_policy",
+        "next_action",
+        "runtime_apply_allowed",
+        "runtime_apply_mode",
+        "technical_status",
+    }
+
+    for row in rows_by_kind.values():
+        assert set(row) == required_keys
+        assert forbidden_keys.isdisjoint(row)
+        assert row["operator_gate_impact"] == "diagnostic_only"
+
+    assert rows_by_kind["hero_power_transform"]["runtime_lowerable"] is True
+    assert rows_by_kind["hero_power_transform"]["default_suppression_reason"] == (
+        "requires_supported_cardid_surface"
+    )
+    assert rows_by_kind["globalvalue_numeric_tuning"]["runtime_lowerable"] is False
+    assert rows_by_kind["globalvalue_numeric_tuning"]["final_runtime_effect"] == (
+        "suppressed_until_runtime_evidence"
+    )

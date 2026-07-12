@@ -3,6 +3,10 @@ from __future__ import annotations
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
 
+OPERATOR_GATE_IMPACT = "diagnostic_only"
+COMMON_CLAIM_FIELDS = ("claim_kind", "claim_readiness", "trust_ceiling")
+CARD_CLAIM_FIELDS = (*COMMON_CLAIM_FIELDS, "cards")
+
 _POLICY: dict[str, dict[str, object]] = {
     "archetype": {
         "lane": "report_only",
@@ -105,13 +109,86 @@ _POLICY: dict[str, dict[str, object]] = {
 }
 
 
+_POLICY_DETAILS: dict[str, tuple[tuple[str, ...], bool, str]] = {
+    "archetype": (COMMON_CLAIM_FIELDS, False, "report_only"),
+    "mulligan_keep": (CARD_CLAIM_FIELDS, True, "claim_kind_not_mulligan_surface"),
+    "mulligan_discard": (CARD_CLAIM_FIELDS, True, "claim_kind_not_mulligan_surface"),
+    "card_role": (CARD_CLAIM_FIELDS, True, "requires_supported_cardid_surface"),
+    "targeting_rule": (CARD_CLAIM_FIELDS, True, "requires_supported_cardid_surface"),
+    "combo_sequence": (
+        (*CARD_CLAIM_FIELDS, "sequence"),
+        True,
+        "requires_complete_combo_sequence",
+    ),
+    "gameplan_posture": (
+        COMMON_CLAIM_FIELDS,
+        True,
+        "claim_kind_not_globalvalues_surface",
+    ),
+    "hero_power_transform": (
+        CARD_CLAIM_FIELDS,
+        True,
+        "requires_supported_cardid_surface",
+    ),
+    "mechanic_usage": (
+        (*CARD_CLAIM_FIELDS, "mechanic"),
+        True,
+        "requires_supported_cardid_surface",
+    ),
+    "known_bad_pattern": (
+        CARD_CLAIM_FIELDS,
+        True,
+        "requires_supported_cardid_surface",
+    ),
+    "tech_slot": (CARD_CLAIM_FIELDS, False, "report_only"),
+    "replacement_option": (CARD_CLAIM_FIELDS, False, "report_only"),
+    "discover_choice": (
+        (*CARD_CLAIM_FIELDS, "option_card_id"),
+        True,
+        "requires_exact_option_identity",
+    ),
+    "choose_one_choice": (
+        (*CARD_CLAIM_FIELDS, "option_card_id"),
+        True,
+        "requires_exact_option_identity",
+    ),
+    "globalvalue_numeric_tuning": (
+        (*COMMON_CLAIM_FIELDS, "key"),
+        False,
+        "requires_runtime_evidence",
+    ),
+}
+
+
 def source_contract_policy_by_claim_kind() -> dict[str, dict[str, object]]:
     """Return the explicit source-claim policy matrix used by tests and docs."""
     missing = set(SUPPORTED_ATOMIC_CLAIM_KINDS) - set(_POLICY)
     extra = set(_POLICY) - set(SUPPORTED_ATOMIC_CLAIM_KINDS)
-    if missing or extra:
+    missing_details = set(SUPPORTED_ATOMIC_CLAIM_KINDS) - set(_POLICY_DETAILS)
+    extra_details = set(_POLICY_DETAILS) - set(SUPPORTED_ATOMIC_CLAIM_KINDS)
+    if missing or extra or missing_details or extra_details:
         raise RuntimeError(
             "source contract policy mismatch: "
-            f"missing={sorted(missing)} extra={sorted(extra)}"
+            f"missing={sorted(missing)} extra={sorted(extra)} "
+            f"missing_details={sorted(missing_details)} "
+            f"extra_details={sorted(extra_details)}"
         )
-    return {claim_kind: dict(row) for claim_kind, row in sorted(_POLICY.items())}
+    return {
+        claim_kind: _with_contract_metadata(claim_kind, row)
+        for claim_kind, row in sorted(_POLICY.items())
+    }
+
+
+def _with_contract_metadata(
+    claim_kind: str, row: dict[str, object]
+) -> dict[str, object]:
+    required_fields, runtime_lowerable, default_suppression_reason = _POLICY_DETAILS[
+        claim_kind
+    ]
+    enriched = dict(row)
+    enriched["semantic_lane"] = str(row["lane"])
+    enriched["required_fields"] = tuple(required_fields)
+    enriched["runtime_lowerable"] = bool(runtime_lowerable)
+    enriched["default_suppression_reason"] = default_suppression_reason
+    enriched["operator_gate_impact"] = OPERATOR_GATE_IMPACT
+    return enriched

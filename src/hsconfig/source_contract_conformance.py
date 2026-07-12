@@ -266,7 +266,18 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
     row = {
         "claim_kind": claim_kind,
         "policy_lane": str(policy_row.get("lane", "")),
+        "semantic_lane": str(policy_row.get("semantic_lane", policy_row.get("lane", ""))),
         "allowed_surfaces": list(policy_row.get("allowed_surfaces", ())),
+        "required_fields": [
+            str(field) for field in policy_row.get("required_fields", ())
+        ],
+        "runtime_lowerable": bool(policy_row.get("runtime_lowerable", False)),
+        "default_suppression_reason": str(
+            policy_row.get("default_suppression_reason", "")
+        ),
+        "operator_gate_impact": str(
+            policy_row.get("operator_gate_impact", OPERATOR_GATE_IMPACT)
+        ),
         "operator_meaning": str(policy_row.get("operator_meaning", "")),
         "surface_gates": gates,
         "builder_router": _builder_router_expectation(claim_kind),
@@ -299,12 +310,22 @@ def _contract_spine_rows(rows: Mapping[str, Any]) -> list[dict[str, Any]]:
             {
                 "claim_kind": str(claim_kind),
                 "policy_lane": str(lifecycle.get("policy_lane", "")),
+                "semantic_lane": str(
+                    row.get("semantic_lane", lifecycle.get("policy_lane", ""))
+                ),
                 "allowed_surfaces": [
                     str(surface) for surface in lifecycle.get("allowed_surfaces", [])
                 ],
+                "required_fields": [
+                    str(field) for field in row.get("required_fields", [])
+                ],
+                "runtime_lowerable": bool(row.get("runtime_lowerable", False)),
                 "surface_gate_status": str(lifecycle.get("surface_gate_status", "")),
                 "builder_status": str(lifecycle.get("builder_status", "")),
                 "final_runtime_effect": str(lifecycle.get("final_runtime_effect", "")),
+                "default_suppression_reason": str(
+                    row.get("default_suppression_reason", "")
+                ),
                 "operator_gate_impact": OPERATOR_GATE_IMPACT,
             }
         )
