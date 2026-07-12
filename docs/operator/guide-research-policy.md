@@ -108,6 +108,12 @@ operator_summary.json remains the normal apply authority.
 
 `contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
 
+`operator_summary.json` remains the only normal apply authority.
+`source_contract_audit.json` explains why each claim did or did not lower.
+`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
 The snapshot separates unexpected contract drift from expected builder
 prerequisite gaps. Unexpected contract drift means the policy matrix, surface
 gate, or builder expectation disagrees and should be fixed. A builder

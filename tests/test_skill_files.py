@@ -986,3 +986,19 @@ def test_docs_and_skill_state_source_contract_invariant_rule():
     assert "only exact runtime-surface claims lower" in normalized
     assert "source_contract_audit.json is diagnostic" in normalized
     assert "operator_summary.json remains the normal apply authority" in normalized
+
+
+def test_docs_explain_apply_authority_and_diagnostic_chain_in_one_place():
+    paths = [
+        Path("docs/operator/README.md"),
+        Path("docs/operator/guide-research-policy.md"),
+        Path(".agents/skills/hsconfig/SKILL.md"),
+        Path(".agents/skills/hsconfig/references/workflow.md"),
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+    assert "`operator_summary.json` remains the only normal apply authority." in combined
+    assert "`source_contract_audit.json` explains why each claim did or did not lower." in combined
+    assert "`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain." in combined
+    assert "Warnings are follow-up work, not a runtime apply blocker." in combined
+    assert "Do not use `source_contract_audit.json` as an apply gate." in combined

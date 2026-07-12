@@ -51,6 +51,12 @@ Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`
 
 Effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON; `source_contract_audit.json` is diagnostic and `operator_summary.json` remains the normal apply authority.
 
+`operator_summary.json` remains the only normal apply authority.
+`source_contract_audit.json` explains why each claim did or did not lower.
+`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
 ## Mechanic Visibility
 
 The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only and do not increment `cards_needing_mechanic_lowering`.

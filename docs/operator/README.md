@@ -35,6 +35,12 @@ facts do not become Mulligan keeps unless there is separate exact hand-keep
 authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
 remains the normal apply authority.
 
+`operator_summary.json` remains the only normal apply authority.
+`source_contract_audit.json` explains why each claim did or did not lower.
+`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
+Warnings are follow-up work, not a runtime apply blocker.
+Do not use `source_contract_audit.json` as an apply gate.
+
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.

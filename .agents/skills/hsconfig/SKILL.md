@@ -38,6 +38,11 @@ Operator rules:
 - Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 - `globalvalue_numeric_tuning` is valid source evidence, but Step 1 treats it as runtime-evidence-required and report-visible. Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
 - Source-contract invariant: effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON. `source_contract_audit.json` is diagnostic; `operator_summary.json` remains the normal apply authority.
+- `operator_summary.json` remains the only normal apply authority.
+- `source_contract_audit.json` explains why each claim did or did not lower.
+- `contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
+- Warnings are follow-up work, not a runtime apply blocker.
+- Do not use `source_contract_audit.json` as an apply gate.
 - The contract conformance snapshot is documentation-as-code for claim-kind policy, surface gates, and diagnostic impact. It does not create a second operator gate; operator_summary.json remains the normal apply authority.
 `contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
 - Treat unexpected contract drift as an implementation defect, but treat builder prerequisite gaps as visible no-block diagnostics. A builder prerequisite gap means the surface is allowed but the concrete claim is missing required structure, such as a complete combo sequence.
