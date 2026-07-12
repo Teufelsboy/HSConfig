@@ -390,12 +390,12 @@ def _confidence_label(card_map: dict[str, dict[str, Any]], claims: list[dict[str
 
 def _coverage_status(claims: list[dict[str, Any]], semantic_families: list[str]) -> str:
     if claims:
-        if all(_is_report_only_claim(claim) for claim in claims):
-            return "generic_low_confidence"
         if any(_is_guide_claim(claim) for claim in claims):
             return "guide_backed"
         if all(_is_static_semantic_claim(claim) for claim in claims):
             return "source_backed_static_semantics"
+        if all(_is_report_only_claim(claim) for claim in claims):
+            return "generic_low_confidence"
         return "source_backed"
     if {"hero_power_transform", "hero_power_pressure", "start_of_game", "shadowform"} & set(
         semantic_families

@@ -27,12 +27,9 @@ def build_guide_source_depth_report(
     source_families = Counter(_claim_source_family(claim) for claim in claims)
     claim_kinds = Counter(_claim_kind(claim) for claim in claims)
     lowerable_claims = sum(1 for claim in claims if claim_can_lower_to_runtime(claim))
-    report_only_claims = sum(
-        1
-        for claim in claims
-        if str(claim.get("trust_ceiling", "")).lower() == "report_only"
-        or str(claim.get("claim_readiness", "")).lower()
-        in {"explicit_low_confidence", "generic_low_confidence", "contract_gap"}
+    report_only_claims = sum(1 for claim in claims if _is_report_only_strength_gap_claim(claim))
+    diagnostic_report_only_claims = sum(
+        1 for claim in claims if _is_diagnostic_static_report_only_claim(claim)
     )
     strong_lowerable_claims = sum(1 for claim in claims if _is_strong_lowerable_claim(claim))
     blocked_runtime_claims = sum(1 for claim in claims if not claim_can_lower_to_runtime(claim))
@@ -90,6 +87,7 @@ def build_guide_source_depth_report(
             "lowerable_claims": lowerable_claims,
             "strong_lowerable_claims": strong_lowerable_claims,
             "report_only_claims": report_only_claims,
+            "diagnostic_report_only_claims": diagnostic_report_only_claims,
             "blocked_runtime_claims": blocked_runtime_claims,
             "total_cards": total_cards,
             "supported_cards": supported_cards,
@@ -197,4 +195,24 @@ def _is_strong_lowerable_claim(claim: dict[str, Any]) -> bool:
         and str(claim.get("claim_readiness", "")).lower() == "guide_backed"
         and _claim_source_family(claim).lower()
         not in {"hearthstonejson_static_semantics", "static_semantics", "metadata", "card_text"}
+    )
+
+
+def _is_report_only_strength_gap_claim(claim: dict[str, Any]) -> bool:
+    if _is_diagnostic_static_report_only_claim(claim):
+        return False
+    return (
+        str(claim.get("trust_ceiling", "")).lower() == "report_only"
+        or str(claim.get("claim_readiness", "")).lower()
+        in {"explicit_low_confidence", "generic_low_confidence", "contract_gap"}
+    )
+
+
+def _is_diagnostic_static_report_only_claim(claim: dict[str, Any]) -> bool:
+    return (
+        str(claim.get("trust_ceiling", "")).lower() == "report_only"
+        and str(claim.get("claim_readiness", "")).lower()
+        == "source_backed_static_semantics"
+        and _claim_source_family(claim).lower()
+        in {"hearthstonejson_static_semantics", "static_semantics", "metadata", "card_text"}
     )

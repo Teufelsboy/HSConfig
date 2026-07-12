@@ -510,6 +510,108 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
+def test_prepare_operator_summary_uses_live_source_claim_gap_report(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "EX1_001",
+                        "dbf_id": 1,
+                        "count": 2,
+                        "name": "Guide Card",
+                        "text": "Deal 2 damage.",
+                    },
+                    {
+                        "card_id": "EX1_002",
+                        "dbf_id": 2,
+                        "count": 2,
+                        "name": "Static Card",
+                        "text": "Discover a spell.",
+                    },
+                    {
+                        "card_id": "EX1_003",
+                        "dbf_id": 3,
+                        "count": 2,
+                        "name": "Uncovered Card",
+                        "text": "",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    source_documents = tmp_path / "source_documents.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/source-quality",
+                        "source_title": "Source Quality Guide",
+                        "source_family": "guide",
+                        "retrieved_at": _today_utc_iso(),
+                        "claims": [
+                            {
+                                "claim_kind": "card_role",
+                                "cards": ["EX1_001"],
+                                "stance": "pressure",
+                                "evidence_text_short": "Guide Card is a pressure card.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "package"
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "SourceQualityDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports = package / "reports"
+    source_gap = json.loads((reports / "source_claim_gap_report.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert operator_summary["source_claim_quality_summary"]["non_blocking"] is True
+    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"] == (
+        source_gap["summary"]["source_quality_lane_counts"]
+    )
+    assert operator_summary["source_claim_quality_summary"]["cards_with_generic_low_confidence"] == (
+        source_gap["summary"]["cards_with_generic_low_confidence"]
+    )
+    assert operator_summary["source_claim_quality_summary"]["cards_with_contract_gap"] == (
+        source_gap["summary"]["cards_with_contract_gap"]
+    )
+    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"]
+
+
 def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     tmp_path: Path, capsys, monkeypatch
 ):
@@ -836,6 +938,15 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert payload["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["source_claim_quality_summary"]["non_blocking"] is True
+    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"] == {
+        "generic_low_confidence": 1,
+        "source_backed_static_semantics": 15,
+    }
+    assert any(
+        warning["reason"] == "valid_but_not_guide_strong"
+        for warning in operator_summary["warnings"]
+    )
     assert guide_sources["source_depth_status"] == "needs_more_research"
     assert guide_sources["summary"]["source_count"] == 0
     assert guide_sources["research_fallback_source"] == "shared_module"

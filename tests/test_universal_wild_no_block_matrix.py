@@ -146,5 +146,13 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert operator["runtime_load_safe"] is True
         assert operator["runtime_apply_mode"] == "load_safe_apply"
         assert operator["source_contract_audit_summary"]["non_blocking"] is True
+        source_quality = operator["source_claim_quality_summary"]
+        assert source_quality["non_blocking"] is True
+        assert isinstance(source_quality["source_quality_lane_counts"], dict)
+        assert operator["next_action"] in {
+            "READY_TO_APPLY_OR_HANDOFF",
+            "READY_TO_APPLY_WITH_WARNINGS",
+        }
+        assert operator["runtime_apply_contract"]["apply_authority"] == "reports/operator_summary.json"
         assert source_contract_audit["schema_version"] == 1
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True

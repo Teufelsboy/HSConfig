@@ -69,6 +69,8 @@ def test_report_explains_each_first_missing_link():
         "first_missing_link": "needs_runtime_surface",
         "source_depth_lane": "runtime_surface_gap",
         "recommended_source_claim_kind": "targeting_rule",
+        "recommended_next_claim_kind": "targeting_rule",
+        "recommended_next_claim_kinds": ["targeting_rule"],
         "next_action": "add_runtime_lowerable_claim_or_router_support",
         "priority_score": report["cards"]["CARD_B"]["priority_score"],
         "priority_reason": report["cards"]["CARD_B"]["priority_reason"],
@@ -135,3 +137,46 @@ def test_gap_report_threads_source_depth_lane_into_first_missing_chain():
     row = report["cards"]["DEEP_014"]
     assert row["source_depth_lane"] == "mulligan_claim_gap"
     assert report["summary"]["first_missing_chain"]["source_depth_lane"] == "mulligan_claim_gap"
+
+
+def test_mulligan_gap_recommends_neutral_claim_choice_not_keep_by_default():
+    report = build_source_claim_gap_report(
+        deck_name="Kingslayer",
+        config_readiness_report={
+            "cards": {
+                "DEEP_014": {
+                    "card_id": "DEEP_014",
+                    "name": "Quick Pick",
+                    "readiness_lane": "report_only_supported",
+                    "source_depth_lane": "mulligan_claim_gap",
+                    "first_missing_link": "needs_mulligan_claim",
+                    "runtime_surfaces": [],
+                }
+            }
+        },
+        claim_coverage_report={
+            "cards": {
+                "DEEP_014": {
+                    "coverage_status": "source_backed",
+                    "source_claim_ids": ["claim_quick_pick"],
+                }
+            }
+        },
+        card_behavior_plan={"rows": []},
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+    )
+
+    row = report["cards"]["DEEP_014"]
+    assert row["recommended_source_claim_kind"] == "mulligan_claim"
+    assert row["recommended_next_claim_kind"] == "mulligan_claim"
+    assert row["recommended_next_claim_kinds"] == ["mulligan_keep", "mulligan_discard"]
+    assert row["recommended_next_source_action"] == (
+        "add explicit mulligan_keep or mulligan_discard source evidence"
+    )
+    assert report["summary"]["first_missing_chain"]["recommended_source_claim_kind"] == "mulligan_claim"
+    assert report["summary"]["first_missing_chain"]["recommended_next_claim_kind"] == "mulligan_claim"
+    assert report["summary"]["first_missing_chain"]["recommended_next_claim_kinds"] == [
+        "mulligan_keep",
+        "mulligan_discard",
+    ]

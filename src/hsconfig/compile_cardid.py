@@ -3,14 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.mechanic_support import (
+    ROLE_ALIASES,
     mechanic_default_runtime_block,
     mechanic_lowering_policy,
+    normalize_role_token,
 )
 
 
 NON_MECHANIC_FALLBACK_BLOCKS = {
     "prefer_enemy_minion": "BeforeBattlecryTargetBonus",
     "prefer_friendly_minion": "BeforePlayCardBonus",
+}
+DIAGNOSTIC_ONLY_ROLE_FALLBACKS = {
+    "destroy",
+    "generic_spell_target",
+    "hero_power",
+    "silence",
+    "transform",
 }
 
 BACKED_CONFIDENCE_LANES = {
@@ -102,9 +111,12 @@ def compile_cardid_behaviors(
 
 
 def _role_fallback_block(role: str) -> str | None:
+    canonical_role = ROLE_ALIASES.get(normalize_role_token(role), normalize_role_token(role))
+    if canonical_role in DIAGNOSTIC_ONLY_ROLE_FALLBACKS:
+        return None
     if role in NON_MECHANIC_FALLBACK_BLOCKS:
         return NON_MECHANIC_FALLBACK_BLOCKS[role]
-    policy = mechanic_lowering_policy(role)
+    policy = mechanic_lowering_policy(canonical_role)
     if policy["policy"] == "report_only":
         return None
     return mechanic_default_runtime_block(role)

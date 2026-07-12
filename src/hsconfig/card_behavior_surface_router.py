@@ -33,6 +33,13 @@ INTENT_BLOCKS = {
     "choose_one_choice": "OnChooseOneCardBonus",
 }
 OPTION_CLAIM_KINDS = {"discover_choice", "choose_one_choice"}
+MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK = {
+    "destroy",
+    "generic_spell_target",
+    "hero_power",
+    "silence",
+    "transform",
+}
 OPTION_CARD_KEYS = (
     "option_card_id",
     "option_card",
@@ -131,6 +138,20 @@ def route_card_behavior_surfaces(
             mechanic = _claim_mechanic(claim)
             policy = mechanic_lowering_policy(mechanic)
             policy_name = str(policy["policy"])
+            if mechanic in MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK and explicit_block is None:
+                suppressed.append(
+                    {
+                        **_suppressed_row(
+                            claim,
+                            claim_kind,
+                            cards,
+                            f"{mechanic}_requires_explicit_runtime_block",
+                        ),
+                        "mechanic": mechanic,
+                        "lowering_policy": policy_name,
+                    }
+                )
+                continue
             if policy_name == "report_only":
                 suppressed.append(
                     {

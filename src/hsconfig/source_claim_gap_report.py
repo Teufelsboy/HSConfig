@@ -4,11 +4,37 @@ from collections import Counter
 from typing import Any
 
 
+SOURCE_QUALITY_LANES = {
+    "guide_backed",
+    "source_backed_static_semantics",
+    "archetype_inferred",
+    "explicit_low_confidence",
+    "generic_low_confidence",
+    "contract_gap",
+}
+
+COVERAGE_STATUS_TO_QUALITY_LANE = {
+    "guide_backed": "guide_backed",
+    "source_backed": "guide_backed",
+    "source_backed_static_semantics": "source_backed_static_semantics",
+    "static_semantics_backfilled": "source_backed_static_semantics",
+    "uncovered_low_confidence": "generic_low_confidence",
+}
+
+CONTRACT_GAP_MISSING_LINKS = {
+    "needs_runtime_surface",
+    "needs_condition_lowering",
+    "needs_mechanic_lowering",
+    "unsupported_claim_kind",
+    "surface_gate_rejected",
+}
+
+
 RECOMMENDED_CLAIM_KIND_BY_MISSING_LINK = {
     "none": "none",
     "needs_guide_claim": "card_role",
     "needs_runtime_surface": "targeting_rule",
-    "needs_mulligan_claim": "mulligan_keep",
+    "needs_mulligan_claim": "mulligan_claim",
     "needs_combo_sequence": "combo_sequence",
     "needs_condition_lowering": "targeting_rule",
     "needs_mechanic_lowering": "mechanic_usage",
@@ -47,21 +73,35 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
 
 def build_source_claim_gap_report(
     *,
-    deck_name: str,
-    config_readiness_report: dict[str, Any],
+    deck_name: str = "",
+    config_readiness_report: dict[str, Any] | None = None,
     claim_coverage_report: dict[str, Any],
-    card_behavior_plan: dict[str, Any],
-    mulligan_plan: dict[str, Any],
-    combo_plan: dict[str, Any],
+    card_behavior_plan: dict[str, Any] | None = None,
+    mulligan_plan: dict[str, Any] | None = None,
+    combo_plan: dict[str, Any] | None = None,
+    deck_cards: list[dict[str, Any]] | None = None,
+    source_contract_audit: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    config_readiness_report = config_readiness_report or {}
+    card_behavior_plan = card_behavior_plan or {}
+    mulligan_plan = mulligan_plan or {}
+    combo_plan = combo_plan or {}
+    if deck_cards is not None:
+        config_readiness_report = _compatibility_readiness_report(
+            deck_cards=deck_cards,
+            claim_coverage_report=claim_coverage_report,
+            source_contract_audit=source_contract_audit or {},
+        )
     cards = config_readiness_report.get("cards", {})
     if not isinstance(cards, dict):
         cards = {}
-    coverage_cards = claim_coverage_report.get("cards", {})
+    coverage_cards = claim_coverage_report.get("cards", claim_coverage_report.get("card_rows", {}))
     if not isinstance(coverage_cards, dict):
         coverage_cards = {}
 
     counts: Counter[str] = Counter()
+    quality_lane_counts: Counter[str] = Counter()
+    next_claim_kind_counts: Counter[str] = Counter()
     rows: dict[str, dict[str, Any]] = {}
     for card_id, row in sorted(cards.items()):
         if not isinstance(row, dict):
@@ -79,6 +119,12 @@ def build_source_claim_gap_report(
             readiness_lane=str(row.get("readiness_lane", "")),
             runtime_surfaces=[str(item) for item in row.get("runtime_surfaces", [])],
         )
+        quality_lane = _source_quality_lane(readiness_row=row, coverage_row=coverage)
+        next_claim_kind = _recommended_next_claim_kind(missing_link, quality_lane)
+        next_claim_kinds = _recommended_next_claim_kinds(missing_link, next_claim_kind)
+        if next_claim_kind != "none":
+            next_claim_kind_counts[next_claim_kind] += 1
+        quality_lane_counts[quality_lane] += 1
         rows[str(card_id)] = {
             "card_id": str(card_id),
             "name": str(row.get("name", card_id)),
@@ -95,6 +141,13 @@ def build_source_claim_gap_report(
             "next_action": NEXT_ACTION_BY_MISSING_LINK.get(missing_link, "inspect_card_gap"),
             "priority_score": priority_score,
             "priority_reason": priority_reason,
+            "source_quality_lane": quality_lane,
+            "recommended_next_claim_kind": next_claim_kind,
+            "recommended_next_claim_kinds": next_claim_kinds,
+            "recommended_next_source_action": _recommended_next_source_action(
+                missing_link,
+                next_claim_kind,
+            ),
         }
 
     blocked_cards = sum(count for key, count in counts.items() if key != "none")
@@ -117,14 +170,111 @@ def build_source_claim_gap_report(
                 if first_missing_chain is not None
                 else "card_ready_for_strong_gate"
             ),
+            "source_quality_lane_counts": dict(sorted(quality_lane_counts.items())),
+            "cards_with_generic_low_confidence": quality_lane_counts["generic_low_confidence"],
+            "cards_with_contract_gap": quality_lane_counts["contract_gap"],
+            "next_claim_kind_counts": dict(sorted(next_claim_kind_counts.items())),
         },
         "cards": rows,
+        "card_rows": rows,
         "inputs": {
             "card_behavior_rows": len(card_behavior_plan.get("rows", [])),
             "mulligan_rules": len(mulligan_plan.get("rules", [])),
             "combo_count": len(combo_plan.get("combos", [])),
         },
     }
+
+
+def _source_quality_lane(
+    *,
+    readiness_row: dict[str, Any],
+    coverage_row: dict[str, Any],
+) -> str:
+    first_missing_link = str(readiness_row.get("first_missing_link", ""))
+    if first_missing_link in CONTRACT_GAP_MISSING_LINKS:
+        return "contract_gap"
+
+    coverage_status = str(
+        coverage_row.get("coverage_status", readiness_row.get("coverage_status", ""))
+    )
+    coverage_lane = COVERAGE_STATUS_TO_QUALITY_LANE.get(coverage_status)
+    if coverage_lane is not None:
+        return coverage_lane
+
+    readiness_lane = str(readiness_row.get("readiness_lane", ""))
+    if readiness_lane in SOURCE_QUALITY_LANES:
+        return readiness_lane
+
+    source_depth_lane = str(readiness_row.get("source_depth_lane", ""))
+    if source_depth_lane in SOURCE_QUALITY_LANES:
+        return source_depth_lane
+
+    if first_missing_link in {"missing_source_claim", "missing_card_specific_source"}:
+        return "generic_low_confidence"
+    if first_missing_link == "needs_guide_claim":
+        return "generic_low_confidence"
+    return "archetype_inferred"
+
+
+def _recommended_next_claim_kind(first_missing_link: str, lane: str) -> str:
+    if first_missing_link in {"missing_source_claim", "missing_card_specific_source", "needs_guide_claim"}:
+        return "card_role"
+    if first_missing_link in {"missing_targeting_claim", "needs_runtime_surface"}:
+        return "targeting_rule"
+    if first_missing_link in {"missing_mulligan_claim", "needs_mulligan_claim"}:
+        return "mulligan_claim"
+    if first_missing_link in {"missing_combo_sequence", "needs_combo_sequence"}:
+        return "combo_sequence"
+    if lane == "generic_low_confidence":
+        return "card_role"
+    return "none"
+
+
+def _recommended_next_claim_kinds(first_missing_link: str, next_claim_kind: str) -> list[str]:
+    if first_missing_link in {"missing_mulligan_claim", "needs_mulligan_claim"}:
+        return ["mulligan_keep", "mulligan_discard"]
+    if next_claim_kind == "none":
+        return []
+    return [next_claim_kind]
+
+
+def _recommended_next_source_action(first_missing_link: str, next_claim_kind: str) -> str:
+    if next_claim_kind == "none":
+        return "none"
+    if next_claim_kind == "mulligan_claim":
+        return "add explicit mulligan_keep or mulligan_discard source evidence"
+    if next_claim_kind == "targeting_rule":
+        return "add a card-specific target or usage claim"
+    if next_claim_kind == "combo_sequence":
+        return "add an ordered combo sequence with timing fields"
+    return "add a card-specific guide claim or source-backed static semantic claim"
+
+
+def _compatibility_readiness_report(
+    *,
+    deck_cards: list[dict[str, Any]],
+    claim_coverage_report: dict[str, Any],
+    source_contract_audit: dict[str, Any],
+) -> dict[str, Any]:
+    coverage_rows = claim_coverage_report.get("card_rows", {})
+    audit_rows = source_contract_audit.get("card_rows", {})
+    cards: dict[str, dict[str, Any]] = {}
+    for card in deck_cards:
+        card_id = str(card["card_id"])
+        coverage = coverage_rows.get(card_id, {})
+        audit = audit_rows.get(card_id, {})
+        cards[card_id] = {
+            "card_id": card_id,
+            "name": str(card.get("name", card_id)),
+            "source_depth_lane": coverage.get("source_depth_lane", ""),
+            "first_missing_link": (
+                "none"
+                if audit.get("first_missing_link") == "closed"
+                else str(audit.get("first_missing_link", "missing_source_claim"))
+            ),
+            "runtime_surfaces": list(audit.get("runtime_surfaces", [])),
+        }
+    return {"cards": cards}
 
 
 def _priority_for_row(
@@ -159,6 +309,8 @@ def _first_missing_chain(rows: dict[str, dict[str, Any]]) -> dict[str, Any] | No
         "first_missing_link": selected["first_missing_link"],
         "source_depth_lane": selected["source_depth_lane"],
         "recommended_source_claim_kind": selected["recommended_source_claim_kind"],
+        "recommended_next_claim_kind": selected["recommended_next_claim_kind"],
+        "recommended_next_claim_kinds": selected["recommended_next_claim_kinds"],
         "next_action": selected["next_action"],
         "priority_score": selected["priority_score"],
         "priority_reason": selected["priority_reason"],

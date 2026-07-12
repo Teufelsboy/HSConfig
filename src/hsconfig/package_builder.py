@@ -495,6 +495,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "globalvalues_profile_report": globalvalues["profile"],
         "semantic_enrichment_report": semantic_report,
         "mechanic_drift_report": mechanic_drift_report,
+        "source_claim_gap_report": source_claim_gap_report,
         "source_contract_audit_report": source_contract_audit_report,
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)

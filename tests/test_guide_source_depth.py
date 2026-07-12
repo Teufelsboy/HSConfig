@@ -286,6 +286,48 @@ def test_static_semantics_claims_do_not_produce_source_backed_depth():
     assert report["source_depth_status"] == "static_semantics_only"
 
 
+def test_diagnostic_static_report_only_claims_do_not_block_source_backed_depth():
+    report = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "guide",
+                    "cards": ["CARD_GUIDE"],
+                    "source_family": "guide",
+                },
+                {
+                    "claim_kind": "mechanic_usage",
+                    "claim_readiness": "source_backed_static_semantics",
+                    "trust_ceiling": "report_only",
+                    "cards": ["CARD_STATIC"],
+                    "source_family": "hearthstonejson_static_semantics",
+                },
+            ],
+            "unsupported_claims": [],
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 2, "runtime_emitted": 2, "generic_low_confidence": 0},
+            "cards": {
+                "CARD_GUIDE": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                },
+                "CARD_STATIC": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                },
+            },
+        },
+    )
+
+    assert report["summary"]["strong_lowerable_claims"] == 1
+    assert report["summary"]["report_only_claims"] == 0
+    assert report["summary"]["diagnostic_report_only_claims"] == 1
+    assert report["source_depth_status"] == "source_backed"
+
+
 def test_guide_source_depth_separates_strong_lowerable_from_report_only():
     report = build_guide_source_depth_report(
         guide_claim_bundle={

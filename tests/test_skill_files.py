@@ -1018,3 +1018,17 @@ def test_docs_explain_apply_authority_and_diagnostic_chain_in_one_place():
     assert "`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain." in combined
     assert "Warnings are follow-up work, not a runtime apply blocker." in combined
     assert "Do not use `source_contract_audit.json` as an apply gate." in combined
+
+
+def test_docs_describe_source_quality_as_non_blocking():
+    docs = (
+        Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
+        + "\n"
+        + Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    )
+
+    assert "source_claim_quality_summary" in docs
+    assert "non-blocking" in docs.lower()
+    assert "operator_summary.json" in docs
+    assert "source_contract_audit.json" in docs
+    assert "second apply gate" in docs.lower()

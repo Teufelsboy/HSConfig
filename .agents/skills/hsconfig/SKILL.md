@@ -38,7 +38,6 @@ Operator rules:
 - Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
 - `globalvalue_numeric_tuning` is valid source evidence, but Step 1 treats it as runtime-evidence-required and report-visible. Use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
 - Source-contract invariant: effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON. `source_contract_audit.json` is diagnostic; runtime-write authority stays in `operator_summary.json`.
-- `operator_summary.json` remains the only normal apply authority.
 - `source_contract_audit.json` explains why each claim did or did not lower.
 - `contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
 - Warnings are follow-up work, not a runtime apply blocker.
@@ -50,6 +49,7 @@ Operator rules:
 - Treat unexpected contract drift as an implementation defect, but treat builder prerequisite gaps as visible no-block diagnostics. A builder prerequisite gap means the surface is allowed but the concrete claim is missing required structure, such as a complete combo sequence.
 - Never treat `policy_lane` alone as runtime emission. Check `source_contract_audit.json.claim_lifecycle_rows` for source -> policy -> surface gate -> builder/router -> emitted/suppressed diagnostics, and use `operator_summary.json` for normal readiness.
 - `reports/source_contract_audit.json` explains why each claim did or did not lower to `Mulligan.json`, `GlobalValues.json`, `Combo.json`, or `per-card <CARDID>.json`; it is diagnostic and does not replace `operator_summary.json`. Optional diagnostic: `hsconfig contract-doctor --package <package> --json`; operator_summary.json remains the only normal apply authority.
+- Open `operator_summary.json.source_claim_quality_summary` when a deck is valid but thin. It is non-blocking source-depth visibility, not a second apply gate.
 - When a package is technically valid but source depth is weak, continue and report the debt. Do not block valid deck packages because a claim is low confidence, report-only, unsupported by a runtime surface, or visible only in `source_contract_audit.json`.
 - `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term.

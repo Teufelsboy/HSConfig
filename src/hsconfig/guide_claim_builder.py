@@ -14,11 +14,26 @@ SUPPORTED_CLAIM_KINDS = {
     "mulligan_keep",
     "mulligan_discard",
     "card_role",
+    "discover_choice",
+    "choose_one_choice",
     "targeting_rule",
     "combo_sequence",
     "gameplan_posture",
     "hero_power_transform",
     "mechanic_usage",
+}
+
+STATIC_TEXT_CLAIM_RULES = (
+    ("discover", "discover_choice", "discover"),
+    ("choose one", "choose_one_choice", "choose_one"),
+    ("equip", "mechanic_usage", "weapon"),
+    ("weapon", "mechanic_usage", "weapon"),
+)
+DIAGNOSTIC_ONLY_STATIC_MECHANICS = {
+    "destroy",
+    "hero_power",
+    "silence",
+    "transform",
 }
 
 @dataclass(frozen=True)
@@ -245,6 +260,7 @@ def _static_semantic_claims(
         for claim in existing_claims
         for card in claim.get("cards", [])
     }
+    emitted_keys = set(existing_pairs)
     claims = []
     for card_id, card in sorted(cards.items()):
         text = _card_text(card).lower()
@@ -261,9 +277,33 @@ def _static_semantic_claims(
                     stance="enable_transformed_hero_power",
                 )
             )
+            emitted_keys.add(("hero_power_transform", card_id, "hero_power_transform"))
+        for keyword, claim_kind, mechanic_family in STATIC_TEXT_CLAIM_RULES:
+            if keyword not in text or (claim_kind, card_id) in existing_kind_cards:
+                continue
+            if (
+                keyword == "hero power"
+                and ("hero power becomes" in text or "enter shadowform" in text)
+            ):
+                continue
+            key = (claim_kind, card_id, mechanic_family)
+            if key in emitted_keys:
+                continue
+            claims.append(
+                _static_claim(
+                    card_id=card_id,
+                    card=card,
+                    claim_kind=claim_kind,
+                    mechanic=mechanic_family,
+                    mechanic_family=mechanic_family,
+                    keyword=keyword,
+                    stance=f"use_{mechanic_family}_according_to_card_text",
+                )
+            )
+            emitted_keys.add(key)
         for mechanic in _static_mechanic_usage_families(card, text=text):
             key = ("mechanic_usage", card_id, mechanic)
-            if key in existing_pairs:
+            if key in emitted_keys:
                 continue
             claims.append(
                 _static_claim(
@@ -274,6 +314,7 @@ def _static_semantic_claims(
                     stance=f"use_{mechanic}_according_to_card_text",
                 )
             )
+            emitted_keys.add(key)
     return claims
 
 
@@ -307,8 +348,13 @@ def _static_claim(
     claim_kind: str,
     mechanic: str,
     stance: str,
+    mechanic_family: str | None = None,
+    keyword: str | None = None,
 ) -> dict[str, Any]:
     evidence = _card_text(card)
+    evidence_text_short = (
+        f"Static card text contains {keyword}." if keyword else evidence
+    )
     claim = {
         "claim_kind": claim_kind,
         "claim_type": _legacy_claim_type(claim_kind),
@@ -322,17 +368,20 @@ def _static_claim(
         "stance": stance,
         "conditions": {},
         "claim": evidence,
-        "evidence_text_short": evidence,
+        "evidence_text_short": evidence_text_short,
         "source_confidence": "medium",
         "claim_confidence": "medium",
         "claim_readiness": "source_backed_static_semantics",
         "specificity_status": "card_specific",
-        "trust_ceiling": "static_semantics",
+        "trust_ceiling": (
+            "report_only" if mechanic in DIAGNOSTIC_ONLY_STATIC_MECHANICS else "static_semantics"
+        ),
         "confidence": "source_backed_static_semantics",
         "support_status": "static_semantics",
         "mechanic": mechanic,
         "source_refs": ["hearthstonejson_static_semantics"],
     }
+    claim["mechanic_family"] = mechanic_family or mechanic
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
     claim["claim_id"] = _claim_id(claim)
@@ -374,6 +423,8 @@ def _legacy_claim_type(claim_kind: str) -> str:
         "mulligan_keep": "mulligan_keep",
         "mulligan_discard": "mulligan_discard",
         "card_role": "card_role",
+        "discover_choice": "discover_choice",
+        "choose_one_choice": "choose_one_choice",
         "targeting_rule": "targeting",
         "combo_sequence": "combo",
         "gameplan_posture": "gameplan_posture",

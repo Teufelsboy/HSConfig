@@ -69,7 +69,12 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     assert first_chain["name"] == target["first_card_name"]
     assert first_chain["first_missing_link"] == "needs_mulligan_claim"
     assert first_chain["source_depth_lane"] == target["expected_source_depth_lane"]
-    assert first_chain["recommended_source_claim_kind"] == "mulligan_keep"
+    assert first_chain["recommended_source_claim_kind"] == "mulligan_claim"
+    assert first_chain["recommended_next_claim_kind"] == "mulligan_claim"
+    assert first_chain["recommended_next_claim_kinds"] == [
+        "mulligan_keep",
+        "mulligan_discard",
+    ]
     assert first_chain["next_action"] == "add_mulligan_keep_or_discard_claim"
 
     visibility = deck["strongness_visibility"]

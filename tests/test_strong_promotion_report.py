@@ -191,3 +191,45 @@ def test_report_reuses_source_gap_summary_first_missing_chain_priority_order():
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "close_first_missing_chain"
     assert report["first_missing_chain"] == canonical
+
+
+def test_report_preserves_neutral_mulligan_claim_choice_in_missing_chain():
+    canonical = {
+        "card_id": "DEEP_014",
+        "name": "Quick Pick",
+        "first_missing_link": "needs_mulligan_claim",
+        "recommended_source_claim_kind": "mulligan_claim",
+        "recommended_next_claim_kind": "mulligan_claim",
+        "recommended_next_claim_kinds": ["mulligan_keep", "mulligan_discard"],
+        "next_action": "add_mulligan_keep_or_discard_claim",
+        "priority_score": 90,
+        "priority_reason": "missing_link:needs_mulligan_claim",
+    }
+
+    report = build_strong_promotion_report(
+        deck_name="Kingslayer",
+        fixture_stage="source_informed_valid_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "source_informed_apply_readiness": {"status": "ready"},
+            "semantic_blockers": [{"reason": "cards_need_mulligan_claims", "count": 1}],
+            "generated_files": [],
+        },
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 1,
+                "first_missing_chain": canonical,
+            },
+            "cards": {},
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["first_missing_chain"] == canonical
+    assert report["first_missing_chain"]["recommended_source_claim_kind"] == "mulligan_claim"
+    assert report["first_missing_chain"]["recommended_next_claim_kinds"] == [
+        "mulligan_keep",
+        "mulligan_discard",
+    ]

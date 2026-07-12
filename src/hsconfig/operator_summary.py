@@ -99,7 +99,6 @@ def build_operator_summary(
         config_readiness_summary = _normalize_readiness_summary_aliases(
             config_readiness_report
         )
-    _ = source_claim_gap_report
     _ = strong_promotion_report
 
     technical_validation = technical_validation or {"status": "unknown"}
@@ -217,6 +216,9 @@ def build_operator_summary(
         "runtime_apply_mode": runtime_apply_mode,
         "runtime_apply_allowed": runtime_apply_allowed,
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
         "primary_blockers": primary_blockers,
         "warnings": warnings,
         "mechanic_warning_summary": mechanic_warning_summary,
@@ -230,6 +232,9 @@ def build_operator_summary(
         "config_usefulness": config_usefulness,
         "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
+        "source_claim_quality_summary": _source_claim_quality_summary(
+            source_claim_gap_report
+        ),
         "source_contract_audit_summary": source_contract_audit_summary,
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
@@ -582,6 +587,25 @@ def _source_contract_lifecycle_counts(summary: dict[str, Any]) -> dict[str, int]
     if not isinstance(counts, dict):
         return {}
     return {str(key): _int_value(value) for key, value in counts.items()}
+
+
+def _source_claim_quality_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    summary = report.get("summary", {}) if isinstance(report, dict) else {}
+    lane_counts = summary.get("source_quality_lane_counts", {})
+    if not isinstance(lane_counts, dict):
+        lane_counts = {}
+    next_claim_kind_counts = summary.get("next_claim_kind_counts", {})
+    if not isinstance(next_claim_kind_counts, dict):
+        next_claim_kind_counts = {}
+    return {
+        "source_quality_lane_counts": dict(sorted(lane_counts.items())),
+        "cards_with_generic_low_confidence": _int_value(
+            summary.get("cards_with_generic_low_confidence", 0)
+        ),
+        "cards_with_contract_gap": _int_value(summary.get("cards_with_contract_gap", 0)),
+        "next_claim_kind_counts": dict(sorted(next_claim_kind_counts.items())),
+        "non_blocking": True,
+    }
 
 
 def _mechanic_drift_summary(report: dict[str, Any] | None) -> dict[str, Any]:

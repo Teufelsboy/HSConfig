@@ -263,6 +263,17 @@ For each card, prefer claims that answer at least one of these questions:
 - `operator_summary.json`: operator-facing technical and semantic readiness.
 - `operator_summary.json.guide_strength_summary`: compact counts for why a valid package is or is not guide-strong.
 - `operator_summary.json.semantic_blockers`: grouped blocker reasons such as missing guide claims, runtime-surface gaps, combo-sequence gaps, or conflicts that keep a package at `VALID_BUT_NOT_GUIDE_STRONG`.
+
+### Source Claim Quality Summary
+
+`operator_summary.json.source_claim_quality_summary` is a compact source-depth
+visibility block. It counts every-card lanes, generic-low-confidence cards,
+contract-gap cards, and the next useful claim kinds. It is non-blocking:
+source-quality debt explains what to improve next, but it does not replace
+`operator_summary.json` as the apply authority and does not create a second
+apply gate. `source_contract_audit.json` remains diagnostic-only detail for
+the source-to-runtime explanation.
+
 - `guide_builder_receipt.json`: guide-source normalization status and source counts.
 - `candidate_archetypes.json`: primary and fallback archetype candidates.
 - `deck_fingerprint.json`: deck multiset identity used by research normalization.
