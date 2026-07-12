@@ -11,6 +11,7 @@ ACTIVE_APPLY_PATHS = [
 
 DIAGNOSTIC_ONLY_TOKENS = [
     "source_contract_audit",
+    "source_to_runtime_explainability",
     "contract_spine_rows",
     "claim_lifecycle_rows",
     "source_contract_conformance",
@@ -21,6 +22,8 @@ FORBIDDEN_DIAGNOSTIC_IMPORTS = [
     "import hsconfig.contract_doctor",
     "from hsconfig.source_contract_audit",
     "import hsconfig.source_contract_audit",
+    "from hsconfig.source_to_runtime_explainability",
+    "import hsconfig.source_to_runtime_explainability",
     "from hsconfig.source_contract_conformance",
     "import hsconfig.source_contract_conformance",
 ]
@@ -44,6 +47,7 @@ def test_apply_gate_uses_operator_summary_as_single_authority():
     assert "technical_status" in content
     assert '"VALID_PACKAGE"' in content
     assert "source_contract_audit" not in content
+    assert "source_to_runtime_explainability" not in content
 
 
 def test_active_apply_paths_do_not_import_diagnostic_authorities():

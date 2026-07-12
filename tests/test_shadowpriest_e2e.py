@@ -57,6 +57,11 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     source_contract_audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    source_to_runtime_explainability = json.loads(
+        (reports / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
     semantic_report = json.loads(
         (reports / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
@@ -94,6 +99,16 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert operator_summary["runtime_apply_allowed"] is True
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert (
+        operator_summary["source_to_runtime_explainability_summary"]["non_blocking"]
+        is True
+    )
+    assert (
+        operator_summary["source_to_runtime_explainability_summary"]["claims_total"]
+        == source_to_runtime_explainability["summary"]["claims_total"]
+    )
+    assert source_to_runtime_explainability["authority"] == "diagnostic_only"
+    assert source_to_runtime_explainability["apply_blocking"] is False
     assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"]
     assert operator_summary["source_informed_apply_readiness"]["status"] == "not_applicable"
     assert apply_code == 0
@@ -167,8 +182,32 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         for row in darkbishop_lifecycle_rows
         if row["claim_kind"] == "hero_power_transform"
     ]
+    explainability_card_rows = {
+        row["card_id"]: row for row in source_to_runtime_explainability["card_rows"]
+    }
+    darkbishop_explainability = explainability_card_rows["SW_448"]
+    darkbishop_explainability_claims = [
+        row
+        for row in source_to_runtime_explainability["claim_rows"]
+        if row["claim_id"] in darkbishop_claim_ids
+    ]
 
     assert darkbishop_effect_lifecycle
+    assert darkbishop_explainability["strongest_claim_kind"] == "hero_power_transform"
+    assert "SW_448.json" in darkbishop_explainability["emitted_runtime_files"]
+    assert "Mulligan.json" not in darkbishop_explainability["emitted_runtime_files"]
+    assert darkbishop_explainability["apply_blocked"] is False
+    assert darkbishop_explainability["next_source_action"] == "none"
+    assert any(
+        row["claim_kind"] == "hero_power_transform"
+        and row["builder_or_router_decision"] == "emitted"
+        and "SW_448.json" in row["emitted_runtime_files"]
+        for row in darkbishop_explainability_claims
+    )
+    assert not any(
+        row["claim_kind"] == "mulligan_keep"
+        for row in darkbishop_explainability_claims
+    )
     assert all(
         row["builder_or_router_decision"] == "emitted"
         for row in darkbishop_effect_lifecycle

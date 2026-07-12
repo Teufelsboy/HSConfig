@@ -924,7 +924,9 @@ def test_skill_explains_source_contract_audit_without_new_gate():
     combined = f"{skill}\n{workflow}"
 
     assert "reports/source_contract_audit.json" in combined
+    assert "reports/source_to_runtime_explainability.json" in combined
     assert "source_contract_audit_summary" in combined
+    assert "source_to_runtime_explainability_summary" in combined
     assert "does not replace `operator_summary.json`" in skill
     assert "does not create a second apply gate" in combined
     assert "claim_lifecycle_rows" in combined
@@ -1015,6 +1017,7 @@ def test_docs_explain_apply_authority_and_diagnostic_chain_in_one_place():
 
     assert "`operator_summary.json` remains the only normal apply authority." in combined
     assert "`source_contract_audit.json` explains why each claim did or did not lower." in combined
+    assert "`source_to_runtime_explainability.json` is the card-readable diagnostic projection" in combined
     assert "`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain." in combined
     assert "Warnings are follow-up work, not a runtime apply blocker." in combined
     assert "Do not use `source_contract_audit.json` as an apply gate." in combined

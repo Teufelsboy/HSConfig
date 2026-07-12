@@ -1910,6 +1910,49 @@ def test_operator_summary_exposes_source_contract_audit_without_blocking_apply()
     assert audit["next_report_to_open"] == "reports/source_contract_audit.json"
 
 
+def test_operator_summary_exposes_source_to_runtime_explainability_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="Explain Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        source_to_runtime_explainability_report={
+            "summary": {
+                "cards_total": 2,
+                "claims_total": 3,
+                "runtime_lowered_claims": 1,
+                "claims_with_first_missing_link": 2,
+                "cards_with_first_missing_link": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            }
+        },
+        generated_files=[
+            "CustomConfig/explaindeck/GlobalValues.json",
+            "CustomConfig/explaindeck/Mulligan.json",
+        ],
+    )
+
+    explainability = summary["source_to_runtime_explainability_summary"]
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["apply_policy"] == "ALLOWED"
+    assert explainability == {
+        "non_blocking": True,
+        "cards_total": 2,
+        "claims_total": 3,
+        "runtime_lowered_claims": 1,
+        "claims_with_first_missing_link": 2,
+        "cards_with_first_missing_link": 1,
+        "next_report_to_open": "reports/source_to_runtime_explainability.json",
+    }
+
+
 @pytest.mark.parametrize("malformed_counts", [None, [], "emitted"])
 def test_operator_summary_ignores_malformed_source_contract_lifecycle_counts(
     malformed_counts,

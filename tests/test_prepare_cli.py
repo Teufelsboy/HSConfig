@@ -1957,6 +1957,11 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    explainability = json.loads(
+        (reports / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
     operator_summary = json.loads(
         (reports / "operator_summary.json").read_text(encoding="utf-8")
     )
@@ -1980,9 +1985,27 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert (reports / "source_contract_audit.md").is_file()
     assert "reports/source_contract_audit.json" in generated
     assert "reports/source_contract_audit.md" in generated
+    assert "reports/source_to_runtime_explainability.json" in generated
+    assert explainability["authority"] == "diagnostic_only"
+    assert explainability["apply_blocking"] is False
+    assert explainability["summary"]["claims_total"] == len(
+        explainability["claim_rows"]
+    )
+    assert explainability["summary"]["cards_total"] == len(
+        explainability["card_rows"]
+    )
     assert "claim_lifecycle_rows" not in operator_summary
     assert "claim_rows" not in operator_summary
     assert "card_rows" not in operator_summary
+    assert "source_to_runtime_explainability_summary" in operator_summary
+    assert (
+        operator_summary["source_to_runtime_explainability_summary"]["claims_total"]
+        == explainability["summary"]["claims_total"]
+    )
+    assert (
+        operator_summary["source_to_runtime_explainability_summary"]["non_blocking"]
+        is True
+    )
     assert "claim_lifecycle_decision_counts" in audit["summary"]
     assert "claim_lifecycle_decision_counts" in operator_summary["source_contract_audit_summary"]
     assert operator_summary["technical_status"] == "VALID_PACKAGE"

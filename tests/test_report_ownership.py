@@ -6,6 +6,9 @@ def test_report_ownership_covers_operator_reports():
     by_file = {row["file"]: row for row in rows}
 
     assert by_file["reports/operator_summary.json"]["authority"] == "normal_operator_gate"
+    assert by_file["reports/source_to_runtime_explainability.json"]["answers"] == (
+        "which exact source-to-runtime link is missing before a card can be stronger"
+    )
     assert by_file["reports/source_contract_audit.json"]["answers"] == (
         "why each source claim did or did not lower to runtime config"
     )
@@ -37,9 +40,9 @@ def test_report_ownership_includes_mechanic_diagnostics():
     by_file = {row["file"]: row for row in rows}
 
     assert by_file["reports/mechanic_drift_report.json"]["authority"] == "non_blocking_mechanic_drift_visibility"
-    assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "8"
+    assert by_file["reports/mechanic_drift_report.json"]["open_order"] == "9"
     assert by_file["reports/semantic_enrichment_report.json"]["authority"] == "semantic_mechanic_diagnostics"
-    assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "9"
+    assert by_file["reports/semantic_enrichment_report.json"]["open_order"] == "10"
 
 
 def test_source_contract_audit_is_diagnostic_not_gate():
@@ -51,6 +54,17 @@ def test_source_contract_audit_is_diagnostic_not_gate():
     assert audit["authority"] == "diagnostic_source_to_runtime_explanation"
     assert audit["open_order"] != "1"
     assert "does not grant apply permission" in audit["notes"]
+
+
+def test_source_to_runtime_explainability_is_diagnostic_not_gate():
+    rows = build_report_ownership()
+    by_file = {row["file"]: row for row in rows}
+
+    explainability = by_file["reports/source_to_runtime_explainability.json"]
+
+    assert explainability["authority"] == "diagnostic_source_to_runtime_projection"
+    assert explainability["open_order"] == "2"
+    assert "does not grant apply permission" in explainability["notes"]
 
 
 def test_source_contract_conformance_is_not_operator_report():

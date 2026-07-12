@@ -30,3 +30,15 @@ def test_source_contract_audit_is_summary_only_not_apply_gate_input():
     assert "_source_contract_audit_summary" in operator_summary
     assert "source_contract_audit_summary" in operator_summary
     assert "runtime_apply_allowed" in operator_summary
+
+
+def test_source_to_runtime_explainability_is_summary_only_not_apply_gate_input():
+    assert "source_to_runtime_explainability" not in _read("src/hsconfig/apply_gate.py")
+    assert "source_to_runtime_explainability" not in _read("src/hsconfig/runtime_apply.py")
+    assert "source_to_runtime_explainability" not in _read("src/hsconfig/commands/apply.py")
+
+    operator_summary = _read("src/hsconfig/operator_summary.py")
+    assert "source_to_runtime_explainability_report" in operator_summary
+    assert "_source_to_runtime_explainability_summary" in operator_summary
+    assert "source_to_runtime_explainability_summary" in operator_summary
+    assert "runtime_apply_allowed" in operator_summary

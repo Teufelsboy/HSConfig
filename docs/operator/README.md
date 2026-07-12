@@ -27,6 +27,11 @@ per claim and per card; it does not replace `reports/operator_summary.json`.
 `source_contract_audit.json` is diagnostic. Its `claim_lifecycle_rows` explain
 source -> policy -> surface gate -> builder/router -> emitted/suppressed.
 Runtime readiness still comes from `operator_summary.json`.
+`reports/source_to_runtime_explainability.json` is the card-readable projection
+of that audit: it names emitted runtime files, missing runtime files, the first
+missing link, and the next source action per claim/card. Its compact
+`source_to_runtime_explainability_summary` in `operator_summary.json` is
+non-blocking and does not grant apply permission.
 
 Source-contract invariant: effect semantics are preserved on supported effect
 and CardID surfaces, but only exact runtime-surface claims lower into matching
@@ -165,6 +170,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | File | Authority | Answers |
 | --- | --- | --- |
 | `reports/operator_summary.json` | normal operator gate | what to do next |
+| `reports/source_to_runtime_explainability.json` | diagnostic source-to-runtime projection | which exact source-to-runtime link is missing before a card can be stronger |
 | `reports/source_contract_audit.json` | diagnostic source-to-runtime explanation | why each source claim did or did not lower to runtime config |
 | `reports/source_claim_gap_report.json` | repair contract | which card link is missing first |
 | `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |

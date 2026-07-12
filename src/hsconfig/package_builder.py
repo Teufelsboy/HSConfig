@@ -60,6 +60,9 @@ from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
 )
+from hsconfig.source_to_runtime_explainability import (
+    build_source_to_runtime_explainability_report,
+)
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 from hsconfig.source_evidence_verifier import verify_source_documents
@@ -458,6 +461,13 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         encoding="utf-8",
         newline="\n",
     )
+    source_to_runtime_explainability_report = (
+        build_source_to_runtime_explainability_report(source_contract_audit_report)
+    )
+    write_json(
+        reports_dir / "source_to_runtime_explainability.json",
+        source_to_runtime_explainability_report,
+    )
     write_json(
         reports_dir / "global_values_blocked_changes.json",
         global_values_authority_matrix["blocked_until_runtime_evidence"],
@@ -497,6 +507,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "mechanic_drift_report": mechanic_drift_report,
         "source_claim_gap_report": source_claim_gap_report,
         "source_contract_audit_report": source_contract_audit_report,
+        "source_to_runtime_explainability_report": (
+            source_to_runtime_explainability_report
+        ),
     }
     generated_files = _generated_package_files(out, deck_dir, reports_dir)
     operator_summary = build_operator_summary(

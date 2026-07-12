@@ -21,37 +21,53 @@ def build_report_ownership() -> list[dict[str, Any]]:
                 "diagnostic only; does not grant apply permission; "
                 "does not replace operator_summary.json"
             ),
+            "open_order": "3",
+        },
+        {
+            "file": "reports/source_to_runtime_explainability.json",
+            "authority": "diagnostic_source_to_runtime_projection",
+            "answers": (
+                "which exact source-to-runtime link is missing before a card can be stronger"
+            ),
+            "contains": (
+                "claim rows, card rows, emitted runtime files, missing runtime files, "
+                "first missing links, next source actions"
+            ),
+            "notes": (
+                "diagnostic only; does not grant apply permission; "
+                "does not replace operator_summary.json"
+            ),
             "open_order": "2",
         },
         {
             "file": "reports/source_claim_gap_report.json",
             "authority": "repair_contract",
             "answers": "which card link is missing first",
-            "open_order": "3",
+            "open_order": "4",
         },
         {
             "file": "reports/strong_promotion_report.json",
             "authority": "promotion_confirmation",
             "answers": "whether the package can be called source-backed strong",
-            "open_order": "4",
+            "open_order": "5",
         },
         {
             "file": "reports/per_card_config_readiness_report.json",
             "authority": "card_lane_diagnostics",
             "answers": "which lane each card occupies",
-            "open_order": "5",
+            "open_order": "6",
         },
         {
             "file": "reports/guide_source_depth_report.json",
             "authority": "source_depth_diagnostics",
             "answers": "how strong the guide and source coverage is",
-            "open_order": "6",
+            "open_order": "7",
         },
         {
             "file": "reports/global_values_authority_matrix.json",
             "authority": "globalvalues_diagnostics",
             "answers": "which GlobalValues keys are source-backed or archetype-inferred",
-            "open_order": "7",
+            "open_order": "8",
         },
         {
             "file": "reports/mechanic_drift_report.json",
@@ -61,7 +77,7 @@ def build_report_ownership() -> list[dict[str, Any]]:
                 "mechanic_drift_summary shows unknown mechanics, text-only mechanics, "
                 "or unknown card types"
             ),
-            "open_order": "8",
+            "open_order": "9",
         },
         {
             "file": "reports/semantic_enrichment_report.json",
@@ -71,6 +87,6 @@ def build_report_ownership() -> list[dict[str, Any]]:
                 "mechanic_visibility_summary or config_usefulness points to static, "
                 "partial, or warning-only mechanic coverage"
             ),
-            "open_order": "9",
+            "open_order": "10",
         },
     ]

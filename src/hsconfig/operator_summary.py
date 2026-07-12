@@ -88,6 +88,7 @@ def build_operator_summary(
     guide_source_depth_report: dict[str, Any] | None = None,
     source_claim_gap_report: dict[str, Any] | None = None,
     source_contract_audit_report: dict[str, Any] | None = None,
+    source_to_runtime_explainability_report: dict[str, Any] | None = None,
     strong_promotion_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
@@ -172,6 +173,11 @@ def build_operator_summary(
     source_contract_audit_summary = _source_contract_audit_summary(
         source_contract_audit_report
     )
+    source_to_runtime_explainability_summary = (
+        _source_to_runtime_explainability_summary(
+            source_to_runtime_explainability_report
+        )
+    )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
@@ -236,6 +242,9 @@ def build_operator_summary(
             source_claim_gap_report
         ),
         "source_contract_audit_summary": source_contract_audit_summary,
+        "source_to_runtime_explainability_summary": (
+            source_to_runtime_explainability_summary
+        ),
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
     }
@@ -579,6 +588,42 @@ def _source_contract_audit_summary(report: dict[str, Any] | None) -> dict[str, A
         "next_report_to_open": (
             "reports/source_contract_audit.json" if followup_count else None
         ),
+    }
+
+
+def _source_to_runtime_explainability_summary(
+    report: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "non_blocking": True,
+            "cards_total": 0,
+            "claims_total": 0,
+            "runtime_lowered_claims": 0,
+            "claims_with_first_missing_link": 0,
+            "cards_with_first_missing_link": 0,
+            "next_report_to_open": None,
+        }
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    next_report = summary.get("next_report_to_open")
+    if not isinstance(next_report, str) or not next_report:
+        next_report = "reports/source_to_runtime_explainability.json"
+    return {
+        "non_blocking": True,
+        "cards_total": _int_value(summary.get("cards_total", 0)),
+        "claims_total": _int_value(summary.get("claims_total", 0)),
+        "runtime_lowered_claims": _int_value(
+            summary.get("runtime_lowered_claims", 0)
+        ),
+        "claims_with_first_missing_link": _int_value(
+            summary.get("claims_with_first_missing_link", 0)
+        ),
+        "cards_with_first_missing_link": _int_value(
+            summary.get("cards_with_first_missing_link", 0)
+        ),
+        "next_report_to_open": next_report,
     }
 
 

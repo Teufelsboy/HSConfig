@@ -273,6 +273,11 @@ source-quality debt explains what to improve next, but it does not replace
 `operator_summary.json` as the apply authority and does not create a second
 apply gate. `source_contract_audit.json` remains diagnostic-only detail for
 the source-to-runtime explanation.
+`source_to_runtime_explainability.json` is the operator-readable projection of
+the same diagnostic chain. It summarizes emitted runtime files, missing runtime
+files, first missing links, and next source actions per claim/card. Its
+`operator_summary.json.source_to_runtime_explainability_summary` block is
+non-blocking and never grants apply permission.
 
 - `guide_builder_receipt.json`: guide-source normalization status and source counts.
 - `candidate_archetypes.json`: primary and fallback archetype candidates.
@@ -283,6 +288,7 @@ the source-to-runtime explanation.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
 - `unsupported_claims_report.json`: rejected source claims with reasons.
 - `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.
+- `source_to_runtime_explainability.json`: claim/card projection that names emitted files, missing files, first missing links, and next source actions; diagnostic only.
 - `source_claim_gap_report.json`: first missing source or lowering link per card.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 - `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.
