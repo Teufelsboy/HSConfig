@@ -1,0 +1,65 @@
+{
+  "scope": "Audit the current HSConfig source-to-contract spine implementation across claim kinds, the source contract policy matrix, source contract audit and conformance reports, the source claim gap report, the source-to-runtime explainability report, the operator summary projection, and the no-second-gate and apply-authority boundaries that control runtime writes.",
+  "source_backed_findings": [
+    "The current spine is claim-kind-first. `src/hsconfig/source_document_model.py` freezes 15 supported atomic claim kinds and normalizes only exact legacy runtime aliases, which prevents broad legacy text from silently becoming runtime authority.",
+    "Runtime lowering is surface-gated, not text-gated. The live surface gates allow only `mulligan_keep` and `mulligan_discard` on the mulligan surface, only `gameplan_posture` on the GlobalValues Step 1 overlay surface, only `combo_sequence` on the Combo surface, and only documented card-behavior kinds on CardID surfaces.",
+    "Start-of-game semantics are explicitly separated from opening-hand authority. `can_lower_to_mulligan()` rejects a `mulligan_keep` when the referenced card is a start-of-game non-hand effect, while `hero_power_transform` can still lower to CardID behavior rows.",
+    "The source contract matrix is an explicit policy table, not an inferred rule set. `src/hsconfig/source_contract_matrix.py` maps every supported claim kind to a semantic lane, allowed surfaces, required fields, runtime-lowerable flag, default suppression reason, and `diagnostic_only` operator impact.",
+    "The source contract audit is a diagnostic trace of actual lowering, not an operator gate. `src/hsconfig/source_contract_audit.py` builds `claim_rows`, `card_rows`, and `claim_lifecycle_rows` that connect policy lane, surface-gate decision, builder-or-router decision, emitted files, suppressed reason, and first missing link.",
+    "The conformance snapshot is a deck-neutral proof of policy alignment. `src/hsconfig/source_contract_conformance.py` verifies every supported claim kind against the live gates, emits `contract_spine_rows`, records builder prerequisite gaps such as incomplete combo sequences, and keeps `operator_gate_impact` as `diagnostic_only`.",
+    "The source claim gap report converts readiness gaps into source actions rather than runtime blocks. `src/hsconfig/source_claim_gap_report.py` maps each card's `first_missing_link` to a recommended next claim kind, recommended next claim kinds, priority score, and next source-builder action.",
+    "The source-to-runtime explainability report is a card-readable projection of the same audit chain. `src/hsconfig/source_to_runtime_explainability.py` emits claim and card rows with emitted runtime files, not-emitted runtime files, first missing link, why-not-emitted, and next source action, while keeping `apply_blocking` false.",
+    "Normal apply authority remains singular. `src/hsconfig/operator_summary.py` only carries non-blocking summaries of the source-contract diagnostics and explicitly sets `runtime_apply_contract.apply_authority` to `reports/operator_summary.json`.",
+    "Active runtime-write paths do not consume the diagnostic spine. `src/hsconfig/apply_gate.py`, `src/hsconfig/runtime_apply.py`, and `src/hsconfig/commands/apply.py` validate package structure and `reports/operator_summary.json`, and the guard tests confirm those paths do not import or read `source_contract_audit`, `source_to_runtime_explainability`, `source_contract_conformance`, `contract_spine_rows`, or `claim_lifecycle_rows`."
+  ],
+  "repo_implications": [
+    "Adding or changing a claim kind is a coordinated contract change. The implementation expects synchronized updates to `SUPPORTED_ATOMIC_CLAIM_KINDS`, `source_contract_matrix.py`, the relevant surface gate in `source_document_model.py`, conformance expectations, and the corresponding builder or router behavior.",
+    "The spine is intentionally layered into policy, audit, explainability, and operator projection. This gives developers rich diagnostics without granting new runtime authority, but it also means future changes must preserve the distinction between diagnostic views and apply-gate inputs.",
+    "The audit and explainability reports depend on explicit or recoverable provenance from builder outputs. When builders include claim IDs or claim refs, the reports can explain exact lowering; when they do not, the audit falls back to card-based inference on some surfaces to keep diagnostics useful.",
+    "The conformance snapshot acts as documentation-as-code for the current claim-kind contract. It makes drift visible before runtime writes are involved and gives the repo a stable flat `contract_spine_rows` view for audits and tests.",
+    "Operator UX is designed so technically valid packages remain load-safe even when source depth is incomplete. Source gaps stay visible in summaries and follow-up reports, but the normal runtime apply path still centers on `operator_summary.json` rather than on the diagnostic reports.",
+    "The current no-second-gate design keeps repo autonomy high for any-deck use. Cards that are source-thin, report-only, runtime-evidence-gated, or unsupported on a given surface remain visible as debt instead of automatically becoming apply blockers."
+  ],
+  "correctness_risks": [
+    "The policy surface is distributed across multiple modules. A future claim-kind addition or rename can become technically wrong if one of the required update points is missed, even though the current freeze and conformance tests reduce that risk.",
+    "Diagnostic attribution can drift if builder outputs stop carrying explicit claim references. `source_contract_audit.py` uses legacy card-based fallback on mulligan, CardID, and combo surfaces when no suppression reason is present, which preserves explainability but can over-attribute lowering if provenance erodes.",
+    "The first-missing-link mapping is heuristic. New suppression reasons that are not normalized into existing categories can collapse into generic `runtime_surface`, `surface_gate`, or `builder_or_router` explanations, which would make downstream gap and explainability reports less precise.",
+    "The conformance snapshot proves representative contract shapes, not every deck-specific edge case. If a future builder changes behavior only for a narrow claim payload shape, the neutral conformance exemplar could stay green while a deck-specific path regresses until a more specific test is added.",
+    "GlobalValues numeric tuning correctness depends on keeping the runtime-evidence boundary intact. If future code starts emitting Step 1 numeric overlays without routing through the same `requires_runtime_evidence` rule, the source contract spine would overstate authority."
+  ],
+  "slimness_risks": [
+    "The repo now has several closely related diagnostic artifacts: contract audit, conformance snapshot, explainability report, gap report, and operator-summary projections. If they start duplicating business logic instead of projecting the same contract from different angles, maintenance cost will rise quickly.",
+    "Builder/router expectation tables add useful visibility, but each new runtime surface or claim-family special case increases the amount of contract metadata that has to stay in sync.",
+    "The flat `contract_spine_rows` view is intentionally compact today. If it starts absorbing operator decisions, deck-specific state, or runtime-write rules, it will stop being a slim diagnostic spine and become a second gate.",
+    "The current design stays lean by refusing normal-path `Presume.json` and `Concede.json` emission. Re-expanding normal apply around extra runtime surfaces would widen both the package validator and the contract matrix."
+  ],
+  "autonomy_risks": [
+    "The main autonomy risk is accidental gate creep. If any future apply path starts reading `source_contract_audit`, `source_to_runtime_explainability`, `source_contract_conformance`, or `contract_spine_rows`, the repo would gain a second operator gate and reduce normal any-deck usability.",
+    "If source-depth diagnostics are upgraded from warnings into hard runtime blockers, technically valid but source-thin decks would stop being load-safe even though the current operator model is designed to allow them with visible debt.",
+    "If explicit claim provenance becomes mandatory everywhere without fallback, autonomous source-builder flows will become brittle on older or partial builder outputs. The current audit fallback helps preserve autonomy, even though it is less exact than explicit claim refs.",
+    "If optional or publicly documented-but-unused surfaces are added to the normal path, operator burden rises without improving the core pre-run package compiler. The current guarded apply path avoids that by treating those surfaces as outside the normal load-safe contract."
+  ],
+  "recommended_design_position": "Keep the current architecture: preserve the explicit claim-kind policy matrix, preserve per-surface gate enforcement, keep `source_contract_audit`, `source_contract_conformance`, `source_to_runtime_explainability`, and `source_claim_gap_report` diagnostic-only, and continue to treat `reports/operator_summary.json` as the sole normal apply authority. Future evolution should happen through synchronized claim-kind updates plus targeted tests, not by adding new operator gates or widening normal runtime surfaces.",
+  "evidence_references": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_matrix.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_audit.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_gap_report.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_to_runtime_explainability.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\runtime_apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\commands\\apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_claim_kind_runtime_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_spine_freeze.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_audit.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_to_runtime_explainability.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_claim_gap_report.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_no_second_gate_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_authority_boundary.py"
+  ],
+  "uncertain": []
+}

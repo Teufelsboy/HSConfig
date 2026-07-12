@@ -1,0 +1,81 @@
+{
+  "scope": "Evaluate where aggressive source-text lowering would create false runtime claims in HSConfig, especially when Hearthstone semantics separate pre-mulligan effects from opening-hand keeps, exact target or option identity from generic intent text, exact combo timing from loose synergy text, and known generated identities from random or hidden mechanics.",
+  "source_backed_findings": [
+    "Start-of-game semantics are not mulligan semantics. Public Hearthstone rules describe Start of Game effects as happening before the mulligan, and HSConfig mirrors that boundary by rejecting mulligan_keep lowering when the card is a start_of_game non-hand effect while still preserving the effect in runtime-visible lanes.",
+    "The Darkbishop Benedictus case is a real local proof of this failure mode. HSConfig tests and docs preserve the hero_power_transform effect, keep the expected post-transform hero-power pressure visible, and suppress any opening-hand hold for the start-of-game transform card.",
+    "Hero Power replacement is a separate semantic lane from ordinary card keeping. Public Hearthstone references describe Hero Powers as replaceable during a match, and HSConfig routes hero_power_transform to documented hero-power/card-behavior surfaces instead of treating it as Mulligan authority.",
+    "Targeting cannot be lowered safely from vague aggression text alone. Public Hearthstone target rules distinguish specific aimed-at characters or locations from non-targeted effects, and HSConfig maps targeting_rule into dedicated CardID behavior blocks while leaving generic spell targeting warning-only.",
+    "Combo lowering must stay exact and timing-aware. HearthRanger documents same-turn combo chains with >> and cross-turn chains with >->, and HSConfig only emits Combo.json from explicit combo_sequence claims with usable ordered timing while suppressing vague or incomplete synergy text.",
+    "Choice mechanics need exact option identity. Public Hearthstone Discover and Choose One rules are explicit selection mechanics, and HSConfig lowers discover_choice and choose_one_choice only when option identity is source-backed; unresolved choices stay suppressed rather than guessed.",
+    "Generated-card semantics are only partially runtime-lowerable. Public Hearthstone generate rules create new cards in hand or deck, while HSConfig keeps exact generated identity as partial coverage and treats generated_entity_random_pool as warning-only because random pools cannot be truthfully collapsed into deterministic runtime claims.",
+    "Secret, Location, and Weapon mechanics have materially different timing models. Public Hearthstone rules describe Secrets as hidden delayed triggers, Locations as reusable activated board cards, and Weapons as hero attack objects with durability loss on attack; HSConfig therefore keeps secret_timing and location_activation warning-only while allowing weapon-related runtime lowering only through explicit supported behavior claims.",
+    "Opening-hand handling is not interchangeable with ordinary draw handling. Public Hearthstone on-draw and summoned-when-drawn rules explicitly do not trigger from mulligan selection, which reinforces that opening-hand text must not be lowered as normal draw-trigger runtime behavior.",
+    "Wild and future mechanics should stay visible without becoming false direct writes. HSConfig's no-block Wild contract keeps Dredge, Tradeable, unknown future mechanics, secret timing, location activation, generic spell targeting, and random generated pools in warning-only or partial lanes unless there is an exact documented runtime surface."
+  ],
+  "repo_implications": [
+    "Keep claim_kind as the primary lowering authority. Free-text words such as keep, core, important, or engine piece should never be enough to create a mulligan keep or executable combo claim by themselves.",
+    "Preserve a hard split between runtime surfaces: Mulligan.json for explicit keep or discard claims, per-card CardID behavior for targeting and hero-power semantics, Combo.json for exact ordered sequences, and GlobalValues.json only for documented posture or approved overlays.",
+    "Require exact option payloads before lowering choice mechanics. Discover and Choose One should only lower when the chosen option card identity is known from current source evidence.",
+    "Keep generated-card handling asymmetric: known generated identities may support runtime lowering, but random pools should remain partial or warning-only because deterministic lowering would create false certainty.",
+    "Treat Secrets, Locations, generic spell targets, and broad Wild mechanic drift as explanatory visibility surfaces first, not Step 1 runtime write targets.",
+    "Keep weapon semantics narrow and evidence-backed. Weapon decks can justify attack posture, hero-attack pressure, or explicit targeting behavior, but generic weapon deck text should not automatically become global runtime behavior."
+  ],
+  "correctness_risks": [
+    "A start-of-game enabler can be misclassified as an opening-hand keep if lowered from generic keep wording or from card importance rather than explicit mulligan evidence.",
+    "Hero Power transform text can be misrouted into the mulligan lane or treated as proof of ordinary hero-power usage without respecting that the power first has to be replaced.",
+    "Specific targeting rules can be flattened into generic face-pressure heuristics, producing incorrect BeforeBattlecryTargetBonus or other CardID behavior.",
+    "Loose synergy statements such as work together, finisher package, or combo deck can become false Combo.json entries if order, deck membership, and same-turn versus cross-turn timing are not explicit.",
+    "Discover, Choose One, and generated-card text can be wrongly treated as deterministic when the real game state requires option identity, card pool limits, or random resolution.",
+    "Hidden or delayed mechanics such as Secrets can be falsely lowered as immediate, always-on behavior if their trigger timing is ignored.",
+    "Locations can be falsely encoded as one-shot or static value text if repeated activations and board-state timing are collapsed away.",
+    "Weapon pressure can be overstated into unconditional attack behavior if equip state, durability loss, and hero-attack timing are not respected.",
+    "Wild or future mechanics can be over-lowered into unsupported runtime claims when visibility-only mechanic detection is mistaken for documented executable surface support."
+  ],
+  "slimness_risks": [
+    "Trying to directly lower every semantic family into runtime files would bloat HSConfig beyond the documented VisionAI surface set and would duplicate logic across multiple layers.",
+    "Building bespoke direct lowering for Secrets, random generation pools, repeated Location timing, and all Wild edge mechanics would add substantial maintenance cost for weak reliability gains.",
+    "Allowing soft text heuristics to emit runtime claims would force extra compensating gates, reports, and exception lists, making the system larger and harder to reason about.",
+    "Encoding exhaustive generated-card or option-tree universes in Step 1 would expand the skill materially while still leaving important runtime uncertainty unresolved."
+  ],
+  "autonomy_risks": [
+    "If ambiguous semantics are guessed instead of separated into direct, partial, and warning-only lanes, autonomous any-deck operation will produce false confident runtime claims.",
+    "If all ambiguous mechanics are turned into hard blockers, any-deck autonomy will become too conservative and valid load-safe packages for partially covered Wild decks will stop unnecessarily.",
+    "If current-source freshness is ignored, older guide text can override newer mulligan, targeting, or option-identity evidence and silently degrade autonomous output quality.",
+    "If exact mulligan evidence is missing for a card but the system still guesses keep versus discard, autonomous runs will create fabricated opening-hand rules instead of surfacing a clean source gap.",
+    "If warning-only mechanic visibility is promoted to apply authority, modern or Wild decks with partial coverage will lose practical usability even when the minimal documented runtime surfaces are valid."
+  ],
+  "recommended_design_position": "Keep the current contract-first architecture and tighten it where needed: explicit claim_kind must decide the runtime lane; start-of-game and hero_power_transform effects should remain effect-visible but never become mulligan keeps without separate current mulligan evidence; targeting, discover, choose_one, and generated-card lowering should require exact identity or exact aimed-at semantics; combo lowering should require exact ordered timing and deck membership; secret_timing, location_activation, generic_spell_target, generated_entity_random_pool, and future or Wild mechanic drift should remain warning-only or partial until a documented VisionAI surface and source-backed exact semantics exist.",
+  "evidence_references": [
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game",
+    "https://hearthstone.wiki.gg/wiki/Hero_Power",
+    "https://hearthstone.wiki.gg/wiki/Target",
+    "https://hearthstone.wiki.gg/wiki/Discover",
+    "https://hearthstone.wiki.gg/wiki/Choose_One",
+    "https://hearthstone.wiki.gg/wiki/Generate",
+    "https://hearthstone.wiki.gg/wiki/Secret",
+    "https://hearthstone.wiki.gg/wiki/Location",
+    "https://hearthstone.wiki.gg/wiki/Weapon",
+    "https://hearthstone.wiki.gg/wiki/On-draw_effect",
+    "https://hearthstone.wiki.gg/wiki/Summoned_When_Drawn",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:67-113",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md:59-64",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md:170-171",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md:188-192",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:88-94",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py:192-205",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py:224-238",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py:248-266",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py:24-34",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py:263-343",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py:42-60",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py:83-100",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py:423-453",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_combo_plan.py:4-100",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py:21-30",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py:104-124",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py:22-45",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py:90-100"
+  ],
+  "uncertain": []
+}

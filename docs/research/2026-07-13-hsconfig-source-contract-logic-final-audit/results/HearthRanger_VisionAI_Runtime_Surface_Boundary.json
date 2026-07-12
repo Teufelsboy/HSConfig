@@ -1,0 +1,60 @@
+{
+  "scope": "Audit the documented HearthRanger VisionAI CustomConfig surfaces that HSConfig may lower into runtime config, and separate them from diagnostic or report-only artifacts that must not be written into the live runtime package.",
+  "source_backed_findings": [
+    "The official VisionAI docs cache manifest lists the authoritative help pages for card behavior, mulligan, combo, and global values, which establishes these as the documented CustomConfig surface family for this audit.",
+    "The official card behavior help page documents deck-local per-card authoring through a `CARDID.json` pattern, and the repo implementation converts that abstract surface into concrete runtime filenames such as `GVG_009.json` rather than emitting a literal placeholder file named `CARDID.json`.",
+    "The official mulligan help page documents `Mulligan.json` as a deck-local file, and the repo preview logic only treats it as runtime-eligible when the intent resolves to documented `hold` or `discard` selectors with supported conditions.",
+    "The official combo help page documents `Combo.json` and the repo preview logic suppresses symbolic-only or placeholder combos, adding `Combo.json` to runtime files only when the sequence is a concrete CARDID chain.",
+    "The official global values help page recommends copying the default `GlobalValues.json` and then editing it, and the repo Step 1 design requires a full deck-local `GlobalValues.json` rather than a partial overlay fragment.",
+    "The Step 1 design spec explicitly limits supported runtime package surfaces to concrete `CARDID.json` files, `Mulligan.json`, `Combo.json` only when concrete documented sequences exist, full deck-local `GlobalValues.json`, and one `deck_config.ini.fragment` mapping row outside the runtime deck folder.",
+    "The same Step 1 design spec explicitly says aggregate `CardBehavior.json` must stay report-only and blocked from runtime folders.",
+    "The runtime writer enforces the boundary in code by rejecting aggregate `CardBehavior.json`, rejecting nested or non-JSON runtime package files, and allowing only `Mulligan.json`, `Combo.json`, `GlobalValues.json`, or concrete card-ID-shaped filenames.",
+    "Operator docs state that richer conditional mulligan logic may remain in the gameplan contract and suppression reports without being emitted into runtime `Mulligan.json` until the condition is both documented and load-safe.",
+    "Repo workflow rules and operator docs keep Step 2 read-only with `runtime_write_performed=false`, classify lower-level Step 2 commands as diagnostic or internal, and allow runtime writes only through a separate guarded apply step."
+  ],
+  "repo_implications": [
+    "HSConfig should treat the runtime-authorable surface set as concrete per-card files named `<CARDID>.json`, plus `Mulligan.json`, optional `Combo.json`, full `GlobalValues.json`, and the deck-name mapping fragment for `deck_config.ini`.",
+    "HSConfig source contracts should keep start-of-game effect semantics separate from mulligan-keep semantics, so a card can remain represented in its per-card file without being forced into `Mulligan.json`.",
+    "Symbolic combo ideas, placeholder card tokens, and prose-only strategy notes should stay in contract or suppression artifacts instead of being lowered into runtime `Combo.json` or per-card files.",
+    "GlobalValues generation should start from the default baseline, preserve the full key set, and remain a higher-risk preview surface until stronger runtime evidence justifies a strict patch path.",
+    "Aggregate reports such as `CardBehavior.json`, combo suppression reports, mulligan suppression reports, patch previews, candidate summaries, evidence graphs, and promotion artifacts should remain outside the runtime package and outside any HSConfig write target.",
+    "HSConfig can stay autonomous for most decks by emitting documented runtime files when the input is concrete, while using contract-level and report-level outputs for everything that is symbolic, unsupported, or not yet load-safe."
+  ],
+  "correctness_risks": [
+    "A start-of-game effect can be misclassified as an opening-hand keep and incorrectly lowered into `Mulligan.json` instead of remaining only in the relevant per-card file.",
+    "An abstract `CARDID.json` token can be treated as a literal runtime filename instead of being resolved to a concrete card file such as `SW_448.json` or `GVG_009.json`.",
+    "A symbolic or placeholder combo can be lowered into `Combo.json`, even though repo tests require concrete CARDID sequences before that runtime file is considered valid.",
+    "A partial or synthetic `GlobalValues.json` can be emitted without preserving the default baseline shape, which would break the documented copy-then-edit contract.",
+    "Aggregate `CardBehavior.json` or report artifacts can accidentally be copied into the runtime package if the runtime boundary is enforced only in docs and not in write logic.",
+    "Step 2 diagnostics or patch preview artifacts can be mistaken for runtime authority, even though the repo explicitly marks them read-only and non-apply."
+  ],
+  "slimness_risks": [
+    "Duplicating the same semantic claim across per-card files, mulligan rows, combo rows, GlobalValues overlays, and separate reports would bloat HSConfig without improving runtime behavior.",
+    "Generating empty, placeholder, or weakly justified `Combo.json` and per-card files would increase package size and review burden without adding a documented executable benefit.",
+    "Expanding the runtime package to include aggregate reports or diagnostic artifacts would create unnecessary surface area that the official VisionAI docs do not require.",
+    "Using `GlobalValues.json` as a broad strategy dump instead of preferring narrower mulligan or per-card files would overcomplicate the runtime package."
+  ],
+  "autonomy_risks": [
+    "Treating every GlobalValues or per-card decision as manual-review-only would over-conservatize the system and block documented runtime authoring that is already concrete and supported.",
+    "Refusing to emit runtime files unless every deck has combo semantics would reduce any-deck coverage, even though the repo already supports clean suppression of absent or symbolic combo intent.",
+    "Blocking load-safe mulligan rows because richer conditional logic exists elsewhere would unnecessarily weaken Step 1 runtime output for straightforward decks.",
+    "Requiring diagnostic-only Step 2 artifacts as if they were runtime prerequisites would slow or block normal any-deck operation even when Step 1 already has enough documented information to build a valid runtime preview."
+  ],
+  "recommended_design_position": "HSConfig should author only the documented VisionAI runtime package surfaces: concrete `<CARDID>.json` files, `Mulligan.json`, `Combo.json` only when a concrete CARDID sequence exists, and a full deck-local `GlobalValues.json`, plus the single deck-name mapping fragment for `deck_config.ini`. Aggregate `CardBehavior.json`, suppression reports, patch previews, candidate summaries, evidence graphs, and all Step 2 outputs should remain diagnostic or report-only until a separate guarded runtime apply step.",
+  "evidence_references": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/docs/superpowers/specs/2026-06-08-step1-deep-gap-improvement-audit-v3-design.md",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/config_author.py",
+    "C:/Users/darbo/Documents/HS/tests/test_research_contract_config_surface_intent.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/runtime_writer.py",
+    "C:/Users/darbo/Documents/HS/docs/operator/cta-paladin-first-run.md",
+    "C:/Users/darbo/Documents/HS/README.md",
+    "C:/Users/darbo/Documents/HS/AGENTS.md"
+  ],
+  "uncertain": []
+}

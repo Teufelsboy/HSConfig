@@ -1,0 +1,32 @@
+topic: 2026-07-13-hsconfig-source-contract-logic-final-audit
+description: >
+  Source-backed audit for HSConfig source/contract logic: whether the source
+  claim model, contract spine, runtime lowering, and no-block autonomy are
+  technically sound, slim, and sufficient for direct HearthRanger CustomConfig
+  generation.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-13-hsconfig-source-contract-logic-final-audit\results
+  batch_size: 3
+  items_per_agent: 1
+items:
+  - name: HSConfig Source Contract Spine Current Implementation
+    category: repo_audit
+    description: >
+      Audit the current HSConfig source-to-contract spine, including claim
+      kinds, source contract matrix, source contract audit, source claim gap
+      report, source-to-runtime explainability report, operator summary, and
+      no-second-gate/apply authority boundaries.
+  - name: HearthRanger VisionAI Runtime Surface Boundary
+    category: external_surface_audit
+    description: >
+      Verify documented HearthRanger VisionAI surfaces relevant to HSConfig:
+      Mulligan.json, GlobalValues.json, per-card CardID JSON, Combo.json, and
+      what should remain diagnostic/report-only rather than lowered into
+      runtime config.
+  - name: Hearthstone Semantics False Runtime Claim Risks
+    category: hearthstone_semantics
+    description: >
+      Review Hearthstone semantic cases that can be misclassified if source
+      text is lowered too aggressively, especially start-of-game effects versus
+      mulligan keeps, hero power transforms, targeting rules, combo sequencing,
+      generated cards, secrets, locations, weapons, and Wild deck mechanics.
