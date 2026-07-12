@@ -276,6 +276,53 @@ def test_conformance_snapshot_exposes_flat_contract_spine_rows():
     assert numeric["operator_gate_impact"] == "diagnostic_only"
 
 
+def test_contract_spine_rows_are_exact_lifecycle_projection():
+    snapshot = build_source_contract_conformance_snapshot()
+    claim_rows = snapshot["claim_kind_rows"]
+    spine_rows = snapshot["contract_spine_rows"]
+    expected_keys = {
+        "claim_kind",
+        "policy_lane",
+        "allowed_surfaces",
+        "surface_gate_status",
+        "builder_status",
+        "final_runtime_effect",
+        "operator_gate_impact",
+    }
+
+    assert len(spine_rows) == len(SUPPORTED_ATOMIC_CLAIM_KINDS)
+    assert [row["claim_kind"] for row in spine_rows] == sorted(SUPPORTED_ATOMIC_CLAIM_KINDS)
+
+    for row in spine_rows:
+        claim_kind = row["claim_kind"]
+        lifecycle = claim_rows[claim_kind]["lifecycle"]
+
+        assert set(row) == expected_keys
+        assert row["policy_lane"] == lifecycle["policy_lane"]
+        assert row["allowed_surfaces"] == lifecycle["allowed_surfaces"]
+        assert row["surface_gate_status"] == lifecycle["surface_gate_status"]
+        assert row["builder_status"] == lifecycle["builder_status"]
+        assert row["final_runtime_effect"] == lifecycle["final_runtime_effect"]
+        assert row["operator_gate_impact"] == "diagnostic_only"
+
+
+def test_contract_spine_rows_never_carry_apply_authority_fields():
+    snapshot = build_source_contract_conformance_snapshot()
+    forbidden_keys = {
+        "apply_allowed",
+        "apply_gate",
+        "apply_policy",
+        "next_action",
+        "runtime_apply_allowed",
+        "runtime_apply_mode",
+        "technical_status",
+    }
+
+    for row in snapshot["contract_spine_rows"]:
+        assert forbidden_keys.isdisjoint(row), row
+        assert row["operator_gate_impact"] == "diagnostic_only"
+
+
 def test_conformance_markdown_uses_drift_and_prerequisite_language():
     markdown = render_source_contract_conformance_markdown(
         build_source_contract_conformance_snapshot()
