@@ -43,6 +43,30 @@ def test_conformance_snapshot_reports_no_policy_gate_mismatches_for_representati
     assert snapshot["summary"]["policy_gate_mismatches"] == []
 
 
+def test_conformance_snapshot_records_builder_router_expectations_and_combo_prerequisites():
+    snapshot = build_source_contract_conformance_snapshot()
+    rows = snapshot["claim_kind_rows"]
+
+    assert all("builder_router" in row for row in rows.values())
+
+    combo = rows["combo_sequence"]["builder_router"]
+    assert combo["surface"] == "combo"
+    assert combo["runner"] == "build_combo_plan"
+    assert combo["complete"]["expected_outcome"] == "emitted"
+    assert combo["complete"]["outcome"] == "emitted"
+    assert combo["incomplete"]["expected_outcome"] == "suppressed"
+    assert combo["incomplete"]["outcome"] == "suppressed"
+    assert combo["incomplete"]["reason"] == "sequence_too_short"
+
+    assert snapshot["summary"]["surface_gate_builder_mismatch_count"] >= 1
+    assert {
+        "claim_kind": "combo_sequence",
+        "surface": "combo",
+        "builder_outcome": "suppressed",
+        "reason": "sequence_too_short",
+    } in snapshot["summary"]["surface_gate_builder_mismatches"]
+
+
 def test_conformance_snapshot_describes_a_policy_gate_mismatch(monkeypatch):
     from hsconfig import source_contract_conformance as conformance
 
@@ -103,6 +127,35 @@ def test_conformance_markdown_is_compact_and_diagnostic_only():
     assert "| mulligan_keep | runtime_lowerable | mulligan |" in markdown
     assert "| globalvalue_numeric_tuning | runtime_evidence_required | none |" in markdown
     assert "operator_summary.json remains the apply authority" in markdown
+
+
+def test_conformance_markdown_exposes_combo_builder_router_outcomes():
+    markdown = render_source_contract_conformance_markdown(
+        build_source_contract_conformance_snapshot()
+    )
+
+    assert "## Builder/Router Outcomes" in markdown
+    assert (
+        "| combo_sequence | combo | build_combo_plan | emitted | suppressed: sequence_too_short |"
+        in markdown
+    )
+
+
+def test_pipeline_mismatch_count_includes_builder_router_expectation_mismatches(monkeypatch):
+    from hsconfig import source_contract_conformance as conformance
+
+    monkeypatch.setitem(
+        conformance._BUILDER_ROUTER_EXPECTATIONS["mulligan_keep"],
+        "outcome",
+        "suppressed",
+    )
+
+    summary = build_source_contract_conformance_snapshot()["summary"]
+
+    assert summary["policy_gate_mismatch_count"] == 0
+    assert summary["builder_router_expectation_mismatch_count"] == 1
+    assert summary["surface_gate_builder_mismatch_count"] == 1
+    assert summary["pipeline_mismatch_count"] == 2
 
 
 def test_conformance_snapshot_contains_no_apply_authority_fields():
