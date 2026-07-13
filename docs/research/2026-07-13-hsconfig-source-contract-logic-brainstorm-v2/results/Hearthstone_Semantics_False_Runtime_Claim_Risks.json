@@ -1,0 +1,182 @@
+{
+  "verdict": "Sound for the audited local HSConfig source-contract logic. The implementation now separates true Hearthstone semantics from runtime-write authority: start-of-game effects, hero power transforms, deckbuilding/start-in-deck facts, broad guide text, and card importance do not become Mulligan.json keeps unless they arrive as exact, surface-eligible mulligan_keep claims and pass the Mulligan surface gate. Explicit mulligan_discard can lower to the Mulligan surface, but discard is not inferred from absent keep text. The remaining risk is not a broad architectural flaw; it is a coverage and ingress risk when a source path mislabels vague text as exact mulligan_keep or reaches build_mulligan_plan without the card_roles and semantic_families needed to suppress non-hand start-of-game effects.",
+  "evidence_sources": [
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+      "evidence": "The operator guide states that runtime Mulligan writes require explicit mulligan_keep or mulligan_discard claim_kind values, while card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless separately backed by exact hand-required Mulligan guidance. It also keeps source_contract_audit.json diagnostic and operator_summary.json as the normal apply authority."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+      "evidence": "The guide policy says source truth is not runtime authority. Runtime lowering is surface-gated: Mulligan.json only lowers explicit mulligan_keep or mulligan_discard, GlobalValues.json only lowers runtime-lowerable gameplan_posture, Combo.json only lowers complete combo_sequence, and per-card CardID JSON only lowers supported CardID behavior claim kinds. It explicitly bans inferring mulligan_keep from card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, or generic keep wording."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+      "evidence": "SUPPORTED_ATOMIC_CLAIM_KINDS separates mulligan_keep, mulligan_discard, hero_power_transform, card_role, targeting_rule, combo_sequence, gameplan_posture, and choice claims. MULLIGAN_SURFACE_CLAIM_KINDS is limited to mulligan_keep and mulligan_discard. can_lower_to_mulligan rejects non-mulligan claim kinds, rejects non-runtime-lowerable claims, and rejects mulligan_keep for start-of-game non-hand effects with reason start_of_game_effect_does_not_require_opening_hand."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py",
+      "evidence": "The policy matrix classifies mulligan_keep and mulligan_discard as runtime_lowerable only on the mulligan surface. hero_power_transform is suppressed_or_conditional with allowed surface cardid and an operator meaning that it preserves hero-power-transform semantics without being a mulligan keep by itself."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+      "evidence": "build_mulligan_plan calls can_lower_to_mulligan for every claim before producing hold or discard rules. Rejected claims are recorded in suppressed_rules with the gate reason. The quality block marks Mulligan richness as thin when there are no source-backed keeps instead of inventing holds."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+      "evidence": "Both contract builders derive mulligan_anchor only from runtime_claim_kind(claim) == mulligan_keep and negative-keep checks. Generic pressure, combo, hero-power, or broad guide text can become usage expectations or roles, but they do not become hold intent unless the normalized runtime claim kind is an exact Mulligan keep."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/static_semantics.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/semantic_enrichment.py",
+      "evidence": "Static semantics and enrichment identify start_of_game and Shadowform/hero_power_transform families, and semantic enrichment preserves hero-power-transform meaning through linked hero-power/deckwide-effect data instead of requiring opening-hand retention."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py",
+      "evidence": "Regression tests show broad legacy mulligan_and_gameplan text does not create hold rules, exact legacy mulligan_keep still creates runtime authority, runtime_claim_kind maps only exact legacy runtime types, hero_power_transform does not lower to Mulligan, hero_power_transform can emit a CardID behavior row without Mulligan keep, broad keep text stays non-mulligan runtime, explicit start-of-game keeps are suppressed, non-hand start-of-game roles suppress keeps, and start_of_game plus mulligan_anchor remains allowed."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py",
+      "evidence": "ShadowPriest fixture tests assert Darkbishop Benedictus has hero_power_transform evidence but no mulligan_keep claim, and a synthetic start-of-game hero-power-transform keep claim is suppressed with reason start_of_game_effect_does_not_require_opening_hand."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py and C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_spine_freeze.py",
+      "evidence": "Surface-authority tests freeze the split between source claim kinds and runtime surfaces, including hero_power_transform not being a mulligan keep and policy rows matching surface-gate decisions. Source-contract spine freeze tests protect claim-kind policy from drift."
+    },
+    {
+      "source": "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_evidence_verifier.py",
+      "evidence": "Source document building records readiness, trust ceiling, source confidence, specificity status, runtime_lowerable status, and opposing mulligan keep/discard conflicts. The evidence verifier warns on unsupported runtime blocks, low-confidence runtime lowering, and runtime-lowering hints that lack actionable specificity."
+    }
+  ],
+  "current_strengths": [
+    {
+      "strength": "Exact claim-kind routing",
+      "detail": "Mulligan runtime authority is keyed to exact mulligan_keep and mulligan_discard claim kinds, not to free-text mentions of keep, important, pressure, start of game, or hero power."
+    },
+    {
+      "strength": "Surface-specific gates",
+      "detail": "The source_document_model gate rejects wrong-surface claims before builders emit runtime rows. A true hero_power_transform claim can be preserved on a CardID behavior surface while being rejected from the Mulligan surface."
+    },
+    {
+      "strength": "Explicit start-of-game non-hand suppression",
+      "detail": "The Mulligan gate suppresses start-of-game non-hand effects, deck-state modifiers, deckbuilding modifiers, deck-size/even-odd/highlander modifiers, hero-power transforms, passive start effects, and start-in-deck requirements unless the card also carries a valid mulligan_anchor."
+    },
+    {
+      "strength": "Broad guide text is fenced",
+      "detail": "Tests cover legacy broad mulligan_and_gameplan claims and broad keep wording so those paths do not silently create opening-hand holds. Exact legacy mulligan_keep remains supported only because it is an intentional compatibility path."
+    },
+    {
+      "strength": "Effect semantics are preserved separately",
+      "detail": "Static semantics and semantic enrichment keep start-of-game and hero-power-transform meaning visible in reports, deckwide effects, and CardID behavior planning. This avoids the old failure mode where removing a Mulligan hold also erased the effect."
+    },
+    {
+      "strength": "Mulligan thinness is reported instead of patched with guesses",
+      "detail": "build_mulligan_plan marks no_source_backed_mulligan_keeps and thin status when explicit keep evidence is missing. It does not fabricate holds from card importance or early-game role."
+    },
+    {
+      "strength": "Discard semantics are explicit",
+      "detail": "mulligan_discard lowers to the Mulligan surface when explicitly claimed, while absent keep text and negative wording do not automatically become runtime discard rows."
+    },
+    {
+      "strength": "Diagnostics do not become apply gates",
+      "detail": "source_contract_audit.json, source_to_runtime_explainability.json, contract_spine_rows, and source-quality summaries explain decisions without replacing operator_summary.json as the single normal apply authority."
+    },
+    {
+      "strength": "Regression coverage matches the known Darkbishop failure mode",
+      "detail": "Tests assert the Darkbishop Benedictus split directly: hero_power_transform evidence remains present while SW_448 is absent from Mulligan holds unless a valid hand-retention claim survives the surface gate."
+    }
+  ],
+  "gaps_or_risks": [
+    {
+      "risk": "Role-context ingress gap",
+      "detail": "The start-of-game suppression depends on card_roles and semantic_families being available to can_lower_to_mulligan. A direct expert or legacy path that passes a mislabeled exact mulligan_keep with empty card_roles can bypass the non-hand-effect check because the gate cannot see the start_of_game role."
+    },
+    {
+      "risk": "Mislabelled exact mulligan_keep remains authoritative",
+      "detail": "The system intentionally trusts exact mulligan_keep for compatibility. If a source author or importer labels broad importance text as exact mulligan_keep, HSConfig will treat it as runtime authority unless another guard such as start-of-game suppression, confidence/readiness, selector validation, or conflict handling rejects it."
+    },
+    {
+      "risk": "Deckbuilding and passive-start coverage depends on semantic naming",
+      "detail": "The suppression table covers known role names such as deckbuilding_modifier, start_in_deck_requirement, highlander_modifier, even_odd_modifier, and passive_start_effect. New Hearthstone mechanics or alternate metadata labels can remain report-only or partially visible until mapped into these semantic families."
+    },
+    {
+      "risk": "Card importance can still seek CardID lowering",
+      "detail": "Card_role, targeting_rule, mechanic_usage, and hero_power_transform can be runtime_lowerable on CardID surfaces when they have supported blocks. Weak card-importance text with a runtime_block hint can still create pressure for behavior lowering, so specificity warnings and supported-block checks must stay visible."
+    },
+    {
+      "risk": "Discard intent can be under-expressed",
+      "detail": "The current policy correctly avoids inferring discard from absent keep text, but negative keep phrases become avoid/usage expectations unless encoded as mulligan_discard. This is safe against false lowering, but it can leave real discard advice report-only when source documents are not explicit."
+    },
+    {
+      "risk": "Hero power transform lowering needs identity and block support",
+      "detail": "hero_power_transform is allowed on the CardID surface only when the behavior can be represented by documented blocks such as BeforeUseHeroPowerBonus. Unresolved transformed hero powers, generated entities, or unsupported hero-power timing should remain suppressed/report-only rather than become guessed runtime rows."
+    },
+    {
+      "risk": "Conflicts are only as useful as their reporting path",
+      "detail": "Opposing mulligan_keep and mulligan_discard claims are detected in source_document_builder, but operators still need those conflicts surfaced in the normal package reports so they do not mistake a valid load-safe package for source-backed strong."
+    },
+    {
+      "risk": "Future mechanics can create false confidence",
+      "detail": "Unknown or warning-only mechanics are meant to stay descriptive and non-blocking. If a future mechanic resembles a start-of-game or deckbuilding modifier but is only detected as generic text, it may not receive the stronger non-hand suppression reason until mapped."
+    }
+  ],
+  "recommended_next_actions": [
+    {
+      "action": "Add a normal-path regression fixture for role-context ingress",
+      "detail": "Run the normal prepare/research-contract path with a start-of-game or deckbuilding card that is deliberately mislabelled as mulligan_keep, then assert no Mulligan.json hold is emitted, source_contract_audit records start_of_game_effect_does_not_require_opening_hand, and the effect remains visible in semantic/card behavior reports."
+    },
+    {
+      "action": "Add a warning-only source lint for suspicious exact keeps",
+      "detail": "When claim_kind is mulligan_keep but evidence text lacks explicit opening-hand language and the card carries start_of_game, deckbuilding, hero_power_transform, passive-start, or pure importance roles, emit a warning in source evidence or source claim quality reports. Keep it non-blocking."
+    },
+    {
+      "action": "Keep the non-hand-effect role table under fixture coverage",
+      "detail": "For each role in START_OF_GAME_NON_HAND_EFFECT_ROLES, keep or add a parameterized test that proves exact mulligan_keep is suppressed unless the card also has a valid mulligan_anchor. Extend the table when static_semantics or semantic_enrichment introduces a new equivalent role."
+    },
+    {
+      "action": "Preserve the Darkbishop split as a control case",
+      "detail": "Keep a fixture-level assertion that SW_448 can preserve hero_power_transform and Mind Spike/Shadowform behavior while staying absent from Mulligan holds. This is the clearest end-to-end guard against the original false-runtime-claim regression."
+    },
+    {
+      "action": "Treat exact discard as a source authoring requirement",
+      "detail": "Do not infer mulligan_discard from absent keep text. Instead, have source_claim_gap_report or source_claim_quality_summary request explicit mulligan_discard evidence when the guide implies a throw but does not provide a structured discard claim."
+    },
+    {
+      "action": "Run contract-spine and surface authority tests on contract changes",
+      "detail": "For changes touching source_document_model.py, source_contract_matrix.py, mulligan_plan.py, guide importers, static semantics, or semantic enrichment, run the claim-kind runtime contract tests, surface authority split tests, source contract spine freeze tests, and the Darkbishop fixture tests."
+    },
+    {
+      "action": "Keep CardID behavior lowering block-specific",
+      "detail": "For card importance, hero-power, discover, choose-one, generated-entity, and targeting claims, require supported runtime_block and resolved identity before emitting per-card JSON. Otherwise keep the claim in suppression/report-only diagnostics with the first missing link."
+    }
+  ],
+  "no_blocking_constraints": [
+    {
+      "constraint": "Do not add a second apply gate",
+      "detail": "source_contract_audit.json, source_to_runtime_explainability.json, contract_spine_rows, source claim quality reports, and semantic drift reports must remain diagnostics. operator_summary.json remains the only normal apply authority."
+    },
+    {
+      "constraint": "Do not block load-safe packages for thin Mulligan evidence",
+      "detail": "A present but thin Mulligan.json is a source-depth and usefulness signal, not a HearthRanger load-safety error. Keep the package valid when technical_status is VALID_PACKAGE and report the missing source-backed keep/discard evidence as follow-up work."
+    },
+    {
+      "constraint": "Do not invent runtime rows from true but wrong-surface facts",
+      "detail": "Start-of-game effects, deckbuilding requirements, hero-power transforms, card importance, broad guide gameplans, report-only mechanics, unresolved generated entities, and unsupported blocks must remain visible as contract evidence or suppressed diagnostics unless a documented matching runtime surface exists."
+    },
+    {
+      "constraint": "Keep explicit surface authority",
+      "detail": "Mulligan.json accepts only mulligan_keep and mulligan_discard. GlobalValues.json accepts only source-backed Step 1 gameplan_posture overlays. Combo.json requires complete combo_sequence data. CardID JSON requires supported block and identity."
+    },
+    {
+      "constraint": "Keep HSConfig pre-run only",
+      "detail": "Do not use replay results, winrate, runtime logs, or after-game tuning to justify source-contract lowering. Runtime-evidence-required tuning belongs outside this pre-run contract path."
+    },
+    {
+      "constraint": "Preserve effect visibility when suppressing false keeps",
+      "detail": "When a Mulligan keep is suppressed because the card is a start-of-game or hero-power-transform enabler, keep the semantic effect visible in reports and supported CardID behavior output instead of deleting the effect from the package."
+    },
+    {
+      "constraint": "Keep warnings non-blocking",
+      "detail": "Low-confidence runtime lowering, warning-only mechanics, unresolved option identity, unsupported conditions, and future mechanic drift should point to next inspection steps without preventing autonomous generation of a technically valid load-safe package."
+    }
+  ],
+  "uncertain": []
+}

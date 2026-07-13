@@ -1,0 +1,18 @@
+topic: HSConfig source contract logic brainstorm v2
+execution:
+  output_dir: docs/research/2026-07-13-hsconfig-source-contract-logic-brainstorm-v2/results
+  items_per_agent: 1
+  batch_size: 4
+items:
+  - name: HSConfig Source Contract Spine Current Implementation
+    category: repo_contract
+    description: Audit the current source -> claim_kind -> policy -> surface gate -> builder/router -> runtime effect spine, including the new contract-spine-sentinel and no-second-gate guardrails.
+  - name: HearthRanger VisionAI Runtime Surface Boundary
+    category: external_runtime_surface
+    description: Audit whether HSConfig keeps VisionAI runtime surfaces separated from diagnostics, especially Mulligan, GlobalValues, per-card CardID JSON, Combo, and guarded apply authority.
+  - name: Hearthstone Semantics False Runtime Claim Risks
+    category: hearthstone_semantics
+    description: Audit false-lowering risks such as start-of-game effects, hero power transforms, deckbuilding effects, broad guide text, card importance, and mulligan keep/discard semantics.
+  - name: Slim Autonomous No Block Source Contract Model
+    category: architecture
+    description: Audit whether the model stays slim and autonomous for any deck by reporting weak source depth and unsupported mechanics instead of blocking valid load-safe packages or creating extra approval gates.

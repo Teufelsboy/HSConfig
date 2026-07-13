@@ -1,0 +1,24 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: verdict
+        required: true
+        description: Concise assessment of whether the audited topic is sound.
+      - name: evidence_sources
+        required: true
+        description: Local repo files, tests, docs, or public documentation used as evidence.
+      - name: current_strengths
+        required: true
+        description: What the current implementation already handles well.
+      - name: gaps_or_risks
+        required: true
+        description: Remaining risks, ambiguity, or likely failure modes.
+      - name: recommended_next_actions
+        required: true
+        description: Minimal next actions that would improve correctness without broadening scope.
+      - name: no_blocking_constraints
+        required: true
+        description: Constraints that preserve no-block autonomous operation and avoid a second apply gate.
+      - name: uncertain
+        required: true
+        description: Field names whose values are uncertain or need later verification.
