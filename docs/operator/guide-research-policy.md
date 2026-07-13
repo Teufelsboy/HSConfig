@@ -191,6 +191,11 @@ Preserve those effects as `hero_power_transform`, CardID behavior, or
 report-visible contract evidence. Emit a Mulligan keep only when a current
 mulligan source explicitly says the card should be kept in the opening hand.
 
+Exact `mulligan_keep` claims should describe opening-hand intent. If the evidence
+only describes a start-of-game effect, hero-power transform, deckbuilding rule, or
+broad card importance, HSConfig may warn about a suspicious exact keep. That
+warning is diagnostic only; it does not block a load-safe package.
+
 Combo timing support:
 
 - `combo_sequence` claims must include explicit `sequence`, `timing_kind`, `operator`, and `values` before runtime `Combo.json` emission.
@@ -205,6 +210,21 @@ GlobalValues key authority:
 - `copy_baseline` keys are copied and profiled, not tuned.
 - `step1_posture_overlay_allowed` keys may change only when source posture supports them.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
+
+## Claim-Kind Change Checklist
+
+Changing or adding a `claim_kind` is a contract change, not a local parser tweak.
+Every such change must update all of these surfaces in the same pull request:
+
+- `SUPPORTED_ATOMIC_CLAIM_KINDS` in `src/hsconfig/source_document_model.py`
+- the policy row and policy details in `src/hsconfig/source_contract_matrix.py`
+- the matching surface gate in `src/hsconfig/source_document_model.py`
+- the builder, router, or diagnostic path that owns the final runtime effect
+- conformance and freeze coverage in `tests/test_source_contract_spine_freeze.py`
+- runtime contract coverage in `tests/test_claim_kind_runtime_contract.py`
+
+Diagnostics may explain a claim, but they must not grant or deny runtime apply.
+`reports/operator_summary.json` remains the normal apply authority.
 
 ## Adding A New Claim Kind
 

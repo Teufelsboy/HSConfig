@@ -76,3 +76,21 @@ def test_globalvalue_numeric_tuning_is_never_step1_lowerable():
 
     assert decision.allowed is False
     assert decision.reason == "requires_runtime_evidence"
+
+
+def test_each_policy_row_has_complete_contract_metadata():
+    policy = source_contract_policy_by_claim_kind()
+
+    for claim_kind, row in policy.items():
+        assert row["semantic_lane"] == row["lane"], claim_kind
+        assert isinstance(row["required_fields"], tuple), claim_kind
+        assert "claim_kind" in row["required_fields"], claim_kind
+        assert "claim_readiness" in row["required_fields"], claim_kind
+        assert "trust_ceiling" in row["required_fields"], claim_kind
+        assert isinstance(row["runtime_lowerable"], bool), claim_kind
+        assert isinstance(row["default_suppression_reason"], str), claim_kind
+        assert row["default_suppression_reason"], claim_kind
+        assert row["operator_gate_impact"] == "diagnostic_only", claim_kind
+        assert set(row["allowed_surfaces"]).issubset(
+            {"mulligan", "globalvalues", "cardid", "combo"}
+        ), claim_kind
