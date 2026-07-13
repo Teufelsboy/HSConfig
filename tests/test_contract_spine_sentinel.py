@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
