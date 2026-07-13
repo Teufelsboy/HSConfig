@@ -504,3 +504,37 @@ def test_claim_embedded_string_semantic_and_mechanic_families_suppress_mulligan_
 
     assert decision.allowed is False
     assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_research_contract_does_not_infer_hold_for_start_of_game_non_hand_keep_claim():
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "cards": [{"card_id": "SW_448", "count": 1, "name": "Darkbishop Benedictus"}],
+    }
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "semantic_families": ["start_of_game", "hero_power_transform"],
+            }
+        ]
+    }
+    source_claims = normalize_source_claims(
+        [
+            {
+                "source": "fixture-guide",
+                "claim_kind": "mulligan_keep",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "claim": "The effect starts the game in Shadowform.",
+                "cards": ["SW_448"],
+                "confidence": "guide_backed",
+            }
+        ]
+    )
+
+    bundle = build_research_contract_bundle(deck_identity, card_metadata, source_claims)
+
+    assert "mulligan_anchor" not in bundle["card_role_map"]["SW_448"]["roles"]
+    assert bundle["mulligan_anchor_map"]["SW_448"]["intent"] != "hold"

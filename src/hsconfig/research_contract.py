@@ -5,6 +5,7 @@ from typing import Any
 
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.io import write_json
+from hsconfig.role_tokens import has_start_of_game_non_hand_effect
 from hsconfig.source_document_model import runtime_claim_kind
 
 
@@ -181,6 +182,10 @@ def _semantic_families(card: dict[str, Any], metadata: dict[str, Any]) -> list[s
     return sorted(item for item in values if item)
 
 
+def _can_be_mulligan_anchor(roles: set[str]) -> bool:
+    return not has_start_of_game_non_hand_effect(roles)
+
+
 def _roles_from_claims_and_semantics(
     semantic_families: list[str],
     claims: list[dict[str, Any]],
@@ -189,7 +194,11 @@ def _roles_from_claims_and_semantics(
     claim_types = {str(claim.get("claim_type", "")).lower() for claim in claims}
     claim_kinds = {runtime_claim_kind(claim) for claim in claims}
     roles = set(semantic_families)
-    if "mulligan_keep" in claim_kinds and not _has_negative_keep(text):
+    if (
+        "mulligan_keep" in claim_kinds
+        and not _has_negative_keep(text)
+        and _can_be_mulligan_anchor(roles)
+    ):
         roles.add("mulligan_anchor")
     if any(marker in text for marker in ("face", "damage", "pressure", "push", "burst")):
         roles.add("pressure")
@@ -256,9 +265,10 @@ def _mulligan_intent(
     confidence: str,
 ) -> dict[str, Any]:
     text = _claim_text(claims)
+    role_set = set(roles)
     if _has_negative_keep(text):
         intent = "avoid"
-    elif "mulligan_anchor" in roles:
+    elif "mulligan_anchor" in role_set and _can_be_mulligan_anchor(role_set):
         intent = "hold"
     else:
         intent = "neutral"
