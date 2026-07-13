@@ -47,6 +47,7 @@ from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.operator_summary import build_operator_summary
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.research_contract import (
     build_research_contract_bundle,
@@ -511,9 +512,21 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             source_to_runtime_explainability_report
         ),
     }
-    generated_files = _generated_package_files(out, deck_dir, reports_dir)
+    generated_files = _generated_package_files(
+        out,
+        deck_dir,
+        reports_dir,
+        expected_report_files=(
+            "operator_summary.json",
+            "strong_promotion_report.json",
+            "output_ownership_manifest.json",
+        ),
+    )
+    output_ownership_manifest = build_output_ownership_manifest(generated_files)
+    write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
     operator_summary = build_operator_summary(
         generated_files=generated_files,
+        output_ownership_manifest=output_ownership_manifest,
         **operator_summary_kwargs,
     )
     strong_promotion_report = build_strong_promotion_report(
@@ -523,11 +536,6 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         source_claim_gap_report=source_claim_gap_report,
     )
     write_json(reports_dir / "strong_promotion_report.json", strong_promotion_report)
-    generated_files = _generated_package_files(out, deck_dir, reports_dir)
-    operator_summary = build_operator_summary(
-        generated_files=generated_files,
-        **operator_summary_kwargs,
-    )
     write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1
     return (
@@ -574,11 +582,17 @@ def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, An
     return build_research_required_guide_sources(deck_name, deck_identity)
 
 
-def _generated_package_files(out: Path, deck_dir: Path, reports_dir: Path) -> list[str]:
+def _generated_package_files(
+    out: Path,
+    deck_dir: Path,
+    reports_dir: Path,
+    *,
+    expected_report_files: tuple[str, ...] = ("operator_summary.json",),
+) -> list[str]:
     files = [
         *sorted(deck_dir.glob("*.json")),
         *sorted(path for path in reports_dir.rglob("*") if path.is_file()),
-        reports_dir / "operator_summary.json",
+        *(reports_dir / filename for filename in expected_report_files),
     ]
     return sorted({str(path.relative_to(out)) for path in files})
 

@@ -90,6 +90,7 @@ def build_operator_summary(
     source_contract_audit_report: dict[str, Any] | None = None,
     source_to_runtime_explainability_report: dict[str, Any] | None = None,
     strong_promotion_report: dict[str, Any] | None = None,
+    output_ownership_manifest: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -245,11 +246,24 @@ def build_operator_summary(
         "source_to_runtime_explainability_summary": (
             source_to_runtime_explainability_summary
         ),
+        "output_ownership_summary": _output_ownership_summary(
+            output_ownership_manifest
+        ),
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
     }
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
+
+
+def _output_ownership_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    summary = report.get("summary", {}) if isinstance(report, dict) else {}
+    return {
+        "non_blocking": True,
+        "generated_file_count": _int_value(summary.get("generated_file_count", 0)),
+        "unclassified_file_count": _int_value(summary.get("unclassified_file_count", 0)),
+        "gate_count": _int_value(summary.get("gate_count", 0)),
+    }
 
 
 def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

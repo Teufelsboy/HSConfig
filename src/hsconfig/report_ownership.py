@@ -14,6 +14,15 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "contains": ["config_usefulness"],
         },
         {
+            "file": "reports/output_ownership_manifest.json",
+            "producer": "prepare",
+            "authority": "diagnostic_artifact_ownership",
+            "classification": "diagnostic",
+            "answers": "which generated artifact owns which responsibility",
+            "open_order": "11",
+            "notes": "diagnostic only; does not replace operator_summary.json",
+        },
+        {
             "file": "reports/source_contract_audit.json",
             "authority": "diagnostic_source_to_runtime_explanation",
             "classification": "diagnostic",

@@ -17,6 +17,10 @@ def test_report_ownership_covers_operator_reports():
     assert by_file["reports/per_card_config_readiness_report.json"]["answers"] == "which lane each card occupies"
     assert by_file["reports/guide_source_depth_report.json"]["answers"] == "how strong the guide and source coverage is"
     assert by_file["reports/global_values_authority_matrix.json"]["answers"] == "which GlobalValues keys are source-backed or archetype-inferred"
+    assert by_file["reports/output_ownership_manifest.json"]["authority"] == (
+        "diagnostic_artifact_ownership"
+    )
+    assert by_file["reports/output_ownership_manifest.json"]["classification"] == "diagnostic"
 
 
 def test_report_ownership_has_single_open_first_report():
