@@ -11,6 +11,7 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     claim_can_lower_to_runtime,
 )
+from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 
 
 DECK_SCOPED_CLAIM_KINDS = {
@@ -271,6 +272,11 @@ def _normalize_source_claim(
     for key in ("option_card_id", "option_card", "choice_card_id", "choice_card"):
         if key in raw_claim:
             claim[key] = _clean_text(raw_claim[key])
+    qualifier_input = dict(raw_claim)
+    qualifier_input.update(claim)
+    semantic_qualifiers = normalize_semantic_qualifiers(qualifier_input)
+    if semantic_qualifiers:
+        claim["semantic_qualifiers"] = semantic_qualifiers
     runtime_lowerable = claim_can_lower_to_runtime(claim)
     claim["runtime_lowerable"] = runtime_lowerable
     claim["runtime_lowering_reason"] = (

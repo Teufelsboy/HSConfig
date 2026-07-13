@@ -8,6 +8,7 @@ from hsconfig.role_tokens import (
     card_role_tokens,
     has_explicit_opening_hand_mulligan_intent,
 )
+from hsconfig.source_semantic_qualifiers import has_qualifier
 
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
     {
@@ -257,6 +258,17 @@ def _contains_start_of_game_non_hand_effect(
             return not has_opening_hand_intent
         if "mulligan_anchor" not in roles and not has_opening_hand_intent:
             return True
+    qualifier_start_effect = (
+        has_qualifier(claim or {}, "timing", "start_of_game")
+        or has_qualifier(claim or {}, "zone_scope", "deck")
+        or has_qualifier(claim or {}, "state_requirements", "hero_power_transform")
+        or has_qualifier(claim or {}, "state_requirements", "deckbuilding_effect")
+    )
+    if qualifier_start_effect and not has_explicit_opening_hand_mulligan_intent(
+        claim,
+        roles={"start_of_game"},
+    ):
+        return True
     return False
 
 

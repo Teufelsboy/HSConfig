@@ -7,6 +7,7 @@ from typing import Any
 
 from hsconfig.mechanic_support import mechanic_static_claim_allowed
 from hsconfig.source_document_builder import build_source_document_bundle
+from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 from hsconfig.static_semantics import infer_static_semantics
 
 
@@ -382,6 +383,9 @@ def _static_claim(
         "source_refs": ["hearthstonejson_static_semantics"],
     }
     claim["mechanic_family"] = mechanic_family or mechanic
+    semantic_qualifiers = normalize_semantic_qualifiers(claim)
+    if semantic_qualifiers:
+        claim["semantic_qualifiers"] = semantic_qualifiers
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
     claim["claim_id"] = _claim_id(claim)

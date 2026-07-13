@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from hsconfig.role_tokens import START_OF_GAME_NON_HAND_EFFECT_ROLES, claim_role_tokens
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS, runtime_claim_kind
+from hsconfig.source_semantic_qualifiers import has_qualifier
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -38,6 +39,7 @@ ACTIONABLE_SPECIFICITY_KEYS = (
     "timing_kind",
     "operator",
     "option_card_id",
+    "semantic_qualifiers",
 )
 OPENING_HAND_LANGUAGE = (
     "mulligan",
@@ -221,6 +223,19 @@ def _suspicious_exact_keep_warning(
             "reason": "suspicious_mulligan_keep_non_hand_effect",
             "claim_kind": claim_kind,
             "roles": sorted(roles),
+        }
+    has_qualifier_start_effect = (
+        has_qualifier(claim, "timing", "start_of_game")
+        or has_qualifier(claim, "zone_scope", "deck")
+        or has_qualifier(claim, "state_requirements", "hero_power_transform")
+        or has_qualifier(claim, "state_requirements", "deckbuilding_effect")
+    )
+    if has_qualifier_start_effect:
+        return {
+            "reason": "suspicious_mulligan_keep_non_hand_effect",
+            "claim_kind": claim_kind,
+            "roles": sorted(roles),
+            "semantic_qualifiers": claim.get("semantic_qualifiers", {}),
         }
     return None
 
