@@ -6,12 +6,26 @@ from pathlib import Path
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
+from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.io import write_json
 import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
 
 
 LEGACY_SURFACES = {"Presume.json", "Concede.json"}
+
+
+def test_contract_spine_sentinel_covers_subtractive_contract_polish():
+    report = build_contract_spine_sentinel_report()
+    checks = report["checks"]
+
+    assert "legacy_surface_normal_routing" in checks
+    assert "source_informed_apply_flag_policy" in checks
+    assert "report_ownership_gate_files" in checks
+    assert "report_ownership_unclassified_files" in checks
+    assert checks["legacy_surface_normal_routing"] == []
+    assert checks["source_informed_apply_flag_policy"]["behavior"] == "legacy_no_op"
+    assert checks["report_ownership_gate_files"] == ["reports/operator_summary.json"]
 
 
 def test_surface_intent_ignores_legacy_policy_surfaces_in_normal_path():

@@ -6,6 +6,7 @@ from typing import Any
 from hsconfig.source_contract_conformance import build_source_contract_conformance_snapshot
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.report_ownership import build_report_ownership
 
 
 FORBIDDEN_APPLY_AUTHORITY_FIELDS = {
@@ -79,6 +80,10 @@ def build_contract_spine_sentinel_report(
         ),
         "active_apply_diagnostic_consumers": _active_apply_diagnostic_consumers(root),
         "active_apply_paths_missing": _missing_active_apply_paths(root),
+        "legacy_surface_normal_routing": _legacy_surface_normal_routing(root),
+        "source_informed_apply_flag_policy": _source_informed_apply_flag_policy(root),
+        "report_ownership_gate_files": _report_ownership_gate_files(),
+        "report_ownership_unclassified_files": _report_ownership_unclassified_files(),
     }
     problems = _problems(checks)
     return {
@@ -162,6 +167,47 @@ def _missing_active_apply_paths(root: Path) -> list[str]:
     ]
 
 
+def _legacy_surface_normal_routing(root: Path) -> list[dict[str, str]]:
+    path = root / "src/hsconfig/surface_intent.py"
+    if not path.exists():
+        return [{"path": "src/hsconfig/surface_intent.py", "reason": "missing"}]
+
+    content = path.read_text(encoding="utf-8")
+    flagged = []
+    for token in (
+        "legacy_policy_surfaces_enabled",
+        'optional_surfaces.add("Presume.json")',
+        'optional_surfaces.add("Concede.json")',
+    ):
+        if token in content:
+            flagged.append({"path": "src/hsconfig/surface_intent.py", "token": token})
+    return flagged
+
+
+def _source_informed_apply_flag_policy(root: Path) -> dict[str, str]:
+    apply_gate = root / "src/hsconfig/apply_gate.py"
+    content = apply_gate.read_text(encoding="utf-8") if apply_gate.exists() else ""
+    if "del allow_source_informed" in content:
+        return {"behavior": "legacy_no_op"}
+    return {"behavior": "drift_detected"}
+
+
+def _report_ownership_gate_files() -> list[str]:
+    return sorted(
+        row["file"]
+        for row in build_report_ownership()
+        if row.get("classification") == "gate"
+    )
+
+
+def _report_ownership_unclassified_files() -> list[str]:
+    return sorted(
+        row.get("file", "")
+        for row in build_report_ownership()
+        if not row.get("classification")
+    )
+
+
 def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
     problems: list[dict[str, object]] = []
     list_checks = (
@@ -174,6 +220,8 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
         "conformance_apply_authority_fields_present",
         "active_apply_diagnostic_consumers",
         "active_apply_paths_missing",
+        "legacy_surface_normal_routing",
+        "report_ownership_unclassified_files",
     )
     for key in list_checks:
         value = checks.get(key, [])
@@ -185,6 +233,22 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
             {
                 "check": "conformance_operator_gate_impact",
                 "value": checks.get("conformance_operator_gate_impact"),
+            }
+        )
+
+    if checks.get("source_informed_apply_flag_policy", {}).get("behavior") != "legacy_no_op":
+        problems.append(
+            {
+                "check": "source_informed_apply_flag_policy",
+                "value": checks.get("source_informed_apply_flag_policy"),
+            }
+        )
+
+    if checks.get("report_ownership_gate_files") != ["reports/operator_summary.json"]:
+        problems.append(
+            {
+                "check": "report_ownership_gate_files",
+                "value": checks.get("report_ownership_gate_files"),
             }
         )
 
