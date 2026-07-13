@@ -4,11 +4,8 @@ from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
-from hsconfig.source_document_model import (
-    START_OF_GAME_NON_HAND_EFFECT_ROLES,
-    SUPPORTED_ATOMIC_CLAIM_KINDS,
-    runtime_claim_kind,
-)
+from hsconfig.role_tokens import START_OF_GAME_NON_HAND_EFFECT_ROLES, claim_role_tokens
+from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS, runtime_claim_kind
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -233,14 +230,7 @@ def _has_opening_hand_language(evidence: str) -> bool:
 
 
 def _claim_role_hints(claim: dict[str, Any]) -> set[str]:
-    roles: set[str] = set()
-    for key in SUSPICIOUS_KEEP_ROLE_KEYS:
-        value = claim.get(key, [])
-        if isinstance(value, str):
-            value = [value]
-        if isinstance(value, list):
-            roles.update(str(item).strip().lower() for item in value if str(item).strip())
-    return roles
+    return claim_role_tokens(claim, keys=SUSPICIOUS_KEEP_ROLE_KEYS)
 
 
 def _cards(claim: dict[str, Any]) -> list[str]:

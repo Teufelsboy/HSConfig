@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from hsconfig.role_tokens import (
+    START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    card_role_tokens,
+)
+
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
     {
         "archetype",
@@ -89,19 +94,6 @@ GLOBALVALUES_RUNTIME_EVIDENCE_CLAIM_KINDS = frozenset({"globalvalue_numeric_tuni
 MULLIGAN_SURFACE_CLAIM_KINDS = frozenset({"mulligan_keep", "mulligan_discard"})
 GLOBALVALUES_SURFACE_CLAIM_KINDS = frozenset({"gameplan_posture"})
 COMBO_SURFACE_CLAIM_KINDS = frozenset({"combo_sequence"})
-START_OF_GAME_NON_HAND_EFFECT_ROLES = frozenset(
-    {
-        "deck_state_modifier",
-        "deckbuilding_modifier",
-        "deck_size_modifier",
-        "even_odd_modifier",
-        "highlander_modifier",
-        "hero_power_transform",
-        "passive_start_effect",
-        "start_in_deck_requirement",
-        "start_of_game_modifier",
-    }
-)
 CARDID_SURFACE_CLAIM_KINDS = frozenset(
     {
         "card_role",
@@ -268,30 +260,7 @@ def _roles_for_card(
     card_roles: Mapping[str, Any],
     claim: Mapping[str, Any] | None,
 ) -> set[str]:
-    roles: set[str] = set()
     role_row = card_roles.get(str(card_id), {})
-    if isinstance(role_row, Mapping):
-        roles.update(_role_tokens(role_row.get("roles")))
-        roles.update(_role_tokens(role_row.get("semantic_families")))
-    if isinstance(claim, Mapping):
-        roles.update(_role_tokens(claim.get("roles")))
-        roles.update(_role_tokens(claim.get("semantic_families")))
-        roles.update(_role_tokens(claim.get("mechanic_families")))
-    return {role for role in roles if role}
-
-
-def _role_tokens(value: Any) -> set[str]:
-    if value is None:
-        return set()
-    if isinstance(value, str):
-        token = value.strip().lower()
-        return {token} if token else set()
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return {
-            token
-            for role in value
-            if isinstance(role, str)
-            for token in (role.strip().lower(),)
-            if token
-        }
-    return set()
+    if not isinstance(role_row, Mapping):
+        role_row = {}
+    return card_role_tokens(role_row, claim)

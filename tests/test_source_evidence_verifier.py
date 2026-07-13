@@ -255,3 +255,26 @@ def test_verifier_does_not_warn_for_explicit_opening_hand_keep_language():
     assert "suspicious_mulligan_keep_non_hand_effect" not in {
         warning["reason"] for warning in report["warnings"]
     }
+
+
+def test_verifier_warns_for_non_list_start_of_game_role_payloads():
+    report = verify_source_documents(
+        [
+            _base_document(
+                claims=[
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_448"],
+                        "roles": "start_of_game",
+                        "semantic_families": ("hero_power_transform",),
+                        "evidence_text_short": "Darkbishop Benedictus starts the game with Mind Spike.",
+                        "source_confidence": "high",
+                    }
+                ]
+            )
+        ]
+    )
+
+    assert "suspicious_mulligan_keep_non_hand_effect" in {
+        warning["reason"] for warning in report["warnings"]
+    }
