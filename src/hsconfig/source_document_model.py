@@ -196,7 +196,9 @@ def can_lower_to_mulligan(
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "mulligan")
     cards = _claim_cards_from_mapping(claim)
     if claim_kind == "mulligan_keep" and _contains_start_of_game_non_hand_effect(
-        cards, card_roles or {}
+        cards,
+        card_roles or {},
+        claim,
     ):
         return SurfaceGateDecision(
             False,
@@ -248,15 +250,10 @@ def _claim_cards_from_mapping(claim: Mapping[str, Any]) -> list[str]:
 def _contains_start_of_game_non_hand_effect(
     cards: list[str],
     card_roles: Mapping[str, Any],
+    claim: Mapping[str, Any] | None = None,
 ) -> bool:
     for card_id in cards:
-        role_row = card_roles.get(str(card_id), {})
-        if not isinstance(role_row, Mapping):
-            continue
-        roles = {
-            *[str(role).lower() for role in role_row.get("roles", [])],
-            *[str(role).lower() for role in role_row.get("semantic_families", [])],
-        }
+        roles = _roles_for_card(card_id, card_roles, claim)
         if "start_of_game" not in roles:
             continue
         if roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
@@ -264,3 +261,26 @@ def _contains_start_of_game_non_hand_effect(
         if "mulligan_anchor" not in roles:
             return True
     return False
+
+
+def _roles_for_card(
+    card_id: str,
+    card_roles: Mapping[str, Any],
+    claim: Mapping[str, Any] | None,
+) -> set[str]:
+    roles: set[str] = set()
+    role_row = card_roles.get(str(card_id), {})
+    if isinstance(role_row, Mapping):
+        roles.update(str(role).lower() for role in role_row.get("roles", []))
+        roles.update(
+            str(role).lower() for role in role_row.get("semantic_families", [])
+        )
+    if isinstance(claim, Mapping):
+        roles.update(str(role).lower() for role in claim.get("roles", []))
+        roles.update(
+            str(role).lower() for role in claim.get("semantic_families", [])
+        )
+        roles.update(
+            str(role).lower() for role in claim.get("mechanic_families", [])
+        )
+    return {role for role in roles if role}

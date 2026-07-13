@@ -440,3 +440,35 @@ def test_start_of_game_semantic_family_suppresses_mulligan_keep():
 
     assert decision.allowed is False
     assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_claim_embedded_start_of_game_roles_suppress_mulligan_keep_without_external_card_roles():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["SW_448"],
+        "roles": ["start_of_game", "hero_power_transform"],
+        "evidence_text_short": "The deck starts with Mind Spike because of Darkbishop Benedictus.",
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context={"card_roles": {}})
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_claim_embedded_semantic_families_suppress_mulligan_keep_without_external_card_roles():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_START"],
+        "semantic_families": ["start_of_game", "passive_start_effect"],
+        "evidence_text_short": "This passive effect is active at the start of the game.",
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context={"card_roles": {}})
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
