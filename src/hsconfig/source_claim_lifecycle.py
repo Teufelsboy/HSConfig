@@ -57,7 +57,13 @@ def build_initial_lifecycle_rows(
 def runtime_claims_for_surface(
     rows: Sequence[Mapping[str, Any]],
     surface: str,
+    *,
+    context: Mapping[str, Any] | None = None,
+    card_roles: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    gate_context = dict(context or {})
+    if card_roles is not None:
+        gate_context["card_roles"] = card_roles
     runtime_claims: list[dict[str, Any]] = []
     for row in rows:
         if row.get("quarantine_status") == "quarantined":
@@ -68,7 +74,7 @@ def runtime_claims_for_surface(
         claim_kind = str(row.get("claim_kind") or "")
         if not claim_kind:
             continue
-        decision = surface_gate_decision(claim, surface)
+        decision = surface_gate_decision(claim, surface, context=gate_context)
         if not decision.allowed:
             continue
         claim["claim_kind"] = claim_kind
@@ -85,7 +91,13 @@ def runtime_claims_for_surface(
 def _runtime_eligibility(source_confidence: str, quarantine_reason: str | None) -> str:
     if quarantine_reason:
         return "quarantined"
-    if source_confidence in {"report_only", "unsupported", "unknown_future_mechanic"}:
+    normalized_confidence = str(source_confidence or "unknown").strip().lower()
+    if normalized_confidence in {
+        "report_only",
+        "unsupported",
+        "unknown",
+        "unknown_future_mechanic",
+    }:
         return "report_only"
     return "runtime_candidate"
 

@@ -68,3 +68,65 @@ def test_runtime_claims_for_surface_excludes_quarantined_report_only_claims():
     by_id = {row["claim_id"]: row for row in rows}
     assert by_id["keep_2"]["quarantine_status"] == "quarantined"
     assert by_id["role_1"]["runtime_eligibility"] == "report_only"
+
+
+def test_unknown_confidence_targeting_rule_remains_lifecycle_only():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "unknown_targeting",
+                "claim_kind": "targeting_rule",
+                "card_id": "CARD_004",
+                "source_confidence": "unknown",
+            },
+            {
+                "claim_id": "missing_confidence_targeting",
+                "claim_kind": "targeting_rule",
+                "card_id": "CARD_005",
+            },
+        ]
+    )
+
+    assert [row["claim_id"] for row in rows] == [
+        "unknown_targeting",
+        "missing_confidence_targeting",
+    ]
+    assert {row["runtime_eligibility"] for row in rows} == {"report_only"}
+    assert runtime_claims_for_surface(rows, "cardid") == []
+
+
+def test_lifecycle_mulligan_surface_suppresses_start_of_game_transform_roles():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "darkbishop_keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["SW_448"],
+                "source_confidence": "guide_backed",
+                "evidence_text_short": "Darkbishop Benedictus changes the starting Hero Power.",
+            }
+        ]
+    )
+
+    runtime_claims = runtime_claims_for_surface(
+        rows,
+        "mulligan",
+        card_roles={
+            "SW_448": {
+                "roles": [
+                    "start_of_game",
+                    "hero_power_transform",
+                    "deckbuilding_effect",
+                ],
+                "semantic_families": [
+                    "start_of_game",
+                    "hero_power_transform",
+                    "deckbuilding_effect",
+                ],
+            }
+        },
+    )
+
+    assert rows[0]["claim_id"] == "darkbishop_keep"
+    assert rows[0]["runtime_eligibility"] == "runtime_candidate"
+    assert runtime_claims == []
