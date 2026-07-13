@@ -214,6 +214,22 @@ def test_source_contract_spine_brainstorm_readme_marks_evidence_only():
     assert len(list((root / "results").glob("*.json"))) == 3
 
 
+def test_current_truth_names_2026_07_14_contract_guardrail_audit():
+    text = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
+    audit_readme = Path(
+        "docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md"
+    ).read_text(encoding="utf-8")
+
+    assert "2026-07-14-hsconfig-source-contract-logic-guardrail-audit" in text
+    assert "Contract-spine Guardrail v2 evidence" in text
+    assert "Research evidence only" in audit_readme
+    assert "not operator instructions" in audit_readme
+    assert "not runtime input" in audit_readme
+    assert "`operator_summary.json` remains the normal apply authority." in audit_readme
+    assert "`source_contract_audit.json` remains diagnostic." in audit_readme
+    assert "`source_to_runtime_explainability.json` remains diagnostic." in audit_readme
+
+
 def test_research_readme_points_to_current_truth_index():
     text = Path("docs/research/README.md").read_text(encoding="utf-8")
 

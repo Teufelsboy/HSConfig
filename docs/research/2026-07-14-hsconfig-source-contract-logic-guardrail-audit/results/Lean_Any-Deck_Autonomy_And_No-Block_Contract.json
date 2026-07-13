@@ -1,0 +1,93 @@
+{
+  "scope": "Evaluate whether the current HSConfig workflow stays slim and autonomous for any valid deck by allowing technically load-safe packages to proceed even when guide evidence is thin, mechanics are warning-only, option identity is unresolved, or claims are report-only, while still surfacing the first missing source-to-runtime link for follow-up.",
+  "source_backed_findings": [
+    "The active operator contract states that HSConfig must produce a load-safe initial HearthRanger CustomConfig package for every valid deck input, with technical_status=VALID_PACKAGE, runtime_load_safe=true, and runtime_apply_mode=load_safe_apply defining the normal apply promise.",
+    "The operator contract deliberately separates minimal load-safe runtime apply from richer package usefulness: GlobalValues.json and Mulligan.json are the required runtime files, while per-card CardID files, Combo.json, and identity-gated option rows improve usefulness but their absence alone must not block a package that remains technically valid.",
+    "The operator contract treats SOURCE_BACKED_STRONG as source confidence, not as the runtime-write gate, and explicitly says READY_TO_APPLY_WITH_WARNINGS still means the package is usable.",
+    "The apply gate implementation allows a package when operator_summary.json reports technical_status=VALID_PACKAGE and the required runtime structure is present; it records semantic_status and semantic_blocker_count as reasons, but does not use them as blockers.",
+    "The apply gate still hard-blocks true load-safety defects: missing operator summary, missing input manifest, missing CustomConfig or deck runtime directory, missing GlobalValues.json or Mulligan.json, normal-path Presume.json or Concede.json, nested runtime files, undeclared runtime files, stale summary entries, invalid runtime JSON, and technical_status values other than VALID_PACKAGE.",
+    "The no-block failure-mode summary groups technical_hard_block separately from source_depth_warning, warning_only_mechanic, future_mechanic_drift, guide_strength_gap, combo_uncertainty, and runtime_evidence_only_tuning; when runtime_apply_allowed is true and mode is load_safe_apply, non-technical categories produce load_safe_apply_allowed_with_warnings rather than a blocker.",
+    "The source claim lifecycle marks quarantined, report-only, unsupported, unknown, and unknown-future-mechanic claims as non-runtime candidates; runtime_claims_for_surface skips quarantined and report-only rows instead of blocking the package.",
+    "The source contract policy matrix is diagnostic-only at the operator gate. It classifies archetype, tech_slot, and replacement_option as report_only; globalvalue_numeric_tuning as runtime_evidence_required; discover_choice and choose_one_choice as conditional CardID claims that require exact option identity.",
+    "The surface gate requires explicit runtime-lowerable claim kinds per surface. Mulligan rows require mulligan_keep or mulligan_discard, GlobalValues runtime evidence claims are rejected with requires_runtime_evidence, and CardID claims are rejected when their claim kind or runtime confidence is not lowerable.",
+    "The mechanic registry defaults warning-only or unknown mechanics to report-only lowering policies with no default runtime block, and mechanic visibility summaries are explicitly non_blocking.",
+    "The operator documentation names choose_one as identity_gated_direct and generic board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool as warning_only; unresolved or warning-only mechanics must be visible in warning_boundaries without blocking load_safe_apply.",
+    "The source claim gap report records card-level first_missing_link, source_depth_lane, recommended next claim kind, priority, and next source action; its first_missing_chain provides a single first follow-up item when source-to-runtime coverage is incomplete.",
+    "The source-to-runtime explainability report is diagnostic_only, always has apply_blocking=false, and projects claim and card rows into emitted_runtime_files, not_emitted_runtime_files, first_missing_link, why_not_emitted, and next_source_action.",
+    "Regression tests cover the core no-block contract: valid Wild decks produce VALID_PACKAGE and load_safe_apply; unknown semantic qualifiers remain warning-only; quarantined conflicting claims do not block; future/report-only/runtime-evidence claims do not block; warning-bearing future-mechanic packages stay load-safe.",
+    "Regression tests also protect the no-second-gate boundary by asserting that source_contract_audit, source_to_runtime_explainability, and contract_spine_rows are not consumed by apply_gate, runtime_apply, or apply command paths."
+  ],
+  "repo_implications": [
+    "Keep the architecture as a two-lane model: technical load safety decides normal runtime apply, while source quality and semantic completeness decide diagnostic richness and next-source work.",
+    "Do not add SOURCE_BACKED_STRONG, guide-depth closure, source-to-runtime explainability, mechanic completeness, option-identity closure, or config_usefulness as a second apply gate.",
+    "Continue emitting the minimal load-safe package for a valid deck even when only GlobalValues.json and Mulligan.json are authoritative enough for runtime apply; richer CardID and Combo output should be produced when evidence supports it, not required as a universal write precondition.",
+    "Keep warning-only mechanics report-visible through mechanic_visibility_summary, mechanic_drift_summary, warning_boundaries, and no_block_failure_mode_summary rather than mapping them to speculative VisionAI rows.",
+    "Keep unresolved Discover, Choose One, generated entity, hero-power transform, and similar identity-dependent behavior strict: exact option or transformed identity may lower, unresolved identity stays suppressed or report-only.",
+    "Keep globalvalue_numeric_tuning separate from guide-backed posture: numeric tuning remains visible but blocked until runtime evidence, while the package itself can still be load-safe.",
+    "Use source_claim_gap_report and source_to_runtime_explainability as the operator's first missing source-to-runtime link surfaces, but preserve their diagnostic-only status.",
+    "Keep hard blocks narrowly technical: unsupported filenames or blocks, invalid JSON, missing required runtime files, stale or forged package summaries, undeclared runtime files, nested runtime files, and normal-path legacy/diagnostic surfaces.",
+    "Preserve the existing regression pattern where every new warning or suppression category gets one test showing it remains visible and non-blocking, plus one test showing unsafe runtime shape still blocks.",
+    "Treat future mechanic support as a registry-and-test extension only after an exact documented VisionAI surface and deterministic lowering rule exist."
+  ],
+  "correctness_risks": [
+    "If a warning-only mechanic is accidentally given a default runtime block, HSConfig can create a false runtime claim and may make the bot prefer an action the source contract cannot justify.",
+    "If unresolved option identity is guessed, Discover, Choose One, generated entity, Titan-like ability choice, or hero-power-transform behavior can be lowered to the wrong CardID or option row.",
+    "If report-only or low-confidence source claims are allowed into runtime_claims_for_surface, thin guide wording could silently become runtime authority.",
+    "If SOURCE_BACKED_STRONG or config_usefulness becomes an apply gate, technically valid packages with safe baseline output could be blocked for source-depth reasons that the current contract says are warnings.",
+    "If technical hard blocks are weakened to preserve no-block autonomy, malformed JSON, unsupported VisionAI blocks, missing required runtime files, stale summaries, or non-normal surfaces could be written to runtime.",
+    "If first_missing_link is computed from the wrong lane order, the operator may chase a lower-value source gap before the first missing runtime-safety or runtime-lowering explanation.",
+    "If start-of-game or deckbuilding effects are conflated with opening-hand mulligan intent, HSConfig can reintroduce the class of error where an effect enabler is held in Mulligan.json without explicit hand-required evidence.",
+    "If diagnostic reports start feeding apply paths directly, source-contract reporting could become a hidden second authority instead of an explanation layer."
+  ],
+  "slimness_risks": [
+    "Adding a separate gate for every diagnostic report would bloat the operator model and contradict the current single apply authority.",
+    "Encoding every unsupported or future mechanic as executable behavior would turn the registry into speculative game-AI logic rather than a lean documented-surface mapper.",
+    "Duplicating warning-to-blocker classification across apply_gate, operator_summary, source_contract_audit, source_to_runtime_explainability, and mechanic_support would increase drift risk.",
+    "Making source-to-runtime explainability repair or mutate package output would overload a diagnostic report and blur ownership with the builders and routers.",
+    "Trying to solve all thin-source cases by adding generated fallback claims would expand the source model while reducing auditability.",
+    "Expanding normal output to Presume.json, Concede.json, or other optional surfaces without a separate design would widen HSConfig beyond its pre-run load-safe package scope.",
+    "Adding live-client, replay, winrate, or post-game tuning proof to HSConfig would duplicate HSTuner responsibilities and make any-deck pre-run generation heavier than necessary."
+  ],
+  "autonomy_risks": [
+    "The system remains autonomous for producing a valid load-safe package, but warning-only mechanics, report-only claims, unresolved option identity, and runtime-evidence-only numeric tuning still limit how rich that package can be.",
+    "A deck can be load-safe but strategically thin when guide claims, exact mulligan evidence, exact combo sequences, or CardID-lowerable behavior are absent.",
+    "Autonomy depends on the builder continuing to emit safe baseline runtime files even when source evidence is incomplete; if baseline emission regresses, source warnings could become practical blockers.",
+    "Unknown future cards or mechanics can be made visible, but they cannot be autonomously converted into correct runtime behavior until a documented surface and deterministic lowering rule are added.",
+    "The current proof supports the no-block contract through local docs, implementation gates, and representative tests, but the claim that every possible valid current or future Hearthstone deck is covered is a contract-level and matrix-backed claim, not an exhaustive live-client proof. [uncertain]",
+    "If operators read READY_TO_APPLY_WITH_WARNINGS as gameplay optimization proof, the workflow can create false confidence even though it only proves load-safe package generation."
+  ],
+  "recommended_design_position": "Keep HSConfig slim by preserving the current two-lane no-block contract. Lane one is technical load safety: package structure, required runtime files, supported filenames and blocks, valid JSON, input manifest, output-summary consistency, and absence of normal-path legacy surfaces decide whether hsconfig apply may write. Lane two is source and semantic richness: thin source evidence, report-only claims, warning-only mechanics, unresolved option identity, runtime-evidence-only numeric tuning, combo uncertainty, and first missing source-to-runtime links stay visible in reports and suppress only unsafe rows. Do not create a second apply gate from diagnostics. The next improvement should be to keep first_missing_link reporting precise and to extend mechanic or option lowering only when exact source identity and documented VisionAI surface authority are present.",
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:3-17 - active contract for valid-deck load-safe apply, SOURCE_BACKED_STRONG as source confidence, minimal required runtime files, and diagnostic reports not granting apply permission.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:27-35 - Layer 2 and Layer 3 gaps plus config_usefulness are warning-only and must not change load_safe_apply.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:38-66 - hard technical blockers versus non-blocking source and mechanic warnings.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:77-99 - mechanic drift, partial support, warning-only mechanics, identity-gated choose_one, and warning_boundaries are operator-facing, not apply gates.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:117-127 - proof-matrix expectations for VALID_PACKAGE, runtime_load_safe, load_safe_apply, GlobalValues.json, Mulligan.json, and non-blocking supplemental visibility decks.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py:13-100 - apply gate reads operator_summary.json, blocks structural/package defects, and allows VALID_PACKAGE as load_safe_apply regardless of semantic blocker count.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py:103-203 - required package files, input manifest, legacy surfaces, and nested runtime files are hard-blocked.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/validate_package.py:25-90 - validation requires CustomConfig, supported surfaces, valid object JSON, and optionally complete package files GlobalValues.json and Mulligan.json.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/no_block_failure_modes.py:36-112 - failure summary separates technical_hard_block from non-blocking source, mechanic, combo, and runtime-evidence categories.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_lifecycle.py:63-124 - quarantined and report-only lifecycle rows are skipped for runtime claims instead of blocking the package.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py:148-242 - claim runtime lowering and per-surface gates reject non-lowerable confidence, runtime-evidence-only numeric tuning, wrong-surface claim kinds, and start-of-game non-hand mulligan keeps.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py:15-114 - source claim policy lanes define report_only, runtime_lowerable, suppressed_or_conditional, and runtime_evidence_required semantics with diagnostic-only operator impact.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py:460-494 - identity-gated mechanics, no-default-runtime-block mechanics, static-claim-disabled mechanics, and unknown mechanic report-only policy.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py:535-609 - warning-only and unknown mechanics receive report-only lowering policies with no runtime block.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py:710-756 - mechanic visibility summaries are non_blocking and expose first_warning_boundary and warning_boundaries.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py:74-185 - source claim gap report records first_missing_link, source_depth_lane, next claim kind, next action, and first_missing_chain.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py:22-58 - source-to-runtime explainability is diagnostic_only, apply_blocking=false, and returns claim/card rows.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py:61-103 - claim rows include emitted files, not-emitted files, first_missing_link, why_not_emitted, apply_blocked=false, and next source action.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py:18-71 - config usefulness reports first usefulness gaps but declares runtime_permission_impact=none and blocking=false.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py:72-147 - valid but not guide-strong packages and minimal load-safe packages without CardID files remain load_safe_apply.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py:209-243 - source gap readiness marked blocked does not block load_safe_apply when the package is technically valid.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py:276-427 - invalid package, normal-path optional surfaces, nested runtime files, and undeclared runtime files are hard blocked.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_second_gate_contract.py:11-43 - contract spine, source contract audit, and source-to-runtime explainability are not consumed by apply/runtime write paths.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py:187-278 - valid proof-matrix decks must produce VALID_PACKAGE, runtime_load_safe, load_safe_apply, non-blocking summaries, GlobalValues.json, Mulligan.json, and no normal-path Presume.json or Concede.json.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py:326-385 - unknown semantic qualifiers stay warning-only and start-of-game hero-power effects preserve behavior without mulligan keep.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py:387-521 - quarantined conflicts, future/report-only claims, unsupported claim kinds, and runtime-evidence-only tuning stay visible without blocking load-safe apply.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_option_identity_resolver.py:4-116 - static and curated linked-entity identity resolution is explicit and upstream links win over duplicate supplements.",
+    "C:/Users/darbo/Documents/HSConfig/README.md:3-13 - repo scope is pre-run HSConfig only, runtime writes require explicit claim kinds, and weak or wrong-surface claims remain visible instead of blocking the package."
+  ],
+  "uncertain": [
+    "autonomy_risks"
+  ]
+}

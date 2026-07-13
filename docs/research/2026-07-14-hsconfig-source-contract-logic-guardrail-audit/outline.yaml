@@ -1,0 +1,42 @@
+topic: 2026-07-14-hsconfig-source-contract-logic-guardrail-audit
+description: >
+  Source-backed guardrail audit for HSConfig source/contract logic after the
+  skill-sync guardrail wave. The audit checks whether the architecture is
+  correct, slim, autonomous, and technically defensible without adding a second
+  operator gate.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-14-hsconfig-source-contract-logic-guardrail-audit\results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: Current HSConfig Contract Spine Guardrails
+    category: repo_audit
+    description: >
+      Audit the current local HSConfig source-to-contract spine, including
+      claim kinds, source contract matrix, source contract audit,
+      source-to-runtime explainability, contract-spine sentinel, the new
+      check_contract_guardrails runner, and the single operator-summary apply
+      authority.
+  - name: HearthRanger VisionAI Runtime Surface Boundary
+    category: external_surface_audit
+    description: >
+      Verify the public/documented HearthRanger VisionAI customization
+      surfaces relevant to HSConfig: Mulligan.json, GlobalValues.json,
+      per-card CardID JSON, Combo.json, and why Presume/Concede or other
+      surfaces should stay outside the normal HSConfig path unless explicitly
+      designed later.
+  - name: Hearthstone Semantic False-Lowering Risks
+    category: hearthstone_semantics
+    description: >
+      Review the semantic classes that most often cause wrong runtime lowering:
+      start-of-game effects versus mulligan keeps, hero-power transforms,
+      deckbuilding effects, targeting, combo sequences, discover/choose-one,
+      generated entities, secrets, locations, weapons, and modern Wild
+      mechanics.
+  - name: Lean Any-Deck Autonomy And No-Block Contract
+    category: workflow_architecture
+    description: >
+      Evaluate whether HSConfig remains slim and autonomous for any valid deck:
+      valid load-safe packages must not be blocked by warning-only mechanics,
+      thin source evidence, unresolved option identity, or report-only claims,
+      while still making the first missing source-to-runtime link visible.

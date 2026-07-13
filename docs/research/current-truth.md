@@ -21,6 +21,8 @@ Older research packages can explain why a decision happened, but they do not ove
 
 ## Current Active Evidence
 
+- `2026-07-14-hsconfig-source-contract-logic-guardrail-audit`: Contract-spine Guardrail v2 evidence. Confirms the current two-lane model: technical load safety decides normal apply, while source-contract, source-to-runtime, and mechanic warnings stay diagnostic and non-blocking.
+
 | Package | Role | Current implication |
 | --- | --- | --- |
 | `docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/` | Source-contract spine evidence | Keep source truth separate from runtime authority: `claim_kind` routes through policy, surface gates, builder/router decisions, and diagnostics; operator_summary.json remains the only normal apply authority. |

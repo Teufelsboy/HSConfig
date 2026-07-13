@@ -1,0 +1,67 @@
+{
+  "scope": "Audit the public and repo-enforced HearthRanger VisionAI customization surfaces that HSConfig should treat as normal source-backed runtime targets, specifically deck-local Mulligan.json, deck-local GlobalValues.json, per-card CARDID.json, Combo.json, and the exclusion of Concede.json or Presume.json from the default HSConfig path unless a separate later design adds first-class support.",
+  "source_backed_findings": [
+    "HearthRanger's official VisionAI help set and the repo's verified docs cache enumerate documented pages for JSON config grammar, card behavior, mulligan, combo, global values, concede, and presume, so all of those filenames are public at the product-documentation level.",
+    "The official card behavior page instructs users to map a deck in CustomConfig/deck_config.ini and place per-card CARDID.json files in the deck config directory; the current repo models that documented surface as card_behavior and keeps the runtime file shape per-card rather than aggregate.",
+    "The official mulligan page documents Mulligan.json with GameCardId set to Mulligan and a Mulligan rule block, which makes mulligan a dedicated deck-level runtime surface rather than a side effect of card-behavior rows.",
+    "The official combo page documents Combo.json with GameCardId set to Combo, a ComboList rule block, and concrete card-sequence syntax using >> for same-turn combos and >-> for cross-turn combos.",
+    "The official global values page documents GlobalValues.json with GameCardId set to GlobalValues and explicitly defines FirstTurnValueWeight and SecondTurnValueWeight as part of the board-value formula, so global tuning is a separate deck-level surface from per-card behavior.",
+    "The current repo syntax model sets supported_runtime_surfaces to card_behavior, mulligan, combo, and global_values, while explicitly classifying concede and presume as registry-known unsupported surfaces in the current runtime package contract.",
+    "The strict preview validator returns SYNTAX_BLOCKED for Concede.json and Presume.json with the exact reason that each is a registry-known surface not supported by this runtime package, and the runtime writer only accepts Mulligan.json, Combo.json, GlobalValues.json, or single-file per-card CARDID.json targets.",
+    "The Step 2 schema is read-only and explicitly forbids writing Card JSON, Mulligan, Combo, Concede, or GlobalValues patches during analysis, which preserves a clean boundary between pre-run source-backed package generation and later runtime-evidence review."
+  ],
+  "repo_implications": [
+    "HSConfig should keep its normal lowering path limited to four runtime targets: per-card CARDID.json, Mulligan.json, Combo.json, and full deck-local GlobalValues.json.",
+    "Per-card effects, choice policy, targeting policy, hero-power usage, and other card-specific play heuristics should lower into CARDID.json rows only; HSConfig should not emit aggregate CardBehavior.json into runtime packages.",
+    "Mulligan guidance should lower only into Mulligan.json, and non-mulligan claims should not be inferred into keep or discard behavior just because they mention opening hands, tempo, or start-of-game effects.",
+    "Combo output should be emitted only when HSConfig can express concrete card-id sequences and matching value sequences that satisfy the documented Combo.json row shape.",
+    "GlobalValues should remain a governed full-file deck-local baseline or overlay surface, not a freeform place for sparse source-text tweaks without explicit per-key reasoning.",
+    "Concede.json and Presume.json should stay outside the normal operator_summary and default apply path until a separate design adds first-class schema support, provenance rules, validator support, runtime-writer support, and explicit operator authority for those surfaces."
+  ],
+  "correctness_risks": [
+    "Lowering a non-mulligan gameplay claim into Mulligan.json can create technically wrong keep or discard rules because the official mulligan surface is separate from card-behavior logic.",
+    "Treating broad deck advice or symbolic sequencing as Combo.json without concrete card-id chains and matching value counts can produce syntactically invalid or semantically misleading combo rules.",
+    "Using sparse guide text to alter GlobalValues.json can over-apply broad board-value tuning across the whole deck without the runtime evidence and baseline review that the repo already treats as high risk.",
+    "Writing Concede.json or Presume.json through the normal HSConfig path would contradict the current validator and runtime-package contract, causing blocked previews or a false claim of supported runtime authority.",
+    "Allowing aggregate CardBehavior.json in runtime packages would violate the current runtime-writer contract and blur the distinction between report-only summaries and actual live runtime files.",
+    "Collapsing the Step 1 and Step 2 boundaries would make it unclear whether a surface came from source-backed pre-run authoring or from post-run tuning evidence, which weakens traceability and operator trust."
+  ],
+  "slimness_risks": [
+    "Adding Concede or Presume to the default HSConfig path would expand schemas, validators, runtime-writer gates, and operator documentation for surfaces that the current contract intentionally excludes.",
+    "Supporting aggregate CardBehavior.json alongside per-card CARDID.json would duplicate one documented concept in two runtime forms and bloat the compile and apply path.",
+    "Emitting Combo.json by default even when no concrete documented sequence exists would create noisy low-value files and extra suppression logic instead of a clean omit path.",
+    "Turning GlobalValues into an open-ended tuning sink would grow the contract surface far beyond the small documented pre-run path that can be defended source by source.",
+    "Introducing multiple default apply authorities beyond operator_summary would complicate the workflow and make the normal HSConfig path harder to audit."
+  ],
+  "autonomy_risks": [
+    "If HSConfig requires manual case-by-case decisions for whether a claim belongs in CARDID.json, Mulligan.json, Combo.json, or GlobalValues.json, the any-deck no-block path becomes fragile.",
+    "If the default path tries to auto-author unsupported Concede or Presume surfaces, autonomy becomes fake because the current repo cannot validate or apply those files through its supported runtime package.",
+    "If HSConfig refuses to emit ordinary per-card or mulligan surfaces until runtime evidence exists, it becomes over-conservative and stops being useful as a pre-run source-backed generator.",
+    "If GlobalValues tuning is allowed from thin source text alone, the system may become unsafe enough that every deck requires manual review, which defeats autonomous scaling.",
+    "If symbolic combo ideas are not deterministically suppressed when they cannot lower to the documented syntax, the workflow will oscillate between noisy output and manual cleanup."
+  ],
+  "recommended_design_position": "HSConfig should keep the normal source-backed runtime boundary narrow and explicit: per-card CARDID.json for card-specific behavior, Mulligan.json for opening-hand rules, Combo.json only for concrete documented card-id sequences, and full deck-local GlobalValues.json for governed board-value tuning. Concede.json, Presume.json, and aggregate CardBehavior.json should remain outside the normal HSConfig path because, even though official HearthRanger documentation exists for Concede and Presume, the current repo contract intentionally treats them as registry-known but unsupported runtime-package surfaces. They should enter only through a separate later design that adds first-class syntax coverage, provenance, patchability, runtime-writer support, and explicit operator authority.",
+  "evidence_references": [
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/card_behavior.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/mulligan.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/combo.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/global_values.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/concede.html",
+    "C:/Users/darbo/Documents/HS/fixtures/visionai/cache/presume.html",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_docs.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/visionai_model.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/runtime_writer.py",
+    "C:/Users/darbo/Documents/HS/src/hsranger_core/schemas/step2_context.schema.json",
+    "C:/Users/darbo/Documents/HS/tests/test_visionai_syntax.py",
+    "C:/Users/darbo/Documents/HS/docs/superpowers/specs/2026-06-08-step1-deep-gap-improvement-audit-v3-design.md"
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,77 @@
+{
+  "scope": "Audit which Hearthstone semantic classes most often create false lowering from source contracts into HSConfig runtime surfaces, especially mistaken writes to Mulligan.json, per-card CardID JSON, GlobalValues.json, and Combo.json.",
+  "source_backed_findings": [
+    "Start of Game effects resolve before the mulligan, so start-of-game text is not evidence that a card must be kept in the opening hand; HSConfig already encodes this split in its README, source-document surface gates, mulligan planner, and Darkbishop Benedictus regressions.",
+    "Deckbuilding effects trigger during deck creation rather than during mulligan or normal card play. Highlander, odd-even deck checks, and deck-size modifiers therefore describe deck-state legality or pre-game conditions, not direct mulligan intent.",
+    "In-deck effects are exceptional rules, and quest-style guaranteed starters are a special mulligan rule rather than a generic start-of-game or deckbuilding rule. They need dedicated handling instead of broad lowering from generic text families.",
+    "Discover and Choose One are explicit choice mechanics. Runtime-lowerable behavior depends on resolving the chosen option identity, which matches HSConfig's dedicated discover_choice and choose_one_choice handling instead of generic mechanic lowering.",
+    "Hero-power transforms are a distinct runtime concern. HSConfig already routes hero_power_transform to BeforeUseHeroPowerBonus and keeps it off Mulligan and Combo surfaces unless separate opening-hand evidence exists.",
+    "Generated entities are not all equivalent. Deterministic chosen results, deterministic entourage links, and random pools must stay separate; HSConfig's static semantics already distinguishes generated_entity from generated_entity_random_pool for this reason.",
+    "Secrets, Locations, and Weapons all carry temporal or board-state semantics that are richer than simple static tags: Secrets are hidden delayed triggers, Locations are repeated free activations on later turns, and Weapons create equip plus repeated attack-turn behavior.",
+    "Combo sequences are ordered multi-card claims in HSConfig and should lower only from explicit combo_sequence evidence, not from generic archetype prose, card-role descriptions, or vague 'finisher' language.",
+    "Modern Wild mechanics increase false-lowering pressure because they mix deckbuilding, hero-power replacement, generated rewards, or multi-ability activations. Tourist, Titan, Imbue, Forge, and Excavate are current examples of mechanics that should first enrich the contract and only later gain dedicated lowering if a stable surface exists."
+  ],
+  "repo_implications": [
+    "Keep claim kind as the first runtime authority boundary. Explicit mulligan_keep or mulligan_discard should remain the only direct route into Mulligan.json.",
+    "Preserve the current start-of-game suppression rule: effect-only start_of_game or hero_power_transform cards may enrich per-card behavior and reports without becoming opening-hand keeps by inference.",
+    "Continue routing option mechanics through identity resolution. If a Discover or Choose One option cannot be resolved to an option card id, suppress runtime lowering and keep the claim report-visible.",
+    "Treat deckbuilding modifiers, highlander rules, odd-even checks, deck-size modifiers, and start-in-deck requirements as contract evidence first. Only lower them when a runtime surface and explicit claim kind are both well-defined.",
+    "Prefer per-card CardID behavior rows for targeting, hero-power use, discover-choice resolution, weapon posture, and other card-local timing semantics instead of trying to encode them in GlobalValues.json.",
+    "Keep random generation, secret timing, location activation, and unsupported modern mechanics in report-only or suppressed lanes until a deterministic runtime mapping and regression fixture exist.",
+    "Expand semantic micro-fixtures and source fixtures around quest-style guaranteed starters, generated random pools, Titan activations, Tourist deckbuilding, and Imbue hero-power replacement so new mechanics are tested as boundaries rather than patched ad hoc."
+  ],
+  "correctness_risks": [
+    "A start-of-game enabler can be falsely lowered into Mulligan.json if generic 'keep' prose or card importance is treated as opening-hand intent.",
+    "Deckbuilding modifiers can be misclassified as live runtime behavior, causing odd-even, Highlander, or deck-size text to leak into the wrong surface.",
+    "Targeting claims can land on the wrong behavior block if battlecry targeting, hero-power usage, attack posture, and generic spell targeting are collapsed together.",
+    "A Discover or Choose One claim can become technically wrong if HSConfig emits a generic row without resolved option identity or lets a generic discover fallback override a specific resolved option.",
+    "Generated-card or generated-entity text can become false deterministic runtime logic if random pools are treated like fixed entourage outputs.",
+    "Combo prose can become invalid Combo.json output if ordered cards, timing, or minimum segment requirements are inferred from narrative descriptions instead of explicit combo_sequence evidence.",
+    "Secret timing, location activations, and weapon attack sequencing can be over-lowered into broad mechanic rows that miss hidden triggers, charge counts, activation cadence, or attack-turn posture.",
+    "Modern Wild mechanics such as Titan, Imbue, Tourist, Forge, and Excavate can be mislowered when text heuristics assume they behave like older single-surface keywords instead of multi-state mechanics."
+  ],
+  "slimness_risks": [
+    "Adding a new runtime writer or bespoke lowering lane for every new keyword would bloat HSConfig faster than the runtime surfaces can justify.",
+    "Growing a giant keyword-to-surface allowlist without identity or timing checks would duplicate logic that is already cleaner at the claim-kind and suppression layers.",
+    "Encoding the same semantic idea across Mulligan, GlobalValues, CardID, and Combo surfaces would create overlapping authority and harder-to-debug regressions.",
+    "Using card-specific exceptions for each modern Wild outlier would make the system less maintainable than extending semantic families and surface tests.",
+    "Trying to convert unresolved or low-confidence semantics into runtime rows to look 'complete' would expand code and still produce worse outputs than a thin, explicit suppression report.",
+    "Pulling warning-only mechanics into the apply-critical path would create more gate logic without improving the load-safe package contract."
+  ],
+  "autonomy_risks": [
+    "If unsupported semantics are treated as blockers, valid decks with secrets, locations, random generation, or newer mechanics could fail to produce a load-safe package even when the unsupported part is non-critical.",
+    "If every modern keyword requires manual research before any package can be produced, the any-deck workflow stops being autonomous.",
+    "If unresolved option identity or random-pool ambiguity is treated as fatal instead of report-only, autonomy degrades on discover-heavy and generation-heavy decks.",
+    "If surface gates are loosened to avoid suppression, HSConfig may appear more autonomous while actually writing more false runtime logic.",
+    "If surface gates are tightened too aggressively, whole card classes can become unlowerable even when explicit guide-backed mulligan, combo, or targeting evidence exists.",
+    "If unsupported semantics spill into apply authority instead of staying visible in operator reports, the system becomes over-conservative and blocks decks for evidence gaps that should remain advisory."
+  ],
+  "recommended_design_position": "Keep HSConfig conservative, surface-specific, and non-blocking: claim kind plus resolved option identity should control runtime lowering; start-of-game, deckbuilding, generated-pool, and modern-keyword semantics should enrich the source contract first; and unsupported or random-state mechanics should remain report-visible but apply-safe until a dedicated runtime mapping with focused regression tests is proven.",
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_static_semantics.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py",
+    "https://hearthstone.wiki.gg/wiki/Start_of_Game",
+    "https://hearthstone.wiki.gg/wiki/Deckbuilding_effect",
+    "https://hearthstone.wiki.gg/wiki/Highlander",
+    "https://hearthstone.wiki.gg/wiki/In-deck_effect",
+    "https://hearthstone.wiki.gg/wiki/Discover",
+    "https://hearthstone.wiki.gg/wiki/Choose_One",
+    "https://hearthstone.wiki.gg/wiki/Generate",
+    "https://hearthstone.wiki.gg/wiki/Secret",
+    "https://hearthstone.wiki.gg/wiki/Location",
+    "https://hearthstone.wiki.gg/wiki/Weapon",
+    "https://hearthstone.wiki.gg/wiki/Titan",
+    "https://hearthstone.wiki.gg/wiki/Tourist",
+    "https://hearthstone.wiki.gg/wiki/Imbue",
+    "https://playhearthstone.com/en-us/blog/23817873/",
+    "https://playhearthstone.com/en-gb/blog/23831407/",
+    "https://playhearthstone.com/en-us/blog/23097372?linkId=100000007915863"
+  ],
+  "uncertain": []
+}

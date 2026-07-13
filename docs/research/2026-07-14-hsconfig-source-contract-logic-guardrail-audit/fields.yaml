@@ -1,0 +1,39 @@
+field_categories:
+  - category: audit
+    fields:
+      - name: scope
+        type: string
+        required: true
+        description: What this research item evaluates.
+      - name: source_backed_findings
+        type: array
+        required: true
+        description: Claims backed by official/public docs or local repo evidence.
+      - name: repo_implications
+        type: array
+        required: true
+        description: Concrete consequences for HSConfig architecture and workflow.
+      - name: correctness_risks
+        type: array
+        required: true
+        description: Risks that could make source/contract logic technically wrong.
+      - name: slimness_risks
+        type: array
+        required: true
+        description: Risks that could bloat or overcomplicate the skill.
+      - name: autonomy_risks
+        type: array
+        required: true
+        description: Risks that could block or over-conservatize any-deck operation.
+      - name: recommended_design_position
+        type: string
+        required: true
+        description: Recommended architecture stance after evaluating the item.
+      - name: evidence_references
+        type: array
+        required: true
+        description: URLs, docs, or local file paths used as evidence.
+      - name: uncertain
+        type: array
+        required: true
+        description: Field names or claims that remain uncertain.
