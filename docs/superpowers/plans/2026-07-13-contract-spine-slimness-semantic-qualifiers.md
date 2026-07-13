@@ -26,57 +26,57 @@
 
 Create:
 
-- `src/hsconfig/preconfig_context.py`  
+- `src/hsconfig/preconfig_context.py`
   Single source of truth for deck/card/source/context derivation currently duplicated between `source_workflow.py` and `package_builder.py`.
 
-- `src/hsconfig/source_semantic_qualifiers.py`  
+- `src/hsconfig/source_semantic_qualifiers.py`
   Normalizes typed semantic qualifiers carried by existing claims. Does not define new top-level claim kinds.
 
-- `src/hsconfig/source_claim_conflicts.py`  
+- `src/hsconfig/source_claim_conflicts.py`
   Builds broader diagnostic conflicts for mulligan, targeting, combo, option choice, and role-vs-bad-pattern contradictions.
 
-- `tests/test_preconfig_context_parity.py`  
+- `tests/test_preconfig_context_parity.py`
   Proves `research-deck` and `prepare` use the shared context and produce matching source facts.
 
-- `tests/test_semantic_qualifiers.py`  
+- `tests/test_semantic_qualifiers.py`
   Proves qualifiers are normalized, preserved, and used without widening runtime authority.
 
-- `tests/test_source_claim_conflicts.py`  
+- `tests/test_source_claim_conflicts.py`
   Proves broader conflict families are visible but non-blocking.
 
 Modify:
 
-- `src/hsconfig/commands/source_workflow.py`  
+- `src/hsconfig/commands/source_workflow.py`
   Replace `_build_research_context()` with import/delegation to `preconfig_context.build_preconfig_context()`.
 
-- `src/hsconfig/package_builder.py`  
+- `src/hsconfig/package_builder.py`
   Remove local `build_preconfig_context()` implementation; import the shared builder.
 
-- `src/hsconfig/source_document_builder.py`  
+- `src/hsconfig/source_document_builder.py`
   Attach semantic qualifiers during source claim normalization and use `source_claim_conflicts.build_claim_conflict_report()`.
 
-- `src/hsconfig/guide_claim_builder.py`  
+- `src/hsconfig/guide_claim_builder.py`
   Attach safe static semantic qualifiers to static claims.
 
-- `src/hsconfig/source_document_model.py`  
+- `src/hsconfig/source_document_model.py`
   Use semantic qualifiers in mulligan suppression without changing the existing surface-gate contract.
 
-- `src/hsconfig/source_evidence_verifier.py`  
+- `src/hsconfig/source_evidence_verifier.py`
   Treat semantic qualifier fields as actionable specificity and warn on suspicious exact keeps even if role enrichment is incomplete.
 
-- `src/hsconfig/source_contract_matrix.py`  
+- `src/hsconfig/source_contract_matrix.py`
   Add required/optional qualifier metadata to existing policy rows; do not add new claim kinds unless an existing test proves impossible otherwise.
 
-- `src/hsconfig/surface_intent.py`  
+- `src/hsconfig/surface_intent.py`
   Clarify minimum required runtime surfaces vs rich optional per-card surfaces in the report payload.
 
-- `src/hsconfig/report_ownership.py` and `src/hsconfig/output_ownership_manifest.py`  
+- `src/hsconfig/report_ownership.py` and `src/hsconfig/output_ownership_manifest.py`
   Keep artifact ownership coherent if any new diagnostic report fields/files are added.
 
-- `docs/operator/guide-research-policy.md`  
+- `docs/operator/guide-research-policy.md`
   Document source claim qualifiers, no-block semantics, and non-apply diagnostic boundaries.
 
-- `.agents/skills/hsconfig/SKILL.md` and `.agents/skills/hsconfig/references/workflow.md`  
+- `.agents/skills/hsconfig/SKILL.md` and `.agents/skills/hsconfig/references/workflow.md`
   Keep the skill aligned with the active operator contract.
 
 ---
