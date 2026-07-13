@@ -517,6 +517,89 @@ def test_source_document_builder_reports_conflicting_mulligan_claims():
     assert bundle["claim_conflict_report"]["conflicts"][0]["card_id"] == "CARD_A"
 
 
+def test_source_document_builder_reports_broader_diagnostic_conflict_families():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [
+            {"card_id": "TARGET", "count": 2},
+            {"card_id": "COMBO_A", "count": 2},
+            {"card_id": "COMBO_B", "count": 2},
+            {"card_id": "DISCOVER", "count": 2},
+        ],
+    }
+    docs = [
+        {
+            "source_url": "https://example.invalid/targeting",
+            "source_title": "Targeting Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "claims": [
+                {
+                    "claim_kind": "targeting_rule",
+                    "cards": ["TARGET"],
+                    "target_scope": "enemy_hero",
+                    "evidence_text_short": "Target the enemy hero.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "targeting_rule",
+                    "cards": ["TARGET"],
+                    "target_scope": "enemy_minion",
+                    "evidence_text_short": "Target an enemy minion.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "combo_sequence",
+                    "cards": ["COMBO_A", "COMBO_B"],
+                    "sequence": ["COMBO_A", "COMBO_B"],
+                    "timing_kind": "same_turn",
+                    "evidence_text_short": "Play the combo in the same turn.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "combo_sequence",
+                    "cards": ["COMBO_A", "COMBO_B"],
+                    "sequence": ["COMBO_A", "COMBO_B"],
+                    "timing_kind": "cross_turn",
+                    "evidence_text_short": "Set up the combo across turns.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "discover_choice",
+                    "cards": ["DISCOVER"],
+                    "option_card_id": "OPTION_A",
+                    "evidence_text_short": "Discover Option A.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "discover_choice",
+                    "cards": ["DISCOVER"],
+                    "option_card_id": "OPTION_B",
+                    "evidence_text_short": "Discover Option B.",
+                    "source_confidence": "high",
+                },
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=docs,
+    )
+
+    conflicts = bundle["claim_conflict_report"]["conflicts"]
+    assert {conflict["conflict_family"] for conflict in conflicts} == {
+        "targeting",
+        "combo_timing",
+        "option_choice",
+    }
+    assert all(
+        conflict["resolution"] == "downgrade_to_report_visible_conflict"
+        for conflict in conflicts
+    )
+
+
 def test_source_document_builder_preserves_low_claim_confidence_from_current_high_source():
     deck_identity = {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A", "count": 2}]}
 

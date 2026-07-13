@@ -1,3 +1,8 @@
+import json
+
+import pytest
+
+from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_mulligan import compile_mulligan
@@ -7,6 +12,7 @@ from hsconfig.guide_claim_builder import build_guide_claim_bundle
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.operator_summary import build_operator_summary
+from hsconfig.source_document_builder import build_source_document_bundle
 
 
 def test_operator_summary_exposes_source_quality_without_apply_block():
@@ -51,6 +57,120 @@ def test_operator_summary_exposes_source_quality_without_apply_block():
         "non_blocking": True,
     }
     assert operator["runtime_apply_contract"]["apply_authority"] == "reports/operator_summary.json"
+
+
+@pytest.mark.parametrize(
+    ("family", "claims"),
+    [
+        (
+            "targeting",
+            [
+                {
+                    "claim_kind": "targeting_rule",
+                    "cards": ["CARD_A"],
+                    "target_scope": "enemy_hero",
+                    "evidence_text_short": "Target the enemy hero.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "targeting_rule",
+                    "cards": ["CARD_A"],
+                    "target_scope": "enemy_minion",
+                    "evidence_text_short": "Target an enemy minion.",
+                    "source_confidence": "high",
+                },
+            ],
+        ),
+        (
+            "combo_timing",
+            [
+                {
+                    "claim_kind": "combo_sequence",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "sequence": ["CARD_A", "CARD_B"],
+                    "timing_kind": "same_turn",
+                    "evidence_text_short": "Play the combo in the same turn.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "combo_sequence",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "sequence": ["CARD_A", "CARD_B"],
+                    "timing_kind": "cross_turn",
+                    "evidence_text_short": "Set up the combo across turns.",
+                    "source_confidence": "high",
+                },
+            ],
+        ),
+        (
+            "option_choice",
+            [
+                {
+                    "claim_kind": "discover_choice",
+                    "cards": ["CARD_A"],
+                    "option_card_id": "OPTION_A",
+                    "evidence_text_short": "Discover Option A.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "discover_choice",
+                    "cards": ["CARD_A"],
+                    "option_card_id": "OPTION_B",
+                    "evidence_text_short": "Discover Option B.",
+                    "source_confidence": "high",
+                },
+            ],
+        ),
+    ],
+)
+def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path, family, claims):
+    deck_identity = {
+        "deck_name": "Conflict Fixture",
+        "cards": [
+            {"card_id": "CARD_A", "count": 2},
+            {"card_id": "CARD_B", "count": 2},
+        ],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/conflicts",
+                "source_title": "Conflict Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-07T00:00:00Z",
+                "claims": claims,
+            }
+        ],
+    )
+    conflicts = bundle["claim_conflict_report"]["conflicts"]
+    assert [conflict["conflict_family"] for conflict in conflicts] == [family]
+    assert conflicts[0]["resolution"] == "downgrade_to_report_visible_conflict"
+
+    operator = build_operator_summary(
+        technical_validation={"status": "passed", "errors": [], "warnings": []},
+        claim_conflict_report=bundle["claim_conflict_report"],
+    )
+    package = tmp_path / family
+    deck_dir = package / "CustomConfig" / "deck"
+    reports = package / "reports"
+    deck_dir.mkdir(parents=True)
+    reports.mkdir()
+    (deck_dir / "GlobalValues.json").write_text("{}", encoding="utf-8")
+    (deck_dir / "Mulligan.json").write_text('{"mulligan": []}', encoding="utf-8")
+    (reports / "input_manifest.json").write_text('{"deck_name": "deck"}', encoding="utf-8")
+    operator["generated_files"] = [
+        "CustomConfig/deck/GlobalValues.json",
+        "CustomConfig/deck/Mulligan.json",
+    ]
+    (reports / "operator_summary.json").write_text(
+        json.dumps(operator), encoding="utf-8"
+    )
+
+    gate = evaluate_apply_gate(package)
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert gate["allowed"] is True
 
 
 def test_static_semantics_adds_visible_claims_for_common_mechanics():
