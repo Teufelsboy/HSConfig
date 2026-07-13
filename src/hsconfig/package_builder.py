@@ -34,6 +34,7 @@ from hsconfig.research_contract import (
     write_research_contract_bundle_to_dir,
 )
 from hsconfig.semantic_audit import render_semantic_audit_markdown
+from hsconfig.source_claim_conflicts import build_claim_conflict_report
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
@@ -86,6 +87,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     semantic_report = context["semantic_report"]
     guide_claim_bundle = context["guide_claim_bundle"]
     research_bundle = context["research_bundle"]
+    guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
     plan_claims = list(guide_claim_bundle.get("claims", []))
     source_claim_conflict_report = guide_claim_bundle.get(
         "claim_conflict_report",
@@ -160,6 +162,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "global_values_authority_matrix.json",
             global_values_authority_matrix,
         )
+        guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
         source_claim_conflict_report = guide_claim_bundle.get(
             "claim_conflict_report",
             {"conflict_count": 0, "conflicts": []},
@@ -509,6 +512,17 @@ def _read_plan_report(plan_dir: Path, filename: str, fallback: dict[str, Any]) -
     if not isinstance(payload, dict):
         raise ValueError(f"Plan report must be an object: {path}")
     return payload
+
+
+def _normalize_claim_conflict_report(bundle: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(bundle)
+    claims = normalized.get("claims", [])
+    if not isinstance(claims, list):
+        claims = []
+    normalized["claim_conflict_report"] = build_claim_conflict_report(
+        [claim for claim in claims if isinstance(claim, dict)]
+    )
+    return normalized
 
 
 def _filter_plan_reports_by_lifecycle(

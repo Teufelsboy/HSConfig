@@ -1034,13 +1034,8 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
         guide_claim_bundle=_claim_bundle_for_override(
             card_ids=card_ids,
             conflict_report={
-                "conflict_count": 1,
-                "conflicts": [
-                    {
-                        "claim_ids": ["conflict_target"],
-                        "reason": "contradictory_targeting_rule",
-                    }
-                ],
+                "conflict_count": 0,
+                "conflicts": [],
             },
             claims=[
                 {
@@ -1066,6 +1061,18 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
                     "trust_ceiling": "runtime_candidate",
                     "source_confidence": "high",
                     "evidence_text_short": "A stale quarantined target row.",
+                },
+                {
+                    "claim_id": "conflict_target_opposed",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["EX1_002"],
+                    "stance": "prefer_friendly_minion",
+                    "runtime_block": "BeforePlayCardBonus",
+                    "runtime_value": "-12",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "evidence_text_short": "A contradictory stale target row.",
                 },
             ],
         ),
@@ -1123,6 +1130,9 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     source_contract_audit = json.loads(
         (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    claim_conflict_report = json.loads(
+        (out / "reports" / "claim_conflict_report.json").read_text(encoding="utf-8")
+    )
     lifecycle_by_id = {
         row["claim_id"]: row for row in source_contract_audit["claim_lifecycle_rows"]
     }
@@ -1134,7 +1144,13 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is True
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert claim_conflict_report["conflict_count"] == 1
+    assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
+        "conflict_target",
+        "conflict_target_opposed",
+    }
     assert lifecycle_by_id["conflict_target"]["quarantine_status"] == "quarantined"
+    assert lifecycle_by_id["conflict_target_opposed"]["quarantine_status"] == "quarantined"
     assert lifecycle_by_id["conflict_target"]["builder_or_router_decision"] != "emitted"
     assert (
         lifecycle_by_id["conflict_target"]["final_runtime_effect"]
