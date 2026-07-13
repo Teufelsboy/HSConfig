@@ -26,7 +26,7 @@ Normal workflow:
   Generate the package for any valid deck, but only write a runtime row when
   the claim passes that surface's gate; otherwise keep the claim visible in
   reports.
-
+- Use the canonical claim lifecycle for source-to-runtime explanations: source claim -> normalized `claim_kind` -> semantic qualifiers -> conflict quarantine -> surface gate -> builder/router outcome -> emitted runtime row or suppression reason. quarantined claims suppress unsafe runtime rows, stay visible in reports, and do not block load-safe valid packages. source_contract_audit.json is diagnostic; operator_summary.json remains the only normal apply authority.
 Operator rules:
 
 - Decode the deck code first, then resolve exact CardID identity before writing config.

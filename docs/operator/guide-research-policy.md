@@ -54,6 +54,13 @@ Source documents can be true and still not lower to runtime JSON. `claim_kind` i
 lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
 `Combo.json`. `operator_summary.json` remains the only normal apply authority.
 
+The canonical claim lifecycle is the single diagnostic chain from source
+evidence to runtime eligibility: source claim -> normalized `claim_kind` ->
+semantic qualifiers -> conflict quarantine -> surface gate -> builder/router
+outcome -> emitted runtime row or suppression reason. source_contract_audit.json is diagnostic; operator_summary.json remains the only normal apply authority.
+Quarantined claims suppress unsafe runtime rows, stay visible in reports, and do
+not block load-safe valid packages.
+
 `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.

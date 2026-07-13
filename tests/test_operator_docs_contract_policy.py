@@ -25,3 +25,23 @@ def test_guide_research_policy_keeps_no_block_language():
 
     assert "Warnings are follow-up work, not a runtime apply blocker." in text
     assert "Do not use `source_contract_audit.json` as an apply gate." in text
+
+
+def test_operator_docs_name_canonical_lifecycle_without_second_gate():
+    text = (ROOT / "docs" / "operator" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "canonical claim lifecycle" in text.lower()
+    assert "operator_summary.json remains the only normal apply authority" in text
+    assert "source_contract_audit.json is diagnostic" in text
+
+
+def test_skill_mentions_claim_lifecycle_and_no_block_contract():
+    text = (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "canonical claim lifecycle" in text.lower()
+    assert "quarantined claims suppress unsafe runtime rows" in text
+    assert "do not block load-safe valid packages" in text
