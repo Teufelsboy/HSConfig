@@ -1,0 +1,84 @@
+{
+  "scope": "Audit of the live HSConfig package-generation and apply contract for a valid deck whose source evidence is thin, whose mechanics are unsupported or newly introduced, whose requested GlobalValues are runtime-evidence-only, whose source-to-runtime links are incomplete, whose option identities are unresolved, or whose diagnostics report uncertainty. The audit covers whether these conditions remain visible without becoming normal-path apply blockers.",
+  "verified_strengths": [
+    "The normal apply gate authorizes a package when and only when its operator summary reports technical_status=VALID_PACKAGE and the required load-safe package structure and JSON files are valid. It does not use semantic_status, source-depth status, warnings, or semantic-blocker count as an additional apply condition.",
+    "The no-block failure summary separates technical_hard_block from source_depth_warning, warning_only_mechanic, future_mechanic_drift, guide_strength_gap, combo_uncertainty, and runtime_evidence_only_tuning. With a valid technical package and load_safe_apply mode, these categories produce load_safe_apply_allowed_with_warnings rather than a blocker.",
+    "Thin or absent guide evidence remains operationally usable: regression coverage proves STATIC_SEMANTICS_USABLE, VALID_BUT_NOT_GUIDE_STRONG, NEEDS_MORE_RESEARCH, and LOW_CONFIDENCE_BUT_STRUCTURALLY_VALID can all retain runtime_load_safe=true, runtime_apply_allowed=true, and READY_TO_APPLY_WITH_WARNINGS when the package is technically valid.",
+    "Unsupported and future mechanics have a safe fallback. An unregistered mechanic is classified as warning_only with normal_path_surfaces=[report-only], registered=false, and a report-only lowering policy, so no undocumented runtime row is emitted while the mechanic stays visible.",
+    "Registered warning-only mechanics are also explicitly non-blocking. The visibility summary always exposes non_blocking=true, reports warning boundaries, and does not grant report-only mechanics any executable runtime block.",
+    "Numeric GlobalValues tuning is gated at the lowering surface, not at package apply. A globalvalue_numeric_tuning claim is valid but returns requires_runtime_evidence; broader source-backed gameplan posture can still use its distinct GlobalValues lane when runtime-lowerable.",
+    "Unresolved Discover or Choose One identities are suppressed with unresolved_option_identity or identity_gated_mechanic_requires_option_identity. The unresolved source fact is preserved in plan and report data, but the router emits no fabricated option-specific CardID behavior.",
+    "Source-to-runtime explainability and source-contract reports are diagnostic surfaces. They expose coverage, suppression, provenance, conflicts, and first missing links, while operator_summary.json remains the single normal apply authority.",
+    "Two focused local regression runs passed: 107 tests for apply gating, readiness, mechanics, and GlobalValues authority; and 119 tests for claim routing, source-to-runtime explainability, option suppression, mechanic drift, and configure workflow."
+  ],
+  "correctness_gaps": [
+    "A technically load-safe package can be strategically thin when guide claims, mulligan evidence, condition lowering, or mechanic lowering are absent. The no-block contract proves safe package generation and apply eligibility, not optimized gameplay quality.",
+    "Warning-only and future mechanics remain intentionally non-executable. This avoids false runtime claims but means the generated configuration will not model the defining action of an unsupported mechanic until a documented runtime surface and deterministic lowering rule exist.",
+    "An unresolved option identity prevents option-specific behavior from lowering. That is correct safety behavior, but it leaves a real Discover, Choose One, Titan, or similarly identity-dependent decision unconfigured rather than guessed.",
+    "Numeric GlobalValues requested from guide or static evidence alone are suppressed until runtime evidence exists. This prevents unsupported tuning but cannot satisfy an operator who expects empirically tuned values from pre-run sources only.",
+    "Source-to-runtime gap and diagnostic reports rely on the package builder receiving complete, coherent source inputs. They explain missing or suppressed lowering, but cannot repair stale, conflicting, or semantically incomplete evidence automatically.",
+    "The technical gate verifies generated package shape and JSON validity, not Hearthstone client behavior or every undocumented VisionAI interpretation after runtime apply."
+  ],
+  "slimness_gaps": [
+    "The contract spans several focused modules for apply authority, readiness, mechanic support, drift, GlobalValues authority, card behavior routing, and diagnostics. Future changes should avoid duplicating the same warning-to-blocker classification in multiple modules.",
+    "Adding executable support for every future keyword or diagnostic condition would expand the runtime contract without evidence of a documented VisionAI surface. The registry should remain declarative and report-only by default for new mechanics.",
+    "Source-to-runtime reports can become overly broad if they are made to replicate runtime validation or apply authority. They should remain explanatory outputs that derive from the existing package and lowering decisions.",
+    "A generic fallback that emits a default CardID block for unknown mechanics would appear simpler but would duplicate semantic authority and undermine the current safe report-only fallback."
+  ],
+  "autonomy_gaps": [
+    "The system does not autonomously convert a warning-only future mechanic into executable behavior. A later source-and-surface mapping is required, but valid-deck package generation and normal apply stay available in the meantime.",
+    "The system does not autonomously create empirical numeric GlobalValues from static or guide evidence. Runtime evidence is deliberately required for numeric tuning, so the outcome is a warning-visible omission rather than a configuration block.",
+    "Unresolved option identities and incomplete source-to-runtime links yield safe suppression. This retains autonomy for the supported subset of the deck, but it does not autonomously infer missing identities, targets, timings, or sequence facts.",
+    "Diagnostic-only findings remain visible but cannot themselves repair the underlying source gap. Operators or later automated research must improve evidence before richer lowering can occur.",
+    "The repository proves the no-block invariant through focused fixtures and property-style cases, not by exhaustively generating and applying every current or future valid Hearthstone deck against a live client. The universal any-deck claim is therefore a contract claim, not a complete empirical game-client proof. [uncertain]"
+  ],
+  "guardrails_to_keep": [
+    "Keep operator_summary.json and technical_status=VALID_PACKAGE as the sole normal apply authority; do not add a second source-confidence, diagnostic, or mechanic-completeness apply gate.",
+    "Keep technical invalidity, missing required runtime files, invalid JSON, incompatible optional surfaces, and summary-versus-package drift as hard blockers because they threaten load safety.",
+    "Keep thin guide evidence, static-semantics-only status, needs-more-research status, low-confidence claims, warning-only mechanics, future mechanic drift, combo uncertainty, and source-to-runtime gaps report-visible but non-blocking once technical package validity is established.",
+    "Keep unknown mechanics defaulted to report-only with no default runtime block, no static executable claim, and a clear suppression reason.",
+    "Keep identity-gated behavior strict: require resolved option identity before lowering Discover, Choose One, generated-entity, and analogous option-specific behavior.",
+    "Keep the GlobalValues split between source-backed posture and runtime-evidence-backed numeric tuning; do not promote a numeric request merely because it appears in a guide or diagnostic report.",
+    "Keep diagnostic reports descriptive and provenance-carrying, while preventing them from becoming alternate runtime write mechanisms or apply gates.",
+    "Keep regression coverage that pairs every non-blocking warning category with a technically valid package that is allowed to apply, and pairs every hard technical defect with a rejected package."
+  ],
+  "recommended_next_design": "Retain the current two-lane model. Lane one is strict technical load safety: package structure, required runtime files, JSON validity, and output-manifest consistency decide normal apply. Lane two is source and semantic richness: warnings, source depth, unresolved identities, future mechanics, runtime-evidence-only numeric requests, and source-to-runtime gaps stay visible in one diagnostic vocabulary and suppress only their unsafe runtime rows. Add future mechanic support by extending the declarative mechanic registry and its focused tests only after an exact documented VisionAI surface and deterministic lowering rule are available. This preserves autonomous valid-deck package generation without turning uncertainty into either a hidden failure or a false runtime claim.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\no_block_failure_modes.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\operator_summary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\config_readiness.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mechanic_support.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mechanic_drift.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\globalvalues_authority.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_to_runtime_explainability.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_property_no_block_apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_config_readiness.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_mechanic_support.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_claim_kind_runtime_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_card_behavior_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_to_runtime_explainability.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py - normal apply accepts a structurally valid package when technical_status is VALID_PACKAGE and rejects technical or package-shape defects.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/no_block_failure_modes.py - classifies source, mechanic, combo, and runtime-evidence gaps separately from technical hard blocks and labels valid packages as allowed with warnings.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mechanic_support.py - unregistered and warning-only mechanics have report-only policies with no executable default runtime block; visibility reports are explicitly non-blocking.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/globalvalues_authority.py - blocks globalvalue_numeric_tuning until runtime evidence exists while retaining a separate source-informed posture lane.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py - suppresses unresolved option identities and identity-gated mechanic usage rather than emitting speculative CardID behavior.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py - maps lowerings, suppressions, and provenance into diagnostic reports without becoming apply authority.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - active operator policy that mechanic drift and report-only semantics do not become a runtime apply gate.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_property_no_block_apply_gate.py - verifies load-safe apply for valid packages across strong, thin, warning-only, and future-mechanic states.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - verifies that numeric GlobalValues tuning requires runtime evidence.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_card_behavior_router.py - verifies suppression for unresolved Discover and Choose One identities.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py and tests/test_mechanic_support.py - verify report-visible warning-only and future-mechanic behavior with non_blocking=true.",
+    "Local verification on 2026-07-13: PYTHONPATH=src python -m pytest tests/test_property_no_block_apply_gate.py tests/test_no_second_gate_contract.py tests/test_apply_gate.py tests/test_config_readiness.py tests/test_mechanic_support.py tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py -q, 107 passed.",
+    "Local verification on 2026-07-13: PYTHONPATH=src python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_card_behavior_router.py tests/test_source_contract_conformance.py tests/test_source_to_runtime_explainability.py tests/test_mechanic_drift.py tests/test_configure_cli.py -q, 119 passed."
+  ],
+  "uncertain": [
+    "autonomy_gaps"
+  ]
+}

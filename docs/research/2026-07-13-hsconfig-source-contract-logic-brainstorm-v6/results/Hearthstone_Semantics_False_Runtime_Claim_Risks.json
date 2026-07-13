@@ -1,0 +1,81 @@
+{
+  "scope": "Audit of HSConfig source-to-runtime lowering for Hearthstone semantic edge cases that can become false runtime claims when broad guide prose is treated as executable instruction. The audit covers start-of-game effects versus mulligan keeps, hero-power transforms, deckbuilding modifiers, targeting, combo sequencing, Discover and Choose One options, generated cards, Secrets, Locations, weapons, discard, destroy, silence, transform, and Wild deck mechanics.",
+  "verified_strengths": [
+    "HSConfig uses claim kind and surface-specific lowering gates rather than free-text importance language as the authority for runtime emission. This prevents words such as 'keep', 'core', or 'engine' from becoming an opening-hand instruction by themselves.",
+    "The mulligan gate rejects a start-of-game, non-hand effect even when the source claim is labelled `mulligan_keep`. The local regression case for Darkbishop Benedictus proves the intended split: preserve the hero-power-transform behavior while suppressing its opening-hand hold.",
+    "Static semantics identifies high-risk semantic families including start_of_game, hero_power_transform, deckbuilding_modifier, even_odd_modifier, highlander_modifier, deck_size_modifier, start_in_deck_requirement, generated_entity_random_pool, secret_timing, and location_activation without automatically granting every family a runtime surface.",
+    "Discover and Choose One claims have dedicated option behavior surfaces, and unresolved Discover option identities are suppressed with `unresolved_option_identity` instead of being converted into a generic always-on card behavior.",
+    "Combo lowering is isolated from ordinary card behavior. A sequence must pass its explicit combo contract, including usable ordered members, before it can become Combo.json output; incomplete sequences are suppressed.",
+    "The card-behavior router requires an explicit runtime block for destroy, generic spell targeting, hero-power usage, silence, and transform mechanic usage. This stops keyword recognition from silently inventing undocumented behavior rows.",
+    "Secret timing, Location activation, random generated pools, Dredge, Tradeable, and other timing- or randomness-sensitive mechanics are recognized as warning-only semantics. This retains visibility without claiming deterministic runtime control.",
+    "GlobalValues numeric tuning remains fenced behind runtime evidence, while broader game-plan posture remains a distinct claim lane. This prevents a plausible guide recommendation from becoming an unverified numeric overlay."
+  ],
+  "correctness_gaps": [
+    "Start-of-game and in-deck effects must remain distinct from mulligan behavior. A source can correctly describe Darkbishop Benedictus, Genn Greymane, Baku the Mooneater, Prince Renathal, Highlander payoffs, or a start-in-deck requirement as essential, yet that does not prove the card should be retained in the opening hand.",
+    "Hero-power transform claims need both timing and identity constraints. A transform can be a pre-mulligan deck-state effect, a card-play effect, or an upgraded power with later state changes; lowering generic transform prose as ordinary hero-power use can misstate when the power exists and what it does.",
+    "Deckbuilding modifiers are not interchangeable. Odd/even deck checks, no-duplicate conditions, starting-deck-size effects, start-in-deck requirements, and current-deck-state checks have different evaluation times. Treating all of them as a permanent deck property can create false behavior claims in Wild.",
+    "Targeting advice requires exact legality and state context. 'Go face', 'target a minion', or 'remove their threat' does not identify whether the effect targets, whether a Hero Power, Battlecry, spell, weapon attack, Location activation, immunity, stealth, Elusive, or board-state rule makes the proposed target legal.",
+    "Combo semantics are not merely a list of cards. A valid sequence can depend on same-turn versus cross-turn timing, mana, a preceding card played from hand, board space, weapon state, death counts, discounts, generated resources, or target availability. Loose synergy prose must not become a deterministic Combo.json chain.",
+    "Discover and Choose One are option-selection surfaces. Their offered cards can depend on class, pool restrictions, card text, and attached effects such as Dark Gifts; a recommendation is runtime-safe only when the selected option identity and applicable source card are resolved.",
+    "Generated cards are neither ordinary deck contents nor necessarily ignorable. Known generated identities can matter after entering hand, but random pools, shuffled cards, copies, transformations, and generated option cards cannot be truthfully lowered as guaranteed ordinary deck-card actions.",
+    "Secrets are hidden, delayed trigger objects. A guide's advice to hold, play, preserve, or sequence a Secret does not establish the exact trigger, opponent action, timing, or legal response required for a direct runtime action claim.",
+    "Locations require activation-state handling: they enter the battlefield, can use an activated ability on the owner's turns, consume durability, and observe cooldown timing. Lowering a Location as a one-shot spell or a generic static card value loses material game-state conditions.",
+    "Weapons require equip state, durability, attack timing, replacement behavior, and target legality. Weapon-pressure prose cannot prove an unconditional hero-attack action, and it must not be converted into a mulligan keep simply because the weapon matters to the deck plan.",
+    "Discard, destroy, silence, and transform are semantically different operations with distinct zones and persistence. In particular, silence removes effects, destroy creates a death event only where applicable, transform replaces the entity rather than destroying it, and discard can affect hand or deck-state plans. Keyword detection alone is insufficient for a correct runtime instruction."
+  ],
+  "slimness_gaps": [
+    "Adding a separate top-level runtime claim kind for every Hearthstone keyword would widen the contract spine without a matching documented runtime surface. Timing, state scope, option state, generation origin, and target scope should remain structured qualifiers where they answer the question.",
+    "Semantic authority is already distributed across static semantics, qualifier normalization, source-contract gates, the card-behavior router, combo lowering, and tests. Re-encoding the same mechanic decision in each layer would make corrections drift-prone.",
+    "Named-card exceptions would be a poor substitute for semantic rules. The start-of-game mulligan suppression should generalize across all non-hand start effects rather than accrue special cases for Benedictus, Genn, Baku, Renathal, or individual Wild cards.",
+    "Discover, Choose One, and random generated pools should not expand into exhaustive option or token trees in normal packages. The game engine owns pool generation and hidden/random resolution; HSConfig should emit only source-backed, resolved options.",
+    "Dedicated builders for Secret timing, Location cooldowns, generic spell targeting, and every Wild interaction would duplicate game-engine authority and add maintenance burden while still failing to establish runtime proof."
+  ],
+  "autonomy_gaps": [
+    "Unsupported, future, or partially modeled mechanics must remain warning-only or report-visible rather than blocking valid-deck package generation. A valid Wild deck should receive the proven subset of configuration even when its full plan is not lowerable.",
+    "Static card semantics should remain usable without guide prose, but semantic detection must not be mistaken for runtime authority. Requiring full guides for recognition would block any-deck operation; auto-emitting runtime actions from recognition would create false claims.",
+    "Generated-card and option mechanics need a safe partial-output lane. HSConfig should not require enumeration of every possible Discover, Choose One, random generation, transform, or shuffle state before producing a package.",
+    "Runtime evidence should remain mandatory for empirical numeric tuning, but not for basic recognition of hero-power transforms, deckbuilding modifiers, Secrets, Locations, weapons, or other mechanics. Otherwise autonomous package creation would stall on ordinary cards.",
+    "Warnings need to stay visible to operators as a deliberate boundary, not be treated as a failed package. Suppressing the wrong runtime surface must preserve the semantic fact in reports or contract diagnostics."
+  ],
+  "guardrails_to_keep": [
+    "Keep claim_kind as the primary source-of-truth gate; do not infer mulligan authority from prose or from a card's strategic importance.",
+    "Keep start-of-game non-hand suppression for Mulligan.json, including the `start_of_game_effect_does_not_require_opening_hand` rejection path.",
+    "Keep one allowed runtime surface per claim purpose: Mulligan.json for explicit opening-hand claims, Combo.json for exact sequence claims, per-card behavior blocks for supported card actions, and GlobalValues posture separately from numeric tuning.",
+    "Keep unresolved Discover or Choose One option identities suppressed until the source and option card identities are linked.",
+    "Keep incomplete, off-deck, wrongly timed, or otherwise non-emittable combo sequences suppressed rather than producing a partial deterministic chain.",
+    "Keep explicit-block requirements for destroy, generic_spell_target, hero_power, silence, and transform mechanic usage; keyword recognition is not sufficient runtime authorization.",
+    "Keep warning-only classification for random generated pools, Secret timing, Location activation, Dredge, Tradeable, and other mechanics without a safe normal-path runtime surface.",
+    "Keep source-backed behavior and runtime-evidence-backed numeric tuning distinct, including `requires_runtime_evidence` for globalvalue_numeric_tuning.",
+    "Keep tests that assert both sides of a semantic split: wrong-surface suppression and retention of any independently supported correct-surface behavior."
+  ],
+  "recommended_next_design": "Preserve the current narrow claim-kind and surface-gate architecture. Strengthen the semantic payload before lowering with normalized qualifiers for timing, zone scope, target scope, option surface, state requirements, generation origin, and deck-state evaluation time. The builders should emit only when a claim has both an allowed surface and the qualifiers required by that surface; otherwise they should retain a clear report-visible suppression reason. This supports useful autonomous any-deck packages without translating broad source prose into false runtime certainty.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_semantic_qualifiers.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\static_semantics.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\combo_sequence_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\combo_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_semantic_runtime_negative_boundaries.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_static_semantic_micro_fixtures.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_semantic_qualifiers.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_claim_kind_runtime_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_conformance.py"
+  ],
+  "evidence_references": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py - executable source-to-surface gates, including start-of-game non-hand mulligan suppression.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_semantic_qualifiers.py - normalized timing, zone, target, option, and state-requirement qualifiers.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\static_semantics.py - detected semantic families and warning-only mechanics.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py - supported per-card runtime blocks, option identity resolution, and explicit mechanic-block requirements.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\combo_plan.py - combo emission through an explicit combo-sequence contract.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_semantic_runtime_negative_boundaries.py - regression coverage for start-of-game mulligan suppression, unresolved Discover suppression, vague combo suppression, and runtime-evidence-only numeric tuning.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_static_semantic_micro_fixtures.py - regression coverage for Secret timing, Location activation, discard, destroy, silence, transform, and deckbuilding start effects.",
+    "https://hearthstone.blizzard.com/en-us/news/19940884/hearthstone-patch-4-0-0-10833-the-league-of-explorers - official Discover description: choose one of three cards when the Discover card is played.",
+    "https://hearthstone.blizzard.com/en-us/news/23817874/announcing-murder-at-castle-nathria-hearthstone-s-next-expansion - official Location description: an activated board card with durability and one-turn cooldown.",
+    "https://hearthstone.blizzard.com/en-us/news/24179067/step-into-the-emerald-dream-hearthstone-s-next-expansion - official examples of Hero Power replacement and Discover options with attached Dark Gifts.",
+    "https://hearthstone.blizzard.com/en-us/news/23921496/25-6-patch-notes - official evidence that Start of Game effects are distinct deckbuilding constraints in current card rules.",
+    "https://hearthstone.blizzard.com/en-us/news/23797160/23-0-3-patch-notes - official evidence that card behavior can depend on whether a spell was cast from hand rather than merely generated or cast by another card."
+  ],
+  "uncertain": []
+}

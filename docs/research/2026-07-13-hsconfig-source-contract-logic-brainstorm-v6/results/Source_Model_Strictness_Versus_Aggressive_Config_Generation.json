@@ -1,0 +1,88 @@
+{
+  "scope": "Audit of HSConfig's structured source-claim model from source-document normalization through claim-kind policy, per-surface runtime gates, research and gameplan contracts, CardID and Mulligan compilation, conflict handling, static-semantics fallback lanes, and every-card visibility reports.",
+  "verified_strengths": [
+    "The source model separates evidence from runtime authority. Source documents are normalized into atomic claims with a claim kind, concrete deck CardIDs where required, readiness, specificity, trust ceiling, provenance, freshness status, and source references before normal package generation.",
+    "The claim-kind matrix provides one explicit policy lane and allowed-surface declaration for every supported atomic claim kind. Surface gates independently constrain Mulligan, GlobalValues, Combo, and CARDID lowering instead of allowing a generally credible claim to write every runtime file.",
+    "Mulligan lowering is materially strict. Only mulligan_keep and mulligan_discard claim kinds reach the Mulligan gate, and a keep for a start-of-game, deckbuilding, or hero-power-transform effect is suppressed unless its evidence explicitly states opening-hand intent.",
+    "Guide-backed claims can lower aggressively when they are card-specific and runtime-ready: exact Mulligan selectors, documented CardID blocks, complete ordered Combo sequences, and source-backed GlobalValues posture each have dedicated routes rather than a single conservative generic output path.",
+    "Static semantics are useful without being silently promoted into broad authority. Card text can create visible mechanic, discover, choice, or hero-power-transform expectations, while report-only or runtime-evidence-required claims are rejected by the runtime gate and remain visible in diagnostic outputs.",
+    "Known bad patterns are first-class structured claims, and the source conflict report detects contradictory mulligan, targeting, combo-timing, option-choice, and role-versus-known-bad-pattern assertions.",
+    "Every deck card is represented in coverage and expectation outputs. The documented progression is guide-backed claim, deterministic static semantics, archetype inference, then generic_low_confidence, with per-card readiness, source-gap, lifecycle, and source-to-runtime explanation reports exposing the first missing link.",
+    "The audited regression suite passed fresh: 137 tests across claim-kind runtime contracts, source-evidence verification, conflicts, source-quality autonomy, claim building, contract spine freeze and conformance, and surface-authority separation."
+  ],
+  "correctness_gaps": [
+    "Conflicts are detected and prevent SOURCE_BACKED_STRONG readiness, but the current resolution is downgrade_to_report_visible_conflict. Builders can still receive the contradictory claims, and the tested apply gate allows a technically valid package with conflicts. Quarantine conflicted claim IDs before every runtime router, or apply a deterministic source-recency and authority resolver that emits only one resolved claim.",
+    "The public contract says runtime Mulligan writes require explicit claim_kind, but normalized_claim_kind still accepts exact legacy claim_type values and aliases. This compatibility path can permit lower-level callers to obtain runtime authority without the explicit modern field. Keep migration support at ingestion only, then require stored normalized claims to contain claim_kind before any surface gate runs.",
+    "Freshness is classified and a stale high-confidence claim is downgraded to medium confidence, but medium-confidence guide claims remain guide_backed and runtime-lowerable. There is no observed hard freshness ceiling, source-content version check, or card-text compatibility hash that prevents a stale but structurally valid guide claim from lowering.",
+    "The CardID compiler has aggregate role fallbacks for in-hand priority, pressure, and mapped mechanics. Those fallbacks consume contract roles and card confidence rather than the originating claim's trust ceiling at each emitted row. This is useful for broad initial configs, but it can bypass a report-only source claim's row-level gate when roles were inferred upstream. Require row provenance to record the exact gate decision and disallow fallback behavior when all supporting claims are report-only.",
+    "The source-evidence verifier reports suspicious non-hand mulligan keeps and weak runtime hints as warnings, not rejection. The later Mulligan gate catches known start-of-game roles, but text-only or newly introduced non-hand patterns can still depend on heuristic detection rather than a required explicit timing and zone qualifier.",
+    "Conflict handling does not currently model source authority beyond the presence of incompatible values. It cannot distinguish a current dedicated mulligan guide from an older broad archetype guide, so safe automatic resolution is unavailable and false equal weighting remains possible."
+  ],
+  "slimness_gaps": [
+    "The repository carries overlapping source-to-contract inference in research_contract.py and gameplan_contract.py, including role, confidence, mulligan-anchor, known-bad-pattern, and expected-use logic. Parallel derivations can drift and make an apparently small source-model change require duplicated fixes.",
+    "Coverage, readiness, lifecycle, gap, and explainability information is exposed through several report projections. These reports are valuable, but independent recomputation risks contradictory every-card status. Define one canonical per-claim and per-card lifecycle record, then derive operator-facing report views from it.",
+    "Legacy claim_type support duplicates claim-kind vocabulary and policy handling across normalization, routing, and compatibility helpers. Retain a one-time migration adapter at the boundary, but remove legacy interpretation from internal gates and builders to keep the contract surface smaller.",
+    "The implementation mixes explicit routed CardID rows with compiler-level role fallbacks. A single router-owned lowering representation would reduce duplicated authority while preserving aggressive generation for documented mechanics."
+  ],
+  "autonomy_gaps": [
+    "Deck-only operation can generate a load-safe package with static, inferred, or generic visible lanes, but guide-backed strength still depends on externally researched source documents. The operator policy explicitly describes future autonomous source acquisition as a contract rather than an implemented browsing or source-selection workflow.",
+    "A conflict must currently be resolved outside the source model to recover strong readiness. The system detects the issue but does not automatically rank sources by freshness, source family, deck identity, matchup scope, and explicitness to select or quarantine a safe winner.",
+    "Low-confidence and contract-gap claims are correctly kept report-visible, but the next-source action is advisory. Autonomous improvement would benefit from a deterministic acquisition queue that requests the most valuable missing card-specific claim kind without allowing that queue to create runtime authority.",
+    "Conditional mulligan, target, and choice claims require supported selectors, conditions, and exact option identities. This is correct for runtime safety, but source acquisition must reliably extract those structured details or useful guide knowledge remains suppressed rather than aggressively lowered."
+  ],
+  "guardrails_to_keep": [
+    "Keep atomic claim_kind as the principal runtime-routing authority and preserve one policy row per supported claim kind.",
+    "Keep separate surface gates for Mulligan, GlobalValues, Combo, and CARDID rather than adding a generic source-backed runtime write path.",
+    "Keep the start-of-game non-hand-effect suppression and require explicit opening-hand language before a transform or deckbuilding effect can become a mulligan keep.",
+    "Keep low-confidence, generic, contract-gap, unresolved-identity, and runtime-evidence-required material visible but non-lowerable; do not convert absent guide evidence into implicit keep, discard, target, or numeric tuning rules.",
+    "Keep the numeric GlobalValues boundary: source guidance may establish posture, but explicit numeric tuning remains runtime-evidence-required.",
+    "Keep documented VisionAI block validation and suppression for unsupported CardID behavior instead of inventing runtime syntax from guide prose.",
+    "Keep every-card coverage, per-card expectations, first-missing-link reporting, row-level provenance, and diagnostic source-to-runtime lifecycle visibility.",
+    "Keep operator_summary.json as the sole normal apply authority. Diagnostic reports must explain lowering, conflicts, and coverage without becoming a second runtime-write gate."
+  ],
+  "recommended_next_design": "Adopt a strict canonical-claim lifecycle that is created once at source ingestion and consumed by every builder. At that boundary, migrate legacy claim_type to claim_kind once, assign a freshness and source-authority score, attach explicit semantic qualifiers for timing, zone, target, and option identity, and mark conflicting claim IDs as quarantined. Surface gates should then lower only non-quarantined claims with an explicit claim_kind, an allowed readiness lane, a non-report-only trust ceiling, and a documented surface mapping. Preserve aggressive generation by expanding router mappings only for deterministic, provenance-carrying claim shapes; preserve low-confidence usefulness through per-card expectations, source-gap reports, and an autonomous acquisition queue rather than heuristic runtime fallbacks. Derive all coverage, readiness, suppression, and explainability reports from this single lifecycle record to avoid duplicated authority.",
+  "repo_files_to_check": [
+    "src/hsconfig/source_document_builder.py",
+    "src/hsconfig/source_document_model.py",
+    "src/hsconfig/source_contract_matrix.py",
+    "src/hsconfig/source_claim_conflicts.py",
+    "src/hsconfig/source_evidence_verifier.py",
+    "src/hsconfig/research_contract.py",
+    "src/hsconfig/gameplan_contract.py",
+    "src/hsconfig/mulligan_plan.py",
+    "src/hsconfig/card_behavior_surface_router.py",
+    "src/hsconfig/compile_cardid.py",
+    "src/hsconfig/source_contract_audit.py",
+    "src/hsconfig/operator_summary.py",
+    "docs/operator/guide-research-policy.md",
+    "tests/test_claim_kind_runtime_contract.py",
+    "tests/test_source_claim_conflicts.py",
+    "tests/test_source_claim_quality_autonomy.py",
+    "tests/test_surface_authority_split.py",
+    "tests/test_source_contract_spine_freeze.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/README.md",
+    "C:/Users/darbo/Documents/HSConfig/AGENTS.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_conflicts.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_evidence_verifier.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/gameplan_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_evidence_verifier.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_conflicts.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_quality_autonomy.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_spine_freeze.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py",
+    "Fresh test evidence: PYTHONPATH=src python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_source_evidence_verifier.py tests/test_source_claim_conflicts.py tests/test_source_claim_quality_autonomy.py tests/test_guide_claim_builder.py tests/test_source_contract_spine_freeze.py tests/test_source_contract_conformance.py tests/test_surface_authority_split.py -q, 137 passed"
+  ],
+  "uncertain": []
+}
