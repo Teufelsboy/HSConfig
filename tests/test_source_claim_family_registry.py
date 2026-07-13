@@ -47,3 +47,32 @@ def test_claim_family_registry_report_is_clean_for_current_contract():
     assert report["authority"] == "diagnostic_only"
     assert report["apply_blocking"] is False
     assert report["problems"] == []
+
+
+def test_claim_family_registry_reports_missing_negative_boundary_as_drift(monkeypatch):
+    from hsconfig import source_claim_family_registry as registry_mod
+
+    original = registry_mod.source_contract_policy_by_claim_kind
+
+    def policy_with_new_claim_kind():
+        policy = original()
+        policy["new_future_claim_kind"] = {
+            "lane": "report_only",
+            "allowed_surfaces": (),
+            "operator_meaning": "Future source claim without a runtime surface.",
+        }
+        return policy
+
+    monkeypatch.setattr(
+        registry_mod,
+        "source_contract_policy_by_claim_kind",
+        policy_with_new_claim_kind,
+    )
+
+    report = registry_mod.build_claim_family_registry_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "missing_negative_boundary",
+        "claim_kind": "new_future_claim_kind",
+    } in report["problems"]

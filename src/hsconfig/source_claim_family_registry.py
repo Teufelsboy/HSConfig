@@ -48,7 +48,9 @@ def claim_family_registry() -> dict[str, dict[str, Any]]:
             "policy_lane": row["lane"],
             "allowed_surfaces": tuple(row["allowed_surfaces"]),
             "conflict_family": _CONFLICT_FAMILY_BY_CLAIM_KIND.get(claim_kind, "none"),
-            "negative_boundary": _NEGATIVE_BOUNDARY_BY_CLAIM_KIND[claim_kind],
+            "negative_boundary": _NEGATIVE_BOUNDARY_BY_CLAIM_KIND.get(
+                claim_kind, ""
+            ),
             "operator_gate_impact": DIAGNOSTIC_AUTHORITY,
             "normal_apply_gate": NORMAL_APPLY_GATE,
         }
