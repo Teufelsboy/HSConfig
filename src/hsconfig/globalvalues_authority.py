@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
+from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_globalvalues, normalized_claim_kind
 
 
@@ -59,6 +60,7 @@ def build_globalvalues_authority_matrix(
     ]
     claim_refs = _claim_refs(lowerable_claims)
     posture = _resolve_posture(aggression_profile, lowerable_claims)
+    posture_claim_id = _posture_claim_id(posture, lowerable_claims)
     overlays = POSTURE_OVERLAYS.get(posture or "", {})
     if overlays:
         allowed = [
@@ -68,6 +70,7 @@ def build_globalvalues_authority_matrix(
                 value=value,
                 reason=reason,
                 claim_refs=claim_refs,
+                claim_id=posture_claim_id,
             )
             for key, (operation, value, reason) in overlays.items()
         ]
@@ -96,20 +99,13 @@ def build_globalvalues_authority_matrix(
         }
         for key in sorted(RUNTIME_EVIDENCE_KEYS)
     ]
+    blocked_claim_id = _single_claim_id(lowerable_claims)
+    if blocked_claim_id:
+        for row in blocked:
+            row["claim_id"] = blocked_claim_id
     for claim in claims:
         if normalized_claim_kind(claim) == "globalvalue_numeric_tuning":
-            blocked.append(
-                {
-                    "key": str(claim.get("key", "runtime_numeric_tuning")),
-                    "authority": "runtime_evidence_required",
-                    "key_authority": authority_for_key(
-                        str(claim.get("key", "runtime_numeric_tuning"))
-                    ),
-                    "claim_refs": _claim_refs([claim]),
-                    "reason": "requires_runtime_evidence",
-                    "blocked_reason": "requires_runtime_evidence",
-                }
-            )
+            blocked.append(_numeric_tuning_blocked_row(claim))
     return {
         "aggression_profile": aggression_profile,
         "posture": posture or "baseline",
@@ -125,8 +121,9 @@ def _allowed_row(
     value: str | None,
     reason: str,
     claim_refs: list[str],
+    claim_id: str,
 ) -> dict[str, Any]:
-    return {
+    row = {
         "key": key,
         "overlay": f"set:{value}" if operation == "set" else operation,
         "operation": operation,
@@ -136,6 +133,9 @@ def _allowed_row(
         "claim_refs": claim_refs,
         "reason": reason,
     }
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
 
 
 def _resolve_posture(aggression_profile: str, claims: list[dict[str, Any]]) -> str | None:
@@ -146,6 +146,41 @@ def _resolve_posture(aggression_profile: str, claims: list[dict[str, Any]]) -> s
         if stance in POSTURE_OVERLAYS:
             return stance
     return None
+
+
+def _posture_claim_id(posture: str | None, claims: list[dict[str, Any]]) -> str:
+    if not posture:
+        return ""
+    for claim in claims:
+        if normalized_claim_kind(claim) != "gameplan_posture":
+            continue
+        if _normalize_posture(str(claim.get("stance", ""))) == posture:
+            return lifecycle_claim_id(claim)
+    return ""
+
+
+def _single_claim_id(claims: list[dict[str, Any]]) -> str:
+    claim_ids = [lifecycle_claim_id(claim) for claim in claims]
+    claim_ids = [claim_id for claim_id in claim_ids if claim_id]
+    if len(set(claim_ids)) == 1:
+        return claim_ids[0]
+    return ""
+
+
+def _numeric_tuning_blocked_row(claim: dict[str, Any]) -> dict[str, Any]:
+    key = str(claim.get("key", "runtime_numeric_tuning"))
+    row = {
+        "key": key,
+        "authority": "runtime_evidence_required",
+        "key_authority": authority_for_key(key),
+        "claim_refs": _claim_refs([claim]),
+        "reason": "requires_runtime_evidence",
+        "blocked_reason": "requires_runtime_evidence",
+    }
+    claim_id = lifecycle_claim_id(claim)
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
 
 
 def _normalize_posture(value: str) -> str:

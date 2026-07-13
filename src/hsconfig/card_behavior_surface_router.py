@@ -10,6 +10,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
+from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
@@ -340,7 +341,7 @@ def _base_row(claim: dict[str, Any], card_id: str, *, condition: str) -> dict[st
         "surface": "CardID.json",
         "surface_family": "CARDID.json",
         "card_id": card_id,
-        "claim_id": claim.get("claim_id"),
+        "claim_id": lifecycle_claim_id(claim),
         "condition": condition,
         "confidence": str(claim.get("claim_confidence", claim.get("confidence", "source_backed"))),
         "source_claim_ids": _source_claim_ids(claim),
@@ -356,7 +357,7 @@ def _suppressed_row(
     reason: str,
 ) -> dict[str, Any]:
     return {
-        "claim_id": claim.get("claim_id"),
+        "claim_id": lifecycle_claim_id(claim),
         "claim_kind": claim_kind,
         "cards": cards,
         "reason": reason,
@@ -477,7 +478,7 @@ def _option_resolution_rows(
         status = "resolved" if option_card_id and option_card_id in linked_ids else "unresolved"
         rows.append(
             {
-                "claim_id": claim.get("claim_id"),
+                "claim_id": lifecycle_claim_id(claim),
                 "card_id": card_id,
                 "option_card_id": option_card_id or "",
                 "status": status,

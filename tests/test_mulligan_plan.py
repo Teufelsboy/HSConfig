@@ -28,6 +28,44 @@ def test_mulligan_plan_reports_non_mulligan_claim_surface_rejection():
     assert plan["quality"]["first_gap_reason"] == "no_source_backed_mulligan_keeps"
 
 
+def test_mulligan_plan_rows_use_lifecycle_claim_id_without_rewriting_source_claim_ids():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_id": "raw_keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "source_claim_ids": ["raw_keep"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_keep",
+                    "surface": "mulligan",
+                },
+            },
+            {
+                "claim_id": "raw_bad_selector",
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_B"],
+                "selector": "CARD_B | CARD_C",
+                "source_claim_ids": ["raw_bad_selector"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_bad_selector",
+                    "surface": "mulligan",
+                },
+            },
+        ],
+        card_roles={},
+    )
+
+    rule = next(row for row in plan["rules"] if row["card"] == "CARD_A")
+    assert rule["claim_id"] == "lifecycle_keep"
+    assert rule["source_claim_ids"] == ["raw_keep"]
+
+    suppressed = plan["suppressed_rules"][0]
+    assert suppressed["claim_id"] == "lifecycle_bad_selector"
+    assert suppressed["source_claim_ids"] == ["raw_bad_selector"]
+
+
 def test_mulligan_plan_rejects_start_of_game_deckbuilding_modifier_keep():
     plan = build_mulligan_plan(
         deck_name="RenathalDeck",
@@ -55,6 +93,7 @@ def test_mulligan_plan_rejects_start_of_game_deckbuilding_modifier_keep():
             "action": "hold",
             "reason": "start_of_game_effect_does_not_require_opening_hand",
             "source_claim_ids": ["renathal_effect_keep"],
+            "claim_id": "renathal_effect_keep",
         }
     ]
     assert plan["quality"]["first_gap_reason"] == (

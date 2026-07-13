@@ -56,6 +56,37 @@ def test_standalone_discover_mechanic_claim_routes_to_discover_surface():
     assert plan["suppressed"] == []
 
 
+def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "raw_target",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_A"],
+                "stance": "prefer_enemy_hero",
+                "source_claim_ids": ["raw_target"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_target",
+                    "surface": "cardid",
+                },
+            },
+            {
+                "claim_id": "raw_bad",
+                "claim_kind": "known_bad_pattern",
+                "cards": ["CARD_B"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_bad",
+                    "surface": "cardid",
+                },
+            },
+        ]
+    )
+
+    assert plan["rows"][0]["claim_id"] == "lifecycle_target"
+    assert plan["rows"][0]["source_claim_ids"] == ["raw_target"]
+    assert plan["suppressed"][0]["claim_id"] == "lifecycle_bad"
+
+
 def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
     spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
     assert spec is not None, "card behavior surface router module is required"

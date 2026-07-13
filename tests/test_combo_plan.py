@@ -25,6 +25,44 @@ def test_exact_sequence_claim_becomes_combo_plan():
     assert plan["suppressed"] == []
 
 
+def test_combo_plan_rows_use_lifecycle_claim_id_without_rewriting_source_claim_ids():
+    plan = build_combo_plan(
+        deck_cards={"CARD_A", "CARD_B"},
+        claims=[
+            {
+                "claim_id": "raw_combo",
+                "claim_kind": "combo_sequence",
+                "cards": ["CARD_A", "CARD_B"],
+                "sequence": ["CARD_A", "CARD_B"],
+                "timing_kind": "same_turn",
+                "operator": ">>",
+                "values": ["12", "8"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_combo",
+                    "surface": "combo",
+                },
+            },
+            {
+                "claim_id": "raw_missing",
+                "claim_kind": "combo_sequence",
+                "cards": ["CARD_A", "CARD_MISSING"],
+                "sequence": ["CARD_A", "CARD_MISSING"],
+                "timing_kind": "same_turn",
+                "operator": ">>",
+                "values": ["10", "10"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_missing",
+                    "surface": "combo",
+                },
+            },
+        ],
+    )
+
+    assert plan["combos"][0]["claim_id"] == "lifecycle_combo"
+    assert plan["combos"][0]["source_claim_ids"] == ["raw_combo"]
+    assert plan["suppressed"][0]["claim_id"] == "lifecycle_missing"
+
+
 def test_missing_deck_card_sequence_is_suppressed():
     plan = build_combo_plan(
         deck_cards={"CARD_A"},

@@ -88,6 +88,16 @@ def runtime_claims_for_surface(
     return runtime_claims
 
 
+def lifecycle_claim_id(claim: Mapping[str, Any]) -> str:
+    lifecycle = claim.get("_claim_lifecycle")
+    if isinstance(lifecycle, Mapping):
+        value = lifecycle.get("claim_id")
+        if value:
+            return str(value)
+    value = claim.get("claim_id")
+    return str(value) if value else ""
+
+
 def _runtime_eligibility(source_confidence: str, quarantine_reason: str | None) -> str:
     if quarantine_reason:
         return "quarantined"

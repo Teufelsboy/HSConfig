@@ -22,6 +22,44 @@ def test_aggressive_posture_allows_selected_step1_keys():
     assert "LowHpBoardValuePenalty" in blocked
 
 
+def test_globalvalues_rows_use_lifecycle_claim_id_without_rewriting_claim_refs():
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="baseline",
+        claims=[
+            {
+                "claim_id": "raw_posture",
+                "claim_kind": "gameplan_posture",
+                "stance": "weapon_pressure",
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_posture",
+                    "surface": "globalvalues",
+                },
+            },
+            {
+                "claim_id": "raw_numeric",
+                "claim_kind": "globalvalue_numeric_tuning",
+                "key": "LowHpBoardValuePenalty",
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_numeric",
+                    "surface": "globalvalues",
+                },
+            },
+        ],
+    )
+
+    allowed = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
+    assert allowed["MyWeaponValue"]["claim_id"] == "lifecycle_posture"
+    assert allowed["MyWeaponValue"]["claim_refs"] == ["raw_posture"]
+
+    numeric_row = next(
+        row
+        for row in matrix["blocked_until_runtime_evidence"]
+        if row["key"] == "LowHpBoardValuePenalty"
+        and row.get("claim_refs") == ["raw_numeric"]
+    )
+    assert numeric_row["claim_id"] == "lifecycle_numeric"
+
+
 def test_globalvalues_authority_matrix_embeds_per_key_authority():
     matrix = build_globalvalues_authority_matrix(
         aggression_profile="aggressive",

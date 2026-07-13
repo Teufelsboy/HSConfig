@@ -2,6 +2,8 @@ from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     runtime_claims_for_surface,
 )
+from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+from hsconfig.combo_plan import build_combo_plan
 from hsconfig.source_document_model import strict_claim_kind
 
 
@@ -130,3 +132,62 @@ def test_lifecycle_mulligan_surface_suppresses_start_of_game_transform_roles():
     assert rows[0]["claim_id"] == "darkbishop_keep"
     assert rows[0]["runtime_eligibility"] == "runtime_candidate"
     assert runtime_claims == []
+
+
+def test_lifecycle_claim_id_prefers_lifecycle_metadata_over_raw_claim_id():
+    from hsconfig.source_claim_lifecycle import lifecycle_claim_id
+
+    assert (
+        lifecycle_claim_id(
+            {
+                "claim_id": "raw_claim",
+                "_claim_lifecycle": {"claim_id": "lifecycle_claim"},
+            }
+        )
+        == "lifecycle_claim"
+    )
+    assert lifecycle_claim_id({"claim_id": "raw_claim"}) == "raw_claim"
+    assert lifecycle_claim_id({}) == ""
+
+
+def test_runtime_builder_rows_use_lifecycle_claim_id_over_raw_claim_id():
+    emitted = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "raw_target",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_A"],
+                "stance": "prefer_enemy_hero",
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_target",
+                    "surface": "cardid",
+                },
+            }
+        ]
+    )
+
+    assert emitted["rows"][0]["claim_id"] == "lifecycle_target"
+    assert emitted["rows"][0]["source_claim_ids"] == ["raw_target"]
+    assert "_claim_lifecycle" not in emitted["rows"][0]
+
+    suppressed = build_combo_plan(
+        deck_cards={"CARD_A"},
+        claims=[
+            {
+                "claim_id": "raw_combo",
+                "claim_kind": "combo_sequence",
+                "cards": ["CARD_A", "CARD_MISSING"],
+                "sequence": ["CARD_A", "CARD_MISSING"],
+                "timing_kind": "same_turn",
+                "operator": ">>",
+                "values": ["10", "10"],
+                "_claim_lifecycle": {
+                    "claim_id": "lifecycle_combo",
+                    "surface": "combo",
+                },
+            }
+        ],
+    )
+
+    assert suppressed["suppressed"][0]["claim_id"] == "lifecycle_combo"
+    assert "_claim_lifecycle" not in suppressed["suppressed"][0]

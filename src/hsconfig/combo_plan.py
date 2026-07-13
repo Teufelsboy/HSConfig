@@ -4,6 +4,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.combo_sequence_contract import build_combo_sequence_contract
+from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_combo, normalized_claim_kind
 
 
@@ -29,7 +30,7 @@ def build_combo_plan(
                 )
             continue
 
-        contract = build_combo_sequence_contract(claim, deck_cards)
+        contract = build_combo_sequence_contract(_claim_for_contract(claim), deck_cards)
         if contract.get("emittable") is not True:
             row = _suppression(
                 claim,
@@ -42,6 +43,7 @@ def build_combo_plan(
             continue
 
         row = {key: value for key, value in contract.items() if key != "emittable"}
+        _with_claim_id(row, claim)
         row["condition"] = _condition(claim)
         row["source_claim_ids"] = _source_claim_ids(claim)
         row["confidence"] = str(
@@ -64,11 +66,13 @@ def _combo_row_value(values: list[str]) -> int:
 
 
 def _suppression(claim: dict[str, Any], cards: list[str], reason: str) -> dict[str, Any]:
-    return {
-        "claim_id": claim.get("claim_id"),
-        "cards": cards,
-        "reason": reason,
-    }
+    return _with_claim_id(
+        {
+            "cards": cards,
+            "reason": reason,
+        },
+        claim,
+    )
 
 
 def _claim_cards(claim: dict[str, Any]) -> list[str]:
@@ -99,6 +103,22 @@ def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
     if claim.get("claim_id"):
         return [str(claim["claim_id"])]
     return []
+
+
+def _with_claim_id(row: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]:
+    claim_id = lifecycle_claim_id(claim)
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
+
+
+def _claim_for_contract(claim: dict[str, Any]) -> dict[str, Any]:
+    if claim.get("claim_id"):
+        return claim
+    claim_id = lifecycle_claim_id(claim)
+    if not claim_id:
+        return claim
+    return {**claim, "claim_id": claim_id}
 
 
 def _condition(claim: dict[str, Any]) -> str:

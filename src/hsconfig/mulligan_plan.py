@@ -4,6 +4,7 @@ from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_mulligan, normalized_claim_kind
 
 
@@ -28,12 +29,15 @@ def build_mulligan_plan(
         if not gate.allowed:
             if claim_cards:
                 suppressed_rules.append(
-                    {
-                        "card": claim_cards[0],
-                        "action": "hold" if claim_kind == "mulligan_keep" else "none",
-                        "reason": gate.reason,
-                        "source_claim_ids": _source_claim_ids(claim),
-                    }
+                    _with_claim_id(
+                        {
+                            "card": claim_cards[0],
+                            "action": "hold" if claim_kind == "mulligan_keep" else "none",
+                            "reason": gate.reason,
+                            "source_claim_ids": _source_claim_ids(claim),
+                        },
+                        claim,
+                    )
                 )
             continue
         action = "hold" if claim_kind == "mulligan_keep" else "discard"
@@ -52,13 +56,16 @@ def build_mulligan_plan(
             )
             if not selector_info["supported"]:
                 suppressed_rules.append(
-                    {
-                        "card": card_id,
-                        "selector": selector_info["selector"],
-                        "action": action,
-                        "reason": selector_info["reason"],
-                        "source_claim_ids": _source_claim_ids(claim),
-                    }
+                    _with_claim_id(
+                        {
+                            "card": card_id,
+                            "selector": selector_info["selector"],
+                            "action": action,
+                            "reason": selector_info["reason"],
+                            "source_claim_ids": _source_claim_ids(claim),
+                        },
+                        claim,
+                    )
                 )
                 continue
             selector_cards = [str(card) for card in selector_info.get("selector_cards", [])]
@@ -68,30 +75,36 @@ def build_mulligan_plan(
                 and not set(selector_cards).issubset(set(claim_cards))
             ):
                 suppressed_rules.append(
-                    {
-                        "card": card_id,
-                        "selector_kind": selector_info["selector_kind"],
-                        "selector": selector_info["selector"],
-                        "selector_cards": selector_cards,
-                        "claim_cards": claim_cards,
-                        "action": action,
-                        "reason": "selector_cards_not_in_claim",
-                        "source_claim_ids": _source_claim_ids(claim),
-                    }
+                    _with_claim_id(
+                        {
+                            "card": card_id,
+                            "selector_kind": selector_info["selector_kind"],
+                            "selector": selector_info["selector"],
+                            "selector_cards": selector_cards,
+                            "claim_cards": claim_cards,
+                            "action": action,
+                            "reason": "selector_cards_not_in_claim",
+                            "source_claim_ids": _source_claim_ids(claim),
+                        },
+                        claim,
+                    )
                 )
                 continue
             if explicit_selector and selector_cards:
                 card_id = selector_cards[0]
             if unsupported_reason is not None:
                 suppressed_rules.append(
-                    {
-                        "card": card_id,
-                        "selector_kind": selector_info["selector_kind"],
-                        "selector": selector_info["selector"],
-                        "action": action,
-                        "reason": _mulligan_condition_reason(unsupported_reason),
-                        "source_claim_ids": _source_claim_ids(claim),
-                    }
+                    _with_claim_id(
+                        {
+                            "card": card_id,
+                            "selector_kind": selector_info["selector_kind"],
+                            "selector": selector_info["selector"],
+                            "action": action,
+                            "reason": _mulligan_condition_reason(unsupported_reason),
+                            "source_claim_ids": _source_claim_ids(claim),
+                        },
+                        claim,
+                    )
                 )
                 continue
             rule = {
@@ -110,6 +123,7 @@ def build_mulligan_plan(
                 "source_claim_ids": _source_claim_ids(claim),
                 "source_type": "source_claim",
             }
+            _with_claim_id(rule, claim)
             if selector_cards:
                 rule["selector_cards"] = selector_cards
             key = mulligan_rule_key(rule)
@@ -230,6 +244,13 @@ def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
     if claim.get("claim_id"):
         return [str(claim["claim_id"])]
     return []
+
+
+def _with_claim_id(row: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]:
+    claim_id = lifecycle_claim_id(claim)
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
 
 
 def _mulligan_condition_reason(reason: str) -> str:
