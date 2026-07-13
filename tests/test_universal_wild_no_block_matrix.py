@@ -42,7 +42,8 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
                         "dbf_id": 1,
                         "count": 30,
                         "name": "Fixture Card",
-                        "text": "Fixture card text.",
+                        "text": "Future mechanic: fixture card text.",
+                        "mechanics": ["FUTURE_MECHANIC"],
                     }
                 ]
             }
@@ -235,8 +236,19 @@ def test_unknown_semantic_qualifier_stays_warning_not_apply_block(tmp_path):
     )
 
     assert result["exit_code"] == 0
-    assert result["operator_summary"]["technical_status"] == "VALID_PACKAGE"
-    assert result["operator_summary"]["runtime_apply_contract"]["apply_authority"] == (
+    operator_summary = result["operator_summary"]
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
+    mechanic_visibility = operator_summary["mechanic_visibility_summary"]
+    assert mechanic_visibility["non_blocking"] is True
+    assert "future_mechanic" in mechanic_visibility["mechanics_by_bucket"]["warning_only"]
+    assert any(
+        boundary["mechanic"] == "future_mechanic"
+        for boundary in mechanic_visibility["warning_boundaries"]
+    )
+    assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
     claim = result["guide_claim_bundle"]["claims"][0]
