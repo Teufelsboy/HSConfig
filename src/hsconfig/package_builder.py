@@ -237,7 +237,11 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         encoding="utf-8",
         newline="\n",
     )
-    write_research_contract_bundle(research_bundle, reports_dir)
+    write_research_contract_bundle(
+        research_bundle,
+        reports_dir,
+        guide_claim_bundle=guide_claim_bundle,
+    )
     write_json(reports_dir / "gameplan_contract.json", gameplan_contract)
     write_json(reports_dir / "surface_intent.json", surface_intent)
     write_json(reports_dir / "mulligan_plan_report.json", mulligan_plan)

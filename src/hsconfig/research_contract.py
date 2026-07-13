@@ -112,12 +112,26 @@ def build_research_contract_bundle(
     }
 
 
-def write_research_contract_bundle(bundle: dict[str, Any], reports_dir: Path) -> None:
+def write_research_contract_bundle(
+    bundle: dict[str, Any],
+    reports_dir: Path,
+    *,
+    guide_claim_bundle: dict[str, Any] | None = None,
+) -> None:
     research_dir = reports_dir / "research"
-    write_research_contract_bundle_to_dir(bundle, research_dir)
+    write_research_contract_bundle_to_dir(
+        bundle,
+        research_dir,
+        guide_claim_bundle=guide_claim_bundle,
+    )
 
 
-def write_research_contract_bundle_to_dir(bundle: dict[str, Any], output_dir: Path) -> None:
+def write_research_contract_bundle_to_dir(
+    bundle: dict[str, Any],
+    output_dir: Path,
+    *,
+    guide_claim_bundle: dict[str, Any] | None = None,
+) -> None:
     write_json(output_dir / "archetype_research.json", bundle["archetype_research"])
     write_json(output_dir / "claims.json", {"claims": bundle["claims"]})
     write_json(output_dir / "card_role_map.json", bundle["card_role_map"])
@@ -126,8 +140,11 @@ def write_research_contract_bundle_to_dir(bundle: dict[str, Any], output_dir: Pa
     write_json(output_dir / "known_bad_patterns.json", bundle["known_bad_patterns"])
     write_json(output_dir / "globalvalue_intent.json", bundle["globalvalue_intent"])
     write_json(output_dir / "coverage_summary.json", bundle["coverage_summary"])
-    if "guide_claim_bundle" in bundle:
-        write_json(output_dir / "guide_claim_bundle.json", bundle["guide_claim_bundle"])
+    canonical_guide_claim_bundle = guide_claim_bundle
+    if canonical_guide_claim_bundle is None:
+        canonical_guide_claim_bundle = bundle.get("guide_claim_bundle")
+    if canonical_guide_claim_bundle is not None:
+        write_json(output_dir / "guide_claim_bundle.json", canonical_guide_claim_bundle)
 
 
 def _deck_cards(deck_identity: dict[str, Any]) -> list[dict[str, Any]]:
