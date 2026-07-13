@@ -1,0 +1,36 @@
+name: contract-spine
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  guardrails:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Run contract-spine guard suite
+        env:
+          PYTHONPATH: src
+        run: >
+          python -m pytest
+          tests/test_source_claim_family_registry.py
+          tests/test_claim_kind_runtime_contract.py
+          tests/test_semantic_runtime_negative_boundaries.py
+          tests/test_contract_spine_sentinel.py
+          tests/test_contract_spine_sentinel_cli.py
+          tests/test_apply_authority_boundary.py
+          tests/test_no_second_gate_contract.py
+          tests/test_universal_wild_no_block_matrix.py
+          -q
+      - name: Run contract-spine sentinel
+        env:
+          PYTHONPATH: src
+        run: python -m hsconfig.cli contract-spine-sentinel --json

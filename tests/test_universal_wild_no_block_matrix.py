@@ -519,3 +519,35 @@ def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block
     assert "future_keyword" in operator_summary["mechanic_visibility_summary"][
         "mechanics_by_bucket"
     ]["warning_only"]
+
+
+def test_warning_bearing_future_mechanic_package_still_load_safe(tmp_path):
+    result = prepare_fixture_deck_with_source_claims(
+        tmp_path,
+        deck_name="FutureMechanicNoBlock",
+        claims=[
+            {
+                "claim_id": "future_keyword_visible",
+                "claim_kind": "future_claim_kind",
+                "claim_readiness": "contract_gap",
+                "cards": ["CARD_777"],
+                "mechanic": "future_keyword",
+                "evidence_text_short": "Future keyword should be visible but not blocking.",
+            },
+            {
+                "claim_id": "runtime_only_globalvalue_visible",
+                "claim_kind": "globalvalue_numeric_tuning",
+                "claim_readiness": "guide_backed",
+                "key": "FirstTurnValueWeight",
+                "runtime_value": 1.3,
+                "evidence_text_short": "Runtime value request requires post-game evidence.",
+            },
+        ],
+    )
+    operator_summary = result["operator_summary"]
+
+    assert_load_safe_no_block_package(operator_summary)
+    assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
