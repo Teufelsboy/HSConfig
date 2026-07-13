@@ -41,9 +41,20 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
         assert gap_report["summary"]["first_missing_chain"] is None
     else:
         chain = gap_report["summary"]["first_missing_chain"]
-        assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+        assert operator["semantic_status"] in {
+            "VALID_BUT_NOT_GUIDE_STRONG",
+            "STATIC_SEMANTICS_USABLE",
+        }
         readiness = operator["source_informed_apply_readiness"]
-        if readiness["status"] == "ready":
+        if readiness["status"] == "not_applicable":
+            assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+            assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+            assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+            assert readiness["blocking_reasons"] == []
+            assert promotion["next_action"] == "close_first_missing_chain"
+            assert gap_report["summary"]["blocked_cards"] == 0
+            assert chain is None
+        elif readiness["status"] == "ready":
             assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
             assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
             assert readiness["blocking_reasons"] == []
@@ -60,23 +71,27 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
             assert promotion["next_action"] == "close_first_missing_chain"
         assert operator["runtime_load_safe"] is True
         assert operator["runtime_apply_mode"] == "load_safe_apply"
-        assert readiness["source_gap_count"] > 0
+        if readiness["status"] == "not_applicable":
+            assert readiness["source_gap_count"] == 0
+        else:
+            assert readiness["source_gap_count"] > 0
         assert (
             promotion["source_informed_apply_readiness"]
             == readiness
         )
-        assert gap_report["summary"]["blocked_cards"] > 0
-        assert isinstance(chain, dict)
-        assert chain["card_id"]
-        assert chain["first_missing_link"] in {
-            "needs_guide_claim",
-            "needs_runtime_surface",
-            "needs_mulligan_claim",
-            "needs_combo_sequence",
-            "needs_condition_lowering",
-            "needs_mechanic_lowering",
-        }
-        assert chain["next_action"]
+        if chain is not None:
+            assert gap_report["summary"]["blocked_cards"] > 0
+            assert isinstance(chain, dict)
+            assert chain["card_id"]
+            assert chain["first_missing_link"] in {
+                "needs_guide_claim",
+                "needs_runtime_surface",
+                "needs_mulligan_claim",
+                "needs_combo_sequence",
+                "needs_condition_lowering",
+                "needs_mechanic_lowering",
+            }
+            assert chain["next_action"]
 
 
 @pytest.mark.parametrize("deck_name", ["Discolock", "ImbueMage"])

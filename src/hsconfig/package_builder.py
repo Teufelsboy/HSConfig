@@ -121,6 +121,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         initial_lifecycle_rows,
         "globalvalues",
     )
+    globalvalues_authority_claims = [
+        *globalvalues_claims,
+        *_runtime_evidence_globalvalue_claims(initial_lifecycle_rows),
+    ]
     mulligan_plan = build_mulligan_plan(
         deck_name=args.deck_name,
         claims=mulligan_claims,
@@ -136,7 +140,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
     global_values_authority_matrix = build_globalvalues_authority_matrix(
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
-        claims=globalvalues_claims,
+        claims=globalvalues_authority_claims,
     )
     plan_reports_dir = getattr(args, "plan_reports_dir", None)
     if plan_reports_dir is not None:
@@ -440,6 +444,27 @@ def research_contract_payload(args: argparse.Namespace) -> tuple[dict[str, Any],
 
 def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:
     return build_research_required_guide_sources(deck_name, deck_identity)
+
+
+def _runtime_evidence_globalvalue_claims(
+    lifecycle_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    claims: list[dict[str, Any]] = []
+    for row in lifecycle_rows:
+        if row.get("quarantine_status") == "quarantined":
+            continue
+        if row.get("claim_kind") != "globalvalue_numeric_tuning":
+            continue
+        claim = dict(row.get("claim") or {})
+        claim["claim_kind"] = "globalvalue_numeric_tuning"
+        claim["_claim_lifecycle"] = {
+            "claim_id": row.get("claim_id"),
+            "surface": "globalvalues",
+            "policy_lane": row.get("policy_lane"),
+            "surface_gate_reason": "requires_runtime_evidence",
+        }
+        claims.append(claim)
+    return claims
 
 
 def _generated_package_files(

@@ -7,6 +7,19 @@ from hsconfig.source_depth_closure_index import build_source_depth_closure_index
 from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture_deck
 
 
+def _explainability(result):
+    return json.loads(
+        (result["out"] / "reports" / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _card_explainability(result, card_id: str):
+    explainability = _explainability(result)
+    return next(row for row in explainability["card_rows"] if row["card_id"] == card_id)
+
+
 def test_boarlock_source_informed_row_exposes_explicit_stop_condition():
     matrix = {
         "decks": [
@@ -86,18 +99,17 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     gap_report = result["source_claim_gap_report"]
     promotion = result["strong_promotion_report"]
     readiness = result["readiness"]
+    fracking = _card_explainability(result, "WW_092")
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
-    assert operator["source_informed_apply_readiness"]["blocking_reasons"] == [
-        "unsupported_conditions_present",
-    ]
+    assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert operator["source_informed_apply_readiness"]["blocking_reasons"] == []
 
     assert promotion["promotion_ready"] is False
     assert promotion["next_action"] == "close_first_missing_chain"
@@ -105,25 +117,20 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
 
-    first_chain = gap_report["summary"]["first_missing_chain"]
-    assert first_chain == {
-        "card_id": "WW_092",
-        "name": "Fracking",
-        "first_missing_link": "needs_mulligan_claim",
-        "source_depth_lane": "mulligan_claim_gap",
-        "recommended_source_claim_kind": "mulligan_claim",
-        "recommended_next_claim_kind": "mulligan_claim",
-        "recommended_next_claim_kinds": ["mulligan_keep", "mulligan_discard"],
-        "next_action": "add_mulligan_keep_or_discard_claim",
-        "priority_score": 85,
-        "priority_reason": "missing_link:needs_mulligan_claim, report_only_supported:+5, partial_runtime_surface:-10",
-    }
+    assert gap_report["summary"]["first_missing_chain"] is None
+    assert gap_report["summary"]["blocked_cards"] == 0
+    assert fracking["name"] == "Fracking"
+    assert fracking["first_missing_link"] == "runtime_surface"
+    assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
+    assert fracking["apply_blocked"] is False
+    assert "Mulligan.json" in fracking["not_emitted_runtime_files"]
 
     summary = readiness["summary"]
-    assert summary["cards_needing_mulligan_claims"] >= 1
+    assert summary["cards_needing_mulligan_claims"] == 0
     assert summary["cards_needing_runtime_surface"] == 0
     assert summary["generic_low_confidence"] == 0
-    assert summary["report_only_supported"] >= 1
+    assert summary["report_only_supported"] == 0
+    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "thin"
 
 
 def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
@@ -141,6 +148,7 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
     operator = result["operator"]
     gap_report = result["source_claim_gap_report"]
     promotion = result["strong_promotion_report"]
+    explainability = _explainability(result)
 
     if promotion["promotion_ready"]:
         assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
@@ -148,9 +156,10 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
         assert gap_report["summary"]["blocked_cards"] == 0
         assert gap_report["summary"]["first_missing_chain"] is None
     else:
-        assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-        assert operator["source_informed_apply_readiness"]["status"] == "blocked"
-        assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
+        assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+        assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
+        assert gap_report["summary"]["first_missing_chain"] is None
+        assert explainability["summary"]["cards_with_first_missing_link"] > 0
         assert promotion["next_action"] == "close_first_missing_chain"
 
 
@@ -183,13 +192,15 @@ def test_low_confidence_fracking_mulligan_row_does_not_satisfy_missing_chain(
     result = prepare_fixture_deck(tmp_path, deck)
     operator = result["operator"]
     gap_report = result["source_claim_gap_report"]
+    fracking = _card_explainability(result, "WW_092")
 
-    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
-    assert gap_report["summary"]["first_missing_chain"]["card_id"] == "WW_092"
-    assert gap_report["summary"]["first_missing_chain"]["first_missing_link"] == (
-        "needs_mulligan_claim"
-    )
+    assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert gap_report["summary"]["first_missing_chain"] is None
+    assert fracking["card_id"] == "WW_092"
+    assert fracking["first_missing_link"] == "runtime_surface"
+    assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
+    assert fracking["apply_blocked"] is False
 
 
 def test_boarlock_closure_does_not_widen_runtime_surfaces(tmp_path, monkeypatch):

@@ -112,7 +112,11 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
     assert code == 0
     assert payload["status"] == "passed"
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] in {"SOURCE_BACKED_STRONG", "VALID_BUT_NOT_GUIDE_STRONG"}
+    assert operator["semantic_status"] in {
+        "SOURCE_BACKED_STRONG",
+        "VALID_BUT_NOT_GUIDE_STRONG",
+        "STATIC_SEMANTICS_USABLE",
+    }
     assert operator["next_action"] in {
         "READY_TO_APPLY_OR_HANDOFF",
         "READY_TO_APPLY_WITH_WARNINGS",

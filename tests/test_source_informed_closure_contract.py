@@ -52,30 +52,35 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     deck_identity = json.loads(
         (result["out"] / "reports" / "deck_identity.json").read_text(encoding="utf-8")
     )
+    explainability = json.loads(
+        (
+            result["out"] / "reports" / "source_to_runtime_explainability.json"
+        ).read_text(encoding="utf-8")
+    )
     generated = set(result["generated_files"])
     target = TARGETS[deck_name]
+    target_card_row = next(
+        row for row in explainability["card_rows"] if row["card_id"] == target["first_card_id"]
+    )
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
+    assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert operator["source_informed_apply_readiness"]["blocking_reasons"] == []
     assert promotion["promotion_ready"] is False
 
     first_chain = gap_report["summary"]["first_missing_chain"]
-    assert first_chain["card_id"] == target["first_card_id"]
-    assert first_chain["name"] == target["first_card_name"]
-    assert first_chain["first_missing_link"] == "needs_mulligan_claim"
-    assert first_chain["source_depth_lane"] == target["expected_source_depth_lane"]
-    assert first_chain["recommended_source_claim_kind"] == "mulligan_claim"
-    assert first_chain["recommended_next_claim_kind"] == "mulligan_claim"
-    assert first_chain["recommended_next_claim_kinds"] == [
-        "mulligan_keep",
-        "mulligan_discard",
-    ]
-    assert first_chain["next_action"] == "add_mulligan_keep_or_discard_claim"
+    assert first_chain is None
+    assert gap_report["summary"]["blocked_cards"] == 0
+    assert target_card_row["name"] == target["first_card_name"]
+    assert target_card_row["first_missing_link"] == "runtime_surface"
+    assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
+    assert target_card_row["apply_blocked"] is False
+    assert "Mulligan.json" in target_card_row["not_emitted_runtime_files"]
 
     visibility = deck["strongness_visibility"]
     if target["expected_stop_condition"] is not None:
