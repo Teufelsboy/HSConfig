@@ -64,6 +64,21 @@ EXPECTED_EMITTED_PACKAGE_FILES = tuple(
         }
     )
 )
+CLAIM_LIFECYCLE_OWNER = "hsconfig.source_claim_lifecycle"
+LIFECYCLE_DIAGNOSTIC_REPORT_FILES = (
+    "reports/source_contract_audit.json",
+    "reports/source_to_runtime_explainability.json",
+)
+LIFECYCLE_DIAGNOSTIC_TOKENS = (
+    "claim lifecycle",
+    "claim_lifecycle",
+    "contract spine",
+    "contract_spine",
+    "source contract",
+    "source_contract",
+    "source-to-runtime",
+    "source_to_runtime",
+)
 
 
 def build_contract_spine_sentinel_report(
@@ -106,7 +121,9 @@ def build_contract_spine_sentinel_report(
         "active_apply_paths_missing": _missing_active_apply_paths(root),
         "legacy_surface_normal_routing": _legacy_surface_normal_routing(root),
         "source_informed_apply_flag_policy": _source_informed_apply_flag_policy(root),
+        "claim_lifecycle_owner": CLAIM_LIFECYCLE_OWNER,
         "report_ownership_gate_files": _report_ownership_gate_files(),
+        "lifecycle_gate_files": _lifecycle_gate_files(),
         "report_ownership_unclassified_files": _report_ownership_unclassified_files(),
         "output_ownership_unclassified_files": _output_ownership_files_by_classification(
             "unclassified"
@@ -291,6 +308,34 @@ def _report_ownership_gate_files() -> list[str]:
     )
 
 
+def _lifecycle_gate_files() -> list[str]:
+    return sorted(
+        str(row.get("file", ""))
+        for row in build_report_ownership()
+        if row.get("file") != "reports/operator_summary.json"
+        and row.get("classification") in {"gate", "operator_gate"}
+        and _is_lifecycle_ownership_row(row)
+    )
+
+
+def _is_lifecycle_ownership_row(row: dict[str, Any]) -> bool:
+    file_name = str(row.get("file", ""))
+    if file_name in LIFECYCLE_DIAGNOSTIC_REPORT_FILES:
+        return True
+    text = _ownership_row_text(row)
+    return any(token in text for token in LIFECYCLE_DIAGNOSTIC_TOKENS)
+
+
+def _ownership_row_text(row: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for value in row.values():
+        if isinstance(value, (list, tuple, set)):
+            parts.extend(str(item) for item in value)
+        else:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
 def _report_ownership_unclassified_files() -> list[str]:
     return sorted(
         row.get("file", "")
@@ -322,6 +367,7 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
         "active_apply_paths_missing",
         "legacy_surface_normal_routing",
         "report_ownership_unclassified_files",
+        "lifecycle_gate_files",
         "output_ownership_unclassified_files",
         "output_ownership_forbidden_legacy_surfaces",
     )

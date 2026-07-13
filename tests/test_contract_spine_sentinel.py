@@ -35,6 +35,24 @@ def test_contract_spine_sentinel_preserves_diagnostic_only_boundary():
     assert checks["conformance_apply_authority_fields_present"] == []
 
 
+def test_sentinel_knows_lifecycle_module_is_runtime_eligibility_owner():
+    report = build_contract_spine_sentinel_report()
+    checks = report["checks"]
+
+    assert checks["claim_lifecycle_owner"] == "hsconfig.source_claim_lifecycle"
+    assert report["authority"] == "diagnostic_only"
+    assert report["apply_blocking"] is False
+
+
+def test_sentinel_keeps_operator_summary_as_only_gate_after_lifecycle():
+    report = build_contract_spine_sentinel_report()
+
+    assert report["checks"]["report_ownership_gate_files"] == [
+        "reports/operator_summary.json"
+    ]
+    assert report["checks"]["lifecycle_gate_files"] == []
+
+
 def test_contract_spine_sentinel_keeps_critical_runtime_boundaries_visible():
     report = build_contract_spine_sentinel_report()
     critical = report["checks"]["critical_boundary_rows"]
