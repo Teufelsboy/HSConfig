@@ -72,3 +72,19 @@ def test_skill_reference_mentions_claim_lifecycle_and_no_block_contract():
     assert "do not block load-safe valid packages" in normalized
     assert "operator_summary.json remains the only normal apply authority" in text
     assert "source_contract_audit.json" in text
+
+
+def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
+    operator_readme = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
+    guide_policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    combined = operator_readme + "\n" + guide_policy
+
+    assert "reports/operator_summary.json remains the only normal apply authority" in combined
+    assert "source_contract_audit.json is diagnostic" in combined
+    assert "Presume.json" in combined
+    assert "Concede.json" in combined
+    assert "normal-path Presume.json" not in combined
+    assert "normal-path Concede.json" not in combined

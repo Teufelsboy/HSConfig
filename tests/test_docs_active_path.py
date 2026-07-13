@@ -432,3 +432,12 @@ def test_source_builder_workflow_marks_source_informed_apply_as_legacy_noop():
     assert "`--allow-source-informed` is a backward-compatible legacy no-op." in text
     assert "It does not create a second apply path." in text
     assert "Runtime apply decisions come from `reports/operator_summary.json`." in text
+
+
+def test_operator_readme_starts_with_short_configure_path():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    first_120_lines = "\n".join(text.splitlines()[:120])
+
+    assert "hsconfig configure" in first_120_lines
+    assert "reports/operator_summary.json" in first_120_lines
+    assert "contract-spine-sentinel" not in first_120_lines

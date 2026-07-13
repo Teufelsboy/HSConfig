@@ -6,58 +6,20 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
-Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
-Effect semantics are not opening-hand mulligan keeps: start-of-game and deckbuilding cards can stay visible in card behavior or diagnostics while remaining absent from `Mulligan.json`.
-
-### Source claim vs runtime surface
-
-`claim_kind` describes what the source says. It does not by itself authorize a
-runtime write. Runtime output is decided by surface-specific gates:
-
-- `Mulligan.json`: only explicit `mulligan_keep` or `mulligan_discard` claims.
-- `GlobalValues.json`: curated `gameplan_posture` overlays plus full baseline keys.
-- `Combo.json`: exact `combo_sequence` claims with valid CardID sequences.
-- `<CARDID>.json`: documented CardID behavior claims such as targeting,
-  mechanic usage, hero-power transform, discover, choose-one, and known bad
-  patterns.
-
-Wrong-surface or low-confidence claims do not block deck generation. They are
-reported as suppressed/report-only rows with explicit reasons.
-`reports/source_contract_audit.json` explains those source-to-runtime decisions
-per claim and per card; it does not replace `reports/operator_summary.json`.
-`source_contract_audit.json` is diagnostic. Its `claim_lifecycle_rows` explain
-source -> policy -> surface gate -> builder/router -> emitted/suppressed.
-Runtime readiness still comes from `operator_summary.json`.
-`reports/source_to_runtime_explainability.json` is the card-readable projection
-of that audit: it names emitted runtime files, missing runtime files, the first
-missing link, and the next source action per claim/card. Its compact
-`source_to_runtime_explainability_summary` in `operator_summary.json` is
-non-blocking and does not grant apply permission.
-
-Source-contract invariant: effect semantics are preserved on supported effect
-and CardID surfaces, but only exact runtime-surface claims lower into matching
-runtime JSON. Start-of-game, deckbuilding, deck-state, and hero-power-transform
-facts do not become Mulligan keeps unless there is separate exact hand-keep
-authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
-remains the normal apply authority.
-
-`operator_summary.json` remains the only normal apply authority.
-`source_contract_audit.json` explains why each claim did or did not lower.
-`contract_spine_rows` show the compact source -> policy -> surface gate -> builder/router -> runtime effect chain.
-Warnings are follow-up work, not a runtime apply blocker.
-Do not use `source_contract_audit.json` as an apply gate.
-
-## Quick Start
-
-- Run `hsconfig configure` for normal operation.
-- Open `reports/operator_summary.json` first.
-- `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
-- Warnings are follow-up work, not a second apply path.
-- HSTuner owns post-run evaluation and tuning.
-
 ## Preferred Normal Path
 
-Preferred normal path: `hsconfig configure`.
+1. Run `hsconfig configure`.
+2. Open `outputs/<DeckName>/04_package/reports/operator_summary.json`.
+3. Apply only through `hsconfig apply` or `hsconfig configure --apply`.
+
+reports/operator_summary.json remains the only normal apply authority.
+Other reports are diagnostic. They explain source quality, mechanic coverage,
+ownership, and missing links; they do not grant apply permission.
+
+Normal HSConfig output is limited to `GlobalValues.json`, `Mulligan.json`,
+per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence
+exists. `Presume.json` and `Concede.json` are known VisionAI surfaces, but they
+are outside the normal output path.
 
 Use `hsconfig configure` for normal operation:
 
@@ -70,13 +32,6 @@ This command runs the lower-level pre-run chain, writes a validated package, and
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
-
-## Normal Operator Path
-
-1. Run `hsconfig configure --deck-name <deck> --deck-code <code> --runtime-root <runtime-root> --out <out> --json`.
-2. Add `--source-evidence-json <file>` when current guide evidence rows are already available.
-3. Open `reports/operator_summary.json` first.
-4. Run `hsconfig apply` only when the operator summary allows it, or use `hsconfig configure --apply` when the same guarded apply should happen in the configure run.
 
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
@@ -94,6 +49,48 @@ Use this path when each source and research stage must be inspected before packa
 6. Run `hsconfig validate --package <package> --json` before handoff or runtime apply.
 7. Open `reports/operator_summary.json` first.
 8. Run `hsconfig apply` only when the operator summary allows it.
+
+## Source Claim vs Runtime Surface
+
+Runtime Mulligan writes require explicit `claim_kind` values such as
+`mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects,
+deckbuilding effects, hero-power-transform text, and guide gameplan text remain
+contract evidence unless they are separately backed by explicit hand-required
+Mulligan guidance.
+
+Effect semantics are not opening-hand mulligan keeps: start-of-game and
+deckbuilding cards can stay visible in card behavior or diagnostics while
+remaining absent from `Mulligan.json`.
+
+`claim_kind` describes what the source says. It does not by itself authorize a
+runtime write. Runtime output is decided by surface-specific gates:
+
+- `Mulligan.json`: only explicit `mulligan_keep` or `mulligan_discard` claims.
+- `GlobalValues.json`: curated `gameplan_posture` overlays plus full baseline keys.
+- `Combo.json`: exact `combo_sequence` claims with valid CardID sequences.
+- `<CARDID>.json`: documented CardID behavior claims such as targeting,
+  mechanic usage, hero-power transform, discover, choose-one, and known bad
+  patterns.
+
+Wrong-surface or low-confidence claims do not block deck generation. They are
+reported as suppressed/report-only rows with explicit reasons.
+`reports/source_contract_audit.json` explains those source-to-runtime decisions
+per claim and per card; it does not replace `reports/operator_summary.json`.
+source_contract_audit.json is diagnostic. Its `claim_lifecycle_rows` explain
+source -> policy -> surface gate -> builder/router -> emitted/suppressed.
+Runtime readiness still comes from `operator_summary.json`.
+`reports/source_to_runtime_explainability.json` is the card-readable projection
+of that audit: it names emitted runtime files, missing runtime files, the first
+missing link, and the next source action per claim/card. Its compact
+`source_to_runtime_explainability_summary` in `operator_summary.json` is
+non-blocking and does not grant apply permission.
+
+Source-contract invariant: effect semantics are preserved on supported effect
+and CardID surfaces, but only exact runtime-surface claims lower into matching
+runtime JSON. Start-of-game, deckbuilding, deck-state, and hero-power-transform
+facts do not become Mulligan keeps unless there is separate exact hand-keep
+authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
+remains the normal apply authority.
 
 ## Load Safety vs. Config Richness
 

@@ -65,6 +65,18 @@ not block load-safe valid packages.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
+## Claim Family Guardrail
+
+Every supported `claim_kind` has exactly one policy lane, one allowed runtime
+surface set, one negative-boundary rule, and one diagnostic conflict family.
+Changing a claim kind means updating the claim-family registry, the source
+contract matrix, the runtime surface gate, the builder/router tests, and the
+contract-spine sentinel together.
+
+The guardrail is diagnostic only. It protects the source-to-runtime contract,
+but it does not create another apply gate. reports/operator_summary.json
+remains the only normal apply authority.
+
 ## Semantic Qualifiers
 
 Semantic qualifiers refine existing source claims. They do not create a second
