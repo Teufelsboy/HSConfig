@@ -31,6 +31,69 @@ def _stub_empty_card_fetches(monkeypatch) -> None:
     )
 
 
+def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, claim: dict):
+    cards = tmp_path / "cards.json"
+    cards.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "CARD_001",
+                        "dbf_id": 1,
+                        "count": 30,
+                        "name": "Fixture Card",
+                        "text": "Fixture card text.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sources = tmp_path / "sources.json"
+    sources.write_text(
+        json.dumps(
+            [
+                {
+                    "source_url": "https://example.invalid/qualifier",
+                    "source_title": "Qualifier Fixture",
+                    "source_family": "guide_fixture",
+                    "retrieved_at": "2026-07-13T00:00:00Z",
+                    "claims": [claim],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+    exit_code = main(
+        [
+            "prepare",
+            "--deck-name",
+            deck_name,
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards),
+            "--guide-sources-json",
+            str(sources),
+        ]
+    )
+    reports = out / "reports"
+    return {
+        "exit_code": exit_code,
+        "operator_summary": json.loads(
+            (reports / "operator_summary.json").read_text(encoding="utf-8")
+        ),
+        "guide_claim_bundle": json.loads(
+            (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+        ),
+    }
+
+
 @pytest.mark.parametrize(("deck_name", "deck_code"), DECKS)
 def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     tmp_path: Path,
@@ -156,3 +219,25 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert operator["runtime_apply_contract"]["apply_authority"] == "reports/operator_summary.json"
         assert source_contract_audit["schema_version"] == 1
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True
+
+
+def test_unknown_semantic_qualifier_stays_warning_not_apply_block(tmp_path):
+    result = prepare_fixture_deck_with_source_claim(
+        tmp_path,
+        deck_name="QualifierUnknown",
+        claim={
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_001"],
+            "evidence_text_short": "Use the new future mechanic when possible.",
+            "source_confidence": "high",
+            "semantic_qualifiers": {"state_requirements": ["future_mechanic"]},
+        },
+    )
+
+    assert result["exit_code"] == 0
+    assert result["operator_summary"]["technical_status"] == "VALID_PACKAGE"
+    assert result["operator_summary"]["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    claim = result["guide_claim_bundle"]["claims"][0]
+    assert claim["semantic_qualifiers"]["state_requirements"] == ["future_mechanic"]

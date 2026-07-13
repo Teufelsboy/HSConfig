@@ -10,6 +10,38 @@ SHADOWPRIEST_CODE = (
 )
 
 
+def test_shadowpriest_semantic_qualifiers_preserve_effect_without_mulligan_keep(tmp_path: Path):
+    out = tmp_path / "pkg"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+        ]
+    )
+
+    reports = out / "reports"
+    operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    mulligan = json.loads(
+        (out / "CustomConfig" / "shadowpriest" / "Mulligan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert not any(
+        row.get("mulligan") == "SW_448" and row.get("value") == "hold"
+        for row in mulligan["Mulligan"]["values"]
+    )
+
+
 def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, capsys):
     package = tmp_path / "shadowpriest_package"
     runtime = tmp_path / "runtime"
