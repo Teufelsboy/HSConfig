@@ -538,3 +538,47 @@ def test_research_contract_does_not_infer_hold_for_start_of_game_non_hand_keep_c
 
     assert "mulligan_anchor" not in bundle["card_role_map"]["SW_448"]["roles"]
     assert bundle["mulligan_anchor_map"]["SW_448"]["intent"] != "hold"
+
+
+def test_gameplan_contract_rejects_research_bundle_hold_for_non_hand_start_effect():
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "cards": [{"card_id": "SW_448", "count": 1, "name": "Darkbishop Benedictus"}],
+    }
+    card_metadata = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "semantic_families": ["start_of_game", "hero_power_transform"],
+            }
+        ]
+    }
+    source_claims = normalize_source_claims([])
+    research_bundle = {
+        "card_role_map": {
+            "SW_448": {
+                "roles": ["start_of_game", "hero_power_transform", "mulligan_anchor"],
+                "confidence": "guide_backed",
+                "source_claim_ids": ["fixture_claim"],
+            }
+        },
+        "mulligan_anchor_map": {
+            "SW_448": {
+                "intent": "hold",
+                "condition": "*",
+                "confidence": "guide_backed",
+                "source_claim_ids": ["fixture_claim"],
+            }
+        },
+    }
+
+    contract = build_gameplan_contract(
+        deck_identity,
+        card_metadata,
+        source_claims,
+        research_bundle=research_bundle,
+    )
+
+    assert contract["cards"]["SW_448"]["roles"].count("mulligan_anchor") == 0
+    assert contract["mulligan_anchors"] == []
