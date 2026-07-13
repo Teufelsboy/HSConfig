@@ -3,6 +3,7 @@ import inspect
 
 from hsconfig import package_builder
 from hsconfig.commands import source_workflow
+from hsconfig import preconfig_context
 from hsconfig.preconfig_context import build_preconfig_context
 
 
@@ -66,3 +67,29 @@ def test_research_and_prepare_no_longer_own_duplicate_context_builders():
     assert "def build_preconfig_context(" not in package
     assert "from hsconfig.preconfig_context import build_preconfig_context" in source
     assert "from hsconfig.preconfig_context import build_preconfig_context" in package
+
+
+def test_research_contract_payload_does_not_fetch_collectible_cards_without_local_feed(
+    tmp_path, monkeypatch
+):
+    collectible_fetch_calls = []
+
+    def fail_if_called(timeout=10.0):
+        collectible_fetch_calls.append(timeout)
+        return []
+
+    monkeypatch.setitem(
+        preconfig_context.build_preconfig_context.__kwdefaults__,
+        "fetch_latest_collectible_cards_fn",
+        fail_if_called,
+    )
+    monkeypatch.setattr(package_builder, "fetch_latest_cards", lambda timeout=10.0: [])
+
+    args = _args(tmp_path)
+    args.skip_semantic_fetch = False
+
+    payload, exit_code = package_builder.research_contract_payload(args)
+
+    assert exit_code == 0
+    assert payload["status"] == "passed"
+    assert collectible_fetch_calls == []

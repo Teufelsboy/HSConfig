@@ -379,7 +379,12 @@ def research_contract_payload(args: argparse.Namespace) -> tuple[dict[str, Any],
     out = Path(args.out)
     prepare_research_output_dir(out)
 
-    context = build_preconfig_context(args)
+    context = build_preconfig_context(
+        args,
+        fetch_latest_cards_fn=fetch_latest_cards,
+        fetch_latest_collectible_cards_fn=None,
+        research_required_guide_sources_fn=_research_required_guide_sources,
+    )
     deck_identity = context["deck_identity"]
     bundle = context["research_bundle"]
     write_research_contract_bundle_to_dir(bundle, out)
