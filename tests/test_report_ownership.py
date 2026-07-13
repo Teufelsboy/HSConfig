@@ -74,3 +74,16 @@ def test_source_contract_conformance_is_not_operator_report():
     assert "reports/source_contract_conformance.json" not in files
     assert "reports/operator_summary.json" in files
     assert "reports/source_contract_audit.json" in files
+
+
+def test_report_ownership_classifies_every_operator_report_and_keeps_single_gate():
+    rows = build_report_ownership()
+
+    assert rows
+    assert all(row.get("classification") for row in rows)
+    gates = [row for row in rows if row["classification"] == "gate"]
+    assert [row["file"] for row in gates] == ["reports/operator_summary.json"]
+    assert all(
+        row["classification"] != "gate" or row["authority"] == "normal_operator_gate"
+        for row in rows
+    )

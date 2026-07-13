@@ -55,3 +55,11 @@ def test_active_apply_paths_do_not_import_diagnostic_authorities():
         content = _read(relative_path)
         for token in FORBIDDEN_DIAGNOSTIC_IMPORTS:
             assert token not in content, (relative_path, token)
+
+
+def test_report_ownership_has_no_second_apply_gate():
+    from hsconfig.report_ownership import build_report_ownership
+
+    gate_rows = [row for row in build_report_ownership() if row.get("classification") == "gate"]
+
+    assert [row["file"] for row in gate_rows] == ["reports/operator_summary.json"]
