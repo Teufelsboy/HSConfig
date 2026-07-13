@@ -1,0 +1,70 @@
+{
+  "scope": "HSConfig source-contract boundary between Start of Game, deckbuilding, and hero-power-transform semantics and opening-hand mulligan keep generation, including Darkbishop Benedictus-like non-hand enablers and role-token normalization.",
+  "verified_strengths": [
+    "The runtime surface split is explicit: only `mulligan_keep` and `mulligan_discard` can lower to the mulligan surface, while `hero_power_transform` lowers to the cardid surface and `globalvalue_numeric_tuning` is blocked without separate runtime evidence.",
+    "Broad legacy claim types do not normalize into mulligan keeps. Exact legacy aliases are accepted, but broad labels such as `mulligan` and `mulligan_and_gameplan` do not become runtime mulligan semantics.",
+    "Start-of-game non-hand suppression is generic, not card-name-specific. `hero_power_transform`, `deckbuilding_modifier`, `deck_size_modifier`, `even_odd_modifier`, `highlander_modifier`, `passive_start_effect`, `start_in_deck_requirement`, and `start_of_game_modifier` all protect the mulligan boundary when paired with `start_of_game`.",
+    "Darkbishop Benedictus is covered on both sides of the split: fixtures require `hero_power_transform`, mulligan lowering suppresses the keep, and card-level behavior remains allowed through the cardid surface.",
+    "The source evidence verifier adds an early warning when a `mulligan_keep` lacks opening-hand wording but carries non-hand effect role hints, which helps catch start-of-game mislabels before runtime compilation.",
+    "Current role token normalization is sufficient for the repo's stored shapes today: a repo-wide scan found `roles`, `semantic_families`, and `mechanic_families` persisted as flat lists, and tests also cover flat string inputs."
+  ],
+  "correctness_gaps": [
+    "The research and gameplan role builders still add `mulligan_anchor` from any positive `mulligan_keep` claim without first checking whether the same card is a start-of-game or deckbuilding-only enabler. This creates upstream hold-intent rows for non-hand cards and relies on later suppression to repair them.",
+    "A card tagged only with `start_of_game` plus `mulligan_anchor` is explicitly allowed to lower to mulligan. That is only correct when the card is a genuine opening-hand keep for reasons independent of its start-of-game effect; otherwise a weak or incomplete role taxonomy can leak false keeps.",
+    "Static semantics currently derive `start_of_game` from card text and a narrow `shadowform` to `hero_power_transform` upgrade, but they do not generically derive Baku, Genn, Hamuul, or Renathal-style deckbuilding families from text alone.",
+    "The code has generic protection for deckbuilding modifiers, but there is no visible automatic detection in `static_semantics.py` for odd/even deck checks, highlander checks, deck-size modifiers, or starting-health modifiers, so those boundaries still depend on manual metadata or source claims."
+  ],
+  "slimness_gaps": [
+    "This boundary should not be solved with card-specific Benedictus exceptions. The current generic surface gate is smaller and more reusable than card-name allowlists or deny-lists.",
+    "Boundary logic is already spread across `source_document_model.py`, `research_contract.py`, `gameplan_contract.py`, `source_evidence_verifier.py`, and conformance tests. Adding more ad hoc patch points would increase drift risk and maintenance cost.",
+    "Growing the non-hand catalog by copying card-specific heuristics into multiple layers would bloat the contract. The leaner approach is to improve shared semantic-family derivation and keep mulligan lowering generic."
+  ],
+  "autonomy_gaps": [
+    "Any-deck automation still depends on rich role tagging. If a future Start of Game card arrives with only the bare `start_of_game` family and no explicit non-hand subtype, the current gate may allow a false mulligan keep when upstream logic inferred `mulligan_anchor`.",
+    "Role normalization silently ignores non-flat structures. That is acceptable for current data, but if a future ingestion step emits comma-delimited strings, nested arrays, or dict-wrapped role payloads, the guardrails will miss evidence instead of failing loudly.",
+    "Deckbuilding-only effects such as Renathal-like deck size or starting-health changes are protected when the right role families are present, but the code does not yet autonomously infer those families from card text. That limits safe zero-touch support for new cards and new source formats."
+  ],
+  "guardrails_to_keep": [
+    "Keep `normalized_claim_kind()` strict: only explicit `claim_kind` values or exact legacy aliases should become runtime semantics.",
+    "Keep the mulligan, cardid, and globalvalues surface split, especially the separation of `hero_power_transform` from `mulligan_keep`.",
+    "Keep `START_OF_GAME_NON_HAND_EFFECT_ROLES` as a shared suppression table and keep the parameterized tests that exercise every protected role family.",
+    "Keep the verifier warning `suspicious_mulligan_keep_non_hand_effect` so mis-tagged guides fail early.",
+    "Keep the two-sided Benedictus regression shape: the card must stay out of mulligan output while its effect remains visible on the cardid behavior surface.",
+    "Keep support for flat string role hints in addition to flat lists, because tests already rely on claim-embedded string roles as a fallback path."
+  ],
+  "recommended_next_design": "Keep the current surface split, but move one step earlier: prevent `research_contract.py` and `gameplan_contract.py` from inferring `mulligan_anchor` when the same card is tagged with `start_of_game` plus any non-hand family, and extend `static_semantics.py` with generic detectors for odd/even, highlander, deck-size, and starting-health modifiers. Treat current string/list role normalization as sufficient for today's repo data, but add either explicit validation or broader normalization before accepting new ingestion formats.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_evidence_verifier.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\static_semantics.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_claim_kind_runtime_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_evidence_verifier.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_source_fixtures.py"
+  ],
+  "evidence_references": [
+    "Local code: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "Local code: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+    "Local code: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+    "Local code: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_evidence_verifier.py",
+    "Local code: C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\static_semantics.py",
+    "Local tests: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_claim_kind_runtime_contract.py",
+    "Local tests: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_mulligan_plan.py",
+    "Local tests: C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_evidence_verifier.py",
+    "Memory context: C:\\Users\\darbo\\.codex\\memories\\rollout_summaries\\2026-06-02T10-09-24-rHg2-hsconfig_darkbishop_mulligan_fix.md",
+    "Official card text: https://hearthstone.blizzard.com/en-us/cards/64443-darkbishop-benedictus",
+    "Official card text: https://hearthstone.blizzard.com/en-us/cards/47693-genn-greymane?set=wild&textFilter=genn",
+    "Official card text: https://hearthstone.blizzard.com/en-us/cards/48158-baku-the-mooneater",
+    "Official card text: https://hearthstone.blizzard.com/en-us/cards/79767-prince-renathal?set=wild&textFilter=prince",
+    "Official card text: https://hearthstone.blizzard.com/en-us/cards/114858-hamuul-runetotem?set=standard&textFilter=Hamuul+Runetotem",
+    "Official patch note on E.T.C. band restrictions for Start of Game cards: https://hearthstone.blizzard.com/en-gb/news/23921496/25-6-patch-notes",
+    "Developer statement on starting deck lock and Start of Game priority ordering: https://www.developertracker.com/hearthstone/?post=bwwejzxw",
+    "Reference summary of the keyword timing: https://hearthstone.wiki.gg/wiki/Start_of_Game",
+    "Reference summary of deckbuilding-only effects: https://hearthstone.wiki.gg/wiki/Deckbuilding_effect",
+    "Reference classification for Prince Renathal: https://hearthstone.wiki.gg/wiki/Prince_Renathal"
+  ],
+  "uncertain": []
+}

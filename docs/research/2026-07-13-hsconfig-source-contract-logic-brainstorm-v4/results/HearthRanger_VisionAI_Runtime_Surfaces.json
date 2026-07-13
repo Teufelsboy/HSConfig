@@ -1,0 +1,76 @@
+{
+  "scope": "Documented HearthRanger VisionAI CustomConfig runtime surfaces relevant to HSConfig normal-path generation: Mulligan.json, GlobalValues.json, per-card <CARDID>.json, Combo.json, and the boundary that keeps Presume.json and Concede.json outside the normal path.",
+  "verified_strengths": [
+    "Official HearthRanger VisionAI help documents each target deck directory under CustomConfig and names Mulligan.json, GlobalValues.json, Combo.json, and per-card CARDID.json as real configurable runtime files.",
+    "The official per-card behavior docs require a concrete <CARDID>.json filename and matching GameCardId, which aligns with HSConfig's file-per-card lowering and identity checks.",
+    "The official global-values docs explicitly recommend copying the default GlobalValues.json and editing it, which supports HSConfig's full-baseline-copy posture instead of tiny scalar overrides.",
+    "The official combo docs define Combo.json as an ordered card-ID chain surface with one-turn >> and two-turn >-> syntax, which matches HSConfig's rule that combo output should exist only for concrete ordered sequences.",
+    "The official mulligan docs make Mulligan.json the opening-hand keep or discard surface, which supports HSConfig's separation between true mulligan claims and non-mulligan effect semantics.",
+    "The official concede and presume pages prove that Concede.json and Presume.json are documented HearthRanger surfaces, so HSConfig can treat them as known surfaces without treating them as default normal-path output.",
+    "HSConfig's current normal-path contract is consistent with that public surface set: GlobalValues.json and Mulligan.json are the minimal load-safe runtime files, per-card <CARDID>.json files are normal rich output, and Combo.json is optional but allowed when source-backed."
+  ],
+  "correctness_gaps": [
+    "If HSConfig lowers start-of-game, hero-power-transform, or general card-importance text directly into Mulligan.json, it will misclassify effect-enabler semantics as opening-hand retention.",
+    "If HSConfig emits partial or scalar-only GlobalValues.json content instead of the full default-shaped baseline, HearthRanger load safety can break because the official docs recommend editing a copied default file rather than inventing a minimal override.",
+    "If HSConfig treats unordered synergy prose as enough for Combo.json, it will generate invalid or strategically wrong combo rows because the official surface expects explicit ordered CardID chains and aligned combo values.",
+    "If HSConfig writes aggregate CardBehavior.json or mismatched GameCardId values instead of concrete <CARDID>.json files, it violates the documented file contract for per-card behavior.",
+    "[uncertain] The public help pages prove the documented file families and example shapes, but this research did not execute a live HearthRanger runtime load on 2026-07-13 to prove that every documented block still behaves identically in the current bot build."
+  ],
+  "slimness_gaps": [
+    "Letting normal HSConfig emit Presume.json or Concede.json would widen the product surface beyond the current load-safe contract and duplicate responsibility better handled by explicit operator choice or later runtime-specific tooling.",
+    "Using GlobalValues.json or Combo.json as a generic escape hatch for unsupported mechanics would bloat the compiler with invented mappings instead of keeping unsupported claims visible as report-only evidence.",
+    "Keeping aggregate CardBehavior.json as a live runtime artifact would duplicate authority with the real per-card <CARDID>.json files and add drift risk."
+  ],
+  "autonomy_gaps": [
+    "If normal-path package validity depended on Presume.json or Concede.json, any deck without safe source-backed concede or opponent-hand assumptions would become unnecessarily blocked.",
+    "Treating combo output as mandatory would reduce any-deck autonomy because many decks do not have a safe, documented, ordered combo to emit.",
+    "Treating every qualitative gameplan note as a required numeric GlobalValues.json change would force invented tuning and make universal any-deck generation less robust.",
+    "Keeping Presume.json outside the normal path preserves any-deck autonomy because the official Presume surface is situational and only has effect when SecondTurnValueWeight is not zero."
+  ],
+  "guardrails_to_keep": [
+    "Keep Mulligan.json exclusive to explicit opening-hand keep or discard claims.",
+    "Keep GlobalValues.json as a full copied baseline with block-shaped values entries, not a sparse scalar patch.",
+    "Keep per-card runtime output on concrete <CARDID>.json files with filename-to-GameCardId equality checks.",
+    "Keep Combo.json gated to concrete ordered CardID sequences with documented one-turn or two-turn syntax.",
+    "Keep Presume.json and Concede.json marked as known non-normal surfaces and block them in the normal apply gate.",
+    "Keep unsupported or weakly grounded mechanics report-only instead of forcing them into GlobalValues.json, Combo.json, or mulligan output."
+  ],
+  "recommended_next_design": "Preserve the current HSConfig normal-path contract: generate Mulligan.json, full-baseline GlobalValues.json, per-card <CARDID>.json, and Combo.json only when a concrete ordered sequence exists; continue treating Presume.json and Concede.json as documented but non-normal legacy or diagnostic surfaces that require separate explicit support rather than default emission.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_cardid.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_boarlock_closure_wave.py"
+  ],
+  "evidence_references": [
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "Official HearthRanger docs: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "Local HS cache manifest: C:/Users/darbo/Documents/HS/fixtures/visionai/docs_cache_manifest.json",
+    "Local HS contract note: C:/Users/darbo/Documents/HS/docs/superpowers/specs/2026-06-08-step1-deep-gap-improvement-audit-v3-design.md",
+    "HSConfig README: C:/Users/darbo/Documents/HSConfig/README.md",
+    "HSConfig apply gate: C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "HSConfig VisionAI registry: C:/Users/darbo/Documents/HSConfig/src/hsconfig/visionai_registry.py",
+    "HSConfig no-block operator contract: C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "HSConfig normal-path plan boundary: C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/2026-07-10-hsconfig-mechanic-lowering-parity-wave.md",
+    "HSConfig historical normal-path warning: C:/Users/darbo/Documents/HSConfig/docs/superpowers/specs/2026-07-05-hsconfig-design.md",
+    "HSConfig apply-gate tests: C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "HSConfig generated-surface representative test: C:/Users/darbo/Documents/HSConfig/tests/test_boarlock_closure_wave.py"
+  ],
+  "uncertain": [
+    "correctness_gaps"
+  ]
+}

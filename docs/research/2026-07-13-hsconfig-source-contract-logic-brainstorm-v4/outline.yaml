@@ -1,0 +1,45 @@
+topic: 2026-07-13-hsconfig-source-contract-logic-brainstorm-v4
+description: >
+  Deep audit for HSConfig source/contract logic after the contract-spine guard
+  wave. The goal is to confirm whether the system is technically correct,
+  slim, competent, autonomous, and non-blocking for any valid Hearthstone deck.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-13-hsconfig-source-contract-logic-brainstorm-v4\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Current HSConfig Source Contract Spine
+    category: repo_contract_spine
+    description: >
+      Audit the current repository implementation on branch
+      codex/hsconfig-contract-spine-guard-wave: source claim kinds,
+      source_contract_matrix policy rows, surface_gate_decision, builder/router
+      lowering, source_contract_audit, source_to_runtime_explainability,
+      contract_spine_sentinel, and operator_summary apply authority.
+  - name: Start Of Game And Mulligan Boundary
+    category: hearthstone_semantics
+    description: >
+      Audit the correctness of separating start-of-game, deckbuilding, and
+      hero-power-transform effects from opening-hand mulligan keeps. Include
+      Darkbishop Benedictus and similar non-hand enabler patterns, and check
+      whether current string/list role normalization is sufficient.
+  - name: HearthRanger VisionAI Runtime Surfaces
+    category: external_runtime_surface
+    description: >
+      Verify documented HearthRanger VisionAI CustomConfig surfaces relevant to
+      HSConfig: Mulligan.json, GlobalValues.json, per-card CardID JSON,
+      Combo.json, and why Presume/Concede should stay outside the normal path.
+  - name: No Block Any Deck Autonomy
+    category: workflow_autonomy
+    description: >
+      Audit whether warning-only source depth, unsupported future mechanics,
+      thin mulligan evidence, and source-to-runtime gaps remain visible without
+      blocking a load-safe package. Check operator_summary as the only normal
+      apply authority and diagnostic artifacts as non-gating evidence.
+  - name: Slimness And Long Term Maintainability
+    category: repo_slimness
+    description: >
+      Audit whether the Source -> Contract -> Surface Gate -> Builder/Router ->
+      Runtime effect chain is narrow enough for long-term autonomous operation,
+      and identify any duplicated authority, stale docs, excessive reports, or
+      missing contract guards that would make HSConfig harder to maintain.

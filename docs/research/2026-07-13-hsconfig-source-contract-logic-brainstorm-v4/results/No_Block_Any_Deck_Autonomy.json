@@ -1,0 +1,78 @@
+{
+  "scope": "Audit of the current HSConfig no-block autonomy contract for warning-only source-depth gaps, unsupported future mechanics, thin mulligan evidence, and source-to-runtime explainability, with reports/operator_summary.json kept as the only normal apply authority and lower-level diagnostics kept non-gating.",
+  "verified_strengths": [
+    "The normal operator path is explicit: docs/operator/README.md says to open reports/operator_summary.json first, and it states that technical_status=VALID_PACKAGE plus runtime_apply_mode=load_safe_apply decides runtime readiness while warnings remain follow-up work.",
+    "Thin mulligan evidence stays visible without blocking runtime permission: docs/operator/README.md describes config_usefulness.surfaces.mulligan as non-blocking, and tests/test_config_usefulness.py verifies that a thin mulligan surface still has blocking=false and runtime_permission_impact=none.",
+    "Unsupported future mechanics stay visible without becoming false runtime authority: docs/operator/universal-wild-no-block-contract.md classifies warning-only and partial mechanics as descriptive, and docs/operator/README.md says unknown mechanics and mechanic drift do not block load-safe apply.",
+    "Source-to-runtime gaps remain visible but non-gating: docs/operator/README.md states that source_contract_audit.json and source_to_runtime_explainability_summary explain missing links but do not grant apply permission.",
+    "The executable apply gate uses operator_summary.json as the single normal authority: src/hsconfig/apply_gate.py reads reports/operator_summary.json, validates package structure, and allows runtime apply when technical_status is VALID_PACKAGE without consulting diagnostic reports as independent gates.",
+    "Report ownership is explicit and ordered: src/hsconfig/report_ownership.py marks reports/operator_summary.json as normal_operator_gate with open_order 1, while source_contract_audit.json, source_to_runtime_explainability.json, mechanic_drift_report.json, and semantic_enrichment_report.json are diagnostic or non-blocking visibility reports.",
+    "Drift protection exists for the no-second-gate boundary: tests/test_contract_spine_sentinel.py verifies operator_gate_impact=diagnostic_only, apply_blocking=false, and fails if contract-spine artifacts gain apply-authority fields.",
+    "Warning-safe valid packages are covered by focused contract tests: tests/test_property_no_block_apply_gate.py verifies that VALID_PACKAGE variants with VALID_BUT_NOT_GUIDE_STRONG, NEEDS_MORE_RESEARCH, LOW_CONFIDENCE_BUT_STRUCTURALLY_VALID, warning_only_mechanic, and future_mechanic_drift still remain allowed when the package is structurally load-safe.",
+    "Representative any-deck proof still exists: tests/test_universal_wild_no_block_matrix.py verifies twelve deck fixtures produce VALID_PACKAGE, runtime_load_safe=true, runtime_apply_mode=load_safe_apply, non-blocking source-contract summaries, and no normal-path Presume.json or Concede.json output.",
+    "Focused repository verification passed in the current run: python -m pytest tests/test_apply_gate.py tests/test_apply_authority_boundary.py tests/test_property_no_block_apply_gate.py tests/test_universal_wild_no_block_matrix.py tests/test_report_ownership.py tests/test_contract_spine_sentinel.py tests/test_config_usefulness.py -q returned 85 passed in 16.14s."
+  ],
+  "correctness_gaps": [
+    "No confirmed current correctness gap was found in the audited no-block/apply boundary.",
+    "Residual drift risk remains if unsupported source claims such as start-of-game, deckbuilding, or future-mechanic semantics are ever lowered directly into runtime rows instead of staying suppressed or report-only.",
+    "Residual drift risk remains if any diagnostic summary begins writing or overriding apply-authority fields such as technical_status, apply_policy, runtime_apply_mode, or generated_files."
+  ],
+  "slimness_gaps": [
+    "The workflow stays slim only if operator_summary.json remains the one normal decision surface; adding parallel summary files with their own approval language would recreate duplicate authority.",
+    "Acceptance-matrix, contract-doctor, explainability, and source-depth reports are useful diagnostics, but making them mandatory for the normal path would bloat the operator workflow and blur the single-gate contract.",
+    "Rich-output expectations such as per-card-every-card coverage, combo richness, or source-backed-strong promotion must stay separate from the minimal load-safe apply gate, or the package model becomes heavier than the stated no-block contract."
+  ],
+  "autonomy_gaps": [
+    "Any future change that turns thin mulligan evidence into a hard gate would block otherwise valid decks that only have minimal opening-hand guidance.",
+    "Any future change that upgrades warning-only future mechanics or mechanic-drift findings into hard blockers would break the any-deck autonomy promise for new or partially mapped cards.",
+    "Runtime-summary drift is still an intentional blocking path: if actual runtime files and reports/operator_summary.json generated_files fall out of sync, apply is blocked even when the package shape is otherwise load-safe.",
+    "Reintroducing Presume.json, Concede.json, nested runtime files, or extra normal-path required surfaces would block valid packages and violate the current no-block boundary."
+  ],
+  "guardrails_to_keep": [
+    "Keep reports/operator_summary.json as the only normal apply authority and the first report to open.",
+    "Keep src/hsconfig/apply_gate.py limited to operator_summary.json plus concrete package-structure checks, not diagnostic report verdicts.",
+    "Keep config_usefulness descriptive with runtime_permission_impact=none so thin or targeted-gap packages remain visible but non-blocking.",
+    "Keep mechanic_visibility_summary, warning_boundaries, and mechanic_drift_summary as explanatory non-blocking visibility layers.",
+    "Keep source_contract_audit.json and source_to_runtime_explainability.json diagnostic-only, with no authority to grant or deny apply.",
+    "Keep minimal load-safe runtime requirements at GlobalValues.json and Mulligan.json, while treating per-card CardID files and Combo.json as richer but non-minimal output.",
+    "Keep Presume.json and Concede.json outside the normal HSConfig output path.",
+    "Keep contract-spine sentinel, apply-authority boundary tests, and no-block matrix tests active so gate drift is detected immediately."
+  ],
+  "recommended_next_design": "Keep the current single-gate no-block design. Do not widen runtime authority. Continue surfacing source-depth debt, thin mulligan evidence, warning-only mechanics, and source-to-runtime gaps through operator_summary-linked diagnostics, and add only narrow drift tests when new reports or mechanic buckets are introduced.",
+  "repo_files_to_check": [
+    "docs/operator/README.md",
+    "docs/operator/universal-wild-no-block-contract.md",
+    "docs/operator/source-builder-workflow.md",
+    "docs/research/current-truth.md",
+    "src/hsconfig/apply_gate.py",
+    "src/hsconfig/operator_summary.py",
+    "src/hsconfig/report_ownership.py",
+    "tests/test_apply_gate.py",
+    "tests/test_apply_authority_boundary.py",
+    "tests/test_property_no_block_apply_gate.py",
+    "tests/test_universal_wild_no_block_matrix.py",
+    "tests/test_contract_spine_sentinel.py",
+    "tests/test_config_usefulness.py",
+    "tests/test_report_ownership.py"
+  ],
+  "evidence_references": [
+    "docs/operator/README.md",
+    "docs/operator/universal-wild-no-block-contract.md",
+    "docs/operator/source-builder-workflow.md",
+    "docs/operator/source-backed-strong-closure.md",
+    "docs/research/current-truth.md",
+    "src/hsconfig/apply_gate.py",
+    "src/hsconfig/operator_summary.py",
+    "src/hsconfig/report_ownership.py",
+    "tests/test_apply_gate.py",
+    "tests/test_apply_authority_boundary.py",
+    "tests/test_property_no_block_apply_gate.py",
+    "tests/test_universal_wild_no_block_matrix.py",
+    "tests/test_contract_spine_sentinel.py",
+    "tests/test_config_usefulness.py",
+    "tests/test_report_ownership.py",
+    "Verification command: python -m pytest tests/test_apply_gate.py tests/test_apply_authority_boundary.py tests/test_property_no_block_apply_gate.py tests/test_universal_wild_no_block_matrix.py tests/test_report_ownership.py tests/test_contract_spine_sentinel.py tests/test_config_usefulness.py -q",
+    "Verification result: 85 passed in 16.14s"
+  ],
+  "uncertain": []
+}

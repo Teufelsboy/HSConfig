@@ -1,0 +1,80 @@
+{
+  "scope": "Audit of the current HSConfig source contract spine on branch codex/hsconfig-contract-spine-guard-wave: supported atomic source claim kinds, source_contract_matrix policy rows, surface_gate_decision routing, builder and router lowering paths, source_contract_audit, source_to_runtime_explainability, contract_spine_sentinel, and operator_summary apply authority.",
+  "verified_strengths": [
+    "The branch has one explicit atomic claim-kind registry with 15 supported claim kinds, and the policy matrix hard-fails if any claim kind is missing or extra relative to that registry.",
+    "The source contract matrix keeps one policy row per claim kind and stamps every row with operator_gate_impact = diagnostic_only, which prevents the matrix from becoming a second apply gate.",
+    "Surface gating is centralized in source_document_model.py and routes only to the four documented runtime surfaces: mulligan, globalvalues, combo, and cardid.",
+    "The conformance snapshot is live code, not a static note: it replays policy rows, surface-gate outcomes, builder or router expectations, and contract spine rows, and the current branch reports zero policy-gate mismatches and zero builder expectation mismatches.",
+    "Builder and router lowering are split along clear runtime authorities: build_mulligan_plan for mulligan rows, build_globalvalues_authority_matrix plus compile_globalvalues for posture overlays, route_card_behavior_surfaces for CardID behavior rows, and build_combo_plan plus compile_combo for explicit combo sequences.",
+    "source_contract_audit and source_to_runtime_explainability are implemented as diagnostic-only reports that explain source-to-runtime decisions per claim and per card while explicitly keeping apply_blocking = false.",
+    "operator_summary remains the single normal apply authority in code, report ownership metadata, apply_gate.py, and runtime_apply.py, and the focused test set for these surfaces passed on the audited branch.",
+    "contract_spine_sentinel currently reports clean status, finds no missing or extra claim kinds, no apply-authority fields inside contract spine rows, no diagnostic-token consumption inside active apply paths, and preserves the start-of-game mulligan suppression invariant."
+  ],
+  "correctness_gaps": [
+    "combo_sequence is intentionally the one live prerequisite gap in the conformance snapshot: the claim kind is policy-allowed and surface-allowed, but incomplete sequences still suppress at builder time with sequence_too_short, so upstream claim builders can still overstate runtime completeness unless they preserve ordered cards and value segments.",
+    "CardID lowering still depends on valid lowered conditions, supported runtime blocks, and exact option identity for discover and choose-one paths; when those prerequisites are missing, route_card_behavior_surfaces suppresses the claim instead of emitting a weaker approximation, which is safe but leaves technically incomplete runtime coverage for the affected card.",
+    "globalvalue_numeric_tuning is held outside Step 1 runtime emission and suppressed until runtime evidence; that is correct today, but any future attempt to bypass this lane inside the existing builders would risk technically unjustified numeric overlays."
+  ],
+  "slimness_gaps": [
+    "The spine is currently lean because policy, gate, conformance, audit, explainability, and apply authority each have a narrow role; the main bloat risk is future duplication if new claim kinds add separate policy tables or ad hoc per-builder rules instead of extending the existing single matrix.",
+    "The diagnostic reports are intentionally non-authoritative; adding next_action, apply_policy, runtime_apply_allowed, or similar operator-gate fields into contract_spine_rows, source_contract_audit, or source_to_runtime_explainability would duplicate authority that already belongs in operator_summary.json.",
+    "Wildcard or prose-heavy claim kinds would weaken the current atomic contract and force broader router heuristics, increasing both prompt surface area and maintenance cost without adding trustworthy runtime authority."
+  ],
+  "autonomy_gaps": [
+    "Any-deck autonomy is still limited by identity resolution for Discover and Choose One claims; without exact option identity links, the router suppresses those claims and cannot finish a fully source-backed lowering path for those cards.",
+    "Combo autonomy is only partial because the builder requires an explicit ordered sequence with matching value segments before Combo.json can be emitted.",
+    "Numeric GlobalValues tuning is intentionally not autonomous from deck and guide sources alone because the repo reserves that lane for later runtime evidence.",
+    "Mechanic usage autonomy depends on the mechanic lowering registry and supported CardID blocks; unknown, report-only, or identity-gated mechanics remain visible but not runtime-emitted."
+  ],
+  "guardrails_to_keep": [
+    "Keep SUPPORTED_ATOMIC_CLAIM_KINDS as the single claim-kind registry and keep source_contract_policy_by_claim_kind() failing fast when policy coverage drifts.",
+    "Keep operator_gate_impact = diagnostic_only across the matrix, conformance snapshot, audit rows, explainability report, and sentinel so the spine never becomes a parallel apply gate.",
+    "Keep the start-of-game mulligan suppression rule that rejects mulligan_keep claims when the card role indicates a start-of-game non-hand effect such as hero-power transformation.",
+    "Keep the report_ownership ordering with reports/operator_summary.json as open_order 1 and the diagnostic reports behind it.",
+    "Keep apply_gate.py requiring reports/operator_summary.json, reports/input_manifest.json, exactly one runtime deck directory, required runtime files, generated-file consistency, and the rejection of Presume.json and Concede.json in the normal path.",
+    "Keep runtime_apply.py re-evaluating the gate and rejecting any provided apply gate that does not exactly match the allowed gate derived from reports/operator_summary.json.",
+    "Keep contract_spine_sentinel checking for apply-authority field leakage, missing active apply paths, diagnostic-token usage inside apply code, and branch drift in the critical claim-kind rows."
+  ],
+  "recommended_next_design": "Keep the current single-spine design and extend it only through the existing chain: one atomic claim kind, one matrix row, one surface-gate contract, one builder or router expectation, and the same diagnostic-only audit surfaces. The next concrete improvement should close prerequisite gaps inside the current spine, especially combo sequence completeness and exact option identity or runtime-block prerequisites, rather than adding new authority files or a second apply decision surface.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_mulligan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_globalvalues.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/compile_combo.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_contract_spine_sentinel.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - supported claim kinds, readiness gating, and the surface_gate_decision implementation for mulligan, globalvalues, combo, and cardid.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py - one policy row per claim kind, required fields, default suppression reasons, and diagnostic-only operator impact metadata.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py - live claim-kind rows, contract_spine_rows, builder-router expectations, mismatch counters, and the explicit combo prerequisite gap.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py - conditional CardID lowering, unresolved option identity suppression, mechanic policy checks, and supported runtime-block enforcement.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py - per-claim lifecycle tracing from policy and gate through builder or router decision to emitted or suppressed runtime surface.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py - diagnostic-only claim and card projections with first missing links, missing runtime files, and next source actions.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py - single apply-authority summary, non-blocking diagnostic report summaries, semantic blockers, and runtime_apply_contract.apply_authority = reports/operator_summary.json.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py - enforced runtime gate resolution from reports/operator_summary.json before any runtime mutation.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py - report ordering and explicit separation between the normal operator gate and diagnostic follow-up reports.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py - branch-level drift checks that keep diagnostic reports out of the active apply path.",
+    "Live branch evidence: build_source_contract_conformance_snapshot() reported 15 claim kinds, zero policy-gate mismatches, zero builder expectation mismatches, and one builder prerequisite gap for combo_sequence.",
+    "Live branch evidence: build_contract_spine_sentinel_report() returned status = clean with no problems on codex/hsconfig-contract-spine-guard-wave.",
+    "Verification evidence: python -m pytest tests/test_contract_spine_sentinel.py tests/test_source_contract_conformance.py tests/test_source_contract_audit.py tests/test_source_to_runtime_explainability.py tests/test_apply_authority_boundary.py tests/test_apply_gate.py tests/test_operator_summary.py -q returned 130 passed in 1.51s."
+  ],
+  "uncertain": []
+}

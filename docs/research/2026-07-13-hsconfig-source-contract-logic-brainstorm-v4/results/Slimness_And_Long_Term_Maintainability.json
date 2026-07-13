@@ -1,0 +1,75 @@
+{
+  "scope": "Audit of the live HSConfig Source -> Contract -> Surface Gate -> Builder/Router -> Runtime chain in `Teufelsboy/HSConfig`, covering source evidence intake, claim normalization, contract and policy layers, runtime surface gates, package building, operator gating, runtime apply boundaries, and the doc/report structure that supports long-term autonomous operation.",
+  "verified_strengths": [
+    "The core semantic authority is narrow and explicit: `src/hsconfig/source_contract_matrix.py` defines one claim-kind policy table, and `src/hsconfig/source_contract_conformance.py` plus `src/hsconfig/contract_spine_sentinel.py` verify that supported claim kinds, allowed surfaces, and builder/router expectations stay aligned.",
+    "The most failure-prone semantic boundary is fail-closed: `src/hsconfig/source_document_model.py` prevents start-of-game non-hand effects such as hero-power transforms from lowering into `Mulligan.json` without exact mulligan authority.",
+    "Runtime write authority is intentionally single-source: `src/hsconfig/apply_gate.py` reads `reports/operator_summary.json`, validates required runtime files, rejects legacy optional surfaces, checks summary-to-filesystem parity, and does not consume diagnostic reports.",
+    "The repo has executable no-second-gate protection: `tests/test_apply_authority_boundary.py`, `tests/test_no_second_gate_contract.py`, and `tests/test_contract_spine_sentinel.py` explicitly prevent `source_contract_audit`, `source_to_runtime_explainability`, and `contract_spine_rows` from becoming apply authority.",
+    "Historical research and planning volume is fenced off from the active operator path: `docs/research/README.md`, `docs/research/current-truth.md`, `docs/superpowers/README.md`, and `tests/test_docs_active_path.py` keep `docs/operator/README.md` and `reports/operator_summary.json` as the live path."
+  ],
+  "correctness_gaps": [
+    "A latent source-to-surface mismatch still exists in `src/hsconfig/surface_intent.py`: when `legacy_policy_surfaces_enabled` is set, the module can route `Presume.json` and `Concede.json`, while `src/hsconfig/apply_gate.py` blocks those same files on the normal path. The active flow avoids this today, but the branch is still a correctness risk if it leaks back into normal package generation.",
+    "Compatibility-only `allow_source_informed` plumbing still exists across `src/hsconfig/apply_gate.py`, `src/hsconfig/runtime_apply.py`, and `src/hsconfig/commands/apply.py` even though the current gate decision is driven by `technical_status == VALID_PACKAGE`. That dead compatibility lane is currently harmless, but it creates a realistic future risk of reintroducing split write semantics by mistake."
+  ],
+  "slimness_gaps": [
+    "The active package path emits a large output surface for a narrow runtime gate: the current builder names about 50 outputs in total, while only 10 reports are classified in `src/hsconfig/report_ownership.py` as operator-facing. This is manageable today, but it is broader than the minimal chain and invites report sprawl.",
+    "There is no executable parity guard that every builder-emitted report is either classified in `report_ownership.py` or intentionally marked as internal-only. That missing ownership manifest is the main structural gap behind future duplicated authority.",
+    "The normal path still carries legacy compatibility branches that widen maintenance scope without helping the active architecture, especially `legacy_policy_surfaces_enabled` in `src/hsconfig/surface_intent.py` and the backward-compatible source-informed flag plumbing in apply/runtime code.",
+    "`src/hsconfig/package_builder.py` rebuilds `operator_summary` twice around `strong_promotion_report` generation. That is a small but real duplication point in the final authority path and increases the chance of summary drift if later changes are made unevenly."
+  ],
+  "autonomy_gaps": [
+    "Autonomous agents must currently learn output ownership from several places at once: `report_ownership.py`, operator docs, current-truth docs, and individual tests. A single machine-readable output manifest does not yet exist.",
+    "The repo carries high historical volume, with 34 dated research folders and 77 dated plan files in the current snapshot. The docs tests reduce the risk, but the volume still raises navigation and context-selection cost for autonomous work.",
+    "Several diagnostic layers describe nearby concepts from different angles, including `source_contract_audit`, `source_to_runtime_explainability`, `source_claim_gap_report`, `per_card_config_readiness_report`, `no_block_failure_mode_summary`, and `operator_guidance`. They are useful, but the overlap increases interpretation cost unless ownership stays rigorously enforced."
+  ],
+  "guardrails_to_keep": [
+    "Keep `src/hsconfig/source_contract_matrix.py` as the single semantic authority for supported claim kinds, allowed surfaces, required fields, and operator-gate impact.",
+    "Keep `src/hsconfig/source_document_model.py` surface-gate functions, especially the start-of-game non-hand suppression inside `can_lower_to_mulligan()`.",
+    "Keep `src/hsconfig/contract_spine_sentinel.py` and the tests that forbid diagnostic reports from becoming runtime authority.",
+    "Keep `src/hsconfig/apply_gate.py` as the only runtime write gate and preserve its checks for required files, optional-surface rejection, nested runtime file rejection, invalid JSON rejection, and summary/filesystem parity.",
+    "Keep the active-doc boundary tests in `tests/test_docs_active_path.py` so historical research and superpowers plans cannot silently overtake `docs/operator/README.md` and `docs/research/current-truth.md`."
+  ],
+  "recommended_next_design": "Keep the current single-gate architecture, because the live Source -> Contract -> Surface Gate -> Builder/Router -> Runtime chain is already narrow enough for long-term autonomous operation. The next design move should be subtraction, not expansion: remove or isolate legacy optional-surface and source-informed compatibility branches, add one machine-readable output-ownership manifest that classifies every emitted artifact as gate, diagnostic, research, or historical, and collapse duplicated final-summary construction in `package_builder.py` so the repo stays easier to reason about than to misread.",
+  "repo_files_to_check": [
+    "src/hsconfig/source_contract_matrix.py",
+    "src/hsconfig/source_contract_conformance.py",
+    "src/hsconfig/contract_spine_sentinel.py",
+    "src/hsconfig/source_document_model.py",
+    "src/hsconfig/surface_intent.py",
+    "src/hsconfig/package_builder.py",
+    "src/hsconfig/report_ownership.py",
+    "src/hsconfig/operator_summary.py",
+    "src/hsconfig/apply_gate.py",
+    "src/hsconfig/runtime_apply.py",
+    "src/hsconfig/commands/apply.py",
+    "docs/operator/README.md",
+    "docs/research/README.md",
+    "docs/research/current-truth.md",
+    "docs/superpowers/README.md",
+    "docs/superpowers/plans/README.md",
+    "tests/test_apply_authority_boundary.py",
+    "tests/test_no_second_gate_contract.py",
+    "tests/test_contract_spine_sentinel.py",
+    "tests/test_report_ownership.py",
+    "tests/test_surface_intent.py",
+    "tests/test_docs_active_path.py",
+    "tests/test_apply_gate.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py - central claim-kind policy matrix with explicit allowed surfaces and diagnostic-only operator impact.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py - executable source -> policy -> surface gate -> builder/router -> runtime-effect spine snapshot.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py - drift sentinel that forbids apply-authority fields in diagnostic spine rows and checks active apply paths.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - runtime lowerability and start-of-game mulligan suppression logic.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/surface_intent.py - normal surface routing plus legacy `Presume.json` and `Concede.json` branch behind `legacy_policy_surfaces_enabled`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py - single runtime apply gate using `reports/operator_summary.json`, required runtime file checks, optional-surface blocking, and filesystem parity checks.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/apply.py - runtime write path still threads `allow_source_informed` for backward compatibility.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py - active chain builder that writes about 41 direct report files, 9 research artifacts, and rebuilds `operator_summary` twice.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py - classifies 10 operator-facing reports and makes `operator_summary.json` the single open-first report.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md - active operator contract that names `hsconfig configure` and `operator_summary.json` as the normal path and states diagnostics do not grant apply permission.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/README.md and C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md - evidence-only boundary and active-evidence index for historical research folders.",
+    "C:/Users/darbo/Documents/HSConfig/docs/superpowers/README.md and C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans/README.md - historical planning boundary that prevents old plans from becoming operator guidance.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py, tests/test_no_second_gate_contract.py, tests/test_contract_spine_sentinel.py, tests/test_report_ownership.py, tests/test_surface_intent.py, tests/test_apply_gate.py, and tests/test_docs_active_path.py - executable evidence for no-second-gate, legacy-surface, report-ownership, and stale-doc boundaries.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research - current repo snapshot contains 34 dated research folders; C:/Users/darbo/Documents/HSConfig/docs/superpowers/plans - current repo snapshot contains 77 dated plan files."
+  ],
+  "uncertain": []
+}
