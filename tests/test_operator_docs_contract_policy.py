@@ -84,7 +84,11 @@ def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
 
     assert "reports/operator_summary.json remains the only normal apply authority" in combined
     assert "source_contract_audit.json is diagnostic" in combined
+    assert "`source_advisory_gate` is warning/advisory only" in combined
     assert "Presume.json" in combined
     assert "Concede.json" in combined
     assert "normal-path Presume.json" not in combined
     assert "normal-path Concede.json" not in combined
+    assert "normal path Presume.json" not in combined
+    assert "normal path Concede.json" not in combined
+    assert "block/apply-gate" not in combined

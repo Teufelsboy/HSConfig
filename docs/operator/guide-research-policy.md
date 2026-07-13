@@ -77,6 +77,10 @@ The guardrail is diagnostic only. It protects the source-to-runtime contract,
 but it does not create another apply gate. reports/operator_summary.json
 remains the only normal apply authority.
 
+`source_advisory_gate` is warning/advisory only. It can explain source quality
+or missing evidence, but it never grants, denies, or replaces runtime apply
+authority.
+
 ## Semantic Qualifiers
 
 Semantic qualifiers refine existing source claims. They do not create a second
