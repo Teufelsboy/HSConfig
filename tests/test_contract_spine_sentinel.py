@@ -16,6 +16,19 @@ def test_contract_spine_sentinel_report_is_clean_for_current_repo():
     assert report["problems"] == []
 
 
+def test_contract_spine_sentinel_includes_claim_family_registry():
+    report = build_contract_spine_sentinel_report()
+    registry = report["checks"]["claim_family_registry"]
+
+    assert registry == {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "problem_count": 0,
+    }
+    assert report["apply_blocking"] is False
+
+
 def test_contract_spine_sentinel_covers_every_supported_claim_kind():
     report = build_contract_spine_sentinel_report()
     checks = report["checks"]

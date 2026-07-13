@@ -10,6 +10,7 @@ from hsconfig.output_ownership_manifest import (
     build_output_ownership_manifest,
 )
 from hsconfig.report_ownership import build_report_ownership
+from hsconfig.source_claim_family_registry import build_claim_family_registry_report
 from hsconfig.source_contract_conformance import build_source_contract_conformance_snapshot
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
@@ -131,6 +132,13 @@ def build_contract_spine_sentinel_report(
         "output_ownership_forbidden_legacy_surfaces": (
             _output_ownership_files_by_classification("forbidden_legacy_surface")
         ),
+    }
+    family_registry_report = build_claim_family_registry_report()
+    checks["claim_family_registry"] = {
+        "status": family_registry_report["status"],
+        "authority": family_registry_report["authority"],
+        "apply_blocking": family_registry_report["apply_blocking"],
+        "problem_count": len(family_registry_report["problems"]),
     }
     problems = _problems(checks)
     return {
@@ -406,6 +414,23 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
             {
                 "check": "start_of_game_mulligan_suppression",
                 "value": suppression,
+            }
+        )
+    family_registry = checks.get("claim_family_registry", {})
+    if family_registry.get("status") != "clean":
+        problems.append({"check": "claim_family_registry", "value": family_registry})
+    if family_registry.get("authority") != "diagnostic_only":
+        problems.append(
+            {
+                "check": "claim_family_registry_authority",
+                "value": family_registry,
+            }
+        )
+    if family_registry.get("apply_blocking") is not False:
+        problems.append(
+            {
+                "check": "claim_family_registry_apply_blocking",
+                "value": family_registry,
             }
         )
     return problems
