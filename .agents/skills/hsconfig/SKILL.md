@@ -40,6 +40,7 @@ Operator rules:
 - Source-contract invariant: effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON. `source_contract_audit.json` is diagnostic; runtime-write authority stays in `operator_summary.json`.
 - `source_contract_audit.json` explains why each claim did or did not lower.
 - `contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
+- Developer diagnostic: `hsconfig contract-spine-sentinel --json` checks that claim-kind policy, conformance, diagnostic-only reports, and apply-boundary files still form one contract spine. It is not an operator gate; `operator_summary.json` remains the normal apply authority.
 - Warnings are follow-up work, not a runtime apply blocker.
 - Do not use `source_contract_audit.json` as an apply gate.
 - When adding a claim kind, update all four boundaries together: `SUPPORTED_ATOMIC_CLAIM_KINDS`, `source_contract_matrix.py`, the matching surface gate, and a builder/router or diagnostic test; new claim kinds must not create another runtime-write gate, and `operator_summary.json` remains the only normal runtime-write/apply authority.
@@ -66,7 +67,6 @@ Operator rules:
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 
 ## Expert Paths
-
 Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs.
 Use `--allow-placeholder` only for deterministic fixture or preview tests.
 

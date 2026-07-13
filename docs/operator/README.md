@@ -199,6 +199,8 @@ matrix diagnostic. Row fields such as `apply_gate_allowed`,
 `runtime_apply_mode`, and `validation_status` explain why a package passed or
 failed, but they do not override `status` or `matrix_row_status`.
 
+Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply gate. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
+
 ## Optional Contract Doctor
 
 Use `hsconfig contract-doctor --package <package> --json` when a prepared package
