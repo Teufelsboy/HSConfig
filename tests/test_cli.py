@@ -824,6 +824,58 @@ def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
     )
     plan_reports = tmp_path / "plan_reports"
     plan_reports.mkdir()
+    (plan_reports / "guide_claim_bundle.json").write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "override_runtime_claim",
+                        "claim_kind": "targeting_rule",
+                        "cards": ["EX1_002"],
+                        "stance": "prefer_enemy_hero",
+                        "runtime_block": "BeforePlayCardBonus",
+                        "runtime_value": "12",
+                        "claim_readiness": "explicit",
+                        "trust_ceiling": "runtime_candidate",
+                        "source_confidence": "high",
+                        "source_family": "guide",
+                        "source_title": "Override Guide",
+                        "evidence_text_short": "Use Burst Two as the override source claim.",
+                    }
+                ],
+                "unsupported_claims": [],
+                "source_evidence_index": [],
+                "coverage": {
+                    "guide_backed_cards": 1,
+                    "uncovered_cards": ["EX1_001"],
+                    "summary": {
+                        "guide_backed": 1,
+                        "static_semantics_backfilled": 0,
+                        "uncovered_low_confidence": 1,
+                    },
+                    "cards": {
+                        "EX1_001": {"coverage_status": "uncovered_low_confidence"},
+                        "EX1_002": {"coverage_status": "guide_backed"},
+                    },
+                },
+                "claim_coverage_report": {
+                    "guide_backed_cards": 1,
+                    "uncovered_cards": ["EX1_001"],
+                    "summary": {
+                        "guide_backed": 1,
+                        "static_semantics_backfilled": 0,
+                        "uncovered_low_confidence": 1,
+                    },
+                    "cards": {
+                        "EX1_001": {"coverage_status": "uncovered_low_confidence"},
+                        "EX1_002": {"coverage_status": "guide_backed"},
+                    },
+                },
+                "claim_conflict_report": {"conflict_count": 0, "conflicts": []},
+            }
+        ),
+        encoding="utf-8",
+    )
     (plan_reports / "mulligan_plan_report.json").write_text(
         json.dumps(
             {
@@ -861,10 +913,22 @@ def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
     mulligan = json.loads(
         (out / "CustomConfig" / "plan_override" / "Mulligan.json").read_text(encoding="utf-8")
     )
+    guide_claim_bundle = json.loads(
+        (out / "reports" / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    source_contract_audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
     assert mulligan["Mulligan"]["values"] == []
+    assert [claim["claim_id"] for claim in guide_claim_bundle["claims"]] == [
+        "override_runtime_claim"
+    ]
+    assert [row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]] == [
+        "override_runtime_claim"
+    ]
 
 
 def test_command_common_emit_result_prints_json(capsys):

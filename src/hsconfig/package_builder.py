@@ -160,6 +160,11 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "claim_conflict_report",
             {"conflict_count": 0, "conflicts": []},
         )
+        plan_claims = list(guide_claim_bundle.get("claims", []))
+        initial_lifecycle_rows = build_initial_lifecycle_rows(
+            plan_claims,
+            conflict_report=source_claim_conflict_report,
+        )
     gameplan_contract = {
         **gameplan_contract,
         "guide_claim_bundle": guide_claim_bundle,
