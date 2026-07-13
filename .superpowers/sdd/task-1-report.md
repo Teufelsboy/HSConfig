@@ -1,58 +1,33 @@
-# Task 1 Report: Contract Spine Sentinel Core
+# Task 1 Report: Shared Preconfig Context Authority
 
-## Result
+## Status
 
-Implemented the read-only contract spine sentinel core in
-`src/hsconfig/contract_spine_sentinel.py` and added the required coverage in
-`tests/test_contract_spine_sentinel.py`.
+DONE
 
-The sentinel consumes the supported atomic claim kinds, source-contract policy,
-and source-contract conformance snapshot. It reports schema version `1`, clean
-or drift-detected status, diagnostic-only operator impact, non-blocking apply
-behavior, structured checks, and structured problems.
+## Changed Files
 
-## TDD Evidence
+- `src/hsconfig/preconfig_context.py`: added the single shared preconfig-context builder, including the research-only card-data intake report.
+- `src/hsconfig/commands/source_workflow.py`: removed the research-local builder and delegated `research-deck` to the shared builder.
+- `src/hsconfig/package_builder.py`: removed the prepare-local builder and delegated package/research-contract preparation to the shared builder.
+- `tests/test_preconfig_context_parity.py`: added regression coverage for required shared context keys and duplicate-builder ownership.
 
-1. Added the five sentinel tests before the implementation.
-2. Ran the specified test command while the implementation was absent.
-3. The test collection failed with the expected:
-   `ModuleNotFoundError: No module named 'hsconfig.contract_spine_sentinel'`.
-4. Added the minimal implementation.
-5. Re-ran the specified command: `5 passed`.
+## Commits
 
-## Verification
+- `f8ff4d7 refactor: share preconfig context authority`
 
-Targeted sentinel tests:
+## Tests Run
 
-```text
-5 passed in 0.09s
-```
+- `python -m ruff check src/hsconfig/preconfig_context.py src/hsconfig/commands/source_workflow.py src/hsconfig/package_builder.py tests/test_preconfig_context_parity.py` - passed.
+- `python -m pytest tests/test_preconfig_context_parity.py tests/test_autonomous_guide_workflow_e2e.py tests/test_prepare_cli.py -q -n 2 -rA` - 33 passed.
 
-Focused regression tests for source-contract conformance and apply boundaries:
+## Self-Review
 
-```text
-29 passed in 0.16s
-```
+- `build_preconfig_context` is the only implementation of the shared prepare/research context.
+- `research-deck`, package build/prepare, and research-contract consume that single authority.
+- Existing fetch and no-auto-research-fallback test seams are injected at caller boundaries; they do not duplicate context construction.
+- No runtime write/apply path was added or changed. `reports/operator_summary.json` remains the normal apply authority.
+- No runtime dependencies were added. Darkbishop Benedictus / Mind Spike semantics were not changed.
 
-`git diff --check` completed without whitespace errors.
+## Concerns
 
-## Boundary Checks
-
-- The sentinel is diagnostic-only and sets `apply_blocking` to `False`.
-- It does not consume or alter `reports/operator_summary.json`, the normal
-  runtime apply authority.
-- It flags diagnostic-only consumers if they appear in active apply paths.
-- It checks that conformance and contract-spine rows do not carry forbidden
-  apply-authority fields.
-- It preserves the Darkbishop boundary: `hero_power_transform` remains a
-  `cardid` surface, while start-of-game effects remain rejected as opening-hand
-  mulligan keeps without explicit hand-required evidence.
-- No runtime evidence, new dependency, or unrelated source change was added.
-
-## Commit
-
-The implementation, tests, and this report are committed with:
-
-```text
-test: add contract spine sentinel core
-```
+None.
