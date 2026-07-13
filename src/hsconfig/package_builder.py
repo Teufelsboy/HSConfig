@@ -5,43 +5,21 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from hsconfig.card_feed_loading import (
-    card_feed_receipt_source,
-    card_feed_receipt_status,
-    load_optional_card_feed,
-)
 from hsconfig.card_behavior_router import route_card_behavior_claims
-from hsconfig.card_metadata import hydrate_card_metadata
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.config_readiness import build_config_readiness_report
-from hsconfig.deck_identity import build_deck_identity
 from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
-from hsconfig.guide_claim_builder import build_guide_claim_bundle
+from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.guide_source_builder import (
-    build_candidate_archetypes,
-    build_deck_fingerprint,
-    build_guide_builder_receipt,
-    build_guide_sources,
     research_required_guide_sources as build_research_required_guide_sources,
 )
-from hsconfig.guide_source_depth import build_guide_source_depth_report
 from hsconfig.hearthstonejson import fetch_latest_cards
-from hsconfig.identity_graph import build_identity_gap_report, build_identity_graph_report
-from hsconfig.input_loading import (
-    guide_documents_from_legacy_claims,
-    load_cards,
-    load_claims,
-    load_guide_sources,
-    load_source_documents,
-    load_source_evidence,
-    source_records_from_cards,
-)
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
@@ -49,13 +27,13 @@ from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
+from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_contract import (
     build_research_contract_bundle,
     write_research_contract_bundle,
     write_research_contract_bundle_to_dir,
 )
 from hsconfig.semantic_audit import render_semantic_audit_markdown
-from hsconfig.semantic_enrichment import append_semantic_warning, enrich_card_metadata
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
@@ -64,176 +42,10 @@ from hsconfig.source_contract_audit import (
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
-from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import claim_can_lower_to_runtime
-from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
-
-
-def build_preconfig_context(args: argparse.Namespace) -> dict[str, Any]:
-    cards_payload = load_cards(
-        args.cards_json,
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        allow_placeholder=args.allow_placeholder,
-    )
-    cards = cards_payload["cards"]
-    claims = load_claims(getattr(args, "claims_json", None))
-    source_documents_input = load_source_documents(getattr(args, "source_documents_json", None))
-    source_evidence_rows = load_source_evidence(getattr(args, "source_evidence_json", None))
-    guide_sources = load_guide_sources(getattr(args, "guide_sources_json", None))
-    source_records = source_records_from_cards(cards)
-    deck_identity = build_deck_identity(
-        deck_name=args.deck_name,
-        deck_code=args.deck_code,
-        cards=cards,
-        hero_dbf_id=cards_payload.get("hero_dbf_id"),
-        format=cards_payload.get("format"),
-        sideboards=cards_payload.get("sideboards", []),
-    )
-    card_metadata = hydrate_card_metadata(
-        cards=deck_identity["cards"],
-        source_records=source_records,
-    )
-    collectible_cards = load_optional_card_feed(getattr(args, "collectible_cards_json", None))
-    full_cards = load_optional_card_feed(getattr(args, "full_cards_json", None))
-    semantic_fetch_error: str | None = None
-    semantic_fetch_skipped = bool(getattr(args, "skip_semantic_fetch", False))
-    if not semantic_fetch_skipped:
-        try:
-            if full_cards is None:
-                full_cards = fetch_latest_cards(timeout=10.0)
-        except Exception as exc:
-            semantic_fetch_error = str(exc)
-    collectible_cards = collectible_cards or []
-    full_cards = full_cards or []
-    hearthstonejson_cards = [*collectible_cards, *full_cards]
-    semantic_report = enrich_card_metadata(
-        card_metadata,
-        hearthstonejson_cards=hearthstonejson_cards,
-    )
-    if semantic_fetch_error is not None:
-        append_semantic_warning(
-            semantic_report,
-            {"card_id": None, "warning": f"hearthstonejson_fetch_failed: {semantic_fetch_error}"},
-        )
-    enriched_card_metadata = {"cards": semantic_report["cards"]}
-    source_document_draft_report = None
-    if source_evidence_rows:
-        source_document_draft_report = draft_source_documents(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            evidence_rows=source_evidence_rows,
-        )
-        source_documents_input = [
-            *source_documents_input,
-            *source_document_draft_report["source_documents"],
-        ]
-    generated_guide_sources = None
-    strict_source_documents = guide_sources
-    if source_documents_input:
-        strict_source_documents = source_documents_input
-    elif not guide_sources and getattr(args, "auto_research_fallback", True):
-        generated_guide_sources = build_guide_sources(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            card_roles={},
-            source_documents=[],
-        )
-        strict_source_documents = []
-    elif not guide_sources:
-        generated_guide_sources = _research_required_guide_sources(
-            args.deck_name,
-            deck_identity,
-        )
-        strict_source_documents = []
-    source_documents = [*strict_source_documents, *guide_documents_from_legacy_claims(claims)]
-    guide_claim_bundle = build_guide_claim_bundle(
-        deck_identity=deck_identity,
-        card_metadata=enriched_card_metadata,
-        source_documents=source_documents,
-    )
-    source_claims = {
-        "claims": guide_claim_bundle["claims"],
-        "claim_count": len(guide_claim_bundle["claims"]),
-    }
-    research_bundle = build_research_contract_bundle(
-        deck_identity=deck_identity,
-        card_metadata=enriched_card_metadata,
-        source_claims=source_claims,
-        guide_claim_bundle=guide_claim_bundle,
-    )
-    if source_documents_input:
-        generated_guide_sources = build_guide_sources(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            card_roles=research_bundle.get("card_role_map", {}),
-            source_documents=source_documents_input,
-            validated_claim_bundle=guide_claim_bundle,
-        )
-    elif generated_guide_sources is None and guide_sources:
-        generated_guide_sources = build_guide_sources(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            card_roles=research_bundle.get("card_role_map", {}),
-            source_documents=guide_sources,
-        )
-    guide_builder_receipt = build_guide_builder_receipt(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        source_documents=source_documents_input,
-        guide_sources=generated_guide_sources
-        or build_guide_sources(
-            deck_name=args.deck_name,
-            deck_identity=deck_identity,
-            card_roles=research_bundle.get("card_role_map", {}),
-            source_documents=guide_sources,
-        ),
-    )
-    deck_fingerprint = build_deck_fingerprint(deck_identity, deck_identity["cards"])
-    candidate_archetypes = build_candidate_archetypes(
-        deck_name=args.deck_name,
-        deck_identity=deck_identity,
-        card_roles=research_bundle.get("card_role_map", {}),
-        source_documents=source_documents_input or guide_sources,
-    )
-    identity_graph_report = build_identity_graph_report(
-        deck_identity=deck_identity,
-        hearthstonejson_receipt={
-            "source": card_feed_receipt_source(
-                collectible_cards_json=getattr(args, "collectible_cards_json", None),
-                full_cards_json=getattr(args, "full_cards_json", None),
-            ),
-            "card_count": len(hearthstonejson_cards),
-            "status": card_feed_receipt_status(
-                collectible_cards_json=getattr(args, "collectible_cards_json", None),
-                full_cards_json=getattr(args, "full_cards_json", None),
-                semantic_fetch_skipped=semantic_fetch_skipped,
-                semantic_fetch_error=semantic_fetch_error,
-            ),
-            "error": semantic_fetch_error,
-        },
-    )
-    return {
-        "cards_payload": cards_payload,
-        "deck_identity": deck_identity,
-        "card_metadata": enriched_card_metadata,
-        "semantic_report": semantic_report,
-        "guide_claim_bundle": guide_claim_bundle,
-        "source_claims": source_claims,
-        "research_bundle": research_bundle,
-        "guide_sources_generated": generated_guide_sources,
-        "guide_builder_receipt": guide_builder_receipt,
-        "deck_fingerprint": deck_fingerprint,
-        "candidate_archetypes": candidate_archetypes,
-        "identity_graph_report": identity_graph_report,
-        "identity_gap_report": build_identity_gap_report(identity_graph_report),
-        "source_evidence_report": verify_source_documents(source_documents),
-        "source_document_draft_report": source_document_draft_report,
-    }
-
 
 def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     payload, code = build_package_payload(args)
@@ -257,7 +69,12 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     deck_dir = out / "CustomConfig" / deck_slug
     reports_dir = out / "reports"
 
-    context = build_preconfig_context(args)
+    context = build_preconfig_context(
+        args,
+        fetch_latest_cards_fn=fetch_latest_cards,
+        fetch_latest_collectible_cards_fn=None,
+        research_required_guide_sources_fn=_research_required_guide_sources,
+    )
     cards_payload = context["cards_payload"]
     mechanic_drift_report = build_mechanic_drift_report(cards_payload["cards"])
     deck_identity = context["deck_identity"]
