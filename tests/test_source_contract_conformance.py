@@ -491,10 +491,10 @@ def test_contract_policy_documents_semantic_qualifier_usage_without_new_gate():
         "timing and zone qualifiers may suppress start-of-game non-hand effects"
     )
     assert policy["targeting_rule"]["semantic_qualifier_usage"] == (
-        "target_scope may refine CardID targeting behavior"
+        "target_scope is diagnostic metadata for supported CardID targeting claims"
     )
     assert policy["combo_sequence"]["semantic_qualifier_usage"] == (
-        "timing and state requirements may refine Combo.json eligibility"
+        "timing and state requirements are diagnostic metadata for Combo.json claims"
     )
     assert all(row["operator_gate_impact"] == "diagnostic_only" for row in policy.values())
 
