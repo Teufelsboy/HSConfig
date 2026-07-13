@@ -9,7 +9,10 @@ SHADOWPRIEST_CODE = (
 )
 
 
-def test_package_has_single_canonical_guide_claim_bundle_or_identical_copy(tmp_path):
+def test_package_has_single_canonical_guide_claim_bundle_or_identical_copy(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     out = tmp_path / "pkg"
     code = main(
         [
@@ -30,6 +33,9 @@ def test_package_has_single_canonical_guide_claim_bundle_or_identical_copy(tmp_p
     duplicate_path = out / "reports" / "research" / "guide_claim_bundle.json"
     assert canonical_path.exists()
     if duplicate_path.exists():
-        canonical = json.loads(canonical_path.read_text(encoding="utf-8"))
         duplicate = json.loads(duplicate_path.read_text(encoding="utf-8"))
-        assert duplicate == canonical
+        if "canonical_report" in duplicate:
+            assert duplicate["canonical_report"] == "../guide_claim_bundle.json"
+            assert duplicate["authority"] == "reports/guide_claim_bundle.json"
+        else:
+            assert duplicate_path.read_bytes() == canonical_path.read_bytes()

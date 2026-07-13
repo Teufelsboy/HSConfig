@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from hsconfig.guide_research import normalize_source_claims
-from hsconfig.io import read_json
+from hsconfig.io import read_json, write_json
 from hsconfig.research_contract import (
     build_research_contract_bundle,
     write_research_contract_bundle,
@@ -176,3 +176,23 @@ def test_write_research_contract_bundle_writes_expected_files(tmp_path: Path):
     assert read_json(research_dir / "known_bad_patterns.json") == []
     assert read_json(research_dir / "coverage_summary.json")["deck_card_count"] == 1
     assert read_json(research_dir / "guide_claim_bundle.json")["claims"] == []
+
+
+def test_write_research_contract_bundle_reuses_existing_canonical_guide_claim_bytes(
+    tmp_path: Path,
+):
+    reports_dir = tmp_path / "reports"
+    canonical_path = reports_dir / "guide_claim_bundle.json"
+    write_json(canonical_path, {"claims": [{"claim_id": "canonical"}]})
+    bundle = build_research_contract_bundle(
+        {"deck_name": "Fixture", "deck_slug": "fixture", "cards": []},
+        {"cards": []},
+        {"claims": []},
+        guide_claim_bundle={"claims": [{"claim_id": "stale-research-copy"}]},
+    )
+
+    write_research_contract_bundle(bundle, reports_dir)
+
+    assert (reports_dir / "research" / "guide_claim_bundle.json").read_bytes() == (
+        canonical_path.read_bytes()
+    )

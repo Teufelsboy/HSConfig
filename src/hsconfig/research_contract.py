@@ -119,10 +119,16 @@ def write_research_contract_bundle(
     guide_claim_bundle: dict[str, Any] | None = None,
 ) -> None:
     research_dir = reports_dir / "research"
+    canonical_guide_claim_bundle_path = reports_dir / "guide_claim_bundle.json"
     write_research_contract_bundle_to_dir(
         bundle,
         research_dir,
         guide_claim_bundle=guide_claim_bundle,
+        canonical_guide_claim_bundle_path=(
+            canonical_guide_claim_bundle_path
+            if canonical_guide_claim_bundle_path.is_file()
+            else None
+        ),
     )
 
 
@@ -131,6 +137,7 @@ def write_research_contract_bundle_to_dir(
     output_dir: Path,
     *,
     guide_claim_bundle: dict[str, Any] | None = None,
+    canonical_guide_claim_bundle_path: Path | None = None,
 ) -> None:
     write_json(output_dir / "archetype_research.json", bundle["archetype_research"])
     write_json(output_dir / "claims.json", {"claims": bundle["claims"]})
@@ -140,11 +147,18 @@ def write_research_contract_bundle_to_dir(
     write_json(output_dir / "known_bad_patterns.json", bundle["known_bad_patterns"])
     write_json(output_dir / "globalvalue_intent.json", bundle["globalvalue_intent"])
     write_json(output_dir / "coverage_summary.json", bundle["coverage_summary"])
-    canonical_guide_claim_bundle = guide_claim_bundle
-    if canonical_guide_claim_bundle is None:
-        canonical_guide_claim_bundle = bundle.get("guide_claim_bundle")
-    if canonical_guide_claim_bundle is not None:
-        write_json(output_dir / "guide_claim_bundle.json", canonical_guide_claim_bundle)
+    research_guide_claim_bundle_path = output_dir / "guide_claim_bundle.json"
+    if canonical_guide_claim_bundle_path is not None:
+        research_guide_claim_bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        research_guide_claim_bundle_path.write_bytes(
+            canonical_guide_claim_bundle_path.read_bytes()
+        )
+    else:
+        canonical_guide_claim_bundle = guide_claim_bundle
+        if canonical_guide_claim_bundle is None:
+            canonical_guide_claim_bundle = bundle.get("guide_claim_bundle")
+        if canonical_guide_claim_bundle is not None:
+            write_json(research_guide_claim_bundle_path, canonical_guide_claim_bundle)
 
 
 def _deck_cards(deck_identity: dict[str, Any]) -> list[dict[str, Any]]:
