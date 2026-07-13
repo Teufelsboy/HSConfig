@@ -50,6 +50,14 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 
 ## Source Truth Is Not Runtime Authority
 
+Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may
+lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
+`Combo.json`. `operator_summary.json` remains the only normal apply authority.
+
+`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+
+Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
+
 ## Semantic Qualifiers
 
 Semantic qualifiers refine existing source claims. They do not create a second
@@ -66,14 +74,6 @@ Supported qualifier families:
 When source text says an effect matters but does not explicitly say opening
 hand or mulligan, HSConfig must preserve effect semantics without turning the
 card into a `Mulligan.json` keep.
-
-Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may
-lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
-`Combo.json`. `operator_summary.json` remains the only normal apply authority.
-
-`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
-
-Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
 Examples:
 
