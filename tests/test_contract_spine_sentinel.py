@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
@@ -53,7 +55,20 @@ def test_sentinel_keeps_operator_summary_as_only_gate_after_lifecycle():
     assert report["checks"]["lifecycle_gate_files"] == []
 
 
-def test_contract_spine_sentinel_flags_lifecycle_report_promoted_to_gate(monkeypatch):
+@pytest.mark.parametrize(
+    ("report_file", "classification"),
+    [
+        ("reports/source_contract_audit.json", "gate"),
+        ("reports/source_contract_audit.json", "operator_gate"),
+        ("reports/source_to_runtime_explainability.json", "gate"),
+        ("reports/source_to_runtime_explainability.json", "operator_gate"),
+    ],
+)
+def test_contract_spine_sentinel_flags_lifecycle_report_promoted_to_gate(
+    monkeypatch,
+    report_file,
+    classification,
+):
     from hsconfig import contract_spine_sentinel as sentinel
 
     original = sentinel.build_report_ownership
@@ -61,8 +76,8 @@ def test_contract_spine_sentinel_flags_lifecycle_report_promoted_to_gate(monkeyp
     def drifted_report_ownership():
         rows = []
         for row in original():
-            if row.get("file") == "reports/source_contract_audit.json":
-                rows.append({**row, "classification": "gate"})
+            if row.get("file") == report_file:
+                rows.append({**row, "classification": classification})
             else:
                 rows.append(row)
         return rows
@@ -72,12 +87,10 @@ def test_contract_spine_sentinel_flags_lifecycle_report_promoted_to_gate(monkeyp
     report = build_contract_spine_sentinel_report()
 
     assert report["status"] == "drift_detected"
-    assert report["checks"]["lifecycle_gate_files"] == [
-        "reports/source_contract_audit.json"
-    ]
+    assert report["checks"]["lifecycle_gate_files"] == [report_file]
     assert {
         "check": "lifecycle_gate_files",
-        "value": ["reports/source_contract_audit.json"],
+        "value": [report_file],
     } in report["problems"]
 
 
