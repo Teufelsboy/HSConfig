@@ -1,0 +1,81 @@
+{
+  "scope": "Audit of the live HSConfig source claim normalization, lifecycle diagnostics, contract policy, surface gates, builder and router path, generated report ownership, guarded runtime apply path, and active operator documentation. The audit evaluates whether the source -> claim lifecycle -> contract -> surface gate -> builder/router -> runtime effect chain has a single durable authority and remains narrow enough for long-term autonomous pre-run operation.",
+  "verified_strengths": [
+    "Claim kind is the semantic source authority. The frozen policy matrix covers the supported atomic claim kinds and constrains each one to a lane plus an allowed runtime surface set before any builder can emit runtime JSON.",
+    "Runtime authority is split cleanly from source semantics. The live contract-spine sentinel currently reports mulligan_keep as Mulligan-only, hero_power_transform as CardID-only, combo_sequence as Combo-only when builder prerequisites are complete, and globalvalue_numeric_tuning as suppressed until runtime evidence exists.",
+    "operator_summary.json is still the single normal apply authority. The live sentinel reports report_ownership_gate_files=[reports/operator_summary.json], lifecycle_gate_files=[], active_apply_diagnostic_consumers=[], and conformance_apply_authority_fields_present=[].",
+    "The runtime write boundary is actively guarded in code. apply_gate.py reads reports/operator_summary.json, requires technical_status=VALID_PACKAGE, verifies required runtime files and generated-file accounting, and rejects unexpected legacy surfaces or unreported runtime files before runtime_apply.py can write anything.",
+    "The claim lifecycle module stays diagnostic instead of becoming a second gate. source_claim_lifecycle.py computes runtime eligibility and per-surface claim routing, while source_contract_audit.py and source_to_runtime_explainability.py only explain the chain and explicitly mark themselves as diagnostic-only.",
+    "CardID lowering currently has one real implementation path. package_builder.py calls route_card_behavior_claims(), and card_behavior_router.py is only a compatibility facade that delegates to route_card_behavior_surfaces() in card_behavior_surface_router.py.",
+    "Report ownership is explicit. report_ownership.py defines one gate report and ten non-gate operator reports, while output_ownership_manifest.py classifies generated files and exposes unclassified or forbidden legacy-surface drift instead of silently accepting it.",
+    "There is strong negative-boundary coverage around authority drift. contract_spine_sentinel.py checks missing claim kinds, apply-authority field leakage, unexpected legacy-surface routing, active allow_source_informed branches, unclassified outputs, and lifecycle reports being promoted to gate status.",
+    "Active documentation keeps the normal operator path narrow. README.md and docs/operator/README.md route normal use through hsconfig configure and reports/operator_summary.json, while docs/research/current-truth.md explicitly states that research artifacts are evidence and not operator instructions.",
+    "Fresh local verification passed on 2026-07-13: python -m pytest tests/test_apply_authority_boundary.py tests/test_contract_spine_sentinel.py tests/test_contract_spine_sentinel_cli.py tests/test_contract_spine_sentinel_docs.py tests/test_no_second_gate_contract.py tests/test_report_ownership.py tests/test_source_contract_spine_freeze.py tests/test_source_contract_conformance.py tests/test_source_to_runtime_explainability.py tests/test_claim_kind_runtime_contract.py tests/test_docs_active_path.py -q completed with 157 passed."
+  ],
+  "correctness_gaps": [
+    "The current proof is static and fixture-backed. It proves package structure, authority split, suppression behavior, and apply-gate integrity, but it does not independently prove that every emitted VisionAI row will continue to be interpreted the same way by a future live HearthRanger client.",
+    "A source claim can be valid yet intentionally non-emitted when it lacks a supported runtime surface, a complete combo sequence, resolved option identity, a lowerable condition, or required runtime evidence. That is the correct safety behavior, but it means the runtime package can remain thinner than the source contract.",
+    "The source-contract spine is well-defended at the current write paths, but any future direct runtime writer added outside apply_gate.py, runtime_apply.py, and commands/apply.py would need new negative-boundary tests and sentinel coverage before it could be trusted as part of the chain."
+  ],
+  "slimness_gaps": [
+    "Authority is narrow, but the diagnostic surface area is broad. The repo currently carries 11 owned operator reports, 34 known diagnostic report files, 9 known research report files, acceptance-matrix, contract-doctor, contract-spine-sentinel, and multiple expert CLI stages. Ownership prevents authority duplication, but every added surface increases schema, doc, and regression-test maintenance cost.",
+    "Several diagnostics describe adjacent slices of the same chain: source_contract_audit.json explains the claim lifecycle, source_to_runtime_explainability.json projects it per claim and per card, source_claim_gap_report.json names the first repair gap, and contract-doctor summarizes the same path in compact form. The overlap is controlled today, but new reports should be rejected unless they replace an existing view or answer a genuinely new operator question.",
+    "The repo still retains a large historical plan and research corpus with old source-informed apply language. docs/research/current-truth.md and the active operator docs correctly establish precedence, but the archival mass still raises search noise and increases the chance of future narrative drift if maintainers grep old wording without using the current-truth index.",
+    "docs/operator/README.md remains dense because it mixes the quick path, no-second-gate contract, mechanic visibility policy, matrix preservation notes, optional diagnostics, and expert-path compatibility details in one document. The content is mostly correct, but the density itself is a long-term maintenance risk because small wording drift can accumulate in a high-traffic file.",
+    "card_behavior_router.py is only a delegating adapter today, not a second policy engine, but its continued existence means the project still carries two router module names for one CardID-lowering authority. That is acceptable compatibility scope now, yet it is a clear candidate for future subtractive cleanup if no external caller still needs the facade."
+  ],
+  "autonomy_gaps": [
+    "contract-spine-sentinel is a developer diagnostic and not part of the default configure execution path. The apply gate still protects runtime writes, but deeper contract drift is only caught when the sentinel or its focused tests are actually run.",
+    "The repository has no checked-in .github workflow directory, so mandatory enforcement of the sentinel and boundary suite is not repo-native. Long-term autonomy therefore still depends on external CI or disciplined local execution rather than a versioned in-repo workflow definition.",
+    "Unknown mechanics, unresolved option identities, incomplete combo evidence, and runtime-evidence-only globalvalue tuning deliberately remain visible but non-executable. This preserves any-deck load-safe autonomy, but richer behavior still depends on later documented surface mappings or stronger source evidence.",
+    "The system can autonomously build and apply a technically valid pre-run package, but it cannot autonomously prove live client acceptance or gameplay quality from this source-contract chain alone. Those outcomes remain outside HSConfig's pre-run scope."
+  ],
+  "guardrails_to_keep": [
+    "Keep reports/operator_summary.json as the only normal runtime-apply authority, with evaluate_apply_gate(), commands/apply.py, runtime_apply.py, package validation, generated-file accounting, package-hash checks, and fake receipt verification as the guarded write path.",
+    "Keep claim_kind policy separate from runtime-surface authorization. Start-of-game, deckbuilding, hero-power-transform, and report-only semantic facts should remain visible without becoming false Mulligan, GlobalValues, Combo, or CardID writes.",
+    "Keep the no-second-gate and apply-authority-boundary tests. Diagnostic summaries, contract-spine rows, explainability rows, report ownership, acceptance-matrix output, and contract-doctor output must never grant or deny runtime writes independently.",
+    "Keep report_ownership.py and output_ownership_manifest.py as the explicit registries for report purpose and generated-artifact classification. New generated reports should remain unacceptable until their ownership, operator role, and non-gate status are defined.",
+    "Keep contract_spine_sentinel.py read-only and keep its checks for legacy-surface drift, allow_source_informed branch drift, unclassified outputs, and lifecycle reports being promoted to gate status.",
+    "Keep the active-document hierarchy intact: README.md and docs/operator/README.md for normal operation, docs/research/current-truth.md for active evidence selection, and historical research or plan folders as non-authoritative background only.",
+    "Keep suppressed and warning-only lanes explicit. Unknown mechanics, incomplete builder prerequisites, unresolved option identities, and runtime-evidence-only tuning should stay report-only or suppressed instead of being widened into speculative runtime behavior."
+  ],
+  "recommended_next_design": "Retain the existing narrow authority chain and make only subtractive maintenance changes. Do not add another apply gate, runtime writer, or source-strength permission layer. Keep one normal command path, one normal apply authority, and one real CardID routing implementation. The next worthwhile maintenance step is to add a checked-in CI workflow that runs the focused contract-spine and apply-authority boundary suite, then do a small documentation cleanup that keeps the quick-start section shorter and pushes matrix or source-informed preservation detail out of the main operator path if it can be moved without losing truthfulness.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\operator\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\docs\\research\\current-truth.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_lifecycle.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\surface_intent.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\package_builder.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\runtime_apply.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\contract_spine_sentinel.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\report_ownership.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\output_ownership_manifest.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\cli_parser.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_authority_boundary.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_contract_spine_sentinel.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_no_second_gate_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_report_ownership.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_docs_active_path.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_spine_freeze.py"
+  ],
+  "evidence_references": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_claim_lifecycle.py - runtime eligibility and per-surface claim routing are computed here, with quarantined and report-only claims kept out of runtime emission.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py and src\\hsconfig\\gameplan_contract.py - research and gameplan layers preserve the effect-versus-mulligan split and keep start-of-game non-hand effects from implicitly becoming mulligan anchors.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\surface_intent.py - the normal runtime surface remains compact, with GlobalValues.json and Mulligan.json as the minimal required surfaces and Combo.json optional.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_router.py and src\\hsconfig\\card_behavior_surface_router.py - current CardID lowering implementation and the compatibility facade boundary.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\package_builder.py - central builder that writes runtime files, diagnostics, source-contract audit outputs, explainability output, output ownership, and operator_summary.json.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py and src\\hsconfig\\runtime_apply.py - guarded runtime apply path that re-evaluates operator_summary.json and rejects forged or mismatched apply evidence before writing.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\contract_spine_sentinel.py, src\\hsconfig\\report_ownership.py, and src\\hsconfig\\output_ownership_manifest.py - read-only drift detection and explicit report or artifact ownership model.",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md, docs\\operator\\README.md, and docs\\research\\current-truth.md - active operator hierarchy, single-gate wording, and historical-evidence precedence.",
+    "Command evidence on 2026-07-13: python -m hsconfig.cli contract-spine-sentinel --json returned status=clean, apply_blocking=false, report_ownership_gate_files=[reports/operator_summary.json], lifecycle_gate_files=[], active_apply_diagnostic_consumers=[], source_informed_apply_flag_policy.behavior=legacy_no_op, and output_ownership_unclassified_files=[].",
+    "Command evidence on 2026-07-13: python -m pytest tests/test_apply_authority_boundary.py tests/test_contract_spine_sentinel.py tests/test_contract_spine_sentinel_cli.py tests/test_contract_spine_sentinel_docs.py tests/test_no_second_gate_contract.py tests/test_report_ownership.py tests/test_source_contract_spine_freeze.py tests/test_source_contract_conformance.py tests/test_source_to_runtime_explainability.py tests/test_claim_kind_runtime_contract.py tests/test_docs_active_path.py -q completed with 157 passed in 1.33s.",
+    "Command evidence on 2026-07-13: rg --files C:\\Users\\darbo\\Documents\\HSConfig\\.github failed because the directory does not exist, confirming that the repo does not currently carry a checked-in GitHub workflow directory."
+  ],
+  "uncertain": []
+}
