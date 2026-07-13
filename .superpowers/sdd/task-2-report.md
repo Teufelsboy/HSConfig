@@ -12,7 +12,7 @@ DONE_WITH_CONCERNS
 
 ## Commits
 
-- Implementation commit is the preceding commit; this report is updated in a follow-up commit.
+- Implementation commit: `b230380`.
 
 ## Tests
 
