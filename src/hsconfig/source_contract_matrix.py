@@ -6,6 +6,11 @@ from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 OPERATOR_GATE_IMPACT = "diagnostic_only"
 COMMON_CLAIM_FIELDS = ("claim_kind", "claim_readiness", "trust_ceiling")
 CARD_CLAIM_FIELDS = (*COMMON_CLAIM_FIELDS, "cards")
+SEMANTIC_QUALIFIER_USAGE_BY_CLAIM_KIND = {
+    "mulligan_keep": "timing and zone qualifiers may suppress start-of-game non-hand effects",
+    "targeting_rule": "target_scope may refine CardID targeting behavior",
+    "combo_sequence": "timing and state requirements may refine Combo.json eligibility",
+}
 
 _POLICY: dict[str, dict[str, object]] = {
     "archetype": {
@@ -191,4 +196,7 @@ def _with_contract_metadata(
     enriched["runtime_lowerable"] = bool(runtime_lowerable)
     enriched["default_suppression_reason"] = default_suppression_reason
     enriched["operator_gate_impact"] = OPERATOR_GATE_IMPACT
+    enriched["semantic_qualifier_usage"] = SEMANTIC_QUALIFIER_USAGE_BY_CLAIM_KIND.get(
+        claim_kind, "diagnostic context only"
+    )
     return enriched

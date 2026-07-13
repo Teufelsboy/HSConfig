@@ -50,6 +50,23 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 
 ## Source Truth Is Not Runtime Authority
 
+## Semantic Qualifiers
+
+Semantic qualifiers refine existing source claims. They do not create a second
+apply path and they do not bypass `claim_kind` or surface gates.
+
+Supported qualifier families:
+
+- `timing`: `mulligan`, `start_of_game`, `on_play`, `delayed`, `ongoing`, `death`, `trigger`
+- `zone_scope`: `hand`, `deck`, `board`, `secret`, `location`, `generated`, `graveyard`
+- `target_scope`: `enemy_hero`, `friendly_minion`, `enemy_minion`, `any_minion`, `no_target`
+- `option_surface`: `discover`, `choose_one`, `generated_choice`
+- `state_requirements`: deck, hand, board, weapon, mana, overload, duplicate, or mechanic constraints
+
+When source text says an effect matters but does not explicitly say opening
+hand or mulligan, HSConfig must preserve effect semantics without turning the
+card into a `Mulligan.json` keep.
+
 Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may
 lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
 `Combo.json`. `operator_summary.json` remains the only normal apply authority.

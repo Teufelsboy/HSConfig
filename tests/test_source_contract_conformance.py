@@ -482,6 +482,23 @@ def test_source_contract_policy_rows_expose_complete_runtime_contract_metadata()
     assert policy["archetype"]["default_suppression_reason"] == "report_only"
 
 
+def test_contract_policy_documents_semantic_qualifier_usage_without_new_gate():
+    from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
+
+    policy = source_contract_policy_by_claim_kind()
+
+    assert policy["mulligan_keep"]["semantic_qualifier_usage"] == (
+        "timing and zone qualifiers may suppress start-of-game non-hand effects"
+    )
+    assert policy["targeting_rule"]["semantic_qualifier_usage"] == (
+        "target_scope may refine CardID targeting behavior"
+    )
+    assert policy["combo_sequence"]["semantic_qualifier_usage"] == (
+        "timing and state requirements may refine Combo.json eligibility"
+    )
+    assert all(row["operator_gate_impact"] == "diagnostic_only" for row in policy.values())
+
+
 def test_contract_spine_rows_include_policy_metadata_without_apply_authority():
     snapshot = build_source_contract_conformance_snapshot()
     rows_by_kind = {row["claim_kind"]: row for row in snapshot["contract_spine_rows"]}
