@@ -44,7 +44,19 @@ KNOWN_DIAGNOSTIC_REPORT_FILES = frozenset(
         "reports/validation_report.json",
     }
 )
-KNOWN_DIAGNOSTIC_REPORT_PREFIXES = ("reports/research/",)
+KNOWN_RESEARCH_REPORT_FILES = frozenset(
+    {
+        "reports/research/archetype_research.json",
+        "reports/research/card_role_map.json",
+        "reports/research/card_usage_expectations.json",
+        "reports/research/claims.json",
+        "reports/research/coverage_summary.json",
+        "reports/research/globalvalue_intent.json",
+        "reports/research/guide_claim_bundle.json",
+        "reports/research/known_bad_patterns.json",
+        "reports/research/mulligan_anchor_map.json",
+    }
+)
 LEGACY_NON_NORMAL_SURFACES = frozenset({"Presume.json", "Concede.json"})
 
 
@@ -130,9 +142,7 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
 
 
 def _known_diagnostic_report(path: str) -> bool:
-    return path in KNOWN_DIAGNOSTIC_REPORT_FILES or any(
-        path.startswith(prefix) for prefix in KNOWN_DIAGNOSTIC_REPORT_PREFIXES
-    )
+    return path in KNOWN_DIAGNOSTIC_REPORT_FILES or path in KNOWN_RESEARCH_REPORT_FILES
 
 
 def _legacy_non_normal_surface(path: str) -> str | None:

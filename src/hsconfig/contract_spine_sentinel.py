@@ -6,6 +6,7 @@ from typing import Any
 
 from hsconfig.output_ownership_manifest import (
     KNOWN_DIAGNOSTIC_REPORT_FILES,
+    KNOWN_RESEARCH_REPORT_FILES,
     build_output_ownership_manifest,
 )
 from hsconfig.report_ownership import build_report_ownership
@@ -46,17 +47,7 @@ CRITICAL_CLAIM_KINDS = (
     "archetype",
 )
 
-EXPECTED_RESEARCH_REPORT_FILES = (
-    "reports/research/archetype_research.json",
-    "reports/research/card_role_map.json",
-    "reports/research/card_usage_expectations.json",
-    "reports/research/claims.json",
-    "reports/research/coverage_summary.json",
-    "reports/research/globalvalue_intent.json",
-    "reports/research/guide_claim_bundle.json",
-    "reports/research/known_bad_patterns.json",
-    "reports/research/mulligan_anchor_map.json",
-)
+EXPECTED_RESEARCH_REPORT_FILES = tuple(sorted(KNOWN_RESEARCH_REPORT_FILES))
 EXPECTED_RUNTIME_SURFACE_FILES = (
     "CustomConfig/deck/CARDID.json",
     "CustomConfig/deck/Combo.json",

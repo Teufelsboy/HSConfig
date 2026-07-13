@@ -143,6 +143,7 @@ def test_output_ownership_manifest_marks_unknown_report_unclassified():
         [
             "reports/operator_summary.json",
             "reports/new_unregistered_report.json",
+            "reports/research/new_unregistered_report.json",
         ]
     )
     by_file = {row["file"]: row for row in manifest["files"]}
@@ -150,7 +151,10 @@ def test_output_ownership_manifest_marks_unknown_report_unclassified():
     assert by_file["reports/new_unregistered_report.json"]["classification"] == (
         "unclassified"
     )
-    assert manifest["summary"]["unclassified_file_count"] == 1
+    assert by_file["reports/research/new_unregistered_report.json"]["classification"] == (
+        "unclassified"
+    )
+    assert manifest["summary"]["unclassified_file_count"] == 2
 
 
 def test_output_ownership_manifest_marks_legacy_surfaces_as_forbidden_drift():

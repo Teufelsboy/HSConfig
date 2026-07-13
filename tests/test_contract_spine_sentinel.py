@@ -169,6 +169,27 @@ def test_contract_spine_sentinel_flags_injected_unknown_report(monkeypatch):
     } in report["problems"]
 
 
+def test_contract_spine_sentinel_flags_injected_unknown_research_report(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    monkeypatch.setattr(
+        sentinel,
+        "EXPECTED_EMITTED_PACKAGE_FILES",
+        (
+            *sentinel.EXPECTED_EMITTED_PACKAGE_FILES,
+            "reports/research/new_unregistered_report.json",
+        ),
+    )
+
+    report = sentinel.build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "output_ownership_unclassified_files",
+        "value": ["reports/research/new_unregistered_report.json"],
+    } in report["problems"]
+
+
 def test_contract_spine_sentinel_flags_forbidden_legacy_surface(monkeypatch):
     from hsconfig import contract_spine_sentinel as sentinel
 
