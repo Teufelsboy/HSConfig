@@ -53,6 +53,34 @@ def test_sentinel_keeps_operator_summary_as_only_gate_after_lifecycle():
     assert report["checks"]["lifecycle_gate_files"] == []
 
 
+def test_contract_spine_sentinel_flags_lifecycle_report_promoted_to_gate(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.build_report_ownership
+
+    def drifted_report_ownership():
+        rows = []
+        for row in original():
+            if row.get("file") == "reports/source_contract_audit.json":
+                rows.append({**row, "classification": "gate"})
+            else:
+                rows.append(row)
+        return rows
+
+    monkeypatch.setattr(sentinel, "build_report_ownership", drifted_report_ownership)
+
+    report = build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert report["checks"]["lifecycle_gate_files"] == [
+        "reports/source_contract_audit.json"
+    ]
+    assert {
+        "check": "lifecycle_gate_files",
+        "value": ["reports/source_contract_audit.json"],
+    } in report["problems"]
+
+
 def test_contract_spine_sentinel_keeps_critical_runtime_boundaries_visible():
     report = build_contract_spine_sentinel_report()
     critical = report["checks"]["critical_boundary_rows"]
