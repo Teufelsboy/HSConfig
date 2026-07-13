@@ -132,6 +132,14 @@ def normalized_claim_kind(claim: Mapping[str, Any]) -> str:
     return ""
 
 
+def strict_claim_kind(claim: Mapping[str, Any]) -> str:
+    """Return the stored modern claim kind after lifecycle ingestion."""
+    value = claim.get("claim_kind")
+    if isinstance(value, str) and value in SUPPORTED_ATOMIC_CLAIM_KINDS:
+        return value
+    return ""
+
+
 def runtime_claim_kind(claim: Mapping[str, Any]) -> str:
     """Backward-compatible alias for normalized_claim_kind()."""
     return normalized_claim_kind(claim)
