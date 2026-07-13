@@ -123,3 +123,12 @@ def test_apply_help_marks_allow_source_informed_as_legacy_diagnostic_flag(capsys
     assert "--allow-source-informed" in help_text
     assert "legacy diagnostic compatibility" in help_text
     assert "Normal load-safe packages do not require this flag" in help_text
+
+
+def test_contract_spine_sentinel_help_is_diagnostic_only(capsys):
+    help_text = _subcommand_help("contract-spine-sentinel", capsys)
+
+    assert "read-only contract-spine drift diagnostic" in help_text
+    assert "does not grant apply permission" in help_text
+    assert "--out" in help_text
+    assert "--json" in help_text

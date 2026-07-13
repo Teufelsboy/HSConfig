@@ -177,6 +177,19 @@ def build_parser() -> argparse.ArgumentParser:
     contract_doctor.add_argument("--out", help="Optional Markdown output path.")
     contract_doctor.add_argument("--json", action="store_true")
 
+    contract_spine_sentinel = subparsers.add_parser(
+        "contract-spine-sentinel",
+        help="read-only contract-spine drift diagnostic",
+        description=(
+            "read-only contract-spine drift diagnostic. Read the current "
+            "source-contract policy, conformance snapshot, "
+            "diagnostic-only reports, and apply-boundary files to detect drift. "
+            "This command does not grant apply permission and never writes runtime files."
+        ),
+    )
+    contract_spine_sentinel.add_argument("--out", help="Optional JSON output path.")
+    contract_spine_sentinel.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")
