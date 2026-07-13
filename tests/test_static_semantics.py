@@ -98,3 +98,52 @@ def test_random_damage_is_not_generated_entity_pool():
 
     assert "damage" in result["families"]
     assert "generated_entity_random_pool" not in result["families"]
+
+
+def test_infers_odd_even_deckbuilding_start_of_game_modifiers():
+    genn = {
+        "id": "GIL_692",
+        "type": "MINION",
+        "text": (
+            "Start of Game: If your deck has only even-Cost cards, "
+            "your starting Hero Power costs (1)."
+        ),
+    }
+    baku = {
+        "id": "GIL_826",
+        "type": "MINION",
+        "text": "Start of Game: If your deck has only odd-Cost cards, upgrade your Hero Power.",
+    }
+
+    assert {"start_of_game", "deckbuilding_modifier", "even_odd_modifier"} <= _families(genn)
+    assert {"start_of_game", "deckbuilding_modifier", "even_odd_modifier"} <= _families(baku)
+
+
+def test_infers_highlander_deckbuilding_modifier():
+    card = {
+        "id": "HIGHLANDER_FIXTURE",
+        "type": "MINION",
+        "text": "Battlecry: If your deck has no duplicates, deal 10 damage.",
+    }
+
+    assert {"deckbuilding_modifier", "highlander_modifier"} <= _families(card)
+
+
+def test_infers_deck_size_and_starting_health_modifier():
+    card = {
+        "id": "REV_018",
+        "type": "MINION",
+        "text": "Your deck size and starting Health are 40.",
+    }
+
+    assert {"deckbuilding_modifier", "deck_size_modifier", "deck_state_modifier"} <= _families(card)
+
+
+def test_infers_start_in_deck_requirement_without_mulligan_semantics():
+    card = {
+        "id": "START_DECK_FIXTURE",
+        "type": "MINION",
+        "text": "If this is in your deck at the start of the game, draw it later.",
+    }
+
+    assert {"start_of_game", "start_in_deck_requirement", "deckbuilding_modifier"} <= _families(card)

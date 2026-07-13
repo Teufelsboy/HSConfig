@@ -103,6 +103,56 @@ WARNING_ONLY_MECHANICS = {
 }
 
 
+def _has_deck_condition(lowered: str) -> bool:
+    return any(
+        phrase in lowered
+        for phrase in (
+            "if your deck",
+            "your deck has",
+            "the spells in your deck",
+            "the minions in your deck",
+            "cards in your deck",
+            "deck size",
+            "starting deck",
+            "in your deck at the start",
+        )
+    )
+
+
+def _has_even_odd_deck_condition(lowered: str) -> bool:
+    return any(
+        phrase in lowered
+        for phrase in (
+            "only even-cost",
+            "only even cost",
+            "only even-cost cards",
+            "only odd-cost",
+            "only odd cost",
+            "only odd-cost cards",
+        )
+    )
+
+
+def _has_highlander_condition(lowered: str) -> bool:
+    return "no duplicates" in lowered or "no duplicate" in lowered
+
+
+def _has_deck_size_or_starting_health_modifier(lowered: str) -> bool:
+    return (
+        "deck size" in lowered
+        or "starting health" in lowered
+        or "starting health are" in lowered
+    )
+
+
+def _has_start_in_deck_requirement(lowered: str) -> bool:
+    return (
+        "if this is in your deck" in lowered
+        or "if this is in your starting deck" in lowered
+        or "in your deck at the start of the game" in lowered
+    )
+
+
 def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
     families: set[str] = set()
     evidence: list[dict[str, str]] = []
@@ -139,6 +189,25 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
 
     if "start of game" in lowered:
         _add(families, evidence, "start_of_game", "text", "start of game")
+    if "start_of_game" in families:
+        _add(families, evidence, "start_of_game_modifier", "text", "start of game")
+        _add(families, evidence, "passive_start_effect", "text", "start of game")
+    if _has_deck_condition(lowered):
+        _add(families, evidence, "deckbuilding_modifier", "text", "deck condition")
+    if _has_even_odd_deck_condition(lowered):
+        _add(families, evidence, "deckbuilding_modifier", "text", "odd/even deck condition")
+        _add(families, evidence, "even_odd_modifier", "text", "odd/even deck condition")
+    if _has_highlander_condition(lowered):
+        _add(families, evidence, "deckbuilding_modifier", "text", "no duplicates")
+        _add(families, evidence, "highlander_modifier", "text", "no duplicates")
+    if _has_deck_size_or_starting_health_modifier(lowered):
+        _add(families, evidence, "deckbuilding_modifier", "text", "deck size or starting health")
+        _add(families, evidence, "deck_size_modifier", "text", "deck size or starting health")
+        _add(families, evidence, "deck_state_modifier", "text", "deck size or starting health")
+    if _has_start_in_deck_requirement(lowered):
+        _add(families, evidence, "deckbuilding_modifier", "text", "in deck at start")
+        _add(families, evidence, "start_in_deck_requirement", "text", "in deck at start")
+        _add(families, evidence, "start_of_game", "text", "in deck at start")
     if "shadowform" in lowered:
         _add(families, evidence, "shadowform", "text", "shadowform")
         _add(families, evidence, "hero_power", "text", "shadowform")

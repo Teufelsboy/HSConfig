@@ -76,6 +76,18 @@ CASES = [
         },
         {"forge", "outcast", "titan", "starship"},
     ),
+    (
+        "deckbuilding_start_effects",
+        {
+            "type": "MINION",
+            "text": (
+                "Start of Game: If your deck has only odd-Cost cards, "
+                "upgrade your Hero Power."
+            ),
+        },
+        {"minion", "start_of_game", "deckbuilding_modifier", "even_odd_modifier"},
+        set(),
+    ),
 ]
 
 
