@@ -58,3 +58,63 @@ def test_contract_spine_sentinel_keeps_start_of_game_out_of_mulligan_keep():
     assert suppression["decision"] == "rejected"
     assert suppression["reason"] == "start_of_game_effect_does_not_require_opening_hand"
     assert "do not become opening-hand keeps" in suppression["operator_meaning"]
+
+
+def test_contract_spine_sentinel_flags_non_diagnostic_policy(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.source_contract_policy_by_claim_kind
+
+    def drifted_policy():
+        policy = original()
+        policy["mulligan_keep"] = {
+            **policy["mulligan_keep"],
+            "operator_gate_impact": "apply_gate",
+        }
+        return policy
+
+    monkeypatch.setattr(
+        sentinel,
+        "source_contract_policy_by_claim_kind",
+        drifted_policy,
+    )
+
+    report = build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "non_diagnostic_policy_claim_kinds",
+        "value": ["mulligan_keep"],
+    } in report["problems"]
+
+
+def test_contract_spine_sentinel_flags_apply_authority_fields(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.build_source_contract_conformance_snapshot
+
+    def drifted_snapshot():
+        snapshot = original()
+        snapshot["runtime_apply_allowed"] = True
+        snapshot["contract_spine_rows"] = [
+            {**snapshot["contract_spine_rows"][0], "apply_policy": "fake_gate"},
+            *snapshot["contract_spine_rows"][1:],
+        ]
+        return snapshot
+
+    monkeypatch.setattr(
+        sentinel,
+        "build_source_contract_conformance_snapshot",
+        drifted_snapshot,
+    )
+
+    report = build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "conformance_apply_authority_fields_present",
+        "value": ["runtime_apply_allowed"],
+    } in report["problems"]
+    assert report["checks"]["spine_rows_with_apply_authority_fields"][0]["fields"] == [
+        "apply_policy"
+    ]
