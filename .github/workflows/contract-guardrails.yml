@@ -1,0 +1,29 @@
+name: contract-guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+jobs:
+  contract-guardrails:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python -m pip install -e .
+
+      - name: Seed temporary installed skill
+        run: python scripts\sync_installed_skill.py --install-root .guardrail-skills
+
+      - name: Run contract guardrails
+        run: python scripts\check_contract_guardrails.py --skill-install-root .guardrail-skills
