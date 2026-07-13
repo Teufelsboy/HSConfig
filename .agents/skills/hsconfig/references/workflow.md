@@ -30,13 +30,13 @@ Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_rec
 `source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only: it traces source -> policy -> surface gate -> builder/router -> emitted/suppressed. `policy_lane` is static policy, not runtime emission; readiness and apply authority stay in `operator_summary.json`. `hsconfig contract-doctor --package <package> --json` is optional runtime-read-only diagnostics; operator_summary.json remains the only normal apply authority.
 `source_to_runtime_explainability.json` is the card-readable diagnostic projection of the same chain. It names emitted runtime files, missing runtime files, first missing links, and next source actions per claim/card. `operator_summary.json.source_to_runtime_explainability_summary` is non-blocking and never grants apply permission.
 
-The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator gate, and operator_summary.json remains the normal apply authority.
+The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator apply path, and operator_summary.json remains the normal apply authority.
 
 `contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.
 
-Unexpected contract drift is a defect in the source-contract spine. A builder prerequisite gap is different: it means the surface is allowed, but the concrete claim still lacks required structure. Builder prerequisite gaps stay visible and support no-block package generation; they do not create a second operator gate.
+Unexpected contract drift is a defect in the source-contract spine. A builder prerequisite gap is different: it means the surface is allowed, but the concrete claim still lacks required structure. Builder prerequisite gaps stay visible and support no-block package generation; they do not create a second operator apply path.
 
-`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.
+`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 
 ## Gate And Readiness
 
@@ -48,7 +48,7 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 
 Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`. `per-card <CARDID>.json` files, `Combo.json`, and source-backed choice lowering make the package richer, but they are HSConfig rich-output repo policy rather than the minimal runtime-write gate.
 
-`config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `source_contract_audit_summary`, `source_to_runtime_explainability_summary`, `no_block_failure_mode_summary`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/source_contract_audit.json`, `reports/source_to_runtime_explainability.json`, `reports/mechanic_drift_report.json`, and `reports/semantic_enrichment_report.json` explain source, mechanic, and richness gaps. `technical_hard_block` stops apply; warning categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` do not create a second apply gate. This does not create a second apply gate when `technical_status=VALID_PACKAGE`.
+`config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `source_contract_audit_summary`, `source_to_runtime_explainability_summary`, `no_block_failure_mode_summary`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/source_contract_audit.json`, `reports/source_to_runtime_explainability.json`, `reports/mechanic_drift_report.json`, and `reports/semantic_enrichment_report.json` explain source, mechanic, and richness gaps. `technical_hard_block` stops apply; warning categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` do not create a second apply path. This does not create a second apply path when `technical_status=VALID_PACKAGE`.
 
 Effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON; `source_contract_audit.json` is diagnostic and `operator_summary.json` remains the normal apply authority.
 

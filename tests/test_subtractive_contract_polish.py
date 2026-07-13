@@ -15,6 +15,26 @@ from hsconfig.surface_intent import build_surface_intent
 LEGACY_SURFACES = {"Presume.json", "Concede.json"}
 
 
+ACTIVE_DOC_PATHS = [
+    Path("docs/operator/README.md"),
+    Path("docs/operator/guide-research-policy.md"),
+    Path("docs/operator/universal-wild-no-block-contract.md"),
+    Path(".agents/skills/hsconfig/SKILL.md"),
+    Path(".agents/skills/hsconfig/references/workflow.md"),
+    Path(".agents/skills/hsconfig/references/visionai-surfaces.md"),
+]
+
+
+def test_active_docs_describe_legacy_surfaces_as_non_normal_only():
+    for path in ACTIVE_DOC_PATHS:
+        text = path.read_text(encoding="utf-8")
+        assert "operator_summary.json" in text
+        assert "legacy/diagnostic" in text or "outside the normal HSConfig output path" in text
+        assert "emit Presume.json" not in text
+        assert "emit Concede.json" not in text
+        assert "second apply gate" not in text.lower()
+
+
 def test_contract_spine_sentinel_covers_subtractive_contract_polish():
     report = build_contract_spine_sentinel_report()
     checks = report["checks"]

@@ -333,7 +333,7 @@ def test_operator_docs_explain_no_block_failure_mode_summary():
     assert "guide_strength_gap" in docs
     assert "combo_uncertainty" in docs
     assert "runtime_evidence_only_tuning" in docs
-    assert "It does not create a second apply gate." in docs
+    assert "It does not create a second apply path." in docs
 
 
 def test_operator_docs_explain_source_contract_audit_as_diagnostic_only():

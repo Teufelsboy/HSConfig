@@ -54,6 +54,10 @@ Source documents can be true and still not lower to runtime JSON. `claim_kind` i
 lower to `Mulligan.json`, `GlobalValues.json`, per-card `<CARDID>.json`, or
 `Combo.json`. `operator_summary.json` remains the only normal apply authority.
 
+`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+
+Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
+
 Examples:
 
 - Darkbishop Benedictus can preserve the Shadowform / Mind Spike effect through
@@ -306,7 +310,7 @@ visibility block. It counts every-card lanes, generic-low-confidence cards,
 contract-gap cards, and the next useful claim kinds. It is non-blocking:
 source-quality debt explains what to improve next, but it does not replace
 `operator_summary.json` as the apply authority and does not create a second
-apply gate. `source_contract_audit.json` remains diagnostic-only detail for
+apply path. `source_contract_audit.json` remains diagnostic-only detail for
 the source-to-runtime explanation.
 `source_to_runtime_explainability.json` is the operator-readable projection of
 the same diagnostic chain. It summarizes emitted runtime files, missing runtime

@@ -52,7 +52,7 @@ Do not use `source_contract_audit.json` as an apply gate.
 - Run `hsconfig configure` for normal operation.
 - Open `reports/operator_summary.json` first.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
-- Warnings are follow-up work, not a second apply gate.
+- Warnings are follow-up work, not a second apply path.
 - HSTuner owns post-run evaluation and tuning.
 
 ## Preferred Normal Path
@@ -101,7 +101,7 @@ Open `reports/operator_summary.json` first.
 
 - `technical_status`, `runtime_apply_mode`, and `runtime_apply_allowed` decide whether the package is structurally load-safe to apply.
 - Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`. Normal `prepare` packages should still emit per-card `<CARDID>.json` files when deck-card identity is known, but those rich CardID files are not the minimal runtime-apply gate.
-- `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.
+- `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
 - `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_mulligan_keeps` tells the operator that more guide-backed keep/discard evidence would improve the package.
@@ -131,7 +131,7 @@ other categories, `source_depth_warning`, `warning_only_mechanic`,
 `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and
 `runtime_evidence_only_tuning`, explain source or semantic limits while
 `load_safe_apply` can still proceed for `technical_status=VALID_PACKAGE`.
-It does not create a second apply gate.
+It does not create a second apply path.
 
 `hsconfig apply --fake --json` creates a receipt-bound preview without runtime mutation.
 Normal `hsconfig apply --json` remains autonomous when the gate allows it: it creates
@@ -161,7 +161,7 @@ Direct Python runtime writes use the same gate. `hsconfig.runtime_apply.apply_pa
 
 ## Report Ownership
 
-Open `reports/operator_summary.json` first. Lower-level reports explain the gate. They do not grant independent apply permission.
+Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
 `source_depth_lane` is a readable alias for the first missing source/runtime link:
 `closed`, `source_claim_gap`, `mulligan_claim_gap`, `runtime_surface_gap`,
@@ -200,7 +200,7 @@ matrix diagnostic. Row fields such as `apply_gate_allowed`,
 `runtime_apply_mode`, and `validation_status` explain why a package passed or
 failed, but they do not override `status` or `matrix_row_status`.
 
-Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply gate. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
+Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply path. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
 
 ## Optional Contract Doctor
 
@@ -214,7 +214,7 @@ operator_summary.json remains the only normal apply authority.
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
 
-`--allow-source-informed` is backward-compatible. It is no longer required for a load-safe valid package. Use `reports/operator_summary.json` to distinguish load safety from semantic strength: `SOURCE_BACKED_STRONG` means high-confidence source-backed handoff, while `READY_TO_APPLY_WITH_WARNINGS` means the package is usable but still has documented confidence gaps.
+`--allow-source-informed` is a backward-compatible legacy no-op. It does not create a second apply path. Runtime apply decisions come from `reports/operator_summary.json`.
 
 ```powershell
 hsconfig apply --package <package> --runtime-root <runtime-root> --json

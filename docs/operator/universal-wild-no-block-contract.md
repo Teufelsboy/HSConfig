@@ -12,7 +12,8 @@ every valid deck input.
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
 Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
-`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path; their absence never blocks a valid load-safe package.
+`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
 ## Card Data Intake
@@ -71,7 +72,7 @@ This is an explanatory summary, not a new permission model. It groups real
 technical stops under `technical_hard_block` and non-blocking follow-up work
 under `source_depth_warning`, `warning_only_mechanic`,
 `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and
-`runtime_evidence_only_tuning`. It does not create a second apply gate.
+`runtime_evidence_only_tuning`. It does not create a second apply path.
 
 Mechanic drift is not a runtime apply gate. `reports/mechanic_drift_report.json` and `mechanic_drift_summary` expose unknown mechanics, text-only mechanics, and unknown card types as warning data. Unknown mechanics are warning-only and do not block load-safe apply when `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
 

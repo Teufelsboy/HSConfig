@@ -45,8 +45,8 @@ def test_skill_and_workflow_stay_compact_and_canonical():
     assert "`Combo.json`" in combined
     assert (
         "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path; their absence never blocks a "
-        "valid load-safe package."
+        "outside the normal HSConfig output path. Their absence never blocks a "
+        "valid load-safe package, and their presence in a normal package is treated as drift."
     ) in combined
     for duplicate_section in [
         "Preferred normal workflow:",
@@ -73,8 +73,8 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
     ]
     required = [
         "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path; their absence never blocks a "
-        "valid load-safe package.",
+        "outside the normal HSConfig output path. Their absence never blocks a "
+        "valid load-safe package, and their presence in a normal package is treated as drift.",
     ]
     forbidden = [
         "without a current verified first-party help-page citation",
@@ -103,8 +103,8 @@ def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
 
     required_sentence = (
         "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path; their absence never blocks a "
-        "valid load-safe package."
+        "outside the normal HSConfig output path. Their absence never blocks a "
+        "valid load-safe package, and their presence in a normal package is treated as drift."
     )
     for path in active_paths:
         text = path.read_text(encoding="utf-8")
@@ -470,7 +470,7 @@ def test_docs_and_skill_explain_contract_conformance_snapshot():
 
     assert "contract conformance snapshot" in combined.lower()
     assert "documentation-as-code" in combined
-    assert "does not create a second operator gate" in combined
+    assert "does not create a second operator apply path" in combined
     assert "operator_summary.json remains the normal apply authority" in combined
 
 
@@ -913,7 +913,7 @@ def test_skill_explains_no_block_failure_mode_summary():
     assert "technical_hard_block" in combined
     assert "warning_only_mechanic" in combined
     assert "future_mechanic_drift" in combined
-    assert "does not create a second apply gate" in combined
+    assert "does not create a second apply path" in combined
 
 
 def test_skill_explains_source_contract_audit_without_new_gate():
@@ -928,7 +928,7 @@ def test_skill_explains_source_contract_audit_without_new_gate():
     assert "source_contract_audit_summary" in combined
     assert "source_to_runtime_explainability_summary" in combined
     assert "does not replace `operator_summary.json`" in skill
-    assert "does not create a second apply gate" in combined
+    assert "does not create a second apply path" in combined
     assert "claim_lifecycle_rows" in combined
     assert "policy_lane" in combined
     assert "source -> policy -> surface gate -> builder/router -> emitted/suppressed" in combined
@@ -1034,7 +1034,7 @@ def test_docs_describe_source_quality_as_non_blocking():
     assert "non-blocking" in docs.lower()
     assert "operator_summary.json" in docs
     assert "source_contract_audit.json" in docs
-    assert "second apply gate" in docs.lower()
+    assert "second apply path" in docs.lower()
 
 
 def test_hsconfig_skill_explains_start_effect_mulligan_split():
