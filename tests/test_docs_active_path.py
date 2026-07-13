@@ -415,3 +415,11 @@ def test_research_readme_names_current_truth_as_only_active_evidence_index():
 
     assert "only active evidence index" in text
     assert "older research folders are historical evidence" in text
+
+
+def test_operator_docs_explain_effect_semantics_are_not_mulligan_keeps():
+    text = Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
+
+    assert "Effect semantics are not opening-hand mulligan keeps" in text
+    assert "Start-of-game" in text
+    assert "operator_summary.json remains the normal apply authority" in text

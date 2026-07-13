@@ -185,6 +185,21 @@ Mulligan selector support:
 - Use wildcard selectors only when the source applies broadly to a known hand class.
 - Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
 
+### Effect semantics are not opening-hand mulligan keeps
+
+Start-of-game, deckbuilding, and hero-power-transform effects can be important
+runtime semantics without being cards to keep in the opening hand. Darkbishop
+Benedictus is the reference case: the Shadowform / Mind Spike behavior belongs
+in card behavior semantics, but the card itself must not become a Mulligan.json
+hold unless a source explicitly describes opening-hand mulligan intent.
+
+This split also applies to odd/even, highlander, deck-size, starting-health,
+and start-in-deck effects. These effects may create CardID behavior, source
+diagnostics, or report-visible expectations. They do not create mulligan keeps
+from generic card importance, start-of-game text, or deckbuilding text.
+
+operator_summary.json remains the normal apply authority.
+
 Do not infer `mulligan_keep` from card importance, start-of-game effects,
 deckbuilding effects, hero-power-transform text, or generic "keep" wording.
 Preserve those effects as `hero_power_transform`, CardID behavior, or

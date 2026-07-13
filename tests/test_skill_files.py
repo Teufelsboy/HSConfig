@@ -1035,3 +1035,11 @@ def test_docs_describe_source_quality_as_non_blocking():
     assert "operator_summary.json" in docs
     assert "source_contract_audit.json" in docs
     assert "second apply gate" in docs.lower()
+
+
+def test_hsconfig_skill_explains_start_effect_mulligan_split():
+    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "Effect semantics are not opening-hand mulligan keeps" in text
+    assert "Darkbishop Benedictus" in text
+    assert "operator_summary.json remains the normal apply authority" in text
