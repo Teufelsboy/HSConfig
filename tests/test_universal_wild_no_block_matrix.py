@@ -96,6 +96,106 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
     }
 
 
+def prepare_fixture_deck_with_source_claims(
+    tmp_path: Path, *, deck_name: str, claims: list[dict]
+):
+    cards = tmp_path / f"{deck_name}_cards.json"
+    cards.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "CARD_001",
+                        "dbf_id": 1,
+                        "count": 1,
+                        "name": "Fixture Card",
+                        "text": "Fixture card text.",
+                    },
+                    {
+                        "card_id": "CARD_777",
+                        "dbf_id": 777,
+                        "count": 1,
+                        "name": "Future Fixture Card",
+                        "text": "Future mechanic fixture card text.",
+                        "mechanics": ["FUTURE_KEYWORD"],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    sources = tmp_path / f"{deck_name}_sources.json"
+    sources.write_text(
+        json.dumps(
+            [
+                {
+                    "source_url": f"https://example.invalid/{deck_name}",
+                    "source_title": f"{deck_name} Fixture",
+                    "source_family": "guide_fixture",
+                    "retrieved_at": "2026-07-13T00:00:00Z",
+                    "claims": claims,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / f"{deck_name}_package"
+    exit_code = main(
+        [
+            "prepare",
+            "--deck-name",
+            deck_name,
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / f"{deck_name}_runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards),
+            "--guide-sources-json",
+            str(sources),
+        ]
+    )
+    reports = out / "reports"
+    deck_dir = next((out / "CustomConfig").iterdir())
+    return {
+        "exit_code": exit_code,
+        "package": out,
+        "deck_dir": deck_dir,
+        "operator_summary": json.loads(
+            (reports / "operator_summary.json").read_text(encoding="utf-8")
+        ),
+        "source_contract_audit": json.loads(
+            (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+        ),
+        "guide_claim_bundle": json.loads(
+            (reports / "guide_claim_bundle.json").read_text(encoding="utf-8")
+        ),
+        "global_values_authority_matrix": json.loads(
+            (reports / "global_values_authority_matrix.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+        "unsupported_claims_report": json.loads(
+            (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
+        ),
+        "mulligan": json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8")),
+    }
+
+
+def assert_load_safe_no_block_package(operator_summary: dict):
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
+    assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+
+
 @pytest.mark.parametrize(("deck_name", "deck_code"), DECKS)
 def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     tmp_path: Path,
@@ -282,3 +382,140 @@ def test_singleton_hero_power_state_requirement_preserves_effect_without_mulliga
     assert claim["semantic_qualifiers"]["state_requirements"] == ["all_shadow_spells"]
     assert card_behavior["BeforeUseHeroPowerBonus"]["values"]
     assert not any(row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"])
+
+
+def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
+    result = prepare_fixture_deck_with_source_claims(
+        tmp_path,
+        deck_name="NoBlockConflictDeck",
+        claims=[
+            {
+                "claim_id": "keep_card",
+                "claim_kind": "mulligan_keep",
+                "card_id": "CARD_001",
+                "evidence_text_short": "Keep the fixture card in the mulligan.",
+                "source_confidence": "guide_backed",
+            },
+            {
+                "claim_id": "discard_card",
+                "claim_kind": "mulligan_discard",
+                "card_id": "CARD_001",
+                "evidence_text_short": "Discard the fixture card in the mulligan.",
+                "source_confidence": "guide_backed",
+            },
+        ],
+    )
+
+    operator_summary = result["operator_summary"]
+    source_contract_audit = result["source_contract_audit"]
+    lifecycle_rows = source_contract_audit["claim_lifecycle_rows"]
+    quarantined_rows = [
+        row for row in lifecycle_rows if row.get("quarantine_status") == "quarantined"
+    ]
+
+    assert result["exit_code"] == 0
+    assert_load_safe_no_block_package(operator_summary)
+    assert result["guide_claim_bundle"]["claim_conflict_report"]["conflict_count"] == 1
+    assert {row["claim_kind"] for row in quarantined_rows} == {
+        "mulligan_keep",
+        "mulligan_discard",
+    }
+    assert all(
+        row["builder_or_router_decision"] == "suppressed"
+        and row["final_runtime_effect"] == "suppressed_quarantined_claim"
+        and row["first_missing_link"] == "source_claim_conflict"
+        and row["operator_impact"] == "diagnostic_only"
+        for row in quarantined_rows
+    )
+    assert source_contract_audit["summary"]["claim_lifecycle_decision_counts"][
+        "suppressed"
+    ] >= len(quarantined_rows)
+    assert not any(
+        row.get("mulligan") == "CARD_001"
+        for row in result["mulligan"]["Mulligan"]["values"]
+    )
+
+
+def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block(tmp_path):
+    result = prepare_fixture_deck_with_source_claims(
+        tmp_path,
+        deck_name="NoBlockDiagnosticDeck",
+        claims=[
+            {
+                "claim_id": "future_mechanic",
+                "claim_kind": "mechanic_usage",
+                "card_id": "CARD_777",
+                "mechanic": "future_keyword",
+                "evidence_text_short": "Future keyword support remains diagnostic.",
+                "source_confidence": "unknown_future_mechanic",
+            },
+            {
+                "claim_id": "report_only_role",
+                "claim_kind": "card_role",
+                "card_id": "CARD_001",
+                "stance": "thin report-only role",
+                "evidence_text_short": "Thin source role should not become runtime authority.",
+                "source_confidence": "report_only",
+            },
+            {
+                "claim_id": "numeric_runtime_evidence",
+                "claim_kind": "globalvalue_numeric_tuning",
+                "scope": "deck",
+                "key": "LowHpBoardValuePenalty",
+                "evidence_text_short": "Tune this numeric key only after runtime evidence.",
+                "source_confidence": "guide_backed",
+            },
+            {
+                "claim_id": "unsupported_future_claim",
+                "claim_kind": "future_claim_kind",
+                "card_id": "CARD_001",
+                "evidence_text_short": "Unsupported future claim stays report-visible.",
+                "source_confidence": "guide_backed",
+            },
+        ],
+    )
+
+    operator_summary = result["operator_summary"]
+    source_contract_audit = result["source_contract_audit"]
+    lifecycle_rows = source_contract_audit["claim_lifecycle_rows"]
+    report_only_rows = [
+        row for row in lifecycle_rows if row.get("runtime_eligibility") == "report_only"
+    ]
+    runtime_evidence_rows = [
+        row
+        for row in lifecycle_rows
+        if row.get("policy_lane") == "runtime_evidence_required"
+    ]
+    unsupported_rows = [
+        row
+        for row in result["unsupported_claims_report"]
+        if row.get("claim_kind") == "future_claim_kind"
+    ]
+
+    assert result["exit_code"] == 0
+    assert_load_safe_no_block_package(operator_summary)
+    assert source_contract_audit["summary"]["report_only_claims"] >= 1
+    assert source_contract_audit["summary"]["runtime_evidence_required_claims"] >= 1
+    assert report_only_rows
+    assert all(row["builder_or_router_decision"] != "emitted" for row in report_only_rows)
+    assert runtime_evidence_rows
+    assert any(
+        row["builder_or_router_decision"] == "suppressed"
+        and row["first_missing_link"] == "runtime_evidence"
+        and row["operator_impact"] == "diagnostic_only"
+        for row in runtime_evidence_rows
+    )
+    assert unsupported_rows
+    assert all(row["reason"] == "unsupported_claim_kind" for row in unsupported_rows)
+    assert any(
+        row.get("key") == "LowHpBoardValuePenalty"
+        for row in result["global_values_authority_matrix"][
+            "blocked_until_runtime_evidence"
+        ]
+    )
+    assert "future_keyword" in operator_summary["mechanic_drift_summary"][
+        "unknown_mechanics"
+    ]
+    assert "future_keyword" in operator_summary["mechanic_visibility_summary"][
+        "mechanics_by_bucket"
+    ]["warning_only"]

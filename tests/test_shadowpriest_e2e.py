@@ -42,6 +42,59 @@ def test_shadowpriest_semantic_qualifiers_preserve_effect_without_mulligan_keep(
     )
 
 
+def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_lifecycle(
+    tmp_path: Path,
+):
+    out = tmp_path / "pkg"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+        ]
+    )
+
+    deck_dir = out / "CustomConfig" / "shadowpriest"
+    reports = out / "reports"
+    mulligan_text = (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
+    darkbishop_text = (deck_dir / "SW_448.json").read_text(encoding="utf-8")
+    audit = json.loads((reports / "source_contract_audit.json").read_text(encoding="utf-8"))
+    claim_rows = audit["claim_rows"]
+    darkbishop_claim_ids = {
+        claim_id
+        for claim_id, row in claim_rows.items()
+        if "SW_448" in row.get("cards", [])
+    }
+    darkbishop_lifecycle_rows = [
+        row
+        for row in audit["claim_lifecycle_rows"]
+        if row.get("claim_id") in darkbishop_claim_ids
+    ]
+
+    assert code == 0
+    assert "SW_448" not in mulligan_text
+    assert "BeforeUseHeroPowerBonus" in darkbishop_text
+    assert not (deck_dir / "Presume.json").exists()
+    assert not (deck_dir / "Concede.json").exists()
+    assert any(
+        row["claim_kind"] == "hero_power_transform"
+        and row["builder_or_router_decision"] == "emitted"
+        and "SW_448.json" in row["emitted_files"]
+        for row in darkbishop_lifecycle_rows
+    )
+    assert not any(
+        row["claim_kind"] == "mulligan_keep"
+        and row["builder_or_router_decision"] == "emitted"
+        for row in darkbishop_lifecycle_rows
+    )
+
+
 def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, capsys):
     package = tmp_path / "shadowpriest_package"
     runtime = tmp_path / "runtime"
