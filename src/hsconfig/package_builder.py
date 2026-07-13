@@ -304,6 +304,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         combo_plan=combo_plan,
         global_values_authority_matrix=global_values_authority_matrix,
         config_readiness_report=config_readiness_report,
+        initial_lifecycle_rows=initial_lifecycle_rows,
     )
     write_json(reports_dir / "source_contract_audit.json", source_contract_audit_report)
     (reports_dir / "source_contract_audit.md").write_text(

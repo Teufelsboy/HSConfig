@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import (
@@ -26,6 +26,7 @@ def build_source_contract_audit(
     global_values_authority_matrix: Mapping[str, Any] | None = None,
     config_readiness_report: Mapping[str, Any] | None = None,
     runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
+    initial_lifecycle_rows: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Explain why source claims did or did not lower into runtime surfaces."""
     deck_identity = deck_identity or {}
@@ -133,10 +134,17 @@ def build_source_contract_audit(
         card_rows=card_rows,
         policy_lane_counts=policy_lane_counts,
     )
-    claim_lifecycle_rows = _build_claim_lifecycle_rows(
-        list(claim_rows.values()),
-        runtime_emission_index=runtime_emission_index,
-    )
+    if initial_lifecycle_rows is not None:
+        claim_lifecycle_rows = _build_claim_lifecycle_rows_from_initial(
+            initial_lifecycle_rows,
+            claim_rows_by_id=claim_rows,
+            runtime_emission_index=runtime_emission_index,
+        )
+    else:
+        claim_lifecycle_rows = _build_claim_lifecycle_rows(
+            list(claim_rows.values()),
+            runtime_emission_index=runtime_emission_index,
+        )
     summary["claim_lifecycle_decision_counts"] = _claim_lifecycle_decision_counts(
         claim_lifecycle_rows
     )
@@ -580,6 +588,92 @@ def _build_claim_lifecycle_rows(
                 if decision == "emitted"
                 else _first_missing_link_for_suppression(str(suppressed_reason or "")),
                 "operator_impact": _DIAGNOSTIC_OPERATOR_IMPACT,
+            }
+        )
+    return rows
+
+
+def _build_claim_lifecycle_rows_from_initial(
+    initial_lifecycle_rows: Sequence[Mapping[str, Any]],
+    *,
+    claim_rows_by_id: Mapping[str, Mapping[str, Any]],
+    runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    runtime_emission_index = runtime_emission_index or {}
+    rows: list[dict[str, Any]] = []
+    for index, initial_row in enumerate(initial_lifecycle_rows, start=1):
+        if not isinstance(initial_row, Mapping):
+            continue
+        claim_id = str(initial_row.get("claim_id") or f"claim_{index:04d}")
+        claim_row = claim_rows_by_id.get(claim_id, {})
+        if not isinstance(claim_row, Mapping):
+            claim_row = {}
+        emission = runtime_emission_index.get(claim_id, {})
+        if not isinstance(emission, Mapping):
+            emission = {}
+        emitted_surfaces = [
+            str(surface)
+            for surface in claim_row.get("lowered_surfaces", [])
+            if str(surface)
+        ]
+        surface = _lifecycle_surface(
+            emission=emission,
+            emitted_surfaces=emitted_surfaces,
+            claim_row=claim_row,
+        )
+        gate = _lifecycle_gate(claim_row, surface)
+        quarantine_status = str(initial_row.get("quarantine_status") or "clear")
+        quarantine_reason = str(initial_row.get("quarantine_reason") or "")
+        runtime_eligibility = str(initial_row.get("runtime_eligibility") or "")
+        if quarantine_status == "quarantined":
+            decision = "suppressed"
+            suppressed_reason = quarantine_reason or "source_claim_conflict"
+            first_missing_link = "source_claim_conflict"
+            final_runtime_effect = "suppressed_quarantined_claim"
+        else:
+            decision = str(emission.get("decision", ""))
+            if not decision:
+                decision = _fallback_builder_decision(gate)
+            decision = _normalized_lifecycle_decision(decision, gate)
+            suppressed_reason = emission.get("suppressed_reason")
+            if decision == "emitted":
+                suppressed_reason = None
+                first_missing_link = None
+                final_runtime_effect = "emitted_runtime_row"
+            else:
+                if suppressed_reason is None:
+                    suppressed_reason = _fallback_suppressed_reason(gate, decision)
+                first_missing_link = _first_missing_link_for_suppression(
+                    str(suppressed_reason or "")
+                )
+                final_runtime_effect = (
+                    "suppressed_runtime_claim"
+                    if decision == "suppressed"
+                    else "not_emitted_by_builder_or_router"
+                )
+        runtime_surface = emission.get("runtime_surface")
+        emitted_files = list(emission.get("emitted_files", []))
+        rows.append(
+            {
+                "claim_id": claim_id,
+                "claim_kind": str(
+                    initial_row.get("claim_kind") or claim_row.get("claim_kind", "")
+                ),
+                "policy_lane": str(
+                    initial_row.get("policy_lane") or claim_row.get("policy_lane", "")
+                ),
+                "surface_gate_decision": "allowed" if gate.get("allowed") else "rejected",
+                "surface_gate_reason": str(gate.get("reason", "")),
+                "builder_or_router_decision": decision,
+                "runtime_surface": runtime_surface if runtime_surface else None,
+                "emitted_files": emitted_files,
+                "suppressed_reason": suppressed_reason,
+                "first_missing_link": first_missing_link,
+                "operator_impact": _DIAGNOSTIC_OPERATOR_IMPACT,
+                "quarantine_status": quarantine_status,
+                "quarantine_reason": quarantine_reason,
+                "runtime_eligibility": runtime_eligibility,
+                "final_runtime_effect": final_runtime_effect,
             }
         )
     return rows

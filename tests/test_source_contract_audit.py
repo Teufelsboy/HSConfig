@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
+from hsconfig.source_claim_lifecycle import build_initial_lifecycle_rows
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
@@ -213,6 +214,79 @@ def test_claim_lifecycle_rows_explain_static_policy_and_runtime_outcome():
         "first_missing_link": "runtime_evidence",
         "operator_impact": "diagnostic_only",
     }
+
+
+def test_claim_lifecycle_uses_canonical_quarantine_rows():
+    claims = [
+        {
+            "claim_id": "keep_card",
+            "claim_kind": "mulligan_keep",
+            "source_confidence": "guide_backed",
+            "cards": ["CARD_001"],
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "Keep CARD_001.",
+        },
+        {
+            "claim_id": "discard_card",
+            "claim_kind": "mulligan_discard",
+            "source_confidence": "guide_backed",
+            "cards": ["CARD_001"],
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "Discard CARD_001.",
+        },
+    ]
+    lifecycle_rows = build_initial_lifecycle_rows(
+        claims,
+        conflict_report={
+            "conflicts": [
+                {
+                    "claim_ids": ["keep_card", "discard_card"],
+                    "reason": "contradictory_mulligan_keep_discard",
+                }
+            ]
+        },
+    )
+
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "CARD_001", "name": "Conflict Card", "count": 1}],
+        },
+        guide_claim_bundle={"claims": claims},
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_001": {
+                    "name": "Conflict Card",
+                    "roles": ["mulligan_anchor"],
+                    "runtime_surfaces": [],
+                    "readiness_lane": "mulligan_only",
+                    "first_missing_link": "source_claim_conflict",
+                }
+            }
+        },
+        initial_lifecycle_rows=lifecycle_rows,
+    )
+
+    rows_by_claim_id = {row["claim_id"]: row for row in report["claim_lifecycle_rows"]}
+    row = rows_by_claim_id["discard_card"]
+
+    assert REQUIRED_LIFECYCLE_FIELDS <= set(row)
+    assert row["quarantine_status"] == "quarantined"
+    assert row["quarantine_reason"] == "contradictory_mulligan_keep_discard"
+    assert row["runtime_eligibility"] == "quarantined"
+    assert row["builder_or_router_decision"] == "suppressed"
+    assert row["suppressed_reason"] == "contradictory_mulligan_keep_discard"
+    assert row["first_missing_link"] == "source_claim_conflict"
+    assert row["final_runtime_effect"] == "suppressed_quarantined_claim"
+    assert report["summary"]["claim_lifecycle_decision_counts"] == {"suppressed": 2}
 
 
 def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
