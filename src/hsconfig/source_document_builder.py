@@ -11,6 +11,7 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     claim_can_lower_to_runtime,
 )
+from hsconfig.source_claim_conflicts import build_claim_conflict_report
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 
 
@@ -151,7 +152,7 @@ def build_source_document_bundle(
             cards=cards,
             claims=claims,
         ),
-        "claim_conflict_report": _build_claim_conflict_report(claims),
+        "claim_conflict_report": build_claim_conflict_report(claims),
         "unsupported_claims": unsupported_claims,
     }
 
@@ -338,34 +339,6 @@ def _build_claim_coverage_report(
         "cards": rows,
         "summary": status_counts,
     }
-
-
-def _build_claim_conflict_report(claims: list[dict[str, Any]]) -> dict[str, Any]:
-    mulligan_claims_by_card: dict[str, dict[str, set[str]]] = {}
-    for claim in claims:
-        claim_kind = str(claim.get("claim_kind", ""))
-        if claim_kind not in {"mulligan_keep", "mulligan_discard"}:
-            continue
-        claim_id = str(claim.get("claim_id", ""))
-        for card_id in claim.get("cards", []):
-            kinds = mulligan_claims_by_card.setdefault(str(card_id), {})
-            kinds.setdefault(claim_kind, set()).add(claim_id)
-
-    conflicts = []
-    for card_id, kinds in sorted(mulligan_claims_by_card.items()):
-        if {"mulligan_keep", "mulligan_discard"} <= set(kinds):
-            claim_ids = set()
-            for ids in kinds.values():
-                claim_ids.update(ids)
-            conflicts.append(
-                {
-                    "card_id": card_id,
-                    "conflict_family": "mulligan",
-                    "claim_ids": sorted(claim_ids),
-                    "resolution": "downgrade_to_report_visible_conflict",
-                }
-            )
-    return {"conflict_count": len(conflicts), "conflicts": conflicts}
 
 
 def _unsupported(
