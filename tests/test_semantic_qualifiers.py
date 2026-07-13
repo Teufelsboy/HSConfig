@@ -24,6 +24,22 @@ def test_normalize_semantic_qualifiers_keeps_known_fields_and_drops_empty_values
     }
 
 
+def test_hero_power_transform_coerces_singleton_state_requirement_to_list():
+    result = normalize_semantic_qualifiers(
+        {
+            "claim_kind": "hero_power_transform",
+            "cards": ["SW_448"],
+            "semantic_qualifiers": {"state_requirements": "all_shadow_spells"},
+        },
+        card_roles={"SW_448": {"roles": ["hero_power_transform"]}},
+    )
+
+    assert result["state_requirements"] == [
+        "all_shadow_spells",
+        "hero_power_transform",
+    ]
+
+
 def test_source_document_claim_preserves_semantic_qualifiers():
     bundle = build_source_document_bundle(
         deck_identity={

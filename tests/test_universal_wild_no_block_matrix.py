@@ -86,6 +86,7 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
     reports = out / "reports"
     return {
         "exit_code": exit_code,
+        "package": out,
         "operator_summary": json.loads(
             (reports / "operator_summary.json").read_text(encoding="utf-8")
         ),
@@ -253,3 +254,31 @@ def test_unknown_semantic_qualifier_stays_warning_not_apply_block(tmp_path):
     )
     claim = result["guide_claim_bundle"]["claims"][0]
     assert claim["semantic_qualifiers"]["state_requirements"] == ["future_mechanic"]
+
+
+def test_singleton_hero_power_state_requirement_preserves_effect_without_mulligan_keep(tmp_path):
+    result = prepare_fixture_deck_with_source_claim(
+        tmp_path,
+        deck_name="SingletonHeroPower",
+        claim={
+            "claim_kind": "hero_power_transform",
+            "cards": ["CARD_001"],
+            "evidence_text_short": "Start of Game transforms the hero power when all spells are Shadow.",
+            "source_confidence": "high",
+            "semantic_qualifiers": {"state_requirements": "all_shadow_spells"},
+        },
+    )
+
+    package = result["package"]
+    deck_dir = next((package / "CustomConfig").iterdir())
+    card_behavior = json.loads((deck_dir / "CARD_001.json").read_text(encoding="utf-8"))
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    claim = result["guide_claim_bundle"]["claims"][0]
+    operator_summary = result["operator_summary"]
+
+    assert result["exit_code"] == 0
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert claim["semantic_qualifiers"]["state_requirements"] == ["all_shadow_spells"]
+    assert card_behavior["BeforeUseHeroPowerBonus"]["values"]
+    assert not any(row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"])

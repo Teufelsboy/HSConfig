@@ -121,6 +121,25 @@ def test_operator_summary_exposes_source_quality_without_apply_block():
                 },
             ],
         ),
+        (
+            "role_vs_known_bad_pattern",
+            [
+                {
+                    "claim_kind": "card_role",
+                    "cards": ["CARD_A"],
+                    "stance": "prefer_enemy_minion",
+                    "evidence_text_short": "Use this card to target enemy minions.",
+                    "source_confidence": "high",
+                },
+                {
+                    "claim_kind": "known_bad_pattern",
+                    "cards": ["CARD_A"],
+                    "stance": "do_not_target_enemy_minion",
+                    "evidence_text_short": "Do not target enemy minions with this card.",
+                    "source_confidence": "high",
+                },
+            ],
+        ),
     ],
 )
 def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path, family, claims):

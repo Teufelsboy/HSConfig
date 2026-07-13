@@ -67,7 +67,7 @@ def _add_value(result: dict[str, Any], key: str, value: Any) -> None:
     if isinstance(value, str):
         normalized = _normalize_text(value)
         if normalized:
-            result[key] = normalized
+            result[key] = [normalized] if key == "state_requirements" else normalized
         return
     if isinstance(value, list):
         values = [_normalize_text(item) for item in value]

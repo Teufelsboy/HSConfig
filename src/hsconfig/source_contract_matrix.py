@@ -8,8 +8,8 @@ COMMON_CLAIM_FIELDS = ("claim_kind", "claim_readiness", "trust_ceiling")
 CARD_CLAIM_FIELDS = (*COMMON_CLAIM_FIELDS, "cards")
 SEMANTIC_QUALIFIER_USAGE_BY_CLAIM_KIND = {
     "mulligan_keep": "timing and zone qualifiers may suppress start-of-game non-hand effects",
-    "targeting_rule": "target_scope may refine CardID targeting behavior",
-    "combo_sequence": "timing and state requirements may refine Combo.json eligibility",
+    "targeting_rule": "target_scope is diagnostic metadata for supported CardID targeting claims",
+    "combo_sequence": "timing and state requirements are diagnostic metadata for Combo.json claims",
 }
 
 _POLICY: dict[str, dict[str, object]] = {

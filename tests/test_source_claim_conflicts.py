@@ -73,3 +73,30 @@ def test_conflict_report_detects_option_choice_conflicts():
 
     assert report["conflict_count"] == 1
     assert report["conflicts"][0]["conflict_family"] == "option_choice"
+
+
+def test_conflict_report_detects_role_against_known_bad_pattern():
+    report = build_claim_conflict_report(
+        [
+            _claim(
+                "use_enemy_minion",
+                "card_role",
+                "TARGETER",
+                stance="prefer_enemy_minion",
+            ),
+            _claim(
+                "do_not_target_enemy_minion",
+                "known_bad_pattern",
+                "TARGETER",
+                stance="do_not_target_enemy_minion",
+            ),
+        ]
+    )
+
+    assert report["conflict_count"] == 1
+    conflict = report["conflicts"][0]
+    assert conflict["card_id"] == "TARGETER"
+    assert conflict["conflict_family"] == "role_vs_known_bad_pattern"
+    assert conflict["values"] == ["enemy_minion->do_not_target_enemy_minion"]
+    assert conflict["claim_ids"] == ["do_not_target_enemy_minion", "use_enemy_minion"]
+    assert conflict["resolution"] == "downgrade_to_report_visible_conflict"
