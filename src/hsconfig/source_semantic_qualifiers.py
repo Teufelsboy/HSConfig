@@ -83,6 +83,10 @@ def _normalize_text(value: Any) -> str:
 
 def _role_tokens(claim: Mapping[str, Any], card_roles: Mapping[str, Any]) -> set[str]:
     roles: set[str] = set()
+    for key in ("mechanic", "mechanic_family"):
+        value = claim.get(key)
+        if isinstance(value, str) and value.strip():
+            roles.add(_normalize_text(value))
     for key in ("roles", "semantic_families", "mechanic_families"):
         value = claim.get(key, [])
         if isinstance(value, str):

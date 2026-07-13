@@ -383,7 +383,12 @@ def _static_claim(
         "source_refs": ["hearthstonejson_static_semantics"],
     }
     claim["mechanic_family"] = mechanic_family or mechanic
-    semantic_qualifiers = normalize_semantic_qualifiers(claim)
+    semantic_qualifiers = normalize_semantic_qualifiers(
+        claim,
+        card_roles={
+            card_id: {"semantic_families": infer_static_semantics(card).get("families", [])}
+        },
+    )
     if semantic_qualifiers:
         claim["semantic_qualifiers"] = semantic_qualifiers
     if evidence:

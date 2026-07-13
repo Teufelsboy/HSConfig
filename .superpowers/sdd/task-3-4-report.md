@@ -34,3 +34,28 @@ Completed. Semantic qualifiers are normalized as explanatory claim metadata and 
 ## Concerns
 
 - None.
+
+## Review Finding Fix
+
+### Changed files
+
+- `src/hsconfig/source_semantic_qualifiers.py`
+- `src/hsconfig/guide_claim_builder.py`
+- `tests/test_semantic_qualifiers.py`
+- `.superpowers/sdd/task-3-4-report.md`
+
+### Commit
+
+- Fix commit: this commit (`fix: derive qualifiers for static start effects`).
+
+### Tests run
+
+- `python -m pytest tests/test_semantic_qualifiers.py tests/test_source_claim_quality_autonomy.py tests/test_surface_authority_split.py tests/test_archetype_source_fixtures.py tests/test_guide_claim_builder.py tests/test_source_evidence_verifier.py -q` - 97 passed.
+- `python -m compileall -q src tests` - passed.
+- `git diff --check` - passed.
+
+### Self-review
+
+- Static claim normalization supplies existing static semantic families as card-role context, so Darkbishop-style text derives `timing=start_of_game`.
+- Singular static `mechanic` and `mechanic_family` participate as normalized role hints, yielding `state_requirements` with `hero_power_transform`.
+- The regression covers the public guide claim builder and asserts metadata only. It adds no claim kind, runtime surface, dependency, apply authority, or Mulligan keep.

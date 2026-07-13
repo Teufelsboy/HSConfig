@@ -2,6 +2,7 @@ from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import can_lower_to_mulligan
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 from hsconfig.source_evidence_verifier import claim_evidence_status
+from hsconfig.guide_claim_builder import build_guide_claim_bundle
 
 
 def test_normalize_semantic_qualifiers_keeps_known_fields_and_drops_empty_values():
@@ -82,6 +83,28 @@ def test_semantic_qualifiers_count_as_actionable_specificity_for_runtime_hints()
         warning["reason"] == "runtime_lowering_claim_lacks_actionable_specificity"
         for warning in row["warnings"]
     )
+
+
+def test_static_darkbishop_claim_derives_start_effect_qualifiers():
+    bundle = build_guide_claim_bundle(
+        deck_identity={"deck_name": "ShadowPriest"},
+        card_metadata={
+            "SW_448": {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "text": "Start of Game: Enter Shadowform. Your hero power becomes Mind Spike.",
+            }
+        },
+    )
+
+    claim = next(
+        claim
+        for claim in bundle["claims"]
+        if claim["claim_kind"] == "hero_power_transform"
+    )
+
+    assert claim["semantic_qualifiers"]["timing"] == "start_of_game"
+    assert "hero_power_transform" in claim["semantic_qualifiers"]["state_requirements"]
 
 
 def test_start_of_game_qualifier_blocks_mulligan_keep_without_opening_hand_text():
