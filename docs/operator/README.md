@@ -6,7 +6,19 @@ HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze ru
 
 Research artifacts are evidence, not operator instructions. Use `docs/research/README.md` when auditing why a source-depth or fixture decision exists; return to this guide for the normal command path.
 
+## Quick Start
+
+- Run `hsconfig configure` for normal operation.
+- Open `reports/operator_summary.json` first.
+- `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
+- Warnings are follow-up work, not a second apply path.
+- HSTuner owns post-run evaluation and tuning.
+
 ## Preferred Normal Path
+
+Preferred normal path: `hsconfig configure`.
+
+## Normal Operator Path
 
 1. Run `hsconfig configure`.
 2. Open `outputs/<DeckName>/04_package/reports/operator_summary.json`.
@@ -79,11 +91,6 @@ per claim and per card; it does not replace `reports/operator_summary.json`.
 source_contract_audit.json is diagnostic. Its `claim_lifecycle_rows` explain
 source -> policy -> surface gate -> builder/router -> emitted/suppressed.
 Runtime readiness still comes from `operator_summary.json`.
-`reports/source_to_runtime_explainability.json` is the card-readable projection
-of that audit: it names emitted runtime files, missing runtime files, the first
-missing link, and the next source action per claim/card. Its compact
-`source_to_runtime_explainability_summary` in `operator_summary.json` is
-non-blocking and does not grant apply permission.
 
 Source-contract invariant: effect semantics are preserved on supported effect
 and CardID surfaces, but only exact runtime-surface claims lower into matching
@@ -102,18 +109,6 @@ Open `reports/operator_summary.json` first.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
 - `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_mulligan_keeps` tells the operator that more guide-backed keep/discard evidence would improve the package.
-- `mechanic_visibility_summary` is descriptive and non-blocking. It shows `direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic buckets so a valid package can be applied while still making Dredge, Tradeable, unresolved generation, or partial targeting limits visible.
-
-The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments when a registered mechanic has a documented default CardID lowering target and no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future mechanics stay report-only/warning-only; they do not increment `cards_needing_mechanic_lowering`.
-
-`first_warning_boundary` names the first next-inspection item. `warning_boundaries` is the complete alphabetical list of report-only mechanics the operator may inspect next. `choose_one` is identity-gated direct, while `board_position`, `generic_spell_target`, `location_activation`, `secret_timing`, and `generated_entity_random_pool` are warning-only. These warnings are explanatory; warning-only mechanics do not block load-safe apply for a valid package.
-
-`reports/mechanic_drift_report.json` is the non-blocking current-card-data drift surface. `mechanic_drift_summary` in `reports/operator_summary.json` lists unknown mechanics, text-only mechanics, and unknown card types detected from HearthstoneJSON-style metadata. Unknown mechanics are warning-only and do not block load-safe apply. Mechanic drift is not a runtime apply gate; it tells the operator which future Wild mechanic should be mapped next.
-
-Modern mechanic visibility is non-blocking. HSConfig names current mechanics such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`, `quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` when card metadata or text exposes them. Mechanics without a documented normal-path VisionAI runtime surface stay visible as `warning_only` or `partial`; they must not block `load_safe_apply` for a technically valid package.
-`rewind`, `herald`, and `shatter` are warning-only report-only visibility labels; HSConfig names them in reports and does not map them to runtime surfaces.
-
-- Open `reports/semantic_enrichment_report.json` when the summary points to static or warning-only mechanic coverage. It explains inferred card semantics, static evidence, linked entities, deckwide effects, and warning-only flags. Lowerability buckets live in `reports/operator_summary.json` and `reports/per_card_config_readiness_report.json`.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
 - A thin Mulligan means guide evidence did not name enough explicit `mulligan_keep` or `mulligan_discard` claims. It is a source-quality signal, not a HearthRanger load error, and HSConfig does not invent opening-hand holds from card importance or early-role hints.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
@@ -177,6 +172,56 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | `reports/global_values_authority_matrix.json` | GlobalValues diagnostics | which GlobalValues keys are source-backed or archetype-inferred |
 | `reports/mechanic_drift_report.json` | non-blocking mechanic drift visibility | which unknown, text-only, or current-card-type mechanics should be inspected next |
 | `reports/semantic_enrichment_report.json` | semantic mechanic diagnostics | which static mechanics, linked entities, deckwide effects, and warning-only flags were inferred |
+
+## Diagnostic Detail
+
+`reports/source_to_runtime_explainability.json` is the card-readable projection
+of the source-contract audit: it names emitted runtime files, missing runtime
+files, the first missing link, and the next source action per claim/card. Its
+compact `source_to_runtime_explainability_summary` in `operator_summary.json` is
+non-blocking and does not grant apply permission.
+
+`mechanic_visibility_summary` is descriptive and non-blocking. It shows
+`direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic
+buckets so a valid package can be applied while still making Dredge, Tradeable,
+unresolved generation, or partial targeting limits visible.
+
+The mechanic lowering registry is the executable authority behind
+`needs_mechanic_lowering`. `cards_needing_mechanic_lowering` only increments
+when a registered mechanic has a documented default CardID lowering target and
+no meaningful CardID row was emitted. Dredge, Tradeable, and unknown future
+mechanics stay report-only/warning-only; they do not increment
+`cards_needing_mechanic_lowering`.
+
+`first_warning_boundary` names the first next-inspection item.
+`warning_boundaries` is the complete alphabetical list of report-only mechanics
+the operator may inspect next. `choose_one` is identity-gated direct, while
+`board_position`, `generic_spell_target`, `location_activation`,
+`secret_timing`, and `generated_entity_random_pool` are warning-only. These
+warnings are explanatory; warning-only mechanics do not block load-safe apply
+for a valid package.
+
+`reports/mechanic_drift_report.json` is the non-blocking current-card-data drift
+surface. `mechanic_drift_summary` in `reports/operator_summary.json` lists
+unknown mechanics, text-only mechanics, and unknown card types detected from
+HearthstoneJSON-style metadata. Unknown mechanics are warning-only and do not
+block load-safe apply. Mechanic drift is not a runtime apply gate; it tells the
+operator which future Wild mechanic should be mapped next.
+
+Modern mechanic visibility is non-blocking. HSConfig names current mechanics
+such as `kindred`, `tourist`, `starship`, `spellburst`, `miniaturize`,
+`quickdraw`, `honorable_kill`, `elusive`, `poisonous`, and `imbue` when card
+metadata or text exposes them. Mechanics without a documented normal-path
+VisionAI runtime surface stay visible as `warning_only` or `partial`; they must
+not block `load_safe_apply` for a technically valid package. `rewind`, `herald`,
+and `shatter` are warning-only report-only visibility labels; HSConfig names
+them in reports and does not map them to runtime surfaces.
+
+Open `reports/semantic_enrichment_report.json` when the summary points to
+static or warning-only mechanic coverage. It explains inferred card semantics,
+static evidence, linked entities, deckwide effects, and warning-only flags.
+Lowerability buckets live in `reports/operator_summary.json` and
+`reports/per_card_config_readiness_report.json`.
 
 ## Optional Acceptance Matrix
 
