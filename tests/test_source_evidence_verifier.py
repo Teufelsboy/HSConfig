@@ -210,3 +210,48 @@ def test_verifier_warns_when_runtime_lowering_claim_lacks_actionable_specificity
     assert "runtime_lowering_claim_lacks_actionable_specificity" in {
         warning["reason"] for warning in report["warnings"]
     }
+
+
+def test_verifier_warns_for_suspicious_exact_keep_on_non_hand_effect():
+    report = verify_source_documents(
+        [
+            _base_document(
+                claims=[
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_448"],
+                        "roles": ["start_of_game", "hero_power_transform"],
+                        "evidence_text_short": "Darkbishop Benedictus starts the game with Mind Spike.",
+                        "source_confidence": "high",
+                    }
+                ]
+            )
+        ]
+    )
+
+    assert report["status"] == "warnings"
+    assert "suspicious_mulligan_keep_non_hand_effect" in {
+        warning["reason"] for warning in report["warnings"]
+    }
+
+
+def test_verifier_does_not_warn_for_explicit_opening_hand_keep_language():
+    report = verify_source_documents(
+        [
+            _base_document(
+                claims=[
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["EX1_001"],
+                        "roles": ["mulligan_anchor"],
+                        "evidence_text_short": "Always keep this one-drop in the mulligan.",
+                        "source_confidence": "high",
+                    }
+                ]
+            )
+        ]
+    )
+
+    assert "suspicious_mulligan_keep_non_hand_effect" not in {
+        warning["reason"] for warning in report["warnings"]
+    }

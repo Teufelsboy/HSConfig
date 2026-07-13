@@ -4,7 +4,11 @@ from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
-from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS, runtime_claim_kind
+from hsconfig.source_document_model import (
+    START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    SUPPORTED_ATOMIC_CLAIM_KINDS,
+    runtime_claim_kind,
+)
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -37,6 +41,19 @@ ACTIONABLE_SPECIFICITY_KEYS = (
     "timing_kind",
     "operator",
     "option_card_id",
+)
+OPENING_HAND_LANGUAGE = (
+    "mulligan",
+    "opening hand",
+    "starting hand",
+    "keep this",
+    "always keep",
+    "hard keep",
+)
+SUSPICIOUS_KEEP_ROLE_KEYS = (
+    "roles",
+    "semantic_families",
+    "mechanic_families",
 )
 
 
@@ -177,6 +194,9 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
                 "claim_kind": claim_kind,
             }
         )
+    suspicious_keep_warning = _suspicious_exact_keep_warning(claim, claim_kind)
+    if suspicious_keep_warning is not None:
+        warnings.append(suspicious_keep_warning)
 
     return {
         "claim_kind": claim_kind,
@@ -187,6 +207,40 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
         "status": "passed" if not warnings else "warnings",
         "warnings": warnings,
     }
+
+
+def _suspicious_exact_keep_warning(
+    claim: dict[str, Any],
+    claim_kind: str,
+) -> dict[str, Any] | None:
+    if claim_kind != "mulligan_keep":
+        return None
+    evidence = _claim_evidence_text(claim).lower()
+    if _has_opening_hand_language(evidence):
+        return None
+    roles = _claim_role_hints(claim)
+    if "start_of_game" in roles or roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
+        return {
+            "reason": "suspicious_mulligan_keep_non_hand_effect",
+            "claim_kind": claim_kind,
+            "roles": sorted(roles),
+        }
+    return None
+
+
+def _has_opening_hand_language(evidence: str) -> bool:
+    return any(term in evidence for term in OPENING_HAND_LANGUAGE)
+
+
+def _claim_role_hints(claim: dict[str, Any]) -> set[str]:
+    roles: set[str] = set()
+    for key in SUSPICIOUS_KEEP_ROLE_KEYS:
+        value = claim.get(key, [])
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, list):
+            roles.update(str(item).strip().lower() for item in value if str(item).strip())
+    return roles
 
 
 def _cards(claim: dict[str, Any]) -> list[str]:
