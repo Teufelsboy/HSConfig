@@ -56,3 +56,23 @@ def test_surface_intent_does_not_route_legacy_policy_surfaces_even_when_flagged(
     assert (None, "Concede.json") not in surfaces
     assert "Presume.json" not in intent["optional_surfaces"]
     assert "Concede.json" not in intent["optional_surfaces"]
+
+
+def test_surface_intent_separates_minimum_load_safe_and_rich_optional_surfaces():
+    report = build_surface_intent(
+        {
+            "deck_name": "Intent",
+            "cards": {
+                "CARD_001": {"card_id": "CARD_001", "roles": ["deck_card"]},
+            },
+            "mulligan_plan": {"rules": []},
+            "card_behavior_plan": {"rows": [{"card_id": "CARD_001"}]},
+            "combo_plan": {"combos": []},
+        }
+    )
+
+    assert "GlobalValues.json" in report["minimum_required_runtime_surfaces"]
+    assert "Mulligan.json" in report["minimum_required_runtime_surfaces"]
+    assert "CARD_001.json" in report["rich_optional_runtime_surfaces"]
+    assert "Presume.json" not in report["minimum_required_runtime_surfaces"]
+    assert "Concede.json" not in report["minimum_required_runtime_surfaces"]

@@ -58,10 +58,21 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    minimum_required_runtime_surfaces = ["GlobalValues.json", "Mulligan.json"]
+    existing_runtime_surfaces = required_surfaces | optional_surfaces
+    rich_optional_runtime_surfaces = sorted(
+        surface
+        for surface in existing_runtime_surfaces
+        if surface not in minimum_required_runtime_surfaces
+        and surface not in {"Presume.json", "Concede.json"}
+    )
+
     return {
         "rows": rows,
         "required_surfaces": sorted(required_surfaces),
         "optional_surfaces": sorted(optional_surfaces),
+        "minimum_required_runtime_surfaces": minimum_required_runtime_surfaces,
+        "rich_optional_runtime_surfaces": rich_optional_runtime_surfaces,
         "surface_count": len(required_surfaces) + len(optional_surfaces),
     }
 
