@@ -1,0 +1,74 @@
+{
+  "scope": "Audit whether the current HSConfig source-contract and apply workflow stays autonomous and non-blocking for any valid deck input even when future mechanics are unsupported, guide evidence is thin, GlobalValues requests require runtime evidence, source-to-runtime links are incomplete, or some reports are diagnostic-only.",
+  "verified_strengths": [
+    "The active no-block contract is explicit and narrow: every valid deck should still reach a load-safe package with `GlobalValues.json` and `Mulligan.json`, while missing richness in CardID, Combo, guide depth, or mechanic coverage is treated as follow-up visibility instead of an apply blocker.",
+    "The live apply gate reads `reports/operator_summary.json` as the single apply authority, requires only the minimal runtime structure, and allows `VALID_PACKAGE` packages to proceed even when the semantic status is warning-oriented such as `VALID_BUT_NOT_GUIDE_STRONG` or `NEEDS_MORE_RESEARCH`.",
+    "Future or partially supported mechanics stay visible without blocking. Unknown mechanics, text-only mechanics, and unknown card types are collected into non-blocking drift and warning summaries while `runtime_apply_mode` remains `load_safe_apply`.",
+    "Thin but technically valid packages remain applyable. `config_usefulness` can mark a package as `load_safe_but_thin` or `usable_with_targeted_gaps`, but it is explicitly descriptive and does not remove runtime permission.",
+    "Runtime-evidence-only GlobalValues requests already have a safe lane: they are surfaced as `globalvalue_runtime_evidence_required` warning rows under `runtime_evidence_only_tuning` instead of being emitted speculatively or blocking the package.",
+    "Source-to-runtime gaps remain visible through diagnostic reports rather than being converted into a second gate. `source_contract_audit.json`, `source_to_runtime_explainability.json`, and related ownership metadata all state that they explain missing links but do not grant or deny apply permission.",
+    "The repo has an executable universal proof set. The no-block matrix tests twelve decks across `prepare` and `configure`, requiring `VALID_PACKAGE`, `runtime_load_safe=true`, `runtime_apply_mode=load_safe_apply`, visible non-blocking summaries, required runtime files, and no normal-path `Presume.json` or `Concede.json`."
+  ],
+  "correctness_gaps": [
+    "HSConfig intentionally preserves a correctness boundary where unsupported or unresolved mechanics do not become runtime rows. That keeps autonomy safe, but it means some future or niche mechanics will still compile only to warnings or partial coverage rather than exact behavior.",
+    "GlobalValues tuning remains intentionally conservative for runtime-evidence-only asks. The system surfaces blocked keys clearly, but deck-specific tuning requests outside the approved Step 1 authority matrix still do not become direct runtime changes.",
+    "Source-to-runtime explainability is diagnostic, not self-healing. The reports show the first missing link, but they do not automatically synthesize missing guide claims, exact option identity, or exact combo timing.",
+    "Minimal load-safe apply is broader than guide-strong correctness. A deck can remain valid and applyable while still missing richer per-card behavior, combo specificity, or source-backed mulligan depth."
+  ],
+  "slimness_gaps": [
+    "If HSConfig tries to auto-lower every warning-only mechanic into runtime behavior, it will bloat beyond the current documented normal-path surface and duplicate authority that is currently kept in diagnostics.",
+    "If diagnostic reports start influencing apply permission directly, the workflow will gain a second gate and become harder to reason about for operators and future maintenance.",
+    "If runtime-evidence-only GlobalValues tuning is widened into generic Step 1 overlays without stronger authority rules, the product boundary will grow into speculative tuning rather than staying a lean pre-run compiler."
+  ],
+  "autonomy_gaps": [
+    "Any future regression that promotes warning-only mechanics, source-depth gaps, or diagnostic-only reports into apply blockers would break the current any-deck autonomy promise.",
+    "Autonomy still depends on preserving the distinction between structural hard blocks and informational warnings. If those categories drift, thin-source but technically valid decks could become unnecessarily blocked.",
+    "The current no-block promise is about load-safe package generation, not universal semantic completeness. If callers misread that promise as full strategic coverage for every future mechanic, they may expect direct runtime behavior where the repo intentionally keeps warning visibility only."
+  ],
+  "guardrails_to_keep": [
+    "Keep `reports/operator_summary.json` as the only normal apply authority.",
+    "Keep the apply gate limited to technical package validity, required runtime files, summary-to-disk consistency, strict JSON validity, and rejection of `Presume.json` or `Concede.json` in the normal path.",
+    "Keep `config_usefulness`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `source_contract_audit.json`, and `source_to_runtime_explainability.json` explicitly diagnostic and non-blocking.",
+    "Keep unsupported, low-confidence, and runtime-evidence-only claims visible as warnings, suppressed rows, or gap reports instead of guessed runtime writes.",
+    "Keep future mechanics, text-only mechanics, generic spell targeting, and other warning-only families in visibility lanes unless the repo gains an exact documented lowering path.",
+    "Keep the universal wild no-block matrix and the apply-authority boundary tests, because they are the executable proof that warnings stay visible without becoming blockers."
+  ],
+  "recommended_next_design": "Keep the current no-block architecture. Strengthen it only by extending warning visibility and targeted lowering where exact runtime authority exists, not by widening apply blockers. In practice that means: preserve `operator_summary.json` as the single gate, keep runtime-evidence-only GlobalValues requests and source-to-runtime gaps report-visible but non-blocking, keep unsupported future mechanics in warning-only or partial lanes, and add new lowering logic only when it can be tied to an exact documented runtime surface and a focused regression test.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/acceptance_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/no_block_failure_modes.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_property_no_block_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_quality_autonomy.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/acceptance_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_data_intake.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/no_block_failure_modes.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_universal_wild_no_block_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_property_no_block_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_quality_autonomy.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md"
+  ],
+  "uncertain": []
+}

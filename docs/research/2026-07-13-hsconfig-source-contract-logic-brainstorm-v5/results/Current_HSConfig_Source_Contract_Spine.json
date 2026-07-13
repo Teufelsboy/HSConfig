@@ -1,0 +1,88 @@
+{
+  "scope": "Current HSConfig source-contract spine on branch codex/hsconfig-contract-spine-guard-wave at commit 095ab027cdc7be7e2e390b91b3b586eb314605c7, covering supported claim kinds, source_contract_matrix policy rows, surface_gate_decision routing, builder and router lowering, source_contract_audit, source_to_runtime_explainability, contract_spine_sentinel, output_ownership_manifest, and operator_summary apply authority.",
+  "verified_strengths": [
+    "The live repo currently supports 15 atomic claim kinds, and the supported set matches the frozen policy matrix and the contract spine sentinel without missing or extra rows.",
+    "source_contract_matrix defines exactly one policy row per supported claim kind, including lane, allowed surfaces, required fields, runtime lowerability, default suppression reason, and operator_gate_impact=diagnostic_only.",
+    "surface_gate_decision is compact and explicit: mulligan only accepts mulligan_keep or mulligan_discard, globalvalues only accepts gameplan_posture, combo only accepts combo_sequence, and cardid only accepts the documented CardID behavior claim kinds.",
+    "The start-of-game boundary is implemented in code, not just in docs: mulligan_keep is rejected with start_of_game_effect_does_not_require_opening_hand when the card role indicates a non-hand start-of-game effect without explicit opening-hand intent.",
+    "Builder and router lowering aligns with the contract spine snapshot: build_mulligan_plan owns mulligan rows, build_globalvalues_authority_matrix owns posture overlays, route_card_behavior_surfaces owns CardID behavior rows, and build_combo_plan owns Combo.json rows.",
+    "globalvalue_numeric_tuning is accepted as a supported source claim kind but stays Step1-suppressed until runtime evidence, which keeps numeric GlobalValues authority outside the normal pre-run package path.",
+    "source_contract_audit produces per-claim lifecycle traces with policy lane, surface gate decision, builder or router decision, runtime surface, emitted files, suppressed reason, first missing link, and operator_impact=diagnostic_only.",
+    "source_to_runtime_explainability stays diagnostic-only and projects the audit into operator-readable claim and card rows with emitted runtime files, missing runtime files, first missing links, and next source actions.",
+    "contract_spine_sentinel is clean on the current branch and commit: no claim-kind drift, no apply-authority field leakage into spine rows, no diagnostic consumers in active apply paths, no unclassified expected outputs, and no forbidden legacy surfaces.",
+    "output_ownership_manifest classifies the expected package outputs with gate_count=1, runtime_surface_count=4, unclassified_file_count=0, and forbidden_legacy_surface_count=0, which keeps artifact ownership explicit without creating a second gate.",
+    "apply_gate reads reports/operator_summary.json as the single normal authority, validates listed runtime files against actual runtime files, and does not import or consume source_contract_audit, source_to_runtime_explainability, source_contract_conformance, contract_spine_rows, or claim_lifecycle_rows.",
+    "operator_summary preserves the authority split: runtime_apply_contract.apply_authority is reports/operator_summary.json, while source_contract_audit_summary, source_to_runtime_explainability_summary, and output_ownership_summary are explicitly non-blocking."
+  ],
+  "correctness_gaps": [
+    "combo_sequence still has a real builder prerequisite gap: the policy lane and surface gate allow it, but incomplete sequences are suppressed with sequence_too_short, so weak combo structure still prevents Combo.json emission.",
+    "CardID-side conditional claim kinds such as card_role, mechanic_usage, known_bad_pattern, discover_choice, and choose_one_choice only lower when the claim carries enough documented identity or block information; under-specified claims stay suppressed and can leave runtime behavior coverage thinner than the source evidence suggests.",
+    "globalvalue_numeric_tuning is intentionally non-emitting in Step1, so any source package that expects numeric GlobalValues changes to appear immediately will still produce a technically valid package without those numeric changes.",
+    "The spine is robust only as long as new claim kinds continue to update SUPPORTED_ATOMIC_CLAIM_KINDS, source_contract_matrix, surface gates, builder ownership, and freeze coverage in the same change set; otherwise claims fall into unsupported_or_unmapped or sentinel drift."
+  ],
+  "slimness_gaps": [
+    "The current package output is already broad, with 57 expected generated files in the ownership manifest, so any new report that repeats operator_summary decisions instead of staying explanatory would add operator noise quickly.",
+    "source_contract_audit, source_to_runtime_explainability, conformance, sentinel, and ownership reports are currently separated cleanly; adding apply-like fields such as apply_policy or runtime_apply_allowed to those diagnostics would duplicate authority and bloat the operator surface.",
+    "Reintroducing normal-path Presume.json or Concede.json output would widen the surface area for little value and would create legacy drift that the current ownership and sentinel checks intentionally prohibit.",
+    "Any future output that is not registered in report_ownership or output_ownership_manifest would become unclassified drift, which would make the package surface broader and harder to reason about."
+  ],
+  "autonomy_gaps": [
+    "Discover and Choose One autonomy still depends on exact option identity, so decks with only broad prose advice remain diagnostic-only for those choices instead of lowering directly to CardID runtime rows.",
+    "Combo-heavy decks still require structured sequence, timing_kind, operator, and values fields before Combo.json can be emitted, so source normalization quality remains a practical autonomy bottleneck.",
+    "Numeric GlobalValues tuning remains outside Step1 autonomy by design because runtime evidence is still required before those keys can be changed.",
+    "The legacy allow_source_informed flag is a no-op rather than a second apply lane, which is the correct safety boundary but also means autonomy cannot bypass missing source depth through a weaker runtime-write path."
+  ],
+  "guardrails_to_keep": [
+    "Keep claim_kind as the runtime-routing authority, and do not let free-text importance, start-of-game wording, or generic keep prose create Mulligan.json rows.",
+    "Keep the explicit start_of_game_effect_does_not_require_opening_hand mulligan rejection for non-hand start-of-game effects such as hero-power transforms.",
+    "Keep one policy row per supported claim kind, with required_fields, default_suppression_reason, allowed_surfaces, and operator_gate_impact frozen together.",
+    "Keep diagnostic-only operator gate impact across source_contract_matrix, source_contract_audit, source_to_runtime_explainability, source_contract_conformance, and contract_spine_sentinel.",
+    "Keep reports/operator_summary.json as the single normal apply authority, and keep active apply paths free of diagnostic imports or diagnostic token consumption.",
+    "Keep allow_source_informed as a backward-compatible no-op instead of a live branch that can bypass the normal operator_summary gate.",
+    "Keep output ownership classification strict, including one gate row, zero unclassified expected outputs, and explicit rejection of Presume.json and Concede.json in the normal package path.",
+    "Keep report-only and runtime-evidence-required claim kinds visible in diagnostics without turning them into apply blockers or hidden silent drops."
+  ],
+  "recommended_next_design": "Keep the current compact contract spine as the baseline. Future work should improve source normalization quality for combo completeness and CardID conditional claims, but it should not add new apply authorities, new legacy runtime surfaces, or prose-driven lowering paths that bypass claim_kind and the existing surface gates.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/output_ownership_manifest.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_spine_freeze.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_contract_spine_sentinel.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - supported claim kinds, legacy claim-kind normalization, and surface_gate_decision enforcement.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py - policy lanes, allowed surfaces, required fields, and default suppression reasons for each claim kind.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py - live contract_spine_rows, builder and router expectations, and start-of-game mulligan suppression proof.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_audit.py - claim_lifecycle_rows generation and diagnostic-only source-to-runtime explanation.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py - operator-facing projection of missing links, runtime files, and next source actions.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/card_behavior_surface_router.py - CardID behavior lowering path for runtime-safe card semantics.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py - report generation order and wiring into output_ownership_manifest and operator_summary.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/output_ownership_manifest.py - artifact classification, runtime surface ownership, and forbidden legacy surface detection.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py - single gate classification for reports/operator_summary.json and diagnostic ordering for other reports.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py - single apply authority, non-blocking diagnostic summaries, and output ownership summary handling.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py - single active apply gate based on reports/operator_summary.json and runtime file consistency checks.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py - repository drift checks for claim kinds, apply-authority leakage, output ownership, legacy surfaces, and source-informed no-op behavior.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_spine_freeze.py - frozen contract coverage for policy rows, allowed surfaces, and diagnostic-only metadata.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py - runtime routing regressions, including start-of-game mulligan protection and runtime-evidence blocking.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_contract_audit.py - lifecycle-row expectations, unsupported claim handling, and start-of-game effect preservation without mulligan keeps.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py - diagnostic-only explainability rows and canonical next-source-action mapping.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_contract_spine_sentinel.py - clean sentinel baseline and explicit drift cases.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_authority_boundary.py - guarantee that active apply paths do not consume diagnostic authorities and that only reports/operator_summary.json is classified as a gate.",
+    "Validated live repo state: branch codex/hsconfig-contract-spine-guard-wave, HEAD commit 095ab027cdc7be7e2e390b91b3b586eb314605c7, and targeted test run passing with 50 passed in 0.57s."
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,70 @@
+{
+  "scope": "Official HearthRanger VisionAI CustomConfig runtime surfaces relevant to HSConfig: Mulligan.json, GlobalValues.json, per-card <CARDID>.json, Combo.json, and the documented but non-normal Presume.json and Concede.json boundaries.",
+  "verified_strengths": [
+    "Official HearthRanger VisionAI help still documents deck-local CustomConfig activation and dedicated help pages for Mulligan.json, GlobalValues.json, per-card CARDID.json, Combo.json, Concede.json, and Presume.json.",
+    "HSConfig keeps the normal output boundary narrow: README.md and visionai-surfaces.md limit normal output to GlobalValues.json, Mulligan.json, per-card <CARDID>.json, and Combo.json, while explicitly treating Presume.json and Concede.json as outside the normal HSConfig path.",
+    "The source-contract gate is surface-specific and narrow in code: Mulligan lowers only explicit mulligan_keep or mulligan_discard claims; GlobalValues lowers only gameplan_posture; Combo lowers only combo_sequence; CardID lowers only supported card-behavior claim kinds.",
+    "Start-of-game and hero-power-transform effects are explicitly kept out of Mulligan.json unless the source really expresses opening-hand intent, which preserves effect semantics without misclassifying them as keep rules.",
+    "Load-safe runtime apply is conservative: apply_gate.py requires GlobalValues.json and Mulligan.json, uses reports/operator_summary.json as the single normal apply authority, and blocks normal-path packages that include Presume.json or Concede.json.",
+    "GlobalValues handling stays load-safe by loading the runtime/default baseline, preserving baseline keys, and keeping explicit numeric tuning in a runtime-evidence-required lane instead of letting Step 1 author unsupported numeric drift.",
+    "Combo emission is also narrow: Combo.json is optional and only emitted when a claim becomes a concrete emittable sequence, so vague synergy notes do not create runtime combo rows."
+  ],
+  "correctness_gaps": [
+    "validate_package.py and visionai_registry.py intentionally accept Presume.json and Concede.json as documented surfaces, so any caller that reads validator success without also enforcing apply_gate.py and operator_summary.json could mistake documented syntax support for normal-path permission.",
+    "surface_intent.py marks every contract card as a required per-card <CARDID>.json surface even though minimal load-safe apply only requires GlobalValues.json and Mulligan.json; that can overstate what is technically required and blur the rich-output versus minimum-gate boundary.",
+    "acceptance_matrix.py reports has_presume and has_concede state, which is harmless for diagnostics, but it means these legacy surfaces remain visible in package-inspection code and therefore still require precise wording to avoid accidental over-interpretation."
+  ],
+  "slimness_gaps": [
+    "The current surface-intent model can broaden package expectations by treating per-card CARDID files as required for every contract card, which is wider than the documented minimum load-safe runtime gate.",
+    "Keeping Presume.json and Concede.json in the validator and registry tables is useful for documentation fidelity, but it also increases the number of surfaces HSConfig must explain and guard even though they are blocked from the normal path."
+  ],
+  "autonomy_gaps": [
+    "If external automation follows surface_intent rows instead of operator_summary.json, it may do unnecessary work on per-card files before a package is already load-safe.",
+    "globalvalue_numeric_tuning correctly stays blocked until runtime evidence exists, but that also means HSConfig alone cannot autonomously lower explicit numeric board-value tuning from source text into GlobalValues.json."
+  ],
+  "guardrails_to_keep": [
+    "Keep reports/operator_summary.json as the single normal apply authority.",
+    "Keep REQUIRED_RUNTIME_FILES limited to GlobalValues.json and Mulligan.json for load_safe_apply.",
+    "Keep LEGACY_GATED_SURFACES = (Presume.json, Concede.json) in apply_gate.py so documented legacy surfaces stay blocked on the normal path.",
+    "Keep the claim-kind surface gates in source_document_model.py and source_contract_matrix.py so each runtime surface accepts only its exact lowerable claim kinds.",
+    "Keep the start_of_game_effect_does_not_require_opening_hand mulligan suppression so effect-only cards remain out of Mulligan.json unless opening-hand intent is explicit.",
+    "Keep GlobalValues baseline-copy and full-key-preservation behavior, plus the runtime-evidence-required block on explicit numeric tuning.",
+    "Keep Combo.json optional and sequence-gated rather than emitting empty or vague combo files.",
+    "Keep Presume.json and Concede.json out of surface_intent required_surfaces and optional_surfaces."
+  ],
+  "recommended_next_design": "Keep the current narrow normal boundary. Load-safe HSConfig packages should continue to treat GlobalValues.json and Mulligan.json as the minimum runtime gate, allow per-card <CARDID>.json and Combo.json only through exact claim and syntax gates, and keep Presume.json and Concede.json documented but blocked on the normal path. The main follow-up worth doing is documentation and reporting polish: make the difference between documented syntax support, rich-output repo policy, and minimum load-safe runtime authority even more explicit in surface_intent and validator-facing diagnostics.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\README.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\visionai-surfaces.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\guide-research-policy.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\.agents\\skills\\hsconfig\\references\\globalvalues-policy.md",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_contract_matrix.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\visionai_registry.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\validate_package.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\surface_intent.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\globalvalues_authority.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\combo_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\card_behavior_surface_router.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\acceptance_matrix.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_surface_authority_split.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_apply_gate.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_surface_intent.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_source_fixtures.py"
+  ],
+  "evidence_references": [
+    "Official HearthRanger VisionAI help index, fetched on 2026-07-13: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_Help.htm",
+    "Official HearthRanger JSON config help, fetched on 2026-07-13, documenting the card-behavior block registry and GameCardId matching: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_understand_json_config.htm",
+    "Official HearthRanger Mulligan help, fetched on 2026-07-13, documenting Mulligan.json with Mulligan.values rows: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_mulligan.htm",
+    "Official HearthRanger Card Behavior help, fetched on 2026-07-13, documenting per-card CARDID.json files: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_card_behavior.htm",
+    "Official HearthRanger Combo help, fetched on 2026-07-13, documenting Combo.json and explicit same-turn or cross-turn sequence syntax: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_combo.htm",
+    "Official HearthRanger Global Values help, fetched on 2026-07-13, documenting GlobalValues.json and the FirstTurnValueWeight / SecondTurnValueWeight model: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_global_values.htm",
+    "Official HearthRanger Concede help, fetched on 2026-07-13, documenting Concede.json with the ExtraConcdeSettings block and top-to-bottom evaluation: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_customize_concede.htm",
+    "Official HearthRanger AOE play-around help, fetched on 2026-07-13, documenting Presume.json with PresumeOppInHandCard and its dependency on non-zero SecondTurnValueWeight: https://www.hearthranger.com/onlinehelp/hs/visionai/VisionAI_how_to_setup_bot_to_play_around_AOE_cards.htm",
+    "HSConfig boundary statement in README.md and .agents/skills/hsconfig/references/visionai-surfaces.md.",
+    "HSConfig source gate and policy enforcement in src/hsconfig/source_document_model.py, src/hsconfig/source_contract_matrix.py, src/hsconfig/apply_gate.py, src/hsconfig/visionai_registry.py, src/hsconfig/validate_package.py, src/hsconfig/surface_intent.py, src/hsconfig/globalvalues_authority.py, src/hsconfig/combo_plan.py, and src/hsconfig/card_behavior_surface_router.py.",
+    "HSConfig regression evidence in tests/test_surface_authority_split.py, tests/test_apply_gate.py, tests/test_surface_intent.py, and tests/test_archetype_source_fixtures.py."
+  ],
+  "uncertain": []
+}

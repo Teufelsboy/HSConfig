@@ -1,0 +1,86 @@
+{
+  "scope": "Audit of HSConfig source-to-runtime lowering for Hearthstone semantic edge cases that are easy to misclassify when free text is lowered too aggressively, with emphasis on start-of-game effects versus mulligan keeps, hero power transforms, deckbuilding modifiers, targeting rules, combo sequencing, discover and choose-one options, generated cards, secrets, locations, weapons, and Wild deck-state mechanics across `src/hsconfig/source_document_model.py`, `src/hsconfig/role_tokens.py`, `src/hsconfig/mulligan_plan.py`, `src/hsconfig/research_contract.py`, `src/hsconfig/gameplan_contract.py`, and the supporting static-semantics and contract tests.",
+  "verified_strengths": [
+    "HSConfig already treats claim kind as the primary lowering authority. `normalized_claim_kind()` and the surface gates prevent non-mulligan claims from silently becoming mulligan output, which directly addresses the known Darkbishop Benedictus failure mode.",
+    "The mulligan gate already blocks start-of-game non-hand effects from becoming opening-hand keeps unless there is explicit opening-hand evidence. This matches Hearthstone's rule that Start of Game effects resolve before the mulligan and therefore do not depend on keeping the card.",
+    "Static semantic coverage already recognizes several high-risk families: hero power transform, start of game, location, secret, generated entity pools, even/odd deck modifiers, Highlander modifiers, deck-size modifiers, and start-in-deck requirements.",
+    "Static semantics already seeds specialized non-mulligan claim kinds such as `discover_choice`, `choose_one_choice`, `hero_power_transform`, and `mechanic_usage` for weapon-like text, which is safer than collapsing everything into generic card-role or mulligan language.",
+    "Unsupported selectors and unsupported mulligan conditions are suppressed instead of broadened. This is a strong anti-false-claim behavior because it prefers a visible gap over an invented runtime rule.",
+    "Combo lowering is already isolated onto its own surface, and combos with off-deck cards are suppressed rather than emitted. That is an important guard against turning guide prose into an invalid deterministic runtime sequence.",
+    "GlobalValues numeric tuning is already fenced behind runtime evidence instead of being lowered directly from source text, which prevents speculative gameplan adjectives from becoming live numeric overlays."
+  ],
+  "correctness_gaps": [
+    "Start-of-game and in-deck semantics still need stronger typed distinctions than raw text markers. Cards like Darkbishop Benedictus, Prince Renathal, Genn Greymane, Baku the Mooneater, Highlander payoffs, and other start-in-deck requirements can all be described in guide text with words like 'keep', 'core', or 'always', but those phrases do not mean the card belongs in `Mulligan.json`.",
+    "Targeting semantics are broader than a single `targeting_rule` label. Locations use delayed activations that behave like hero powers rather than battlecries, locations can target some units that spells and hero powers cannot, and permanents or hidden states create legality exceptions. If lowering only preserves 'go face' or 'target minions' prose, runtime output can become technically wrong.",
+    "Combo semantics are not just ordered card lists. Hearthstone Combo keyword cards require another card to have been played from hand first, while many deck combos additionally depend on mana windows, board state, weapon state, death counts, generated resources, or hand composition. Lowering guide prose into a flat sequence can overclaim deterministic executability.",
+    "Discover, Choose One, and choice-card flows are option surfaces, not fixed deck-card behavior. Choice cards normally exist only during the selection process, while Discover may add to hand, shuffle into deck, or offer class-constrained pools. If HSConfig lowers those options as if they were ordinary in-deck cards or guaranteed per-card runtime actions, it can emit false certainty.",
+    "Generated cards are not equivalent to original deck contents. Hearthstone allows generated and uncollectible cards to enter hand, deck, board, or return-to-hand loops, and generated objects can later become normal hand objects for sequencing purposes. A naive 'generated means off-deck and irrelevant' rule is unsafe, but so is lowering generated-card prose into unconditional runtime obligations.",
+    "Secret semantics are delayed and hidden, not immediate value statements. A source sentence that recommends preserving or leveraging a Secret does not specify exact trigger timing, board condition, or target legality; lowering it into immediate card execution logic would overstate what the source actually proves.",
+    "Weapon semantics are stateful. A hero can equip only one weapon at a time, and equipping a new one destroys the old one. Guide prose about 'develop weapon pressure' or 'swing with weapon first' can require state checks that are not captured by a simple mechanic tag.",
+    "Wild mechanics depend on current deck state and legacy interactions that can change during the game. Highlander effects care about whether duplicates remain in the current deck, not only deck construction, and odd/even or other start-of-game modifiers are not interchangeable with true deckbuilding effects. Aggressive lowering can flatten these distinctions into wrong permanent claims."
+  ],
+  "slimness_gaps": [
+    "There is a risk of solving every semantic edge case by adding one more top-level claim kind. That would widen the contract spine and increase maintenance cost faster than the actual runtime surfaces justify.",
+    "Semantic authority is already spread across static semantics, semantic enrichment, research contract roles, gameplan contract roles, and surface builders. Duplicating the same mechanic decisions in multiple layers would make future fixes drift-prone.",
+    "Card-specific exception logic would be a bad direction. The Benedictus fix works because it generalizes to start-of-game non-hand effects; repeating this as named-card carve-outs for Renathal, Genn, Baku, Highlander cards, or future Wild mechanics would bloat the system.",
+    "Option-like mechanics such as Discover, Choose One, and generated-card pools should not automatically expand into exhaustive per-card runtime artifacts. Treating every candidate option as a concrete runtime object would duplicate authority that belongs to the game engine.",
+    "Targeting, sequencing, and generated-resource nuance should stay as structured qualifiers on existing claim kinds where possible. Creating separate builder chains for each sub-mechanic would overfit the current research set and make the repo harder to reason about."
+  ],
+  "autonomy_gaps": [
+    "Unsupported or partially supported mechanics should degrade to visible warnings or review-only claims, not package-generation blockers. Otherwise valid decks with niche Wild interactions would become unnecessarily blocked.",
+    "Static semantics should continue to seed safe non-runtime-lowering knowledge even when guide evidence is thin. Requiring full guide-backed proof for every semantic edge case would undermine the any-deck autonomy goal.",
+    "Generated-card and option mechanics should not force HSConfig to enumerate impossible future states before producing a package. The system needs a safe partial-output lane for mechanics that are meaningful but not fully lowerable.",
+    "Runtime evidence should remain required for numeric overlays and other empirical tuning, but not for basic semantic recognition. If runtime evidence were required for every hero power, location, weapon, or Highlander semantic, autonomous package creation would stall too often.",
+    "Wild-specific mechanics should remain load-safe even when they cannot be fully lowered. The right autonomy stance is 'emit what is proven, surface the gap, do not overclaim', rather than blocking the deck or fabricating certainty."
+  ],
+  "guardrails_to_keep": [
+    "Keep `claim_kind` as the source-of-truth gate for runtime lowering; do not infer mulligan authority from free-text words like 'keep' or from broad archetype prose.",
+    "Keep the `start_of_game_effect_does_not_require_opening_hand` mulligan suppression path and the role-token check for explicit opening-hand intent.",
+    "Keep surface-specific lowering gates between mulligan, combo, card-ID, and GlobalValues output so that a claim can be valid for one surface without becoming valid for another.",
+    "Keep the rule that low-confidence, report-only, contract-gap, and non-runtime-lowerable claims do not silently affect runtime files.",
+    "Keep unsupported selectors, unsupported conditions, and off-deck combo members suppressed rather than broadened or auto-repaired.",
+    "Keep `globalvalue_numeric_tuning` behind runtime-evidence-required policy rather than allowing guide prose to tune numbers directly.",
+    "Keep warning-only semantic lanes for mechanics such as location activation and other option-like or timing-sensitive behavior that is real but not safely lowerable as deterministic runtime output.",
+    "Keep the static-semantics path that can recognize hero power transforms, deckbuilding modifiers, generated entity pools, and other card-text truths without automatically turning them into live action rules."
+  ],
+  "recommended_next_design": "Preserve the current narrow surface-gate architecture, but strengthen the semantic payload carried by each claim before lowering. The next design step should be to keep the existing claim-kind spine and add structured qualifiers for timing, state scope, option-ness, generation origin, and target-legality constraints so that start-of-game effects, deck-state checks, discover or choose-one options, generated cards, location activations, weapon replacement rules, and Wild-only deck-state mechanics can remain visible without being overstated as deterministic runtime actions.",
+  "repo_files_to_check": [
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\role_tokens.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_static_semantics.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_claim_quality_autonomy.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_semantic_enrichment.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_source_fixtures.py"
+  ],
+  "evidence_references": [
+    "https://hearthstone.fandom.com/wiki/Start_of_Game",
+    "https://hearthstone.fandom.com/wiki/Deckbuilding_effect",
+    "https://hearthstone.fandom.com/wiki/Highlander",
+    "https://hearthstone.fandom.com/wiki/Choose_One",
+    "https://hearthstone.fandom.com/wiki/Choice_card",
+    "https://hearthstone.fandom.com/wiki/Discover",
+    "https://hearthstone.fandom.com/wiki/Generate",
+    "https://hearthstone.fandom.com/wiki/Secret",
+    "https://hearthstone.fandom.com/wiki/Location",
+    "https://hearthstone.fandom.com/wiki/Target",
+    "https://hearthstone.fandom.com/wiki/Combo",
+    "https://hearthstone.fandom.com/wiki/Weapon",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\source_document_model.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\role_tokens.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\research_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\src\\hsconfig\\gameplan_contract.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_mulligan_plan.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_static_semantics.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_claim_quality_autonomy.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_semantic_enrichment.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_source_contract_conformance.py",
+    "C:\\Users\\darbo\\Documents\\HSConfig\\tests\\test_archetype_source_fixtures.py"
+  ],
+  "uncertain": []
+}

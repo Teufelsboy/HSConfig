@@ -1,0 +1,60 @@
+topic: 2026-07-13-hsconfig-source-contract-logic-brainstorm-v5
+description: >
+  Deep brainstorm and audit for HSConfig source/contract logic after the
+  subtractive contract-polish branch and final research-report ownership fix.
+  The goal is to confirm whether the design is technically correct, slim,
+  competent, autonomous, and non-blocking for any valid Hearthstone deck.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-13-hsconfig-source-contract-logic-brainstorm-v5\results
+  batch_size: 6
+  items_per_agent: 1
+items:
+  - name: Current HSConfig Source Contract Spine
+    category: repo_contract_spine
+    description: >
+      Audit the current repository implementation on branch
+      codex/hsconfig-contract-spine-guard-wave after commit 095ab02:
+      supported claim kinds, source_contract_matrix policy rows,
+      surface_gate_decision, builder/router lowering, source_contract_audit,
+      source_to_runtime_explainability, contract_spine_sentinel,
+      output_ownership_manifest, and operator_summary apply authority.
+  - name: Source Quality And Claim Model
+    category: source_claim_model
+    description: >
+      Audit whether the structured source model is strict enough to prevent
+      false runtime lowering while still allowing aggressive, useful config
+      generation. Cover guide-backed claims, explicit opening-hand mulligan
+      evidence, static semantics, low-confidence fallback lanes, conflict
+      reports, and every-card expectation visibility.
+  - name: Hearthstone Semantic False Runtime Claim Risks
+    category: hearthstone_semantics
+    description: >
+      Audit Hearthstone semantic cases that can be misclassified when source
+      text is too aggressively lowered: start-of-game effects versus mulligan
+      keeps, hero power transforms, deckbuilding modifiers, targeting rules,
+      combo sequencing, discover/choose-one options, generated cards, secrets,
+      locations, weapons, and Wild deck mechanics.
+  - name: HearthRanger VisionAI Runtime Surface Boundary
+    category: external_runtime_surface
+    description: >
+      Verify documented HearthRanger VisionAI CustomConfig surfaces relevant to
+      HSConfig: Mulligan.json, GlobalValues.json, per-card CardID JSON,
+      Combo.json, and the documented but non-normal Presume.json and
+      Concede.json surfaces. Assess whether HSConfig keeps these boundaries
+      narrow and load-safe.
+  - name: No Block Any Deck Autonomy
+    category: workflow_autonomy
+    description: >
+      Audit whether HSConfig remains autonomous and non-blocking for any valid
+      deck even with unsupported future mechanics, thin guide evidence,
+      runtime-evidence-only GlobalValues requests, source-to-runtime gaps, or
+      diagnostic-only claims. Check whether warnings stay visible without
+      becoming apply blockers.
+  - name: Slimness Authority And Long Term Maintainability
+    category: repo_slimness
+    description: >
+      Audit whether the Source -> Contract -> Surface Gate -> Builder/Router ->
+      Runtime effect chain is narrow enough for long-term autonomous operation.
+      Identify duplicated authority, stale docs, excessive report surfaces,
+      missing sentinels, or module boundaries that would make HSConfig harder
+      to maintain.

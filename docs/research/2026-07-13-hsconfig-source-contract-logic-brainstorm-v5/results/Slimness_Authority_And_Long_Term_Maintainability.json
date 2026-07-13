@@ -1,0 +1,75 @@
+{
+  "scope": "Audit of the live HSConfig Source -> Contract -> Surface Gate -> Builder/Router -> Runtime chain in Teufelsboy/HSConfig, including source evidence intake, claim normalization, policy routing, package building, operator gating, runtime apply boundaries, and the active doc and report structure that must stay narrow for long-term autonomous maintenance.",
+  "verified_strengths": [
+    "The semantic authority chain is intentionally narrow. `src/hsconfig/source_contract_matrix.py` is the single claim-kind policy table, and `src/hsconfig/source_contract_conformance.py` plus `src/hsconfig/contract_spine_sentinel.py` verify that supported claim kinds, allowed surfaces, builder expectations, and diagnostic-only operator impact stay aligned.",
+    "The highest-risk semantic boundary is fail-closed. `src/hsconfig/source_document_model.py` rejects start-of-game non-hand effects as Mulligan keeps unless exact opening-hand intent exists, which keeps effect semantics visible without turning them into false `Mulligan.json` authority.",
+    "Runtime write authority is still single-source. `src/hsconfig/apply_gate.py` reads `reports/operator_summary.json`, checks required runtime files, rejects legacy optional surfaces, verifies summary-to-filesystem parity, and does not consume diagnostic reports as permission inputs.",
+    "The repo now has executable artifact-ownership sentinels as well as gate sentinels. `src/hsconfig/output_ownership_manifest.py`, `src/hsconfig/report_ownership.py`, `src/hsconfig/contract_spine_sentinel.py`, and `tests/test_subtractive_contract_polish.py` together prove that generated files are classified, legacy surfaces are drift-only, and `reports/operator_summary.json` remains the only gate.",
+    "Active docs and historical docs are explicitly separated. `README.md`, `docs/operator/README.md`, `docs/research/current-truth.md`, `docs/superpowers/README.md`, and `tests/test_docs_active_path.py` keep the normal path anchored on `hsconfig configure` and stop historical research or planning artifacts from silently becoming operator authority.",
+    "Live validation supports the current boundary design. A local targeted run of `tests/test_contract_spine_sentinel.py`, `tests/test_report_ownership.py`, `tests/test_docs_active_path.py`, `tests/test_apply_authority_boundary.py`, and `tests/test_no_second_gate_contract.py` passed, and the current `build_contract_spine_sentinel_report()` result is `clean`."
+  ],
+  "correctness_gaps": [
+    "Research-stage derivation and prepare-stage derivation are still duplicated across `src/hsconfig/commands/source_workflow.py::_build_research_context()` and `src/hsconfig/package_builder.py::build_preconfig_context()`. Because there is no parity sentinel that compares those two paths, a future change to source loading, claim normalization, semantic enrichment, or guide-source fallback can make `research-deck` and `prepare` disagree about the same deck.",
+    "The same `guide_claim_bundle.json` authority is written in two places from separate call sites: `reports/guide_claim_bundle.json` in `src/hsconfig/package_builder.py` and `reports/research/guide_claim_bundle.json` in `src/hsconfig/research_contract.py`. There is no executable parity test that forces those two copies to stay identical, so a future format or filtering change could create conflicting contract views inside one package."
+  ],
+  "slimness_gaps": [
+    "The main normal-path logic is slimmer than earlier versions, but it still reconstructs nearly the same preconfig state twice. The duplicated context builders in `source_workflow.py` and `package_builder.py` are a real long-term maintenance cost and should become one shared authority layer.",
+    "Artifact registry authority is still split across multiple modules. `src/hsconfig/report_ownership.py` defines 11 operator-facing report rows, while `src/hsconfig/output_ownership_manifest.py` separately carries 34 known diagnostic report files and 9 known research report files. The current tests keep them coherent, but the repo still has more than one place where output naming and ownership must be updated correctly.",
+    "The diagnostic surface is broad relative to the one real gate. A live prepared sample package produced 69 generated files, with 18 runtime surfaces, 49 diagnostic files, 1 mechanic-drift file, and 1 gate. That is controlled rather than chaotic, but it is still a large maintenance surface for a system whose runtime permission depends on one summary file.",
+    "Legacy compatibility lanes still occupy code and cognitive space even though they no longer change behavior. The `allow_source_informed` path remains threaded through `src/hsconfig/apply_gate.py`, `src/hsconfig/runtime_apply.py`, and `src/hsconfig/operator_summary.py` as a documented no-op instead of being fully removed."
+  ],
+  "autonomy_gaps": [
+    "Autonomous maintenance still requires combining several explanation layers: `report_ownership.py`, `output_ownership_manifest.py`, operator docs, and the current-truth index. The repo now has machine-readable ownership, but workflow intent and artifact intent are not yet derived from one shared registry.",
+    "The historical evidence volume remains high even though it is fenced. The current snapshot contains 35 dated research directories and 78 dated plan files, which raises navigation cost for autonomous agents and increases the chance of pulling in the wrong historical context before the active-path sentinels correct it.",
+    "There is no dedicated sentinel that proves `research-deck` and `prepare` stay semantically equivalent for the same inputs. Current tests protect the gate and doc boundaries well, but they do not directly protect this duplicated derivation boundary.",
+    "There is no dedicated sentinel that proves duplicated package artifacts such as the two `guide_claim_bundle.json` copies remain identical after future refactors. An autonomous agent can still be forced to choose between redundant views of the same authority."
+  ],
+  "guardrails_to_keep": [
+    "Keep `src/hsconfig/source_contract_matrix.py` as the single semantic policy authority for supported claim kinds, allowed surfaces, required fields, and diagnostic-only operator impact.",
+    "Keep the surface-gate logic in `src/hsconfig/source_document_model.py`, especially the start-of-game non-hand suppression inside `can_lower_to_mulligan()` and the exact surface-specific claim-kind gates.",
+    "Keep `src/hsconfig/apply_gate.py` and `src/hsconfig/runtime_apply.py` as the only runtime write authority path, with summary/filesystem parity checks and re-evaluation of the gate before mutation.",
+    "Keep `src/hsconfig/contract_spine_sentinel.py`, `src/hsconfig/output_ownership_manifest.py`, and the no-second-gate tests so diagnostic reports, legacy surfaces, and stray output files cannot silently become authority.",
+    "Keep the active-doc and current-truth boundary enforced by `README.md`, `docs/operator/README.md`, `docs/research/current-truth.md`, `docs/superpowers/README.md`, and `tests/test_docs_active_path.py`."
+  ],
+  "recommended_next_design": "Keep the current single-gate architecture. The live chain is narrow enough for long-term autonomous operation, but the next improvement should be subtraction: extract one shared preconfig or research context builder that both `research-deck` and `prepare` use, collapse duplicate `guide_claim_bundle` emission or add an explicit parity sentinel for it, and derive artifact naming and ownership from one shared registry that feeds both operator-facing report ownership and full-file ownership classification. New report families should be added only when they replace an existing diagnostic layer instead of sitting beside it.",
+  "repo_files_to_check": [
+    "src/hsconfig/source_contract_matrix.py",
+    "src/hsconfig/source_contract_conformance.py",
+    "src/hsconfig/contract_spine_sentinel.py",
+    "src/hsconfig/source_document_model.py",
+    "src/hsconfig/commands/source_workflow.py",
+    "src/hsconfig/package_builder.py",
+    "src/hsconfig/research_contract.py",
+    "src/hsconfig/apply_gate.py",
+    "src/hsconfig/runtime_apply.py",
+    "src/hsconfig/operator_summary.py",
+    "src/hsconfig/report_ownership.py",
+    "src/hsconfig/output_ownership_manifest.py",
+    "README.md",
+    "docs/operator/README.md",
+    "docs/research/current-truth.md",
+    "docs/superpowers/README.md",
+    "tests/test_contract_spine_sentinel.py",
+    "tests/test_report_ownership.py",
+    "tests/test_docs_active_path.py",
+    "tests/test_apply_authority_boundary.py",
+    "tests/test_no_second_gate_contract.py",
+    "tests/test_subtractive_contract_polish.py",
+    "tests/test_cli.py",
+    "tests/test_prepare_cli.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_matrix.py - single claim-kind policy matrix with explicit allowed surfaces and diagnostic-only operator impact.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_contract_conformance.py - executable source -> policy -> surface gate -> builder/router -> runtime-effect spine snapshot.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/contract_spine_sentinel.py - drift sentinel for claim-kind coverage, no-second-gate fields, apply-path consumers, legacy surfaces, and output classification.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py - runtime lowerability rules and start-of-game Mulligan suppression.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/source_workflow.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py - duplicated research or preconfig derivation paths that currently rebuild similar context independently.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/research_contract.py - separate writes of `guide_claim_bundle.json` into `reports/` and `reports/research/`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py - single runtime write gate plus gate re-evaluation before mutation.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/report_ownership.py and C:/Users/darbo/Documents/HSConfig/src/hsconfig/output_ownership_manifest.py - split but machine-readable artifact ownership layers; currently 11 operator-facing rows, 34 known diagnostic report files, and 9 known research report files.",
+    "C:/Users/darbo/Documents/HSConfig/README.md, C:/Users/darbo/Documents/HSConfig/docs/operator/README.md, C:/Users/darbo/Documents/HSConfig/docs/research/current-truth.md, and C:/Users/darbo/Documents/HSConfig/docs/superpowers/README.md - active-path and historical-boundary documentation.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_contract_spine_sentinel.py, tests/test_report_ownership.py, tests/test_docs_active_path.py, tests/test_apply_authority_boundary.py, tests/test_no_second_gate_contract.py, and tests/test_subtractive_contract_polish.py - executable proof of single-gate authority, output classification, stale-doc fencing, and legacy-surface drift detection.",
+    "Local validation on 2026-07-13 in the live workspace: `build_contract_spine_sentinel_report()` returned `status=clean`, and a targeted pytest run over the boundary and ownership suites passed 59 tests."
+  ],
+  "uncertain": []
+}

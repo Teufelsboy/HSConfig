@@ -1,0 +1,77 @@
+{
+  "scope": "Audit of the current HSConfig source-claim path from structured source documents through claim normalization, static semantics, source evidence verification, surface gating, claim conflict reporting, every-card coverage visibility, readiness lanes, source-gap reporting, and diagnostic source-to-runtime explainability. Primary surfaces reviewed: src/hsconfig/source_document_model.py, src/hsconfig/source_evidence_verifier.py, src/hsconfig/source_document_builder.py, src/hsconfig/static_semantics.py, src/hsconfig/config_readiness.py, src/hsconfig/source_claim_gap_report.py, src/hsconfig/guide_source_depth.py, src/hsconfig/source_to_runtime_explainability.py, docs/operator/guide-research-policy.md, and the matching tests.",
+  "verified_strengths": [
+    "The structured claim model is strict at the runtime boundary. `claim_kind` is the routing authority, so only explicit `mulligan_keep` or `mulligan_discard` may lower to `Mulligan.json`, only `gameplan_posture` may lower to `GlobalValues.json`, only `combo_sequence` may lower to `Combo.json`, and only documented behavior claim kinds may lower to per-card `<CARDID>.json`.",
+    "Runtime lowering is gated by confidence and readiness rather than by free-text enthusiasm. `claim_can_lower_to_runtime()` allows only `guide_backed` and `source_backed_static_semantics` readiness lanes and blocks `report_only`, `explicit_low_confidence`, `generic_low_confidence`, and `contract_gap` lanes from creating runtime rows.",
+    "The mulligan boundary is intentionally hard. `can_lower_to_mulligan()` rejects start-of-game non-hand effects unless the evidence carries explicit opening-hand intent, which prevents false lowering from hero power transforms, deckbuilding modifiers, or passive start-of-game text.",
+    "The source verifier catches weak structured claims early without collapsing the workflow. It warns on unsupported claim kinds, missing cards, missing evidence text, unsupported runtime blocks, low-confidence runtime hints, non-public source references, insufficient lowering specificity, and suspicious exact mulligan keeps for non-hand effects.",
+    "Static semantics are aggressive enough to stay useful without pretending to be guide research. The repo can synthesize deterministic claims for mechanics such as Discover, Choose One, silence, weapon usage, and hero power transforms, while still keeping unsafe or generic behavior claims report-only when they are not reliable enough for runtime lowering.",
+    "Claim conflict visibility exists at the source layer. `claim_conflict_report` detects opposing mulligan keep and discard claims for the same card and downgrades them to a visible conflict instead of silently picking one side and lowering it.",
+    "Every-card expectation visibility is preserved even when source depth is thin. Coverage status, readiness lane, first missing link, source depth lane, source quality lane, and recommended next claim kind keep every deck card visible as guide-backed, static-semantics-backed, or explicitly unresolved.",
+    "The diagnostic reports stay diagnostic. `source_to_runtime_explainability.json` summarizes emitted files, missing files, missing links, and next actions, but explicitly keeps `apply_blocking=false` and `authority=diagnostic_only`, which preserves an aggressive but non-gatekeeping source model."
+  ],
+  "correctness_gaps": [
+    "The strongest remaining false-lowering risk is incomplete semantic context around an exact `mulligan_keep` claim. The verifier only warns about suspicious keeps when the claim or card roles expose start-of-game or non-hand-effect semantics. If upstream role enrichment misses that signal, a badly structured keep claim can still look runtime-lowerable.",
+    "Static semantics are driven by text and tag pattern inference. That makes the fallback lane useful, but it also means future card wording, novel mechanics, or ambiguous text can be misclassified or under-classified until the semantic taxonomy and tests are updated.",
+    "Conflict reporting is currently narrow. The builder reports mulligan keep versus discard conflicts, but it does not yet provide equally strong contradiction handling for other claim families such as competing targeting rules, mutually inconsistent combo guidance, or conflicting choice preferences.",
+    "The model relies on deterministic separation between effect semantics and opening-hand semantics. If a future builder, router, or guide-normalization change starts inferring mulligan intent from card importance prose, deckbuilding text, or hero power transform language, technically wrong Mulligan output could reappear quickly."
+  ],
+  "slimness_gaps": [
+    "The quality model is spread across several adjacent reports: claim coverage, per-card readiness, guide source depth, source claim gap, source-to-runtime explainability, and operator summary. Their ownership is currently coherent, but the surface area is large enough that drift or duplicated status logic would add maintenance weight.",
+    "Claim-kind governance is compact in principle but still multi-touch in practice. Any new claim kind must update the supported-kind registry, policy matrix, surface gate, builder or router logic, and multiple test suites. That is manageable, but it is a real long-term slimness pressure point.",
+    "The repo uses several neighboring status vocabularies: `coverage_status`, `claim_readiness`, `source_depth_status`, `readiness_lane`, `source_quality_lane`, and `first_missing_link`. They are useful because each answers a different question, but they will become bloated if contributors let one vocabulary partially duplicate another.",
+    "Static semantic families, role tokens, mechanic support, and conflict handling live in separate modules by design. That keeps responsibilities narrow, but it also means taxonomy drift can accumulate unless the shared contract tests continue to freeze the boundary."
+  ],
+  "autonomy_gaps": [
+    "Any-deck autonomy is safe, but not always strategically rich. When a deck lands in `generic_low_confidence`, `report_only_supported`, `needs_condition_lowering`, or `needs_mechanic_lowering` lanes, the workflow still produces a load-safe package, yet the config may remain intentionally shallow until new source claims or mechanic support are added.",
+    "Autonomy depends on keeping unsupported future mechanics non-blocking. The current model handles them as visibility or lowering gaps, but every new Wild mechanic family still needs a small taxonomy or router update before HSConfig can use it aggressively rather than merely reporting it.",
+    "The non-blocking design could be undermined if diagnostic warnings are reinterpreted as approval gates. Source evidence warnings, conflict reports, and explainability reports are correct as follow-up guidance; turning them into hard preconditions would create unnecessary manual review for technically valid decks.",
+    "The current model assumes that guide normalization and card metadata stay strong enough to provide card roles and semantic families. If those upstream inputs degrade, the safety model remains conservative, but useful autonomous lowering will fall back to report-only or missing-link lanes more often."
+  ],
+  "guardrails_to_keep": [
+    "Keep `claim_kind` as the only runtime-routing authority. A runtime hint such as `runtime_block` or `runtime_value` must never override a wrong claim kind.",
+    "Keep the mulligan surface explicit-only. `Mulligan.json` should continue to accept only `mulligan_keep` and `mulligan_discard`, and start-of-game or deckbuilding effects should stay out unless the evidence explicitly names opening-hand intent.",
+    "Keep `globalvalue_numeric_tuning` in the runtime-evidence-required lane so aggressive source collection does not quietly become unsupported numeric GlobalValues lowering.",
+    "Keep static semantics productive but bounded. Deterministic static claims should remain available for every-card visibility, while generic or ambiguous behavior claims continue to lower as report-only rather than speculative runtime behavior.",
+    "Keep `claim_conflict_report` visible and non-silent. Conflicts should continue to stay visible in source quality outputs instead of being auto-resolved behind the operator's back.",
+    "Keep every-card expectation visibility mandatory. Each card should continue to land in a visible lane with `coverage_status`, `readiness_lane`, `first_missing_link`, and a next source action, even when the runtime output stays thin.",
+    "Keep `source_to_runtime_explainability.json` and related contract-audit outputs diagnostic-only. They should explain suppression and missing files, not grant or deny apply authority.",
+    "Keep the contract freeze tests around the start-of-game mulligan boundary, claim-kind surface splits, suspicious keep warnings, and source quality lane summaries."
+  ],
+  "recommended_next_design": "Keep the current source model. It is already strict enough to prevent the main false-runtime-lowering cases while still allowing aggressive config generation through guide-backed claims and deterministic static semantics. The next design step should be narrow rather than structural: strengthen suppression around suspicious exact `mulligan_keep` claims when semantic-role evidence is incomplete, and extend contradiction reporting beyond mulligan conflicts to other card-specific claim families. Do not add a second approval gate, do not weaken every-card visibility, and do not broaden runtime lowering from generic prose.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_evidence_verifier.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/static_semantics.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_depth.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_evidence_verifier.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_quality_autonomy.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_readiness.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_guide_source_depth.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md: defines accepted source claims, explicit source-vs-runtime authority, suspicious mulligan keep guidance, every-card visibility lanes, and the diagnostic-only status of source-contract reports.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py: defines supported atomic claim kinds, runtime-lowerable readiness lanes, exact surface gates, and the start-of-game non-hand mulligan rejection.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_evidence_verifier.py: verifies source URLs, source families, evidence text, runtime-hint specificity, and suspicious non-opening-hand mulligan keeps.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_builder.py: assigns claim readiness, marks runtime-lowerable versus non-runtime-lowerable claims, builds claim coverage rows, and reports mulligan keep/discard conflicts.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/static_semantics.py: synthesizes deterministic semantic families and warning-only mechanics from card text, tags, and metadata.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_readiness.py: preserves per-card readiness lanes, first missing links, runtime surfaces, and mechanic-lowering visibility.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_claim_gap_report.py: converts every-card readiness into source quality lanes, missing-link priorities, and actionable next claim recommendations.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/guide_source_depth.py: summarizes whether the current bundle is source-backed, static-semantics-only, or still needs more research, while keeping warnings visible.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py: projects claim and card lifecycle state into diagnostic-only emitted-versus-missing runtime visibility with no apply authority.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_surface_authority_split.py: proves exact surface splits, explicit opening-hand exceptions, and the hero-power-transform boundary.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_evidence_verifier.py: proves warnings for weak lowering claims, suspicious non-hand mulligan keeps, and missing source structure.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_quality_autonomy.py: proves static semantics stay bounded, every-card source quality lanes remain visible, and Darkbishop Benedictus keeps effect semantics without false mulligan lowering.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_claim_gap_report.py, tests/test_config_readiness.py, tests/test_source_to_runtime_explainability.py, and tests/test_guide_source_depth.py: prove missing-link mapping, readiness lanes, diagnostic explainability, and depth reporting.",
+    "Verification run on 2026-07-13 from C:/Users/darbo/Documents/HSConfig: python -m pytest tests/test_source_claim_quality_autonomy.py tests/test_surface_authority_split.py tests/test_source_evidence_verifier.py tests/test_source_claim_gap_report.py tests/test_config_readiness.py tests/test_source_to_runtime_explainability.py tests/test_guide_source_depth.py -q -> 75 passed in 0.42s."
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,43 @@
+field_categories:
+  - category: contract_audit
+    fields:
+      - name: scope
+        type: string
+        required: true
+        description: The exact source, contract, workflow, or external surface area evaluated.
+      - name: verified_strengths
+        type: array
+        required: true
+        description: Source-backed findings that support the current HSConfig design.
+      - name: correctness_gaps
+        type: array
+        required: true
+        description: Specific gaps that could make generated config technically wrong.
+      - name: slimness_gaps
+        type: array
+        required: true
+        description: Specific risks that could bloat HSConfig or duplicate authority.
+      - name: autonomy_gaps
+        type: array
+        required: true
+        description: Specific risks that could block valid any-deck operation or require unnecessary manual approval.
+      - name: guardrails_to_keep
+        type: array
+        required: true
+        description: Existing boundaries that should remain because they prevent wrong config or duplicated apply authority.
+      - name: recommended_next_design
+        type: string
+        required: true
+        description: Recommended design stance after evaluating this item.
+      - name: repo_files_to_check
+        type: array
+        required: true
+        description: HSConfig files or tests that should remain guarded or may need future polish.
+      - name: evidence_references
+        type: array
+        required: true
+        description: Official docs, public references, or local repo paths used as evidence.
+      - name: uncertain
+        type: array
+        required: true
+        description: Field names or claims that remain uncertain.
