@@ -299,7 +299,7 @@ def test_shadowpriest_fixture_does_not_mulligan_keep_darkbishop_start_of_game_ef
     )
 
 
-def test_start_of_game_hero_power_transform_keep_claim_is_suppressed():
+def test_effect_only_start_of_game_hero_power_transform_claim_is_suppressed():
     plan = build_mulligan_plan(
         deck_name="ShadowPriest",
         claims=[
@@ -308,7 +308,8 @@ def test_start_of_game_hero_power_transform_keep_claim_is_suppressed():
                 "claim_kind": "mulligan_keep",
                 "claim_type": "mulligan_keep",
                 "cards": ["SW_448"],
-                "claim": "Keep Darkbishop Benedictus because it enables the hero power plan.",
+                "claim": "Darkbishop Benedictus enables the start-of-game hero power plan.",
+                "evidence_text_short": "Darkbishop Benedictus enables the start-of-game hero power plan.",
                 "confidence": "guide_backed",
                 "source_confidence": "high",
             }

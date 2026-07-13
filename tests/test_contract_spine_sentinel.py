@@ -146,3 +146,84 @@ def test_contract_spine_sentinel_flags_missing_active_apply_path(tmp_path, monke
         "check": "active_apply_paths_missing",
         "value": ["src/hsconfig/runtime_apply.py"],
     } in report["problems"]
+
+
+def test_contract_spine_sentinel_flags_injected_unknown_report(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    monkeypatch.setattr(
+        sentinel,
+        "EXPECTED_EMITTED_PACKAGE_FILES",
+        (
+            *sentinel.EXPECTED_EMITTED_PACKAGE_FILES,
+            "reports/new_unregistered_report.json",
+        ),
+    )
+
+    report = sentinel.build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "output_ownership_unclassified_files",
+        "value": ["reports/new_unregistered_report.json"],
+    } in report["problems"]
+
+
+def test_contract_spine_sentinel_flags_forbidden_legacy_surface(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    monkeypatch.setattr(
+        sentinel,
+        "EXPECTED_EMITTED_PACKAGE_FILES",
+        (
+            *sentinel.EXPECTED_EMITTED_PACKAGE_FILES,
+            "CustomConfig/deck/Presume.json",
+        ),
+    )
+
+    report = sentinel.build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "output_ownership_forbidden_legacy_surfaces",
+        "value": ["CustomConfig/deck/Presume.json"],
+    } in report["problems"]
+
+
+def test_contract_spine_sentinel_flags_active_source_informed_branch(tmp_path):
+    root = tmp_path
+    src = root / "src" / "hsconfig"
+    commands = src / "commands"
+    commands.mkdir(parents=True)
+    (src / "apply_gate.py").write_text(
+        "\n".join(
+            [
+                "def evaluate_apply_gate(package_root, *, allow_source_informed=False):",
+                "    if allow_source_informed:",
+                "        return {'status': 'allowed'}",
+                "    del allow_source_informed",
+                "    return {'status': 'allowed'}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (src / "runtime_apply.py").write_text(
+        "def apply_package(*, allow_source_informed=False):\n"
+        "    del allow_source_informed\n",
+        encoding="utf-8",
+    )
+    (commands / "apply.py").write_text(
+        "def apply_payload(args):\n    return None\n",
+        encoding="utf-8",
+    )
+
+    report = build_contract_spine_sentinel_report(repo_root=root)
+
+    assert report["status"] == "drift_detected"
+    assert report["checks"]["source_informed_apply_flag_policy"]["behavior"] == (
+        "drift_detected"
+    )
+    assert report["checks"]["source_informed_apply_flag_policy"]["active_branches"] == [
+        {"path": "src/hsconfig/apply_gate.py", "line": 2}
+    ]

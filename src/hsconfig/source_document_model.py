@@ -6,6 +6,7 @@ from typing import Any, Mapping
 from hsconfig.role_tokens import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
     card_role_tokens,
+    has_explicit_opening_hand_mulligan_intent,
 )
 
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
@@ -248,9 +249,13 @@ def _contains_start_of_game_non_hand_effect(
         roles = _roles_for_card(card_id, card_roles, claim)
         if "start_of_game" not in roles:
             continue
+        has_opening_hand_intent = has_explicit_opening_hand_mulligan_intent(
+            claim,
+            roles=roles,
+        )
         if roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
-            return True
-        if "mulligan_anchor" not in roles:
+            return not has_opening_hand_intent
+        if "mulligan_anchor" not in roles and not has_opening_hand_intent:
             return True
     return False
 

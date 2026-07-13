@@ -27,50 +27,50 @@
 
 Modify:
 
-- `src/hsconfig/surface_intent.py`  
+- `src/hsconfig/surface_intent.py`
   Remove normal routing from `legacy_policy_surfaces_enabled`; preserve normal surfaces and Combo only.
 
-- `src/hsconfig/apply_gate.py`  
+- `src/hsconfig/apply_gate.py`
   Keep `allow_source_informed` as a backward-compatible no-op parameter or remove internal branching if no caller needs it; ensure the gate result depends only on package files and `reports/operator_summary.json`.
 
-- `src/hsconfig/runtime_apply.py`  
+- `src/hsconfig/runtime_apply.py`
   Stop threading `allow_source_informed` into real apply decisions beyond compatibility signatures.
 
-- `src/hsconfig/commands/apply.py`  
+- `src/hsconfig/commands/apply.py`
   Keep CLI compatibility if existing users pass `--allow-source-informed`, but mark it legacy/no-op and do not create a second apply path.
 
-- `src/hsconfig/report_ownership.py`  
+- `src/hsconfig/report_ownership.py`
   Upgrade from a report-only list to the canonical ownership registry for operator reports.
 
-- `src/hsconfig/operator_summary.py`  
+- `src/hsconfig/operator_summary.py`
   Include the ownership data and any new output manifest reference without adding another apply gate.
 
-- `src/hsconfig/package_builder.py`  
+- `src/hsconfig/package_builder.py`
   Build `operator_summary` exactly once in the package flow.
 
-- `src/hsconfig/contract_spine_sentinel.py`  
+- `src/hsconfig/contract_spine_sentinel.py`
   Add drift checks for legacy surface routing, unclassified emitted reports, and active apply diagnostic consumers.
 
-- `docs/operator/README.md`  
+- `docs/operator/README.md`
   Shorten/align the normal operator statement around single apply authority and legacy/no-op flags.
 
-- `docs/operator/guide-research-policy.md`  
+- `docs/operator/guide-research-policy.md`
   Align source-contract wording with the no-second-gate policy.
 
-- `.agents/skills/hsconfig/SKILL.md`  
+- `.agents/skills/hsconfig/SKILL.md`
   Keep the runtime path concise and operator-facing.
 
 Create:
 
-- `src/hsconfig/output_ownership_manifest.py`  
+- `src/hsconfig/output_ownership_manifest.py`
   Build a machine-readable artifact ownership manifest for emitted runtime files and reports.
 
-- `tests/test_subtractive_contract_polish.py`  
+- `tests/test_subtractive_contract_polish.py`
   High-signal tests for legacy-surface quarantine, no-op source-informed compatibility, full output ownership, single-pass summary, and sentinel drift detection.
 
 Optional if test readability requires it:
 
-- `tests/helpers/package_factory.py`  
+- `tests/helpers/package_factory.py`
   Only create if the new tests repeat more than two package fixtures. Reuse existing helpers first.
 
 ---
@@ -1029,15 +1029,14 @@ Expected: branch updates on GitHub.
 
 ## Self-Review
 
-**Spec coverage:**  
+**Spec coverage:**
 The plan covers legacy surface quarantine, source-informed apply no-op behavior, full output ownership, single-pass `operator_summary`, contract-spine sentinel hardening, active docs, targeted verification, and full-suite verification.
 
-**Placeholder scan:**  
+**Placeholder scan:**
 No placeholder requirements are intentionally left. Each task names exact files, exact tests, and expected command outcomes.
 
-**Type consistency:**  
+**Type consistency:**
 The new interface is `build_output_ownership_manifest(generated_files: Sequence[str]) -> dict[str, Any]`. Existing interfaces keep compatibility signatures where needed: `evaluate_apply_gate(..., allow_source_informed=False)` and `apply_package(..., allow_source_informed=False)`.
 
-**Scope check:**  
+**Scope check:**
 This is one coherent polish wave. It does not implement new Hearthstone semantics, new guide research, new runtime surfaces, or HSTuner-style post-game tuning.
-

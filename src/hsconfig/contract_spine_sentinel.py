@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any
 
+from hsconfig.output_ownership_manifest import (
+    KNOWN_DIAGNOSTIC_REPORT_FILES,
+    build_output_ownership_manifest,
+)
+from hsconfig.report_ownership import build_report_ownership
 from hsconfig.source_contract_conformance import build_source_contract_conformance_snapshot
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
-from hsconfig.report_ownership import build_report_ownership
 
 
 FORBIDDEN_APPLY_AUTHORITY_FIELDS = {
@@ -39,6 +44,34 @@ CRITICAL_CLAIM_KINDS = (
     "globalvalue_numeric_tuning",
     "combo_sequence",
     "archetype",
+)
+
+EXPECTED_RESEARCH_REPORT_FILES = (
+    "reports/research/archetype_research.json",
+    "reports/research/card_role_map.json",
+    "reports/research/card_usage_expectations.json",
+    "reports/research/claims.json",
+    "reports/research/coverage_summary.json",
+    "reports/research/globalvalue_intent.json",
+    "reports/research/guide_claim_bundle.json",
+    "reports/research/known_bad_patterns.json",
+    "reports/research/mulligan_anchor_map.json",
+)
+EXPECTED_RUNTIME_SURFACE_FILES = (
+    "CustomConfig/deck/CARDID.json",
+    "CustomConfig/deck/Combo.json",
+    "CustomConfig/deck/GlobalValues.json",
+    "CustomConfig/deck/Mulligan.json",
+)
+EXPECTED_EMITTED_PACKAGE_FILES = tuple(
+    sorted(
+        {
+            *EXPECTED_RUNTIME_SURFACE_FILES,
+            *EXPECTED_RESEARCH_REPORT_FILES,
+            *KNOWN_DIAGNOSTIC_REPORT_FILES,
+            *(row["file"] for row in build_report_ownership()),
+        }
+    )
 )
 
 
@@ -84,6 +117,12 @@ def build_contract_spine_sentinel_report(
         "source_informed_apply_flag_policy": _source_informed_apply_flag_policy(root),
         "report_ownership_gate_files": _report_ownership_gate_files(),
         "report_ownership_unclassified_files": _report_ownership_unclassified_files(),
+        "output_ownership_unclassified_files": _output_ownership_files_by_classification(
+            "unclassified"
+        ),
+        "output_ownership_forbidden_legacy_surfaces": (
+            _output_ownership_files_by_classification("forbidden_legacy_surface")
+        ),
     }
     problems = _problems(checks)
     return {
@@ -184,12 +223,73 @@ def _legacy_surface_normal_routing(root: Path) -> list[dict[str, str]]:
     return flagged
 
 
-def _source_informed_apply_flag_policy(root: Path) -> dict[str, str]:
-    apply_gate = root / "src/hsconfig/apply_gate.py"
-    content = apply_gate.read_text(encoding="utf-8") if apply_gate.exists() else ""
-    if "del allow_source_informed" in content:
-        return {"behavior": "legacy_no_op"}
-    return {"behavior": "drift_detected"}
+def _source_informed_apply_flag_policy(root: Path) -> dict[str, Any]:
+    active_branches = _source_informed_active_branches(root)
+    missing_noop_deletes = _source_informed_missing_noop_deletes(root)
+    if active_branches or missing_noop_deletes:
+        return {
+            "behavior": "drift_detected",
+            "active_branches": active_branches,
+            "missing_noop_deletes": missing_noop_deletes,
+        }
+    return {
+        "behavior": "legacy_no_op",
+        "active_branches": [],
+        "missing_noop_deletes": [],
+    }
+
+
+def _source_informed_active_branches(root: Path) -> list[dict[str, object]]:
+    branches: list[dict[str, object]] = []
+    for relative_path in ACTIVE_APPLY_PATHS:
+        path = root / relative_path
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(content)
+        except SyntaxError as error:
+            branches.append(
+                {
+                    "path": relative_path,
+                    "line": error.lineno or 1,
+                    "reason": "syntax_error",
+                }
+            )
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.If) and _ast_mentions_allow_source_informed(node.test):
+                branches.append({"path": relative_path, "line": node.lineno})
+    return branches
+
+
+def _ast_mentions_allow_source_informed(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id == "allow_source_informed":
+            return True
+        if isinstance(child, ast.Attribute) and child.attr == "allow_source_informed":
+            return True
+        if (
+            isinstance(child, ast.Constant)
+            and child.value in {"allow_source_informed", "allow-source-informed"}
+        ):
+            return True
+    return False
+
+
+def _source_informed_missing_noop_deletes(root: Path) -> list[dict[str, str]]:
+    missing: list[dict[str, str]] = []
+    for relative_path in (
+        "src/hsconfig/apply_gate.py",
+        "src/hsconfig/runtime_apply.py",
+    ):
+        path = root / relative_path
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "allow_source_informed" in content and "del allow_source_informed" not in content:
+            missing.append({"path": relative_path, "token": "del allow_source_informed"})
+    return missing
 
 
 def _report_ownership_gate_files() -> list[str]:
@@ -208,6 +308,15 @@ def _report_ownership_unclassified_files() -> list[str]:
     )
 
 
+def _output_ownership_files_by_classification(classification: str) -> list[str]:
+    manifest = build_output_ownership_manifest(EXPECTED_EMITTED_PACKAGE_FILES)
+    return sorted(
+        row["file"]
+        for row in manifest["files"]
+        if row.get("classification") == classification
+    )
+
+
 def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
     problems: list[dict[str, object]] = []
     list_checks = (
@@ -222,6 +331,8 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
         "active_apply_paths_missing",
         "legacy_surface_normal_routing",
         "report_ownership_unclassified_files",
+        "output_ownership_unclassified_files",
+        "output_ownership_forbidden_legacy_surfaces",
     )
     for key in list_checks:
         value = checks.get(key, [])

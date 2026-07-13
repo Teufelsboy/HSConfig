@@ -39,12 +39,13 @@ def test_mulligan_surface_accepts_only_explicit_mulligan_claims():
     assert decision.reason == "claim_kind_not_mulligan_surface"
 
 
-def test_start_of_game_transform_is_never_opening_hand_keep_even_when_claim_says_keep():
+def test_effect_only_start_of_game_transform_is_not_opening_hand_keep():
     claim = {
         "claim_kind": "mulligan_keep",
         "claim_readiness": "guide_backed",
         "trust_ceiling": "runtime_candidate",
         "cards": ["SW_448"],
+        "evidence_text_short": "Darkbishop Benedictus changes the starting Hero Power.",
     }
     decision = can_lower_to_mulligan(
         claim,
@@ -58,6 +59,28 @@ def test_start_of_game_transform_is_never_opening_hand_keep_even_when_claim_says
 
     assert decision.allowed is False
     assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_explicit_opening_hand_start_of_game_transform_can_be_mulligan_keep():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_START"],
+        "evidence_text_short": "Always keep CARD_START in your opening hand.",
+    }
+    decision = can_lower_to_mulligan(
+        claim,
+        card_roles={
+            "CARD_START": {
+                "roles": ["start_of_game", "hero_power_transform"],
+                "semantic_families": ["start_of_game", "hero_power_transform"],
+            }
+        },
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
 
 
 def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_runtime_tuning():

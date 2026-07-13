@@ -4,7 +4,10 @@ from typing import Any
 
 from hsconfig.guide_research import normalize_source_claims
 from hsconfig.io import slugify_deck_name
-from hsconfig.role_tokens import has_start_of_game_non_hand_effect
+from hsconfig.role_tokens import (
+    has_explicit_opening_hand_mulligan_intent,
+    has_start_of_game_non_hand_effect,
+)
 from hsconfig.source_document_model import runtime_claim_kind
 
 
@@ -76,7 +79,7 @@ def build_gameplan_contract(
                 *[str(role) for role in research_card.get("roles", [])],
             }
         )
-        if not _roles_allow_mulligan_anchor(roles):
+        if not _roles_allow_mulligan_anchor(roles, related_claims):
             roles = [role for role in roles if role != "mulligan_anchor"]
         coverage_status = str(
             research_card.get("confidence") or _coverage_status(related_claims, semantic_families)
@@ -112,7 +115,10 @@ def build_gameplan_contract(
         usage_expectations[card_id] = expectation
 
         research_mulligan_row = research_mulligan.get(card_id, {})
-        if research_mulligan_row.get("intent") == "hold" and _roles_allow_mulligan_anchor(roles):
+        if research_mulligan_row.get("intent") == "hold" and _roles_allow_mulligan_anchor(
+            roles,
+            related_claims,
+        ):
             mulligan_anchors.append(
                 {
                     "card_id": card_id,
@@ -124,7 +130,10 @@ def build_gameplan_contract(
                     ),
                 }
             )
-        elif "mulligan_anchor" in roles and _roles_allow_mulligan_anchor(roles):
+        elif "mulligan_anchor" in roles and _roles_allow_mulligan_anchor(
+            roles,
+            related_claims,
+        ):
             mulligan_anchors.append(
                 {
                     "card_id": card_id,
@@ -237,8 +246,13 @@ def _merge_source_claim_ids(first: list[str], second: Any) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def _roles_allow_mulligan_anchor(roles: list[str]) -> bool:
-    return not has_start_of_game_non_hand_effect(roles)
+def _roles_allow_mulligan_anchor(
+    roles: list[str],
+    claims: list[dict[str, Any]] | None = None,
+) -> bool:
+    if not has_start_of_game_non_hand_effect(roles):
+        return True
+    return has_explicit_opening_hand_mulligan_intent(claims or [])
 
 
 def _research_or_metadata_linked_entities(

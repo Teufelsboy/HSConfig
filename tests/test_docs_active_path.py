@@ -423,3 +423,12 @@ def test_operator_docs_explain_effect_semantics_are_not_mulligan_keeps():
     assert "Effect semantics are not opening-hand mulligan keeps" in text
     assert "Start-of-game" in text
     assert "operator_summary.json remains the normal apply authority" in text
+
+
+def test_source_builder_workflow_marks_source_informed_apply_as_legacy_noop():
+    text = Path("docs/operator/source-builder-workflow.md").read_text(encoding="utf-8")
+
+    assert "older source-informed summaries are legacy compatibility exceptions" not in text
+    assert "`--allow-source-informed` is a backward-compatible legacy no-op." in text
+    assert "It does not create a second apply path." in text
+    assert "Runtime apply decisions come from `reports/operator_summary.json`." in text

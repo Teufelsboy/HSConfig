@@ -136,6 +136,46 @@ def test_output_ownership_manifest_classifies_every_generated_file():
     assert runtime_rows["CustomConfig/deck/Combo.json"]["runtime_surface"] == "Combo.json"
 
 
+def test_output_ownership_manifest_marks_unknown_report_unclassified():
+    from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+
+    manifest = build_output_ownership_manifest(
+        [
+            "reports/operator_summary.json",
+            "reports/new_unregistered_report.json",
+        ]
+    )
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    assert by_file["reports/new_unregistered_report.json"]["classification"] == (
+        "unclassified"
+    )
+    assert manifest["summary"]["unclassified_file_count"] == 1
+
+
+def test_output_ownership_manifest_marks_legacy_surfaces_as_forbidden_drift():
+    from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+
+    manifest = build_output_ownership_manifest(
+        [
+            "CustomConfig/deck/Presume.json",
+            "CustomConfig/deck/Concede.json",
+        ]
+    )
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    for path in (
+        "CustomConfig/deck/Presume.json",
+        "CustomConfig/deck/Concede.json",
+    ):
+        assert by_file[path]["classification"] == "forbidden_legacy_surface"
+        assert by_file[path]["runtime_surface"] == "legacy_non_normal_surface"
+    assert manifest["summary"]["forbidden_legacy_surface_count"] == 2
+    assert not any(
+        row["classification"] == "runtime_surface" for row in manifest["files"]
+    )
+
+
 def test_package_builder_calls_build_operator_summary_once_in_prepare_flow():
     source = inspect.getsource(package_builder.build_package_payload)
 
