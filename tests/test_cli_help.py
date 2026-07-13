@@ -121,8 +121,8 @@ def test_apply_help_marks_allow_source_informed_as_legacy_diagnostic_flag(capsys
     help_text = capsys.readouterr().out
 
     assert "--allow-source-informed" in help_text
-    assert "legacy diagnostic compatibility" in help_text
-    assert "Normal load-safe packages do not require this flag" in help_text
+    assert "legacy" in help_text.lower()
+    assert "no-op" in help_text.lower()
 
 
 def test_contract_spine_sentinel_help_is_diagnostic_only(capsys):

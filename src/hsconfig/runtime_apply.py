@@ -229,10 +229,9 @@ def _resolve_allowed_apply_gate(
     apply_gate: dict[str, Any] | None,
     allow_source_informed: bool,
 ) -> dict[str, Any]:
-    evaluated = evaluate_apply_gate(
-        package,
-        allow_source_informed=allow_source_informed,
-    )
+    # Legacy CLI compatibility; no second apply path.
+    del allow_source_informed
+    evaluated = evaluate_apply_gate(package)
     if apply_gate is not None and apply_gate != evaluated:
         reason = _first_gate_reason(evaluated)
         raise ValueError(

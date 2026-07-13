@@ -15,6 +15,8 @@ def evaluate_apply_gate(
     *,
     allow_source_informed: bool = False,
 ) -> dict[str, Any]:
+    # Backward-compatible no-op; operator_summary is the gate.
+    del allow_source_informed
     package = Path(package_root)
     operator_path = package / "reports" / "operator_summary.json"
     if not operator_path.is_file():

@@ -167,7 +167,7 @@ def test_apply_gate_allows_valid_runtime_surface_gap_as_load_safe_warning(
         },
     )
 
-    gate = evaluate_apply_gate(package, allow_source_informed=True)
+    gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "allowed"
     assert gate["allowed"] is True
@@ -201,12 +201,9 @@ def test_apply_gate_allows_source_informed_apply_ready_without_flag(tmp_path: Pa
     )
 
     default_gate = evaluate_apply_gate(package)
-    compatibility_gate = evaluate_apply_gate(package, allow_source_informed=True)
 
     assert default_gate["status"] == "allowed"
     assert default_gate["mode"] == "load_safe_apply"
-    assert compatibility_gate["status"] == "allowed"
-    assert compatibility_gate["mode"] == "load_safe_apply"
 
 
 def test_apply_gate_allows_load_safe_apply_when_source_gap_readiness_is_blocked(
@@ -236,7 +233,7 @@ def test_apply_gate_allows_load_safe_apply_when_source_gap_readiness_is_blocked(
         },
     )
 
-    gate = evaluate_apply_gate(package, allow_source_informed=True)
+    gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "allowed"
     assert gate["allowed"] is True
@@ -276,7 +273,7 @@ def test_apply_gate_ignores_forged_runtime_apply_fields_but_allows_valid_structu
     assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
 
 
-def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path):
+def test_apply_gate_blocks_invalid_package(tmp_path: Path):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
     _write_operator_summary(
@@ -295,7 +292,7 @@ def test_apply_gate_blocks_invalid_package_even_with_escape_hatch(tmp_path: Path
         },
     )
 
-    gate = evaluate_apply_gate(package, allow_source_informed=True)
+    gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "blocked"
     assert gate["reasons"][0]["reason"] == "operator_summary_not_valid_package"

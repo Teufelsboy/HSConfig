@@ -198,18 +198,23 @@ def build_parser() -> argparse.ArgumentParser:
         "apply",
         description=(
             "Apply a validated pre-run CustomConfig package. "
-            "--allow-source-informed is retained for legacy diagnostic compatibility. "
-            "Normal load-safe packages do not require this flag."
+            "--allow-source-informed is retained as a legacy no-op for diagnostic "
+            "compatibility. Normal load-safe packages do not require this flag."
         ),
         epilog=(
-            "Legacy diagnostic compatibility: --allow-source-informed is not the normal "
-            "runtime write gate. Normal load-safe packages do not require this flag; "
-            "runtime_apply_mode=load_safe_apply is the operator-facing write mode."
+            "Legacy diagnostic compatibility: --allow-source-informed is a no-op, "
+            "not the normal runtime write gate. Normal load-safe packages do not "
+            "require this flag; runtime_apply_mode=load_safe_apply is the "
+            "operator-facing write mode."
         ),
     )
     apply.add_argument("--package", required=True)
     apply.add_argument("--runtime-root", required=True)
-    apply.add_argument("--allow-source-informed", action="store_true")
+    apply.add_argument(
+        "--allow-source-informed",
+        action="store_true",
+        help="Legacy no-op retained for diagnostic compatibility.",
+    )
     fake_apply_mode = apply.add_mutually_exclusive_group()
     fake_apply_mode.add_argument(
         "--fake",
