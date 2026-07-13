@@ -35,6 +35,10 @@ from hsconfig.research_contract import (
 )
 from hsconfig.semantic_audit import render_semantic_audit_markdown
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
+from hsconfig.source_claim_lifecycle import (
+    build_initial_lifecycle_rows,
+    runtime_claims_for_surface,
+)
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
@@ -83,6 +87,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     guide_claim_bundle = context["guide_claim_bundle"]
     research_bundle = context["research_bundle"]
     plan_claims = list(guide_claim_bundle.get("claims", []))
+    source_claim_conflict_report = guide_claim_bundle.get(
+        "claim_conflict_report",
+        {"conflict_count": 0, "conflicts": []},
+    )
     runtime_claims = [claim for claim in plan_claims if claim_can_lower_to_runtime(claim)]
     runtime_source_claims = {"claims": runtime_claims, "claim_count": len(runtime_claims)}
     runtime_research_bundle = build_research_contract_bundle(
@@ -97,22 +105,38 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         source_claims=runtime_source_claims,
         research_bundle=runtime_research_bundle,
     )
+    initial_lifecycle_rows = build_initial_lifecycle_rows(
+        plan_claims,
+        conflict_report=source_claim_conflict_report,
+    )
+    card_roles = runtime_research_bundle.get("card_role_map", {})
+    mulligan_claims = runtime_claims_for_surface(
+        initial_lifecycle_rows,
+        "mulligan",
+        card_roles=card_roles,
+    )
+    cardid_claims = runtime_claims_for_surface(initial_lifecycle_rows, "cardid")
+    combo_claims = runtime_claims_for_surface(initial_lifecycle_rows, "combo")
+    globalvalues_claims = runtime_claims_for_surface(
+        initial_lifecycle_rows,
+        "globalvalues",
+    )
     mulligan_plan = build_mulligan_plan(
         deck_name=args.deck_name,
-        claims=plan_claims,
-        card_roles=runtime_research_bundle.get("card_role_map", {}),
+        claims=mulligan_claims,
+        card_roles=card_roles,
     )
     card_behavior_plan = route_card_behavior_claims(
-        plan_claims,
+        cardid_claims,
         identity_links=_card_behavior_identity_links(gameplan_contract),
     )
     combo_plan = build_combo_plan(
         deck_cards=set(gameplan_contract.get("cards", {})),
-        claims=plan_claims,
+        claims=combo_claims,
     )
     global_values_authority_matrix = build_globalvalues_authority_matrix(
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
-        claims=plan_claims,
+        claims=globalvalues_claims,
     )
     plan_reports_dir = getattr(args, "plan_reports_dir", None)
     if plan_reports_dir is not None:
@@ -131,6 +155,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             plan_dir,
             "global_values_authority_matrix.json",
             global_values_authority_matrix,
+        )
+        source_claim_conflict_report = guide_claim_bundle.get(
+            "claim_conflict_report",
+            {"conflict_count": 0, "conflicts": []},
         )
     gameplan_contract = {
         **gameplan_contract,
@@ -226,7 +254,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
     write_json(
         reports_dir / "claim_conflict_report.json",
-        guide_claim_bundle.get("claim_conflict_report", {"conflict_count": 0, "conflicts": []}),
+        source_claim_conflict_report,
     )
     write_json(
         reports_dir / "unsupported_claims_report.json",

@@ -1,3 +1,7 @@
+import json
+from pathlib import Path
+
+from hsconfig.cli import main
 from hsconfig.source_claim_conflicts import build_claim_conflict_report
 
 
@@ -100,3 +104,95 @@ def test_conflict_report_detects_role_against_known_bad_pattern():
     assert conflict["values"] == ["enemy_minion->do_not_target_enemy_minion"]
     assert conflict["claim_ids"] == ["do_not_target_enemy_minion", "use_enemy_minion"]
     assert conflict["resolution"] == "downgrade_to_report_visible_conflict"
+
+
+def test_package_keeps_conflicted_mulligan_claims_visible_but_not_lowered(tmp_path: Path):
+    out = tmp_path / "pkg"
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "CARD_001",
+                        "dbf_id": 1,
+                        "count": 1,
+                        "name": "Conflict Card",
+                        "cost": 1,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    guide_sources_json = tmp_path / "guide_sources.json"
+    guide_sources_json.write_text(
+        json.dumps(
+            [
+                {
+                    "source_url": "https://example.invalid/conflict",
+                    "source_title": "Conflict Fixture",
+                    "source_family": "guide_fixture",
+                    "retrieved_at": "2026-07-13T00:00:00Z",
+                    "claims": [
+                        {
+                            "claim_id": "keep_card",
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["CARD_001"],
+                            "evidence_text_short": "keep conflict card",
+                            "source_confidence": "guide_backed",
+                        },
+                        {
+                            "claim_id": "discard_card",
+                            "claim_kind": "mulligan_discard",
+                            "cards": ["CARD_001"],
+                            "evidence_text_short": "discard conflict card",
+                            "source_confidence": "guide_backed",
+                        },
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ConflictDeck",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--guide-sources-json",
+            str(guide_sources_json),
+        ]
+    )
+
+    deck_dir = next((out / "CustomConfig").iterdir())
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
+    conflict_report = json.loads(
+        (out / "reports" / "claim_conflict_report.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert conflict_report["conflict_count"] == 1
+    conflict_claim_ids = set(conflict_report["conflicts"][0]["claim_ids"])
+    assert len(conflict_claim_ids) == 2
+    assert conflict_claim_ids <= set(audit["claim_rows"])
+    assert all(
+        row["builder_or_router_decision"] != "emitted"
+        for row in audit["claim_lifecycle_rows"]
+        if row["claim_id"] in conflict_claim_ids
+    )
+    assert not any(
+        row.get("card") == "CARD_001" for row in mulligan["Mulligan"]["values"]
+    )
