@@ -78,6 +78,7 @@ def build_contract_spine_sentinel_report(
             {},
         ),
         "active_apply_diagnostic_consumers": _active_apply_diagnostic_consumers(root),
+        "active_apply_paths_missing": _missing_active_apply_paths(root),
     }
     problems = _problems(checks)
     return {
@@ -144,11 +145,21 @@ def _active_apply_diagnostic_consumers(root: Path) -> list[dict[str, str]]:
     consumers: list[dict[str, str]] = []
     for relative_path in ACTIVE_APPLY_PATHS:
         path = root / relative_path
+        if not path.exists():
+            continue
         content = path.read_text(encoding="utf-8")
         for token in DIAGNOSTIC_ONLY_TOKENS:
             if token in content:
                 consumers.append({"path": relative_path, "token": token})
     return consumers
+
+
+def _missing_active_apply_paths(root: Path) -> list[str]:
+    return [
+        relative_path
+        for relative_path in ACTIVE_APPLY_PATHS
+        if not (root / relative_path).exists()
+    ]
 
 
 def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
@@ -162,6 +173,7 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
         "spine_rows_with_apply_authority_fields",
         "conformance_apply_authority_fields_present",
         "active_apply_diagnostic_consumers",
+        "active_apply_paths_missing",
     )
     for key in list_checks:
         value = checks.get(key, [])

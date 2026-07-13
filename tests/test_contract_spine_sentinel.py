@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
 
@@ -118,3 +120,31 @@ def test_contract_spine_sentinel_flags_apply_authority_fields(monkeypatch):
     assert report["checks"]["spine_rows_with_apply_authority_fields"][0]["fields"] == [
         "apply_policy"
     ]
+
+
+def test_contract_spine_sentinel_flags_missing_active_apply_path(tmp_path, monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    existing = tmp_path / "src" / "hsconfig" / "apply_gate.py"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("def evaluate_apply_gate():\n    return None\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        sentinel,
+        "ACTIVE_APPLY_PATHS",
+        (
+            "src/hsconfig/apply_gate.py",
+            "src/hsconfig/runtime_apply.py",
+        ),
+    )
+
+    report = sentinel.build_contract_spine_sentinel_report(repo_root=tmp_path)
+
+    assert report["status"] == "drift_detected"
+    assert report["checks"]["active_apply_paths_missing"] == [
+        "src/hsconfig/runtime_apply.py"
+    ]
+    assert {
+        "check": "active_apply_paths_missing",
+        "value": ["src/hsconfig/runtime_apply.py"],
+    } in report["problems"]
