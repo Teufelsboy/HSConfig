@@ -538,12 +538,15 @@ def test_warning_bearing_future_mechanic_package_still_load_safe(tmp_path):
                 "claim_id": "runtime_only_globalvalue_visible",
                 "claim_kind": "globalvalue_numeric_tuning",
                 "claim_readiness": "guide_backed",
+                "source_confidence": "guide_backed",
+                "scope": "deck",
                 "key": "FirstTurnValueWeight",
                 "runtime_value": 1.3,
                 "evidence_text_short": "Runtime value request requires post-game evidence.",
             },
         ],
     )
+    assert result["exit_code"] == 0
     operator_summary = result["operator_summary"]
 
     assert_load_safe_no_block_package(operator_summary)
@@ -551,3 +554,21 @@ def test_warning_bearing_future_mechanic_package_still_load_safe(tmp_path):
         "reports/operator_summary.json"
     )
     assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
+    assert any(
+        warning.get("key") == "FirstTurnValueWeight"
+        and warning.get("reason") == "globalvalue_runtime_evidence_required"
+        for warning in operator_summary["warnings"]
+    )
+    assert any(
+        row["key"] == "FirstTurnValueWeight"
+        and row["reason"] == "requires_runtime_evidence"
+        for row in result["global_values_authority_matrix"][
+            "blocked_until_runtime_evidence"
+        ]
+    )
+    global_values = json.loads(
+        (result["deck_dir"] / "GlobalValues.json").read_text(encoding="utf-8")
+    )
+    assert global_values["FirstTurnValueWeight"]["values"] == [
+        {"condition": "*", "value": "0"}
+    ]
