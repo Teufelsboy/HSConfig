@@ -6,7 +6,11 @@ from hsconfig.guide_research import normalize_source_claims
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
-from hsconfig.source_document_model import runtime_claim_kind, surface_gate_decision
+from hsconfig.source_document_model import (
+    START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    runtime_claim_kind,
+    surface_gate_decision,
+)
 
 
 def test_broad_legacy_mulligan_claim_type_does_not_create_hold():
@@ -343,20 +347,14 @@ def test_explicit_start_of_game_mulligan_keep_is_suppressed():
     )
 
 
-@pytest.mark.parametrize(
-    "role",
-    [
-        "deck_state_modifier",
-        "deckbuilding_modifier",
-        "deck_size_modifier",
-        "even_odd_modifier",
-        "highlander_modifier",
-        "hero_power_transform",
-        "passive_start_effect",
-        "start_in_deck_requirement",
-        "start_of_game_modifier",
-    ],
-)
+def test_start_of_game_non_hand_role_table_contains_known_effect_families():
+    assert "hero_power_transform" in START_OF_GAME_NON_HAND_EFFECT_ROLES
+    assert "deckbuilding_modifier" in START_OF_GAME_NON_HAND_EFFECT_ROLES
+    assert "passive_start_effect" in START_OF_GAME_NON_HAND_EFFECT_ROLES
+    assert "start_in_deck_requirement" in START_OF_GAME_NON_HAND_EFFECT_ROLES
+
+
+@pytest.mark.parametrize("role", sorted(START_OF_GAME_NON_HAND_EFFECT_ROLES))
 def test_start_of_game_non_hand_roles_suppress_mulligan_keep(role):
     claim = {
         "claim_kind": "mulligan_keep",
