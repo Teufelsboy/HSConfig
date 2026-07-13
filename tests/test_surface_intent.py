@@ -39,7 +39,7 @@ def test_surface_intent_routes_normal_runtime_surfaces_from_contract():
     assert "Concede.json" not in intent["optional_surfaces"]
 
 
-def test_surface_intent_can_route_legacy_policies_when_explicitly_enabled():
+def test_surface_intent_does_not_route_legacy_policy_surfaces_even_when_flagged():
     contract = {
         "cards": {},
         "policies": {
@@ -52,7 +52,7 @@ def test_surface_intent_can_route_legacy_policies_when_explicitly_enabled():
     intent = build_surface_intent(contract)
 
     surfaces = {(row.get("card_id"), row["surface"]) for row in intent["rows"]}
-    assert (None, "Presume.json") in surfaces
-    assert (None, "Concede.json") in surfaces
-    assert "Presume.json" in intent["optional_surfaces"]
-    assert "Concede.json" in intent["optional_surfaces"]
+    assert (None, "Presume.json") not in surfaces
+    assert (None, "Concede.json") not in surfaces
+    assert "Presume.json" not in intent["optional_surfaces"]
+    assert "Concede.json" not in intent["optional_surfaces"]

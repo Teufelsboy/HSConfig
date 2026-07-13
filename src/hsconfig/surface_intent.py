@@ -58,30 +58,6 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    policies = contract.get("policies", {}) if contract.get("legacy_policy_surfaces_enabled") else {}
-    if policies.get("presume"):
-        optional_surfaces.add("Presume.json")
-        rows.append(
-            {
-                "rule_id": "presume_policy",
-                "card_id": None,
-                "surface": "Presume.json",
-                "intent": "presume_policy",
-                "source_claim_ids": _policy_claim_ids(policies["presume"]),
-            }
-        )
-    if policies.get("concede"):
-        optional_surfaces.add("Concede.json")
-        rows.append(
-            {
-                "rule_id": "concede_policy",
-                "card_id": None,
-                "surface": "Concede.json",
-                "intent": "concede_policy",
-                "source_claim_ids": _policy_claim_ids(policies["concede"]),
-            }
-        )
-
     return {
         "rows": rows,
         "required_surfaces": sorted(required_surfaces),
@@ -115,7 +91,3 @@ def _combo_claim_ids(contract: dict[str, Any]) -> list[str]:
             for claim_id in combo.get("source_claim_ids", [])
         }
     )
-
-
-def _policy_claim_ids(rows: list[dict[str, Any]]) -> list[str]:
-    return sorted({str(claim_id) for row in rows for claim_id in row.get("source_claim_ids", [])})
