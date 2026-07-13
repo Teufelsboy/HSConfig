@@ -97,6 +97,14 @@ runtime-lowerable `gameplan_posture`; `Combo.json` only lowers complete
 claim kinds. Wrong-surface claims stay suppressed or report-only with explicit
 reasons.
 
+The canonical claim lifecycle is the single diagnostic chain from source
+evidence to runtime eligibility: source claim -> normalized `claim_kind` ->
+semantic qualifiers -> conflict quarantine -> surface gate -> builder/router
+outcome -> emitted runtime row or suppression reason. source_contract_audit.json
+is diagnostic; operator_summary.json remains the only normal apply authority.
+Quarantined claims suppress unsafe runtime rows, stay visible in reports, and do
+not block load-safe valid packages.
+
 Optional CardID lowering fields for card-specific claims:
 
 - `runtime_block`: documented CardID block to use, for example
@@ -136,7 +144,8 @@ Claim freshness and conflicts:
 - Treat `retrieved_at` as the claim freshness anchor. Prefer current guide claims over older guide claims when both map to the same card and behavior.
 - Do not use stale claims that contradict current card text or HearthstoneJSON metadata.
 - Opposing atomic claims, such as keep versus discard for the same selector, must be reported in `claim_conflict_report.json`.
-- Conflict reports block strong readiness until the operator resolves the source documents.
+- Conflict reports block source-backed strong readiness until the source documents are resolved.
+- Conflict reports do not block load-safe valid packages; quarantined claims stay report-visible and must not lower to runtime rows.
 
 Mulligan selector support:
 
