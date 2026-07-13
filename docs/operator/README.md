@@ -244,6 +244,20 @@ failed, but they do not override `status` or `matrix_row_status`.
 
 Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply path. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
 
+## Developer Guardrail
+
+Run this after changing source-contract, skill, apply, report ownership, or
+mechanic-lowering code:
+
+```powershell
+python scripts\check_contract_guardrails.py
+```
+
+The command checks installed-skill sync, `hsconfig contract-spine-sentinel
+--json`, and the focused boundary tests. It is diagnostic only. Normal deck
+configuration still starts with `hsconfig configure`, and
+`reports/operator_summary.json` remains the only normal apply authority.
+
 ## Optional Contract Doctor
 
 Use `hsconfig contract-doctor --package <package> --json` when a prepared package

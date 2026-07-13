@@ -38,3 +38,12 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 Keep the installed skill synchronized with:
 
 python scripts/sync_installed_skill.py --check
+
+Developer contract guardrail:
+
+```powershell
+python scripts\check_contract_guardrails.py
+```
+
+This checks installed-skill sync, the contract-spine sentinel, and the focused
+boundary suite. It is a developer drift check, not a second operator gate.
