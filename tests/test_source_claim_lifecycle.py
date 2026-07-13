@@ -97,6 +97,32 @@ def test_unknown_confidence_targeting_rule_remains_lifecycle_only():
     assert runtime_claims_for_surface(rows, "cardid") == []
 
 
+def test_report_only_readiness_and_trust_ceiling_are_not_runtime_candidates():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "report_only_trust",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_004"],
+                "claim_readiness": "source_backed_static_semantics",
+                "trust_ceiling": "report_only",
+                "source_confidence": "high",
+            },
+            {
+                "claim_id": "report_only_readiness",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_005"],
+                "claim_readiness": "explicit_low_confidence",
+                "trust_ceiling": "runtime_candidate",
+                "source_confidence": "high",
+            },
+        ]
+    )
+
+    assert {row["runtime_eligibility"] for row in rows} == {"report_only"}
+    assert runtime_claims_for_surface(rows, "cardid") == []
+
+
 def test_lifecycle_mulligan_surface_suppresses_start_of_game_transform_roles():
     rows = build_initial_lifecycle_rows(
         [

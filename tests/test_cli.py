@@ -16,6 +16,139 @@ SHADOWPRIEST_CODE = (
 )
 
 
+def _write_cards_json(path: Path, card_ids: list[str]) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": card_id,
+                        "dbf_id": index,
+                        "count": 1,
+                        "name": f"Fixture {card_id}",
+                    }
+                    for index, card_id in enumerate(card_ids, start=1)
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _claim_bundle_for_override(
+    *,
+    claims: list[dict],
+    card_ids: list[str],
+    conflict_report: dict | None = None,
+) -> dict:
+    coverage_cards = {
+        card_id: {"coverage_status": "guide_backed"} for card_id in card_ids
+    }
+    coverage = {
+        "guide_backed_cards": len(card_ids),
+        "uncovered_cards": [],
+        "summary": {
+            "guide_backed": len(card_ids),
+            "static_semantics_backfilled": 0,
+            "uncovered_low_confidence": 0,
+        },
+        "cards": coverage_cards,
+    }
+    return {
+        "claims": claims,
+        "unsupported_claims": [],
+        "source_evidence_index": [],
+        "coverage": coverage,
+        "claim_coverage_report": coverage,
+        "claim_conflict_report": conflict_report
+        or {"conflict_count": 0, "conflicts": []},
+    }
+
+
+def _write_plan_override_reports(
+    plan_reports: Path,
+    *,
+    guide_claim_bundle: dict,
+    mulligan_rules: list[dict] | None = None,
+    card_behavior_rows: list[dict] | None = None,
+    combo_rows: list[dict] | None = None,
+    globalvalue_rows: list[dict] | None = None,
+) -> None:
+    plan_reports.mkdir()
+    (plan_reports / "guide_claim_bundle.json").write_text(
+        json.dumps(guide_claim_bundle),
+        encoding="utf-8",
+    )
+    (plan_reports / "mulligan_plan_report.json").write_text(
+        json.dumps(
+            {
+                "deck_name": "Plan Override",
+                "rules": mulligan_rules or [],
+                "suppressed_rules": [],
+                "quality": {"status": "thin"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rows = card_behavior_rows or []
+    card_rows: dict[str, list[dict]] = {}
+    for row in rows:
+        card_rows.setdefault(str(row["card_id"]), []).append(row)
+    (plan_reports / "card_behavior_plan_report.json").write_text(
+        json.dumps(
+            {
+                "card_rows": card_rows,
+                "rows": rows,
+                "suppressed": [],
+                "option_resolution": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (plan_reports / "combo_plan_report.json").write_text(
+        json.dumps({"combos": combo_rows or [], "suppressed": []}),
+        encoding="utf-8",
+    )
+    (plan_reports / "global_values_authority_matrix.json").write_text(
+        json.dumps(
+            {
+                "allowed_step1_overlays": globalvalue_rows or [],
+                "blocked_until_runtime_evidence": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_minimal_source_documents(path: Path, card_id: str = "EX1_001") -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/guide",
+                        "source_title": "Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "targeting_rule",
+                                "cards": [card_id],
+                                "stance": "prefer_enemy_hero",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "12",
+                                "evidence_text_short": "Fixture runtime claim.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_validate_missing_package_returns_nonzero_json(tmp_path: Path, capsys):
     code = main(["validate", "--package", str(tmp_path / "missing"), "--json"])
 
@@ -717,6 +850,285 @@ def test_build_uses_computed_source_depth_status_for_operator_gating(tmp_path: P
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert operator_summary["runtime_apply_allowed"] is True
+
+
+def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004", "EX1_005"]
+    _write_cards_json(cards_json, card_ids)
+    source_documents = tmp_path / "source_documents.json"
+    _write_minimal_source_documents(source_documents)
+    plan_reports = tmp_path / "plan_reports"
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=card_ids,
+            claims=[
+                {
+                    "claim_id": "valid_runtime_target",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["EX1_001"],
+                    "stance": "prefer_enemy_hero",
+                    "runtime_block": "BeforePlayCardBonus",
+                    "runtime_value": "12",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "evidence_text_short": "Use the valid card as a runtime target.",
+                },
+                {
+                    "claim_id": "report_only_target",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["EX1_002"],
+                    "stance": "prefer_enemy_hero",
+                    "runtime_block": "BeforePlayCardBonus",
+                    "runtime_value": "12",
+                    "claim_readiness": "source_backed_static_semantics",
+                    "trust_ceiling": "report_only",
+                    "source_confidence": "high",
+                    "evidence_text_short": "A stale report-only target row.",
+                },
+                {
+                    "claim_id": "low_confidence_keep",
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["EX1_003"],
+                    "claim_readiness": "explicit_low_confidence",
+                    "trust_ceiling": "report_only",
+                    "source_confidence": "low",
+                    "evidence_text_short": "A stale low-confidence mulligan row.",
+                },
+                {
+                    "claim_id": "rejected_combo",
+                    "claim_kind": "combo_sequence",
+                    "cards": ["EX1_004", "EX1_005"],
+                    "sequence": ["EX1_004", "EX1_005"],
+                    "operator": ">>",
+                    "values": ["7", "9"],
+                    "claim_readiness": "contract_gap",
+                    "trust_ceiling": "report_only",
+                    "source_confidence": "low",
+                    "evidence_text_short": "A stale rejected combo row.",
+                },
+            ],
+        ),
+        mulligan_rules=[
+            {
+                "card": "EX1_003",
+                "selector_kind": "card",
+                "selector": "EX1_003",
+                "action": "hold",
+                "condition": "*",
+                "source_claim_ids": ["low_confidence_keep"],
+            }
+        ],
+        card_behavior_rows=[
+            {
+                "card_id": "EX1_001",
+                "surface_family": "CARDID.json",
+                "surface": "CardID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "meaningful_runtime_surface": True,
+                "source_claim_ids": ["valid_runtime_target"],
+            },
+            {
+                "card_id": "EX1_002",
+                "surface_family": "CARDID.json",
+                "surface": "CardID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "meaningful_runtime_surface": True,
+                "source_claim_ids": ["report_only_target"],
+            },
+        ],
+        combo_rows=[
+            {
+                "rule_id": "rejected_combo",
+                "cards": ["EX1_004", "EX1_005"],
+                "operator": ">>",
+                "values": ["7", "9"],
+                "condition": "*",
+                "source_claim_ids": ["rejected_combo"],
+            }
+        ],
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan Override Filter",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    deck_dir = out / "CustomConfig" / "plan_override_filter"
+    valid_card = json.loads((deck_dir / "EX1_001.json").read_text(encoding="utf-8"))
+    report_only_card = json.loads(
+        (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
+    )
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads(
+        (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    source_contract_audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
+    lifecycle_by_id = {
+        row["claim_id"]: row for row in source_contract_audit["claim_lifecycle_rows"]
+    }
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert valid_card["BeforePlayCardBonus"]["values"]
+    assert "BeforePlayCardBonus" not in report_only_card
+    assert not any(
+        row.get("mulligan") == "EX1_003" for row in mulligan["Mulligan"]["values"]
+    )
+    assert not (deck_dir / "Combo.json").exists()
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert lifecycle_by_id["report_only_target"]["runtime_eligibility"] == "report_only"
+    assert lifecycle_by_id["report_only_target"]["builder_or_router_decision"] != "emitted"
+    assert lifecycle_by_id["low_confidence_keep"]["builder_or_router_decision"] != "emitted"
+    assert lifecycle_by_id["rejected_combo"]["builder_or_router_decision"] != "emitted"
+
+
+def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    card_ids = ["EX1_001", "EX1_002"]
+    _write_cards_json(cards_json, card_ids)
+    source_documents = tmp_path / "source_documents.json"
+    _write_minimal_source_documents(source_documents)
+    plan_reports = tmp_path / "plan_reports"
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=card_ids,
+            conflict_report={
+                "conflict_count": 1,
+                "conflicts": [
+                    {
+                        "claim_ids": ["conflict_target"],
+                        "reason": "contradictory_targeting_rule",
+                    }
+                ],
+            },
+            claims=[
+                {
+                    "claim_id": "valid_runtime_target",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["EX1_001"],
+                    "stance": "prefer_enemy_hero",
+                    "runtime_block": "BeforePlayCardBonus",
+                    "runtime_value": "12",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "evidence_text_short": "Use the valid card as a runtime target.",
+                },
+                {
+                    "claim_id": "conflict_target",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["EX1_002"],
+                    "stance": "prefer_enemy_hero",
+                    "runtime_block": "BeforePlayCardBonus",
+                    "runtime_value": "12",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "evidence_text_short": "A stale quarantined target row.",
+                },
+            ],
+        ),
+        card_behavior_rows=[
+            {
+                "card_id": "EX1_001",
+                "surface_family": "CARDID.json",
+                "surface": "CardID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "meaningful_runtime_surface": True,
+                "source_claim_ids": ["valid_runtime_target"],
+            },
+            {
+                "card_id": "EX1_002",
+                "surface_family": "CARDID.json",
+                "surface": "CardID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "meaningful_runtime_surface": True,
+                "source_claim_ids": ["conflict_target"],
+            },
+        ],
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan Override Conflict Filter",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    deck_dir = out / "CustomConfig" / "plan_override_conflict_filter"
+    valid_card = json.loads((deck_dir / "EX1_001.json").read_text(encoding="utf-8"))
+    quarantined_card = json.loads(
+        (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
+    )
+    operator_summary = json.loads(
+        (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    source_contract_audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
+    lifecycle_by_id = {
+        row["claim_id"]: row for row in source_contract_audit["claim_lifecycle_rows"]
+    }
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert valid_card["BeforePlayCardBonus"]["values"]
+    assert "BeforePlayCardBonus" not in quarantined_card
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert lifecycle_by_id["conflict_target"]["quarantine_status"] == "quarantined"
+    assert lifecycle_by_id["conflict_target"]["builder_or_router_decision"] != "emitted"
+    assert (
+        lifecycle_by_id["conflict_target"]["final_runtime_effect"]
+        == "suppressed_quarantined_claim"
+    )
 
 
 def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):

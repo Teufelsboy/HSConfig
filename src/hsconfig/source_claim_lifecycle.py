@@ -5,7 +5,11 @@ from copy import deepcopy
 from typing import Any
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
-from hsconfig.source_document_model import normalized_claim_kind, surface_gate_decision
+from hsconfig.source_document_model import (
+    claim_can_lower_to_runtime,
+    normalized_claim_kind,
+    surface_gate_decision,
+)
 
 
 def build_initial_lifecycle_rows(
@@ -46,7 +50,9 @@ def build_initial_lifecycle_rows(
             "quarantine_status": "quarantined" if quarantine_reason else "clear",
             "quarantine_reason": quarantine_reason or "",
             "runtime_eligibility": _runtime_eligibility(
-                source_confidence, quarantine_reason
+                migrated_claim,
+                source_confidence,
+                quarantine_reason,
             ),
             "claim": migrated_claim,
         }
@@ -98,9 +104,15 @@ def lifecycle_claim_id(claim: Mapping[str, Any]) -> str:
     return str(value) if value else ""
 
 
-def _runtime_eligibility(source_confidence: str, quarantine_reason: str | None) -> str:
+def _runtime_eligibility(
+    claim: Mapping[str, Any],
+    source_confidence: str,
+    quarantine_reason: str | None,
+) -> str:
     if quarantine_reason:
         return "quarantined"
+    if not claim_can_lower_to_runtime(dict(claim)):
+        return "report_only"
     normalized_confidence = str(source_confidence or "unknown").strip().lower()
     if normalized_confidence in {
         "report_only",

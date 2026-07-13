@@ -169,6 +169,19 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             plan_claims,
             conflict_report=source_claim_conflict_report,
         )
+        (
+            mulligan_plan,
+            card_behavior_plan,
+            combo_plan,
+            global_values_authority_matrix,
+        ) = _filter_plan_reports_by_lifecycle(
+            initial_lifecycle_rows=initial_lifecycle_rows,
+            mulligan_plan=mulligan_plan,
+            card_behavior_plan=card_behavior_plan,
+            combo_plan=combo_plan,
+            global_values_authority_matrix=global_values_authority_matrix,
+            card_roles=card_roles,
+        )
     gameplan_contract = {
         **gameplan_contract,
         "guide_claim_bundle": guide_claim_bundle,
@@ -496,6 +509,147 @@ def _read_plan_report(plan_dir: Path, filename: str, fallback: dict[str, Any]) -
     if not isinstance(payload, dict):
         raise ValueError(f"Plan report must be an object: {path}")
     return payload
+
+
+def _filter_plan_reports_by_lifecycle(
+    *,
+    initial_lifecycle_rows: list[dict[str, Any]],
+    mulligan_plan: dict[str, Any],
+    card_behavior_plan: dict[str, Any],
+    combo_plan: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+    card_roles: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    allowed_claim_ids = {
+        "mulligan": _runtime_claim_ids_for_surface(
+            initial_lifecycle_rows,
+            "mulligan",
+            card_roles=card_roles,
+        ),
+        "cardid": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "cardid"),
+        "combo": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "combo"),
+        "globalvalues": _runtime_claim_ids_for_surface(
+            initial_lifecycle_rows,
+            "globalvalues",
+        ),
+    }
+    return (
+        _filter_mulligan_plan(mulligan_plan, allowed_claim_ids["mulligan"]),
+        _filter_card_behavior_plan(card_behavior_plan, allowed_claim_ids["cardid"]),
+        _filter_combo_plan(combo_plan, allowed_claim_ids["combo"]),
+        _filter_globalvalues_authority_matrix(
+            global_values_authority_matrix,
+            allowed_claim_ids["globalvalues"],
+        ),
+    )
+
+
+def _runtime_claim_ids_for_surface(
+    lifecycle_rows: list[dict[str, Any]],
+    surface: str,
+    *,
+    card_roles: dict[str, Any] | None = None,
+) -> set[str]:
+    claims = runtime_claims_for_surface(
+        lifecycle_rows,
+        surface,
+        card_roles=card_roles,
+    )
+    claim_ids: set[str] = set()
+    for claim in claims:
+        lifecycle = claim.get("_claim_lifecycle")
+        if isinstance(lifecycle, dict) and lifecycle.get("claim_id"):
+            claim_ids.add(str(lifecycle["claim_id"]))
+            continue
+        if claim.get("claim_id"):
+            claim_ids.add(str(claim["claim_id"]))
+    return claim_ids
+
+
+def _filter_mulligan_plan(
+    plan: dict[str, Any],
+    allowed_claim_ids: set[str],
+) -> dict[str, Any]:
+    result = dict(plan)
+    result["rules"] = _filter_runtime_rows_by_claim_ids(
+        plan.get("rules", []),
+        allowed_claim_ids,
+    )
+    return result
+
+
+def _filter_card_behavior_plan(
+    plan: dict[str, Any],
+    allowed_claim_ids: set[str],
+) -> dict[str, Any]:
+    result = dict(plan)
+    rows = _filter_runtime_rows_by_claim_ids(plan.get("rows", []), allowed_claim_ids)
+    card_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("card_id"):
+            continue
+        card_rows.setdefault(str(row["card_id"]), []).append(row)
+    result["rows"] = rows
+    result["card_rows"] = {
+        card_id: card_rows[card_id] for card_id in sorted(card_rows)
+    }
+    return result
+
+
+def _filter_combo_plan(
+    plan: dict[str, Any],
+    allowed_claim_ids: set[str],
+) -> dict[str, Any]:
+    result = dict(plan)
+    result["combos"] = _filter_runtime_rows_by_claim_ids(
+        plan.get("combos", []),
+        allowed_claim_ids,
+    )
+    return result
+
+
+def _filter_globalvalues_authority_matrix(
+    matrix: dict[str, Any],
+    allowed_claim_ids: set[str],
+) -> dict[str, Any]:
+    result = dict(matrix)
+    result["allowed_step1_overlays"] = _filter_runtime_rows_by_claim_ids(
+        matrix.get("allowed_step1_overlays", []),
+        allowed_claim_ids,
+    )
+    return result
+
+
+def _filter_runtime_rows_by_claim_ids(
+    rows: Any,
+    allowed_claim_ids: set[str],
+) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    filtered: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_claim_ids = _row_claim_ids(row)
+        if row_claim_ids and not row_claim_ids & allowed_claim_ids:
+            continue
+        filtered.append(row)
+    return filtered
+
+
+def _row_claim_ids(row: dict[str, Any]) -> set[str]:
+    claim_ids: set[str] = set()
+    for key in ("claim_id", "source_claim_id"):
+        value = row.get(key)
+        if value:
+            claim_ids.add(str(value))
+    for key in ("claim_ids", "source_claim_ids", "claim_refs"):
+        value = row.get(key, [])
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, list):
+            claim_ids.update(str(item) for item in value if str(item))
+    return claim_ids
 
 
 def _card_behavior_identity_links(gameplan_contract: dict[str, Any]) -> dict[str, Any]:

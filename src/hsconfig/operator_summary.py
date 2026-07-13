@@ -314,6 +314,8 @@ def _semantic_status(
     source_evidence = guide_source_depth.get("source_evidence", {}) if isinstance(guide_source_depth, dict) else {}
     source_evidence_warnings = _int_value(source_evidence.get("warnings_count", 0))
 
+    if source_depth_status == "needs_more_research" and source_evidence_warnings == 0:
+        return "NEEDS_MORE_RESEARCH"
     if (
         source_depth_status == "source_backed"
         and claim_count > 0
