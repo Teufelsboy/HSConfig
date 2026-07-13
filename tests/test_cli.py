@@ -856,7 +856,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
-    card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004", "EX1_005"]
+    card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004", "EX1_005", "EX1_006"]
     _write_cards_json(cards_json, card_ids)
     source_documents = tmp_path / "source_documents.json"
     _write_minimal_source_documents(source_documents)
@@ -940,6 +940,13 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
                 "meaningful_runtime_surface": True,
                 "source_claim_ids": ["report_only_target"],
             },
+            {
+                "card_id": "EX1_006",
+                "surface_family": "CARDID.json",
+                "surface": "CardID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "meaningful_runtime_surface": True,
+            },
         ],
         combo_rows=[
             {
@@ -981,6 +988,9 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     report_only_card = json.loads(
         (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
     )
+    unreferenced_card = json.loads(
+        (deck_dir / "EX1_006.json").read_text(encoding="utf-8")
+    )
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     operator_summary = json.loads(
         (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
@@ -996,6 +1006,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert payload["status"] == "passed"
     assert valid_card["BeforePlayCardBonus"]["values"]
     assert "BeforePlayCardBonus" not in report_only_card
+    assert "BeforePlayCardBonus" not in unreferenced_card
     assert not any(
         row.get("mulligan") == "EX1_003" for row in mulligan["Mulligan"]["values"]
     )
