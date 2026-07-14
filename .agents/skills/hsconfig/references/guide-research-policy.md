@@ -105,6 +105,14 @@ is diagnostic; operator_summary.json remains the only normal apply authority.
 Quarantined claims suppress unsafe runtime rows, stay visible in reports, and do
 not block load-safe valid packages.
 
+## Source Contract Boundary
+
+`claim_kind`, the source contract matrix, and the surface gate decide whether source evidence may lower to runtime config. Effect relevance, guide importance, and archetype value do not bypass that chain.
+
+`operator_summary.json` remains the normal apply authority. Source-contract reports are diagnostic only. Warnings are follow-up work, not runtime apply blockers.
+
+normal HSConfig output must not emit `Presume.json` or `Concede.json`.
+
 Optional CardID lowering fields for card-specific claims:
 
 - `runtime_block`: documented CardID block to use, for example

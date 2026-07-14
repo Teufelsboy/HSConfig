@@ -74,6 +74,28 @@ def test_skill_reference_mentions_claim_lifecycle_and_no_block_contract():
     assert "source_contract_audit.json" in text
 
 
+def test_skill_text_names_source_contract_spine_without_runtime_surface_expansion():
+    skill = (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    reference = (
+        ROOT
+        / ".agents"
+        / "skills"
+        / "hsconfig"
+        / "references"
+        / "guide-research-policy.md"
+    ).read_text(encoding="utf-8")
+    combined = f"{skill}\n{reference}"
+
+    assert "`claim_kind`" in combined
+    assert "source contract matrix" in combined
+    assert "surface gate" in combined
+    assert "operator_summary.json remains the normal apply authority" in combined
+    assert "Warnings are follow-up work, not runtime apply blockers." in combined
+    assert "normal HSConfig output must not emit `Presume.json` or `Concede.json`" in combined
+
+
 def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
     operator_readme = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
     guide_policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
