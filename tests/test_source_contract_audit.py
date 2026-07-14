@@ -325,6 +325,44 @@ def test_initial_source_ineligible_runtime_claim_is_not_seen_by_builder_with_sou
     assert row["final_runtime_effect"] == "not_emitted_by_builder_or_router"
 
 
+def test_initial_runtime_evidence_required_claim_stays_suppressed_diagnostic():
+    claims = [
+        {
+            "claim_id": "numeric_runtime_evidence",
+            "claim_kind": "globalvalue_numeric_tuning",
+            "source_confidence": "guide_backed",
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "Tune LowHpBoardValuePenalty after runtime evidence.",
+        }
+    ]
+    initial_lifecycle_rows = build_initial_lifecycle_rows(claims)
+
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={"deck_name": "FixtureDeck", "cards": []},
+        guide_claim_bundle={"claims": claims},
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={"cards": {}},
+        initial_lifecycle_rows=initial_lifecycle_rows,
+    )
+
+    row = report["claim_lifecycle_rows"][0]
+
+    assert initial_lifecycle_rows[0]["runtime_eligibility"] == "runtime_candidate"
+    assert row["policy_lane"] == "runtime_evidence_required"
+    assert row["builder_or_router_decision"] == "suppressed"
+    assert row["suppressed_reason"] == "runtime_evidence_required"
+    assert row["first_missing_link"] == "runtime_evidence"
+    assert row["operator_impact"] == "diagnostic_only"
+    assert row["final_runtime_effect"] == "suppressed_runtime_claim"
+
+
 def test_initial_policy_report_only_claim_keeps_claim_kind_policy_reason():
     claims = [
         {

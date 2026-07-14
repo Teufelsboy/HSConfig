@@ -625,12 +625,20 @@ def _build_claim_lifecycle_rows_from_initial(
         quarantine_status = str(initial_row.get("quarantine_status") or "clear")
         quarantine_reason = str(initial_row.get("quarantine_reason") or "")
         runtime_eligibility = str(initial_row.get("runtime_eligibility") or "")
+        policy_lane = str(
+            initial_row.get("policy_lane") or claim_row.get("policy_lane", "")
+        )
         if quarantine_status == "quarantined":
             decision = "suppressed"
             suppressed_reason = quarantine_reason or "source_claim_conflict"
             first_missing_link = "source_claim_conflict"
             final_runtime_effect = "suppressed_quarantined_claim"
-        elif str(initial_row.get("policy_lane") or claim_row.get("policy_lane", "")) == "report_only":
+        elif policy_lane == "runtime_evidence_required":
+            decision = "suppressed"
+            suppressed_reason = "runtime_evidence_required"
+            first_missing_link = "runtime_evidence"
+            final_runtime_effect = "suppressed_runtime_claim"
+        elif policy_lane == "report_only":
             decision = "not_seen_by_builder"
             suppressed_reason = "claim_kind_policy"
             first_missing_link = "claim_kind_policy"
@@ -669,9 +677,7 @@ def _build_claim_lifecycle_rows_from_initial(
                 "claim_kind": str(
                     initial_row.get("claim_kind") or claim_row.get("claim_kind", "")
                 ),
-                "policy_lane": str(
-                    initial_row.get("policy_lane") or claim_row.get("policy_lane", "")
-                ),
+                "policy_lane": policy_lane,
                 "surface_gate_decision": "allowed" if gate.get("allowed") else "rejected",
                 "surface_gate_reason": str(gate.get("reason", "")),
                 "builder_or_router_decision": decision,
