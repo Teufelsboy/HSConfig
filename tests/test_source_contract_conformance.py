@@ -136,6 +136,22 @@ def test_conformance_markdown_is_compact_and_diagnostic_only():
     assert "operator_summary.json remains the apply authority" in markdown
 
 
+def test_rendered_conformance_snapshot_is_complete_reference_material():
+    snapshot = build_source_contract_conformance_snapshot()
+    markdown = render_source_contract_conformance_markdown(snapshot)
+
+    for claim_kind in SUPPORTED_ATOMIC_CLAIM_KINDS:
+        assert f"| {claim_kind} |" in markdown
+
+    assert "Diagnostic only" in markdown
+    assert "operator_summary.json remains the apply authority" in markdown
+    assert "## Contract Spine" in markdown
+    assert "## Start-of-Game Mulligan Boundary" in markdown
+    assert "start_of_game_effect_does_not_require_opening_hand" in markdown
+    assert "runtime_apply_allowed" not in markdown
+    assert "technical_status" not in markdown
+
+
 def test_conformance_markdown_exposes_combo_builder_router_outcomes():
     markdown = render_source_contract_conformance_markdown(
         build_source_contract_conformance_snapshot()
