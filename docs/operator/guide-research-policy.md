@@ -107,6 +107,8 @@ documented and identity is resolved:
 
 No-silent-default-only contract: a valid package must not hide baseline-only runtime behavior. Default-only surfaces are reported as visible quality debt through `operator_summary.json`, `default_only_runtime_surface_details`, and `source_to_runtime_explainability.json`; they are not an apply blocker unless the technical package is invalid. operator_summary.json remains the only normal apply authority.
 
+The first compact check is `operator_summary.json.surface_status_ledger`. Every listed surface must expose whether it is source-backed, policy-backed, static-semantics-backed, warning-only, suppressed, or default-only. `default_only_runtime_surfaces` remains the compatibility list, but the ledger is the preferred operator view because it shows every surface, including non-default surfaces. Ledger rows are diagnostic-only and must keep `apply_blocking=false`.
+
 ## Source-To-Runtime Decision Rule
 
 Source truth becomes runtime config only through `claim_kind`, the source contract matrix, and the surface gate for the target runtime file. Guide importance, archetype value, or effect relevance do not bypass this chain.
