@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
-from hsconfig.mechanic_support import mechanic_lowering_policy
 
 
 SEMANTIC_ARCHETYPE_FIXTURES = [
@@ -16,7 +15,18 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
+            {
+                "claim_id": "claim_db9a1c18eb5a",
+                "claim_kind": "mechanic_usage",
+                "card_id": "SECRET_001",
+                "mechanic": "secret",
+                "evidence_text_short": "Secrets are part of the gameplan.",
+                "source_confidence": "guide_backed",
+                "expected_runtime_block": "BeforePlayCardBonus",
+                "expected_condition": "*",
+                "expected_value": "6",
+                "expected_comment": "SyntheticSecretHunter: SECRET_001_use_secret_according_to_card_text",
+            },
         ],
     },
     {
@@ -27,7 +37,18 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
+            {
+                "claim_id": "claim_325924175cfb",
+                "claim_kind": "mechanic_usage",
+                "card_id": "LOCATION_001",
+                "mechanic": "location",
+                "evidence_text_short": "Location supports board plan.",
+                "source_confidence": "guide_backed",
+                "expected_runtime_block": "BeforePlayCardBonus",
+                "expected_condition": "*",
+                "expected_value": "6",
+                "expected_comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text",
+            },
         ],
     },
     {
@@ -87,6 +108,9 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
     source_audit = json.loads(
         (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    gameplan_contract = json.loads(
+        (reports / "gameplan_contract.json").read_text(encoding="utf-8")
+    )
     runtime_cards = _runtime_card_files(deck_dir)
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     hold_ids = {
@@ -98,8 +122,10 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
     fixture_card_ids = {card["card_id"] for card in fixture["cards"]}
     assert set(source_gap["card_rows"]) == fixture_card_ids
     assert set(runtime_cards) == fixture_card_ids
+    assert set(gameplan_contract["cards"]) == fixture_card_ids
     for card_id, card_file in runtime_cards.items():
         assert card_file["GameCardId"] == card_id
+        assert card_id in gameplan_contract["cards"]
 
     expected_keep_ids = {
         claim["card_id"]
@@ -117,34 +143,58 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
 
     for claim in fixture["claims"]:
         card_id = claim["card_id"]
+        claim_id = claim["claim_id"]
         card_row = source_gap["card_rows"][card_id]
         lifecycle_rows = _claim_lifecycle_rows_for_card(
-            fixture, card_id, claim["claim_id"], source_gap, source_audit
+            fixture, card_id, claim_id, source_gap, source_audit
         )
         assert card_row["source_claim_ids"]
-        assert lifecycle_rows, f"no lifecycle provenance for {claim['claim_id']}"
-        assert all(row["claim_id"] == claim["claim_id"] for row in lifecycle_rows)
+        assert lifecycle_rows, f"no lifecycle provenance for {claim_id}"
+        assert all(row["claim_id"] == claim_id for row in lifecycle_rows)
         assert all(row["claim_kind"] == claim["claim_kind"] for row in lifecycle_rows)
-        matching_rows = lifecycle_rows
+        assert claim_id in gameplan_contract["cards"][card_id]["source_claim_ids"]
+        assert any(
+            source_claim["claim_id"] == claim_id
+            for source_claim in gameplan_contract["source_claims"]
+        )
 
-        if claim["claim_kind"] == "mechanic_usage":
+        if claim["claim_kind"] == "mulligan_keep":
+            matching_rules = [
+                rule
+                for rule in gameplan_contract["mulligan_plan"]["rules"]
+                if rule.get("card") == card_id
+                and rule.get("action") == "hold"
+                and (
+                    rule.get("claim_id") == claim_id
+                    or claim_id in rule.get("source_claim_ids", [])
+                )
+            ]
+            assert matching_rules, f"no generated Mulligan rule for {claim_id}"
+            assert any(
+                row["builder_or_router_decision"] == "emitted"
+                and "Mulligan.json" in row["emitted_files"]
+                and row["final_runtime_effect"] == "emitted_runtime_row"
+                for row in lifecycle_rows
+            )
+        elif claim["claim_kind"] == "mechanic_usage":
             assert any(
                 f"{card_id}.json" in row["emitted_files"]
                 and row["builder_or_router_decision"] == "emitted"
-                for row in matching_rows
+                and row["final_runtime_effect"] == "emitted_runtime_row"
+                for row in lifecycle_rows
             )
-            policy = mechanic_lowering_policy(claim["mechanic"])
-            runtime_block = policy["default_block"]
-            assert runtime_block is not None
+            assert any(
+                row.get("claim_id") == claim_id
+                and claim_id in row.get("source_claim_ids", [])
+                for row in gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
+            )
+            runtime_block = claim["expected_runtime_block"]
             assert runtime_block in runtime_cards[card_id]
             runtime_values = runtime_cards[card_id][runtime_block]["values"]
             expected_row = {
-                "condition": policy["default_condition"],
-                "value": policy["default_value"],
-                "comment": (
-                    f"{fixture['deck_name']}: {card_id}_"
-                    f"{policy['default_intent']}"
-                ),
+                "condition": claim["expected_condition"],
+                "value": claim["expected_value"],
+                "comment": claim["expected_comment"],
             }
             matching_runtime_rows = [
                 row
@@ -161,16 +211,32 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 f"{expected_row!r}; got {runtime_values!r}"
             )
         elif claim["claim_kind"] == "discover_choice":
-            assert all(not row["emitted_files"] for row in matching_rows)
+            assert all(not row["emitted_files"] for row in lifecycle_rows)
             assert all(
                 row["final_runtime_effect"] != "emitted_runtime_row"
-                for row in matching_rows
+                for row in lifecycle_rows
             )
+            discover_is_unsupported = any(
+                item["claim_id"] == claim_id
+                for item in gameplan_contract["unsupported_or_review_only_claims"]
+            )
+            discover_has_audit_route = any(
+                row["claim_id"] == claim_id
+                and row["final_runtime_effect"] != "emitted_runtime_row"
+                for row in lifecycle_rows
+            )
+            assert discover_is_unsupported or discover_has_audit_route
             assert "OnChooseOneCardBonus" not in runtime_cards[card_id]
         elif claim["claim_kind"] == "hero_power_transform":
             assert any(
                 f"{card_id}.json" in row["emitted_files"]
-                for row in matching_rows
+                and row["final_runtime_effect"] == "emitted_runtime_row"
+                for row in lifecycle_rows
+            )
+            assert any(
+                row.get("claim_id") == claim_id
+                and claim_id in row.get("source_claim_ids", [])
+                for row in gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
             )
             assert "BeforeUseHeroPowerBonus" in runtime_cards[card_id]
             assert card_id not in hold_ids
@@ -219,6 +285,7 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
             "--json",
         ]
     )
+    assert exit_code == 0
 
     reports = out / "reports"
     operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
@@ -233,7 +300,6 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
         (reports / "global_values_key_profile_report.json").read_text(encoding="utf-8")
     )
 
-    assert exit_code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_allowed"] is True
