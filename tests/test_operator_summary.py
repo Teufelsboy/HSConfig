@@ -2272,6 +2272,17 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
             "status": "default_only",
             "card_count_with_default_only_risk": 1,
             "example_cards": ["CARD_001 Fixture Card"],
+            "example_card_details": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Fixture Card",
+                    "closure_lane": "baseline_only_visible",
+                    "first_missing_link": None,
+                    "next_source_action": "none",
+                }
+            ],
+            "first_missing_link": None,
+            "next_source_action": "none",
             "operator_impact": "diagnostic_only",
             "apply_blocking": False,
         }
@@ -2399,3 +2410,68 @@ def test_operator_summary_no_default_only_verdict_not_applicable_for_invalid_pac
         "blocking": False,
         "next_report_to_open": "reports/validation_report.json",
     }
+
+
+def test_default_only_surface_details_include_missing_link_and_card_details():
+    summary = build_operator_summary(
+        deck_name="Thin Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        card_behavior_plan_report={
+            "rows": [
+                {
+                    "card_id": "CARD_A",
+                    "meaningful_runtime_surface": True,
+                    "behavior_block": {"BeforePlayCardBonus": {"values": []}},
+                }
+            ]
+        },
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+        source_to_runtime_explainability_report={
+            "card_rows": [
+                {
+                    "card_id": "CARD_MISSING",
+                    "name": "Missing Keep",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "default_only_risk": True,
+                        "first_missing_link": "opening_hand_mulligan_intent",
+                        "next_source_action": "add_explicit_opening_hand_mulligan_source",
+                    },
+                }
+            ]
+        },
+    )
+
+    assert summary["default_only_runtime_surface_details"] == [
+        {
+            "surface": "mulligan",
+            "status": "default_only",
+            "card_count_with_default_only_risk": 1,
+            "example_cards": ["CARD_MISSING Missing Keep"],
+            "example_card_details": [
+                {
+                    "card_id": "CARD_MISSING",
+                    "name": "Missing Keep",
+                    "closure_lane": "baseline_only_visible",
+                    "first_missing_link": "opening_hand_mulligan_intent",
+                    "next_source_action": "add_explicit_opening_hand_mulligan_source",
+                }
+            ],
+            "first_missing_link": "opening_hand_mulligan_intent",
+            "next_source_action": "add_explicit_opening_hand_mulligan_source",
+            "operator_impact": "diagnostic_only",
+            "apply_blocking": False,
+        }
+    ]

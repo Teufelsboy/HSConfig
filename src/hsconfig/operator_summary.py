@@ -367,7 +367,14 @@ def _default_only_runtime_surface_details(
     if not isinstance(surfaces, dict):
         return []
 
-    risky_cards = _default_only_risk_cards(source_to_runtime_explainability_report)
+    risky_card_details = _default_only_risk_card_details(
+        source_to_runtime_explainability_report
+    )
+    risky_cards = [
+        f'{row["card_id"]} {row["name"]}'.strip()
+        for row in risky_card_details
+    ]
+    first_detail = risky_card_details[0] if risky_card_details else {}
     details: list[dict[str, Any]] = []
     for name, row in sorted(surfaces.items()):
         if not isinstance(row, dict) or row.get("default_only") is not True:
@@ -378,6 +385,9 @@ def _default_only_runtime_surface_details(
                 "status": "default_only",
                 "card_count_with_default_only_risk": len(risky_cards),
                 "example_cards": risky_cards[:5],
+                "example_card_details": risky_card_details[:5],
+                "first_missing_link": first_detail.get("first_missing_link"),
+                "next_source_action": first_detail.get("next_source_action"),
                 "operator_impact": "diagnostic_only",
                 "apply_blocking": False,
             }
@@ -385,12 +395,12 @@ def _default_only_runtime_surface_details(
     return details
 
 
-def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
+def _default_only_risk_card_details(report: dict[str, Any]) -> list[dict[str, Any]]:
     rows = report.get("card_rows", []) if isinstance(report, dict) else []
     if not isinstance(rows, list):
         return []
 
-    result: list[str] = []
+    result: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -399,8 +409,23 @@ def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
             continue
         card_id = str(row.get("card_id", "")).strip()
         name = str(row.get("name", "")).strip()
-        result.append(f"{card_id} {name}".strip())
-    return sorted(result)
+        result.append(
+            {
+                "card_id": card_id,
+                "name": name,
+                "closure_lane": str(closure.get("lane", "")),
+                "first_missing_link": closure.get("first_missing_link"),
+                "next_source_action": closure.get("next_source_action"),
+            }
+        )
+    return sorted(result, key=lambda item: (str(item["card_id"]), str(item["name"])))
+
+
+def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
+    return [
+        f'{row["card_id"]} {row["name"]}'.strip()
+        for row in _default_only_risk_card_details(report)
+    ]
 
 
 def _string_list(value: Any) -> list[str]:
