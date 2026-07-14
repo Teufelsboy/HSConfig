@@ -386,3 +386,44 @@ def test_suppressed_claim_rows_prefer_lifecycle_authority_per_claim_id():
             "operator_impact": "diagnostic_only",
         }
     ]
+
+
+def test_suppressed_claim_rows_include_report_only_not_seen_lifecycle_rows():
+    report = build_source_claim_gap_report(
+        deck_name="Report Only Claim",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "report_only_claim",
+                    "claim_kind": "archetype",
+                    "reason": "requires_supported_cardid_surface",
+                }
+            ],
+        },
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+        source_contract_audit={
+            "claim_lifecycle_rows": [
+                {
+                    "claim_id": "report_only_claim",
+                    "claim_kind": "archetype",
+                    "builder_or_router_decision": "not_seen_by_builder",
+                    "suppressed_reason": "no_runtime_builder",
+                    "first_missing_link": "claim_kind_policy",
+                }
+            ]
+        },
+    )
+
+    assert report["suppressed_claim_rows"] == [
+        {
+            "claim_id": "report_only_claim",
+            "claim_kind": "archetype",
+            "builder_or_router_decision": "not_seen_by_builder",
+            "first_missing_link": "claim_kind_policy",
+            "operator_impact": "diagnostic_only",
+        }
+    ]

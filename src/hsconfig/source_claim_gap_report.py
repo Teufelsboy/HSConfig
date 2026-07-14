@@ -243,7 +243,10 @@ def _suppressed_claim_rows(
     for row in source_contract_audit.get("claim_lifecycle_rows", []):
         if not isinstance(row, dict):
             continue
-        if row.get("builder_or_router_decision") != "suppressed":
+        if row.get("builder_or_router_decision") not in {
+            "suppressed",
+            "not_seen_by_builder",
+        }:
             continue
         suppressed_row = _suppressed_claim_row(row)
         rows_by_claim_id[suppressed_row["claim_id"]] = suppressed_row
@@ -254,7 +257,9 @@ def _suppressed_claim_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "claim_id": str(row.get("claim_id", "")),
         "claim_kind": str(row.get("claim_kind", "")),
-        "builder_or_router_decision": "suppressed",
+        "builder_or_router_decision": str(
+            row.get("builder_or_router_decision") or "suppressed"
+        ),
         "first_missing_link": normalize_first_missing_link(row),
         "operator_impact": "diagnostic_only",
     }
