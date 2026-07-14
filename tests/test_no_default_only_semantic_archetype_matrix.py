@@ -14,8 +14,8 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
             {"card_id": "TEMPO_001", "name": "Tempo One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage.", "mechanics": ["BATTLECRY"]},
         ],
         "claims": [
-            {"claim_id": "tempo_keep", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
-            {"claim_id": "secret_visible", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -25,8 +25,8 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
             {"card_id": "BOARD_001", "name": "Board One", "cost": 1, "type": "MINION", "text": "Summon a Treant."},
         ],
         "claims": [
-            {"claim_id": "board_keep", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
-            {"claim_id": "location_visible", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -36,8 +36,8 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
             {"card_id": "BURN_001", "name": "Burn One", "cost": 1, "type": "SPELL", "text": "Deal damage."},
         ],
         "claims": [
-            {"claim_id": "burn_keep", "claim_kind": "mulligan_keep", "card_id": "BURN_001", "evidence_text_short": "Keep cheap burn.", "source_confidence": "guide_backed"},
-            {"claim_id": "discover_report_only", "claim_kind": "discover_choice", "card_id": "DISCOVER_001", "evidence_text_short": "Prefer damage from Discover.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_aafc09aad784", "claim_kind": "mulligan_keep", "card_id": "BURN_001", "evidence_text_short": "Keep cheap burn.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_2ba9a2be2581", "claim_kind": "discover_choice", "card_id": "DISCOVER_001", "evidence_text_short": "Prefer damage from Discover.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -47,8 +47,8 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
             {"card_id": "LOW_CURVE_001", "name": "Low Curve One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage."},
         ],
         "claims": [
-            {"claim_id": "highlander_effect", "claim_kind": "hero_power_transform", "card_id": "HIGHLANDER_001", "semantic_qualifiers": {"timing": "start_of_game", "zone_scope": "deck"}, "evidence_text_short": "The deckbuilding effect matters.", "source_confidence": "guide_backed"},
-            {"claim_id": "curve_keep", "claim_kind": "mulligan_keep", "card_id": "LOW_CURVE_001", "evidence_text_short": "Keep the low curve opener.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_f4040dfcd9af", "claim_kind": "hero_power_transform", "card_id": "HIGHLANDER_001", "semantic_qualifiers": {"timing": "start_of_game", "zone_scope": "deck"}, "evidence_text_short": "The deckbuilding effect matters.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_377b7a739f09", "claim_kind": "mulligan_keep", "card_id": "LOW_CURVE_001", "evidence_text_short": "Keep the low curve opener.", "source_confidence": "guide_backed"},
         ],
     },
 ]
@@ -58,23 +58,24 @@ def _runtime_card_files(deck_dir: Path) -> dict[str, dict]:
     return {
         path.stem: json.loads(path.read_text(encoding="utf-8"))
         for path in deck_dir.glob("*.json")
-        if path.name not in {"GlobalValues.json", "Mulligan.json"}
+        if path.name not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
     }
 
 
 def _claim_lifecycle_rows_for_card(
-    fixture: dict, card_id: str, source_gap: dict, source_audit: dict
+    fixture: dict, card_id: str, claim_id: str, source_gap: dict, source_audit: dict
 ) -> list[dict]:
     source_claim_ids = set(source_gap["card_rows"][card_id].get("source_claim_ids", []))
-    expected_kinds = {
-        claim["claim_kind"]
+    fixture_claim = next(
+        claim
         for claim in fixture["claims"]
-        if claim["card_id"] == card_id
-    }
+        if claim["card_id"] == card_id and claim["claim_id"] == claim_id
+    )
+    assert fixture_claim["claim_id"] in source_claim_ids
     return [
         row
         for row in source_audit["claim_lifecycle_rows"]
-        if row["claim_id"] in source_claim_ids and row["claim_kind"] in expected_kinds
+        if row["claim_id"] == fixture_claim["claim_id"]
     ]
 
 
@@ -117,14 +118,13 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
         card_id = claim["card_id"]
         card_row = source_gap["card_rows"][card_id]
         lifecycle_rows = _claim_lifecycle_rows_for_card(
-            fixture, card_id, source_gap, source_audit
+            fixture, card_id, claim["claim_id"], source_gap, source_audit
         )
         assert card_row["source_claim_ids"]
         assert lifecycle_rows, f"no lifecycle provenance for {claim['claim_id']}"
-        matching_rows = [
-            row for row in lifecycle_rows if row["claim_kind"] == claim["claim_kind"]
-        ]
-        assert matching_rows, f"claim kind was not preserved for {claim['claim_id']}"
+        assert all(row["claim_id"] == claim["claim_id"] for row in lifecycle_rows)
+        assert all(row["claim_kind"] == claim["claim_kind"] for row in lifecycle_rows)
+        matching_rows = lifecycle_rows
 
         if claim["claim_kind"] == "mechanic_usage":
             assert any(
@@ -139,10 +139,7 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 row["final_runtime_effect"] != "emitted_runtime_row"
                 for row in matching_rows
             )
-            assert not any(
-                "OnChooseOneCardBonus" in runtime_cards[card_id]
-                for _ in matching_rows
-            )
+            assert "OnChooseOneCardBonus" not in runtime_cards[card_id]
         elif claim["claim_kind"] == "hero_power_transform":
             assert any(
                 f"{card_id}.json" in row["emitted_files"]
