@@ -349,6 +349,14 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
     assert operator["runtime_apply_allowed"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["default_only_runtime_surfaces"] == []
+    assert all(
+        row["status"] != "default_only"
+        for row in operator["surface_status_ledger"]
+    )
+    assert all(
+        row["apply_blocking"] is False
+        for row in operator["surface_status_ledger"]
+    )
     assert operator["mulligan_policy_status"]["default_only"] is False
     assert (deck_dir / "GlobalValues.json").is_file()
     assert (deck_dir / "Mulligan.json").is_file()

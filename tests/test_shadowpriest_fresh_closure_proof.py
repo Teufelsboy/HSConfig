@@ -100,6 +100,20 @@ def test_fresh_shadowpriest_package_has_complete_closure_and_darkbishop_boundary
 
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["default_only_runtime_surface_details"] == []
+    surface_rows = {row["surface"]: row for row in operator["surface_status_ledger"]}
+    assert surface_rows["mulligan"]["status"] in {
+        "source_backed",
+        "policy_backed",
+        "static_semantics_backed",
+    }
+    assert all(
+        row["status"] != "default_only"
+        for row in operator["surface_status_ledger"]
+    )
+    assert all(
+        row["operator_impact"] == "diagnostic_only"
+        for row in operator["surface_status_ledger"]
+    )
 
     mulligan_text = json.dumps(mulligan, sort_keys=True)
     assert DARKBISHOP_CARD_ID not in mulligan_text
