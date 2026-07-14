@@ -244,6 +244,10 @@ def build_operator_summary(
         "default_only_runtime_surfaces": _default_only_runtime_surfaces(
             config_usefulness
         ),
+        "no_default_only_verdict": _no_default_only_verdict(
+            technical_status,
+            config_usefulness,
+        ),
         "default_only_runtime_surface_details": (
             _default_only_runtime_surface_details(
                 config_usefulness,
@@ -319,6 +323,36 @@ def _default_only_runtime_surfaces(config_usefulness: dict[str, Any]) -> list[st
         if isinstance(row, dict) and row.get("default_only") is True:
             default_only.append(str(name))
     return default_only
+
+
+def _no_default_only_verdict(
+    technical_status: str,
+    config_usefulness: dict[str, Any],
+) -> dict[str, Any]:
+    surfaces = _default_only_runtime_surfaces(config_usefulness)
+    if technical_status != "VALID_PACKAGE":
+        return {
+            "status": "not_applicable",
+            "default_only_runtime_surface_count": 0,
+            "runtime_permission_impact": "none",
+            "blocking": False,
+            "next_report_to_open": "reports/validation_report.json",
+        }
+    if not surfaces:
+        return {
+            "status": "none_detected",
+            "default_only_runtime_surface_count": 0,
+            "runtime_permission_impact": "none",
+            "blocking": False,
+            "next_report_to_open": "reports/operator_summary.json",
+        }
+    return {
+        "status": "visible_warning",
+        "default_only_runtime_surface_count": len(surfaces),
+        "runtime_permission_impact": "none",
+        "blocking": False,
+        "next_report_to_open": "reports/operator_summary.json",
+    }
 
 
 def _default_only_runtime_surface_details(

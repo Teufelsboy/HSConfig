@@ -2279,3 +2279,123 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
     assert summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
+
+
+def test_operator_summary_no_default_only_verdict_none_detected():
+    summary = build_operator_summary(
+        deck_name="Clean Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "CARD_A",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={
+            "changed_keys": ["FirstTurnValueWeight"],
+            "unchanged_keys": [],
+        },
+        generated_files=[
+            "CustomConfig/cleandeck/GlobalValues.json",
+            "CustomConfig/cleandeck/Mulligan.json",
+        ],
+    )
+
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == []
+    assert summary["no_default_only_verdict"] == {
+        "status": "none_detected",
+        "default_only_runtime_surface_count": 0,
+        "runtime_permission_impact": "none",
+        "blocking": False,
+        "next_report_to_open": "reports/operator_summary.json",
+    }
+
+
+def test_operator_summary_no_default_only_verdict_visible_warning():
+    summary = build_operator_summary(
+        deck_name="Thin Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        config_readiness_summary={
+            "total_cards": 3,
+            "runtime_emitted": 1,
+            "report_only_supported": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        card_behavior_plan_report={
+            "rows": [
+                {
+                    "card_id": "CARD_A",
+                    "meaningful_runtime_surface": True,
+                    "behavior_block": {"BeforePlayCardBonus": {"values": []}},
+                }
+            ]
+        },
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+        generated_files=[
+            "CustomConfig/thindeck/GlobalValues.json",
+            "CustomConfig/thindeck/Mulligan.json",
+            "CustomConfig/thindeck/CARD_A.json",
+        ],
+    )
+
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["no_default_only_verdict"] == {
+        "status": "visible_warning",
+        "default_only_runtime_surface_count": 1,
+        "runtime_permission_impact": "none",
+        "blocking": False,
+        "next_report_to_open": "reports/operator_summary.json",
+    }
+
+
+def test_operator_summary_no_default_only_verdict_not_applicable_for_invalid_package():
+    summary = build_operator_summary(
+        deck_name="Invalid Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "failed", "errors": ["bad json"]},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        generated_files=[],
+    )
+
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["no_default_only_verdict"] == {
+        "status": "not_applicable",
+        "default_only_runtime_surface_count": 0,
+        "runtime_permission_impact": "none",
+        "blocking": False,
+        "next_report_to_open": "reports/validation_report.json",
+    }
