@@ -92,6 +92,7 @@ INVARIANT_EVIDENCE = {
         "spine_rows_with_apply_authority_fields",
         "conformance_apply_authority_fields_present",
         "conformance_operator_gate_impact",
+        "surface_status_ledger",
     ),
     "claim_kind_surface_policy_complete": (
         "policy_missing_claim_kinds",

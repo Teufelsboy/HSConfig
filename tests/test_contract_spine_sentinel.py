@@ -437,3 +437,16 @@ def test_contract_invariants_flag_non_diagnostic_conformance_gate_impact(monkeyp
     assert invariant["authority"] == "diagnostic_only"
     assert invariant["apply_blocking"] is False
     assert "conformance_operator_gate_impact" in invariant["failing_checks"]
+
+
+def test_contract_invariants_note_surface_status_ledger_is_diagnostic_only():
+    report = build_contract_spine_sentinel_report()
+    invariant = report["contract_invariants"]["diagnostics_are_non_authoritative"]
+
+    assert invariant["status"] == "clean"
+    assert invariant["authority"] == "diagnostic_only"
+    assert invariant["apply_blocking"] is False
+    assert "surface_status_ledger" in invariant["evidence"]
+    assert report["checks"]["report_ownership_gate_files"] == [
+        "reports/operator_summary.json"
+    ]
