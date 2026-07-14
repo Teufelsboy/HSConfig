@@ -738,6 +738,37 @@ def test_warning_only_mechanic_with_explicit_supported_block_stays_suppressed_un
     ]
 
 
+def test_report_only_modern_mechanics_ignore_explicit_runtime_block_hints():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": f"claim_{mechanic}_explicit",
+                "claim_kind": "mechanic_usage",
+                "cards": [f"CARD_{mechanic.upper()}"],
+                "mechanic": mechanic,
+                "runtime_block": "BeforePlayCardBonus",
+                "claim_confidence": "high",
+            }
+            for mechanic in ("imbue", "forge", "excavate")
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert {
+        (row["claim_id"], row["mechanic"], row["lowering_policy"], row["reason"])
+        for row in routed["suppressed"]
+    } == {
+        (
+            f"claim_{mechanic}_explicit",
+            mechanic,
+            "report_only",
+            f"{mechanic}_has_no_documented_runtime_block",
+        )
+        for mechanic in ("imbue", "forge", "excavate")
+    }
+    assert all("runtime_block" not in row for row in routed["suppressed"])
+
+
 def test_unmapped_mechanic_claim_with_explicit_documented_block_lowers():
     routed = route_card_behavior_claims(
         [

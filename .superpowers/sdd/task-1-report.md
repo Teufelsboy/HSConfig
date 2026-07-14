@@ -1,83 +1,86 @@
-# Task 1 Report: Index the New Research Package Without Making It Operator Guidance
+# Task 1 Report: Guard Report-Only Mechanics Against Runtime Block Hints
 
 Status: DONE
 
 ## What Changed
 
-- Added `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`.
-- Indexed `2026-07-14-hsconfig-source-contract-logic-guardrail-audit` in `docs/research/current-truth.md` as Contract-spine Guardrail v2 evidence.
-- Added a docs regression test in `tests/test_docs_active_path.py` to verify:
-  - the current-truth index names the research package;
-  - the package is labelled as research evidence only;
-  - the package is explicitly not operator instructions or runtime input;
-  - `operator_summary.json` remains the normal apply authority;
-  - source-contract and source-to-runtime reports remain diagnostic.
+- Added `test_report_only_modern_mechanics_ignore_explicit_runtime_block_hints` to `tests/test_card_behavior_router.py`.
+- The test covers `imbue`, `forge`, and `excavate` mechanic-usage claims that supply an explicit `runtime_block`.
+- The test proves these report-only mechanics:
+  - emit no `card_rows`;
+  - remain suppressed with `lowering_policy == "report_only"`;
+  - keep the documented `<mechanic>_has_no_documented_runtime_block` reason;
+  - do not copy `runtime_block` into suppressed diagnostic rows.
 
-## RED Evidence
+## TDD Evidence
 
-Command:
-
-```powershell
-python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
-```
-
-Result: expected failure.
-
-Key failure:
-
-```text
-FileNotFoundError: [Errno 2] No such file or directory: 'docs\\research\\2026-07-14-hsconfig-source-contract-logic-guardrail-audit\\README.md'
-1 failed in 0.24s
-```
-
-## GREEN Evidence
+### RED Step / Focused Test
 
 Command:
 
 ```powershell
-python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
+python -m pytest -q tests/test_card_behavior_router.py::test_report_only_modern_mechanics_ignore_explicit_runtime_block_hints
 ```
 
-Result:
+Result: passed immediately, so this task remained characterization coverage and no production fallback edit was made.
+
+Output summary:
 
 ```text
-1 passed in 0.08s
+.                                                                        [100%]
+1 passed in 0.12s
 ```
 
-Additional verification:
+### Full Router Test File
+
+Command:
 
 ```powershell
-python -m pytest -q tests/test_docs_active_path.py
+python -m pytest -q tests/test_card_behavior_router.py
 ```
 
-Result:
+Result: passed.
+
+Output summary:
 
 ```text
-34 passed in 0.10s
+....................................                                     [100%]
+36 passed in 0.11s
 ```
+
+### Git Status Before Report Update
+
+Command:
+
+```powershell
+git status --short --branch
+```
+
+Output summary:
+
+```text
+## codex/hsconfig-contract-spine-guard-wave...origin/codex/hsconfig-contract-spine-guard-wave
+ M tests/test_card_behavior_router.py
+```
+
+## Production Fallback Decision
+
+- The new focused regression passed immediately.
+- Per the task brief, no production change was made to:
+  - `src/hsconfig/card_behavior_surface_router.py`
+  - `src/hsconfig/mechanic_support.py`
 
 ## Files Changed
 
-- `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`
-- `docs/research/current-truth.md`
-- `tests/test_docs_active_path.py`
-
-Existing research artifacts under `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/` were left as evidence artifacts and staged with the research package path:
-
-- `fields.yaml`
-- `outline.yaml`
-- `results/Current_HSConfig_Contract_Spine_Guardrails.json`
-- `results/HearthRanger_VisionAI_Runtime_Surface_Boundary.json`
-- `results/Hearthstone_Semantic_False-Lowering_Risks.json`
-- `results/Lean_Any-Deck_Autonomy_And_No-Block_Contract.json`
+- `tests/test_card_behavior_router.py`
+- `.superpowers/sdd/task-1-report.md`
 
 ## Self-Review
 
-- Scope stayed within the task brief.
-- No operator docs were changed.
-- No runtime surface, apply gate, candidate promotion, replay parsing, winrate validation, post-game tuning, or HSTuner behavior was introduced.
-- The README uses the brief's wording that the package is evidence only, not operator guidance, not runtime input, and not an apply gate.
-- The current-truth entry keeps `operator_summary.json` as the only normal apply authority and keeps source-contract/source-to-runtime/mechanic warnings diagnostic and non-blocking.
+- Scope stayed within the requested write scope.
+- No runtime evidence, generated runtime package, operator path, or unrelated docs were changed.
+- The test uses the real `route_card_behavior_claims` API and no mocks.
+- The report-only boundary remains before any explicit runtime-block lowering behavior.
 
 ## Concerns
 
