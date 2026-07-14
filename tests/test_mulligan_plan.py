@@ -282,6 +282,7 @@ def test_policy_backed_mulligan_does_not_hold_explicit_source_discard_card():
     assert {
         "card": "CARD_001",
         "reason": "excluded_source_mulligan_intent",
+        "policy_lane": "source_veto",
         "source_type": "policy_backed_autonomous_mulligan",
     } in plan["quality"]["policy_result"]["suppressed"]
 
@@ -313,6 +314,7 @@ def test_policy_backed_mulligan_does_not_hold_suppressed_source_discard_card():
     assert {
         "card": "CARD_001",
         "reason": "excluded_source_mulligan_intent",
+        "policy_lane": "source_veto",
         "source_type": "policy_backed_autonomous_mulligan",
     } in plan["quality"]["policy_result"]["suppressed"]
 
@@ -460,6 +462,57 @@ def test_mulligan_plan_can_use_policy_backed_keeps_when_source_keeps_are_absent(
     assert plan["quality"]["status"] == "policy_backed"
     assert plan["quality"]["policy_backed_keep_rule_count"] == 1
     assert plan["quality"]["default_only"] is False
+
+
+def test_mulligan_plan_preserves_policy_lane_metadata():
+    plan = build_mulligan_plan(
+        deck_name="PirateRogue",
+        claims=[],
+        card_roles={
+            "PIRATE": {"roles": ["one_drop", "pirate_pressure"]},
+        },
+        deck_cards={
+            "PIRATE": {"name": "Pirate", "cost": 1},
+        },
+        allow_policy_backed=True,
+    )
+
+    keep = next(row for row in plan["rules"] if row["action"] == "hold")
+    assert keep["source_type"] == "policy_backed_autonomous_mulligan"
+    assert keep["policy_lane"] == "aggro"
+    assert keep["policy_reason"] in {"one_drop", "pirate_pressure"}
+    assert plan["quality"]["policy_lanes"] == ["aggro"]
+    assert plan["quality"]["policy_reasons"] == [keep["policy_reason"]]
+
+
+def test_source_backed_keep_suppresses_policy_fallback_even_for_better_curve_card():
+    plan = build_mulligan_plan(
+        deck_name="PirateRogue",
+        claims=[
+            {
+                "claim_id": "source-keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["SOURCE_KEEP"],
+                "conditions": "*",
+                "claim_confidence": "source_backed",
+            }
+        ],
+        card_roles={
+            "SOURCE_KEEP": {"roles": ["tempo_draw"]},
+            "POLICY_ONE": {"roles": ["one_drop", "pirate_pressure"]},
+        },
+        deck_cards={
+            "SOURCE_KEEP": {"name": "Source Keep", "cost": 2},
+            "POLICY_ONE": {"name": "Policy One", "cost": 1},
+        },
+        allow_policy_backed=True,
+    )
+
+    holds = [row for row in plan["rules"] if row["action"] == "hold"]
+    assert [row["card"] for row in holds] == ["SOURCE_KEEP"]
+    assert all(row.get("source_type") == "source_claim" for row in holds)
+    assert plan["quality"]["policy_backed_keep_rule_count"] == 0
+    assert plan["quality"]["status"] == "rich"
 
 
 def test_mulligan_plan_policy_does_not_run_when_source_backed_keep_exists():

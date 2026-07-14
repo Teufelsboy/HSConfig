@@ -197,6 +197,22 @@ def build_mulligan_plan(
         and row.get("selector_kind") != "wildcard"
         and row.get("action") == "hold"
     )
+    policy_lanes = sorted(
+        {
+            str(row.get("policy_lane", "generic"))
+            for row in rules
+            if row.get("source_type") == "policy_backed_autonomous_mulligan"
+            and row.get("selector_kind") != "wildcard"
+        }
+    )
+    policy_reasons = sorted(
+        {
+            str(row.get("policy_reason", "")).strip()
+            for row in rules
+            if row.get("source_type") == "policy_backed_autonomous_mulligan"
+            and str(row.get("policy_reason", "")).strip()
+        }
+    )
     has_policy_backed_keeps = policy_backed_keep_rule_count > 0
     actionable_suppressed_rules = [
         row
@@ -238,6 +254,8 @@ def build_mulligan_plan(
         "source_backed_keep_rule_count": source_backed_keep_rule_count,
         "policy_backed_rule_count": policy_backed_rule_count,
         "policy_backed_keep_rule_count": policy_backed_keep_rule_count,
+        "policy_lanes": policy_lanes,
+        "policy_reasons": policy_reasons,
         "policy_result": policy_result,
         "default_only": runtime_rule_count == 0,
         "suppressed_rule_count": len(suppressed_rules),
