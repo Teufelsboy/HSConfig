@@ -3,6 +3,7 @@ import pytest
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
+from hsconfig.static_semantics import infer_static_semantics
 from hsconfig.source_document_model import (
     can_lower_to_globalvalues,
     can_lower_to_mulligan,
@@ -200,3 +201,97 @@ def test_one_card_or_vague_combo_sequence_does_not_emit_combo_json_rows():
     assert combo["combos"] == []
     assert combo["suppressed"][0]["claim_id"] == "vague_combo"
     assert combo["suppressed"][0]["reason"] == "sequence_too_short"
+
+
+def test_deckbuilding_effect_does_not_lower_to_opening_hand_keep():
+    claim = {
+        "claim_id": "highlander_effect_not_keep",
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["HIGHLANDER_FIXTURE"],
+        "semantic_qualifiers": {
+            "timing": "start_of_game",
+            "state_requirements": "deckbuilding_effect",
+            "zone_scope": "deck",
+        },
+    }
+
+    decision = can_lower_to_mulligan(
+        claim,
+        card_roles={
+            "HIGHLANDER_FIXTURE": {
+                "roles": ["start_of_game", "deckbuilding_modifier"],
+                "semantic_families": ["start_of_game", "deckbuilding_modifier"],
+            }
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_generated_random_pool_does_not_become_deterministic_cardid_behavior():
+    claim = {
+        "claim_id": "random_generate_claim",
+        "claim_kind": "mechanic_usage",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["RANDOM_POOL_CARD"],
+        "mechanic": "generated_entity_random_pool",
+        "evidence_text_short": "Generate a random minion.",
+    }
+
+    result = route_card_behavior_surfaces([claim], identity_links={})
+
+    assert result["rows"] == []
+    assert result["suppressed"][0]["claim_id"] == "random_generate_claim"
+    assert result["suppressed"][0]["reason"] in {
+        "requires_supported_cardid_surface",
+        "unsupported_mechanic_surface",
+        "unresolved_option_identity",
+    }
+
+
+def test_timing_mechanics_are_warning_first_not_cross_surface_claims():
+    cards = [
+        {
+            "id": "SECRET_FIXTURE",
+            "type": "SPELL",
+            "mechanics": ["SECRET"],
+            "text": "Secret: When your opponent casts a spell, summon a random minion.",
+        },
+        {
+            "id": "LOCATION_FIXTURE",
+            "type": "LOCATION",
+            "text": "Summon two Treants.",
+        },
+        {
+            "id": "WEAPON_FIXTURE",
+            "type": "WEAPON",
+            "text": "After your hero attacks, Discover a spell.",
+        },
+    ]
+
+    families_by_id = {
+        card["id"]: set(infer_static_semantics(card)["families"])
+        for card in cards
+    }
+
+    assert {"secret", "generated_entity_random_pool"} <= families_by_id["SECRET_FIXTURE"]
+    assert "location" in families_by_id["LOCATION_FIXTURE"]
+    assert {"weapon", "discover"} <= families_by_id["WEAPON_FIXTURE"]
+
+
+def test_modern_wild_keywords_remain_report_first_until_surface_exists():
+    for keyword in ("Titan", "Tourist", "Imbue", "Forge", "Excavate"):
+        result = infer_static_semantics(
+            {
+                "id": f"{keyword.upper()}_FIXTURE",
+                "type": "MINION",
+                "text": f"{keyword}: fixture text.",
+            }
+        )
+
+        assert keyword.lower() in result["families"]
+        assert keyword.lower() in result["warning_only"]

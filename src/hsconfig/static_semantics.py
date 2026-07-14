@@ -43,6 +43,14 @@ TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
     "starship": ("starship", "launch your starship"),
 }
 
+MODERN_WARNING_ONLY_KEYWORDS = {
+    "titan": "titan",
+    "tourist": "tourist",
+    "imbue": "imbue",
+    "forge": "forge",
+    "excavate": "excavate",
+}
+
 TYPE_TO_FAMILY = {
     "HERO_POWER": "hero_power",
     "LOCATION": "location",
@@ -97,9 +105,11 @@ WARNING_ONLY_MECHANICS = {
     "starship",
     "kindred",
     "tourist",
+    "imbue",
     "rewind",
     "herald",
     "shatter",
+    "excavate",
 }
 
 
@@ -179,6 +189,9 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
         match = next((pattern for pattern in patterns if _contains(lowered, pattern)), None)
         if match:
             _add(families, evidence, family, "text", match)
+    for keyword, family in MODERN_WARNING_ONLY_KEYWORDS.items():
+        if _contains(lowered, keyword):
+            _add(families, evidence, family, "text", keyword)
 
     if card.get("overload") is not None:
         _add(families, evidence, "overload", "overload", str(card["overload"]))

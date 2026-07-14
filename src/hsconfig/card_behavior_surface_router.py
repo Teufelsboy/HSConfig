@@ -154,13 +154,18 @@ def route_card_behavior_surfaces(
                 )
                 continue
             if policy_name == "report_only":
+                reason = (
+                    "requires_supported_cardid_surface"
+                    if mechanic == "generated_entity_random_pool"
+                    else str(policy["suppression_reason"])
+                )
                 suppressed.append(
                     {
                         **_suppressed_row(
                             claim,
                             claim_kind,
                             cards,
-                            str(policy["suppression_reason"]),
+                            reason,
                         ),
                         "mechanic": mechanic,
                         "lowering_policy": policy_name,
