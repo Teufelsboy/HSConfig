@@ -80,6 +80,8 @@ diagnostic-only, or baseline-only-visible.
 `operator_summary.json`; both remain diagnostic because operator_summary.json
 remains the only normal apply authority.
 
+Closure freshness is diagnostic-only. `operator_summary.json remains the only normal apply authority`; `closure_schema_current`, `cards_missing_closure`, `closure_lane_counts`, and `default_only_runtime_surface_details` explain whether a freshly generated package exposes every card's source-to-runtime state. They must not become a second runtime-write gate.
+
 `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
 the normal HSConfig path. The normal runtime path remains `Mulligan.json`,
 `GlobalValues.json`, `Combo.json`, and per-card `CARDID.json`.

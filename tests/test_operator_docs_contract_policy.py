@@ -271,3 +271,23 @@ def test_active_docs_describe_per_card_closure_without_second_gate():
     assert "default_only_runtime_surface_details" in active_text
     assert "operator_summary.json remains the only normal apply authority" in active_text
     assert "source_to_runtime_explainability.json" in active_text
+
+
+def test_active_docs_describe_fresh_closure_proof_without_new_apply_gate():
+    operator = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
+    policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    active_docs = "\n".join([operator, policy, skill])
+
+    assert "closure_schema_current" in active_docs
+    assert "cards_missing_closure" in active_docs
+    assert "default_only_runtime_surface_details" in active_docs
+    assert (
+        "operator_summary.json remains the only normal apply authority"
+        in active_docs
+    )
+    assert "diagnostic-only" in active_docs or "diagnostic only" in active_docs

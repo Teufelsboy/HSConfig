@@ -184,6 +184,8 @@ files, the first missing link, the per-card closure lane, and the next source ac
 compact `source_to_runtime_explainability_summary` in `operator_summary.json` is
 non-blocking and does not grant apply permission.
 
+Fresh package proof should show `reports/operator_summary.json.source_to_runtime_explainability_summary.closure_schema_current=true` and `cards_missing_closure=0`. If closure rows are missing, treat the package as stale or diagnostically incomplete and regenerate it; this is not a runtime apply gate. Default-only surfaces must not be silent: open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` before reading a package as qualitatively complete.
+
 `mechanic_visibility_summary` is descriptive and non-blocking. It shows
 `direct`, `identity_gated_direct`, `partial`, and `warning_only` mechanic
 buckets so a valid package can be applied while still making Dredge, Tradeable,
