@@ -5,8 +5,13 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from hsconfig.role_tokens import START_OF_GAME_NON_HAND_EFFECT_ROLES, claim_role_tokens
-from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS, runtime_claim_kind
-from hsconfig.source_semantic_qualifiers import has_qualifier
+from hsconfig.source_document_model import (
+    DECK_EVALUATION_NON_HAND_EFFECTS,
+    GENERATED_NON_OPENING_HAND_SCOPES,
+    SUPPORTED_ATOMIC_CLAIM_KINDS,
+    runtime_claim_kind,
+)
+from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -229,6 +234,16 @@ def _suspicious_exact_keep_warning(
         or has_qualifier(claim, "zone_scope", "deck")
         or has_qualifier(claim, "state_requirements", "hero_power_transform")
         or has_qualifier(claim, "state_requirements", "deckbuilding_effect")
+        or bool(
+            qualifier_values(claim, "deck_evaluation").intersection(
+                DECK_EVALUATION_NON_HAND_EFFECTS
+            )
+        )
+        or bool(
+            qualifier_values(claim, "generation_scope").intersection(
+                GENERATED_NON_OPENING_HAND_SCOPES
+            )
+        )
     )
     if has_qualifier_start_effect:
         return {

@@ -285,6 +285,58 @@ def test_verifier_accepts_mulligan_timing_qualifier_as_opening_hand_evidence():
         }
 
 
+def test_verifier_warns_for_non_hand_semantic_qualifier_keep_without_opening_evidence():
+    for semantic_qualifiers in (
+        {"deck_evaluation": "highlander"},
+        {"generation_scope": "generated"},
+    ):
+        report = verify_source_documents(
+            [
+                _base_document(
+                    claims=[
+                        {
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["NON_HAND_EFFECT"],
+                            "semantic_qualifiers": semantic_qualifiers,
+                            "evidence_text_short": "This card enables the plan.",
+                            "source_confidence": "high",
+                        }
+                    ]
+                )
+            ]
+        )
+
+        assert "suspicious_mulligan_keep_non_hand_effect" in {
+            warning["reason"] for warning in report["warnings"]
+        }
+
+
+def test_verifier_accepts_mulligan_timing_for_non_hand_semantic_qualifier_keeps():
+    for semantic_qualifiers in (
+        {"timing": "mulligan", "deck_evaluation": "highlander"},
+        {"timing": "mulligan", "generation_scope": "generated"},
+    ):
+        report = verify_source_documents(
+            [
+                _base_document(
+                    claims=[
+                        {
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["NON_HAND_EFFECT"],
+                            "semantic_qualifiers": semantic_qualifiers,
+                            "evidence_text_short": "This card enables the plan.",
+                            "source_confidence": "high",
+                        }
+                    ]
+                )
+            ]
+        )
+
+        assert "suspicious_mulligan_keep_non_hand_effect" not in {
+            warning["reason"] for warning in report["warnings"]
+        }
+
+
 def test_verifier_warns_for_non_list_start_of_game_role_payloads():
     report = verify_source_documents(
         [
