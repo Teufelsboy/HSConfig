@@ -189,7 +189,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | `reports/operator_summary.json` | normal operator gate | what to do next |
 | `reports/source_to_runtime_explainability.json` | diagnostic source-to-runtime projection | which exact source-to-runtime link is missing before a card can be stronger |
 | `reports/source_contract_audit.json` | diagnostic source-to-runtime explanation | why each source claim did or did not lower to runtime config |
-| `reports/source_claim_gap_report.json` | repair contract | which card link is missing first |
+| `reports/source_claim_gap_report.json` | secondary diagnostic evidence for card/source gap history | which card link is missing first |
 | `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |
 | `reports/per_card_config_readiness_report.json` | card lane diagnostics | which lane each card occupies |
 | `reports/guide_source_depth_report.json` | source-depth diagnostics | how strong the guide and source coverage is |
@@ -204,6 +204,8 @@ of the source-contract audit: it names emitted runtime files, missing runtime
 files, the first missing link, the per-card closure lane, and the next source action per claim/card. Its
 compact `source_to_runtime_explainability_summary` in `operator_summary.json` is
 non-blocking and does not grant apply permission.
+
+source_to_runtime_explainability.json is the primary card-readable repair map for source-to-runtime closure. It names emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. source_claim_gap_report.json is secondary diagnostic evidence for older source-depth workflows; it must not become the first operator report and does not grant or deny apply permission.
 
 Fresh package proof should show `reports/operator_summary.json.source_to_runtime_explainability_summary.closure_schema_current=true` and `cards_missing_closure=0`. If closure rows are missing, treat the package as stale or diagnostically incomplete and regenerate it; this is not a runtime apply gate. Default-only surfaces must not be silent: open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` before reading a package as qualitatively complete.
 

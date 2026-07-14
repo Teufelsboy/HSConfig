@@ -427,6 +427,8 @@ files, first missing links, and next source actions per claim/card. Its
 `operator_summary.json.source_to_runtime_explainability_summary` block is
 non-blocking and never grants apply permission.
 
+Use `source_to_runtime_explainability.json` as the primary card-readable repair map. It is the first place to inspect emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. `source_claim_gap_report.json` is secondary diagnostic evidence for source-depth history and must not be treated as an apply gate.
+
 - `guide_builder_receipt.json`: guide-source normalization status and source counts.
 - `candidate_archetypes.json`: primary and fallback archetype candidates.
 - `deck_fingerprint.json`: deck multiset identity used by research normalization.
@@ -437,7 +439,7 @@ non-blocking and never grants apply permission.
 - `unsupported_claims_report.json`: rejected source claims with reasons.
 - `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.
 - `source_to_runtime_explainability.json`: claim/card projection that names emitted files, missing files, first missing links, and next source actions; diagnostic only.
-- `source_claim_gap_report.json`: first missing source or lowering link per card.
+- `source_claim_gap_report.json`: secondary diagnostic evidence for card/source gap history.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 - `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.
 - `card_behavior_plan_report.json`: CardID routing and suppression reasons.

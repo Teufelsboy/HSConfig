@@ -309,3 +309,26 @@ def test_operator_docs_state_no_silent_default_only_without_second_gate():
     assert "visible quality" in docs.lower()
     assert "not an apply blocker" in docs.lower()
     assert "operator_summary.json remains the only normal apply authority" in docs
+
+
+def test_docs_keep_source_claim_gap_report_secondary_to_explainability():
+    root = Path(__file__).resolve().parents[1]
+    docs_text = (root / "docs/operator/README.md").read_text(encoding="utf-8")
+    policy_text = (root / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    skill_text = (root / ".agents/skills/hsconfig/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    skill_policy_text = (
+        root / ".agents/skills/hsconfig/references/guide-research-policy.md"
+    ).read_text(encoding="utf-8")
+    combined = "\n".join([docs_text, policy_text, skill_text, skill_policy_text])
+
+    assert (
+        "source_to_runtime_explainability.json is the primary card-readable repair map"
+        in combined
+    )
+    assert "source_claim_gap_report.json is secondary diagnostic evidence" in combined
+    assert "Use `source_claim_gap_report.json` to inspect the first missing source" not in combined
+    assert "operator_summary.json remains the only normal apply authority" in combined
