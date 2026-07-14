@@ -10,6 +10,7 @@ from hsconfig.source_document_model import (
     normalized_claim_kind,
     surface_gate_decision,
 )
+from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 
 
 def build_initial_lifecycle_rows(
@@ -26,6 +27,9 @@ def build_initial_lifecycle_rows(
         legacy_claim_type = migrated_claim.pop("claim_type", None)
         if claim_kind:
             migrated_claim["claim_kind"] = claim_kind
+        semantic_qualifiers = normalize_semantic_qualifiers(migrated_claim)
+        if semantic_qualifiers:
+            migrated_claim["semantic_qualifiers"] = semantic_qualifiers
         claim_id = str(migrated_claim.get("claim_id") or f"claim_{index}")
         policy = source_contract_policy_by_claim_kind().get(claim_kind, {})
         source_confidence = str(
@@ -46,7 +50,7 @@ def build_initial_lifecycle_rows(
             "source_confidence": source_confidence,
             "policy_lane": policy.get("lane", "unknown"),
             "allowed_surfaces": list(policy.get("allowed_surfaces", ())),
-            "semantic_qualifiers": migrated_claim.get("semantic_qualifiers", {}),
+            "semantic_qualifiers": semantic_qualifiers,
             "quarantine_status": "quarantined" if quarantine_reason else "clear",
             "quarantine_reason": quarantine_reason or "",
             "runtime_eligibility": _runtime_eligibility(

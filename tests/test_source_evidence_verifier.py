@@ -212,6 +212,29 @@ def test_verifier_warns_when_runtime_lowering_claim_lacks_actionable_specificity
     }
 
 
+def test_verifier_treats_top_level_target_scope_as_actionable_specificity():
+    report = verify_source_documents(
+        [
+            _base_document(
+                claims=[
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["TARGET_001"],
+                        "runtime_block": "BeforeBattlecryTargetBonus",
+                        "target_scope": "Enemy Hero",
+                        "evidence_text_short": "This Battlecry should target the opposing hero.",
+                        "source_confidence": "high",
+                    }
+                ]
+            )
+        ]
+    )
+
+    assert "runtime_lowering_claim_lacks_actionable_specificity" not in {
+        warning["reason"] for warning in report["warnings"]
+    }
+
+
 def test_verifier_warns_for_suspicious_exact_keep_on_non_hand_effect():
     report = verify_source_documents(
         [

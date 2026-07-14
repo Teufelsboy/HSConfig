@@ -160,6 +160,55 @@ def test_lifecycle_mulligan_surface_suppresses_start_of_game_transform_roles():
     assert runtime_claims == []
 
 
+def test_lifecycle_mulligan_surface_normalizes_top_level_non_hand_qualifiers():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "highlander_effect_keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["HIGH_001"],
+                "deck_evaluation": "No Duplicates",
+                "source_confidence": "guide_backed",
+                "evidence_text_short": "This card enables the deck plan.",
+            }
+        ]
+    )
+
+    runtime_claims = runtime_claims_for_surface(rows, "mulligan")
+
+    assert rows[0]["semantic_qualifiers"] == {"deck_evaluation": ["highlander"]}
+    assert rows[0]["claim"]["semantic_qualifiers"] == {
+        "deck_evaluation": ["highlander"]
+    }
+    assert runtime_claims == []
+
+
+def test_lifecycle_mulligan_surface_preserves_top_level_opening_hand_intent():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "highlander_opening_hand_keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["HIGH_001"],
+                "deck_evaluation": "No Duplicates",
+                "timing": "Opening Hand",
+                "source_confidence": "guide_backed",
+                "evidence_text_short": "This is a specific opening hand keep.",
+            }
+        ]
+    )
+
+    runtime_claims = runtime_claims_for_surface(rows, "mulligan")
+
+    assert rows[0]["semantic_qualifiers"] == {
+        "timing": "mulligan",
+        "deck_evaluation": ["highlander"],
+    }
+    assert [claim["claim_id"] for claim in runtime_claims] == [
+        "highlander_opening_hand_keep"
+    ]
+
+
 def test_lifecycle_claim_id_prefers_lifecycle_metadata_over_raw_claim_id():
     from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 

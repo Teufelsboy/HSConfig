@@ -163,6 +163,7 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
     warnings: list[dict[str, Any]] = []
     claim_kind = runtime_claim_kind(claim) or str(claim.get("claim_kind", claim.get("claim_type", "")))
     cards = _cards(claim)
+    normalized_claim = _with_normalized_semantic_qualifiers(claim)
     has_runtime_lowering_hint = any(key in claim for key in RUNTIME_HINT_KEYS)
 
     if claim_kind not in SUPPORTED_ATOMIC_CLAIM_KINDS:
@@ -195,14 +196,14 @@ def claim_evidence_status(claim: dict[str, Any], document: dict[str, Any]) -> di
                     "source_ref": source_ref,
                 }
             )
-    if has_runtime_lowering_hint and not _has_actionable_specificity(claim):
+    if has_runtime_lowering_hint and not _has_actionable_specificity(normalized_claim):
         warnings.append(
             {
                 "reason": "runtime_lowering_claim_lacks_actionable_specificity",
                 "claim_kind": claim_kind,
             }
         )
-    suspicious_keep_warning = _suspicious_exact_keep_warning(claim, claim_kind)
+    suspicious_keep_warning = _suspicious_exact_keep_warning(normalized_claim, claim_kind)
     if suspicious_keep_warning is not None:
         warnings.append(suspicious_keep_warning)
 
@@ -223,9 +224,8 @@ def _suspicious_exact_keep_warning(
 ) -> dict[str, Any] | None:
     if claim_kind != "mulligan_keep":
         return None
-    normalized_claim = _with_normalized_semantic_qualifiers(claim)
     evidence = _claim_evidence_text(claim).lower()
-    if _has_explicit_opening_hand_evidence(normalized_claim, evidence):
+    if _has_explicit_opening_hand_evidence(claim, evidence):
         return None
     roles = _claim_role_hints(claim)
     if "start_of_game" in roles or roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
@@ -235,17 +235,17 @@ def _suspicious_exact_keep_warning(
             "roles": sorted(roles),
         }
     has_qualifier_start_effect = (
-        has_qualifier(normalized_claim, "timing", "start_of_game")
-        or has_qualifier(normalized_claim, "zone_scope", "deck")
-        or has_qualifier(normalized_claim, "state_requirements", "hero_power_transform")
-        or has_qualifier(normalized_claim, "state_requirements", "deckbuilding_effect")
+        has_qualifier(claim, "timing", "start_of_game")
+        or has_qualifier(claim, "zone_scope", "deck")
+        or has_qualifier(claim, "state_requirements", "hero_power_transform")
+        or has_qualifier(claim, "state_requirements", "deckbuilding_effect")
         or bool(
-            qualifier_values(normalized_claim, "deck_evaluation").intersection(
+            qualifier_values(claim, "deck_evaluation").intersection(
                 DECK_EVALUATION_NON_HAND_EFFECTS
             )
         )
         or bool(
-            qualifier_values(normalized_claim, "generation_scope").intersection(
+            qualifier_values(claim, "generation_scope").intersection(
                 GENERATED_NON_OPENING_HAND_SCOPES
             )
         )
