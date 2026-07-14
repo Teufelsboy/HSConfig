@@ -289,7 +289,7 @@ def test_claim_lifecycle_uses_canonical_quarantine_rows():
     assert report["summary"]["claim_lifecycle_decision_counts"] == {"suppressed": 2}
 
 
-def test_initial_report_only_claim_is_not_seen_by_builder_with_policy_reason():
+def test_initial_source_ineligible_runtime_claim_is_not_seen_by_builder_with_source_reason():
     claims = [
         {
             "claim_id": "report_only_posture",
@@ -320,9 +320,33 @@ def test_initial_report_only_claim_is_not_seen_by_builder_with_policy_reason():
 
     assert initial_lifecycle_rows[0]["runtime_eligibility"] == "report_only"
     assert row["builder_or_router_decision"] == "not_seen_by_builder"
+    assert row["suppressed_reason"] == "source_eligibility"
+    assert row["first_missing_link"] == "source_eligibility"
+    assert row["final_runtime_effect"] == "not_emitted_by_builder_or_router"
+
+
+def test_initial_policy_report_only_claim_keeps_claim_kind_policy_reason():
+    claims = [
+        {
+            "claim_id": "archetype_context",
+            "claim_kind": "archetype",
+            "source_confidence": "guide_backed",
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "The deck is an archetype.",
+        }
+    ]
+
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        guide_claim_bundle={"claims": claims},
+        initial_lifecycle_rows=build_initial_lifecycle_rows(claims),
+    )
+
+    row = report["claim_lifecycle_rows"][0]
+
+    assert row["runtime_eligibility"] == "runtime_candidate"
     assert row["suppressed_reason"] == "claim_kind_policy"
     assert row["first_missing_link"] == "claim_kind_policy"
-    assert row["final_runtime_effect"] == "not_emitted_by_builder_or_router"
 
 
 def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():

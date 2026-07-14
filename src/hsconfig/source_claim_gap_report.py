@@ -201,12 +201,19 @@ def build_source_claim_gap_report(
 
 
 def normalize_first_missing_link(row: dict[str, Any]) -> str:
+    first_missing_link = str(row.get("first_missing_link") or "")
+    normalized_first_missing_link = _normalized_missing_link(first_missing_link)
+    if normalized_first_missing_link is not None:
+        return normalized_first_missing_link
+    if first_missing_link and not _is_generic_first_missing_link(first_missing_link):
+        return first_missing_link
+
     suppressed_reason = str(row.get("suppressed_reason") or "")
     normalized_suppressed_reason = _normalized_missing_link(suppressed_reason)
     if normalized_suppressed_reason is not None:
         return normalized_suppressed_reason
 
-    reason = str(row.get("reason") or row.get("first_missing_link") or "")
+    reason = str(row.get("reason") or "")
     normalized_reason = _normalized_missing_link(reason)
     if normalized_reason is not None:
         return normalized_reason
@@ -215,6 +222,10 @@ def normalize_first_missing_link(row: dict[str, Any]) -> str:
     if suppressed_reason:
         return suppressed_reason
     return "claim_kind_supported_surface"
+
+
+def _is_generic_first_missing_link(value: str) -> bool:
+    return value in {"none", "closed", "runtime_surface", "suppressed"}
 
 
 def _normalized_missing_link(reason: str) -> str | None:

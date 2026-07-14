@@ -349,7 +349,7 @@ def test_suppressed_runtime_claims_report_first_missing_link():
         assert row["operator_impact"] == "diagnostic_only"
 
 
-def test_suppressed_claim_rows_prefer_lifecycle_authority_per_claim_id():
+def test_suppressed_claim_rows_preserve_precise_lifecycle_missing_link():
     report = build_source_claim_gap_report(
         deck_name="Suppressed Claim Collision",
         config_readiness_report={"cards": {}},
@@ -384,7 +384,7 @@ def test_suppressed_claim_rows_prefer_lifecycle_authority_per_claim_id():
             "claim_id": "discover_collision",
             "claim_kind": "discover_choice",
             "builder_or_router_decision": "suppressed",
-            "first_missing_link": "option_identity",
+            "first_missing_link": "source_claim_conflict",
             "operator_impact": "diagnostic_only",
         }
     ]
@@ -431,7 +431,7 @@ def test_suppressed_claim_rows_include_report_only_not_seen_lifecycle_rows():
     ]
 
 
-def test_gap_report_projects_initial_report_only_lifecycle_once_with_policy_reason():
+def test_gap_report_projects_initial_source_ineligible_lifecycle_once_with_source_reason():
     claims = [
         {
             "claim_id": "report_only_posture",
@@ -471,7 +471,7 @@ def test_gap_report_projects_initial_report_only_lifecycle_once_with_policy_reas
             "claim_id": "report_only_posture",
             "claim_kind": "gameplan_posture",
             "builder_or_router_decision": "not_seen_by_builder",
-            "first_missing_link": "claim_kind_policy",
+            "first_missing_link": "source_eligibility",
             "operator_impact": "diagnostic_only",
         }
     ]

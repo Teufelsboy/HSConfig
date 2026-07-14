@@ -630,10 +630,15 @@ def _build_claim_lifecycle_rows_from_initial(
             suppressed_reason = quarantine_reason or "source_claim_conflict"
             first_missing_link = "source_claim_conflict"
             final_runtime_effect = "suppressed_quarantined_claim"
-        elif runtime_eligibility == "report_only":
+        elif str(initial_row.get("policy_lane") or claim_row.get("policy_lane", "")) == "report_only":
             decision = "not_seen_by_builder"
             suppressed_reason = "claim_kind_policy"
             first_missing_link = "claim_kind_policy"
+            final_runtime_effect = "not_emitted_by_builder_or_router"
+        elif runtime_eligibility == "report_only":
+            decision = "not_seen_by_builder"
+            suppressed_reason = "source_eligibility"
+            first_missing_link = "source_eligibility"
             final_runtime_effect = "not_emitted_by_builder_or_router"
         else:
             decision = str(emission.get("decision", ""))

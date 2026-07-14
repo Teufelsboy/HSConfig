@@ -269,6 +269,7 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 for row in lifecycle_rows
             )
             assert discover_is_unsupported or discover_has_audit_route
+            assert "OnDiscoverCardBonus" in runtime_cards[card_id]
             assert "OnChooseOneCardBonus" not in runtime_cards[card_id]
         elif claim["claim_kind"] == "hero_power_transform":
             assert any(
