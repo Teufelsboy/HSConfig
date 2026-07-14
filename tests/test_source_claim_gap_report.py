@@ -250,3 +250,39 @@ def test_gap_report_marks_policy_backed_mulligan_as_closed_not_source_backed():
     assert mulligan["recommended_source_claim_kind"] == "none"
     assert mulligan["recommended_next_claim_kind"] == "none"
     assert report["summary"]["deck_surface_gap_count"] == 0
+
+
+def test_gap_report_includes_policy_lane_for_policy_backed_mulligan_surface():
+    report = build_source_claim_gap_report(
+        deck_name="PirateRogue",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "policy_lane": "aggro",
+                    "policy_reason": "pirate_pressure",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+    )
+
+    mulligan = report["deck_surfaces"]["mulligan"]
+    assert mulligan["source_depth_lane"] == "policy_backed_autonomous_mulligan"
+    assert mulligan["policy_lanes"] == ["aggro"]
+    assert mulligan["policy_reasons"] == ["pirate_pressure"]
+    assert report["summary"]["deck_surface_gap_count"] == 0

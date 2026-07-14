@@ -227,6 +227,8 @@ def _mulligan_surface_row(mulligan_plan: dict[str, Any]) -> dict[str, Any]:
             "first_missing_link": "none",
             "source_depth_lane": "policy_backed_autonomous_mulligan",
             "source_quality_lane": "policy_backed",
+            "policy_lanes": _string_list(quality.get("policy_lanes")),
+            "policy_reasons": _string_list(quality.get("policy_reasons")),
             "recommended_source_claim_kind": "none",
             "recommended_next_claim_kind": "none",
             "recommended_next_claim_kinds": [],
@@ -406,3 +408,9 @@ def _safe_int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]

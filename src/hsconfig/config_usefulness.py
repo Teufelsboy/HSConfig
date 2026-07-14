@@ -112,6 +112,16 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
         if isinstance(quality, dict)
         else 0
     )
+    policy_lanes = (
+        _string_list(quality.get("policy_lanes"))
+        if isinstance(quality, dict)
+        else []
+    )
+    policy_reasons = (
+        _string_list(quality.get("policy_reasons"))
+        if isinstance(quality, dict)
+        else []
+    )
     return {
         "status": status,
         "rule_count": len(rules),
@@ -129,6 +139,8 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
         else 0,
         "policy_backed_rule_count": policy_backed_rule_count,
         "policy_backed_keep_rule_count": policy_backed_keep_rule_count,
+        "policy_lanes": policy_lanes,
+        "policy_reasons": policy_reasons,
         "suppressed_reasons": suppressed_reasons,
     }
 
@@ -263,3 +275,9 @@ def _int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]

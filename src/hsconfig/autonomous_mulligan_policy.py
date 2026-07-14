@@ -27,10 +27,6 @@ PREFERRED_KEEP_ROLES = (
     "weapon_setup",
     "discard_setup",
 )
-PREFERRED_KEEP_ROLE_RANK = {
-    role: rank for rank, role in enumerate(PREFERRED_KEEP_ROLES)
-}
-
 ARCHETYPE_LANE_ROLE_HINTS = {
     "aggro": {
         "one_drop",

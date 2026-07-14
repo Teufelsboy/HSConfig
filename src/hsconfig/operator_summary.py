@@ -240,6 +240,10 @@ def build_operator_summary(
         "guide_strength_summary": guide_strength_summary,
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
+        "mulligan_policy_status": _mulligan_policy_status(config_usefulness),
+        "default_only_runtime_surfaces": _default_only_runtime_surfaces(
+            config_usefulness
+        ),
         "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "source_claim_quality_summary": _source_claim_quality_summary(
@@ -277,6 +281,44 @@ def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict
         and str(row.get("reason", "")) not in SURFACE_REJECTION_REASONS
         and str(row.get("source_type", "")) not in DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES
     ]
+
+
+def _mulligan_policy_status(config_usefulness: dict[str, Any]) -> dict[str, Any]:
+    surfaces = (
+        config_usefulness.get("surfaces", {})
+        if isinstance(config_usefulness, dict)
+        else {}
+    )
+    mulligan = surfaces.get("mulligan", {}) if isinstance(surfaces, dict) else {}
+    if not isinstance(mulligan, dict):
+        mulligan = {}
+    return {
+        "status": str(mulligan.get("status", "unknown")),
+        "default_only": bool(mulligan.get("default_only")),
+        "policy_lanes": _string_list(mulligan.get("policy_lanes")),
+        "policy_reasons": _string_list(mulligan.get("policy_reasons")),
+    }
+
+
+def _default_only_runtime_surfaces(config_usefulness: dict[str, Any]) -> list[str]:
+    surfaces = (
+        config_usefulness.get("surfaces", {})
+        if isinstance(config_usefulness, dict)
+        else {}
+    )
+    if not isinstance(surfaces, dict):
+        return []
+    default_only: list[str] = []
+    for name, row in sorted(surfaces.items()):
+        if isinstance(row, dict) and row.get("default_only") is True:
+            default_only.append(str(name))
+    return default_only
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]
 
 
 def _technical_status(report: dict[str, Any]) -> str:

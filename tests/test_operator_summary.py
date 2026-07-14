@@ -1454,6 +1454,75 @@ def test_operator_summary_thin_usefulness_does_not_block_apply():
     assert summary["runtime_apply_allowed"] is True
 
 
+def test_operator_summary_exposes_policy_backed_mulligan_status_without_default_only():
+    summary = build_operator_summary(
+        deck_name="PirateRogue",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        generated_files=[
+            "CustomConfig/piraterogue/GlobalValues.json",
+            "CustomConfig/piraterogue/Mulligan.json",
+        ],
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "policy_lane": "aggro",
+                    "policy_reason": "pirate_pressure",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+    )
+
+    assert summary["mulligan_policy_status"] == {
+        "status": "policy_backed",
+        "default_only": False,
+        "policy_lanes": ["aggro"],
+        "policy_reasons": ["pirate_pressure"],
+    }
+    assert summary["default_only_runtime_surfaces"] == []
+
+
+def test_operator_summary_names_default_only_mulligan_surface_when_present():
+    summary = build_operator_summary(
+        deck_name="ThinDeck",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        generated_files=[
+            "CustomConfig/thindeck/GlobalValues.json",
+            "CustomConfig/thindeck/Mulligan.json",
+        ],
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "default_only": True,
+                "policy_lanes": [],
+                "policy_reasons": [],
+            },
+        },
+    )
+
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["mulligan_policy_status"]["default_only"] is True
+
+
 def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():
     summary = build_operator_summary(
         deck_name="DiagnosticDeck",

@@ -173,6 +173,44 @@ def test_policy_backed_mulligan_is_not_default_only_or_blocking():
     assert result["blocking"] is False
 
 
+def test_config_usefulness_reports_mulligan_policy_lane_metadata():
+    payload = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        config_readiness_summary={},
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "policy_lane": "aggro",
+                    "policy_reason": "pirate_pressure",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": []},
+        globalvalues_profile_report={"changed_keys": [], "unchanged_keys": []},
+    )
+
+    mulligan = payload["surfaces"]["mulligan"]
+    assert mulligan["status"] == "policy_backed"
+    assert mulligan["default_only"] is False
+    assert mulligan["policy_lanes"] == ["aggro"]
+    assert mulligan["policy_reasons"] == ["pirate_pressure"]
+
+
 def test_config_usefulness_marks_valid_sparse_package_load_safe_but_thin():
     payload = build_config_usefulness(
         technical_status="VALID_PACKAGE",
