@@ -324,6 +324,36 @@ def test_surface_rejection_rows_do_not_degrade_static_semantics_status():
     )
 
 
+def test_policy_backed_mulligan_suppression_does_not_degrade_static_semantics_status():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="deck-code",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "source_count": 0},
+        unsupported_conditions=[
+            {
+                "card": "SW_448",
+                "reason": "excluded_non_hand_start_of_game_effect",
+                "source_type": "policy_backed_autonomous_mulligan",
+            }
+        ],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=[],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert summary["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert not any(
+        blocker["reason"] == "unsupported_conditions_present"
+        for blocker in summary["semantic_blockers"]
+    )
+    assert not any(
+        warning["reason"] == "excluded_non_hand_start_of_game_effect"
+        for warning in summary["warnings"]
+    )
+
+
 def test_missing_guide_depth_requests_more_research_without_invalidating_package():
     summary = build_operator_summary(
         deck_name="ShadowPriest",

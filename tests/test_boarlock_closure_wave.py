@@ -130,7 +130,14 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert summary["cards_needing_runtime_surface"] == 0
     assert summary["generic_low_confidence"] == 0
     assert summary["report_only_supported"] == 0
-    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "thin"
+    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "policy_backed"
+    assert operator["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
+    assert (
+        operator["config_usefulness"]["surfaces"]["mulligan"][
+            "policy_backed_keep_rule_count"
+        ]
+        > 0
+    )
 
 
 def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(

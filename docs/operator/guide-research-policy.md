@@ -235,6 +235,25 @@ Mulligan selector support:
 - Use wildcard selectors only when the source applies broadly to a known hand class.
 - Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
 
+### Policy-backed autonomous Mulligan fallback
+
+If no source-backed keep can be emitted, HSConfig may build a small
+`policy_backed_autonomous_mulligan` keep set from deterministic low-curve
+pressure, draw, setup, or class-plan semantics. This keeps valid deck packages
+useful and prevents default-only `Mulligan.json` output.
+
+This fallback is not source-backed guide evidence and does not promote a deck to
+`SOURCE_BACKED_STRONG`. It is visible in `mulligan_plan_report.json` and
+`operator_summary.json.config_usefulness.surfaces.mulligan` as
+`status=policy_backed`.
+
+The fallback must still respect the source/contract boundary: start-of-game,
+deckbuilding, highlander, odd/even, hero-power-transform, and other non-hand
+effects stay out of opening-hand keeps unless a current mulligan source
+explicitly says the card should be kept. Darkbishop Benedictus remains the
+reference case. Cards with explicit, suppressed, or quarantined Mulligan source
+intent are also excluded from policy keeps until the source intent is resolved.
+
 ### Effect semantics are not opening-hand mulligan keeps
 
 Start-of-game, deckbuilding, and hero-power-transform effects can be important

@@ -4,7 +4,15 @@ HSConfig builds guide-aligned HearthRanger VisionAI `CustomConfig` packages from
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those are HSTuner concerns. `Concede.json` is publicly documented; `Presume.json` is publicly documented on HearthRanger's AOE play-around page, and normal HSConfig does not emit `Presume.json` or `Concede.json`; absence never blocks a valid load-safe package.
 
-Runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
+Source-backed runtime Mulligan writes require explicit `claim_kind` values such as `mulligan_keep` or `mulligan_discard`. Card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless they are separately backed by explicit hand-required Mulligan guidance.
+
+When no source-backed keep can be emitted, HSConfig may emit a small
+`policy_backed_autonomous_mulligan` keep set from low-curve pressure, draw, or
+setup semantics so `Mulligan.json` is not default-only. This is a separate,
+weaker autonomous fallback, not a source-backed guide claim. Cards with
+explicit, suppressed, or quarantined Mulligan source intent are vetoed from the
+policy lane; non-hand start-of-game effects such as Darkbishop Benedictus also
+stay out of opening-hand keeps.
 
 HSConfig separates source semantics from runtime authority. A claim such as
 `hero_power_transform` or `card_role` can enrich the every-card contract and

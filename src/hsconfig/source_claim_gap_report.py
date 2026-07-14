@@ -151,13 +151,22 @@ def build_source_claim_gap_report(
         }
 
     blocked_cards = sum(count for key, count in counts.items() if key != "none")
-    first_missing_chain = _first_missing_chain(rows)
+    deck_surfaces = {"mulligan": _mulligan_surface_row(mulligan_plan)}
+    deck_surface_gap_count = sum(
+        1
+        for row in deck_surfaces.values()
+        if row["first_missing_link"] != "none"
+    )
+    card_first_missing_chain = _first_missing_chain(rows)
+    deck_first_missing_chain = _first_missing_surface_chain(deck_surfaces)
+    first_missing_chain = card_first_missing_chain or deck_first_missing_chain
     return {
         "schema_version": 1,
         "deck_name": deck_name,
         "summary": {
             "total_cards": len(rows),
             "blocked_cards": blocked_cards,
+            "deck_surface_gap_count": deck_surface_gap_count,
             "needs_guide_claim": counts["needs_guide_claim"],
             "needs_runtime_surface": counts["needs_runtime_surface"],
             "needs_combo_sequence": counts["needs_combo_sequence"],
@@ -177,11 +186,72 @@ def build_source_claim_gap_report(
         },
         "cards": rows,
         "card_rows": rows,
+        "deck_surfaces": deck_surfaces,
         "inputs": {
             "card_behavior_rows": len(card_behavior_plan.get("rows", [])),
             "mulligan_rules": len(mulligan_plan.get("rules", [])),
             "combo_count": len(combo_plan.get("combos", [])),
         },
+    }
+
+
+def _mulligan_surface_row(mulligan_plan: dict[str, Any]) -> dict[str, Any]:
+    quality = mulligan_plan.get("quality", {})
+    if not isinstance(quality, dict):
+        quality = {}
+    rules = mulligan_plan.get("rules", [])
+    if not isinstance(rules, list):
+        rules = []
+    policy_count = _safe_int(quality.get("policy_backed_keep_rule_count", 0))
+    source_count = _safe_int(quality.get("source_backed_keep_rule_count", 0))
+    has_keeps = bool(quality.get("has_concrete_keeps")) or any(
+        isinstance(row, dict)
+        and row.get("action") == "hold"
+        and row.get("selector_kind") != "wildcard"
+        for row in rules
+    )
+    if source_count:
+        return {
+            "surface": "mulligan",
+            "first_missing_link": "none",
+            "source_depth_lane": "source_backed_mulligan",
+            "source_quality_lane": "guide_backed",
+            "recommended_source_claim_kind": "none",
+            "recommended_next_claim_kind": "none",
+            "recommended_next_claim_kinds": [],
+            "next_action": "mulligan_surface_closed",
+        }
+    if policy_count or has_keeps:
+        return {
+            "surface": "mulligan",
+            "first_missing_link": "none",
+            "source_depth_lane": "policy_backed_autonomous_mulligan",
+            "source_quality_lane": "policy_backed",
+            "recommended_source_claim_kind": "none",
+            "recommended_next_claim_kind": "none",
+            "recommended_next_claim_kinds": [],
+            "next_action": "mulligan_surface_closed_by_policy",
+        }
+    if quality.get("default_only") is not True and quality.get("status") != "thin":
+        return {
+            "surface": "mulligan",
+            "first_missing_link": "none",
+            "source_depth_lane": "not_evaluated",
+            "source_quality_lane": "not_evaluated",
+            "recommended_source_claim_kind": "none",
+            "recommended_next_claim_kind": "none",
+            "recommended_next_claim_kinds": [],
+            "next_action": "none",
+        }
+    return {
+        "surface": "mulligan",
+        "first_missing_link": "needs_mulligan_claim",
+        "source_depth_lane": "mulligan_claim_gap",
+        "source_quality_lane": "contract_gap",
+        "recommended_source_claim_kind": "mulligan_claim",
+        "recommended_next_claim_kind": "mulligan_claim",
+        "recommended_next_claim_kinds": ["mulligan_keep", "mulligan_discard"],
+        "next_action": "build_source_or_policy_backed_mulligan",
     }
 
 
@@ -315,3 +385,24 @@ def _first_missing_chain(rows: dict[str, dict[str, Any]]) -> dict[str, Any] | No
         "priority_score": selected["priority_score"],
         "priority_reason": selected["priority_reason"],
     }
+
+
+def _first_missing_surface_chain(
+    deck_surfaces: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    blocked = [row for row in deck_surfaces.values() if row["first_missing_link"] != "none"]
+    if not blocked:
+        return None
+    selected = max(blocked, key=lambda row: BASE_PRIORITY_BY_MISSING_LINK.get(row["first_missing_link"], 40))
+    return {
+        **selected,
+        "priority_score": BASE_PRIORITY_BY_MISSING_LINK.get(selected["first_missing_link"], 40),
+        "priority_reason": f"deck_surface:{selected['surface']}",
+    }
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0

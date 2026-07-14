@@ -92,7 +92,12 @@ def test_representative_decks_expose_output_competence_summary(
         "usable_with_targeted_gaps",
         "load_safe_but_thin",
     }
-    assert usefulness["surfaces"]["mulligan"]["status"] in {"rich", "thin", "report_only"}
+    assert usefulness["surfaces"]["mulligan"]["status"] in {
+        "rich",
+        "policy_backed",
+        "thin",
+        "report_only",
+    }
     assert "changed_key_count" in usefulness["surfaces"]["globalvalues"]
     assert "meaningful_cardid_row_count" in usefulness["surfaces"]["cardid_behavior"]
     assert "combo_row_count" in usefulness["surfaces"]["combo"]

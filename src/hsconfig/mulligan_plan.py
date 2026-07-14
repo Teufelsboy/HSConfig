@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.autonomous_mulligan_policy import build_policy_backed_mulligan_rules
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
@@ -17,6 +18,9 @@ def build_mulligan_plan(
     deck_name: str,
     claims: list[dict[str, Any]],
     card_roles: dict[str, Any],
+    deck_cards: dict[str, Any] | list[dict[str, Any]] | None = None,
+    allow_policy_backed: bool = False,
+    policy_excluded_card_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     suppressed_rules: list[dict[str, Any]] = []
@@ -133,10 +137,14 @@ def build_mulligan_plan(
             rules.append(rule)
 
     rules = _apply_mulligan_precedence(rules)
-    has_concrete_keeps = any(
-        row["action"] == "hold" and row.get("selector_kind") != "wildcard" for row in rules
-    )
-    suppressed_reasons = _suppressed_reason_counts(suppressed_rules)
+    policy_result = {
+        "status": "not_needed",
+        "rules": [],
+        "suppressed": [],
+        "candidate_count": 0,
+        "selected_count": 0,
+        "excluded_count": 0,
+    }
     source_backed_rule_count = sum(
         1
         for row in rules
@@ -150,26 +158,97 @@ def build_mulligan_plan(
         and row.get("action") == "hold"
     )
     has_source_backed_keeps = source_backed_keep_rule_count > 0
+    if allow_policy_backed and not has_source_backed_keeps:
+        policy_result = build_policy_backed_mulligan_rules(
+            deck_name=deck_name,
+            deck_cards=deck_cards or {},
+            card_roles=card_roles,
+            excluded_card_ids=_source_mulligan_intent_cards_for_policy(
+                claims=claims,
+                rules=rules,
+                suppressed_rules=suppressed_rules,
+                extra_card_ids=policy_excluded_card_ids or set(),
+            ),
+        )
+        for row in policy_result["rules"]:
+            key = mulligan_rule_key(row)
+            if key in seen_rule_keys:
+                continue
+            seen_rule_keys.add(key)
+            rules.append(row)
+        for row in policy_result["suppressed"]:
+            suppressed_rules.append(row)
+        rules = _apply_mulligan_precedence(rules)
+
+    has_concrete_keeps = any(
+        row["action"] == "hold" and row.get("selector_kind") != "wildcard" for row in rules
+    )
+    suppressed_reasons = _suppressed_reason_counts(suppressed_rules)
+    policy_backed_rule_count = sum(
+        1
+        for row in rules
+        if row.get("source_type") == "policy_backed_autonomous_mulligan"
+        and row.get("selector_kind") != "wildcard"
+    )
+    policy_backed_keep_rule_count = sum(
+        1
+        for row in rules
+        if row.get("source_type") == "policy_backed_autonomous_mulligan"
+        and row.get("selector_kind") != "wildcard"
+        and row.get("action") == "hold"
+    )
+    has_policy_backed_keeps = policy_backed_keep_rule_count > 0
     actionable_suppressed_rules = [
         row
         for row in suppressed_rules
         if str(row.get("reason")) not in SURFACE_REJECTION_REASONS
     ]
+    missing_keep_reason = (
+        "no_source_backed_or_policy_backed_mulligan_keeps"
+        if allow_policy_backed
+        else "no_source_backed_mulligan_keeps"
+    )
     first_gap_reason = (
         str(actionable_suppressed_rules[0]["reason"])
         if actionable_suppressed_rules
-        else ("none" if has_source_backed_keeps else "no_source_backed_mulligan_keeps")
+        else (
+            "none"
+            if has_source_backed_keeps
+            else (
+                "policy_backed_autonomous_mulligan"
+                if has_policy_backed_keeps
+                else missing_keep_reason
+            )
+        )
+    )
+    runtime_rule_count = sum(
+        1
+        for row in rules
+        if row.get("selector_kind") != "wildcard" or row.get("action") != "discard"
     )
     quality: dict[str, Any] = {
         "has_concrete_keeps": has_concrete_keeps,
-        "status": "rich" if has_source_backed_keeps else "thin",
+        "status": (
+            "rich"
+            if has_source_backed_keeps
+            else ("policy_backed" if has_policy_backed_keeps else "thin")
+        ),
         "first_gap_reason": first_gap_reason,
         "source_backed_rule_count": source_backed_rule_count,
         "source_backed_keep_rule_count": source_backed_keep_rule_count,
+        "policy_backed_rule_count": policy_backed_rule_count,
+        "policy_backed_keep_rule_count": policy_backed_keep_rule_count,
+        "policy_result": policy_result,
+        "default_only": runtime_rule_count == 0,
         "suppressed_rule_count": len(suppressed_rules),
         "suppressed_reasons": suppressed_reasons,
     }
     if has_concrete_keeps:
+        wildcard_reason = (
+            "discard_unlisted_cards_after_source_backed_keeps"
+            if has_source_backed_keeps
+            else "discard_unlisted_cards_after_policy_backed_keeps"
+        )
         rules.append(
             {
                 "card": "*",
@@ -177,11 +256,11 @@ def build_mulligan_plan(
                 "selector": "*",
                 "action": "discard",
                 "condition": "*",
-                "reason": "discard_unlisted_cards_after_source_backed_keeps",
+                "reason": wildcard_reason,
             }
         )
     else:
-        quality["blocked_reason"] = "no_source_backed_mulligan_keeps"
+        quality["blocked_reason"] = missing_keep_reason
 
     return {
         "deck_name": deck_name,
@@ -218,6 +297,36 @@ def _apply_mulligan_precedence(rules: list[dict[str, Any]]) -> list[dict[str, An
         return (fallback_rank, action_rank, index)
 
     return [rule for _index, rule in sorted(enumerate(rules), key=sort_key)]
+
+
+def _source_mulligan_intent_cards_for_policy(
+    *,
+    claims: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+    suppressed_rules: list[dict[str, Any]],
+    extra_card_ids: set[str],
+) -> set[str]:
+    cards = {str(card_id) for card_id in extra_card_ids if str(card_id)}
+    for claim in claims:
+        if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:
+            continue
+        cards.update(_claim_cards(claim))
+    for row in [*rules, *suppressed_rules]:
+        if row.get("action") not in {"hold", "discard"}:
+            continue
+        if str(row.get("reason", "")) in SURFACE_REJECTION_REASONS:
+            continue
+        _add_row_cards(cards, row)
+    return {card_id for card_id in cards if card_id and card_id != "*"}
+
+
+def _add_row_cards(cards: set[str], row: dict[str, Any]) -> None:
+    for card_id in row.get("selector_cards", []):
+        if str(card_id):
+            cards.add(str(card_id))
+    card_id = str(row.get("card", ""))
+    if card_id and card_id != "*":
+        cards.add(card_id)
 
 
 def _claim_cards(claim: dict[str, Any]) -> list[str]:

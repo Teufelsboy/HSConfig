@@ -180,3 +180,73 @@ def test_mulligan_gap_recommends_neutral_claim_choice_not_keep_by_default():
         "mulligan_keep",
         "mulligan_discard",
     ]
+
+
+def test_gap_report_includes_deck_level_mulligan_gap_when_default_only():
+    report = build_source_claim_gap_report(
+        deck_name="DefaultOnly",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        mulligan_plan={
+            "rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "source_backed_keep_rule_count": 0,
+                "policy_backed_keep_rule_count": 0,
+                "default_only": True,
+            },
+        },
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+    )
+
+    mulligan = report["deck_surfaces"]["mulligan"]
+    assert mulligan["first_missing_link"] == "needs_mulligan_claim"
+    assert mulligan["source_depth_lane"] == "mulligan_claim_gap"
+    assert mulligan["recommended_source_claim_kind"] == "mulligan_claim"
+    assert mulligan["recommended_next_claim_kind"] == "mulligan_claim"
+    assert mulligan["recommended_next_claim_kinds"] == ["mulligan_keep", "mulligan_discard"]
+    assert report["summary"]["deck_surface_gap_count"] == 1
+    assert report["summary"]["first_missing_chain"]["surface"] == "mulligan"
+    assert report["summary"]["first_missing_chain"]["recommended_source_claim_kind"] == (
+        "mulligan_claim"
+    )
+    assert report["summary"]["first_missing_chain"]["recommended_next_claim_kind"] == (
+        "mulligan_claim"
+    )
+
+
+def test_gap_report_marks_policy_backed_mulligan_as_closed_not_source_backed():
+    report = build_source_claim_gap_report(
+        deck_name="PolicyClosed",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_1",
+                    "action": "hold",
+                    "selector_kind": "card",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "source_backed_keep_rule_count": 0,
+                "policy_backed_keep_rule_count": 1,
+                "default_only": False,
+            },
+        },
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+    )
+
+    mulligan = report["deck_surfaces"]["mulligan"]
+    assert mulligan["first_missing_link"] == "none"
+    assert mulligan["source_depth_lane"] == "policy_backed_autonomous_mulligan"
+    assert mulligan["source_quality_lane"] == "policy_backed"
+    assert mulligan["recommended_source_claim_kind"] == "none"
+    assert mulligan["recommended_next_claim_kind"] == "none"
+    assert report["summary"]["deck_surface_gap_count"] == 0

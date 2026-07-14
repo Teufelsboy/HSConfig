@@ -249,6 +249,74 @@ def test_mulligan_plan_source_discard_prevents_role_fallback_for_same_card():
     assert card_rules[0]["condition"] == "nocoin"
 
 
+def test_policy_backed_mulligan_does_not_hold_explicit_source_discard_card():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_discard",
+                "cards": ["CARD_001"],
+                "conditions": "*",
+                "claim_id": "discard_card_001",
+            }
+        ],
+        card_roles={
+            "CARD_001": {"roles": ["one_drop"]},
+            "CARD_002": {"roles": ["one_drop"]},
+        },
+        deck_cards={
+            "CARD_001": {"name": "Discarded One Drop", "cost": 1},
+            "CARD_002": {"name": "Safe One Drop", "cost": 1},
+        },
+        allow_policy_backed=True,
+    )
+
+    card_001_rules = [row for row in plan["rules"] if row["card"] == "CARD_001"]
+    assert [(row["action"], row["condition"]) for row in card_001_rules] == [
+        ("discard", "*")
+    ]
+    assert all(
+        row["card"] != "CARD_001"
+        for row in plan["quality"]["policy_result"]["rules"]
+    )
+    assert {
+        "card": "CARD_001",
+        "reason": "excluded_source_mulligan_intent",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in plan["quality"]["policy_result"]["suppressed"]
+
+
+def test_policy_backed_mulligan_does_not_hold_suppressed_source_discard_card():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_kind": "mulligan_discard",
+                "cards": ["CARD_001"],
+                "conditions": {"unsupported": True},
+                "claim_id": "discard_card_001",
+            }
+        ],
+        card_roles={
+            "CARD_001": {"roles": ["one_drop"]},
+            "CARD_002": {"roles": ["one_drop"]},
+        },
+        deck_cards={
+            "CARD_001": {"name": "Suppressed Discard One Drop", "cost": 1},
+            "CARD_002": {"name": "Safe One Drop", "cost": 1},
+        },
+        allow_policy_backed=True,
+    )
+
+    card_001_rules = [row for row in plan["rules"] if row["card"] == "CARD_001"]
+    assert card_001_rules == []
+    assert {
+        "card": "CARD_001",
+        "reason": "excluded_source_mulligan_intent",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in plan["quality"]["policy_result"]["suppressed"]
+
+
 def test_mulligan_plan_preserves_source_claim_selector_depth():
     plan = build_mulligan_plan(
         deck_name="Deck",
@@ -374,3 +442,68 @@ def test_mulligan_plan_discard_only_source_keeps_mulligan_thin():
     assert plan["quality"]["source_backed_rule_count"] == 1
     assert plan["quality"]["source_backed_keep_rule_count"] == 0
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
+
+
+def test_mulligan_plan_can_use_policy_backed_keeps_when_source_keeps_are_absent():
+    plan = build_mulligan_plan(
+        deck_name="CurveDeck",
+        claims=[],
+        card_roles={"CARD_001": {"roles": ["one_drop", "early_pressure"]}},
+        deck_cards={"CARD_001": {"name": "One Drop", "cost": 1}},
+        allow_policy_backed=True,
+    )
+
+    assert plan["rules"][0]["card"] == "CARD_001"
+    assert plan["rules"][0]["source_type"] == "policy_backed_autonomous_mulligan"
+    assert plan["rules"][-1]["selector_kind"] == "wildcard"
+    assert plan["rules"][-1]["reason"] == "discard_unlisted_cards_after_policy_backed_keeps"
+    assert plan["quality"]["status"] == "policy_backed"
+    assert plan["quality"]["policy_backed_keep_rule_count"] == 1
+    assert plan["quality"]["default_only"] is False
+
+
+def test_mulligan_plan_policy_does_not_run_when_source_backed_keep_exists():
+    plan = build_mulligan_plan(
+        deck_name="CurveDeck",
+        claims=[
+            {
+                "claim_kind": "mulligan_keep",
+                "claim_readiness": "guide_backed",
+                "cards": ["CARD_SOURCE"],
+                "claim_id": "source_keep",
+            }
+        ],
+        card_roles={"CARD_POLICY": {"roles": ["one_drop", "early_pressure"]}},
+        deck_cards={"CARD_POLICY": {"name": "Policy Card", "cost": 1}},
+        allow_policy_backed=True,
+    )
+
+    assert [row["card"] for row in plan["rules"] if row["action"] == "hold"] == [
+        "CARD_SOURCE"
+    ]
+    assert plan["quality"]["status"] == "rich"
+    assert plan["quality"]["policy_backed_keep_rule_count"] == 0
+
+
+def test_mulligan_plan_policy_keeps_darkbishop_out_of_mulligan():
+    plan = build_mulligan_plan(
+        deck_name="ShadowPriest",
+        claims=[],
+        card_roles={
+            "SW_448": {"roles": ["start_of_game", "hero_power_transform"]},
+            "SW_446": {"roles": ["one_drop", "early_pressure"]},
+        },
+        deck_cards={
+            "SW_448": {"name": "Darkbishop Benedictus", "cost": 5},
+            "SW_446": {"name": "Voidtouched Attendant", "cost": 1},
+        },
+        allow_policy_backed=True,
+    )
+
+    assert "SW_446" in {row["card"] for row in plan["rules"]}
+    assert "SW_448" not in {row["card"] for row in plan["rules"]}
+    assert any(
+        row["card"] == "SW_448"
+        and row["reason"] == "excluded_non_hand_start_of_game_effect"
+        for row in plan["suppressed_rules"]
+    )

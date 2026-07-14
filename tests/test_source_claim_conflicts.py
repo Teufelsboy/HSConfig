@@ -194,5 +194,5 @@ def test_package_keeps_conflicted_mulligan_claims_visible_but_not_lowered(tmp_pa
         if row["claim_id"] in conflict_claim_ids
     )
     assert not any(
-        row.get("card") == "CARD_001" for row in mulligan["Mulligan"]["values"]
+        row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"]
     )

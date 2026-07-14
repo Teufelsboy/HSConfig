@@ -108,9 +108,9 @@ Open `reports/operator_summary.json` first.
 - `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
-- `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_mulligan_keeps` tells the operator that more guide-backed keep/discard evidence would improve the package.
+- `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_or_policy_backed_mulligan_keeps` tells the operator that more keep/discard evidence or autonomous policy coverage would improve the package.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
-- A thin Mulligan means guide evidence did not name enough explicit `mulligan_keep` or `mulligan_discard` claims. It is a source-quality signal, not a HearthRanger load error, and HSConfig does not invent opening-hand holds from card importance or early-role hints.
+- A thin Mulligan means guide evidence and autonomous policy did not find enough safe keeps. It is a source-quality signal, not a HearthRanger load error. When no source-backed keep can be emitted, `policy_backed_autonomous_mulligan` may still emit a small low-curve keep set, but it remains weaker than source-backed guide evidence and vetoes cards with explicit, suppressed, or quarantined Mulligan source intent.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
 ## Single Gate

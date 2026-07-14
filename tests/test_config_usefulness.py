@@ -132,8 +132,45 @@ def test_config_usefulness_surfaces_actionable_nonblocking_mulligan_gap():
     assert payload["first_usefulness_gap"] == "mulligan_gap"
     assert mulligan["status"] == "thin"
     assert mulligan["first_gap_reason"] == "unsupported_mulligan_condition"
-    assert mulligan["next_source_need"] == "source_backed_mulligan_keeps"
+    assert mulligan["next_source_need"] == "source_backed_or_policy_backed_mulligan_keeps"
     assert mulligan["suppressed_reasons"] == {"unsupported_mulligan_condition": 1}
+
+
+def test_policy_backed_mulligan_is_not_default_only_or_blocking():
+    result = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="STATIC_SEMANTICS_USABLE",
+        config_readiness_summary={},
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "CARD_1",
+                    "action": "hold",
+                    "selector_kind": "card",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "source_backed_rule_count": 0,
+                "source_backed_keep_rule_count": 0,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "first_gap_reason": "policy_backed_autonomous_mulligan",
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": []},
+        globalvalues_profile_report={"changed_keys": [], "unchanged_keys": []},
+    )
+
+    mulligan = result["surfaces"]["mulligan"]
+    assert mulligan["status"] == "policy_backed"
+    assert mulligan["default_only"] is False
+    assert mulligan["next_source_need"] == "none"
+    assert mulligan["policy_backed_rule_count"] == 1
+    assert result["blocking"] is False
 
 
 def test_config_usefulness_marks_valid_sparse_package_load_safe_but_thin():

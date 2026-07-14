@@ -17,14 +17,22 @@ def build_strong_promotion_report(
         *list(operator_summary.get("semantic_blockers", [])),
         *surface_blockers,
     ]
+    source_gap_summary = source_claim_gap_report.get("summary", {})
+    if not isinstance(source_gap_summary, dict):
+        source_gap_summary = {}
+    first_missing_chain = _first_missing_chain(source_claim_gap_report)
+    source_gaps_closed = (
+        int(source_gap_summary.get("blocked_cards", 0)) == 0
+        and int(source_gap_summary.get("deck_surface_gap_count", 0)) == 0
+        and first_missing_chain is None
+    )
     promotion_ready = (
         operator_summary.get("technical_status") == "VALID_PACKAGE"
         and operator_summary.get("semantic_status") == "SOURCE_BACKED_STRONG"
         and operator_summary.get("next_action") == "READY_TO_APPLY_OR_HANDOFF"
         and not semantic_blockers
-        and int(source_claim_gap_report.get("summary", {}).get("blocked_cards", 0)) == 0
+        and source_gaps_closed
     )
-    first_missing_chain = _first_missing_chain(source_claim_gap_report)
     operator_next_action = str(operator_summary.get("next_action", ""))
     return {
         "schema_version": 1,

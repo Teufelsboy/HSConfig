@@ -22,6 +22,47 @@ def test_report_marks_source_backed_strong_as_promotable():
     assert report["next_action"] == "fixture_can_be_core_source_backed"
 
 
+def test_report_blocks_strong_promotion_when_deck_surface_gap_is_open():
+    first_missing_chain = {
+        "surface": "mulligan",
+        "first_missing_link": "needs_mulligan_claim",
+        "recommended_source_claim_kind": "mulligan_claim",
+        "next_action": "build_source_or_policy_backed_mulligan",
+        "priority_score": 90,
+        "priority_reason": "deck_surface:mulligan",
+    }
+    report = build_strong_promotion_report(
+        deck_name="ThinMulliganDeck",
+        fixture_stage="core_source_backed_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "semantic_blockers": [],
+            "guide_strength_summary": {"generic_low_confidence_cards": 0},
+        },
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 0,
+                "deck_surface_gap_count": 1,
+                "first_missing_chain": first_missing_chain,
+            },
+            "cards": {},
+            "deck_surfaces": {
+                "mulligan": {
+                    "surface": "mulligan",
+                    "first_missing_link": "needs_mulligan_claim",
+                }
+            },
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["next_action"] == "close_first_missing_chain"
+    assert report["first_missing_chain"] == first_missing_chain
+
+
 def test_report_explains_first_missing_chain_for_non_strong_deck():
     report = build_strong_promotion_report(
         deck_name="MechPala",

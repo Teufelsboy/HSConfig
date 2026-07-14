@@ -171,6 +171,12 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         darkbishop_card_config.read_text(encoding="utf-8")
     )
     mulligan_values = mulligan["Mulligan"]["values"]
+    policy_hold_rows = [
+        row
+        for row in mulligan_values
+        if row.get("value") == "hold" or row.get("action") == "hold"
+    ]
+    policy_hold_text = json.dumps(policy_hold_rows, sort_keys=True)
     mulligan_text = json.dumps(mulligan, sort_keys=True)
 
     assert build_code == 0
@@ -242,6 +248,15 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert hero_power_profile["decision"] != "overlay_changed"
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
+    assert policy_hold_rows
+    assert "SW_448" not in policy_hold_text
+    assert operator_summary["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
+    assert (
+        operator_summary["config_usefulness"]["surfaces"]["mulligan"][
+            "policy_backed_rule_count"
+        ]
+        >= 1
+    )
     assert (deck_dir / "DS1_233.json").exists()
     assert darkbishop_card_config.exists()
     assert darkbishop_runtime_config["GameCardId"] == "SW_448"

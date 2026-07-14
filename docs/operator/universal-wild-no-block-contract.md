@@ -33,6 +33,10 @@ Layer 2 and Layer 3 gaps are warning-only. They must not block `load_safe_apply`
 - `VALID_PACKAGE` remains the technical load-safety truth.
 - `load_safe_apply` remains allowed when the apply gate is structurally valid.
 - `config_usefulness.status=load_safe_but_thin` is a warning surface, not an apply blocker.
+- `mulligan.status=policy_backed` means HSConfig emitted an autonomous
+  low-curve Mulligan fallback because explicit source-backed Mulligan keeps were
+  absent. It is acceptable for load-safe apply, but weaker than
+  `SOURCE_BACKED_STRONG`.
 - `config_usefulness.next_report_to_open` tells the operator which pre-run report explains the first usefulness gap.
 
 ## Hard Blocks

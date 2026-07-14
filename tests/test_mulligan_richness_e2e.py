@@ -56,8 +56,14 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     assert operator["config_usefulness"]["blocking"] is False
     assert operator["config_usefulness"]["first_usefulness_gap"] == "mulligan_gap"
     assert mulligan_surface["status"] == "thin"
-    assert mulligan_surface["first_gap_reason"] == "no_source_backed_mulligan_keeps"
-    assert mulligan_surface["next_source_need"] == "source_backed_mulligan_keeps"
+    assert (
+        mulligan_surface["first_gap_reason"]
+        == "no_source_backed_or_policy_backed_mulligan_keeps"
+    )
+    assert (
+        mulligan_surface["next_source_need"]
+        == "source_backed_or_policy_backed_mulligan_keeps"
+    )
 
 
 def _run_prepare(

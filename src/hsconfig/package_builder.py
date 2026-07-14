@@ -23,7 +23,7 @@ from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
-from hsconfig.mulligan_plan import build_mulligan_plan
+from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
@@ -131,6 +131,14 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         deck_name=args.deck_name,
         claims=mulligan_claims,
         card_roles=card_roles,
+        deck_cards=_policy_mulligan_deck_cards(
+            gameplan_contract.get("cards", {}),
+            card_metadata,
+        ),
+        allow_policy_backed=True,
+        policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
+            initial_lifecycle_rows
+        ),
     )
     card_behavior_plan = route_card_behavior_claims(
         cardid_claims,
@@ -525,6 +533,70 @@ def _normalize_claim_conflict_report(bundle: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _policy_mulligan_deck_cards(
+    gameplan_cards: Any,
+    card_metadata: dict[str, Any] | list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    metadata_by_card = _metadata_rows_by_card(card_metadata)
+    if isinstance(gameplan_cards, dict):
+        rows = gameplan_cards.items()
+    elif isinstance(gameplan_cards, list):
+        rows = (
+            (str(row.get("card_id", row.get("id", ""))), row)
+            for row in gameplan_cards
+            if isinstance(row, dict)
+        )
+    else:
+        rows = []
+    merged: dict[str, dict[str, Any]] = {}
+    for card_id, row in rows:
+        card_id = str(card_id)
+        if not card_id:
+            continue
+        base = metadata_by_card.get(card_id, {})
+        if isinstance(row, dict):
+            merged[card_id] = {**base, **row}
+        else:
+            merged[card_id] = {**base, "card_id": card_id}
+    return merged
+
+
+def _policy_mulligan_excluded_card_ids(
+    lifecycle_rows: list[dict[str, Any]],
+) -> set[str]:
+    cards: set[str] = set()
+    for row in lifecycle_rows:
+        if str(row.get("claim_kind", "")) not in {"mulligan_keep", "mulligan_discard"}:
+            continue
+        claim = row.get("claim", {})
+        if not isinstance(claim, dict):
+            continue
+        cards.update(_claim_card_ids(claim))
+    return cards
+
+
+def _claim_card_ids(claim: dict[str, Any]) -> set[str]:
+    cards = claim.get("cards", [])
+    if isinstance(cards, str):
+        cards = [cards]
+    if not isinstance(cards, list):
+        return set()
+    return {str(card) for card in cards if str(card)}
+
+
+def _metadata_rows_by_card(
+    card_metadata: dict[str, Any] | list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    rows = card_metadata.get("cards", []) if isinstance(card_metadata, dict) else card_metadata
+    if not isinstance(rows, list):
+        return {}
+    return {
+        str(row["card_id"]): dict(row)
+        for row in rows
+        if isinstance(row, dict) and row.get("card_id")
+    }
+
+
 def _filter_plan_reports_by_lifecycle(
     *,
     initial_lifecycle_rows: list[dict[str, Any]],
@@ -589,11 +661,21 @@ def _filter_mulligan_plan(
         plan.get("rules", []),
         allowed_claim_ids,
     )
+    seen_rule_keys = {mulligan_rule_key(row) for row in filtered_rules}
+    for row in plan.get("rules", []):
+        if not _is_policy_backed_mulligan_row(row):
+            continue
+        key = mulligan_rule_key(row)
+        if key in seen_rule_keys:
+            continue
+        seen_rule_keys.add(key)
+        filtered_rules.append(row)
     if _has_concrete_mulligan_hold(filtered_rules):
         filtered_rules.extend(
             row
             for row in plan.get("rules", [])
             if _is_unreferenced_wildcard_discard(row)
+            and not any(_is_unreferenced_wildcard_discard(existing) for existing in filtered_rules)
         )
     result["rules"] = filtered_rules
     return result
@@ -692,6 +774,13 @@ def _is_unreferenced_wildcard_discard(row: Any) -> bool:
         str(row.get("action", row.get("intent", ""))) == "discard"
         and str(row.get("selector_kind", "")) == "wildcard"
         and str(row.get("selector", row.get("card", ""))) == "*"
+    )
+
+
+def _is_policy_backed_mulligan_row(row: Any) -> bool:
+    return (
+        isinstance(row, dict)
+        and str(row.get("source_type")) == "policy_backed_autonomous_mulligan"
     )
 
 

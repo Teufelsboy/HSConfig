@@ -63,6 +63,9 @@ SURFACE_REJECTION_REASONS = {
     "claim_kind_not_combo_surface",
     "claim_kind_not_cardid_surface",
 }
+DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES = {
+    "policy_backed_autonomous_mulligan",
+}
 
 
 def build_operator_summary(
@@ -270,7 +273,9 @@ def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict
     return [
         row
         for row in rows
-        if isinstance(row, dict) and str(row.get("reason", "")) not in SURFACE_REJECTION_REASONS
+        if isinstance(row, dict)
+        and str(row.get("reason", "")) not in SURFACE_REJECTION_REASONS
+        and str(row.get("source_type", "")) not in DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES
     ]
 
 

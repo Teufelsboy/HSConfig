@@ -77,8 +77,14 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
     quality = report.get("quality", {})
     has_concrete_keeps = bool(quality.get("has_concrete_keeps")) if isinstance(quality, dict) else False
     quality_status = str(quality.get("status", "")).strip() if isinstance(quality, dict) else ""
-    default_only = not rules and not suppressed and not has_concrete_keeps
-    if quality_status in {"rich", "thin"}:
+    concrete_runtime_rules = [
+        row
+        for row in rules
+        if isinstance(row, dict)
+        and (row.get("selector_kind") != "wildcard" or row.get("action") != "discard")
+    ]
+    default_only = not concrete_runtime_rules and not has_concrete_keeps
+    if quality_status in {"rich", "policy_backed", "thin"}:
         status = quality_status
     elif has_concrete_keeps or rules:
         status = "rich"
@@ -96,6 +102,16 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
         if isinstance(quality, dict) and isinstance(quality.get("suppressed_reasons"), dict)
         else {}
     )
+    policy_backed_rule_count = (
+        _int(quality.get("policy_backed_rule_count", 0))
+        if isinstance(quality, dict)
+        else 0
+    )
+    policy_backed_keep_rule_count = (
+        _int(quality.get("policy_backed_keep_rule_count", 0))
+        if isinstance(quality, dict)
+        else 0
+    )
     return {
         "status": status,
         "rule_count": len(rules),
@@ -103,10 +119,16 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
         "has_concrete_keeps": has_concrete_keeps,
         "default_only": default_only,
         "first_gap_reason": first_gap_reason,
-        "next_source_need": "none" if status == "rich" else "source_backed_mulligan_keeps",
+        "next_source_need": (
+            "none"
+            if status in {"rich", "policy_backed"}
+            else "source_backed_or_policy_backed_mulligan_keeps"
+        ),
         "source_backed_rule_count": _int(quality.get("source_backed_rule_count", 0))
         if isinstance(quality, dict)
         else 0,
+        "policy_backed_rule_count": policy_backed_rule_count,
+        "policy_backed_keep_rule_count": policy_backed_keep_rule_count,
         "suppressed_reasons": suppressed_reasons,
     }
 
@@ -186,7 +208,9 @@ def _first_gap(
         return "condition_gap"
     if _int(summary.get("cards_needing_mechanic_lowering")):
         return "mechanic_gap"
-    if _int(summary.get("cards_needing_mulligan_claims")) or mulligan["status"] in {"thin", "report_only"}:
+    if _int(summary.get("cards_needing_mulligan_claims")) and mulligan["status"] != "policy_backed":
+        return "mulligan_gap"
+    if mulligan["status"] in {"thin", "report_only"}:
         return "mulligan_gap"
     if _int(summary.get("cards_needing_guide_claims")) or _int(summary.get("generic_low_confidence")):
         return "guide_claim_gap"
