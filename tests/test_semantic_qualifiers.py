@@ -182,3 +182,70 @@ def test_start_of_game_qualifier_warns_about_suspicious_mulligan_keep():
         warning["reason"] == "suspicious_mulligan_keep_non_hand_effect"
         for warning in row["warnings"]
     )
+
+
+def test_normalize_semantic_qualifiers_accepts_generation_and_deck_evaluation():
+    result = normalize_semantic_qualifiers(
+        {
+            "semantic_qualifiers": {
+                "generation_scope": "Generated Card",
+                "deck_evaluation": ["No Duplicates", "Odd Cost"],
+            }
+        }
+    )
+
+    assert result["generation_scope"] == "generated"
+    assert result["deck_evaluation"] == ["highlander", "odd"]
+
+
+def test_deck_evaluation_qualifier_blocks_mulligan_keep_without_opening_hand_text():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["DECK_MODIFIER"],
+        "evidence_text_short": "Core highlander payoff for this deck.",
+        "semantic_qualifiers": {
+            "deck_evaluation": "highlander",
+        },
+    }
+
+    decision = can_lower_to_mulligan(claim)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_generated_qualifier_blocks_mulligan_keep_without_opening_hand_text():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["GENERATED_OPTION"],
+        "evidence_text_short": "Generated payoff card matters later.",
+        "semantic_qualifiers": {
+            "generation_scope": "generated",
+        },
+    }
+
+    decision = can_lower_to_mulligan(claim)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
+def test_deck_evaluation_qualifier_allows_explicit_opening_hand_text():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["DECK_MODIFIER"],
+        "evidence_text_short": "Always keep DECK_MODIFIER in your opening hand.",
+        "semantic_qualifiers": {
+            "deck_evaluation": "highlander",
+        },
+    }
+
+    decision = can_lower_to_mulligan(claim)
+
+    assert decision.allowed is True

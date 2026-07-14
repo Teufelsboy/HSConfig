@@ -9,6 +9,8 @@ QUALIFIER_KEYS = (
     "target_scope",
     "option_surface",
     "state_requirements",
+    "generation_scope",
+    "deck_evaluation",
 )
 
 ALIASES = {
@@ -25,6 +27,24 @@ ALIASES = {
     "enemy minion": "enemy_minion",
     "discover": "discover",
     "choose one": "choose_one",
+    "generated card": "generated",
+    "generated cards": "generated",
+    "random pool": "random_pool",
+    "randomly generated": "generated",
+    "discovered": "discovered",
+    "copied": "copied",
+    "transformed": "transformed",
+    "shuffled": "shuffled",
+    "no duplicates": "highlander",
+    "singleton": "highlander",
+    "highlander": "highlander",
+    "odd cost": "odd",
+    "odd": "odd",
+    "even cost": "even",
+    "even": "even",
+    "deck size": "deck_size",
+    "start in deck": "start_in_deck",
+    "all shadow spells": "all_shadow_spells",
 }
 
 
@@ -61,13 +81,29 @@ def has_qualifier(claim: Mapping[str, Any], key: str, value: str) -> bool:
     return current == value
 
 
+def qualifier_values(claim: Mapping[str, Any], key: str) -> set[str]:
+    qualifiers = claim.get("semantic_qualifiers", {})
+    if not isinstance(qualifiers, Mapping):
+        return set()
+    current = qualifiers.get(key)
+    if isinstance(current, list):
+        return {str(item) for item in current if str(item)}
+    if current is None:
+        return set()
+    return {str(current)}
+
+
 def _add_value(result: dict[str, Any], key: str, value: Any) -> None:
     if value is None:
         return
     if isinstance(value, str):
         normalized = _normalize_text(value)
         if normalized:
-            result[key] = [normalized] if key == "state_requirements" else normalized
+            result[key] = (
+                [normalized]
+                if key in {"state_requirements", "deck_evaluation"}
+                else normalized
+            )
         return
     if isinstance(value, list):
         values = [_normalize_text(item) for item in value]

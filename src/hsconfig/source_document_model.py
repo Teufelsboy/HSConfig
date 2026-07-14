@@ -8,7 +8,7 @@ from hsconfig.role_tokens import (
     card_role_tokens,
     has_explicit_opening_hand_mulligan_intent,
 )
-from hsconfig.source_semantic_qualifiers import has_qualifier
+from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
 
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
     {
@@ -105,6 +105,28 @@ CARDID_SURFACE_CLAIM_KINDS = frozenset(
         "known_bad_pattern",
         "discover_choice",
         "choose_one_choice",
+    }
+)
+
+DECK_EVALUATION_NON_HAND_EFFECTS = frozenset(
+    {
+        "highlander",
+        "odd",
+        "even",
+        "deck_size",
+        "start_in_deck",
+        "all_shadow_spells",
+    }
+)
+
+GENERATED_NON_OPENING_HAND_SCOPES = frozenset(
+    {
+        "generated",
+        "random_pool",
+        "discovered",
+        "copied",
+        "transformed",
+        "shuffled",
     }
 )
 
@@ -319,11 +341,23 @@ def _contains_start_of_game_non_hand_effect(
             return not has_opening_hand_intent
         if "mulligan_anchor" not in roles and not has_opening_hand_intent:
             return True
+    deck_evaluation_effect = bool(
+        qualifier_values(claim or {}, "deck_evaluation").intersection(
+            DECK_EVALUATION_NON_HAND_EFFECTS
+        )
+    )
+    generated_effect = bool(
+        qualifier_values(claim or {}, "generation_scope").intersection(
+            GENERATED_NON_OPENING_HAND_SCOPES
+        )
+    )
     qualifier_start_effect = (
         has_qualifier(claim or {}, "timing", "start_of_game")
         or has_qualifier(claim or {}, "zone_scope", "deck")
         or has_qualifier(claim or {}, "state_requirements", "hero_power_transform")
         or has_qualifier(claim or {}, "state_requirements", "deckbuilding_effect")
+        or deck_evaluation_effect
+        or generated_effect
     )
     if qualifier_start_effect and not has_explicit_opening_hand_mulligan_intent(
         claim,
