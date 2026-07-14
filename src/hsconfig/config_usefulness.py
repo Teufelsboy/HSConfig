@@ -3,6 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 
+EXPECTED_RUNTIME_SURFACES = (
+    "mulligan",
+    "globalvalues",
+    "cardid_behavior",
+    "combo",
+)
+
+
 GAP_REPORTS = {
     "mulligan_gap": "reports/mulligan_plan_report.json",
     "runtime_surface_gap": "reports/per_card_config_readiness_report.json",
@@ -53,6 +61,12 @@ def build_config_usefulness(
         combo=combo,
         globalvalues=globalvalues,
     )
+    surfaces = {
+        "mulligan": mulligan,
+        "globalvalues": globalvalues,
+        "cardid_behavior": cardid,
+        "combo": combo,
+    }
 
     return {
         "schema_version": 1,
@@ -60,12 +74,7 @@ def build_config_usefulness(
         "headline": _headline(status, first_gap),
         "runtime_permission_impact": "none",
         "blocking": False,
-        "surfaces": {
-            "mulligan": mulligan,
-            "globalvalues": globalvalues,
-            "cardid_behavior": cardid,
-            "combo": combo,
-        },
+        "surfaces": surfaces,
         "first_usefulness_gap": first_gap,
         "next_report_to_open": GAP_REPORTS.get(first_gap, "reports/operator_summary.json"),
     }

@@ -450,3 +450,55 @@ def test_contract_invariants_note_surface_status_ledger_is_diagnostic_only():
     assert report["checks"]["report_ownership_gate_files"] == [
         "reports/operator_summary.json"
     ]
+
+
+def test_contract_spine_sentinel_exposes_runtime_surface_coverage():
+    report = build_contract_spine_sentinel_report()
+    coverage = report["checks"]["runtime_surface_coverage"]
+
+    assert coverage == {
+        "expected_surfaces": ["cardid_behavior", "combo", "globalvalues", "mulligan"],
+        "config_usefulness_surfaces": [
+            "cardid_behavior",
+            "combo",
+            "globalvalues",
+            "mulligan",
+        ],
+        "surface_status_ledger_surfaces": [
+            "cardid_behavior",
+            "combo",
+            "globalvalues",
+            "mulligan",
+        ],
+        "missing_from_config_usefulness": [],
+        "missing_from_surface_status_ledger": [],
+        "extra_in_config_usefulness": [],
+        "extra_in_surface_status_ledger": [],
+    }
+    assert report["status"] == "clean"
+    assert report["apply_blocking"] is False
+
+
+def test_contract_spine_sentinel_flags_runtime_surface_missing_from_operator_views(
+    monkeypatch,
+):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    monkeypatch.setattr(
+        sentinel,
+        "EXPECTED_RUNTIME_SURFACES",
+        (*sentinel.EXPECTED_RUNTIME_SURFACES, "future_surface"),
+    )
+
+    report = sentinel.build_contract_spine_sentinel_report()
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "runtime_surface_coverage",
+        "value": {
+            "missing_from_config_usefulness": ["future_surface"],
+            "missing_from_surface_status_ledger": ["future_surface"],
+            "extra_in_config_usefulness": [],
+            "extra_in_surface_status_ledger": [],
+        },
+    } in report["problems"]

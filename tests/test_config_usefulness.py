@@ -1,4 +1,5 @@
 from hsconfig.config_usefulness import build_config_usefulness
+from hsconfig.config_usefulness import EXPECTED_RUNTIME_SURFACES
 
 
 def test_config_usefulness_marks_rich_source_backed_package_guide_aligned():
@@ -287,3 +288,25 @@ def test_config_usefulness_marks_invalid_package_without_affecting_gate_fields()
     assert payload["status"] == "invalid_package"
     assert payload["headline"] == "Package is technically invalid; config richness is not evaluated."
     assert payload["runtime_permission_impact"] == "none"
+
+
+def test_config_usefulness_surfaces_match_expected_runtime_surface_registry():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="STATIC_SEMANTICS_USABLE",
+        config_readiness_summary={},
+        mulligan_plan_report={
+            "rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": [], "unchanged_keys": []},
+    )
+
+    assert tuple(sorted(usefulness["surfaces"])) == tuple(
+        sorted(EXPECTED_RUNTIME_SURFACES)
+    )

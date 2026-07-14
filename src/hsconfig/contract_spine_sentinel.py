@@ -4,6 +4,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from hsconfig.config_usefulness import EXPECTED_RUNTIME_SURFACES
+from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import (
     KNOWN_DIAGNOSTIC_REPORT_FILES,
     KNOWN_RESEARCH_REPORT_FILES,
@@ -93,6 +95,7 @@ INVARIANT_EVIDENCE = {
         "conformance_apply_authority_fields_present",
         "conformance_operator_gate_impact",
         "surface_status_ledger",
+        "runtime_surface_coverage",
     ),
     "claim_kind_surface_policy_complete": (
         "policy_missing_claim_kinds",
@@ -166,6 +169,7 @@ def build_contract_spine_sentinel_report(
         "output_ownership_forbidden_legacy_surfaces": (
             _output_ownership_files_by_classification("forbidden_legacy_surface")
         ),
+        "runtime_surface_coverage": _runtime_surface_coverage(),
     }
     family_registry_report = build_claim_family_registry_report()
     checks["claim_family_registry"] = {
@@ -193,6 +197,60 @@ def _missing(expected: tuple[str, ...], actual: dict[str, object]) -> list[str]:
 
 def _extra(expected: tuple[str, ...], actual: dict[str, object]) -> list[str]:
     return sorted(set(actual) - set(expected))
+
+
+def _runtime_surface_coverage() -> dict[str, Any]:
+    summary = build_operator_summary(
+        deck_name="Surface Coverage Fixture",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "static_semantics_only",
+            "claim_count": 0,
+        },
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={"changed_keys": [], "unchanged_keys": []},
+    )
+    expected = sorted(EXPECTED_RUNTIME_SURFACES)
+    config_surfaces = sorted(summary["config_usefulness"]["surfaces"])
+    ledger_surfaces = sorted(row["surface"] for row in summary["surface_status_ledger"])
+    return {
+        "expected_surfaces": expected,
+        "config_usefulness_surfaces": config_surfaces,
+        "surface_status_ledger_surfaces": ledger_surfaces,
+        "missing_from_config_usefulness": sorted(set(expected) - set(config_surfaces)),
+        "missing_from_surface_status_ledger": sorted(set(expected) - set(ledger_surfaces)),
+        "extra_in_config_usefulness": sorted(set(config_surfaces) - set(expected)),
+        "extra_in_surface_status_ledger": sorted(set(ledger_surfaces) - set(expected)),
+    }
+
+
+def _runtime_surface_coverage_problem_value(
+    coverage: dict[str, Any],
+) -> dict[str, list[str]]:
+    return {
+        "missing_from_config_usefulness": list(
+            coverage.get("missing_from_config_usefulness", [])
+        ),
+        "missing_from_surface_status_ledger": list(
+            coverage.get("missing_from_surface_status_ledger", [])
+        ),
+        "extra_in_config_usefulness": list(
+            coverage.get("extra_in_config_usefulness", [])
+        ),
+        "extra_in_surface_status_ledger": list(
+            coverage.get("extra_in_surface_status_ledger", [])
+        ),
+    }
 
 
 def _non_diagnostic_policy_claim_kinds(policy: dict[str, dict[str, Any]]) -> list[str]:
@@ -520,4 +578,11 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:
                 "value": family_registry,
             }
         )
+    coverage = checks.get("runtime_surface_coverage", {})
+    if isinstance(coverage, dict):
+        coverage_problem = _runtime_surface_coverage_problem_value(coverage)
+        if any(coverage_problem.values()):
+            problems.append(
+                {"check": "runtime_surface_coverage", "value": coverage_problem}
+            )
     return problems
