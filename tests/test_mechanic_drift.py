@@ -68,7 +68,7 @@ def test_imbue_is_detected_from_referenced_tags():
 
     assert "imbue" in report["mechanics"]
     assert report["mechanics_by_card"]["I1"] == ["imbue"]
-    assert report["support_by_mechanic"]["imbue"]["support_level"] == "partial"
+    assert report["support_by_mechanic"]["imbue"]["support_level"] == "warning_only"
 
 
 def test_mechanic_drift_detects_text_only_tradeable_without_blocking():
