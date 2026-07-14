@@ -1,11 +1,35 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+
+CURRENT_TRUTH = Path("docs/research/current-truth.md")
+CURRENT_TRUTH_INDEX = Path("docs/research/current-truth-index.json")
+
+
+def _current_active_evidence_package_paths() -> set[str]:
+    raw = CURRENT_TRUTH.read_text(encoding="utf-8")
+    match = re.search(
+        r"(?ms)^## Current Active Evidence\s*$\n(?P<body>.*?)(?=^## |\Z)",
+        raw,
+    )
+    assert match is not None
+
+    paths: set[str] = set()
+    for token in re.findall(
+        r"`(?P<path>(?:docs/research/)?20\d{2}-\d{2}-\d{2}-[A-Za-z0-9_-]+/?)`",
+        match.group("body"),
+    ):
+        if token.startswith("docs/research/"):
+            paths.add(token if token.endswith("/") else f"{token}/")
+        else:
+            paths.add(f"docs/research/{token}/")
+    return paths
 
 
 def test_current_truth_index_is_machine_readable_and_diagnostic_only():
-    data = json.loads(Path("docs/research/current-truth-index.json").read_text(encoding="utf-8"))
+    data = json.loads(CURRENT_TRUTH_INDEX.read_text(encoding="utf-8"))
 
     assert data["schema_version"] == 1
     assert data["authority"] == "evidence_index_only"
@@ -28,8 +52,18 @@ def test_current_truth_index_is_machine_readable_and_diagnostic_only():
     )
 
 
+def test_current_truth_index_includes_every_current_active_evidence_package():
+    data = json.loads(CURRENT_TRUTH_INDEX.read_text(encoding="utf-8"))
+
+    markdown_paths = _current_active_evidence_package_paths()
+    index_paths = {item["path"] for item in data["active_research_packages"]}
+
+    assert markdown_paths
+    assert markdown_paths <= index_paths
+
+
 def test_current_truth_index_does_not_claim_apply_authority():
-    raw = Path("docs/research/current-truth-index.json").read_text(encoding="utf-8")
+    raw = CURRENT_TRUTH_INDEX.read_text(encoding="utf-8")
     forbidden = {
         "runtime_apply_authorized",
         "apply_gate_authority",

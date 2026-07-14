@@ -207,6 +207,64 @@ def test_explainability_operator_attention_rows_prioritize_missing_links():
     ]
 
 
+def test_explainability_operator_attention_marks_no_missing_link_without_runtime_files():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "FixtureDeck",
+        "claim_rows": {
+            "report_claim": {
+                "claim_id": "report_claim",
+                "claim_kind": "source_note",
+                "lane": "report_only",
+                "policy_lane": "report_only",
+                "lowered_surfaces": [],
+                "first_reason": "report_only",
+                "cards": ["CARD_NOTE"],
+            }
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "report_claim",
+                "claim_kind": "source_note",
+                "policy_lane": "report_only",
+                "surface_gate_decision": "suppressed",
+                "surface_gate_reason": "report_only",
+                "builder_or_router_decision": "suppressed",
+                "runtime_surface": None,
+                "emitted_files": [],
+                "suppressed_reason": None,
+                "first_missing_link": None,
+                "operator_impact": "diagnostic_only",
+            }
+        ],
+        "card_rows": {
+            "CARD_NOTE": {
+                "name": "Report Only Card",
+                "readiness_lane": "report_only_supported",
+                "first_missing_link": "none",
+                "runtime_surfaces": [],
+                "claim_lanes": {"report_only": 1},
+            }
+        },
+    }
+
+    report = build_source_to_runtime_explainability_report(audit)
+
+    assert report["operator_attention"] == [
+        {
+            "card_id": "CARD_NOTE",
+            "name": "Report Only Card",
+            "status": "no_missing_link",
+            "first_missing_link": None,
+            "next_source_action": "none",
+            "strongest_claim_id": "report_claim",
+            "strongest_claim_kind": "source_note",
+            "emitted_runtime_files": [],
+            "not_emitted_runtime_files": [],
+        }
+    ]
+
+
 def test_explainability_card_rows_aggregate_runtime_files_across_claims():
     audit = _fixture_audit()
     audit["claim_rows"]["behavior_claim"] = {

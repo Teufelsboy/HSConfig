@@ -27,9 +27,64 @@
       "current_implication": "claim_kind routes through policy, surface gates, builder/router decisions, and diagnostics before runtime package consideration"
     },
     {
+      "path": "docs/research/2026-07-12-hsconfig-source-contract-spine-brainstorm/",
+      "role": "contract-spine freeze and no-second-gate evidence",
+      "current_implication": "operator_summary.json remains the normal apply authority; source contract audit rows stay diagnostic"
+    },
+    {
       "path": "docs/research/2026-07-11-hsconfig-source-contract-logic-audit/",
       "role": "source and runtime contract evidence",
       "current_implication": "start-of-game effects must not become mulligan keeps without explicit mulligan claims"
+    },
+    {
+      "path": "docs/research/2026-07-11-hsconfig-post-hardening-skill-audit/",
+      "role": "post-hardening skill audit evidence",
+      "current_implication": "keep the lean HSConfig boundary, correct Presume surface wording, preserve no-block apply behavior, and use real decks for targeted defects"
+    },
+    {
+      "path": "docs/research/2026-07-11-hsconfig-current-skill-audit/",
+      "role": "current skill contract and slimness evidence",
+      "current_implication": "keep HSConfig narrow, harden no-block apply with executable tests, correct Presume and Concede wording, and keep active docs compact"
+    },
+    {
+      "path": "docs/research/2026-07-10-hsconfig-no-block-universal-skill-audit-v4/",
+      "role": "no-block universal skill posture evidence",
+      "current_implication": "add visibility-only warning rows for rewind, herald, and shatter; keep normal package output limited to load-safe HSConfig surfaces"
+    },
+    {
+      "path": "docs/research/2026-07-10-hsconfig-post-contract-closure-skill-audit/",
+      "role": "post-contract no-block cleanup evidence",
+      "current_implication": "keep the core apply gate unchanged; runtime hard blocks are technical only, per-card coverage is rich output, and source-strength gaps are promotion or richness gaps"
+    },
+    {
+      "path": "docs/research/2026-07-09-hsconfig-next-recommendation-mechanic-polish/",
+      "role": "visibility-only mechanic polish evidence",
+      "current_implication": "add non-blocking mechanic visibility for choose_one, board_position, generic_spell_target, location_activation, secret_timing, and generated_entity_random_pool; do not change apply gates"
+    },
+    {
+      "path": "docs/research/2026-07-09-hsconfig-current-no-block-wild-mechanic-audit/",
+      "role": "no-block Wild mechanic evidence",
+      "current_implication": "valid deck packages should stay load-safe even when mechanic semantics are report-only"
+    },
+    {
+      "path": "docs/research/2026-07-09-hsconfig-universal-no-block-skill-audit-v2/",
+      "role": "universal no-block evidence",
+      "current_implication": "the no-block promise is implemented through warning visibility, not broader runtime writes"
+    },
+    {
+      "path": "docs/research/2026-07-11-hsconfig-live-skill-audit/",
+      "role": "live skill audit evidence",
+      "current_implication": "HSConfig is ready for real-deck usage with narrow polish only; normal runtime surface remains unchanged and warning-only mechanics stay non-blocking"
+    },
+    {
+      "path": "docs/research/2026-07-10-hsconfig-universal-no-block-skill-audit-v5/",
+      "role": "no-block failure-mode summary evidence",
+      "current_implication": "the next narrow improvement is operator-facing no_block_failure_mode_summary, not a broader apply gate, new representative decks, or post-run HSTuner scope"
+    },
+    {
+      "path": "docs/research/2026-07-10-hsconfig-mechanic-lowering-parity-wave/",
+      "role": "mechanic lowering parity evidence",
+      "current_implication": "the mechanic lowering registry is executable authority; lowerable mechanics with documented CardID targets emit rows or cards_needing_mechanic_lowering, while report-only mechanics remain warning-only"
     }
   ]
 }

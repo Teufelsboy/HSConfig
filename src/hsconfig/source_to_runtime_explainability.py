@@ -191,20 +191,23 @@ def _operator_attention_rows(card_rows: list[dict[str, object]]) -> list[dict[st
     rows: list[dict[str, object]] = []
     for row in card_rows:
         first_missing_link = row.get("first_missing_link")
+        emitted_runtime_files = row.get("emitted_runtime_files", [])
+        if first_missing_link is not None:
+            status = "source_action_needed"
+        elif emitted_runtime_files:
+            status = "runtime_backed"
+        else:
+            status = "no_missing_link"
         rows.append(
             {
                 "card_id": row["card_id"],
                 "name": row.get("name"),
-                "status": (
-                    "runtime_backed"
-                    if first_missing_link is None
-                    else "source_action_needed"
-                ),
+                "status": status,
                 "first_missing_link": first_missing_link,
                 "next_source_action": row.get("next_source_action"),
                 "strongest_claim_id": row.get("strongest_claim_id"),
                 "strongest_claim_kind": row.get("strongest_claim_kind"),
-                "emitted_runtime_files": row.get("emitted_runtime_files", []),
+                "emitted_runtime_files": emitted_runtime_files,
                 "not_emitted_runtime_files": row.get(
                     "not_emitted_runtime_files", []
                 ),
