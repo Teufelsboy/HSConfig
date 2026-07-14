@@ -58,7 +58,7 @@ Use this loop after a source-contract or no-default-only audit passes.
 5. `default_only_runtime_surfaces` must be inspected when non-empty.
 6. `source_to_runtime_explainability.json` is diagnostic.
 7. `source_contract_audit.json` is diagnostic.
-8. Do not add a second apply gate for real-deck usage.
+8. Do not add another runtime-write authority for real-deck usage.
 9. Concrete defects get targeted fixes; warnings do not become blockers.
 
 The loop is intentionally narrow. It proves that a real deck can move through the existing normal path without turning source-depth warnings, closure freshness, default-only diagnostics, or mechanic visibility into runtime-write permission.

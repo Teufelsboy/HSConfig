@@ -27,7 +27,7 @@ def test_operator_docs_define_real_deck_usage_loop_without_new_gate():
 
     assert "## Real-Deck Usage Loop" in text
     assert "Use this loop after a source-contract or no-default-only audit passes." in text
-    assert "Do not add a second apply gate for real-deck usage." in text
+    assert "Do not add another runtime-write authority for real-deck usage." in text
     assert "Run `hsconfig configure`" in text
     assert "Open `reports/operator_summary.json` first." in text
     assert "`default_only_runtime_surfaces` must be inspected when non-empty." in text
