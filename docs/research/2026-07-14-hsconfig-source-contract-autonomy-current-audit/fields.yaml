@@ -1,0 +1,21 @@
+field_categories:
+  - category: audit_result
+    fields:
+      - name: verdict
+        required: true
+      - name: current_evidence
+        required: true
+      - name: source_contract_implication
+        required: true
+      - name: default_only_implication
+        required: true
+      - name: autonomy_implication
+        required: true
+      - name: slimness_implication
+        required: true
+      - name: remaining_risks
+        required: true
+      - name: recommended_actions
+        required: true
+      - name: uncertain
+        required: true

@@ -1,0 +1,34 @@
+topic: HSConfig source contract autonomy current audit
+execution:
+  output_dir: ./results
+  batch_size: 4
+  items_per_agent: 1
+items:
+  - name: Current apply authority and diagnostic report boundary
+    category: local code and docs audit
+    description: >
+      Audit the active HSConfig chain from hsconfig configure to operator_summary,
+      source_contract_audit, source_to_runtime_explainability, validate, apply_gate,
+      and operator docs. Decide whether operator_summary is still the only normal
+      runtime apply authority and whether diagnostic reports can become gates.
+  - name: No default only output guarantee
+    category: local tests and package contract audit
+    description: >
+      Audit how HSConfig prevents silent default-only runtime output across
+      GlobalValues, Mulligan, per-card CardID files, Combo, config_usefulness,
+      default_only_runtime_surfaces, representative Wild tests, and real-deck
+      configure proof. Decide whether any valid deck can still degrade silently.
+  - name: Hearthstone semantic false lowering boundaries
+    category: Hearthstone semantics and local regression audit
+    description: >
+      Audit the semantics that must not be falsely lowered into runtime config:
+      start-of-game, deckbuilding, hero power transform, Discover or Choose One
+      without option identity, generated/random pools, numeric GlobalValues
+      without runtime evidence, and Darkbishop Benedictus / SW_448 as the anchor.
+  - name: Slim autonomous any-deck workflow
+    category: operator workflow and long-term architecture audit
+    description: >
+      Audit whether HSConfig is now narrow and autonomous enough for arbitrary
+      Wild decks: one normal command, no human approval gate, warnings visible
+      but non-blocking, no Presume or Concede normal output, and clear separation
+      from HSTuner post-run tuning.

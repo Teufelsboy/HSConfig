@@ -1,0 +1,74 @@
+{
+  "verdict": "The current HSConfig source-contract boundary is correctly conservative for Hearthstone semantics that must not be falsely lowered into runtime config. Start-of-game, deckbuilding, hero-power-transform, unresolved Discover or Choose One options, generated or random pools, and numeric GlobalValues tuning are kept in source contracts, diagnostics, CardID behavior rows, warning-only buckets, or runtime-evidence-required lanes unless a surface-specific gate proves that a safe runtime row exists. Darkbishop Benedictus / SW_448 is the anchor case: its start-of-game Shadowform and Mind Spike effect remains effect-visible through hero_power_transform/CardID behavior, while the card is not treated as an opening-hand mulligan keep unless a source explicitly says to keep it in the opening hand.",
+  "current_evidence": [
+    "Repo state inspected: C:/Users/darbo/Documents/HSConfig on main tracking origin/main at HEAD 845dbf368b128fe7a6ca43518833dfe785e65344; the only observed untracked path was the requested docs/research/2026-07-14-hsconfig-source-contract-autonomy-current-audit/ folder.",
+    "Focused verification passed: python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_card_behavior_router.py tests/test_surface_authority_split.py tests/test_source_contract_conformance.py tests/test_source_contract_spine_freeze.py tests/test_static_semantics.py -q -> 137 passed in 0.59s.",
+    "C:/Users/darbo/Documents/HSConfig/README.md states that source-backed runtime Mulligan writes require explicit mulligan_keep or mulligan_discard claim kinds, while card importance, start-of-game effects, deckbuilding effects, hero-power-transform text, and guide gameplan text remain contract evidence unless separately backed by explicit hand-required Mulligan guidance.",
+    "C:/Users/darbo/Documents/HSConfig/README.md also states that claims such as hero_power_transform or card_role can enrich the every-card contract and per-card behavior reports without being allowed to write Mulligan.json, GlobalValues.json, or Combo.json.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/card-behavior-policy.md requires discover_choice and choose_one_choice to lower only when exact option identity is source-backed; unresolved option identity must stay visible in card_behavior_suppression_report.json with reason=unresolved_option_identity.",
+    "C:/Users/darbo/Documents/HSConfig/.agents/skills/hsconfig/references/visionai-surfaces.md keeps normal HSConfig output limited to GlobalValues.json, Mulligan.json, per-card CARDID.json, and Combo.json only when a concrete valid combo exists; choice-surface lowering stays inside per-card CARDID.json and only with source-backed option identity.",
+    "src/hsconfig/source_document_model.py defines supported atomic claim kinds including mulligan_keep, mulligan_discard, hero_power_transform, discover_choice, choose_one_choice, and globalvalue_numeric_tuning; it maps Mulligan authority only to mulligan_keep/mulligan_discard, GlobalValues Step 1 authority only to gameplan_posture, Combo authority only to combo_sequence, and CardID authority to card behavior claim kinds.",
+    "src/hsconfig/source_document_model.py rejects Discover and Choose One CardID lowering when exact option identity is missing, returning requires_exact_option_identity.",
+    "src/hsconfig/source_document_model.py rejects a mulligan_keep claim when the target card has start_of_game non-hand effect semantics and no explicit opening-hand mulligan intent, returning start_of_game_effect_does_not_require_opening_hand.",
+    "src/hsconfig/role_tokens.py includes deck_state_modifier, deckbuilding_modifier, deck_size_modifier, even_odd_modifier, highlander_modifier, hero_power_transform, passive_start_effect, start_in_deck_requirement, and start_of_game_modifier in START_OF_GAME_NON_HAND_EFFECT_ROLES.",
+    "src/hsconfig/source_contract_matrix.py classifies hero_power_transform as suppressed_or_conditional with only the cardid surface allowed and with operator meaning: preserve hero-power-transform semantics; it is not a mulligan keep by itself.",
+    "src/hsconfig/source_contract_matrix.py classifies discover_choice and choose_one_choice as suppressed_or_conditional CardID lanes that require exact option identity, and classifies globalvalue_numeric_tuning as runtime_evidence_required with no Step 1 allowed surfaces.",
+    "src/hsconfig/card_behavior_surface_router.py maps hero_power_transform to BeforeUseHeroPowerBonus, discover_choice to OnDiscoverCardBonus, and choose_one_choice to OnChooseOneCardBonus, but suppresses unresolved option identities instead of emitting guessed rows.",
+    "src/hsconfig/card_behavior_surface_router.py treats globalvalue_numeric_tuning as belonging to a dedicated non-CardID surface, preventing it from leaking into per-card behavior rows.",
+    "src/hsconfig/mechanic_support.py treats start_of_game as partial and represents it through deck posture or exact linked entities rather than by executing a runtime action; generated_entity_random_pool is warning_only and report-only unless exact generated identity is source-backed.",
+    "src/hsconfig/globalvalues_authority.py adds runtime_evidence_required blocked rows for runtime-sensitive GlobalValues keys and for globalvalue_numeric_tuning claims, using requires_runtime_evidence as the blocked reason.",
+    "tests/test_claim_kind_runtime_contract.py proves that globalvalue_numeric_tuning is valid evidence but cannot lower to GlobalValues without runtime evidence, that SW_448 hero_power_transform remains an effect rather than a mulligan hold, and that explicit opening-hand wording is required before a start-of-game card can become a Mulligan hold.",
+    "tests/test_surface_authority_split.py proves that hero_power_transform cannot lower to Mulligan.json, that effect-only Darkbishop text is suppressed from opening-hand keeps, and that globalvalue_numeric_tuning is rejected from GlobalValues with requires_runtime_evidence.",
+    "tests/test_card_behavior_router.py proves that resolved Discover and Choose One option identities can lower to OnDiscoverCardBonus or OnChooseOneCardBonus, while missing or mismatched option identities are suppressed with unresolved_option_identity.",
+    "tests/test_static_semantics.py proves SW_448-style text and START_OF_GAME_KEYWORD infer start_of_game, shadowform, hero_power, and hero_power_transform, while random generated pools and unlowerable mechanics stay separated from direct runtime rows.",
+    "tests/fixtures/shadowpriest_guide_sources.json anchors the Darkbishop correction: SW_448 has a hero_power_transform claim with BeforeUseHeroPowerBonus and evidence text saying the effect matters without keeping the card in the opening hand; SW_448 is not present as a mulligan_keep claim.",
+    "Official card identity anchor checked: https://hearthstone.blizzard.com/en-us/cards/64443-darkbishop-benedictus resolves to the Blizzard Hearthstone Card Library page for Darkbishop Benedictus, but the fetched HTML did not expose parseable card text during this audit."
+  ],
+  "source_contract_implication": [
+    "Claim kind must remain the source of runtime authority. Free-text words such as keep, start, transform, choose, discover, random, or generated must not grant runtime-write permission unless the normalized claim kind, qualifiers, and surface gate agree.",
+    "mulligan_keep and mulligan_discard are the only claim kinds allowed to write Mulligan.json; even mulligan_keep must be suppressed for start-of-game non-hand effects unless explicit opening-hand keep intent is present.",
+    "hero_power_transform is a CardID/effect lane, not a Mulligan lane. It can preserve behavior such as Darkbishop Benedictus enabling Mind Spike through per-card behavior output, but it cannot by itself create an opening-hand hold rule.",
+    "Deckbuilding and start-of-game semantics are contract-visible semantics. They can influence card roles, diagnostics, policy-backed posture, or exact linked-entity behavior, but they must not be treated as a runtime action or as proof that the source card should be held in the opening hand.",
+    "discover_choice and choose_one_choice are identity-gated CardID lanes. They may lower only when the option card identity is source-backed and linked; otherwise the correct output is a suppression or gap report, not an invented OnDiscoverCardBonus or OnChooseOneCardBonus row.",
+    "generated_entity and generated_entity_random_pool must stay split. Resolved generated identity can support concrete CardID behavior, while random or hidden pools stay warning-only/report-only because the runtime row would otherwise pretend to know a future or hidden option.",
+    "globalvalue_numeric_tuning is a valid evidence claim but not a Step 1 runtime-lowerable claim. Numeric GlobalValues changes require deck-specific runtime evidence, not static guide text or default-only heuristics.",
+    "The Darkbishop / SW_448 contract should continue to assert both sides of the boundary: SW_448 effect semantics remain visible, and SW_448 absence from opening-hand Mulligan keeps remains intentional unless a source says to keep it in the opening hand."
+  ],
+  "default_only_implication": [
+    "A default-only or load-safe initial package may copy or preserve required baseline surfaces such as GlobalValues.json and Mulligan.json, but defaults do not authorize semantic tuning.",
+    "Default card metadata, static semantics, and guide posture may explain likely behavior, but they are not enough to lower numeric GlobalValues overrides or unresolved option decisions.",
+    "When the source contract lacks exact option identity, generated identity, explicit opening-hand intent, or runtime evidence, HSConfig should still proceed with a valid load-safe package while recording the suppressed or warning-only reason.",
+    "Policy-backed autonomous Mulligan can improve a thin package, but it must remain weaker than source-backed Mulligan and must veto cards with start-of-game non-hand effects such as Darkbishop Benedictus.",
+    "Default-only output should never promote SOURCE_BACKED_STRONG by itself. It should preserve the distinction between technical validity, source confidence, and strategic richness."
+  ],
+  "autonomy_implication": [
+    "The current boundary supports autonomous pre-run operation because HSConfig can continue through prepare, validate, and guarded apply without blocking on every partial Hearthstone mechanic.",
+    "Autonomy is safe only because unsupported or ambiguous semantics are downgraded into diagnostics, suppression reports, warning-only mechanic visibility, or runtime-evidence-required rows rather than guessed runtime JSON.",
+    "For new deck inputs, the generator can infer broad static families such as start_of_game, hero_power_transform, discover, choose_one, generated_entity, and generated_entity_random_pool, but runtime emission must still pass the per-surface gate.",
+    "If a source says only that a card changes the starting game state, transforms the hero power, modifies deck construction, creates a generated pool, or offers Discover/Choose One choices without naming the exact option, the autonomous action is to preserve the claim and report the missing link, not to write a confident runtime row.",
+    "For Darkbishop-style cases, autonomous behavior should check both outputs before closure: the effect remains visible in the per-card behavior/contract surface, and the card does not appear as a source-backed opening-hand keep."
+  ],
+  "slimness_implication": [
+    "The runtime boundary should remain slim: normal output should stay on GlobalValues.json, Mulligan.json, per-card CARDID.json, and concrete Combo.json rather than adding broad custom surfaces for every Hearthstone mechanic.",
+    "The current subtractive model is preferable to a larger false-precision model: only surface-specific claim kinds lower, and everything else remains visible as diagnostics or warnings.",
+    "Do not add generic lowering for start-of-game, deckbuilding, random pool, generic Discover, generic Choose One, or numeric GlobalValues claims. Each would widen runtime authority faster than evidence can support.",
+    "Keep option identity, linked-entity identity, explicit opening-hand wording, complete combo sequence evidence, and runtime evidence as narrow prerequisites instead of broadening defaults.",
+    "Keep source_contract_audit, source_to_runtime_explainability, conformance snapshots, and suppression reports diagnostic-only; operator_summary.json and the apply gate should remain the runtime authority boundary."
+  ],
+  "remaining_risks": [
+    "The focused tests prove the requested false-lowering boundaries, but this audit did not run the entire HSConfig pytest suite.",
+    "The official Blizzard card-library page was reachable as an identity anchor, but its fetched HTML did not expose parseable Darkbishop card text; the detailed card-text evidence in this audit comes from local fixtures, static metadata behavior, and regression tests.",
+    "Future Hearthstone mechanics or new linked-entity formats may require additional warning-only or identity-gated registrations to preserve the same boundary.",
+    "If future code introduces new claim kinds, it must update SUPPORTED_ATOMIC_CLAIM_KINDS, source_contract_matrix, surface gates, router/builder tests, and conformance snapshots together or the false-lowering boundary can drift.",
+    "Older research folders may contain superseded language; active README, skill references, source code, and tests should remain the authority when historical artifacts conflict."
+  ],
+  "recommended_actions": [
+    "Keep the current boundary unchanged: preserve start-of-game, deckbuilding, and hero-power-transform semantics as effect-visible contract data, not as default Mulligan holds.",
+    "Keep Darkbishop Benedictus / SW_448 as the regression anchor for this boundary: assert effect visibility through hero_power_transform/CardID behavior and assert no opening-hand keep without explicit source wording.",
+    "Keep discover_choice and choose_one_choice identity-gated; unresolved option identity should continue to emit unresolved_option_identity suppression rather than guessed runtime rows.",
+    "Keep generated_entity_random_pool and other random or hidden pools warning-only/report-only unless exact generated identity is source-backed.",
+    "Keep globalvalue_numeric_tuning in runtime_evidence_required with no Step 1 allowed runtime surface; numeric GlobalValues writes should require fresh deck-specific runtime evidence.",
+    "For future changes, run at minimum the focused boundary suite used in this audit plus the requested JSON validation before claiming the contract remains intact."
+  ],
+  "uncertain": []
+}
