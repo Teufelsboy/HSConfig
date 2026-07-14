@@ -315,9 +315,9 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "warning_boundary": "Poisonous can affect attack posture; exact trade selection remains broader bot evaluation.",
     },
     "imbue": {
-        "support_level": "partial",
-        "normal_path_surfaces": ["GlobalValues.json:deck_posture", "CARDID.json:BeforeUseHeroPowerBonus"],
-        "warning_boundary": "Imbue and upgraded Hero Power posture can be encouraged; exact upgrade state remains broader bot evaluation.",
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Imbue upgrade state has no documented normal-path runtime row; keep it report-visible until exact surface support exists.",
     },
     "questline": {
         "support_level": "partial",
@@ -360,9 +360,9 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "warning_boundary": "Forge is an alternate pre-play action with no documented normal-path runtime block.",
     },
     "excavate": {
-        "support_level": "partial",
-        "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus"],
-        "warning_boundary": "Excavate card timing can be encouraged; treasure chain identity remains report-only unless source-backed.",
+        "support_level": "warning_only",
+        "normal_path_surfaces": ["report-only"],
+        "warning_boundary": "Excavate treasure-chain identity has no documented normal-path runtime row; keep it report-visible until exact surface support exists.",
     },
     "plague": {
         "support_level": "partial",

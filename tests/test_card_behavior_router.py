@@ -234,6 +234,35 @@ def test_resolved_discover_choice_suppresses_generic_discover_fallback():
     ]
 
 
+def test_modern_report_first_mechanics_do_not_emit_generic_cardid_rows():
+    claims = [
+        {
+            "claim_id": f"claim_{mechanic}",
+            "claim_kind": "mechanic_usage",
+            "cards": [f"{mechanic.upper()}_CARD"],
+            "mechanic": mechanic,
+            "claim_readiness": "source_backed_static_semantics",
+        }
+        for mechanic in ("titan", "tourist", "imbue", "forge", "excavate")
+    ]
+
+    plan = route_card_behavior_surfaces(claims)
+
+    assert plan["rows"] == []
+    assert {
+        (row["claim_id"], row["mechanic"], row["lowering_policy"], row["reason"])
+        for row in plan["suppressed"]
+    } == {
+        (
+            f"claim_{mechanic}",
+            mechanic,
+            "report_only",
+            f"{mechanic}_has_no_documented_runtime_block",
+        )
+        for mechanic in ("titan", "tourist", "imbue", "forge", "excavate")
+    }
+
+
 def test_partial_discover_choice_resolution_suppresses_only_resolved_cards():
     plan = route_card_behavior_surfaces(
         [

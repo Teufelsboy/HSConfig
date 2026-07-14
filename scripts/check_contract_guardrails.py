@@ -25,6 +25,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_claim_kind_runtime_contract.py",
     "tests/test_card_behavior_router.py",
     "tests/test_mechanic_support.py",
+    "tests/test_source_contract_conformance.py",
 )
 
 

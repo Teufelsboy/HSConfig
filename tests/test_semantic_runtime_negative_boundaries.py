@@ -246,11 +246,8 @@ def test_generated_random_pool_does_not_become_deterministic_cardid_behavior():
 
     assert result["rows"] == []
     assert result["suppressed"][0]["claim_id"] == "random_generate_claim"
-    assert result["suppressed"][0]["reason"] in {
-        "requires_supported_cardid_surface",
-        "unsupported_mechanic_surface",
-        "unresolved_option_identity",
-    }
+    assert result["suppressed"][0]["reason"] == "requires_supported_cardid_surface"
+    assert result["suppressed"][0]["lowering_policy"] == "report_only"
 
 
 def test_timing_mechanics_are_warning_first_not_cross_surface_claims():
@@ -273,13 +270,22 @@ def test_timing_mechanics_are_warning_first_not_cross_surface_claims():
         },
     ]
 
+    semantics_by_id = {card["id"]: infer_static_semantics(card) for card in cards}
     families_by_id = {
-        card["id"]: set(infer_static_semantics(card)["families"])
-        for card in cards
+        card_id: set(semantics["families"])
+        for card_id, semantics in semantics_by_id.items()
+    }
+    warning_only_by_id = {
+        card_id: set(semantics["warning_only"])
+        for card_id, semantics in semantics_by_id.items()
     }
 
     assert {"secret", "generated_entity_random_pool"} <= families_by_id["SECRET_FIXTURE"]
+    assert {"secret_timing", "generated_entity_random_pool"} <= warning_only_by_id[
+        "SECRET_FIXTURE"
+    ]
     assert "location" in families_by_id["LOCATION_FIXTURE"]
+    assert "location_activation" in warning_only_by_id["LOCATION_FIXTURE"]
     assert {"weapon", "discover"} <= families_by_id["WEAPON_FIXTURE"]
 
 

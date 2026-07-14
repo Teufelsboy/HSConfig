@@ -23,6 +23,7 @@ def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
         "tests/test_claim_kind_runtime_contract.py",
         "tests/test_card_behavior_router.py",
         "tests/test_mechanic_support.py",
+        "tests/test_source_contract_conformance.py",
     }
 
     assert expected <= set(FOCUSED_CONTRACT_TESTS)
