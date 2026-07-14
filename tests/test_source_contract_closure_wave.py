@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from hsconfig.cli import main
 from hsconfig.source_contract_matrix import source_contract_vocabulary_rows
-from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.source_document_model import (
+    SUPPORTED_ATOMIC_CLAIM_KINDS,
+    can_lower_to_mulligan,
+)
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
@@ -119,6 +124,46 @@ def test_start_of_game_hero_power_transform_preserves_effect_without_mulligan_ke
         for row in mulligan["Mulligan"]["values"]
     )
     assert card_behavior["BeforeUseHeroPowerBonus"]["values"]
+
+
+@pytest.mark.parametrize(
+    ("role", "qualifier"),
+    [
+        ("hero_power_transform", "hero_power_transform"),
+        ("deckbuilding_modifier", "deckbuilding_effect"),
+        ("highlander_modifier", "deckbuilding_effect"),
+        ("even_odd_modifier", "deckbuilding_effect"),
+        ("quest_reward", "deckbuilding_effect"),
+        ("transform_effect", "deckbuilding_effect"),
+    ],
+)
+def test_non_hand_start_effect_roles_do_not_become_mulligan_keeps(
+    role,
+    qualifier,
+):
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "cards": ["CARD_EFFECT"],
+        "source_confidence": "guide_backed",
+        "semantic_qualifiers": {
+            "timing": ["start_of_game"],
+            "state_requirements": [qualifier],
+        },
+        "evidence_text_short": "This effect is important for the deck.",
+    }
+
+    decision = can_lower_to_mulligan(
+        claim,
+        card_roles={
+            "CARD_EFFECT": {
+                "roles": ["start_of_game", role],
+                "semantic_families": ["start_of_game", role],
+            }
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
 
 
 def test_any_deck_matrix_has_load_safe_apply_and_no_legacy_runtime_surfaces(

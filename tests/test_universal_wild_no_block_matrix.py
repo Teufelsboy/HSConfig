@@ -256,6 +256,11 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     source_contract_audit = json.loads(
         (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    source_to_runtime = json.loads(
+        (
+            out / "reports" / "source_to_runtime_explainability.json"
+        ).read_text(encoding="utf-8")
+    )
     semantic_report = json.loads(
         (out / "reports" / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )
@@ -292,6 +297,21 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["source_contract_audit_summary"]["non_blocking"] is True
     assert source_contract_audit["schema_version"] == 1
     assert source_contract_audit["summary"]["cards_total"] == len(deck_card_ids)
+    assert source_to_runtime["authority"] == "diagnostic_only"
+    assert source_to_runtime["apply_blocking"] is False
+    assert source_to_runtime["summary"]["cards_total"] == len(deck_card_ids)
+    assert source_to_runtime["operator_attention"]
+    assert all("closure" in row for row in source_to_runtime["card_rows"])
+    assert all(
+        row["closure"]["lane"]
+        in {
+            "runtime_backed",
+            "source_action_needed",
+            "diagnostic_only",
+            "baseline_only_visible",
+        }
+        for row in source_to_runtime["card_rows"]
+    )
     assert operator["mechanic_visibility_summary"]["non_blocking"] is True
     assert operator["semantic_enrichment_summary"]["non_blocking"] is True
     assert operator["next_action"] in {"READY_TO_APPLY_OR_HANDOFF", "READY_TO_APPLY_WITH_WARNINGS"}

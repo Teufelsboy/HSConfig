@@ -1,0 +1,36 @@
+{
+  "summary": "The smallest robust per-card closure view is already present in the repo: `best_source_lane` exposes source/static-semantic strength, `closure.lane` exposes runtime-backed versus diagnostic-only status, `closure.source_lanes` plus `closure.suppressed_reasons` expose policy and suppression context, `closure.default_only_risk` exposes baseline-only visibility, and `first_missing_link` plus `next_source_action` expose the first broken source-to-runtime link. `emitted_runtime_files` and `not_emitted_runtime_files` should stay alongside those fields because they prove whether a card is actually runtime-backed or only report-visible.",
+  "source_backed_findings": [
+    "HSConfig already builds the main per-card closure row in `reports/source_to_runtime_explainability.json`: each card row includes `best_source_lane`, `strongest_claim_id`, `strongest_claim_kind`, `first_missing_link`, `emitted_runtime_files`, `not_emitted_runtime_files`, `why_not_emitted`, `next_source_action`, and nested `closure` fields for `lane`, `claim_kinds`, `source_lanes`, `runtime_surfaces`, `default_only_risk`, `suppressed_reasons`, `first_missing_link`, and `next_source_action`.",
+    "The best compact status field is `closure.lane`, because the tests freeze four operator-facing states there: `runtime_backed`, `source_action_needed`, `diagnostic_only`, and `baseline_only_visible`.",
+    "Source-backed versus static-semantic strength is best exposed by `best_source_lane` together with `closure.source_lanes`, because runtime lowering accepts both `guide_backed` and `source_backed_static_semantics`, while static semantics remain distinct from generic report-only coverage in the upstream readiness and quality model.",
+    "Report-only state should stay visible through `closure.lane=diagnostic_only` plus `best_source_lane=report_only` or equivalent report-only suppression reasons, rather than being merged into a broader missing-link bucket.",
+    "Suppressed state is best exposed by `closure.suppressed_reasons` together with `first_missing_link`, because the repo already distinguishes explicit causes such as `runtime_evidence_required`, `unsupported_or_unmapped`, `source_claim_conflict`, and `opening_hand_mulligan_intent`.",
+    "Baseline-only visibility is best exposed by `closure.lane=baseline_only_visible` and `closure.default_only_risk=true`, and `operator_summary` already consumes that risk signal when building `default_only_runtime_surface_details`.",
+    "The first missing source-to-runtime break should remain an explicit per-card field as `first_missing_link`, because the repo uses it to derive canonical `next_source_action` values and to drive closure and strong-promotion reports.",
+    "Policy-backed state is explicit today at the mulligan surface and operator-summary level, but at card level the clearest existing proxy is `first_missing_link=needs_mulligan_claim` with `next_source_action=add_mulligan_keep_or_discard_claim`; the explainability card row does not currently have a dedicated per-card `policy_backed` flag."
+  ],
+  "current_repo_alignment": "High. The current repo already exposes nearly the full recommended field set in `source_to_runtime_explainability.json` and validates the compact closure lanes in tests. The main partial gap is policy-backed visibility: it is intentionally explicit for Mulligan at the deck or surface layer, while per-card rows mostly express the same need through `needs_mulligan_claim`, suppression context, and next-action guidance instead of a dedicated per-card policy-backed field.",
+  "remaining_risks": [
+    "Policy-backed status is intentionally split across Mulligan quality, operator summary, and source-gap reporting. Adding a generic per-card `policy_backed` label inside explainability could duplicate authority unless it is scoped only to actual autonomous Mulligan provenance.",
+    "Static semantics are not a single runtime outcome. Some static-semantic claims can lower safely, while others must stay report-only because of trust-ceiling or surface constraints. A single boolean such as `is_static_semantic` would hide that difference.",
+    "The repo already carries several adjacent vocabularies such as `coverage_status`, `readiness_lane`, `source_depth_lane`, `best_source_lane`, `closure.lane`, and `first_missing_link`. Adding more overlapping card-level labels would increase taxonomy drift risk.",
+    "Baseline-only detection currently relies on the combination of no emitted files, no not-emitted files, and `closure.lane=baseline_only_visible`. If future default surfaces produce more partial evidence, tests must keep this boundary pinned."
+  ],
+  "implementation_implications": [
+    "Keep `card_rows[*].closure` as the compact operator payload. It already carries the right fields for closure reporting: `lane`, `source_lanes`, `runtime_surfaces`, `default_only_risk`, `suppressed_reasons`, `first_missing_link`, and `next_source_action`.",
+    "Keep `best_source_lane`, `strongest_claim_kind`, `emitted_runtime_files`, and `not_emitted_runtime_files` as sibling fields on the card row, because they explain why the compact closure lane was assigned and whether the card is truly runtime-backed.",
+    "Do not add a broad per-card apply-authority field. If UX needs a single human-readable label, derive it from existing lane and reason fields instead of creating a new authority source.",
+    "Do not introduce a generic per-card `policy_backed` flag unless it is derived from actual autonomous Mulligan rows. For current design, use `needs_mulligan_claim` and the Mulligan surface report as the authoritative path.",
+    "Keep tests around representative rows for runtime-backed cards, runtime-evidence-required cards, report-only cards, suppressed start-of-game mulligan cases, source-claim conflicts, and baseline-only-visible cards so the field contract does not drift."
+  ],
+  "no_block_autonomy_implications": [
+    "These per-card closure fields should remain descriptive only. They explain why a card is strong, thin, suppressed, or baseline-only, but they must not contribute apply authority.",
+    "Report-only, suppressed, and baseline-only cards should stay visible instead of blocking package creation. That preserves the no-block any-deck contract while still surfacing what needs improvement.",
+    "Card-level `first_missing_link` and `next_source_action` are stronger autonomy tools than another gate, because they let the operator or future automation repair the next missing link without stopping a valid package.",
+    "Policy-backed fallback should remain an allowed-but-weaker state. The UX should show that a deck can be load-safe with policy-backed Mulligan help, while still distinguishing that from source-backed strong closure.",
+    "Default-only risk should stay a warning path that points the operator to follow-up reports, not a direct write ban. The existing technical gate remains the correct place for apply decisions."
+  ],
+  "must_not_become_apply_gate": true,
+  "uncertain": []
+}

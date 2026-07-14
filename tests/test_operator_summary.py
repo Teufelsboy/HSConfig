@@ -2102,3 +2102,61 @@ def test_source_contract_policy_counts_do_not_block_valid_package():
         "READY_TO_APPLY_OR_HANDOFF",
         "READY_TO_APPLY_WITH_WARNINGS",
     }
+
+
+def test_operator_summary_explains_default_only_surfaces_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="DefaultOnlyFixture",
+        deck_code="fixture",
+        technical_validation={"status": "passed"},
+        config_readiness_report={"summary": {}},
+        mulligan_plan_report={
+            "status": "default_only",
+            "default_only": True,
+            "policy_lanes": [],
+            "policy_reasons": [],
+        },
+        source_to_runtime_explainability_report={
+            "authority": "diagnostic_only",
+            "operator_gate_impact": "diagnostic_only",
+            "apply_blocking": False,
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 0,
+                "runtime_lowered_claims": 0,
+                "claims_with_first_missing_link": 0,
+                "cards_with_first_missing_link": 0,
+            },
+            "card_rows": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Fixture Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "claim_kinds": [],
+                        "source_lanes": [],
+                        "runtime_surfaces": [],
+                        "default_only_risk": True,
+                        "suppressed_reasons": [],
+                        "first_missing_link": None,
+                        "next_source_action": "none",
+                    },
+                }
+            ],
+        },
+    )
+
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["default_only_runtime_surface_details"] == [
+        {
+            "surface": "mulligan",
+            "status": "default_only",
+            "card_count_with_default_only_risk": 1,
+            "example_cards": ["CARD_001 Fixture Card"],
+            "operator_impact": "diagnostic_only",
+            "apply_blocking": False,
+        }
+    ]
+    assert summary["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )

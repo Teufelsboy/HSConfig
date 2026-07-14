@@ -1,0 +1,35 @@
+{
+  "summary": "The current HSConfig repo does enforce a no-default-only runtime surface policy as a visible quality signal. Default-only or thin Mulligan, GlobalValues, Combo, and CardID output is surfaced through `operator_summary.json`, `config_usefulness`, and per-card readiness reports, and those states block `SOURCE_BACKED_STRONG` promotion without becoming a runtime apply gate.",
+  "source_backed_findings": [
+    "`src/hsconfig/config_usefulness.py` marks Mulligan as `default_only=true` when there are no concrete keep rules and no concrete keeps, and `src/hsconfig/operator_summary.py` exposes that through `mulligan_policy_status.default_only` and `default_only_runtime_surfaces`.",
+    "`src/hsconfig/config_readiness.py` classifies partial runtime closure as `mulligan_only`, `globalvalues_only`, or `report_only_supported` with `first_missing_link=needs_runtime_surface`, so Mulligan-only, GlobalValues-only, and non-meaningful CardID output stay operator-visible instead of counting as closed runtime coverage.",
+    "`src/hsconfig/config_usefulness.py` turns thin or missing surface coverage into explicit usefulness signals such as `runtime_surface_gap`, `combo_gap`, `cardid_thin`, and `globalvalues_thin`, and routes the operator to a concrete follow-up report with `next_report_to_open`.",
+    "`src/hsconfig/operator_summary.py` only returns `SOURCE_BACKED_STRONG` when readiness counters such as `cards_needing_runtime_surface`, `cards_needing_combo_sequence`, `cards_needing_mulligan_claims`, `cards_needing_condition_lowering`, and `cards_needing_mechanic_lowering` are all zero; otherwise the package remains `VALID_BUT_NOT_GUIDE_STRONG` or `STATIC_SEMANTICS_USABLE`.",
+    "`docs/operator/README.md`, `docs/operator/universal-wild-no-block-contract.md`, and `docs/operator/guide-research-policy.md` all state the same repo contract: default-only runtime surfaces must be visible, `SOURCE_BACKED_STRONG` is not the apply gate, and `reports/operator_summary.json` remains the only normal apply authority.",
+    "`src/hsconfig/source_contract_audit.py` marks suppressed or report-only runtime outcomes as `diagnostic_only`, preserving explicit `first_missing_link` and suppression reasons instead of silently treating unsupported or non-meaningful runtime lowering as success.",
+    "Live repo verification passed on 2026-07-14: `python -m pytest tests/test_config_usefulness.py tests/test_config_readiness.py tests/test_operator_docs_contract_policy.py tests/test_apply_gate.py -q` returned `68 passed`, and `python -m pytest tests/test_universal_wild_no_block_matrix.py -q` returned `18 passed`."
+  ],
+  "current_repo_alignment": "Current alignment is strong. The repo already separates technical load safety from source and runtime richness: `apply_gate.py` allows normal load-safe apply based on a valid package and `operator_summary.json`, while `config_usefulness.py`, `config_readiness.py`, `operator_summary.py`, `source_contract_audit.py`, and the operator docs make default-only or thin runtime surfaces visible as warnings, missing-link rows, and first-gap summaries. The matrix and policy tests also explicitly enforce that generated deck packages should not present as default-only and that policy-backed Mulligan fallback must not promote a deck to `SOURCE_BACKED_STRONG`.",
+  "remaining_risks": [
+    "The visibility model is stronger for Mulligan than for the other surfaces because Mulligan has an explicit `default_only` boolean, while GlobalValues, Combo, and CardID rely on `thin`, `report_only`, `globalvalues_only`, `needs_runtime_surface`, `combo_gap`, or `cardid_thin` signals rather than one shared per-surface `default_only` flag.",
+    "Because load-safe apply is intentionally narrower than rich-output success, downstream tooling that only reads `runtime_apply_allowed=true` and ignores `config_usefulness`, `default_only_runtime_surfaces`, or `first_missing_link` could still overread technical success as qualitative success.",
+    "CardID partial visibility depends on `meaningful_runtime_surface`; a non-meaningful emitted CardID file remains visible as a runtime surface but still counts as `needs_runtime_surface`, so future changes around that flag need tight regression coverage to avoid accidental silent promotion.",
+    "Combo thinness is surfaced through `combo_expected`, `combo_row_count`, suppressed rows, and `combo_gap`, but it is still more implicit than the Mulligan default-only signal and could become easier to misread if operator docs drift."
+  ],
+  "implementation_implications": [
+    "Keep `default_only_runtime_surfaces`, `mulligan_policy_status`, `config_usefulness.first_usefulness_gap`, and per-card `first_missing_link` as stable operator-facing contract fields.",
+    "Do not let Mulligan-only, GlobalValues-only, report-only CardID, or expected-but-thin Combo output count as closed runtime coverage in readiness or strong-promotion logic.",
+    "Preserve the current rule that autonomous Mulligan fallback may prevent default-only output, but must remain weaker than source-backed evidence and must not promote the deck to `SOURCE_BACKED_STRONG`.",
+    "If new runtime surfaces or new quality summaries are added, they should lower through the same visibility pattern: explicit surface status, explicit missing-link or gap reason, explicit follow-up report, and no silent promotion of qualitative success.",
+    "Any future simplification of operator outputs should keep at least one compact summary field and one drill-down report for default-only or thin states, otherwise the repo would lose the current explainability guarantee."
+  ],
+  "no_block_autonomy_implications": [
+    "The repo can stay autonomous for any valid deck because thin or default-only states are warning surfaces rather than package-creation blockers when the runtime package is structurally valid.",
+    "No-block apply remains compatible with quality signaling because the operator can still apply a `VALID_PACKAGE` while being told exactly which surface is thin, default-only, or missing meaningful runtime closure.",
+    "Policy-backed Mulligan fallback is the main autonomy valve that prevents empty/default-only Mulligan output without inventing false source confidence.",
+    "Autonomy depends on consumers honoring the two-layer contract: technical apply permission comes from `operator_summary.json`, while qualitative usefulness comes from readiness, usefulness, and audit reports.",
+    "Future no-block expansions should continue to prefer explicit diagnostic visibility over wider runtime writes whenever exact surface lowering is not yet documented or meaningful."
+  ],
+  "must_not_become_apply_gate": true,
+  "uncertain": []
+}

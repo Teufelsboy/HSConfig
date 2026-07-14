@@ -75,6 +75,10 @@ not allow or block runtime writes. default-only runtime surfaces must be
 visible, not silent: a valid load-safe package may proceed with warnings, but
 the reports must show whether a card is runtime-backed, source-action-needed,
 diagnostic-only, or baseline-only-visible.
+`source_to_runtime_explainability.json` includes per-card closure rows, and
+`default_only_runtime_surface_details` summarizes default-only risk in
+`operator_summary.json`; both remain diagnostic because operator_summary.json
+remains the only normal apply authority.
 
 `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
 the normal HSConfig path. The normal runtime path remains `Mulligan.json`,

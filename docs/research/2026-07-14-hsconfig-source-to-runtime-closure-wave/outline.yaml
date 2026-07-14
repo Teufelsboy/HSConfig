@@ -1,0 +1,39 @@
+topic: hsconfig-source-to-runtime-closure-wave
+description: >
+  Closure-wave research for HSConfig source-to-runtime explainability:
+  source-contract spine, no default-only runtime surfaces, false mulligan
+  lowering, any-deck autonomy, and compact per-card closure reporting.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-14-hsconfig-source-to-runtime-closure-wave\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Current HSConfig source contract spine
+    category: repo-contract
+    description: >
+      Verify the current source claim -> claim_kind -> surface gate -> builder
+      or router -> runtime row or suppression chain, including
+      operator_summary.json as the only apply authority.
+  - name: No default-only runtime surface policy
+    category: repo-contract
+    description: >
+      Verify that default-only Mulligan, GlobalValues, Combo, or CardID output
+      is visible as a quality signal and not silently treated as success.
+  - name: Effect versus opening-hand mulligan boundary
+    category: hearthstone-semantics
+    description: >
+      Verify that Start of Game, deckbuilding, hero-power-transform, Highlander,
+      even/odd, quest, and transform effects are not inferred as opening-hand
+      keeps without explicit mulligan intent.
+  - name: Any-deck no-block autonomy
+    category: workflow
+    description: >
+      Verify that valid decks remain load-safe and applyable even when claims
+      are report-only, low-confidence, runtime-evidence-required, or unsupported
+      by a runtime surface.
+  - name: Per-card closure report design
+    category: operator-ux
+    description: >
+      Verify which card-level fields best expose source-backed, policy-backed,
+      static-semantic, report-only, suppressed, baseline-only, and
+      first-missing-link states.

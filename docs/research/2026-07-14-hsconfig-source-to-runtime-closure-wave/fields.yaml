@@ -1,0 +1,35 @@
+field_categories:
+  - category: closure_wave
+    fields:
+      - name: summary
+        type: string
+        required: true
+        description: Concise conclusion for this research item.
+      - name: source_backed_findings
+        type: array
+        required: true
+        description: Claims backed by public docs or local repo evidence.
+      - name: current_repo_alignment
+        type: string
+        required: true
+        description: How the current repo already aligns with the finding.
+      - name: remaining_risks
+        type: array
+        required: true
+        description: Remaining correctness, slimness, or autonomy risks.
+      - name: implementation_implications
+        type: array
+        required: true
+        description: Concrete implementation consequences for HSConfig.
+      - name: no_block_autonomy_implications
+        type: array
+        required: true
+        description: How the finding affects no-block any-deck operation.
+      - name: must_not_become_apply_gate
+        type: boolean
+        required: true
+        description: Whether the finding must stay diagnostic-only.
+      - name: uncertain
+        type: array
+        required: true
+        description: Field names or claims that remain uncertain.

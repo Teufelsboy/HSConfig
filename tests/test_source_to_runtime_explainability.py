@@ -170,12 +170,35 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "why_not_emitted": None,
         "apply_blocked": False,
         "next_source_action": "none",
+        "closure": {
+            "lane": "runtime_backed",
+            "claim_kinds": ["mulligan_keep"],
+            "source_lanes": ["runtime_lowered"],
+            "runtime_surfaces": ["Mulligan.json"],
+            "default_only_risk": False,
+            "suppressed_reasons": [],
+            "first_missing_link": None,
+            "next_source_action": "none",
+        },
     }
     assert rows["CARD_NUM"]["best_source_lane"] == "runtime_evidence_required"
     assert rows["CARD_NUM"]["first_missing_link"] == "runtime_evidence"
     assert rows["CARD_NUM"]["why_not_emitted"] == "runtime_evidence_required"
     assert rows["CARD_NUM"]["apply_blocked"] is False
     assert rows["CARD_NUM"]["next_source_action"] == "collect_runtime_evidence"
+    assert rows["CARD_NUM"]["closure"] == {
+        "lane": "source_action_needed",
+        "claim_kinds": ["future_claim_kind", "globalvalue_numeric_tuning"],
+        "source_lanes": ["runtime_evidence_required", "unsupported_or_unmapped"],
+        "runtime_surfaces": [],
+        "default_only_risk": False,
+        "suppressed_reasons": [
+            "runtime_evidence_required",
+            "unsupported_or_unmapped",
+        ],
+        "first_missing_link": "runtime_evidence",
+        "next_source_action": "collect_runtime_evidence",
+    }
 
 
 def test_explainability_operator_attention_rows_prioritize_missing_links():
@@ -367,3 +390,47 @@ def test_explainability_uses_canonical_action_for_readiness_missing_links():
     assert rows["CARD_MULL"]["next_source_action"] == (
         "add_mulligan_keep_or_discard_claim"
     )
+
+
+def test_explainability_card_rows_include_compact_closure_lane():
+    audit = _fixture_audit()
+    audit["claim_rows"]["suppressed_start_effect"] = {
+        "claim_id": "suppressed_start_effect",
+        "claim_kind": "mulligan_keep",
+        "lane": "suppressed_with_reason",
+        "policy_lane": "runtime_lowerable",
+        "lowered_surfaces": [],
+        "first_reason": "start_of_game_effect_does_not_require_opening_hand",
+        "cards": ["CARD_KEEP"],
+    }
+    audit["claim_lifecycle_rows"].append(
+        {
+            "claim_id": "suppressed_start_effect",
+            "claim_kind": "mulligan_keep",
+            "policy_lane": "runtime_lowerable",
+            "surface_gate_decision": "rejected",
+            "surface_gate_reason": "start_of_game_effect_does_not_require_opening_hand",
+            "builder_or_router_decision": "suppressed",
+            "runtime_surface": "Mulligan.json",
+            "emitted_files": [],
+            "suppressed_reason": "start_of_game_effect_does_not_require_opening_hand",
+            "first_missing_link": "opening_hand_mulligan_intent",
+            "operator_impact": "diagnostic_only",
+        }
+    )
+
+    report = build_source_to_runtime_explainability_report(audit)
+    rows = {row["card_id"]: row for row in report["card_rows"]}
+
+    assert rows["CARD_KEEP"]["closure"] == {
+        "lane": "source_action_needed",
+        "claim_kinds": ["mulligan_keep"],
+        "source_lanes": ["runtime_lowered", "suppressed_with_reason"],
+        "runtime_surfaces": ["Mulligan.json"],
+        "default_only_risk": False,
+        "suppressed_reasons": [
+            "start_of_game_effect_does_not_require_opening_hand"
+        ],
+        "first_missing_link": "opening_hand_mulligan_intent",
+        "next_source_action": "add_explicit_opening_hand_mulligan_source",
+    }

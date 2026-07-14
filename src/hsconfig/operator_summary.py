@@ -244,6 +244,12 @@ def build_operator_summary(
         "default_only_runtime_surfaces": _default_only_runtime_surfaces(
             config_usefulness
         ),
+        "default_only_runtime_surface_details": (
+            _default_only_runtime_surface_details(
+                config_usefulness,
+                source_to_runtime_explainability_report or {},
+            )
+        ),
         "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "source_claim_quality_summary": _source_claim_quality_summary(
@@ -313,6 +319,54 @@ def _default_only_runtime_surfaces(config_usefulness: dict[str, Any]) -> list[st
         if isinstance(row, dict) and row.get("default_only") is True:
             default_only.append(str(name))
     return default_only
+
+
+def _default_only_runtime_surface_details(
+    config_usefulness: dict[str, Any],
+    source_to_runtime_explainability_report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    surfaces = (
+        config_usefulness.get("surfaces", {})
+        if isinstance(config_usefulness, dict)
+        else {}
+    )
+    if not isinstance(surfaces, dict):
+        return []
+
+    risky_cards = _default_only_risk_cards(source_to_runtime_explainability_report)
+    details: list[dict[str, Any]] = []
+    for name, row in sorted(surfaces.items()):
+        if not isinstance(row, dict) or row.get("default_only") is not True:
+            continue
+        details.append(
+            {
+                "surface": str(name),
+                "status": "default_only",
+                "card_count_with_default_only_risk": len(risky_cards),
+                "example_cards": risky_cards[:5],
+                "operator_impact": "diagnostic_only",
+                "apply_blocking": False,
+            }
+        )
+    return details
+
+
+def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
+    rows = report.get("card_rows", []) if isinstance(report, dict) else []
+    if not isinstance(rows, list):
+        return []
+
+    result: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        closure = row.get("closure", {})
+        if not isinstance(closure, dict) or closure.get("default_only_risk") is not True:
+            continue
+        card_id = str(row.get("card_id", "")).strip()
+        name = str(row.get("name", "")).strip()
+        result.append(f"{card_id} {name}".strip())
+    return sorted(result)
 
 
 def _string_list(value: Any) -> list[str]:

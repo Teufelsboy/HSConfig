@@ -104,7 +104,7 @@ remains the normal apply authority.
 Open `reports/operator_summary.json` first.
 
 - `technical_status`, `runtime_apply_mode`, and `runtime_apply_allowed` decide whether the package is structurally load-safe to apply.
-- `mulligan_policy_status` tells whether Mulligan used source-backed or policy-backed keeps. `default_only_runtime_surfaces` must normally be empty for a generated deck package; if it is not empty, open the named surface report first.
+- `mulligan_policy_status` tells whether Mulligan used source-backed or policy-backed keeps. `default_only_runtime_surfaces` must normally be empty for a generated deck package; if it is not empty, open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` for the per-card closure rows before improving source claims.
 - Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`. Normal `prepare` packages should still emit per-card `<CARDID>.json` files when deck-card identity is known, but those rich CardID files are not the minimal runtime-apply gate.
 - `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
@@ -180,7 +180,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 
 `reports/source_to_runtime_explainability.json` is the card-readable projection
 of the source-contract audit: it names emitted runtime files, missing runtime
-files, the first missing link, and the next source action per claim/card. Its
+files, the first missing link, the per-card closure lane, and the next source action per claim/card. Its
 compact `source_to_runtime_explainability_summary` in `operator_summary.json` is
 non-blocking and does not grant apply permission.
 

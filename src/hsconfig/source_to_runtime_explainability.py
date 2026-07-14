@@ -153,37 +153,43 @@ def _card_rows(
             related_claims, key="not_emitted_runtime_files"
         )
         expected_files = _aggregate_expected_card_files(str(card_id), related_claims)
-        rows.append(
-            {
-                "card_id": str(card_id),
-                "name": str(raw_card.get("name", "")),
-                "best_source_lane": best_source_lane,
-                "strongest_claim_id": strongest_claim_id,
-                "strongest_claim_kind": (
-                    strongest_claim.get("claim_kind") if strongest_claim else None
+        card_row = {
+            "card_id": str(card_id),
+            "name": str(raw_card.get("name", "")),
+            "best_source_lane": best_source_lane,
+            "strongest_claim_id": strongest_claim_id,
+            "strongest_claim_kind": (
+                strongest_claim.get("claim_kind") if strongest_claim else None
+            ),
+            "first_missing_link": first_missing_link,
+            "emitted_runtime_files": emitted_files,
+            "not_emitted_runtime_files": [
+                path
+                for path in sorted(set(expected_files) | set(not_emitted_files))
+                if path not in set(emitted_files)
+            ],
+            "why_not_emitted": why_not_emitted,
+            "apply_blocked": False,
+            "next_source_action": _next_source_action(
+                first_missing_link=first_missing_link,
+                why_not_emitted=why_not_emitted,
+                claim_kind=(
+                    str(missing_claim.get("claim_kind"))
+                    if missing_claim
+                    else str(strongest_claim.get("claim_kind"))
+                    if strongest_claim
+                    else ""
                 ),
-                "first_missing_link": first_missing_link,
-                "emitted_runtime_files": emitted_files,
-                "not_emitted_runtime_files": [
-                    path
-                    for path in sorted(set(expected_files) | set(not_emitted_files))
-                    if path not in set(emitted_files)
-                ],
-                "why_not_emitted": why_not_emitted,
-                "apply_blocked": False,
-                "next_source_action": _next_source_action(
-                    first_missing_link=first_missing_link,
-                    why_not_emitted=why_not_emitted,
-                    claim_kind=(
-                        str(missing_claim.get("claim_kind"))
-                        if missing_claim
-                        else str(strongest_claim.get("claim_kind"))
-                        if strongest_claim
-                        else ""
-                    ),
-                ),
-            }
+            ),
+        }
+        card_row["closure"] = _closure_row(
+            row=card_row,
+            related_claims=_related_claims_with_source_lanes(
+                related_claims,
+                audit_claim_rows,
+            ),
         )
+        rows.append(card_row)
     return rows
 
 
@@ -233,6 +239,64 @@ def _operator_attention_status(row: dict[str, object]) -> str:
     }:
         return "diagnostic_only"
     return "baseline_only_visible"
+
+
+def _closure_row(
+    *,
+    row: Mapping[str, Any],
+    related_claims: list[dict[str, Any]],
+) -> dict[str, Any]:
+    first_missing_link = row.get("first_missing_link")
+    emitted_runtime_files = _string_list(row.get("emitted_runtime_files"))
+    not_emitted_runtime_files = _string_list(row.get("not_emitted_runtime_files"))
+    lane = _operator_attention_status(dict(row))
+    default_only_risk = (
+        not emitted_runtime_files
+        and not not_emitted_runtime_files
+        and lane == "baseline_only_visible"
+    )
+    return {
+        "lane": lane,
+        "claim_kinds": sorted(
+            {
+                str(claim.get("claim_kind"))
+                for claim in related_claims
+                if claim.get("claim_kind")
+            }
+        ),
+        "source_lanes": sorted(
+            {
+                str(claim.get("source_lane") or claim.get("policy_lane"))
+                for claim in related_claims
+                if claim.get("source_lane") or claim.get("policy_lane")
+            }
+        ),
+        "runtime_surfaces": emitted_runtime_files,
+        "default_only_risk": default_only_risk,
+        "suppressed_reasons": sorted(
+            {
+                str(claim.get("why_not_emitted"))
+                for claim in related_claims
+                if claim.get("why_not_emitted")
+            }
+        ),
+        "first_missing_link": first_missing_link,
+        "next_source_action": row.get("next_source_action"),
+    }
+
+
+def _related_claims_with_source_lanes(
+    related_claims: list[dict[str, Any]],
+    audit_claim_rows: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for claim in related_claims:
+        row = dict(claim)
+        raw_claim = audit_claim_rows.get(str(row.get("claim_id", "")))
+        if isinstance(raw_claim, Mapping):
+            row["source_lane"] = str(raw_claim.get("lane", ""))
+        enriched.append(row)
+    return enriched
 
 
 def _strongest_claim_id(
@@ -376,6 +440,8 @@ def _next_source_action(
         return "none"
     if first_missing_link in NEXT_ACTION_BY_MISSING_LINK:
         return NEXT_ACTION_BY_MISSING_LINK[first_missing_link]
+    if first_missing_link == "opening_hand_mulligan_intent":
+        return "add_explicit_opening_hand_mulligan_source"
     if first_missing_link == "runtime_evidence" or reason == "runtime_evidence_required":
         return "collect_runtime_evidence"
     if first_missing_link == "claim_kind_policy" or reason in {

@@ -252,3 +252,22 @@ def test_operator_docs_keep_single_apply_authority_and_no_default_only_visibilit
     assert "Presume.json" in combined
     assert "Concede.json" in combined
     assert "outside the normal HSConfig path" in combined
+
+
+def test_active_docs_describe_per_card_closure_without_second_gate():
+    active_text = "\n".join(
+        [
+            (ROOT / "docs/operator/README.md").read_text(encoding="utf-8"),
+            (ROOT / "docs/operator/guide-research-policy.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "per-card closure" in active_text
+    assert "default_only_runtime_surface_details" in active_text
+    assert "operator_summary.json remains the only normal apply authority" in active_text
+    assert "source_to_runtime_explainability.json" in active_text
