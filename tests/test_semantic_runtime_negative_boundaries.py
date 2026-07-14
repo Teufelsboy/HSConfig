@@ -250,6 +250,27 @@ def test_generated_random_pool_does_not_become_deterministic_cardid_behavior():
     assert result["suppressed"][0]["lowering_policy"] == "report_only"
 
 
+def test_choice_claim_with_unresolved_option_identity_stays_diagnostic():
+    claim = {
+        "claim_id": "choose_option_without_identity",
+        "claim_kind": "choose_one_choice",
+        "claim_readiness": "guide_backed",
+        "cards": ["CHOOSE_ONE_CARD"],
+        "option_card_id": "UNRESOLVED_OPTION",
+    }
+
+    decision = surface_gate_decision(claim, "card_behavior")
+    routed = route_card_behavior_surfaces([claim], identity_links={})
+
+    assert decision.allowed is False
+    assert decision.reason in {
+        "requires_exact_option_identity",
+        "unresolved_option_identity",
+    }
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["claim_id"] == "choose_option_without_identity"
+
+
 def test_timing_mechanics_are_warning_first_not_cross_surface_claims():
     cards = [
         {

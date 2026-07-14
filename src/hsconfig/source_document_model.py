@@ -181,6 +181,16 @@ def surface_gate_decision(
         return can_lower_to_combo(claim)
     if normalized_surface == "cardid":
         return can_lower_to_cardid(claim)
+    if normalized_surface == "card_behavior":
+        claim_kind = normalized_claim_kind(claim)
+        if claim_kind in {"discover_choice", "choose_one_choice"}:
+            return SurfaceGateDecision(
+                False,
+                "requires_exact_option_identity",
+                claim_kind,
+                normalized_surface,
+            )
+        return can_lower_to_cardid(claim)
     return SurfaceGateDecision(
         False, "unknown_surface", normalized_claim_kind(claim), normalized_surface
     )
