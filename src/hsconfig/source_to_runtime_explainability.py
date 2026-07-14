@@ -55,6 +55,7 @@ def build_source_to_runtime_explainability_report(
         "summary": summary,
         "claim_rows": claim_rows,
         "card_rows": card_rows,
+        "operator_attention": _operator_attention_rows(card_rows),
     }
 
 
@@ -184,6 +185,38 @@ def _card_rows(
             }
         )
     return rows
+
+
+def _operator_attention_rows(card_rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for row in card_rows:
+        first_missing_link = row.get("first_missing_link")
+        rows.append(
+            {
+                "card_id": row["card_id"],
+                "name": row.get("name"),
+                "status": (
+                    "runtime_backed"
+                    if first_missing_link is None
+                    else "source_action_needed"
+                ),
+                "first_missing_link": first_missing_link,
+                "next_source_action": row.get("next_source_action"),
+                "strongest_claim_id": row.get("strongest_claim_id"),
+                "strongest_claim_kind": row.get("strongest_claim_kind"),
+                "emitted_runtime_files": row.get("emitted_runtime_files", []),
+                "not_emitted_runtime_files": row.get(
+                    "not_emitted_runtime_files", []
+                ),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (
+            row["first_missing_link"] is None,
+            str(row["card_id"]),
+        ),
+    )
 
 
 def _strongest_claim_id(

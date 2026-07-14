@@ -178,6 +178,35 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
     assert rows["CARD_NUM"]["next_source_action"] == "collect_runtime_evidence"
 
 
+def test_explainability_operator_attention_rows_prioritize_missing_links():
+    report = build_source_to_runtime_explainability_report(_fixture_audit())
+
+    assert report["operator_attention"] == [
+        {
+            "card_id": "CARD_NUM",
+            "name": "Numeric Card",
+            "status": "source_action_needed",
+            "first_missing_link": "runtime_evidence",
+            "next_source_action": "collect_runtime_evidence",
+            "strongest_claim_id": "numeric_claim",
+            "strongest_claim_kind": "globalvalue_numeric_tuning",
+            "emitted_runtime_files": [],
+            "not_emitted_runtime_files": ["GlobalValues.json"],
+        },
+        {
+            "card_id": "CARD_KEEP",
+            "name": "Keep Card",
+            "status": "runtime_backed",
+            "first_missing_link": None,
+            "next_source_action": "none",
+            "strongest_claim_id": "keep_claim",
+            "strongest_claim_kind": "mulligan_keep",
+            "emitted_runtime_files": ["Mulligan.json"],
+            "not_emitted_runtime_files": [],
+        },
+    ]
+
+
 def test_explainability_card_rows_aggregate_runtime_files_across_claims():
     audit = _fixture_audit()
     audit["claim_rows"]["behavior_claim"] = {
