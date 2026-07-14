@@ -254,6 +254,10 @@ def build_operator_summary(
                 source_to_runtime_explainability_report or {},
             )
         ),
+        "surface_status_ledger": _surface_status_ledger(
+            config_usefulness,
+            source_to_runtime_explainability_report or {},
+        ),
         "no_block_failure_mode_summary": no_block_failure_mode_summary,
         "source_informed_apply_readiness": source_informed_apply_readiness,
         "source_claim_quality_summary": _source_claim_quality_summary(
@@ -398,6 +402,92 @@ def _default_only_runtime_surface_details(
             }
         )
     return details
+
+
+def _surface_status_ledger(
+    config_usefulness: dict[str, Any],
+    source_to_runtime_explainability_report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    surfaces = (
+        config_usefulness.get("surfaces", {})
+        if isinstance(config_usefulness, dict)
+        else {}
+    )
+    if not isinstance(surfaces, dict):
+        return []
+
+    risky_details = _default_only_risk_card_details(
+        source_to_runtime_explainability_report
+    )
+    first_risky = risky_details[0] if risky_details else {}
+    rows: list[dict[str, Any]] = []
+    for surface, row in sorted(surfaces.items()):
+        if not isinstance(row, dict):
+            continue
+        status = _surface_ledger_status(row)
+        first_missing_link = row.get("first_gap_reason") or first_risky.get(
+            "first_missing_link"
+        )
+        next_source_action = row.get("next_source_need") or first_risky.get(
+            "next_source_action"
+        )
+        if status in {"source_backed", "policy_backed", "static_semantics_backed"}:
+            first_missing_link = "none"
+            next_source_action = "none"
+        rows.append(
+            {
+                "surface": str(surface),
+                "status": status,
+                "default_only": row.get("default_only") is True,
+                "apply_blocking": False,
+                "operator_impact": "diagnostic_only",
+                "runtime_permission_impact": "none",
+                "first_missing_link": first_missing_link,
+                "next_source_action": next_source_action,
+                "next_report_to_open": _surface_ledger_next_report(
+                    surface, status
+                ),
+            }
+        )
+    return rows
+
+
+def _surface_ledger_status(row: dict[str, Any]) -> str:
+    if row.get("default_only") is True:
+        return "default_only"
+    status = str(row.get("status", "unknown"))
+    if status == "policy_backed" or _int_value(
+        row.get("policy_backed_rule_count", 0)
+    ):
+        return "policy_backed"
+    if _int_value(row.get("source_backed_rule_count", 0)):
+        return "source_backed"
+    if status == "rich":
+        return "static_semantics_backed"
+    if status == "report_only":
+        return "suppressed_with_reason"
+    if status == "thin":
+        return "warning_only"
+    return "warning_only"
+
+
+def _surface_ledger_next_report(surface: object, status: str) -> str:
+    if status in {
+        "source_backed",
+        "policy_backed",
+        "static_semantics_backed",
+        "default_only",
+    }:
+        return "reports/operator_summary.json"
+    if surface == "mulligan":
+        return "reports/mulligan_plan_report.json"
+    if surface == "globalvalues":
+        return "reports/global_values_key_profile_report.json"
+    if surface == "cardid_behavior":
+        return "reports/card_behavior_plan_report.json"
+    if surface == "combo":
+        return "reports/combo_plan_report.json"
+    return "reports/operator_summary.json"
 
 
 def _default_only_risk_card_details(report: dict[str, Any]) -> list[dict[str, Any]]:

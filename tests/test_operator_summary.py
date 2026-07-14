@@ -2419,6 +2419,114 @@ def test_operator_summary_no_default_only_verdict_not_applicable_for_invalid_pac
     }
 
 
+def test_operator_summary_surface_status_ledger_marks_policy_backed_mulligan():
+    summary = build_operator_summary(
+        deck_name="PirateRogue",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        generated_files=[
+            "CustomConfig/piraterogue/GlobalValues.json",
+            "CustomConfig/piraterogue/Mulligan.json",
+        ],
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "policy_lane": "aggro",
+                    "policy_reason": "pirate_pressure",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+    )
+
+    rows = {row["surface"]: row for row in summary["surface_status_ledger"]}
+    assert rows["mulligan"] == {
+        "surface": "mulligan",
+        "status": "policy_backed",
+        "default_only": False,
+        "apply_blocking": False,
+        "operator_impact": "diagnostic_only",
+        "runtime_permission_impact": "none",
+        "first_missing_link": "none",
+        "next_source_action": "none",
+        "next_report_to_open": "reports/operator_summary.json",
+    }
+
+
+def test_operator_summary_surface_status_ledger_marks_default_only_mulligan():
+    summary = build_operator_summary(
+        deck_name="DefaultOnlyFixture",
+        deck_code="fixture",
+        technical_validation={"status": "passed"},
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        source_to_runtime_explainability_report={
+            "authority": "diagnostic_only",
+            "operator_gate_impact": "diagnostic_only",
+            "apply_blocking": False,
+            "card_rows": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Fixture Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "default_only_risk": True,
+                        "first_missing_link": "needs_source_claim",
+                        "next_source_action": "add_mulligan_keep_or_discard_claim",
+                    },
+                }
+            ],
+        },
+    )
+
+    rows = {row["surface"]: row for row in summary["surface_status_ledger"]}
+    assert rows["mulligan"] == {
+        "surface": "mulligan",
+        "status": "default_only",
+        "default_only": True,
+        "apply_blocking": False,
+        "operator_impact": "diagnostic_only",
+        "runtime_permission_impact": "none",
+        "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
+        "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
+        "next_report_to_open": "reports/operator_summary.json",
+    }
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_surface_status_ledger_is_empty_for_invalid_package():
+    summary = build_operator_summary(
+        deck_name="Invalid Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "failed", "errors": ["bad json"]},
+        guide_source_depth={"source_depth_status": "static_semantics_only", "claim_count": 0},
+        generated_files=[],
+    )
+
+    assert summary["surface_status_ledger"] == []
+    assert summary["runtime_apply_allowed"] is False
+
+
 def test_default_only_surface_details_include_missing_link_and_card_details():
     summary = build_operator_summary(
         deck_name="Thin Deck",
