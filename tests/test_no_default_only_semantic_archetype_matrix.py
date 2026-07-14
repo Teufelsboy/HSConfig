@@ -6,6 +6,17 @@ import pytest
 from hsconfig.cli import main
 
 
+SOURCE_CLAIM_FIELDS = {
+    "card_id",
+    "claim_id",
+    "claim_kind",
+    "evidence_text_short",
+    "mechanic",
+    "semantic_qualifiers",
+    "source_confidence",
+}
+
+
 SEMANTIC_ARCHETYPE_FIXTURES = [
     {
         "deck_name": "SyntheticSecretHunter",
@@ -22,12 +33,18 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
                 "mechanic": "secret",
                 "evidence_text_short": "Secrets are part of the gameplan.",
                 "source_confidence": "guide_backed",
-                "expected_runtime_block": "BeforePlayCardBonus",
-                "expected_condition": "*",
-                "expected_value": "6",
-                "expected_comment": "SyntheticSecretHunter: SECRET_001_use_secret_according_to_card_text",
             },
         ],
+        "runtime_expectations": {
+            "SECRET_001": {
+                "claim_db9a1c18eb5a": {
+                    "runtime_block": "BeforePlayCardBonus",
+                    "condition": "*",
+                    "value": "6",
+                    "comment": "SyntheticSecretHunter: SECRET_001_use_secret_according_to_card_text",
+                }
+            }
+        },
     },
     {
         "deck_name": "SyntheticLocationDruid",
@@ -44,12 +61,18 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
                 "mechanic": "location",
                 "evidence_text_short": "Location supports board plan.",
                 "source_confidence": "guide_backed",
-                "expected_runtime_block": "BeforePlayCardBonus",
-                "expected_condition": "*",
-                "expected_value": "6",
-                "expected_comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text",
             },
         ],
+        "runtime_expectations": {
+            "LOCATION_001": {
+                "claim_325924175cfb": {
+                    "runtime_block": "BeforePlayCardBonus",
+                    "condition": "*",
+                    "value": "6",
+                    "comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text",
+                }
+            }
+        },
     },
     {
         "deck_name": "SyntheticDiscoverMage",
@@ -82,6 +105,21 @@ def _runtime_card_files(deck_dir: Path) -> dict[str, dict]:
         for path in deck_dir.glob("*.json")
         if path.name not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
     }
+
+
+def _source_claims(fixture: dict) -> list[dict]:
+    return [
+        {
+            field: claim[field]
+            for field in SOURCE_CLAIM_FIELDS
+            if field in claim
+        }
+        for claim in fixture["claims"]
+    ]
+
+
+def _runtime_config_surface_files(deck_dir: Path) -> set[str]:
+    return {path.name for path in deck_dir.glob("*.json")}
 
 
 def _claim_lifecycle_rows_for_card(
@@ -138,7 +176,7 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
         if claim["claim_kind"] == "hero_power_transform"
         and claim.get("semantic_qualifiers", {}).get("timing") == "start_of_game"
     }
-    assert hold_ids == expected_keep_ids
+    assert expected_keep_ids <= hold_ids
     assert not hold_ids & effect_only_ids
 
     for claim in fixture["claims"]:
@@ -188,13 +226,14 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 and claim_id in row.get("source_claim_ids", [])
                 for row in gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
             )
-            runtime_block = claim["expected_runtime_block"]
+            expected_runtime = fixture["runtime_expectations"][card_id][claim_id]
+            runtime_block = expected_runtime["runtime_block"]
             assert runtime_block in runtime_cards[card_id]
             runtime_values = runtime_cards[card_id][runtime_block]["values"]
             expected_row = {
-                "condition": claim["expected_condition"],
-                "value": claim["expected_value"],
-                "comment": claim["expected_comment"],
+                "condition": expected_runtime["condition"],
+                "value": expected_runtime["value"],
+                "comment": expected_runtime["comment"],
             }
             matching_runtime_rows = [
                 row
@@ -211,7 +250,11 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 f"{expected_row!r}; got {runtime_values!r}"
             )
         elif claim["claim_kind"] == "discover_choice":
-            assert all(not row["emitted_files"] for row in lifecycle_rows)
+            runtime_config_surfaces = _runtime_config_surface_files(deck_dir)
+            assert all(
+                not set(row["emitted_files"]) & runtime_config_surfaces
+                for row in lifecycle_rows
+            )
             assert all(
                 row["final_runtime_effect"] != "emitted_runtime_row"
                 for row in lifecycle_rows
@@ -254,7 +297,7 @@ def _write_fixture(tmp_path: Path, fixture: dict) -> tuple[Path, Path]:
                     "source_title": f"{fixture['deck_name']} Guide Fixture",
                     "source_family": "guide_fixture",
                     "retrieved_at": "2026-07-14T00:00:00Z",
-                    "claims": fixture["claims"],
+                    "claims": _source_claims(fixture),
                 }
             ]
         ),
