@@ -34,7 +34,10 @@ Short evidence row shape for `--source-evidence-json`:
     "card_mentions": ["Example Card"],
     "stance": "keep",
     "evidence_text_short": "Keep this card because it enables the deck plan.",
-    "source_confidence": "high"
+    "source_confidence": "high",
+    "semantic_qualifiers": {
+      "timing": "mulligan"
+    }
   }
 ]
 ```
@@ -88,6 +91,7 @@ Accepted atomic claim fields:
 - `source_confidence`: `high`, `medium`, or `low`.
 - `runtime_block`, `runtime_value`: optional CardID behavior lowering hints.
 - `sequence`, `timing_kind`, `operator`, and `values`: optional Combo timing fields.
+- `semantic_qualifiers`, or top-level qualifier fields such as `timing`, `zone_scope`, `state_requirements`, `generation_scope`, and `deck_evaluation`: optional claim context. Use `generation_scope` for generated/random/copied/transformed cards and `deck_evaluation` for highlander, odd/even, deck-size, start-in-deck, or all-shadow-spell effects.
 
 A `runtime_block` or `runtime_value` hint never overrides `claim_kind`.
 Runtime lowering is surface-gated: `Mulligan.json` only lowers explicit

@@ -143,6 +143,8 @@ Supported qualifier families:
 - `target_scope`: `enemy_hero`, `friendly_minion`, `enemy_minion`, `any_minion`, `no_target`
 - `option_surface`: `discover`, `choose_one`, `generated_choice`
 - `state_requirements`: deck, hand, board, weapon, mana, overload, duplicate, or mechanic constraints
+- `generation_scope`: `generated`, `random_pool`, `discovered`, `copied`, `transformed`, `shuffled`
+- `deck_evaluation`: `highlander`, `odd`, `even`, `deck_size`, `start_in_deck`, `all_shadow_spells`
 
 When source text says an effect matters but does not explicitly say opening
 hand or mulligan, HSConfig must preserve effect semantics without turning the
@@ -179,6 +181,7 @@ Accepted atomic claim fields:
 - `source_confidence`: `high`, `medium`, or `low`.
 - `runtime_block`, `runtime_value`: optional CardID behavior lowering hints.
 - `sequence`, `timing_kind`, `operator`, and `values`: optional Combo timing fields.
+- `semantic_qualifiers`, or top-level qualifier fields such as `timing`, `zone_scope`, `state_requirements`, `generation_scope`, and `deck_evaluation`: optional claim context that must stay visible through source-document drafting and surface gates.
 
 A `runtime_block` or `runtime_value` hint never overrides `claim_kind`.
 Runtime lowering is surface-gated: `Mulligan.json` only lowers explicit

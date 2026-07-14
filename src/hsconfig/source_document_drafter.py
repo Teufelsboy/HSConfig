@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.source_semantic_qualifiers import QUALIFIER_KEYS
+
 
 def draft_source_documents(
     *,
@@ -129,6 +131,8 @@ def _claim_from_row(row: dict[str, Any], cards: list[str]) -> dict[str, Any]:
         "values",
         "option_card_id",
         "choice_card_id",
+        "semantic_qualifiers",
+        *QUALIFIER_KEYS,
     ):
         if key in row:
             claim[key] = row[key]
