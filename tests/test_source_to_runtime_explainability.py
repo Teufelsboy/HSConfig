@@ -175,6 +175,8 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
             "claim_kinds": ["mulligan_keep"],
             "source_lanes": ["runtime_lowered"],
             "runtime_surfaces": ["Mulligan.json"],
+            "expected_runtime_surfaces": ["Mulligan.json"],
+            "missing_runtime_surfaces": [],
             "default_only_risk": False,
             "suppressed_reasons": [],
             "first_missing_link": None,
@@ -191,6 +193,8 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "claim_kinds": ["future_claim_kind", "globalvalue_numeric_tuning"],
         "source_lanes": ["runtime_evidence_required", "unsupported_or_unmapped"],
         "runtime_surfaces": [],
+        "expected_runtime_surfaces": ["GlobalValues.json"],
+        "missing_runtime_surfaces": ["GlobalValues.json"],
         "default_only_risk": False,
         "suppressed_reasons": [
             "runtime_evidence_required",
@@ -328,6 +332,71 @@ def test_explainability_operator_attention_exposes_baseline_default_only_risk():
             "emitted_runtime_files": [],
             "not_emitted_runtime_files": [],
         }
+    ]
+
+
+def test_explainability_closure_separates_surface_intent_from_unassigned_risk():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "FixtureDeck",
+        "claim_rows": {
+            "suppressed_keep": {
+                "claim_id": "suppressed_keep",
+                "claim_kind": "mulligan_keep",
+                "lane": "suppressed_with_reason",
+                "policy_lane": "runtime_lowerable",
+                "lowered_surfaces": [],
+                "first_reason": "start_of_game_effect_does_not_require_opening_hand",
+                "cards": ["CARD_SUPPRESSED"],
+            }
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "suppressed_keep",
+                "claim_kind": "mulligan_keep",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "rejected",
+                "surface_gate_reason": "start_of_game_effect_does_not_require_opening_hand",
+                "builder_or_router_decision": "suppressed",
+                "runtime_surface": "Mulligan.json",
+                "emitted_files": [],
+                "suppressed_reason": "start_of_game_effect_does_not_require_opening_hand",
+                "first_missing_link": "opening_hand_mulligan_intent",
+                "operator_impact": "diagnostic_only",
+            }
+        ],
+        "card_rows": {
+            "CARD_BASE": {
+                "name": "Unassigned Baseline Card",
+                "readiness_lane": "generic_low_confidence",
+                "first_missing_link": "none",
+                "runtime_surfaces": [],
+                "claim_lanes": {},
+            },
+            "CARD_SUPPRESSED": {
+                "name": "Suppressed Mulligan Card",
+                "readiness_lane": "mulligan_only",
+                "first_missing_link": "opening_hand_mulligan_intent",
+                "runtime_surfaces": [],
+                "claim_lanes": {"suppressed_with_reason": 1},
+            },
+        },
+    }
+
+    report = build_source_to_runtime_explainability_report(audit)
+    rows = {row["card_id"]: row for row in report["card_rows"]}
+
+    assert rows["CARD_BASE"]["closure"]["default_only_risk"] is True
+    assert rows["CARD_BASE"]["closure"]["runtime_surfaces"] == []
+    assert rows["CARD_BASE"]["closure"]["expected_runtime_surfaces"] == []
+    assert rows["CARD_BASE"]["closure"]["missing_runtime_surfaces"] == []
+    assert rows["CARD_SUPPRESSED"]["closure"]["default_only_risk"] is False
+    assert rows["CARD_SUPPRESSED"]["closure"]["runtime_surfaces"] == []
+    assert rows["CARD_SUPPRESSED"]["closure"]["expected_runtime_surfaces"] == [
+        "Mulligan.json"
+    ]
+    assert rows["CARD_SUPPRESSED"]["closure"]["missing_runtime_surfaces"] == [
+        "Mulligan.json"
     ]
 
 
@@ -470,6 +539,8 @@ def test_explainability_card_rows_include_compact_closure_lane():
         "claim_kinds": ["mulligan_keep"],
         "source_lanes": ["runtime_lowered", "suppressed_with_reason"],
         "runtime_surfaces": ["Mulligan.json"],
+        "expected_runtime_surfaces": ["Mulligan.json"],
+        "missing_runtime_surfaces": [],
         "default_only_risk": False,
         "suppressed_reasons": [
             "start_of_game_effect_does_not_require_opening_hand"

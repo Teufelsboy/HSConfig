@@ -377,9 +377,6 @@ def _default_only_runtime_surface_details(
     if not isinstance(surfaces, dict):
         return []
 
-    all_risky_card_details = _default_only_risk_card_details(
-        source_to_runtime_explainability_report
-    )
     details: list[dict[str, Any]] = []
     for name, row in sorted(surfaces.items()):
         if not isinstance(row, dict) or row.get("default_only") is not True:
@@ -388,8 +385,6 @@ def _default_only_runtime_surface_details(
             source_to_runtime_explainability_report,
             surface=str(name),
         )
-        if not risky_card_details:
-            risky_card_details = all_risky_card_details
         risky_cards = [
             f'{row["card_id"]} {row["name"]}'.strip()
             for row in risky_card_details
@@ -506,16 +501,18 @@ def _runtime_surfaces_from_closure(row: dict[str, Any]) -> set[str]:
     closure = row.get("closure", {})
     if not isinstance(closure, dict):
         return set()
-    value = closure.get("runtime_surfaces", [])
-    if not isinstance(value, list):
-        return set()
-    return {str(item) for item in value if str(item)}
+    runtime_files: set[str] = set()
+    for key in ("expected_runtime_surfaces", "runtime_surfaces"):
+        value = closure.get(key, [])
+        if isinstance(value, list):
+            runtime_files.update(str(item) for item in value if str(item))
+    return runtime_files
 
 
 def _closure_matches_surface(row: dict[str, Any], surface: str) -> bool:
     runtime_files = _runtime_surfaces_from_closure(row)
     if not runtime_files:
-        return True
+        return False
     if surface == "cardid_behavior":
         cardid_files = {
             filename for filename in runtime_files if filename.endswith(".json")

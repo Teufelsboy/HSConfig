@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -333,7 +334,7 @@ def _contains_start_of_game_non_hand_effect(
         roles = _roles_for_card(card_id, card_roles, claim)
         if "start_of_game" not in roles:
             continue
-        has_opening_hand_intent = has_explicit_opening_hand_mulligan_intent(
+        has_opening_hand_intent = _has_explicit_opening_hand_mulligan_evidence(
             claim,
             roles=roles,
         )
@@ -359,12 +360,26 @@ def _contains_start_of_game_non_hand_effect(
         or deck_evaluation_effect
         or generated_effect
     )
-    if qualifier_start_effect and not has_explicit_opening_hand_mulligan_intent(
+    if qualifier_start_effect and not _has_explicit_opening_hand_mulligan_evidence(
         claim,
         roles={"start_of_game"},
     ):
         return True
     return False
+
+
+def _has_explicit_opening_hand_mulligan_evidence(
+    claim: Mapping[str, Any] | None,
+    *,
+    roles: Iterable[str] = (),
+) -> bool:
+    return has_explicit_opening_hand_mulligan_intent(
+        claim,
+        roles=roles,
+    ) or (
+        isinstance(claim, Mapping)
+        and has_qualifier(claim, "timing", "mulligan")
+    )
 
 
 def _roles_for_card(

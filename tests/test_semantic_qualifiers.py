@@ -249,3 +249,26 @@ def test_deck_evaluation_qualifier_allows_explicit_opening_hand_text():
     decision = can_lower_to_mulligan(claim)
 
     assert decision.allowed is True
+
+
+def test_opening_hand_qualifier_allows_deck_evaluation_keep_without_prose_marker():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["DECK_MODIFIER"],
+        "evidence_text_short": "Always keep this card.",
+        "semantic_qualifiers": normalize_semantic_qualifiers(
+            {
+                "semantic_qualifiers": {
+                    "timing": "Opening Hand",
+                    "deck_evaluation": "No Duplicates",
+                }
+            }
+        ),
+    }
+
+    decision = can_lower_to_mulligan(claim)
+
+    assert claim["semantic_qualifiers"]["timing"] == "mulligan"
+    assert decision.allowed is True

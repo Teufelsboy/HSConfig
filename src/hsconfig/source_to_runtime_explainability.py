@@ -264,6 +264,9 @@ def _closure_row(
     first_missing_link = row.get("first_missing_link")
     emitted_runtime_files = _string_list(row.get("emitted_runtime_files"))
     not_emitted_runtime_files = _string_list(row.get("not_emitted_runtime_files"))
+    expected_runtime_files = sorted(
+        set(emitted_runtime_files) | set(not_emitted_runtime_files)
+    )
     lane = _operator_attention_status(dict(row))
     default_only_risk = (
         not emitted_runtime_files
@@ -287,6 +290,8 @@ def _closure_row(
             }
         ),
         "runtime_surfaces": emitted_runtime_files,
+        "expected_runtime_surfaces": expected_runtime_files,
+        "missing_runtime_surfaces": not_emitted_runtime_files,
         "default_only_risk": default_only_risk,
         "suppressed_reasons": sorted(
             {

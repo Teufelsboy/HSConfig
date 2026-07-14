@@ -1,12 +1,16 @@
 import pytest
 
 from hsconfig.operator_summary import _closure_matches_surface, build_operator_summary
+from hsconfig.source_to_runtime_explainability import (
+    build_source_to_runtime_explainability_report,
+)
 
 
 @pytest.mark.parametrize(
     ("surface", "runtime_files", "expected"),
     [
         ("mulligan", ["Mulligan.json"], True),
+        ("mulligan", [], False),
         ("globalvalues", ["GlobalValues.json"], True),
         ("combo", ["Combo.json"], True),
         ("cardid_behavior", ["CARD_001.json"], True),
@@ -2298,17 +2302,9 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
         {
             "surface": "mulligan",
             "status": "default_only",
-            "card_count_with_default_only_risk": 1,
-            "example_cards": ["CARD_001 Fixture Card"],
-            "example_card_details": [
-                {
-                    "card_id": "CARD_001",
-                    "name": "Fixture Card",
-                    "closure_lane": "baseline_only_visible",
-                    "first_missing_link": None,
-                    "next_source_action": "none",
-                }
-            ],
+            "card_count_with_default_only_risk": 0,
+            "example_cards": [],
+            "example_card_details": [],
             "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
             "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
             "operator_impact": "diagnostic_only",
@@ -2550,7 +2546,7 @@ def test_operator_summary_surface_status_ledger_is_empty_for_invalid_package():
     assert summary["runtime_apply_allowed"] is False
 
 
-def test_default_only_surface_details_include_missing_link_and_card_details():
+def test_default_only_surface_details_ignore_risky_card_without_surface_intent():
     summary = build_operator_summary(
         deck_name="Thin Deck",
         deck_code="AAEBAQAAAA==",
@@ -2596,17 +2592,9 @@ def test_default_only_surface_details_include_missing_link_and_card_details():
         {
             "surface": "mulligan",
             "status": "default_only",
-            "card_count_with_default_only_risk": 1,
-            "example_cards": ["CARD_MISSING Missing Keep"],
-            "example_card_details": [
-                {
-                    "card_id": "CARD_MISSING",
-                    "name": "Missing Keep",
-                    "closure_lane": "baseline_only_visible",
-                    "first_missing_link": None,
-                    "next_source_action": "none",
-                }
-            ],
+            "card_count_with_default_only_risk": 0,
+            "example_cards": [],
+            "example_card_details": [],
             "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
             "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
             "operator_impact": "diagnostic_only",
@@ -2674,6 +2662,62 @@ def test_default_only_surface_details_filter_example_cards_to_runtime_surface():
                     "next_source_action": "add_mulligan_keep_or_discard_claim",
                 }
             ],
+            "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
+            "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
+            "operator_impact": "diagnostic_only",
+            "apply_blocking": False,
+        }
+    ]
+
+
+def test_default_only_surface_details_do_not_assign_producer_unassigned_rows():
+    explainability_report = build_source_to_runtime_explainability_report(
+        {
+            "schema_version": 1,
+            "deck_name": "Thin Deck",
+            "claim_rows": {},
+            "claim_lifecycle_rows": [],
+            "card_rows": {
+                "BASE_001": {
+                    "name": "Unassigned Baseline Card",
+                    "readiness_lane": "generic_low_confidence",
+                    "first_missing_link": "none",
+                    "runtime_surfaces": [],
+                    "claim_lanes": {},
+                }
+            },
+        }
+    )
+
+    closure = explainability_report["card_rows"][0]["closure"]
+    assert closure["default_only_risk"] is True
+    assert closure["expected_runtime_surfaces"] == []
+    assert closure["missing_runtime_surfaces"] == []
+
+    summary = build_operator_summary(
+        deck_name="Thin Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        source_to_runtime_explainability_report=explainability_report,
+    )
+
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["default_only_runtime_surface_details"] == [
+        {
+            "surface": "mulligan",
+            "status": "default_only",
+            "card_count_with_default_only_risk": 0,
+            "example_cards": [],
+            "example_card_details": [],
             "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
             "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
             "operator_impact": "diagnostic_only",
