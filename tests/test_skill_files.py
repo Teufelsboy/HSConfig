@@ -1043,3 +1043,20 @@ def test_hsconfig_skill_explains_start_effect_mulligan_split():
     assert "Effect semantics are not opening-hand mulligan keeps" in text
     assert "Darkbishop Benedictus" in text
     assert "operator_summary.json remains the normal apply authority" in text
+
+
+def test_docs_and_skill_explain_contract_invariant_closure_without_new_gate():
+    operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    combined = operator_docs + "\n" + skill
+
+    required = (
+        "Contract invariant closure means: single apply authority, no silent "
+        "default-only success, claim-kind surface discipline, and effect-not-mulligan "
+        "canary coverage. It is diagnostic proof, not another runtime apply gate."
+    )
+
+    assert required in operator_docs
+    assert required in skill
+    assert "another runtime apply gate" in combined
+    assert "operator_summary.json remains the only normal apply authority" in combined

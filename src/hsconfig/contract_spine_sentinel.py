@@ -81,6 +81,39 @@ LIFECYCLE_DIAGNOSTIC_TOKENS = (
     "source_to_runtime",
 )
 
+INVARIANT_EVIDENCE = {
+    "single_apply_authority": (
+        "report_ownership_gate_files",
+        "active_apply_diagnostic_consumers",
+        "lifecycle_gate_files",
+    ),
+    "diagnostics_are_non_authoritative": (
+        "non_diagnostic_policy_claim_kinds",
+        "spine_rows_with_apply_authority_fields",
+        "conformance_apply_authority_fields_present",
+        "conformance_operator_gate_impact",
+    ),
+    "claim_kind_surface_policy_complete": (
+        "policy_missing_claim_kinds",
+        "policy_extra_claim_kinds",
+        "spine_missing_claim_kinds",
+        "spine_extra_claim_kinds",
+        "claim_family_registry",
+    ),
+    "effect_not_mulligan": (
+        "start_of_game_mulligan_suppression",
+        "critical_boundary_rows",
+    ),
+    "no_forbidden_legacy_runtime_surfaces": (
+        "legacy_surface_normal_routing",
+        "output_ownership_forbidden_legacy_surfaces",
+    ),
+    "skill_and_docs_guardrail_ready": (
+        "report_ownership_unclassified_files",
+        "output_ownership_unclassified_files",
+    ),
+}
+
 
 def build_contract_spine_sentinel_report(
     repo_root: str | Path | None = None,
@@ -148,6 +181,7 @@ def build_contract_spine_sentinel_report(
         "operator_gate_impact": "diagnostic_only",
         "apply_blocking": False,
         "checks": checks,
+        "contract_invariants": _contract_invariants(checks, problems),
         "problems": problems,
     }
 
@@ -359,6 +393,58 @@ def _output_ownership_files_by_classification(classification: str) -> list[str]:
         for row in manifest["files"]
         if row.get("classification") == classification
     )
+
+
+def _contract_invariants(
+    checks: dict[str, Any],
+    problems: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    problem_checks = {
+        str(problem.get("check"))
+        for problem in problems
+        if isinstance(problem, dict)
+    }
+    invariants: dict[str, dict[str, object]] = {}
+    for name, evidence_keys in INVARIANT_EVIDENCE.items():
+        failing = [key for key in evidence_keys if key in problem_checks]
+        invariants[name] = {
+            "status": "clean" if not failing else "drift_detected",
+            "authority": "diagnostic_only",
+            "apply_blocking": False,
+            "evidence": list(evidence_keys),
+            "failing_checks": failing,
+        }
+
+    suppression = checks.get("start_of_game_mulligan_suppression", {})
+    if not isinstance(suppression, dict) or suppression.get("decision") != "rejected":
+        _append_invariant_failure(
+            invariants,
+            "effect_not_mulligan",
+            "start_of_game_mulligan_suppression",
+        )
+
+    if checks.get("report_ownership_gate_files") != ["reports/operator_summary.json"]:
+        _append_invariant_failure(
+            invariants,
+            "single_apply_authority",
+            "report_ownership_gate_files",
+        )
+
+    return invariants
+
+
+def _append_invariant_failure(
+    invariants: dict[str, dict[str, object]],
+    invariant_name: str,
+    check_name: str,
+) -> None:
+    row = invariants[invariant_name]
+    row["status"] = "drift_detected"
+    existing = row.get("failing_checks", [])
+    failing = list(existing) if isinstance(existing, list) else []
+    if check_name not in failing:
+        failing.append(check_name)
+    row["failing_checks"] = sorted(failing)
 
 
 def _problems(checks: dict[str, Any]) -> list[dict[str, object]]:

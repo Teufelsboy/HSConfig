@@ -31,6 +31,21 @@ def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
     assert expected <= set(FOCUSED_CONTRACT_TESTS)
 
 
+def test_guardrail_runner_includes_contract_invariant_closure_tests():
+    from scripts.check_contract_guardrails import FOCUSED_CONTRACT_TESTS
+
+    required = {
+        "tests/test_config_usefulness.py",
+        "tests/test_operator_summary.py",
+        "tests/test_no_default_only_semantic_archetype_matrix.py",
+        "tests/test_shadowpriest_fresh_closure_proof.py",
+        "tests/test_skill_sync.py",
+        "tests/test_skill_files.py",
+    }
+
+    assert required <= set(FOCUSED_CONTRACT_TESTS)
+
+
 def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_path):
     repo_root = tmp_path
     skill_root = tmp_path / "skills"

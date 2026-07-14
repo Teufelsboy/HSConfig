@@ -16,6 +16,36 @@ def test_contract_spine_sentinel_report_is_clean_for_current_repo():
     assert report["problems"] == []
 
 
+def test_contract_spine_sentinel_exposes_clean_contract_invariants():
+    report = build_contract_spine_sentinel_report()
+
+    assert report["status"] == "clean"
+    assert report["authority"] == "diagnostic_only"
+    assert report["apply_blocking"] is False
+
+    invariants = report["contract_invariants"]
+    assert set(invariants) == {
+        "single_apply_authority",
+        "diagnostics_are_non_authoritative",
+        "claim_kind_surface_policy_complete",
+        "effect_not_mulligan",
+        "no_forbidden_legacy_runtime_surfaces",
+        "skill_and_docs_guardrail_ready",
+    }
+    assert all(row["status"] == "clean" for row in invariants.values())
+    assert all(row["authority"] == "diagnostic_only" for row in invariants.values())
+    assert all(row["apply_blocking"] is False for row in invariants.values())
+    assert invariants["single_apply_authority"]["evidence"] == [
+        "report_ownership_gate_files",
+        "active_apply_diagnostic_consumers",
+        "lifecycle_gate_files",
+    ]
+    assert invariants["effect_not_mulligan"]["evidence"] == [
+        "start_of_game_mulligan_suppression",
+        "critical_boundary_rows",
+    ]
+
+
 def test_contract_spine_sentinel_includes_claim_family_registry():
     report = build_contract_spine_sentinel_report()
     registry = report["checks"]["claim_family_registry"]
@@ -320,3 +350,90 @@ def test_contract_spine_sentinel_flags_active_source_informed_branch(tmp_path):
     assert report["checks"]["source_informed_apply_flag_policy"]["active_branches"] == [
         {"path": "src/hsconfig/apply_gate.py", "line": 2}
     ]
+
+
+def test_contract_invariants_flag_second_apply_authority(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.build_report_ownership
+
+    def drifted_report_ownership():
+        rows = []
+        for row in original():
+            if row.get("file") == "reports/source_contract_audit.json":
+                rows.append({**row, "classification": "gate"})
+            else:
+                rows.append(row)
+        return rows
+
+    monkeypatch.setattr(sentinel, "build_report_ownership", drifted_report_ownership)
+
+    report = build_contract_spine_sentinel_report()
+    invariant = report["contract_invariants"]["single_apply_authority"]
+
+    assert report["status"] == "drift_detected"
+    assert invariant["status"] == "drift_detected"
+    assert invariant["authority"] == "diagnostic_only"
+    assert invariant["apply_blocking"] is False
+    assert "lifecycle_gate_files" in invariant["failing_checks"]
+
+
+def test_contract_invariants_flag_missing_effect_not_mulligan_boundary(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.build_source_contract_conformance_snapshot
+
+    def drifted_conformance():
+        snapshot = original()
+        snapshot["start_of_game_mulligan_suppression"] = {
+            "claim_kind": "mulligan_keep",
+            "decision": "allowed",
+            "reason": "drifted",
+            "surface": "mulligan",
+        }
+        return snapshot
+
+    monkeypatch.setattr(
+        sentinel,
+        "build_source_contract_conformance_snapshot",
+        drifted_conformance,
+    )
+
+    report = build_contract_spine_sentinel_report()
+    invariant = report["contract_invariants"]["effect_not_mulligan"]
+
+    assert report["status"] == "drift_detected"
+    assert invariant["status"] == "drift_detected"
+    assert invariant["authority"] == "diagnostic_only"
+    assert invariant["apply_blocking"] is False
+    assert "start_of_game_mulligan_suppression" in invariant["failing_checks"]
+
+
+def test_contract_invariants_flag_non_diagnostic_conformance_gate_impact(monkeypatch):
+    from hsconfig import contract_spine_sentinel as sentinel
+
+    original = sentinel.build_source_contract_conformance_snapshot
+
+    def drifted_conformance():
+        snapshot = original()
+        snapshot["operator_gate_impact"] = "apply_gate"
+        return snapshot
+
+    monkeypatch.setattr(
+        sentinel,
+        "build_source_contract_conformance_snapshot",
+        drifted_conformance,
+    )
+
+    report = build_contract_spine_sentinel_report()
+    invariant = report["contract_invariants"]["diagnostics_are_non_authoritative"]
+
+    assert report["status"] == "drift_detected"
+    assert {
+        "check": "conformance_operator_gate_impact",
+        "value": "apply_gate",
+    } in report["problems"]
+    assert invariant["status"] == "drift_detected"
+    assert invariant["authority"] == "diagnostic_only"
+    assert invariant["apply_blocking"] is False
+    assert "conformance_operator_gate_impact" in invariant["failing_checks"]
