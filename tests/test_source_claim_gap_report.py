@@ -286,3 +286,62 @@ def test_gap_report_includes_policy_lane_for_policy_backed_mulligan_surface():
     assert mulligan["policy_lanes"] == ["aggro"]
     assert mulligan["policy_reasons"] == ["pirate_pressure"]
     assert report["summary"]["deck_surface_gap_count"] == 0
+
+
+def test_suppressed_runtime_claims_report_first_missing_link():
+    report = build_source_claim_gap_report(
+        deck_name="Suppressed Claims",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "runtime_numeric",
+                    "claim_kind": "globalvalue_numeric_tuning",
+                    "reason": "requires_runtime_evidence",
+                },
+                {
+                    "claim_id": "unresolved_discover",
+                    "claim_kind": "discover_choice",
+                    "reason": "unresolved_option_identity",
+                },
+                {
+                    "claim_id": "future_mechanic",
+                    "claim_kind": "mechanic_usage",
+                    "reason": "requires_supported_cardid_surface",
+                },
+                {
+                    "claim_id": "fallback_claim",
+                    "claim_kind": "card_role",
+                },
+            ],
+        },
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+        source_contract_audit={
+            "claim_lifecycle_rows": [
+                {
+                    "claim_id": "conflicting_claim",
+                    "claim_kind": "mulligan_keep",
+                    "builder_or_router_decision": "suppressed",
+                    "first_missing_link": "source_claim_conflict",
+                }
+            ]
+        },
+    )
+
+    rows_by_claim_id = {
+        row["claim_id"]: row for row in report["suppressed_claim_rows"]
+    }
+    for claim_id, first_missing_link in {
+        "runtime_numeric": "runtime_evidence",
+        "unresolved_discover": "option_identity",
+        "future_mechanic": "supported_cardid_surface",
+        "fallback_claim": "claim_kind_supported_surface",
+        "conflicting_claim": "source_claim_conflict",
+    }.items():
+        row = rows_by_claim_id[claim_id]
+        assert row["builder_or_router_decision"] == "suppressed"
+        assert row["first_missing_link"] == first_missing_link
+        assert row["operator_impact"] == "diagnostic_only"

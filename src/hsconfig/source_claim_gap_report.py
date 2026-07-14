@@ -160,6 +160,10 @@ def build_source_claim_gap_report(
     card_first_missing_chain = _first_missing_chain(rows)
     deck_first_missing_chain = _first_missing_surface_chain(deck_surfaces)
     first_missing_chain = card_first_missing_chain or deck_first_missing_chain
+    suppressed_claim_rows = _suppressed_claim_rows(
+        card_behavior_plan=card_behavior_plan,
+        source_contract_audit=source_contract_audit or {},
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -187,11 +191,56 @@ def build_source_claim_gap_report(
         "cards": rows,
         "card_rows": rows,
         "deck_surfaces": deck_surfaces,
+        "suppressed_claim_rows": suppressed_claim_rows,
         "inputs": {
             "card_behavior_rows": len(card_behavior_plan.get("rows", [])),
             "mulligan_rules": len(mulligan_plan.get("rules", [])),
             "combo_count": len(combo_plan.get("combos", [])),
         },
+    }
+
+
+def normalize_first_missing_link(row: dict[str, Any]) -> str:
+    reason = str(row.get("reason") or row.get("first_missing_link") or "")
+    if reason in {"requires_runtime_evidence", "globalvalue_runtime_evidence_required"}:
+        return "runtime_evidence"
+    if reason in {"requires_exact_option_identity", "unresolved_option_identity"}:
+        return "option_identity"
+    if reason == "requires_supported_cardid_surface":
+        return "supported_cardid_surface"
+    if reason == "source_claim_conflict":
+        return "source_claim_conflict"
+    if reason:
+        return reason
+    return "claim_kind_supported_surface"
+
+
+def _suppressed_claim_rows(
+    *,
+    card_behavior_plan: dict[str, Any],
+    source_contract_audit: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in card_behavior_plan.get("suppressed", []):
+        if not isinstance(row, dict):
+            continue
+        rows.append(_suppressed_claim_row(row))
+    for row in source_contract_audit.get("claim_lifecycle_rows", []):
+        if not isinstance(row, dict):
+            continue
+        if row.get("builder_or_router_decision") != "suppressed":
+            continue
+        rows.append(_suppressed_claim_row(row))
+    return rows
+
+
+def _suppressed_claim_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "claim_id": str(row.get("claim_id", "")),
+        "claim_kind": str(row.get("claim_kind", "")),
+        "builder_or_router_decision": "suppressed",
+        "first_missing_link": normalize_first_missing_link(row),
+        "operator_impact": "diagnostic_only",
     }
 
 
