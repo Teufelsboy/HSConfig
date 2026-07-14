@@ -1,4 +1,6 @@
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
+from hsconfig.source_claim_lifecycle import build_initial_lifecycle_rows
+from hsconfig.source_contract_audit import build_source_contract_audit
 
 
 def test_report_explains_each_first_missing_link():
@@ -422,6 +424,52 @@ def test_suppressed_claim_rows_include_report_only_not_seen_lifecycle_rows():
         {
             "claim_id": "report_only_claim",
             "claim_kind": "archetype",
+            "builder_or_router_decision": "not_seen_by_builder",
+            "first_missing_link": "claim_kind_policy",
+            "operator_impact": "diagnostic_only",
+        }
+    ]
+
+
+def test_gap_report_projects_initial_report_only_lifecycle_once_with_policy_reason():
+    claims = [
+        {
+            "claim_id": "report_only_posture",
+            "claim_kind": "gameplan_posture",
+            "source_confidence": "report_only",
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "Maintain an aggressive posture.",
+        }
+    ]
+    source_contract_audit = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={"deck_name": "FixtureDeck", "cards": []},
+        guide_claim_bundle={"claims": claims},
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={"cards": {}},
+        initial_lifecycle_rows=build_initial_lifecycle_rows(claims),
+    )
+
+    report = build_source_claim_gap_report(
+        deck_name="FixtureDeck",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+        source_contract_audit=source_contract_audit,
+    )
+
+    assert report["suppressed_claim_rows"] == [
+        {
+            "claim_id": "report_only_posture",
+            "claim_kind": "gameplan_posture",
             "builder_or_router_decision": "not_seen_by_builder",
             "first_missing_link": "claim_kind_policy",
             "operator_impact": "diagnostic_only",

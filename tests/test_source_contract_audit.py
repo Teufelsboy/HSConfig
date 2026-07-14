@@ -289,6 +289,42 @@ def test_claim_lifecycle_uses_canonical_quarantine_rows():
     assert report["summary"]["claim_lifecycle_decision_counts"] == {"suppressed": 2}
 
 
+def test_initial_report_only_claim_is_not_seen_by_builder_with_policy_reason():
+    claims = [
+        {
+            "claim_id": "report_only_posture",
+            "claim_kind": "gameplan_posture",
+            "source_confidence": "report_only",
+            "source_title": "Fixture Guide",
+            "evidence_text_short": "Maintain an aggressive posture.",
+        }
+    ]
+    initial_lifecycle_rows = build_initial_lifecycle_rows(claims)
+
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={"deck_name": "FixtureDeck", "cards": []},
+        guide_claim_bundle={"claims": claims},
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={"cards": {}},
+        initial_lifecycle_rows=initial_lifecycle_rows,
+    )
+
+    row = report["claim_lifecycle_rows"][0]
+
+    assert initial_lifecycle_rows[0]["runtime_eligibility"] == "report_only"
+    assert row["builder_or_router_decision"] == "not_seen_by_builder"
+    assert row["suppressed_reason"] == "claim_kind_policy"
+    assert row["first_missing_link"] == "claim_kind_policy"
+    assert row["final_runtime_effect"] == "not_emitted_by_builder_or_router"
+
+
 def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
