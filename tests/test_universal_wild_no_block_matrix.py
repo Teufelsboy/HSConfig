@@ -196,6 +196,33 @@ def assert_load_safe_no_block_package(operator_summary: dict):
     )
 
 
+def assert_no_default_only_runtime_surfaces(operator: dict) -> None:
+    assert operator["default_only_runtime_surfaces"] == []
+    mulligan_policy = operator["mulligan_policy_status"]
+    assert mulligan_policy["default_only"] is False
+    assert mulligan_policy["status"] in {
+        "policy_backed",
+        "source_backed",
+        "source_and_policy_backed",
+    }
+    assert isinstance(mulligan_policy.get("policy_lanes", []), list)
+    assert isinstance(mulligan_policy.get("policy_reasons", []), list)
+
+
+def assert_runtime_surface_shape(deck_dir: Path, deck_card_ids: set[str]) -> None:
+    special_files = {"Combo.json", "GlobalValues.json", "Mulligan.json"}
+    card_files = {
+        path.stem
+        for path in deck_dir.glob("*.json")
+        if path.name not in special_files
+    }
+    assert (deck_dir / "GlobalValues.json").is_file()
+    assert (deck_dir / "Mulligan.json").is_file()
+    assert card_files == deck_card_ids
+    assert not (deck_dir / "Presume.json").exists()
+    assert not (deck_dir / "Concede.json").exists()
+
+
 @pytest.mark.parametrize(("deck_name", "deck_code"), DECKS)
 def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     tmp_path: Path,
@@ -251,8 +278,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
-    assert operator["default_only_runtime_surfaces"] == []
-    assert operator["mulligan_policy_status"]["default_only"] is False
+    assert_no_default_only_runtime_surfaces(operator)
     no_block = operator["no_block_failure_mode_summary"]
     assert no_block["hard_block"] is False
     assert no_block["runtime_apply_allowed"] is True
@@ -272,11 +298,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert semantic_report["non_blocking"] is True
     assert "summary" in semantic_report
     assert "cards" in semantic_report
-    assert (deck_dir / "GlobalValues.json").is_file()
-    assert (deck_dir / "Mulligan.json").is_file()
-    assert card_files == deck_card_ids
-    assert not (deck_dir / "Presume.json").exists()
-    assert not (deck_dir / "Concede.json").exists()
+    assert_runtime_surface_shape(deck_dir, deck_card_ids)
 
 
 def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeypatch):
