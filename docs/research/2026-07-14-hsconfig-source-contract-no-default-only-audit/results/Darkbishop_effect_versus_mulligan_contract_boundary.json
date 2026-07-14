@@ -1,0 +1,33 @@
+{
+  "verdict": "PASS. The current HSConfig boundary preserves Darkbishop Benedictus as runtime CardID behavior while preventing false opening-hand Mulligan keep lowering. The decisive boundary is surface-specific: a `hero_power_transform` claim can lower to per-card `<CARDID>.json`, but it is rejected by the Mulligan surface unless the source separately expresses explicit opening-hand Mulligan intent.",
+  "evidence": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py defines `MULLIGAN_SURFACE_CLAIM_KINDS` as only `mulligan_keep` and `mulligan_discard`, while `CARDID_SURFACE_CLAIM_KINDS` includes `hero_power_transform`.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_document_model.py `can_lower_to_mulligan()` rejects start-of-game non-hand effects with `start_of_game_effect_does_not_require_opening_hand` when explicit opening-hand intent is absent.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/role_tokens.py centralizes similar risky roles in `START_OF_GAME_NON_HAND_EFFECT_ROLES`, including `hero_power_transform`, deckbuilding/deck-state modifiers, passive start effects, even/odd modifiers, highlander modifiers, and start-in-deck requirements.",
+    "C:/Users/darbo/Documents/HSConfig/tests/fixtures/shadowpriest_guide_sources.json encodes `SW_448` as `claim_kind=hero_power_transform` with `runtime_block=BeforeUseHeroPowerBonus`, `runtime_value=6`, and evidence that the effect matters without keeping the card in the opening hand.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py asserts that the ShadowPriest fixture has a `hero_power_transform` claim for `SW_448` and no `mulligan_keep` claim for that card.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_archetype_source_fixtures.py also tests a deliberately mislabelled effect-only `mulligan_keep` claim for `SW_448`; the plan emits no hold rule and records `start_of_game_effect_does_not_require_opening_hand` in suppressed rules.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py proves the surface split directly: `hero_power_transform` is rejected by the Mulligan surface with `claim_kind_not_mulligan_surface`, but can emit CardID behavior through `BeforeUseHeroPowerBonus`.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_claim_kind_runtime_contract.py parameterizes every role in `START_OF_GAME_NON_HAND_EFFECT_ROLES` and verifies those roles suppress Mulligan keep lowering unless opening-hand intent or a valid Mulligan anchor is explicit.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_shadowpriest_fresh_closure_proof.py generates a fresh ShadowPriest package and asserts `SW_448` is absent from serialized `Mulligan.json`, while `SW_448.json` retains `GameCardId=SW_448`, `BeforeUseHeroPowerBonus`, and hero-power behavior text.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md documents the same invariant: effect semantics are not opening-hand Mulligan keeps; supported effects stay visible in card behavior or diagnostics, and only exact runtime-surface claims lower into matching runtime JSON.",
+    "Verification command run from C:/Users/darbo/Documents/HSConfig: `python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_archetype_source_fixtures.py tests/test_shadowpriest_fresh_closure_proof.py -q` passed with 79 tests in 15.15 seconds."
+  ],
+  "risks": [
+    "Future card mechanics can reopen the bug if new start-of-game, in-deck, deck-state, or passive-transform semantics are not mapped into `START_OF_GAME_NON_HAND_EFFECT_ROLES` or equivalent semantic qualifiers.",
+    "The boundary intentionally allows a start-of-game card to lower to Mulligan when source text clearly says it belongs in the opening hand; source-quality review still matters for ambiguous guide wording.",
+    "The audit verified focused regression tests and static source paths, not the complete repository test suite.",
+    "The audit did not inspect a live HearthRanger runtime folder; it proves current HSConfig source behavior and generated-package tests, not the current state of any already-applied runtime package."
+  ],
+  "recommended_actions": [
+    "Keep `SW_448` as the control fixture for this boundary: absent from `Mulligan.json`, present in per-card CardID behavior output with `BeforeUseHeroPowerBonus`.",
+    "When adding new claim kinds, mechanics, static semantics, or guide importers, run the focused boundary tests used here plus the source-contract conformance tests before accepting the change.",
+    "Extend `START_OF_GAME_NON_HAND_EFFECT_ROLES` whenever a future mechanic behaves like an in-deck, deckbuilding, passive start, or hero-power transform effect that does not require opening-hand retention.",
+    "Keep suppression visible in reports through explicit reasons such as `start_of_game_effect_does_not_require_opening_hand` instead of silently deleting source claims.",
+    "Do not add card-specific exceptions for Darkbishop, Genn, Baku, Renathal, Highlander cards, or similar cases; keep the generic role/claim-kind boundary as the durable implementation."
+  ],
+  "no_default_only_verdict": "PASS. The Darkbishop correction does not create a default-only runtime gap. The fresh ShadowPriest closure proof asserts `operator_summary.default_only_runtime_surfaces == []`, `default_only_runtime_surface_details == []`, no missing closure rows, and preserved `SW_448.json` CardID behavior while `Mulligan.json` excludes `SW_448`. The design separates qualitative default-only visibility from runtime load safety instead of using false Mulligan holds to make output look richer.",
+  "slimness_verdict": "PASS. The implementation is slim because it uses the existing claim-kind spine and one generic start-of-game non-hand effect role set, not named-card carve-outs. `hero_power_transform` remains a supported CardID claim kind, `mulligan_keep` remains the Mulligan claim kind, and the suppression reason is a single reusable boundary for Darkbishop and similar effects.",
+  "autonomy_verdict": "PASS. The operator workflow remains autonomous and bounded: normal generation starts with `hsconfig configure`, runtime decisions stay in `reports/operator_summary.json`, diagnostic reports such as `source_contract_audit.json` and `source_to_runtime_explainability.json` remain non-blocking, and runtime writes still require the guarded `hsconfig apply` or `hsconfig configure --apply` path. No human approval branch is needed to preserve this semantic boundary.",
+  "uncertain": []
+}

@@ -1,0 +1,32 @@
+{
+  "verdict": "Pass. The active HSConfig operator workflow is narrow, understandable, and autonomous within the audited docs and installed skill. The normal path is `hsconfig configure`; lower-level commands are explicitly inspected or diagnostic paths; `reports/operator_summary.json` remains the single normal apply authority; runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`; and the contract guardrails passed in this audit.",
+  "evidence": [
+    "C:/Users/darbo/Documents/HSConfig/README.md:31 names `hsconfig configure` as the preferred normal path, and README.md:46 says runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:19-27 repeats the preferred normal path and states that `reports/operator_summary.json` remains the only normal apply authority.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:119-149 defines the single gate: `technical_hard_block` is the only hard stop category, `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` is allowed, and `ALLOWED_WITH_WARNINGS` can still be runtime-write permission when `technical_status=VALID_PACKAGE`.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md:130-133 says normal `hsconfig apply --json` remains autonomous when the gate allows it because it creates and verifies the fake receipt in the same invocation, while `--from-fake-receipt` is optional.",
+    "The installed skill at C:/Users/darbo/.codex/skills/hsconfig/SKILL.md:10,32-37 mirrors the same contract: normal entry is `docs/operator/README.md`, preferred path is `hsconfig configure`, `operator_summary.json` is the single gate, guarded apply validates package and receipt evidence, and `policy_backed_autonomous_mulligan` prevents default-only Mulligan output when source-backed keeps are absent.",
+    "C:/Users/darbo/.codex/skills/hsconfig/references/workflow.md:3,43-47 states the preferred normal path, the single operator gate, the normal initial write boundary, and the two allowed runtime-write commands.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md:13-20 requires packages not to be default-only: `default_only_runtime_surfaces` empty, `mulligan_policy_status.default_only=false`, `GlobalValues.json` and `Mulligan.json` present, every known deck CardID represented, and no normal-path `Presume.json` or `Concede.json`.",
+    "C:/Users/darbo/.codex/skills/hsconfig/references/visionai-surfaces.md:10-12 limits normal HSConfig output to `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` when valid, while diagnostic reports do not grant apply permission.",
+    "A literal search across C:/Users/darbo/Documents/HSConfig/README.md, C:/Users/darbo/Documents/HSConfig/docs/operator, and C:/Users/darbo/.codex/skills/hsconfig for human/manual/operator approval language returned no matches.",
+    "Verification run in C:/Users/darbo/Documents/HSConfig: `python scripts/sync_installed_skill.py --check` returned `HSConfig skill is in sync`; `python scripts/check_contract_guardrails.py` returned `OK: installed skill sync`, `OK: contract spine sentinel`, `OK: focused contract boundary tests`, and `257 passed`."
+  ],
+  "risks": [
+    "The installed skill is intentionally dense because it carries many guardrail reminders. Future additions could reduce readability if they keep adding normal-path instructions instead of pushing detail into diagnostic references.",
+    "The lower-level inspected path is useful, but it must stay clearly secondary. If future docs present staged commands beside `hsconfig configure` without the current inspected-path wording, the operator workflow could feel broader than necessary.",
+    "No-default-only proof is strong as a local docs, skill, and guardrail audit, but future Hearthstone mechanics can still create warning-only or partial coverage. Those must remain visible diagnostics rather than new apply blockers or hidden default-only output.",
+    "HSranger/HSTuner post-run workflows are broader by design. Cross-linking them into HSConfig operator docs without the current pre-run boundary would weaken the narrow HSConfig autonomy model."
+  ],
+  "recommended_actions": [
+    "Keep `hsconfig configure` as the only normal operator path in README-level guidance; keep staged commands under inspected or diagnostic headings only.",
+    "Keep `reports/operator_summary.json` as the only normal apply authority and continue rejecting any diagnostic report that grants or blocks apply independently.",
+    "Keep `hsconfig apply` and `hsconfig configure --apply` as the only runtime-write commands; do not add a separate human approval gate beyond the explicit runtime-write command and the existing guarded apply checks.",
+    "Keep running `python scripts/sync_installed_skill.py --check` and `python scripts/check_contract_guardrails.py` after changes to source-contract, skill, apply, report ownership, or mechanic-lowering code.",
+    "When adding future mechanics or claim kinds, preserve the current pattern: exact claim kind, matching surface gate, visible diagnostic suppression when unresolved, and no promotion of diagnostics into a second operator gate."
+  ],
+  "no_default_only_verdict": "Pass. The audited docs and installed skill explicitly require default-only runtime surfaces to be visible rather than silent, require the normal package to contain `GlobalValues.json` and `Mulligan.json`, keep `default_only_runtime_surfaces` normally empty, use `policy_backed_autonomous_mulligan` as a weaker autonomous fallback when source-backed keeps are absent, and keep `Presume.json` and `Concede.json` outside the normal path.",
+  "slimness_verdict": "Pass. The normal operator surface is slim: one preferred command (`hsconfig configure`), one first report to open (`reports/operator_summary.json`), one apply authority, two runtime-write entrypoints, and lower-level stages clearly labeled for inspection, fixtures, debugging, or diagnostics rather than normal orchestration.",
+  "autonomy_verdict": "Pass. The workflow does not require human approval as a separate gate. Runtime mutation is guarded by technical package validity, fake receipt and hash checks, and the explicit `hsconfig apply` or `hsconfig configure --apply` command. `hsconfig apply --json` is documented as autonomous when the gate allows it.",
+  "uncertain": []
+}

@@ -1,0 +1,40 @@
+topic: HSConfig source contract no default only audit
+execution:
+  output_dir: ./results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Current source contract spine and apply authority
+    category: local code audit
+    description: >
+      Audit the active HSConfig source contract spine from source documents to
+      claim_kind, surface gate, claim lifecycle, source_contract_audit,
+      source_to_runtime_explainability, operator_summary, and apply authority.
+      Decide whether diagnostic reports can accidentally become a second apply
+      gate or whether operator_summary remains authoritative.
+  - name: No default only runtime surface proof
+    category: local test and report audit
+    description: >
+      Audit how HSConfig prevents silent default-only runtime surfaces across
+      mulligan policy, config_usefulness, default_only_runtime_surfaces,
+      default_only_runtime_surface_details, representative Wild tests, and the
+      fresh ShadowPriest closure proof.
+  - name: Darkbishop effect versus mulligan contract boundary
+    category: local semantic regression audit
+    description: >
+      Audit whether Darkbishop Benedictus and similar start-of-game or hero power
+      transform effects preserve runtime CardID behavior while avoiding false
+      opening-hand mulligan keep lowering.
+  - name: Slimness and autonomy of operator workflow
+    category: local docs and skill audit
+    description: >
+      Audit whether the active operator docs and installed HSConfig skill remain
+      narrow, understandable, and autonomous: one normal path, one apply authority,
+      no human approval requirement, and no unnecessary broad orchestration.
+  - name: Remaining risk for arbitrary Wild decks
+    category: local coverage and future risk audit
+    description: >
+      Audit residual risks for arbitrary Wild decks, especially unusual mechanics,
+      unsupported future claim kinds, source ambiguity, policy-backed mulligan
+      fallback behavior, and whether any risk should block valid package
+      generation.

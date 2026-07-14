@@ -1,0 +1,19 @@
+field_categories:
+  - category: audit_result
+    fields:
+      - name: verdict
+        required: true
+      - name: evidence
+        required: true
+      - name: risks
+        required: true
+      - name: recommended_actions
+        required: true
+      - name: no_default_only_verdict
+        required: true
+      - name: slimness_verdict
+        required: true
+      - name: autonomy_verdict
+        required: true
+      - name: uncertain
+        required: true
