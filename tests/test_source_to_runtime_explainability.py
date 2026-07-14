@@ -209,6 +209,8 @@ def test_explainability_operator_attention_rows_prioritize_missing_links():
             "card_id": "CARD_NUM",
             "name": "Numeric Card",
             "status": "source_action_needed",
+            "closure_lane": "source_action_needed",
+            "default_only_risk": False,
             "first_missing_link": "runtime_evidence",
             "next_source_action": "collect_runtime_evidence",
             "strongest_claim_id": "numeric_claim",
@@ -220,6 +222,8 @@ def test_explainability_operator_attention_rows_prioritize_missing_links():
             "card_id": "CARD_KEEP",
             "name": "Keep Card",
             "status": "runtime_backed",
+            "closure_lane": "runtime_backed",
+            "default_only_risk": False,
             "first_missing_link": None,
             "next_source_action": "none",
             "strongest_claim_id": "keep_claim",
@@ -278,10 +282,49 @@ def test_explainability_operator_attention_marks_no_missing_link_without_runtime
             "card_id": "CARD_NOTE",
             "name": "Report Only Card",
             "status": "diagnostic_only",
+            "closure_lane": "diagnostic_only",
+            "default_only_risk": False,
             "first_missing_link": None,
             "next_source_action": "none",
             "strongest_claim_id": "report_claim",
             "strongest_claim_kind": "source_note",
+            "emitted_runtime_files": [],
+            "not_emitted_runtime_files": [],
+        }
+    ]
+
+
+def test_explainability_operator_attention_exposes_baseline_default_only_risk():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "FixtureDeck",
+        "claim_rows": {},
+        "claim_lifecycle_rows": [],
+        "card_rows": {
+            "CARD_BASE": {
+                "name": "Baseline Card",
+                "readiness_lane": "generic_low_confidence",
+                "first_missing_link": "none",
+                "runtime_surfaces": [],
+                "claim_lanes": {},
+            }
+        },
+    }
+
+    report = build_source_to_runtime_explainability_report(audit)
+
+    assert report["apply_blocking"] is False
+    assert report["operator_attention"] == [
+        {
+            "card_id": "CARD_BASE",
+            "name": "Baseline Card",
+            "status": "baseline_only_visible",
+            "closure_lane": "baseline_only_visible",
+            "default_only_risk": True,
+            "first_missing_link": None,
+            "next_source_action": "none",
+            "strongest_claim_id": None,
+            "strongest_claim_kind": None,
             "emitted_runtime_files": [],
             "not_emitted_runtime_files": [],
         }

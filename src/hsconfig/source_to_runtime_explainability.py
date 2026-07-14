@@ -199,11 +199,24 @@ def _operator_attention_rows(card_rows: list[dict[str, object]]) -> list[dict[st
         first_missing_link = row.get("first_missing_link")
         emitted_runtime_files = row.get("emitted_runtime_files", [])
         status = _operator_attention_status(row)
+        closure = row.get("closure", {})
+        closure_lane = (
+            str(closure.get("lane", status))
+            if isinstance(closure, dict)
+            else status
+        )
+        default_only_risk = (
+            bool(closure.get("default_only_risk"))
+            if isinstance(closure, dict)
+            else False
+        )
         rows.append(
             {
                 "card_id": row["card_id"],
                 "name": row.get("name"),
                 "status": status,
+                "closure_lane": closure_lane,
+                "default_only_risk": default_only_risk,
                 "first_missing_link": first_missing_link,
                 "next_source_action": row.get("next_source_action"),
                 "strongest_claim_id": row.get("strongest_claim_id"),
@@ -233,6 +246,8 @@ def _operator_attention_status(row: dict[str, object]) -> str:
         return "source_action_needed"
     if emitted_runtime_files:
         return "runtime_backed"
+    if not row.get("strongest_claim_id") and why_not_emitted is None:
+        return "baseline_only_visible"
     if best_source_lane == "report_only" or why_not_emitted in {
         "claim_kind_policy",
         "report_only",
