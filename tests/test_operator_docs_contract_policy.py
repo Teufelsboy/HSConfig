@@ -237,3 +237,18 @@ def test_operator_readme_links_source_contract_spine_without_normal_path_drift()
     assert "hsconfig configure" in first_120_lines
     assert "source-contract-spine" not in first_120_lines
     assert "source-contract-spine -> apply" not in text
+
+
+def test_operator_docs_keep_single_apply_authority_and_no_default_only_visibility():
+    guide = (ROOT / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    combined = f"{guide}\n{skill}"
+
+    assert "reports/operator_summary.json remains the only normal apply authority" in combined
+    assert "diagnostic reports must not become apply gates" in combined
+    assert "default-only runtime surfaces must be visible, not silent" in combined
+    assert "Presume.json" in combined
+    assert "Concede.json" in combined
+    assert "outside the normal HSConfig path" in combined

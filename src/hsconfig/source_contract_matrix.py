@@ -200,3 +200,35 @@ def _with_contract_metadata(
         claim_kind, "diagnostic context only"
     )
     return enriched
+
+
+_RUNTIME_FILE_BY_SURFACE = {
+    "mulligan": "Mulligan.json",
+    "globalvalues": "GlobalValues.json",
+    "combo": "Combo.json",
+    "cardid": "CARDID.json",
+}
+
+
+def source_contract_vocabulary_rows() -> tuple[dict[str, object], ...]:
+    """Return a stable diagnostic projection of the source-contract policy."""
+    rows: list[dict[str, object]] = []
+    for claim_kind, policy in source_contract_policy_by_claim_kind().items():
+        allowed_surfaces = tuple(str(surface) for surface in policy["allowed_surfaces"])
+        rows.append(
+            {
+                "claim_kind": claim_kind,
+                "semantic_lane": str(policy["semantic_lane"]),
+                "allowed_surfaces": allowed_surfaces,
+                "runtime_files": tuple(
+                    _RUNTIME_FILE_BY_SURFACE[surface]
+                    for surface in allowed_surfaces
+                    if surface in _RUNTIME_FILE_BY_SURFACE
+                ),
+                "runtime_lowerable": bool(policy["runtime_lowerable"]),
+                "default_suppression_reason": str(policy["default_suppression_reason"]),
+                "operator_gate_impact": str(policy["operator_gate_impact"]),
+                "semantic_qualifier_usage": str(policy["semantic_qualifier_usage"]),
+            }
+        )
+    return tuple(rows)

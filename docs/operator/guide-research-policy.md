@@ -65,6 +65,21 @@ not block load-safe valid packages.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
+## Single Apply Authority
+
+reports/operator_summary.json remains the only normal apply authority.
+diagnostic reports must not become apply gates: `source_contract_audit.json`,
+`source_to_runtime_explainability.json`, mechanic visibility reports, source
+quality reports, and claim lifecycle projections explain what happened but do
+not allow or block runtime writes. default-only runtime surfaces must be
+visible, not silent: a valid load-safe package may proceed with warnings, but
+the reports must show whether a card is runtime-backed, source-action-needed,
+diagnostic-only, or baseline-only-visible.
+
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
+the normal HSConfig path. The normal runtime path remains `Mulligan.json`,
+`GlobalValues.json`, `Combo.json`, and per-card `CARDID.json`.
+
 ## Source-To-Runtime Boundary
 
 HSConfig separates technical load safety from source richness. A package may be

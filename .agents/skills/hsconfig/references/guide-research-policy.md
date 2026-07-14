@@ -113,6 +113,13 @@ not block load-safe valid packages.
 
 normal HSConfig output must not emit `Presume.json` or `Concede.json`.
 
+reports/operator_summary.json remains the only normal apply authority.
+diagnostic reports must not become apply gates. default-only runtime surfaces
+must be visible, not silent.
+
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
+the normal HSConfig path.
+
 Optional CardID lowering fields for card-specific claims:
 
 - `runtime_block`: documented CardID block to use, for example

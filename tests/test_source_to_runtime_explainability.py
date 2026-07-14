@@ -254,7 +254,7 @@ def test_explainability_operator_attention_marks_no_missing_link_without_runtime
         {
             "card_id": "CARD_NOTE",
             "name": "Report Only Card",
-            "status": "no_missing_link",
+            "status": "diagnostic_only",
             "first_missing_link": None,
             "next_source_action": "none",
             "strongest_claim_id": "report_claim",

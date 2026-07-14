@@ -27,6 +27,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_mechanic_support.py",
     "tests/test_source_contract_conformance.py",
     "tests/test_source_to_runtime_explainability.py",
+    "tests/test_source_contract_closure_wave.py",
     "tests/test_research_current_truth_index.py",
 )
 
