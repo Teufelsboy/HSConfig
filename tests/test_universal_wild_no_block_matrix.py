@@ -251,6 +251,8 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
+    assert operator["default_only_runtime_surfaces"] == []
+    assert operator["mulligan_policy_status"]["default_only"] is False
     no_block = operator["no_block_failure_mode_summary"]
     assert no_block["hard_block"] is False
     assert no_block["runtime_apply_allowed"] is True
@@ -310,6 +312,8 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert operator["technical_status"] == "VALID_PACKAGE"
         assert operator["runtime_load_safe"] is True
         assert operator["runtime_apply_mode"] == "load_safe_apply"
+        assert operator["default_only_runtime_surfaces"] == []
+        assert operator["mulligan_policy_status"]["default_only"] is False
         assert operator["source_contract_audit_summary"]["non_blocking"] is True
         source_quality = operator["source_claim_quality_summary"]
         assert source_quality["non_blocking"] is True

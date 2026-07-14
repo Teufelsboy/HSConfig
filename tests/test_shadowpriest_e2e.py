@@ -251,6 +251,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert policy_hold_rows
     assert "SW_448" not in policy_hold_text
     assert operator_summary["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
+    assert operator_summary["default_only_runtime_surfaces"] == []
+    assert operator_summary["mulligan_policy_status"]["default_only"] is False
     assert (
         operator_summary["config_usefulness"]["surfaces"]["mulligan"][
             "policy_backed_rule_count"
