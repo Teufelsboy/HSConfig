@@ -15,7 +15,7 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "expected_runtime_block": "BeforePlayCardBonus", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -26,7 +26,7 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "expected_runtime_block": "BeforePlayCardBonus", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -132,7 +132,9 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 and row["builder_or_router_decision"] == "emitted"
                 for row in matching_rows
             )
-            assert runtime_cards[card_id].keys() - {"ConfigComment", "GameCardId"}
+            runtime_block = claim["expected_runtime_block"]
+            assert runtime_block in runtime_cards[card_id]
+            assert runtime_cards[card_id][runtime_block]["values"]
         elif claim["claim_kind"] == "discover_choice":
             assert all(not row["emitted_files"] for row in matching_rows)
             assert all(
