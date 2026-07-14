@@ -6,6 +6,28 @@ import sys
 from scripts.check_contract_guardrails import guardrail_commands, run_guardrails
 
 
+def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
+    from scripts.check_contract_guardrails import FOCUSED_CONTRACT_TESTS
+
+    expected = {
+        "tests/test_source_claim_family_registry.py",
+        "tests/test_contract_spine_sentinel.py",
+        "tests/test_contract_spine_sentinel_cli.py",
+        "tests/test_contract_spine_sentinel_docs.py",
+        "tests/test_apply_authority_boundary.py",
+        "tests/test_no_second_gate_contract.py",
+        "tests/test_semantic_runtime_negative_boundaries.py",
+        "tests/test_universal_wild_no_block_matrix.py",
+        "tests/test_operator_docs_contract_policy.py",
+        "tests/test_docs_active_path.py",
+        "tests/test_claim_kind_runtime_contract.py",
+        "tests/test_card_behavior_router.py",
+        "tests/test_mechanic_support.py",
+    }
+
+    assert expected <= set(FOCUSED_CONTRACT_TESTS)
+
+
 def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_path):
     repo_root = tmp_path
     skill_root = tmp_path / "skills"
