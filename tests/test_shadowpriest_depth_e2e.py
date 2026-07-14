@@ -254,3 +254,54 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
         row["value"] == "12" and "prefer_enemy_hero" in row.get("comment", "")
         for row in before_play_values
     )
+
+
+def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: Path, capsys):
+    out = tmp_path / "shadowpriest_darkbishop"
+
+    result = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--guide-sources-json",
+            "tests/fixtures/shadowpriest_guide_sources.json",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    deck_dir = out / "CustomConfig" / "shadowpriest"
+    reports = out / "reports"
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    darkbishop = json.loads((deck_dir / "SW_448.json").read_text(encoding="utf-8"))
+    explainability = json.loads(
+        (reports / "source_to_runtime_explainability.json").read_text(encoding="utf-8")
+    )
+
+    concrete_keeps = [
+        row["mulligan"]
+        for row in mulligan["Mulligan"]["values"]
+        if row["value"] == "hold" and row["mulligan"] != "*"
+    ]
+    darkbishop_attention = [
+        row for row in explainability["operator_attention"] if row["card_id"] == "SW_448"
+    ]
+
+    assert result == 0
+    assert "SW_448" not in concrete_keeps
+    assert darkbishop
+    assert any("Bonus" in key or "HeroPower" in key for key in darkbishop)
+    assert darkbishop_attention
+    assert darkbishop_attention[0]["status"] in {
+        "runtime_backed",
+        "diagnostic_only",
+        "baseline_only_visible",
+    }
+    assert darkbishop_attention[0]["default_only_risk"] is False
