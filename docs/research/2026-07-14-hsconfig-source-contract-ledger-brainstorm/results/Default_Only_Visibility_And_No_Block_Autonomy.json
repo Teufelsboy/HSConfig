@@ -1,0 +1,103 @@
+{
+  "scope": "Audit of default-only runtime-surface visibility and no-block autonomy in C:/Users/darbo/Documents/HSConfig on branch codex/no-silent-default-only-closure at commit eb411b4cb15c9df668ea8fd4e7ac29df8b6b1840. The review covers reports/operator_summary.json fields default_only_runtime_surfaces, no_default_only_verdict, default_only_runtime_surface_details, surface_status_ledger, source_to_runtime_explainability_summary, config_usefulness, reports/source_to_runtime_explainability.json, evaluate_apply_gate, runtime_apply, operator docs, and focused tests proving that technically valid packages remain apply-capable even when source quality is weak or default-only debt is visible.",
+  "verified_strengths": [
+    "Default-only detection is operator-visible in operator_summary. build_operator_summary includes default_only_runtime_surfaces, no_default_only_verdict, default_only_runtime_surface_details, and surface_status_ledger next to config_usefulness, so baseline-only behavior is not hidden behind a generic valid status.",
+    "default_only_runtime_surfaces is derived from config_usefulness.surfaces rows where default_only is true. For Mulligan, config_usefulness treats the surface as default-only when there are no concrete runtime rules and no concrete keeps; wildcard discard-only rules do not hide that status.",
+    "no_default_only_verdict separates visibility from runtime permission. For a valid package with default-only surfaces it returns status=visible_warning, runtime_permission_impact=none, and blocking=false. For valid packages with no default-only surfaces it returns none_detected, also non-blocking.",
+    "default_only_runtime_surface_details turns a default-only surface into actionable operator data: surface name, status=default_only, example cards when source-to-runtime closure rows expose baseline-only risk, first_missing_link, next_source_action, operator_impact=diagnostic_only, and apply_blocking=false.",
+    "surface_status_ledger is the compact per-surface view. Each row exposes status, default_only, first_missing_link, next_source_action, next_report_to_open, operator_impact=diagnostic_only, runtime_permission_impact=none, and apply_blocking=false.",
+    "source_to_runtime_explainability.json is diagnostic-only by construction. build_source_to_runtime_explainability_report returns authority=diagnostic_only, operator_gate_impact=diagnostic_only, apply_blocking=false, claim_rows and card_rows with apply_blocked=false, closure lanes, and operator_attention rows that can mark baseline_only_visible with default_only_risk=true.",
+    "The package builder wires source_contract_audit into source_to_runtime_explainability.json, then passes that report into build_operator_summary before writing operator_summary.json. This makes missing source-to-runtime links visible in the generated package without adding a second writer or gate.",
+    "The apply gate is intentionally technical. evaluate_apply_gate reads reports/operator_summary.json, validates package structure and generated runtime-file inventory against disk, and allows load_safe_apply when technical_status is VALID_PACKAGE. It does not import or consume source_to_runtime_explainability, source_contract_audit, config_usefulness, or default-only diagnostics as gate inputs.",
+    "runtime_apply re-evaluates the apply gate before writing and rejects forged, missing, or mismatched gates. Successful writes still depend on the operator_summary path and package structure, not on source-strength labels or diagnostic report content.",
+    "Weak source quality remains apply-capable when the package is technically valid. operator_summary tests cover NEEDS_MORE_RESEARCH, VALID_BUT_NOT_GUIDE_STRONG, source evidence warnings, source-informed readiness blocked, config_usefulness=load_safe_but_thin, mechanic warnings, and default-only Mulligan; these all keep runtime_apply_allowed=true when technical_status is VALID_PACKAGE.",
+    "Policy-backed autonomous Mulligan prevents default-only output without pretending to be source-backed evidence. The policy-backed lane sets default_only=false, next_source_need=none, and ledger status=policy_backed while preserving SOURCE_BACKED_STRONG as a stricter source-confidence label.",
+    "Representative semantic archetype fixtures are protected against silent default-only output. The matrix test prepares packages, asserts technical_status=VALID_PACKAGE, runtime_apply_allowed=true, default_only_runtime_surfaces=[], no ledger row status=default_only, all ledger rows apply_blocking=false, and Mulligan output contains values.",
+    "Operator documentation matches the implementation: reports/operator_summary.json remains the only normal apply authority, default-only and thin runtime surfaces are visible quality debt rather than apply blockers, and source_to_runtime_explainability.json plus default_only_runtime_surface_details are the follow-up reports for missing source-to-runtime links.",
+    "Focused live verification passed for this audit: python -m pytest tests/test_operator_summary.py tests/test_apply_gate.py tests/test_no_second_gate_contract.py tests/test_source_to_runtime_explainability.py tests/test_config_usefulness.py tests/test_no_default_only_semantic_archetype_matrix.py tests/test_operator_docs_contract_policy.py -q returned 134 passed in 10.20s."
+  ],
+  "correctness_gaps": [
+    "Default-only visibility does not make a weak package semantically strong. A technically valid package can still have source-depth gaps, report-only claims, warning-only mechanics, or thin behavior coverage; this is intentional, but operators must not read load_safe_apply as proof of gameplay quality.",
+    "The apply gate trusts technical_status after validating package structure and generated-file inventory. It does not independently recompute source-to-runtime quality, closure freshness, or default-only status. That is the correct authority split, but it means stale or low-quality diagnostics must be caught by generation, tests, and operator inspection rather than by runtime write permission.",
+    "default_only_runtime_surface_details depends on source_to_runtime_explainability card closure rows for example card details. If the explainability report is missing, malformed, or stale, the surface can still be visible through config_usefulness, but the per-card examples may be empty or incomplete.",
+    "source_to_runtime_explainability marks baseline-only default risk only for cards represented in its card_rows. A package with incomplete card closure coverage can expose cards_missing_closure in the summary, but default_only_risk cannot name missing card rows that were never projected.",
+    "Invalid packages report no_default_only_verdict.status=not_applicable and default_only_runtime_surface_count=0. That prevents default-only debt from distracting from a technical hard block, but operators must not interpret the zero count on an invalid package as a qualitative no-default-only pass.",
+    "The strongest current no-default-only matrix covers representative semantic archetypes, not every possible Wild deck or future mechanic. A new archetype, claim kind, or runtime surface still needs regression coverage before claiming universal qualitative richness."
+  ],
+  "default_only_gaps": [
+    "surface_status_ledger only lists surfaces provided by config_usefulness. If a new runtime surface is introduced without extending config_usefulness and its tests, the ledger would not automatically show that surface's default-only state.",
+    "default_only_runtime_surface_details currently applies one set of risky card details from source_to_runtime_explainability to each default-only surface. This is acceptable for the current Mulligan-focused default-only path, but future multiple default-only surfaces should provide surface-specific risky-card attribution.",
+    "The ledger next_report_to_open for status=default_only points to reports/operator_summary.json. That keeps the compact view self-contained, but operators still need the docs instruction to open default_only_runtime_surface_details and reports/source_to_runtime_explainability.json for card-level repair work.",
+    "A baseline-only card can be visible in source_to_runtime_explainability as baseline_only_visible with default_only_risk=true, but default_only_runtime_surfaces remains surface-level. Per-card risk and per-surface status are separate projections that must stay synchronized in future report changes.",
+    "Policy-backed autonomous Mulligan removes default-only status, but it is deliberately weaker than source-backed Mulligan evidence. If policy-backed keeps become too broad, default_only will stay false while source quality remains weak, so the policy lane must continue to show policy_lanes and policy_reasons clearly."
+  ],
+  "slimness_gaps": [
+    "The no-silent-default-only story now spans config_usefulness, mulligan_policy_status, default_only_runtime_surfaces, no_default_only_verdict, default_only_runtime_surface_details, surface_status_ledger, source_to_runtime_explainability_summary, and source_to_runtime_explainability.json. The separation is useful, but future additions should avoid another overlapping default-only report.",
+    "surface_status_ledger is a good compact projection, but duplicating more apply-related wording into ledger rows would risk turning it into an unofficial second gate. It should remain status plus next diagnostic pointer, not a permission system.",
+    "source_to_runtime_explainability already carries claim rows, card rows, closure rows, and operator_attention. Adding separate default-only-specific report files would likely duplicate closure and operator-summary details unless a new consumer need is proven.",
+    "The legacy source-informed readiness flag and policy wording remain present for backward compatibility. They should not be expanded into a parallel apply path or manual approval flow."
+  ],
+  "autonomy_gaps": [
+    "A technically valid but default-only or thin package remains apply-capable. This preserves autonomy, but it can apply a package that is load-safe rather than strategically strong. The operator-facing warnings must therefore stay prominent.",
+    "Source-informed readiness can be blocked for semantic reasons while runtime apply remains allowed. This is correct, but the distinction between source-informed strong handoff and load-safe apply must remain clear in docs and summaries.",
+    "Policy-backed autonomous Mulligan reduces manual approval pressure, but it should not be used to bypass explicit suppressed or quarantined Mulligan source intent. Existing tests and docs cover this boundary, and it should remain guarded.",
+    "Default-only warnings do not require manual confirmation before apply. That matches the no-block contract, but automated workflows should still surface default_only_runtime_surfaces and surface_status_ledger in their completion summaries so quality debt is not missed.",
+    "Closure freshness is diagnostic-only. A valid package with stale or missing closure rows can still be technically apply-capable, so prepare workflows should regenerate stale packages rather than moving closure freshness into the runtime gate."
+  ],
+  "guardrails_to_keep": [
+    "Keep reports/operator_summary.json as the only normal apply authority. Diagnostic reports may explain quality, missing links, and source closure, but must not grant or deny runtime writes.",
+    "Keep evaluate_apply_gate focused on operator_summary technical_status, package structure, required runtime files, and generated-file inventory against disk.",
+    "Keep source_to_runtime_explainability authority=diagnostic_only, operator_gate_impact=diagnostic_only, apply_blocking=false, and per-row apply_blocked=false.",
+    "Keep surface_status_ledger rows diagnostic-only with apply_blocking=false and runtime_permission_impact=none.",
+    "Keep no_default_only_verdict visible_warning non-blocking for technically valid packages, and keep default_only_runtime_surface_details as the actionable repair surface.",
+    "Keep policy_backed_autonomous_mulligan as a non-default-only autonomous fallback that does not promote a deck to SOURCE_BACKED_STRONG.",
+    "Keep representative archetype tests proving generated packages are load-safe, apply-capable, not default-only, and free of normal-path Presume.json or Concede.json outputs.",
+    "Keep no-second-gate tests that prevent source_contract_audit, source_to_runtime_explainability, and contract_spine_rows from being consumed by apply_gate, runtime_apply, or commands/apply.",
+    "Keep docs explicit that READY_TO_APPLY_WITH_WARNINGS and ALLOWED_WITH_WARNINGS can still mean runtime-write permission when technical_status=VALID_PACKAGE."
+  ],
+  "recommended_next_design": "Keep the current no-silent-default-only design: default-only runtime surfaces should be visible as quality debt through operator_summary and source_to_runtime_explainability, while valid load-safe packages remain apply-capable. The next small design improvement should be surface-specific attribution in default_only_runtime_surface_details if more than Mulligan can become default-only; do not add a new apply gate or manual approval requirement for source-depth or default-only warnings.",
+  "repo_files_to_check": [
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/commands/apply.py",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_second_gate_contract.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_usefulness.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_default_only_semantic_archetype_matrix.py",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_docs_contract_policy.py"
+  ],
+  "evidence_references": [
+    "C:/Users/darbo/Documents/HSConfig branch codex/no-silent-default-only-closure, commit eb411b4cb15c9df668ea8fd4e7ac29df8b6b1840.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-14-hsconfig-source-contract-ledger-brainstorm/fields.yaml - required JSON field schema for this result.",
+    "C:/Users/darbo/Documents/HSConfig/docs/research/2026-07-14-hsconfig-source-contract-ledger-brainstorm/outline.yaml - research item definition for Default Only Visibility And No Block Autonomy.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/operator_summary.py - builds default_only_runtime_surfaces, no_default_only_verdict, default_only_runtime_surface_details, surface_status_ledger, source_to_runtime_explainability_summary, runtime_apply_allowed, and runtime_apply_contract.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/config_usefulness.py - computes non-blocking config usefulness, Mulligan default_only, first_gap_reason, next_source_need, and runtime_permission_impact=none.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/mulligan_plan.py - records policy_backed_autonomous_mulligan counts, policy lanes, missing keep reasons, and default_only quality status.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/source_to_runtime_explainability.py - produces diagnostic-only claim/card closure projections with apply_blocking=false and default_only_risk for baseline-only visible cards.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/package_builder.py - writes source_to_runtime_explainability.json and passes the report into build_operator_summary before writing operator_summary.json.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/apply_gate.py - evaluates apply permission from reports/operator_summary.json technical validity plus runtime-file structure, and allows VALID_PACKAGE as load_safe_apply.",
+    "C:/Users/darbo/Documents/HSConfig/src/hsconfig/runtime_apply.py - re-evaluates the gate before runtime mutation and rejects missing, mismatched, or forged apply gates.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_summary.py - covers weak-source valid packages, non-blocking source warnings, default-only details, no_default_only_verdict, ledger rows, and runtime_apply_allowed=true.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_apply_gate.py - covers allowed load_safe_apply for VALID_PACKAGE including source-gap readiness blocked and config_usefulness ignored by the gate, plus technical hard blocks.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_second_gate_contract.py and tests/test_apply_authority_boundary.py - guard diagnostic reports from becoming apply-gate inputs.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_source_to_runtime_explainability.py - covers diagnostic authority, apply_blocking=false, per-row apply_blocked=false, closure lanes, baseline_only_visible, and default_only_risk.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_config_usefulness.py - covers policy-backed Mulligan not default-only, sparse valid packages as load_safe_but_thin, and non-blocking runtime_permission_impact.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_no_default_only_semantic_archetype_matrix.py - proves representative generated packages are valid, apply-capable, not default-only, and have non-blocking ledger rows.",
+    "C:/Users/darbo/Documents/HSConfig/tests/test_operator_docs_contract_policy.py - verifies docs state single apply authority, no silent default-only, and no second gate.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/README.md - operator-facing no-silent-default-only and ALLOWED_WITH_WARNINGS guidance.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/guide-research-policy.md - single apply authority and diagnostic-only default-only/source-to-runtime policy.",
+    "C:/Users/darbo/Documents/HSConfig/docs/operator/universal-wild-no-block-contract.md - no-block contract for technically valid packages with weak or missing source evidence.",
+    "Verification run on 2026-07-14: python -m pytest tests/test_operator_summary.py tests/test_apply_gate.py tests/test_no_second_gate_contract.py tests/test_source_to_runtime_explainability.py tests/test_config_usefulness.py tests/test_no_default_only_semantic_archetype_matrix.py tests/test_operator_docs_contract_policy.py -q -> 134 passed in 10.20s."
+  ],
+  "uncertain": []
+}

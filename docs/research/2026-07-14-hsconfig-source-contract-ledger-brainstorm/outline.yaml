@@ -1,0 +1,54 @@
+topic: 2026-07-14-hsconfig-source-contract-ledger-brainstorm
+description: >
+  Fresh deep brainstorm and audit for HSConfig source/contract logic after the
+  surface_status_ledger and no-silent-default-only closure. The goal is to
+  confirm whether the source-to-runtime contract is technically correct, slim,
+  competent, autonomous, non-blocking for any valid deck, and explicit enough
+  that no default-only runtime surface can be hidden as success.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-14-hsconfig-source-contract-ledger-brainstorm\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: Current Source Contract Spine With Surface Ledger
+    category: repo_contract_spine
+    description: >
+      Audit the current repository implementation on branch
+      codex/no-silent-default-only-closure: supported atomic claim kinds,
+      source_contract_matrix policy rows, source_claim_lifecycle,
+      source_claim_conflicts, surface gate decisions, builder/router lowering,
+      source_contract_audit, source_to_runtime_explainability,
+      surface_status_ledger, contract_spine_sentinel, output ownership, and
+      operator_summary as the only normal apply authority.
+  - name: Default Only Visibility And No Block Autonomy
+    category: no_silent_default_only
+    description: >
+      Audit whether default-only runtime surfaces are visible but non-blocking
+      through operator_summary.default_only_runtime_surfaces,
+      default_only_runtime_surface_details, surface_status_ledger, and
+      source_to_runtime_explainability. Confirm valid deck packages remain
+      apply-capable when technically valid, even with weak source quality.
+  - name: Hearthstone Semantics False Runtime Claim Risks
+    category: hearthstone_semantics
+    description: >
+      Audit Hearthstone semantic cases that can be misclassified if source text
+      is too aggressively lowered: start-of-game effects versus mulligan keeps,
+      hero power transforms, deckbuilding modifiers, targeting rules, combo
+      sequencing, Discover and Choose One options, generated cards, secrets,
+      locations, weapons, discard, destroy, silence, transform, and Wild deck
+      mechanics.
+  - name: Slimness Authority And Report Ownership
+    category: repo_slimness
+    description: >
+      Audit whether HSConfig has too many overlapping diagnostic reports or
+      duplicated authority after adding surface_status_ledger. Confirm
+      operator_summary remains the only apply authority and identify any report
+      that should be merged, demoted, or kept as developer-only evidence.
+  - name: Skill And Operator UX For Any Deck Autonomy
+    category: operator_workflow
+    description: >
+      Audit whether the installed hsconfig skill, operator README, guide
+      research policy, and configure/apply workflow now communicate the right
+      operator path: deck in, source-backed or policy-backed config out, no
+      silent default-only, no manual approval for source-depth warnings, and no
+      false Mulligan lowering for cards such as Darkbishop Benedictus.
