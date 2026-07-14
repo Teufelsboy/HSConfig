@@ -1,54 +1,84 @@
-# Task 1 Report: Shared Preconfig Context Authority
+# Task 1 Report: Index the New Research Package Without Making It Operator Guidance
 
-## Status
+Status: DONE
 
-DONE
+## What Changed
 
-## Changed Files
+- Added `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`.
+- Indexed `2026-07-14-hsconfig-source-contract-logic-guardrail-audit` in `docs/research/current-truth.md` as Contract-spine Guardrail v2 evidence.
+- Added a docs regression test in `tests/test_docs_active_path.py` to verify:
+  - the current-truth index names the research package;
+  - the package is labelled as research evidence only;
+  - the package is explicitly not operator instructions or runtime input;
+  - `operator_summary.json` remains the normal apply authority;
+  - source-contract and source-to-runtime reports remain diagnostic.
 
-- `src/hsconfig/preconfig_context.py`: added the single shared preconfig-context builder, including the research-only card-data intake report.
-- `src/hsconfig/commands/source_workflow.py`: removed the research-local builder and delegated `research-deck` to the shared builder.
-- `src/hsconfig/package_builder.py`: removed the prepare-local builder and delegated package/research-contract preparation to the shared builder.
-- `tests/test_preconfig_context_parity.py`: added regression coverage for required shared context keys and duplicate-builder ownership.
+## RED Evidence
 
-## Commits
+Command:
 
-- `f8ff4d7 refactor: share preconfig context authority`
+```powershell
+python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
+```
 
-## Tests Run
+Result: expected failure.
 
-- `python -m ruff check src/hsconfig/preconfig_context.py src/hsconfig/commands/source_workflow.py src/hsconfig/package_builder.py tests/test_preconfig_context_parity.py` - passed.
-- `python -m pytest tests/test_preconfig_context_parity.py tests/test_autonomous_guide_workflow_e2e.py tests/test_prepare_cli.py -q -n 2 -rA` - 33 passed.
+Key failure:
+
+```text
+FileNotFoundError: [Errno 2] No such file or directory: 'docs\\research\\2026-07-14-hsconfig-source-contract-logic-guardrail-audit\\README.md'
+1 failed in 0.24s
+```
+
+## GREEN Evidence
+
+Command:
+
+```powershell
+python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
+```
+
+Result:
+
+```text
+1 passed in 0.08s
+```
+
+Additional verification:
+
+```powershell
+python -m pytest -q tests/test_docs_active_path.py
+```
+
+Result:
+
+```text
+34 passed in 0.10s
+```
+
+## Files Changed
+
+- `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`
+- `docs/research/current-truth.md`
+- `tests/test_docs_active_path.py`
+
+Existing research artifacts under `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/` were left as evidence artifacts and staged with the research package path:
+
+- `fields.yaml`
+- `outline.yaml`
+- `results/Current_HSConfig_Contract_Spine_Guardrails.json`
+- `results/HearthRanger_VisionAI_Runtime_Surface_Boundary.json`
+- `results/Hearthstone_Semantic_False-Lowering_Risks.json`
+- `results/Lean_Any-Deck_Autonomy_And_No-Block_Contract.json`
 
 ## Self-Review
 
-- `build_preconfig_context` is the only implementation of the shared prepare/research context.
-- `research-deck`, package build/prepare, and research-contract consume that single authority.
-- Existing fetch and no-auto-research-fallback test seams are injected at caller boundaries; they do not duplicate context construction.
-- No runtime write/apply path was added or changed. `reports/operator_summary.json` remains the normal apply authority.
-- No runtime dependencies were added. Darkbishop Benedictus / Mind Spike semantics were not changed.
+- Scope stayed within the task brief.
+- No operator docs were changed.
+- No runtime surface, apply gate, candidate promotion, replay parsing, winrate validation, post-game tuning, or HSTuner behavior was introduced.
+- The README uses the brief's wording that the package is evidence only, not operator guidance, not runtime input, and not an apply gate.
+- The current-truth entry keeps `operator_summary.json` as the only normal apply authority and keeps source-contract/source-to-runtime/mechanic warnings diagnostic and non-blocking.
 
 ## Concerns
 
-None.
-
-## Review Fix: Research Contract Package Fetch Boundary
-
-### Changed Files
-
-- `src/hsconfig/package_builder.py`: made `research_contract_payload()` inject the same package-local context dependencies as `build_package_payload()`, including `fetch_latest_collectible_cards_fn=None` and `_research_required_guide_sources`.
-- `tests/test_preconfig_context_parity.py`: added a regression test proving that the research-contract package path does not invoke the collectible-card fetch when no local feed is supplied.
-
-### Commit
-
-- `7954e99 fix: preserve research contract fetch boundary`
-
-### Tests Run
-
-- `python -m pytest tests/test_preconfig_context_parity.py tests/test_autonomous_guide_workflow_e2e.py tests/test_prepare_cli.py -q` - passed.
-
-### Self-Review
-
-- The research-contract path now preserves the former package-local no-collectible-fetch contract while retaining the package-local guide-source seam.
-- The regression test was observed failing before the production change because the injectable collectible fetch was called once, then passing after the fix.
-- No runtime write/apply path, generated runtime artifact, or unrelated implementation area was changed.
+- None.
