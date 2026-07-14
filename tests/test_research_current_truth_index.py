@@ -56,10 +56,15 @@ def test_current_truth_index_includes_every_current_active_evidence_package():
     data = json.loads(CURRENT_TRUTH_INDEX.read_text(encoding="utf-8"))
 
     markdown_paths = _current_active_evidence_package_paths()
-    index_paths = {item["path"] for item in data["active_research_packages"]}
+    packages = data["active_research_packages"]
+    index_paths = [item["path"] for item in packages]
 
     assert markdown_paths
-    assert markdown_paths <= index_paths
+    assert len(index_paths) == len(set(index_paths))
+    assert markdown_paths == set(index_paths)
+    assert all(
+        set(item) == {"path", "role", "current_implication"} for item in packages
+    )
 
 
 def test_current_truth_index_does_not_claim_apply_authority():
