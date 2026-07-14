@@ -116,6 +116,28 @@ def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
     assert "block/apply-gate" not in combined
 
 
+def test_operator_docs_and_skill_name_mulligan_policy_status_without_strong_promotion():
+    active_text = "\n".join(
+        [
+            (ROOT / "README.md").read_text(encoding="utf-8"),
+            (ROOT / "docs" / "operator" / "README.md").read_text(encoding="utf-8"),
+            (
+                ROOT / "docs" / "operator" / "universal-wild-no-block-contract.md"
+            ).read_text(encoding="utf-8"),
+            (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "mulligan_policy_status" in active_text
+    assert "default_only_runtime_surfaces" in active_text
+    assert "policy_backed_autonomous_mulligan" in active_text
+    assert "must not promote" in active_text
+    assert "SOURCE_BACKED_STRONG" in active_text
+    assert "Darkbishop Benedictus" in active_text
+
+
 def test_source_contract_spine_reference_is_active_but_not_an_apply_gate():
     text = (ROOT / "docs" / "operator" / "source-contract-spine.md").read_text(
         encoding="utf-8"

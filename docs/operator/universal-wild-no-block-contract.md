@@ -37,6 +37,11 @@ Layer 2 and Layer 3 gaps are warning-only. They must not block `load_safe_apply`
   low-curve Mulligan fallback because explicit source-backed Mulligan keeps were
   absent. It is acceptable for load-safe apply, but weaker than
   `SOURCE_BACKED_STRONG`.
+- `operator_summary.json.mulligan_policy_status` is the compact operator view
+  for source-backed versus policy-backed Mulligan coverage.
+- `operator_summary.json.default_only_runtime_surfaces` must normally be empty
+  for generated deck packages. If it names a surface, open that surface report
+  before treating the package as useful.
 - `config_usefulness.next_report_to_open` tells the operator which pre-run report explains the first usefulness gap.
 
 ## Hard Blocks

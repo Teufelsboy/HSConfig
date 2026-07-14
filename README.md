@@ -12,7 +12,9 @@ setup semantics so `Mulligan.json` is not default-only. This is a separate,
 weaker autonomous fallback, not a source-backed guide claim. Cards with
 explicit, suppressed, or quarantined Mulligan source intent are vetoed from the
 policy lane; non-hand start-of-game effects such as Darkbishop Benedictus also
-stay out of opening-hand keeps.
+stay out of opening-hand keeps. Policy-backed Mulligan coverage must not promote
+the deck to `SOURCE_BACKED_STRONG`; it only makes the generated pre-run package
+more useful while preserving the source/contract boundary.
 
 HSConfig separates source semantics from runtime authority. A claim such as
 `hero_power_transform` or `card_role` can enrich the every-card contract and
