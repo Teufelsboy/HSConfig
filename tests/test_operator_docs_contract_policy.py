@@ -291,3 +291,21 @@ def test_active_docs_describe_fresh_closure_proof_without_new_apply_gate():
         in active_docs
     )
     assert "diagnostic-only" in active_docs or "diagnostic only" in active_docs
+
+
+def test_operator_docs_state_no_silent_default_only_without_second_gate():
+    docs = "\n".join(
+        [
+            (ROOT / "docs" / "operator" / "README.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / "docs" / "operator" / "guide-research-policy.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    assert "no-silent-default-only" in docs.lower()
+    assert "visible quality" in docs.lower()
+    assert "not an apply blocker" in docs.lower()
+    assert "operator_summary.json remains the only normal apply authority" in docs

@@ -105,6 +105,8 @@ documented and identity is resolved:
 - Discover or Choose One preference without exact option identity
 - numeric GlobalValues tuning without runtime evidence
 
+No-silent-default-only contract: a valid package must not hide baseline-only runtime behavior. Default-only surfaces are reported as visible quality debt through `operator_summary.json`, `default_only_runtime_surface_details`, and `source_to_runtime_explainability.json`; they are not an apply blocker unless the technical package is invalid. operator_summary.json remains the only normal apply authority.
+
 ## Source-To-Runtime Decision Rule
 
 Source truth becomes runtime config only through `claim_kind`, the source contract matrix, and the surface gate for the target runtime file. Guide importance, archetype value, or effect relevance do not bypass this chain.
