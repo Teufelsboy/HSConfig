@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "authority": "evidence_index_only",
+  "operator_gate_impact": "diagnostic_only",
+  "normal_operator_path": "docs/operator/README.md",
+  "normal_apply_authority": "reports/operator_summary.json",
+  "active_runtime_surfaces": [
+    "Mulligan.json",
+    "GlobalValues.json",
+    "Combo.json",
+    "CARDID.json"
+  ],
+  "excluded_normal_surfaces": [
+    "Concede.json",
+    "Presume.json"
+  ],
+  "warning_only_runtime_policy": "report_visible_no_runtime_rows_without_documented_surface",
+  "active_research_packages": [
+    {
+      "path": "docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/",
+      "role": "current source-contract guardrail evidence",
+      "current_implication": "technical load safety decides normal apply; source-contract, source-to-runtime, and mechanic warnings stay diagnostic and non-blocking"
+    },
+    {
+      "path": "docs/research/2026-07-12-hsconfig-source-contract-slim-autonomy-brainstorm/",
+      "role": "source-contract spine evidence",
+      "current_implication": "claim_kind routes through policy, surface gates, builder/router decisions, and diagnostics before runtime package consideration"
+    },
+    {
+      "path": "docs/research/2026-07-11-hsconfig-source-contract-logic-audit/",
+      "role": "source and runtime contract evidence",
+      "current_implication": "start-of-game effects must not become mulligan keeps without explicit mulligan claims"
+    }
+  ]
+}
