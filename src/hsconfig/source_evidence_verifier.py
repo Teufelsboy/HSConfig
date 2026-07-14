@@ -215,7 +215,7 @@ def _suspicious_exact_keep_warning(
     if claim_kind != "mulligan_keep":
         return None
     evidence = _claim_evidence_text(claim).lower()
-    if _has_opening_hand_language(evidence):
+    if _has_explicit_opening_hand_evidence(claim, evidence):
         return None
     roles = _claim_role_hints(claim)
     if "start_of_game" in roles or roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
@@ -238,6 +238,10 @@ def _suspicious_exact_keep_warning(
             "semantic_qualifiers": claim.get("semantic_qualifiers", {}),
         }
     return None
+
+
+def _has_explicit_opening_hand_evidence(claim: dict[str, Any], evidence: str) -> bool:
+    return _has_opening_hand_language(evidence) or has_qualifier(claim, "timing", "mulligan")
 
 
 def _has_opening_hand_language(evidence: str) -> bool:
