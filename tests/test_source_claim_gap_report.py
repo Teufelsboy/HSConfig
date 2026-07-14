@@ -345,3 +345,44 @@ def test_suppressed_runtime_claims_report_first_missing_link():
         assert row["builder_or_router_decision"] == "suppressed"
         assert row["first_missing_link"] == first_missing_link
         assert row["operator_impact"] == "diagnostic_only"
+
+
+def test_suppressed_claim_rows_prefer_lifecycle_authority_per_claim_id():
+    report = build_source_claim_gap_report(
+        deck_name="Suppressed Claim Collision",
+        config_readiness_report={"cards": {}},
+        claim_coverage_report={"cards": {}},
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "discover_collision",
+                    "claim_kind": "discover_choice",
+                    "reason": "source_claim_conflict",
+                }
+            ],
+        },
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+        source_contract_audit={
+            "claim_lifecycle_rows": [
+                {
+                    "claim_id": "discover_collision",
+                    "claim_kind": "discover_choice",
+                    "builder_or_router_decision": "suppressed",
+                    "suppressed_reason": "requires_exact_option_identity",
+                    "first_missing_link": "source_claim_conflict",
+                }
+            ]
+        },
+    )
+
+    assert report["suppressed_claim_rows"] == [
+        {
+            "claim_id": "discover_collision",
+            "claim_kind": "discover_choice",
+            "builder_or_router_decision": "suppressed",
+            "first_missing_link": "option_identity",
+            "operator_impact": "diagnostic_only",
+        }
+    ]

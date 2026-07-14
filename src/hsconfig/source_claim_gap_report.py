@@ -201,7 +201,23 @@ def build_source_claim_gap_report(
 
 
 def normalize_first_missing_link(row: dict[str, Any]) -> str:
+    suppressed_reason = str(row.get("suppressed_reason") or "")
+    normalized_suppressed_reason = _normalized_missing_link(suppressed_reason)
+    if normalized_suppressed_reason is not None:
+        return normalized_suppressed_reason
+
     reason = str(row.get("reason") or row.get("first_missing_link") or "")
+    normalized_reason = _normalized_missing_link(reason)
+    if normalized_reason is not None:
+        return normalized_reason
+    if reason:
+        return reason
+    if suppressed_reason:
+        return suppressed_reason
+    return "claim_kind_supported_surface"
+
+
+def _normalized_missing_link(reason: str) -> str | None:
     if reason in {"requires_runtime_evidence", "globalvalue_runtime_evidence_required"}:
         return "runtime_evidence"
     if reason in {"requires_exact_option_identity", "unresolved_option_identity"}:
@@ -210,9 +226,7 @@ def normalize_first_missing_link(row: dict[str, Any]) -> str:
         return "supported_cardid_surface"
     if reason == "source_claim_conflict":
         return "source_claim_conflict"
-    if reason:
-        return reason
-    return "claim_kind_supported_surface"
+    return None
 
 
 def _suppressed_claim_rows(
@@ -220,18 +234,20 @@ def _suppressed_claim_rows(
     card_behavior_plan: dict[str, Any],
     source_contract_audit: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+    rows_by_claim_id: dict[str, dict[str, Any]] = {}
     for row in card_behavior_plan.get("suppressed", []):
         if not isinstance(row, dict):
             continue
-        rows.append(_suppressed_claim_row(row))
+        suppressed_row = _suppressed_claim_row(row)
+        rows_by_claim_id[suppressed_row["claim_id"]] = suppressed_row
     for row in source_contract_audit.get("claim_lifecycle_rows", []):
         if not isinstance(row, dict):
             continue
         if row.get("builder_or_router_decision") != "suppressed":
             continue
-        rows.append(_suppressed_claim_row(row))
-    return rows
+        suppressed_row = _suppressed_claim_row(row)
+        rows_by_claim_id[suppressed_row["claim_id"]] = suppressed_row
+    return list(rows_by_claim_id.values())
 
 
 def _suppressed_claim_row(row: dict[str, Any]) -> dict[str, Any]:
