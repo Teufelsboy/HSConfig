@@ -11,7 +11,11 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     runtime_claim_kind,
 )
-from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
+from hsconfig.source_semantic_qualifiers import (
+    has_qualifier,
+    normalize_semantic_qualifiers,
+    qualifier_values,
+)
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -219,8 +223,9 @@ def _suspicious_exact_keep_warning(
 ) -> dict[str, Any] | None:
     if claim_kind != "mulligan_keep":
         return None
+    normalized_claim = _with_normalized_semantic_qualifiers(claim)
     evidence = _claim_evidence_text(claim).lower()
-    if _has_explicit_opening_hand_evidence(claim, evidence):
+    if _has_explicit_opening_hand_evidence(normalized_claim, evidence):
         return None
     roles = _claim_role_hints(claim)
     if "start_of_game" in roles or roles & START_OF_GAME_NON_HAND_EFFECT_ROLES:
@@ -230,17 +235,17 @@ def _suspicious_exact_keep_warning(
             "roles": sorted(roles),
         }
     has_qualifier_start_effect = (
-        has_qualifier(claim, "timing", "start_of_game")
-        or has_qualifier(claim, "zone_scope", "deck")
-        or has_qualifier(claim, "state_requirements", "hero_power_transform")
-        or has_qualifier(claim, "state_requirements", "deckbuilding_effect")
+        has_qualifier(normalized_claim, "timing", "start_of_game")
+        or has_qualifier(normalized_claim, "zone_scope", "deck")
+        or has_qualifier(normalized_claim, "state_requirements", "hero_power_transform")
+        or has_qualifier(normalized_claim, "state_requirements", "deckbuilding_effect")
         or bool(
-            qualifier_values(claim, "deck_evaluation").intersection(
+            qualifier_values(normalized_claim, "deck_evaluation").intersection(
                 DECK_EVALUATION_NON_HAND_EFFECTS
             )
         )
         or bool(
-            qualifier_values(claim, "generation_scope").intersection(
+            qualifier_values(normalized_claim, "generation_scope").intersection(
                 GENERATED_NON_OPENING_HAND_SCOPES
             )
         )
@@ -253,6 +258,14 @@ def _suspicious_exact_keep_warning(
             "semantic_qualifiers": claim.get("semantic_qualifiers", {}),
         }
     return None
+
+
+def _with_normalized_semantic_qualifiers(claim: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(claim)
+    semantic_qualifiers = normalize_semantic_qualifiers(normalized)
+    if semantic_qualifiers:
+        normalized["semantic_qualifiers"] = semantic_qualifiers
+    return normalized
 
 
 def _has_explicit_opening_hand_evidence(claim: dict[str, Any], evidence: str) -> bool:

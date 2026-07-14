@@ -311,6 +311,32 @@ def test_verifier_warns_for_non_hand_semantic_qualifier_keep_without_opening_evi
         }
 
 
+def test_verifier_warns_for_top_level_non_hand_qualifier_keep_without_opening_evidence():
+    for qualifier in (
+        {"deck_evaluation": "No Duplicates"},
+        {"generation_scope": "Generated Card"},
+    ):
+        report = verify_source_documents(
+            [
+                _base_document(
+                    claims=[
+                        {
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["NON_HAND_EFFECT"],
+                            "evidence_text_short": "This card enables the plan.",
+                            "source_confidence": "high",
+                            **qualifier,
+                        }
+                    ]
+                )
+            ]
+        )
+
+        assert "suspicious_mulligan_keep_non_hand_effect" in {
+            warning["reason"] for warning in report["warnings"]
+        }
+
+
 def test_verifier_accepts_mulligan_timing_for_non_hand_semantic_qualifier_keeps():
     for semantic_qualifiers in (
         {"timing": "mulligan", "deck_evaluation": "highlander"},
@@ -326,6 +352,32 @@ def test_verifier_accepts_mulligan_timing_for_non_hand_semantic_qualifier_keeps(
                             "semantic_qualifiers": semantic_qualifiers,
                             "evidence_text_short": "This card enables the plan.",
                             "source_confidence": "high",
+                        }
+                    ]
+                )
+            ]
+        )
+
+        assert "suspicious_mulligan_keep_non_hand_effect" not in {
+            warning["reason"] for warning in report["warnings"]
+        }
+
+
+def test_verifier_accepts_top_level_mulligan_timing_for_non_hand_qualifier_keeps():
+    for qualifier in (
+        {"timing": "Opening Hand", "deck_evaluation": "No Duplicates"},
+        {"timing": "mulligan", "generation_scope": "Generated Card"},
+    ):
+        report = verify_source_documents(
+            [
+                _base_document(
+                    claims=[
+                        {
+                            "claim_kind": "mulligan_keep",
+                            "cards": ["NON_HAND_EFFECT"],
+                            "evidence_text_short": "This card enables the plan.",
+                            "source_confidence": "high",
+                            **qualifier,
                         }
                     ]
                 )
