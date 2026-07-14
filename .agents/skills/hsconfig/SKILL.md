@@ -7,12 +7,7 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
-For the normal operator entry point, start at `docs/operator/README.md`.
-
-Preferred normal path: `hsconfig configure`.
-
-Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
-
+For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`; lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 Inputs: deck name, deck code, runtime root for `prepare`, `build`, and `apply`, short source evidence rows from current guide research, optional researched `source_documents.json`, and normalized guide sources from `hsconfig research-deck`.
 
 Normal workflow:
@@ -27,14 +22,7 @@ Normal workflow:
   the claim passes that surface's gate; otherwise keep the claim visible in
   reports.
 - Use the canonical claim lifecycle for source-to-runtime explanations: source claim -> normalized `claim_kind` -> semantic qualifiers -> conflict quarantine -> surface gate -> builder/router outcome -> emitted runtime row or suppression reason. quarantined claims suppress unsafe runtime rows, stay visible in reports, and do not block load-safe valid packages. source_contract_audit.json is diagnostic; operator_summary.json remains the only normal apply authority.
-
-## Source Contract Boundary
-
-`claim_kind`, the source contract matrix, and the surface gate decide whether source evidence may lower to runtime config. Effect relevance, guide importance, and archetype value do not bypass that chain.
-
-`operator_summary.json` remains the normal apply authority. Source-contract reports are diagnostic only. Warnings are follow-up work, not runtime apply blockers.
-
-normal HSConfig output must not emit `Presume.json` or `Concede.json`.
+- Source Contract Boundary: `claim_kind`, the source contract matrix, and the surface gate decide whether source evidence may lower to runtime config; effect relevance, guide importance, and archetype value do not bypass that chain. `operator_summary.json remains the normal apply authority`; source-contract reports are diagnostic only. Warnings are follow-up work, not runtime apply blockers. normal HSConfig output must not emit `Presume.json` or `Concede.json`.
 
 Operator rules:
 
