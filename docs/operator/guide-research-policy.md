@@ -65,6 +65,25 @@ not block load-safe valid packages.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
+## Source-To-Runtime Boundary
+
+HSConfig separates technical load safety from source richness. A package may be
+load-safe and apply-ready even when some guide claims remain diagnostic.
+`reports/operator_summary.json` is the only apply authority.
+
+`SOURCE_BACKED_STRONG` is a source-confidence label, not an apply gate.
+`policy_backed_autonomous_mulligan` may prevent default-only output, but it does
+not convert a claim into source-backed evidence.
+
+Never lower these into runtime config unless the specific runtime surface is
+documented and identity is resolved:
+
+- start-of-game or deckbuilding effects as opening-hand mulligan keeps
+- hero-power-transform effects as opening-hand mulligan keeps
+- generated random pools as deterministic per-card behavior
+- Discover or Choose One preference without exact option identity
+- numeric GlobalValues tuning without runtime evidence
+
 ## Source-To-Runtime Decision Rule
 
 Source truth becomes runtime config only through `claim_kind`, the source contract matrix, and the surface gate for the target runtime file. Guide importance, archetype value, or effect relevance do not bypass this chain.

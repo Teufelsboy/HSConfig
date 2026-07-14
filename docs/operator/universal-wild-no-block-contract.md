@@ -3,6 +3,22 @@
 HSConfig must produce a load-safe initial HearthRanger CustomConfig package for
 every valid deck input.
 
+## Universal No-Block Contract
+
+For any valid deck input, HSConfig should produce a load-safe package whenever
+the runtime JSON package itself is valid. Weak source richness, unknown mechanics,
+report-only claims, unresolved options, or runtime-evidence-only tuning are
+operator-visible diagnostics, not hard blockers.
+
+The package must not be default-only:
+
+- `default_only_runtime_surfaces` is empty
+- `mulligan_policy_status.default_only` is `false`
+- `GlobalValues.json` exists
+- `Mulligan.json` exists
+- every known deck CardID gets a per-card JSON file
+- normal path does not emit `Presume.json` or `Concede.json`
+
 ## Runtime Apply Promise
 
 - `technical_status=VALID_PACKAGE` means the emitted package is structurally valid.

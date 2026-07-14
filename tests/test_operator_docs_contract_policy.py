@@ -31,6 +31,61 @@ def test_guide_research_policy_keeps_no_block_language():
     assert "Do not use `source_contract_audit.json` as an apply gate." in text
 
 
+def test_guide_research_policy_states_the_concise_source_to_runtime_boundary():
+    text = (ROOT / "docs" / "operator" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+
+    required_section = """## Source-To-Runtime Boundary
+
+HSConfig separates technical load safety from source richness. A package may be
+load-safe and apply-ready even when some guide claims remain diagnostic.
+`reports/operator_summary.json` is the only apply authority.
+
+`SOURCE_BACKED_STRONG` is a source-confidence label, not an apply gate.
+`policy_backed_autonomous_mulligan` may prevent default-only output, but it does
+not convert a claim into source-backed evidence.
+
+Never lower these into runtime config unless the specific runtime surface is
+documented and identity is resolved:
+
+- start-of-game or deckbuilding effects as opening-hand mulligan keeps
+- hero-power-transform effects as opening-hand mulligan keeps
+- generated random pools as deterministic per-card behavior
+- Discover or Choose One preference without exact option identity
+- numeric GlobalValues tuning without runtime evidence
+"""
+
+    assert text.count("## Source-To-Runtime Boundary") == 1
+    assert required_section in text
+
+
+def test_universal_wild_contract_states_no_block_and_no_default_only_policy():
+    text = (
+        ROOT / "docs" / "operator" / "universal-wild-no-block-contract.md"
+    ).read_text(encoding="utf-8")
+
+    required_section = """## Universal No-Block Contract
+
+For any valid deck input, HSConfig should produce a load-safe package whenever
+the runtime JSON package itself is valid. Weak source richness, unknown mechanics,
+report-only claims, unresolved options, or runtime-evidence-only tuning are
+operator-visible diagnostics, not hard blockers.
+
+The package must not be default-only:
+
+- `default_only_runtime_surfaces` is empty
+- `mulligan_policy_status.default_only` is `false`
+- `GlobalValues.json` exists
+- `Mulligan.json` exists
+- every known deck CardID gets a per-card JSON file
+- normal path does not emit `Presume.json` or `Concede.json`
+"""
+
+    assert text.count("## Universal No-Block Contract") == 1
+    assert required_section in text
+
+
 def test_operator_docs_name_canonical_lifecycle_without_second_gate():
     text = (ROOT / "docs" / "operator" / "guide-research-policy.md").read_text(
         encoding="utf-8"
