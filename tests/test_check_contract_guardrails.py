@@ -24,6 +24,8 @@ def test_guardrail_runner_includes_source_contract_v2_boundary_tests():
         "tests/test_card_behavior_router.py",
         "tests/test_mechanic_support.py",
         "tests/test_source_contract_conformance.py",
+        "tests/test_source_to_runtime_explainability.py",
+        "tests/test_research_current_truth_index.py",
     }
 
     assert expected <= set(FOCUSED_CONTRACT_TESTS)
@@ -58,6 +60,8 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
     assert commands[2].argv[:3] == (sys.executable, "-m", "pytest")
     assert "tests/test_apply_authority_boundary.py" in commands[2].argv
     assert "tests/test_source_claim_family_registry.py" in commands[2].argv
+    assert "tests/test_source_to_runtime_explainability.py" in commands[2].argv
+    assert "tests/test_research_current_truth_index.py" in commands[2].argv
 
 
 def test_run_guardrails_stops_at_first_failure(tmp_path, capsys):
