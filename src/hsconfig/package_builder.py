@@ -316,18 +316,6 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
     write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)
-    source_claim_gap_report = build_source_claim_gap_report(
-        deck_name=args.deck_name,
-        config_readiness_report=config_readiness_report,
-        claim_coverage_report=guide_claim_bundle.get(
-            "claim_coverage_report",
-            guide_claim_bundle["coverage"],
-        ),
-        card_behavior_plan=card_behavior_plan,
-        mulligan_plan=mulligan_plan,
-        combo_plan=combo_plan,
-    )
-    write_json(reports_dir / "source_claim_gap_report.json", source_claim_gap_report)
     source_contract_audit_report = build_source_contract_audit(
         deck_name=args.deck_name,
         deck_identity=deck_identity,
@@ -345,6 +333,19 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         encoding="utf-8",
         newline="\n",
     )
+    source_claim_gap_report = build_source_claim_gap_report(
+        deck_name=args.deck_name,
+        config_readiness_report=config_readiness_report,
+        claim_coverage_report=guide_claim_bundle.get(
+            "claim_coverage_report",
+            guide_claim_bundle["coverage"],
+        ),
+        card_behavior_plan=card_behavior_plan,
+        mulligan_plan=mulligan_plan,
+        combo_plan=combo_plan,
+        source_contract_audit=source_contract_audit_report,
+    )
+    write_json(reports_dir / "source_claim_gap_report.json", source_claim_gap_report)
     source_to_runtime_explainability_report = (
         build_source_to_runtime_explainability_report(source_contract_audit_report)
     )

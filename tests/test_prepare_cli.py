@@ -1110,6 +1110,12 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
     unsupported = json.loads(
         (reports / "unsupported_claims_report.json").read_text(encoding="utf-8")
     )
+    source_claim_gap = json.loads(
+        (reports / "source_claim_gap_report.json").read_text(encoding="utf-8")
+    )
+    source_contract_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
     globalvalues = json.loads(
         (
             package / "CustomConfig" / "shadowpriest" / "GlobalValues.json"
@@ -1128,6 +1134,23 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
         for row in blocked
     )
     assert globalvalues["LowHpBoardValuePenalty"]["values"][0]["value"] == "1.00"
+    suppressed_lifecycle_rows = [
+        row
+        for row in source_contract_audit["claim_lifecycle_rows"]
+        if row["builder_or_router_decision"] == "suppressed"
+    ]
+    assert suppressed_lifecycle_rows
+    assert all(row["first_missing_link"] == "runtime_evidence" for row in suppressed_lifecycle_rows)
+    assert source_claim_gap["suppressed_claim_rows"] == [
+        {
+            "claim_id": row["claim_id"],
+            "claim_kind": row["claim_kind"],
+            "builder_or_router_decision": "suppressed",
+            "first_missing_link": "runtime_evidence",
+            "operator_impact": "diagnostic_only",
+        }
+        for row in suppressed_lifecycle_rows
+    ]
 
 
 def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
