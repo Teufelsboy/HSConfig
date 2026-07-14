@@ -726,11 +726,29 @@ def _source_to_runtime_explainability_summary(
             "runtime_lowered_claims": 0,
             "claims_with_first_missing_link": 0,
             "cards_with_first_missing_link": 0,
+            "closure_lane_counts": {},
+            "cards_with_closure": 0,
+            "cards_missing_closure": 0,
+            "closure_schema_current": False,
             "next_report_to_open": None,
         }
     summary = report.get("summary", {})
     if not isinstance(summary, dict):
         summary = {}
+    card_rows = report.get("card_rows", [])
+    if not isinstance(card_rows, list):
+        card_rows = []
+    closure_rows = [
+        row
+        for row in card_rows
+        if isinstance(row, dict) and isinstance(row.get("closure"), dict)
+    ]
+    closure_lane_counts = Counter(
+        str(row["closure"].get("lane", "unknown"))
+        for row in closure_rows
+        if str(row["closure"].get("lane", "")).strip()
+    )
+    cards_missing_closure = max(0, len(card_rows) - len(closure_rows))
     next_report = summary.get("next_report_to_open")
     if not isinstance(next_report, str) or not next_report:
         next_report = "reports/source_to_runtime_explainability.json"
@@ -747,6 +765,10 @@ def _source_to_runtime_explainability_summary(
         "cards_with_first_missing_link": _int_value(
             summary.get("cards_with_first_missing_link", 0)
         ),
+        "closure_lane_counts": dict(sorted(closure_lane_counts.items())),
+        "cards_with_closure": len(closure_rows),
+        "cards_missing_closure": cards_missing_closure,
+        "closure_schema_current": bool(card_rows) and cards_missing_closure == 0,
         "next_report_to_open": next_report,
     }
 

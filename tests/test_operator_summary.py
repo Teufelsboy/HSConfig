@@ -2048,8 +2048,127 @@ def test_operator_summary_exposes_source_to_runtime_explainability_without_block
         "runtime_lowered_claims": 1,
         "claims_with_first_missing_link": 2,
         "cards_with_first_missing_link": 1,
+        "closure_lane_counts": {},
+        "cards_with_closure": 0,
+        "cards_missing_closure": 0,
+        "closure_schema_current": False,
         "next_report_to_open": "reports/source_to_runtime_explainability.json",
     }
+
+
+def test_operator_summary_counts_closure_lanes_without_apply_authority():
+    summary = build_operator_summary(
+        deck_name="Closure Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        source_to_runtime_explainability_report={
+            "authority": "diagnostic_only",
+            "operator_gate_impact": "diagnostic_only",
+            "apply_blocking": False,
+            "summary": {
+                "cards_total": 3,
+                "claims_total": 4,
+                "runtime_lowered_claims": 2,
+                "claims_with_first_missing_link": 1,
+                "cards_with_first_missing_link": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "card_rows": [
+                {
+                    "card_id": "CARD_RUNTIME",
+                    "name": "Runtime Card",
+                    "closure": {
+                        "lane": "runtime_backed",
+                        "default_only_risk": False,
+                    },
+                },
+                {
+                    "card_id": "CARD_GAP",
+                    "name": "Gap Card",
+                    "closure": {
+                        "lane": "source_action_needed",
+                        "default_only_risk": False,
+                    },
+                },
+                {
+                    "card_id": "CARD_BASELINE",
+                    "name": "Baseline Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "default_only_risk": True,
+                    },
+                },
+            ],
+        },
+        generated_files=[
+            "CustomConfig/closuredeck/GlobalValues.json",
+            "CustomConfig/closuredeck/Mulligan.json",
+        ],
+    )
+
+    explainability = summary["source_to_runtime_explainability_summary"]
+
+    assert summary["runtime_apply_allowed"] is True
+    assert explainability["non_blocking"] is True
+    assert explainability["closure_lane_counts"] == {
+        "baseline_only_visible": 1,
+        "runtime_backed": 1,
+        "source_action_needed": 1,
+    }
+    assert explainability["cards_with_closure"] == 3
+    assert explainability["cards_missing_closure"] == 0
+    assert explainability["closure_schema_current"] is True
+
+
+def test_operator_summary_marks_missing_closure_rows_as_non_blocking_diagnostic():
+    summary = build_operator_summary(
+        deck_name="Old Artifact Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed"},
+        source_to_runtime_explainability_report={
+            "authority": "diagnostic_only",
+            "operator_gate_impact": "diagnostic_only",
+            "apply_blocking": False,
+            "summary": {
+                "cards_total": 2,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "claims_with_first_missing_link": 0,
+                "cards_with_first_missing_link": 0,
+            },
+            "card_rows": [
+                {"card_id": "CARD_OLD", "name": "Old Card"},
+                {
+                    "card_id": "CARD_RUNTIME",
+                    "name": "Runtime Card",
+                    "closure": {
+                        "lane": "runtime_backed",
+                        "default_only_risk": False,
+                    },
+                },
+            ],
+        },
+        generated_files=[
+            "CustomConfig/oldartifactdeck/GlobalValues.json",
+            "CustomConfig/oldartifactdeck/Mulligan.json",
+        ],
+    )
+
+    explainability = summary["source_to_runtime_explainability_summary"]
+
+    assert summary["runtime_apply_allowed"] is True
+    assert explainability["non_blocking"] is True
+    assert explainability["cards_with_closure"] == 1
+    assert explainability["cards_missing_closure"] == 1
+    assert explainability["closure_schema_current"] is False
+    assert explainability["next_report_to_open"] == (
+        "reports/source_to_runtime_explainability.json"
+    )
 
 
 @pytest.mark.parametrize("malformed_counts", [None, [], "emitted"])
