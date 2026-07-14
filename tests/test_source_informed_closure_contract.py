@@ -77,7 +77,7 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     assert first_chain is None
     assert gap_report["summary"]["blocked_cards"] == 0
     assert target_card_row["name"] == target["first_card_name"]
-    assert target_card_row["first_missing_link"] == "runtime_surface"
+    assert target_card_row["first_missing_link"] == "source_eligibility"
     assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
     assert target_card_row["apply_blocked"] is False
     assert "Mulligan.json" in target_card_row["not_emitted_runtime_files"]

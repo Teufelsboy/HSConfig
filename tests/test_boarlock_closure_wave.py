@@ -120,7 +120,7 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert gap_report["summary"]["first_missing_chain"] is None
     assert gap_report["summary"]["blocked_cards"] == 0
     assert fracking["name"] == "Fracking"
-    assert fracking["first_missing_link"] == "runtime_surface"
+    assert fracking["first_missing_link"] == "source_eligibility"
     assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
     assert fracking["apply_blocked"] is False
     assert "Mulligan.json" in fracking["not_emitted_runtime_files"]
@@ -205,7 +205,7 @@ def test_low_confidence_fracking_mulligan_row_does_not_satisfy_missing_chain(
     assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
     assert gap_report["summary"]["first_missing_chain"] is None
     assert fracking["card_id"] == "WW_092"
-    assert fracking["first_missing_link"] == "runtime_surface"
+    assert fracking["first_missing_link"] == "source_eligibility"
     assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
     assert fracking["apply_blocked"] is False
 
