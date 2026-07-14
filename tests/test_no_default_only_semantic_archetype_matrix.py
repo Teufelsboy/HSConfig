@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.mechanic_support import mechanic_lowering_policy
 
 
 SEMANTIC_ARCHETYPE_FIXTURES = [
@@ -15,7 +16,7 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "expected_runtime_block": "BeforePlayCardBonus", "expected_runtime_row": {"condition": "*", "value": "6", "comment": "SyntheticSecretHunter: SECRET_001_use_secret_according_to_card_text"}, "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_db9a1c18eb5a", "claim_kind": "mechanic_usage", "card_id": "SECRET_001", "mechanic": "secret", "evidence_text_short": "Secrets are part of the gameplan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -26,7 +27,7 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
         ],
         "claims": [
             {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "expected_runtime_block": "BeforePlayCardBonus", "expected_runtime_row": {"condition": "*", "value": "6", "comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text"}, "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_325924175cfb", "claim_kind": "mechanic_usage", "card_id": "LOCATION_001", "mechanic": "location", "evidence_text_short": "Location supports board plan.", "source_confidence": "guide_backed"},
         ],
     },
     {
@@ -132,10 +133,19 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 and row["builder_or_router_decision"] == "emitted"
                 for row in matching_rows
             )
-            runtime_block = claim["expected_runtime_block"]
+            policy = mechanic_lowering_policy(claim["mechanic"])
+            runtime_block = policy["default_block"]
+            assert runtime_block is not None
             assert runtime_block in runtime_cards[card_id]
             runtime_values = runtime_cards[card_id][runtime_block]["values"]
-            expected_row = claim["expected_runtime_row"]
+            expected_row = {
+                "condition": policy["default_condition"],
+                "value": policy["default_value"],
+                "comment": (
+                    f"{fixture['deck_name']}: {card_id}_"
+                    f"{policy['default_intent']}"
+                ),
+            }
             matching_runtime_rows = [
                 row
                 for row in runtime_values
@@ -218,6 +228,10 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     source_gap = json.loads((reports / "source_claim_gap_report.json").read_text(encoding="utf-8"))
     source_audit = json.loads((reports / "source_contract_audit.json").read_text(encoding="utf-8"))
+    global_values = json.loads((deck_dir / "GlobalValues.json").read_text(encoding="utf-8"))
+    global_values_profile = json.loads(
+        (reports / "global_values_key_profile_report.json").read_text(encoding="utf-8")
+    )
 
     assert exit_code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
@@ -232,6 +246,20 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
     assert mulligan["Mulligan"]["values"], "Mulligan output must not be default-only for representative archetypes"
+    assert global_values_profile["key_count"] == len(global_values)
+    assert set(global_values_profile["keys"]) == set(global_values)
+    assert global_values_profile["key_count"] == len(global_values_profile["keys"])
+    for key, profile in global_values_profile["keys"].items():
+        assert {
+            "category",
+            "authority_category",
+            "board_value_component",
+            "decision",
+            "status",
+            "reason",
+        } <= set(profile)
+        if profile["category"] != "metadata":
+            assert "baseline_value" in profile
     assert "card_rows" in source_gap
     assert "claim_lifecycle_rows" in source_audit
     _assert_semantic_claim_routing(fixture, deck_dir, reports)
