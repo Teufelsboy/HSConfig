@@ -263,12 +263,33 @@ def test_choice_claim_with_unresolved_option_identity_stays_diagnostic():
     routed = route_card_behavior_surfaces([claim], identity_links={})
 
     assert decision.allowed is False
-    assert decision.reason in {
-        "requires_exact_option_identity",
-        "unresolved_option_identity",
-    }
+    assert decision.reason == "requires_exact_option_identity"
     assert routed["rows"] == []
     assert routed["suppressed"][0]["claim_id"] == "choose_option_without_identity"
+
+
+def test_choice_claim_with_resolved_option_identity_uses_cardid_gate():
+    claim = {
+        "claim_id": "choose_option_with_identity",
+        "claim_kind": "choose_one_choice",
+        "claim_readiness": "guide_backed",
+        "cards": ["CHOOSE_ONE_CARD"],
+        "option_card_id": "OPTION_001",
+    }
+
+    decision = surface_gate_decision(
+        claim,
+        "card_behavior",
+        context={
+            "identity_links": {
+                "CHOOSE_ONE_CARD": [{"card_id": "OPTION_001"}],
+            }
+        },
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+    assert decision.surface == "cardid"
 
 
 def test_timing_mechanics_are_warning_first_not_cross_surface_claims():

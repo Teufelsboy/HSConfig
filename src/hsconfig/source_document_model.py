@@ -183,7 +183,10 @@ def surface_gate_decision(
         return can_lower_to_cardid(claim)
     if normalized_surface == "card_behavior":
         claim_kind = normalized_claim_kind(claim)
-        if claim_kind in {"discover_choice", "choose_one_choice"}:
+        if claim_kind in {"discover_choice", "choose_one_choice"} and not _has_exact_option_identity(
+            claim,
+            (context or {}).get("identity_links"),
+        ):
             return SurfaceGateDecision(
                 False,
                 "requires_exact_option_identity",
@@ -257,6 +260,46 @@ def _claim_cards_from_mapping(claim: Mapping[str, Any]) -> list[str]:
     if isinstance(cards, str):
         cards = [cards]
     return [str(card) for card in cards if str(card)]
+
+
+def _has_exact_option_identity(
+    claim: Mapping[str, Any], identity_links: Mapping[str, Any] | None
+) -> bool:
+    """Return whether every choice source card links to the requested concrete option."""
+    option_card_id = next(
+        (
+            str(claim[key])
+            for key in ("option_card_id", "option_card", "choice_card_id", "choice_card")
+            if claim.get(key)
+        ),
+        None,
+    )
+    cards = _claim_cards_from_mapping(claim)
+    if not option_card_id or not cards:
+        return False
+
+    links_by_card = identity_links or {}
+    return all(
+        option_card_id in _linked_identity_card_ids(links_by_card.get(card_id, []))
+        for card_id in cards
+    )
+
+
+def _linked_identity_card_ids(value: Any) -> set[str]:
+    if isinstance(value, Mapping):
+        if isinstance(value.get("links"), list):
+            value = value["links"]
+        elif value.get("card_id"):
+            return {str(value["card_id"])}
+        else:
+            return set()
+    if not isinstance(value, list):
+        return set()
+    return {
+        str(row["card_id"])
+        for row in value
+        if isinstance(row, Mapping) and row.get("card_id")
+    } | {row for row in value if isinstance(row, str)}
 
 
 def _contains_start_of_game_non_hand_effect(
