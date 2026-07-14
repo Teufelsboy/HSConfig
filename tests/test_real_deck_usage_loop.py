@@ -26,7 +26,7 @@ def test_operator_docs_define_real_deck_usage_loop_without_new_gate():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
     assert "## Real-Deck Usage Loop" in text
-    assert "Use this loop after a source-contract or no-default-only audit passes." in text
+    assert "Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates." in text
     assert "Do not add another runtime-write authority for real-deck usage." in text
     assert "Run `hsconfig configure`" in text
     assert "Open `reports/operator_summary.json` first." in text

@@ -79,7 +79,7 @@ def test_operator_docs_define_real_deck_usage_loop_without_new_gate():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
     assert "## Real-Deck Usage Loop" in text
-    assert "Use this loop after a source-contract or no-default-only audit passes." in text
+    assert "Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates." in text
     assert "Do not add another runtime-write authority for real-deck usage." in text
     assert "Run `hsconfig configure`" in text
     assert "Open `reports/operator_summary.json` first." in text
@@ -128,7 +128,7 @@ In `docs/operator/README.md`, insert this section after the existing "Normal Ope
 ```markdown
 ## Real-Deck Usage Loop
 
-Use this loop after a source-contract or no-default-only audit passes.
+Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
 2. Open `reports/operator_summary.json` first.
@@ -379,13 +379,13 @@ Average coverage: 100.0%
 Run:
 
 ```powershell
-rg -n "second apply gate|source_contract_audit.json remains the apply authority|source_to_runtime_explainability.json remains the apply authority|default_only_runtime_surfaces can be ignored|Presume.json.*normal output|Concede.json.*normal output" README.md docs .agents src tests
+rg -n "source_contract_audit\.json remains the apply authority|source_to_runtime_explainability\.json remains the apply authority|default_only_runtime_surfaces can be ignored|Presume\.json is normal output|Concede\.json is normal output|Presume\.json.*must.*normal|Concede\.json.*must.*normal" README.md docs\\operator .agents src tests
 ```
 
 Expected:
 
 ```text
-No matches.
+No active matches.
 ```
 
 If the scan finds intended warning text that contains a forbidden phrase only to negate it, rewrite the docs to avoid the ambiguous phrase. Do not add exclusions unless the match is in a historical Superpowers plan or archived research.

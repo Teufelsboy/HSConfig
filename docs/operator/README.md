@@ -49,7 +49,7 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 
 ## Real-Deck Usage Loop
 
-Use this loop after a source-contract or no-default-only audit passes.
+Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
 2. Open `reports/operator_summary.json` first.
