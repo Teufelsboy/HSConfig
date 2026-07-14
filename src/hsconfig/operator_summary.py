@@ -517,7 +517,10 @@ def _closure_matches_surface(row: dict[str, Any], surface: str) -> bool:
     if not runtime_files:
         return True
     if surface == "cardid_behavior":
-        return bool(runtime_files - CARDID_NON_SURFACE_FILES)
+        cardid_files = {
+            filename for filename in runtime_files if filename.endswith(".json")
+        }
+        return bool(cardid_files - CARDID_NON_SURFACE_FILES)
     expected_files = SURFACE_RUNTIME_FILES.get(surface, set())
     return bool(runtime_files.intersection(expected_files))
 

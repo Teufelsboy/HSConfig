@@ -1,6 +1,29 @@
 import pytest
 
-from hsconfig.operator_summary import build_operator_summary
+from hsconfig.operator_summary import _closure_matches_surface, build_operator_summary
+
+
+@pytest.mark.parametrize(
+    ("surface", "runtime_files", "expected"),
+    [
+        ("mulligan", ["Mulligan.json"], True),
+        ("globalvalues", ["GlobalValues.json"], True),
+        ("combo", ["Combo.json"], True),
+        ("cardid_behavior", ["CARD_001.json"], True),
+        (
+            "cardid_behavior",
+            ["Mulligan.json", "GlobalValues.json", "Combo.json"],
+            False,
+        ),
+        ("cardid_behavior", ["diagnostic.txt"], False),
+    ],
+)
+def test_operator_summary_maps_runtime_surfaces_to_declared_json_files(
+    surface, runtime_files, expected
+):
+    row = {"closure": {"runtime_surfaces": runtime_files}}
+
+    assert _closure_matches_surface(row, surface) is expected
 
 
 def test_source_backed_valid_package_is_ready_to_apply():
