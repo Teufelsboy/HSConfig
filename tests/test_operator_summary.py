@@ -2592,3 +2592,68 @@ def test_default_only_surface_details_include_missing_link_and_card_details():
     ]
     assert summary["runtime_apply_allowed"] is True
     assert summary["no_default_only_verdict"]["blocking"] is False
+
+
+def test_default_only_surface_details_filter_example_cards_to_runtime_surface():
+    summary = build_operator_summary(
+        deck_name="Thin Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        source_to_runtime_explainability_report={
+            "card_rows": [
+                {
+                    "card_id": "MULL_001",
+                    "name": "Mulligan Missing Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "runtime_surfaces": ["Mulligan.json"],
+                        "default_only_risk": True,
+                        "first_missing_link": "needs_mulligan_claim",
+                        "next_source_action": "add_mulligan_keep_or_discard_claim",
+                    },
+                },
+                {
+                    "card_id": "CARDID_001",
+                    "name": "CardID Missing Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "runtime_surfaces": ["CARDID_001.json"],
+                        "default_only_risk": True,
+                        "first_missing_link": "needs_runtime_surface",
+                        "next_source_action": "add_cardid_behavior_claim",
+                    },
+                },
+            ]
+        },
+    )
+
+    assert summary["default_only_runtime_surface_details"] == [
+        {
+            "surface": "mulligan",
+            "status": "default_only",
+            "card_count_with_default_only_risk": 1,
+            "example_cards": ["MULL_001 Mulligan Missing Card"],
+            "example_card_details": [
+                {
+                    "card_id": "MULL_001",
+                    "name": "Mulligan Missing Card",
+                    "closure_lane": "baseline_only_visible",
+                    "first_missing_link": "needs_mulligan_claim",
+                    "next_source_action": "add_mulligan_keep_or_discard_claim",
+                }
+            ],
+            "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
+            "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
+            "operator_impact": "diagnostic_only",
+            "apply_blocking": False,
+        }
+    ]

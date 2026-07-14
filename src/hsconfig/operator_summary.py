@@ -63,6 +63,12 @@ SURFACE_REJECTION_REASONS = {
     "claim_kind_not_combo_surface",
     "claim_kind_not_cardid_surface",
 }
+SURFACE_RUNTIME_FILES = {
+    "mulligan": {"Mulligan.json"},
+    "globalvalues": {"GlobalValues.json"},
+    "combo": {"Combo.json"},
+}
+CARDID_NON_SURFACE_FILES = {"Mulligan.json", "GlobalValues.json", "Combo.json"}
 DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES = {
     "policy_backed_autonomous_mulligan",
 }
@@ -371,18 +377,24 @@ def _default_only_runtime_surface_details(
     if not isinstance(surfaces, dict):
         return []
 
-    risky_card_details = _default_only_risk_card_details(
+    all_risky_card_details = _default_only_risk_card_details(
         source_to_runtime_explainability_report
     )
-    risky_cards = [
-        f'{row["card_id"]} {row["name"]}'.strip()
-        for row in risky_card_details
-    ]
-    first_detail = risky_card_details[0] if risky_card_details else {}
     details: list[dict[str, Any]] = []
     for name, row in sorted(surfaces.items()):
         if not isinstance(row, dict) or row.get("default_only") is not True:
             continue
+        risky_card_details = _default_only_risk_card_details(
+            source_to_runtime_explainability_report,
+            surface=str(name),
+        )
+        if not risky_card_details:
+            risky_card_details = all_risky_card_details
+        risky_cards = [
+            f'{row["card_id"]} {row["name"]}'.strip()
+            for row in risky_card_details
+        ]
+        first_detail = risky_card_details[0] if risky_card_details else {}
         first_missing_link = first_detail.get("first_missing_link")
         next_source_action = first_detail.get("next_source_action")
         if name == "mulligan":
@@ -490,7 +502,31 @@ def _surface_ledger_next_report(surface: object, status: str) -> str:
     return "reports/operator_summary.json"
 
 
-def _default_only_risk_card_details(report: dict[str, Any]) -> list[dict[str, Any]]:
+def _runtime_surfaces_from_closure(row: dict[str, Any]) -> set[str]:
+    closure = row.get("closure", {})
+    if not isinstance(closure, dict):
+        return set()
+    value = closure.get("runtime_surfaces", [])
+    if not isinstance(value, list):
+        return set()
+    return {str(item) for item in value if str(item)}
+
+
+def _closure_matches_surface(row: dict[str, Any], surface: str) -> bool:
+    runtime_files = _runtime_surfaces_from_closure(row)
+    if not runtime_files:
+        return True
+    if surface == "cardid_behavior":
+        return bool(runtime_files - CARDID_NON_SURFACE_FILES)
+    expected_files = SURFACE_RUNTIME_FILES.get(surface, set())
+    return bool(runtime_files.intersection(expected_files))
+
+
+def _default_only_risk_card_details(
+    report: dict[str, Any],
+    *,
+    surface: str | None = None,
+) -> list[dict[str, Any]]:
     rows = report.get("card_rows", []) if isinstance(report, dict) else []
     if not isinstance(rows, list):
         return []
@@ -501,6 +537,8 @@ def _default_only_risk_card_details(report: dict[str, Any]) -> list[dict[str, An
             continue
         closure = row.get("closure", {})
         if not isinstance(closure, dict) or closure.get("default_only_risk") is not True:
+            continue
+        if surface is not None and not _closure_matches_surface(row, surface):
             continue
         card_id = str(row.get("card_id", "")).strip()
         name = str(row.get("name", "")).strip()
