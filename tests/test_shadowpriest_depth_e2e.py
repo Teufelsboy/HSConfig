@@ -290,18 +290,21 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
         for row in mulligan["Mulligan"]["values"]
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
+    hero_power_values = darkbishop["BeforeUseHeroPowerBonus"]["values"]
     darkbishop_attention = [
         row for row in explainability["operator_attention"] if row["card_id"] == "SW_448"
     ]
 
     assert result == 0
     assert "SW_448" not in concrete_keeps
-    assert darkbishop
-    assert any("Bonus" in key or "HeroPower" in key for key in darkbishop)
-    assert darkbishop_attention
-    assert darkbishop_attention[0]["status"] in {
-        "runtime_backed",
-        "diagnostic_only",
-        "baseline_only_visible",
-    }
+    assert hero_power_values
+    assert any(
+        row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
+        and row["condition"] == "*"
+        and row["value"] == "6"
+        for row in hero_power_values
+    )
+    assert len(darkbishop_attention) == 1
+    assert darkbishop_attention[0]["status"] == "runtime_backed"
+    assert darkbishop_attention[0]["strongest_claim_kind"] == "hero_power_transform"
     assert darkbishop_attention[0]["default_only_risk"] is False

@@ -2234,6 +2234,11 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
             "default_only": True,
             "policy_lanes": [],
             "policy_reasons": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
         },
         source_to_runtime_explainability_report={
             "authority": "diagnostic_only",
@@ -2281,8 +2286,8 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
                     "next_source_action": "none",
                 }
             ],
-            "first_missing_link": None,
-            "next_source_action": "none",
+            "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
+            "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
             "operator_impact": "diagnostic_only",
             "apply_blocking": False,
         }
@@ -2290,6 +2295,8 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
     assert summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["no_default_only_verdict"]["blocking"] is False
 
 
 def test_operator_summary_no_default_only_verdict_none_detected():
@@ -2446,8 +2453,8 @@ def test_default_only_surface_details_include_missing_link_and_card_details():
                     "closure": {
                         "lane": "baseline_only_visible",
                         "default_only_risk": True,
-                        "first_missing_link": "opening_hand_mulligan_intent",
-                        "next_source_action": "add_explicit_opening_hand_mulligan_source",
+                        "first_missing_link": None,
+                        "next_source_action": "none",
                     },
                 }
             ]
@@ -2465,13 +2472,15 @@ def test_default_only_surface_details_include_missing_link_and_card_details():
                     "card_id": "CARD_MISSING",
                     "name": "Missing Keep",
                     "closure_lane": "baseline_only_visible",
-                    "first_missing_link": "opening_hand_mulligan_intent",
-                    "next_source_action": "add_explicit_opening_hand_mulligan_source",
+                    "first_missing_link": None,
+                    "next_source_action": "none",
                 }
             ],
-            "first_missing_link": "opening_hand_mulligan_intent",
-            "next_source_action": "add_explicit_opening_hand_mulligan_source",
+            "first_missing_link": "no_source_backed_or_policy_backed_mulligan_keeps",
+            "next_source_action": "source_backed_or_policy_backed_mulligan_keeps",
             "operator_impact": "diagnostic_only",
             "apply_blocking": False,
         }
     ]
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["no_default_only_verdict"]["blocking"] is False

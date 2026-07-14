@@ -379,6 +379,11 @@ def _default_only_runtime_surface_details(
     for name, row in sorted(surfaces.items()):
         if not isinstance(row, dict) or row.get("default_only") is not True:
             continue
+        first_missing_link = first_detail.get("first_missing_link")
+        next_source_action = first_detail.get("next_source_action")
+        if name == "mulligan":
+            first_missing_link = row.get("first_gap_reason", first_missing_link)
+            next_source_action = row.get("next_source_need", next_source_action)
         details.append(
             {
                 "surface": str(name),
@@ -386,8 +391,8 @@ def _default_only_runtime_surface_details(
                 "card_count_with_default_only_risk": len(risky_cards),
                 "example_cards": risky_cards[:5],
                 "example_card_details": risky_card_details[:5],
-                "first_missing_link": first_detail.get("first_missing_link"),
-                "next_source_action": first_detail.get("next_source_action"),
+                "first_missing_link": first_missing_link,
+                "next_source_action": next_source_action,
                 "operator_impact": "diagnostic_only",
                 "apply_blocking": False,
             }
