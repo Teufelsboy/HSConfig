@@ -92,3 +92,49 @@ def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
     assert "normal path Presume.json" not in combined
     assert "normal path Concede.json" not in combined
     assert "block/apply-gate" not in combined
+
+
+def test_source_contract_spine_reference_is_active_but_not_an_apply_gate():
+    text = (ROOT / "docs" / "operator" / "source-contract-spine.md").read_text(
+        encoding="utf-8"
+    )
+
+    required_claim_kinds = {
+        "archetype",
+        "mulligan_keep",
+        "mulligan_discard",
+        "card_role",
+        "targeting_rule",
+        "combo_sequence",
+        "gameplan_posture",
+        "hero_power_transform",
+        "mechanic_usage",
+        "known_bad_pattern",
+        "tech_slot",
+        "replacement_option",
+        "discover_choice",
+        "choose_one_choice",
+        "globalvalue_numeric_tuning",
+    }
+
+    assert "Diagnostic reference only" in text
+    assert "`reports/operator_summary.json` remains the only normal apply authority." in text
+    assert "does not create a second apply gate" in text
+    assert "Mulligan.json" in text
+    assert "GlobalValues.json" in text
+    assert "Combo.json" in text
+    assert "CARDID.json" in text
+    assert "Presume.json" in text
+    assert "Concede.json" in text
+    for claim_kind in required_claim_kinds:
+        assert f"`{claim_kind}`" in text
+
+
+def test_operator_readme_links_source_contract_spine_without_normal_path_drift():
+    text = (ROOT / "docs" / "operator" / "README.md").read_text(encoding="utf-8")
+    first_120_lines = "\n".join(text.splitlines()[:120])
+
+    assert "docs/operator/source-contract-spine.md" in text
+    assert "hsconfig configure" in first_120_lines
+    assert "source-contract-spine" not in first_120_lines
+    assert "source-contract-spine -> apply" not in text

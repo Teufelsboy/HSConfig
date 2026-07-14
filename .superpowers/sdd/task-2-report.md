@@ -2,57 +2,68 @@
 
 ## Status
 
-DONE_WITH_CONCERNS
+DONE
+
+## Task
+
+Add a compact active source-contract spine reference while keeping it diagnostic-only and outside the normal operator command path.
 
 ## Changed Files
 
-- `src/hsconfig/package_builder.py`: pass the final canonical `guide_claim_bundle` to the research writer.
-- `src/hsconfig/research_contract.py`: accept an optional canonical bundle override while preserving the existing research copy.
-- `tests/test_guide_claim_bundle_parity.py`: add the package parity sentinel.
+- `docs/operator/source-contract-spine.md`: new diagnostic source-contract spine reference covering normal runtime surfaces, all supported claim kinds, false-lowering boundaries, and the single apply authority.
+- `docs/operator/README.md`: added a late diagnostic pointer to `docs/operator/source-contract-spine.md` without adding it to the first normal-path section.
+- `docs/operator/guide-research-policy.md`: added the source-to-runtime decision rule.
+- `tests/test_operator_docs_contract_policy.py`: added Task 2 docs-policy tests for the new reference and README placement.
+- `.superpowers/sdd/task-2-report.md`: implementation evidence for this worker task.
 
-## Commits
+## RED Evidence
 
-- Implementation commit: `b230380`.
+Command:
 
-## Tests
+```powershell
+python -m pytest -q tests/test_operator_docs_contract_policy.py::test_source_contract_spine_reference_is_active_but_not_an_apply_gate tests/test_operator_docs_contract_policy.py::test_operator_readme_links_source_contract_spine_without_normal_path_drift
+```
 
-- `python -m pytest tests/test_guide_claim_bundle_parity.py tests/test_report_ownership.py tests/test_research_contract.py tests/test_preconfig_context_parity.py -q` -> `16 passed`.
-- `python -m compileall -q src tests` -> passed.
-- `git diff --check` -> passed.
-- Full `python -m pytest -q` did not complete in this environment; pytest processes remained active after partial progress and were terminated. No failure result was available.
+Result:
 
-## Self-Review
+```text
+2 failed in 0.20s
+```
 
-- The change is limited to Task 2 files and preserves the existing research report for active consumers.
-- The normal canonical authority remains `reports/guide_claim_bundle.json`; runtime apply authority remains `reports/operator_summary.json`.
-- The writer fallback preserves direct callers that provide the bundle-owned guide claim bundle.
+Expected failures:
+
+- `test_source_contract_spine_reference_is_active_but_not_an_apply_gate` failed with `FileNotFoundError` for `docs/operator/source-contract-spine.md`.
+- `test_operator_readme_links_source_contract_spine_without_normal_path_drift` failed because `docs/operator/README.md` did not yet contain `docs/operator/source-contract-spine.md`.
+
+## GREEN Evidence
+
+Command:
+
+```powershell
+python -m pytest -q tests/test_operator_docs_contract_policy.py tests/test_docs_active_path.py
+```
+
+Result:
+
+```text
+42 passed in 0.17s
+```
+
+Additional check:
+
+```powershell
+git diff --check -- docs/operator/source-contract-spine.md docs/operator/README.md docs/operator/guide-research-policy.md tests/test_operator_docs_contract_policy.py
+```
+
+Result: exit code 0; only existing CRLF normalization warnings were printed.
+
+## Scope Notes
+
+- Did not modify `.superpowers/sdd/task-1-report.md`.
+- Did not add HSTuner, replay parsing, winrate validation, post-game tuning, candidate promotion, runtime-evidence analysis, new runtime surfaces, or a second apply gate.
+- Preserved `reports/operator_summary.json` as the only normal apply authority.
+- Preserved the Darkbishop Benedictus boundary: effect semantics can stay encoded, but start-of-game hero-power effects are not opening-hand mulligan keeps without explicit opening-hand evidence.
 
 ## Concerns
 
-- The brief's exact sentinel command includes `--skip-semantic-fetch`, but this branch's `prepare` CLI does not expose that option. The sentinel omits only that unsupported argument.
-- The brief references `tests/test_output_ownership_manifest.py`, which is absent from this checkout, so the combined targeted command could not collect tests.
-- Full-suite completion remains unverified because the local pytest run did not terminate normally.
-
-## Review Findings Fix
-
-### Changed Files
-
-- `src/hsconfig/research_contract.py`: when `reports/guide_claim_bundle.json` already exists, copy its raw bytes into the research duplicate; retain the direct-call bundle fallback when no canonical report exists.
-- `tests/test_guide_claim_bundle_parity.py`: stub the package card fetch, accept validated pointer metadata, and otherwise require byte-for-byte parity.
-- `tests/test_research_contract.py`: add direct-writer coverage for an existing canonical bundle that differs from the embedded fallback object.
-
-### Commit
-
-- `28af188` (`fix: preserve canonical guide claim bundle bytes`).
-
-### Tests Run
-
-- `python -m pytest tests/test_guide_claim_bundle_parity.py tests/test_report_ownership.py tests/test_research_contract.py tests/test_preconfig_context_parity.py -q` -> `17 passed`.
-- `python -m compileall -q src tests` -> passed.
-- `git diff --check` -> passed.
-
-### Self-Review
-
-- The canonical report takes precedence only when it exists, preserving the legacy direct-call fallback for research-only output paths.
-- The research duplicate is copied as bytes rather than re-serialized, so key order, indentation, and trailing-newline drift cannot pass silently.
-- The package sentinel cannot access the network because it stubs `hsconfig.package_builder.fetch_latest_cards` before invoking `prepare`.
+- The working tree had a pre-existing modification to `.superpowers/sdd/task-1-report.md`; it was not touched or staged by this task.

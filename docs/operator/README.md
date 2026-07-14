@@ -149,6 +149,8 @@ For the durable no-block contract across valid Wild decks, see
 
 Lower-level reports explain the gate. They do not grant independent apply permission.
 
+For the active claim-kind-to-runtime boundary, see `docs/operator/source-contract-spine.md`; it is a diagnostic reference, not a command path.
+
 Direct Python runtime writes use the same gate. `hsconfig.runtime_apply.apply_package()` resolves `reports/operator_summary.json` through `evaluate_apply_gate()` before any runtime mutation and rejects forged or missing gate dictionaries. Use the CLI for normal operation; direct imports are test and integration surfaces, not a second permission model.
 
 ## Report Ownership

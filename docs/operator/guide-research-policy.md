@@ -65,6 +65,12 @@ not block load-safe valid packages.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 
+## Source-To-Runtime Decision Rule
+
+Source truth becomes runtime config only through `claim_kind`, the source contract matrix, and the surface gate for the target runtime file. Guide importance, archetype value, or effect relevance do not bypass this chain.
+
+When the chain is incomplete, HSConfig should keep the claim visible in reports and still produce a load-safe package when the package is technically valid.
+
 ## Claim Family Guardrail
 
 Every supported `claim_kind` has exactly one policy lane, one allowed runtime
