@@ -6,6 +6,8 @@ Normal operator path starts at `docs/operator/README.md`. The docs/operator/READ
 
 Current truth index: `docs/research/current-truth.md`.
 
+`docs/research/current-truth.md` is the only active evidence index. Use it as the only place that names the active evidence packages before opening older historical research folders. The older research folders are historical evidence and should be read through that index before influencing implementation or operator guidance.
+
 Machine-readable sibling: `docs/research/current-truth-index.json`.
 
 Use the Markdown file for human research orientation and the JSON file for tests or tools that need the active evidence packages. Both files are evidence-only. They do not replace `docs/operator/README.md` and they do not grant runtime apply permission.
