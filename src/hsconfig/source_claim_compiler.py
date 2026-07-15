@@ -67,7 +67,7 @@ def compile_source_search_records(
                     "source_url": compiled["source_url"],
                     "source_title": compiled["source_title"],
                     "source_family": compiled["source_family"],
-                    "reason": unsupported_reason or "unsupported_broad_claim",
+                    "reason": unsupported_reason or "unsupported_or_non_runtime_claim",
                     "evidence_text_short": _short_evidence(text),
                 }
             )
@@ -156,6 +156,7 @@ def _compile_guide_claims(
                 "high",
                 scope="card" if card_ids else "deck",
                 timing="start_of_game",
+                promotion_eligible=True,
             )
         )
 
@@ -190,6 +191,7 @@ def _compile_non_promoting_card_roles(
                     "Public decklist or static page contains this card.",
                     "medium",
                     scope="card",
+                    promotion_eligible=False,
                 )
             )
 
@@ -239,6 +241,7 @@ def _is_promoting_guide_record(record: Mapping[str, Any]) -> bool:
         return False
     return any(
         claim.get("source_confidence") == "high"
+        and claim.get("promotion_eligible", True) is not False
         and claim.get("claim_kind")
         in {
             "mulligan_keep",
@@ -278,6 +281,7 @@ def _claim(
     *,
     scope: str,
     timing: str | None = None,
+    promotion_eligible: bool = True,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "claim_kind": claim_kind,
@@ -285,6 +289,7 @@ def _claim(
         "scope": scope,
         "evidence_text_short": evidence_text_short,
         "source_confidence": source_confidence,
+        "promotion_eligible": promotion_eligible,
     }
     if cards:
         row["cards"] = cards

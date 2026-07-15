@@ -137,7 +137,7 @@ def test_compile_source_search_records_reports_unsupported_broad_claims():
             "source_url": "https://example.test/broad",
             "source_title": "Broad Shadow Priest Tips",
             "source_family": "guide",
-            "reason": "unsupported_broad_claim",
+            "reason": "unsupported_or_non_runtime_claim",
             "evidence_text_short": (
                 "This deck should play aggressively and pressure the opponent "
                 "without describing exact cards, targets, or mulligan choices."
@@ -182,6 +182,7 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
         "scope": "card",
         "evidence_text_short": "Mulligan: Keep Papercraft Angel",
         "source_confidence": "high",
+        "promotion_eligible": True,
         "cards": ["TOY_381"],
         "timing": "mulligan",
     } in payload["records"][0]["claims"]
@@ -229,6 +230,7 @@ def test_compile_source_search_records_limits_hero_power_transform_to_enabler():
             "scope": "card",
             "evidence_text_short": "Darkbishop Benedictus enables the Shadow hero power",
             "source_confidence": "high",
+            "promotion_eligible": True,
             "cards": ["BAR_735"],
             "timing": "start_of_game",
         }
@@ -268,6 +270,7 @@ def test_compile_source_search_records_uses_gameplan_for_hero_power_target_text(
             "Mind Spike can clear the enemy board or go face against slower decks"
         ),
         "source_confidence": "high",
+        "promotion_eligible": True,
     } in claims
 
 
@@ -375,3 +378,68 @@ def test_compile_keeps_snippet_only_guides_diagnostic_only():
     assert payload["source_claim_compiler_report"]["unsupported_claims"][0]["reason"] == (
         "snippet_only_source_not_lowerable"
     )
+
+
+def test_compile_ignores_keep_without_mulligan_context():
+    deck_identity = {
+        "deck_name": "EffectDeck",
+        "deck_slug": "effectdeck",
+        "deck_code_hash": "sha256:effect",
+        "cards": [{"card_id": "CARD_001", "name": "Keepable Name", "cost": 1, "count": 2}],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/no-mulligan",
+            "source_title": "EffectDeck Strategy",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "deck_match": {"deck_name": "EffectDeck", "archetype": "effectdeck", "matched_card_ids": ["CARD_001"]},
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": "Keepable Name is important later. This page does not discuss mulligan or opening hand.",
+        }
+    ]
+
+    compiled = compile_source_search_records(
+        deck_name="EffectDeck",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    assert compiled["records"][0]["mulligan"]["keep_card_ids"] == []
+    assert not any(claim["claim_kind"] == "mulligan_keep" for claim in compiled["records"][0]["claims"])
+    assert compiled["source_claim_compiler_report"]["unsupported_claims"]
+
+
+def test_compile_decklist_card_role_is_non_promoting():
+    deck_identity = {
+        "deck_name": "PirateDH",
+        "deck_slug": "piratedh",
+        "deck_code_hash": "sha256:pirate",
+        "cards": [{"card_id": "CARD_001", "name": "Patches the Pirate", "cost": 1, "count": 1}],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/decklist",
+            "source_title": "Pirate Demon Hunter Decklist",
+            "source_family": "decklist",
+            "source_visibility": "decklist_only",
+            "source_record_strength": "partial",
+            "deck_match": {"deck_name": "PirateDH", "archetype": "piratedh", "matched_card_ids": ["CARD_001"]},
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": "Deck code and card list.",
+        }
+    ]
+
+    compiled = compile_source_search_records(
+        deck_name="PirateDH",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    claim = compiled["records"][0]["claims"][0]
+    assert claim["claim_kind"] == "card_role"
+    assert claim["source_confidence"] == "medium"
+    assert claim["promotion_eligible"] is False
