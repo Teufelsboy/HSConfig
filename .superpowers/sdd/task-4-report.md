@@ -1,50 +1,44 @@
-# Task 4 Report: Representative Deck Evidence Matrix
-
 Status: DONE
 
-## Changed Files
+Files changed
+- `src/hsconfig/operator_summary.py`
+- `tests/test_operator_summary.py`
+- `tests/test_source_to_runtime_explainability.py`
+- `.superpowers/sdd/task-4-report.md`
 
-- `tests/test_multideck_source_backed_e2e.py`
-- `tests/fixtures/source_documents_ctapaladin_strong.json`
-- `tests/fixtures/source_documents_discolock_strong.json`
-- `tests/fixtures/source_documents_kingslayer_strong.json`
-- `tests/fixtures/source_documents_piratedh_strong.json`
-- `tests/fixtures/source_documents_treantdruid_strong.json`
-- `docs/operator/archetype-fixture-matrix.json`
+Requirements implemented
+- Kept `VALID_PACKAGE` and `runtime_apply_allowed=True` intact for partial/non-strong source packages.
+- Added source quality lane-count semantic blockers for non-strong evidence lanes:
+  - `policy_fallback` -> `policy_claim_not_strong_evidence`
+  - `default_runtime` -> `default_runtime_not_strong_evidence`
+  - `snippet_only` -> `snippet_only_source_not_strong_evidence`
+- Wired those blockers into the existing semantic-status path so they block only `SOURCE_BACKED_STRONG`, not technical validity or load-safe apply.
+- Added an operator-summary regression proving `default_runtime` and `snippet_only` lane counts keep a package valid and apply-allowed while preventing strong promotion.
+- Added the brief's explicit explainability regression for policy-backed runtime rows exposing:
+  - `source_lane=policy_fallback`
+  - `runtime_lowering_status=policy_backed_runtime`
+  - `first_missing_source_action=add_explicit_mulligan_source`
 
-## Red Evidence
+Tests run, exact command and result
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py tests/test_source_to_runtime_explainability.py -q`
+  - Initial TDD result: `1 failed, 95 passed in 0.77s`
+  - Expected failure: `test_operator_summary_source_quality_lanes_block_strong_without_blocking_apply` did not find `default_runtime_not_strong_evidence`.
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q`
+  - Final result: `107 passed in 0.57s`
 
-- `python -m pytest tests/test_multideck_source_backed_e2e.py -q`
-  - Result before fixture reclassification: `1 failed, 3 passed`
-  - Expected failure: `test_representative_decks_do_not_fake_source_backed_strong`
-  - First observed drift: `CtAPaladin` still reported `semantic_status=SOURCE_BACKED_STRONG` without exact-list source scope.
+TDD evidence if applicable
+- Added `test_operator_summary_source_quality_lanes_block_strong_without_blocking_apply` before production changes.
+- Confirmed red state: the new test failed because the operator summary had no source-quality lane blockers for `default_runtime` and `snippet_only`.
+- Implemented the minimal production hook in `operator_summary.py`.
+- Re-ran the targeted task verification set and confirmed green.
 
-## Green Evidence
+Self-review notes
+- Change is limited to semantic strongness evidence only.
+- No new apply/load gate was added.
+- `source_to_runtime_explainability.py` already exposed the required fields and mapping, so no production edit was needed there.
+- Existing policy/default-only surface blockers remain unchanged.
+- The report file had stale content from a different Task 4 slice and was replaced with this task's required report.
 
-- `python -m pytest tests/test_multideck_source_backed_e2e.py -q`
-  - Result: `4 passed in 19.87s`
-- `python -m pytest tests/test_multideck_source_backed_e2e.py tests/test_no_default_only_semantic_archetype_matrix.py -q`
-  - Result: `8 passed in 30.67s`
-- `python -m pytest tests/test_multideck_source_backed_e2e.py tests/test_no_default_only_semantic_archetype_matrix.py tests/test_archetype_source_fixtures.py tests/test_matrix_current_truth.py -q`
-  - Result: `55 passed in 29.52s`
-- `git diff --check`
-  - Result: exit code 0; Git printed line-ending normalization warnings only.
-
-## Evidence Reclassification
-
-- `CtAPaladin`: marked guide/mulligan source rows as `archetype_matched_not_exact_list` and low confidence, so the package remains load-safe but no longer promotes strong without exact-list evidence.
-- `Discolock`: downgraded guide-derived discard sequencing, payoff grouping, and Boneweb Egg keep claims to low confidence; metadata/static semantics remain available for load-safe output.
-- `TreantDruid`: downgraded exact-list mulligan and Blood Treant runtime hints to low confidence while preserving token/Treant identity and static semantics.
-- `PirateDH`: retained public fast-pirate identity evidence, but moved Reddit-discussion-derived opener, hero-attack, targeting, disruption, and buff timing claims to policy fallback/report-only strength.
-- `Kingslayer`: added `archetype_matched_not_exact_list` scope marker; existing Quick Pick mulligan gap remains load-safe partial.
-- Matrix docs now include `expected_semantic_status`, source URLs, reasons, and first missing source actions for partial rows.
-
-## Commit
-
-- `d39f5d1 test: align representative deck evidence strength`
-
-## Concerns
-
-- The task plan table listed `Boarlock` as `SOURCE_BACKED_STRONG`, but the live fixture still contains low-confidence Fracking mulligan evidence and currently reports `STATIC_SEMANTICS_USABLE`. I treated `Boarlock` as load-safe partial because promoting it would require inventing public evidence.
-- `docs/operator/archetype-fixture-matrix.json` still keeps the older `fixture_stage` and `strongness_visibility.current_stage` values for some rows so the current-truth tests remain compatible. The new honest evidence status is represented by `expected_semantic_status`.
-- `source_type`, `source_lane`, and `promotion_eligible` fields added to some raw fixtures are evidence annotations; the current builder gate is still driven primarily by `source_confidence`, `source_family`, and claim readiness.
+Concerns
+- An unrelated untracked file exists and was not touched: `docs/superpowers/plans/2026-07-15-hsconfig-source-acquisition-strong-closure.md`.
+- Git reports line-ending normalization warnings for touched LF files; no content issue was observed in the diff.

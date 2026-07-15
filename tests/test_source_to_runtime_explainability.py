@@ -588,6 +588,28 @@ def test_explainability_points_to_first_missing_source_action_for_partial_deck()
     assert row["runtime_lowering_status"] == "policy_backed_runtime"
 
 
+def test_explainability_exposes_policy_backed_runtime_as_non_strong():
+    report = build_source_to_runtime_explainability_report(
+        audit={
+            "claim_rows": [
+                {
+                    "card_id": "CARD_001",
+                    "claim_kind": "mulligan_keep",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_lane": "policy_fallback",
+                    "runtime_backed": True,
+                }
+            ]
+        },
+        runtime_files={"Mulligan.json"},
+    )
+
+    row = report["card_rows"][0]
+    assert row["source_lane"] == "policy_fallback"
+    assert row["runtime_lowering_status"] == "policy_backed_runtime"
+    assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
+
+
 def test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan():
     report = build_source_to_runtime_explainability_report(
         audit={

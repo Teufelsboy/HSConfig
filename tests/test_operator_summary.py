@@ -1831,6 +1831,59 @@ def test_policy_backed_mulligan_blocks_strong_even_when_globalvalues_is_rich():
     )
 
 
+def test_operator_summary_source_quality_lanes_block_strong_without_blocking_apply():
+    summary = build_operator_summary(
+        deck_name="LaneCountFixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 3,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 3,
+            "runtime_emitted": 3,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        source_claim_gap_report={
+            "summary": {
+                "source_quality_lane_counts": {
+                    "deck_matched_public_guide": 1,
+                    "default_runtime": 1,
+                    "snippet_only": 1,
+                }
+            }
+        },
+        generated_files=["CustomConfig/lanecountfixture/GlobalValues.json"],
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    blocker_codes = {
+        blocker.get("code") for blocker in summary.get("semantic_blockers", [])
+    }
+    assert "default_runtime_not_strong_evidence" in blocker_codes
+    assert "snippet_only_source_not_strong_evidence" in blocker_codes
+
+
 def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():
     summary = build_operator_summary(
         deck_name="DiagnosticDeck",

@@ -146,6 +146,9 @@ def build_operator_summary(
     strong_promotion_evidence_blockers = _strong_promotion_evidence_blockers(
         preliminary_config_usefulness
     )
+    strong_promotion_evidence_blockers.extend(
+        _source_quality_lane_blockers(source_claim_gap_report)
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -642,6 +645,41 @@ def _strong_promotion_evidence_blockers(
                 "count": max(1, policy_claim_count),
                 "blocking_strength": "blocks_source_backed_strong",
                 "report": "reports/operator_summary.json",
+            }
+        )
+    return blockers
+
+
+def _source_quality_lane_blockers(
+    source_claim_gap_report: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    summary = (
+        source_claim_gap_report.get("summary", {})
+        if isinstance(source_claim_gap_report, dict)
+        else {}
+    )
+    lane_counts = summary.get("source_quality_lane_counts", {})
+    if not isinstance(lane_counts, dict):
+        return []
+
+    blocker_code_by_lane = {
+        "policy_fallback": "policy_claim_not_strong_evidence",
+        "default_runtime": "default_runtime_not_strong_evidence",
+        "snippet_only": "snippet_only_source_not_strong_evidence",
+    }
+    blockers: list[dict[str, Any]] = []
+    for lane, code in blocker_code_by_lane.items():
+        count = _int_value(lane_counts.get(lane, 0))
+        if count == 0:
+            continue
+        blockers.append(
+            {
+                "code": code,
+                "reason": code,
+                "source_quality_lane": lane,
+                "count": count,
+                "blocking_strength": "blocks_source_backed_strong",
+                "report": "reports/source_claim_gap_report.json",
             }
         )
     return blockers
