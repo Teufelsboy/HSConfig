@@ -10,6 +10,45 @@ SHADOWPRIEST_CODE = (
 )
 
 
+def _fixture_documents(payload):
+    if isinstance(payload, list):
+        return payload
+    return payload["source_documents"]
+
+
+def _claim_card_ids(claim):
+    return set(claim.get("cards", [])) | set(claim.get("card_ids", []))
+
+
+def _darkbishop_claims(path: Path):
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    claims = []
+    for document in _fixture_documents(payload):
+        for claim in document["claims"]:
+            if "SW_448" in _claim_card_ids(claim):
+                claims.append(claim)
+    return claims
+
+
+def test_shadowpriest_darkbishop_fixtures_mark_effect_as_non_opening_hand_claim():
+    fixture_expectations = {
+        Path("tests/fixtures/shadowpriest_guide_sources.json"): {"public_guide"},
+        Path("tests/fixtures/source_documents_shadowpriest_strong.json"): {
+            "official_card_data",
+            "public_guide",
+        },
+    }
+
+    for path, expected_source_types in fixture_expectations.items():
+        claims = _darkbishop_claims(path)
+
+        assert claims
+        assert {claim["claim_kind"] for claim in claims} == {"hero_power_transform"}
+        assert {claim.get("source_type") for claim in claims} == expected_source_types
+        assert all(claim.get("card_ids") == ["SW_448"] for claim in claims)
+        assert all(claim.get("opening_hand_relevant") is False for claim in claims)
+
+
 def test_shadowpriest_source_documents_surface_readiness_gaps(tmp_path: Path):
     out = tmp_path / "shadowpriest"
     source_docs = Path("tests/fixtures/source_documents_shadowpriest_depth.json")
@@ -297,6 +336,7 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
 
     assert result == 0
     assert "SW_448" not in concrete_keeps
+    assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
     assert hero_power_values
     assert any(
         row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
@@ -308,3 +348,8 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert darkbishop_attention[0]["status"] == "runtime_backed"
     assert darkbishop_attention[0]["strongest_claim_kind"] == "hero_power_transform"
     assert darkbishop_attention[0]["default_only_risk"] is False
+    darkbishop_card_row = next(
+        row for row in explainability["card_rows"] if row["card_id"] == "SW_448"
+    )
+    assert darkbishop_card_row["strongest_claim_kind"] == "hero_power_transform"
+    assert darkbishop_card_row["closure"]["default_only_risk"] is False

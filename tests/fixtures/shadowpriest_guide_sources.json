@@ -8,10 +8,13 @@
       {
         "claim_kind": "hero_power_transform",
         "cards": ["SW_448"],
+        "card_ids": ["SW_448"],
         "stance": "shadowform_mind_spike",
         "runtime_block": "BeforeUseHeroPowerBonus",
         "runtime_value": "6",
         "condition": "*",
+        "opening_hand_relevant": false,
+        "source_type": "public_guide",
         "evidence_text_short": "Darkbishop Benedictus enables Shadowform and the Mind Spike hero power at Start of Game; the effect matters without keeping the card in the opening hand.",
         "source_confidence": "high"
       },
