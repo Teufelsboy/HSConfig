@@ -12,10 +12,10 @@ def build_strong_promotion_report(
     operator_summary: dict[str, Any],
     source_claim_gap_report: dict[str, Any],
 ) -> dict[str, Any]:
-    surface_blockers = _normal_path_surface_blockers(operator_summary)
     semantic_blockers = [
         *list(operator_summary.get("semantic_blockers", [])),
-        *surface_blockers,
+        *_default_only_runtime_surface_blockers(operator_summary),
+        *_normal_path_surface_blockers(operator_summary),
     ]
     source_gap_summary = source_claim_gap_report.get("summary", {})
     if not isinstance(source_gap_summary, dict):
@@ -48,6 +48,7 @@ def build_strong_promotion_report(
         "static_contract_status": _static_contract_status(
             operator_summary=operator_summary,
             source_gaps_closed=source_gaps_closed,
+            semantic_blockers=semantic_blockers,
         ),
         "runtime_lowering_status": _runtime_lowering_status(
             promotion_ready=promotion_ready,
@@ -77,11 +78,13 @@ def _static_contract_status(
     *,
     operator_summary: dict[str, Any],
     source_gaps_closed: bool,
+    semantic_blockers: list[dict[str, Any]],
 ) -> str:
     if (
         operator_summary.get("technical_status") == "VALID_PACKAGE"
         and operator_summary.get("semantic_status") == "SOURCE_BACKED_STRONG"
         and source_gaps_closed
+        and not semantic_blockers
     ):
         return "SOURCE_BACKED_STRONG"
     if operator_summary.get("technical_status") == "VALID_PACKAGE":
@@ -169,6 +172,32 @@ def _normal_path_surface_blockers(operator_summary: dict[str, Any]) -> list[dict
             {
                 "reason": "normal_path_optional_surface_present",
                 "generated_file": normalized_path,
+            }
+        )
+    return blockers
+
+
+def _default_only_runtime_surface_blockers(
+    operator_summary: dict[str, Any],
+) -> list[dict[str, str]]:
+    surfaces = operator_summary.get("default_only_runtime_surfaces", [])
+    if not isinstance(surfaces, list):
+        return []
+    existing_blocked_surfaces = {
+        str(row.get("surface"))
+        for row in operator_summary.get("semantic_blockers", [])
+        if isinstance(row, dict)
+        and str(row.get("reason") or row.get("code"))
+        == "default_only_surface_not_strong_evidence"
+    }
+    blockers: list[dict[str, str]] = []
+    for surface in sorted(str(item) for item in surfaces if str(item)):
+        if surface in existing_blocked_surfaces:
+            continue
+        blockers.append(
+            {
+                "reason": "default_only_surface_not_strong_evidence",
+                "surface": surface,
             }
         )
     return blockers

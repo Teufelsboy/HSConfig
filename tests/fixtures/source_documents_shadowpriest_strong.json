@@ -22,6 +22,24 @@
           "stance": "shadowform_mind_spike",
           "evidence_text_short": "Shadow Priest uses Darkbishop Benedictus for the Shadowform hero power as part of its burst plan.",
           "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["SW_446"],
+          "stance": "always_keep",
+          "roles": ["mulligan_keep"],
+          "condition": "*",
+          "evidence_text_short": "The guide's Mulligans section identifies Voidtouched Attendant as an always-good keep.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "mulligan_keep",
+          "cards": ["GVG_009"],
+          "stance": "good_keep",
+          "roles": ["mulligan_keep"],
+          "condition": "*",
+          "evidence_text_short": "The guide's Mulligans section identifies Shadowbomber as a good keep.",
+          "source_confidence": "high"
         }
       ]
     },

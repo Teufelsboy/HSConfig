@@ -6,6 +6,25 @@ from hsconfig.source_to_runtime_explainability import (
 )
 
 
+def _source_backed_mulligan_plan_report():
+    return {
+        "rules": [
+            {
+                "card": "SOURCE_KEEP",
+                "selector_kind": "card",
+                "action": "hold",
+                "source_type": "source_backed",
+            }
+        ],
+        "quality": {
+            "status": "rich",
+            "has_concrete_keeps": True,
+            "default_only": False,
+            "source_backed_rule_count": 1,
+        },
+    }
+
+
 @pytest.mark.parametrize(
     ("surface", "runtime_files", "expected"),
     [
@@ -39,6 +58,7 @@ def test_source_backed_valid_package_is_ready_to_apply():
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -269,6 +289,7 @@ def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
             ]
         },
         generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 2,
@@ -414,6 +435,7 @@ def test_source_backed_without_effective_claims_requests_more_research():
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=[],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -430,6 +452,7 @@ def test_operator_summary_marks_valid_package_not_guide_strong_when_many_cards_n
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "total_cards": 10,
             "guide_backed_cards": 1,
@@ -490,6 +513,7 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 3,
@@ -541,6 +565,7 @@ def test_operator_summary_demotes_from_per_card_report_when_summary_is_omitted()
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 2,
@@ -646,6 +671,7 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 2,
@@ -948,6 +974,7 @@ def test_source_evidence_warnings_prevent_source_backed_strong():
             "cards_needing_mechanic_lowering": 0,
         },
         claim_conflict_report={"conflict_count": 0},
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
@@ -995,6 +1022,7 @@ def test_operator_summary_can_mark_source_informed_ready_for_source_depth_only_g
             "CustomConfig\\deck\\Mulligan.json",
             "CustomConfig\\deck\\EXAMPLE_001.json",
         ],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -1041,6 +1069,7 @@ def test_operator_summary_blocks_source_informed_ready_when_compat_summary_has_a
             "CustomConfig\\deck\\Mulligan.json",
             "CustomConfig\\deck\\EXAMPLE_001.json",
         ],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -1098,6 +1127,7 @@ def test_operator_summary_blocks_source_backed_strong_when_compat_summary_has_pu
             "CustomConfig\\deck\\GlobalValues.json",
             "CustomConfig\\deck\\Mulligan.json",
         ],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -1124,6 +1154,7 @@ def test_operator_summary_marks_mulligan_only_gap_source_informed_apply_ready():
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/kingslayer/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 10,
@@ -1188,6 +1219,7 @@ def test_operator_summary_blocks_strong_apply_when_unsupported_conditions_are_pr
         unsupported_conditions=[{"card_id": "CARD_A", "reason": "unsupported_condition"}],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 10,
@@ -1235,6 +1267,7 @@ def test_operator_summary_blocks_source_informed_apply_when_uncovered_summary_is
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 9,
@@ -1283,6 +1316,7 @@ def test_operator_summary_blocks_source_informed_apply_when_runtime_surface_gap_
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
         generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 10,
@@ -1343,6 +1377,7 @@ def test_operator_summary_source_backed_exposes_load_safe_runtime_apply_mode():
             "CustomConfig/strongdeck/Mulligan.json",
             "CustomConfig/strongdeck/EX1_001.json",
         ],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 1,
@@ -1669,6 +1704,129 @@ def test_default_only_surface_blocks_strong_promotion_but_not_load_safe_apply():
     assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
     assert any(
         row.get("code") == "default_only_surface_not_strong_evidence"
+        for row in summary.get("semantic_blockers", [])
+    )
+
+
+def test_missing_mulligan_report_default_only_surface_blocks_strong_promotion():
+    summary = build_operator_summary(
+        deck_name="MissingMulliganReport",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        generated_files=[
+            "CustomConfig/missingmulliganreport/GlobalValues.json",
+            "CustomConfig/missingmulliganreport/Mulligan.json",
+        ],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "runtime_emitted": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        globalvalues_profile_report={
+            "changed_keys": ["FirstTurnValueWeight"],
+            "unchanged_keys": [],
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert any(
+        row.get("code") == "default_only_surface_not_strong_evidence"
+        and row.get("surface") == "mulligan"
+        for row in summary.get("semantic_blockers", [])
+    )
+
+
+def test_policy_backed_mulligan_blocks_strong_even_when_globalvalues_is_rich():
+    summary = build_operator_summary(
+        deck_name="MixedPolicyBackedDeck",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        generated_files=[
+            "CustomConfig/mixedpolicybackeddeck/GlobalValues.json",
+            "CustomConfig/mixedpolicybackeddeck/Mulligan.json",
+        ],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "runtime_emitted": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        globalvalues_profile_report={
+            "changed_keys": ["FirstTurnValueWeight"],
+            "unchanged_keys": [],
+        },
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == []
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert any(
+        row.get("code") == "policy_claim_not_strong_evidence"
+        and row.get("surface") == "mulligan"
         for row in summary.get("semantic_blockers", [])
     )
 
@@ -2183,6 +2341,7 @@ def test_operator_summary_exposes_source_to_runtime_explainability_without_block
             "CustomConfig/explaindeck/GlobalValues.json",
             "CustomConfig/explaindeck/Mulligan.json",
         ],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
     )
 
     explainability = summary["source_to_runtime_explainability_summary"]

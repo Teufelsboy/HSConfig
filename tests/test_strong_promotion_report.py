@@ -22,6 +22,29 @@ def test_report_marks_source_backed_strong_as_promotable():
     assert report["next_action"] == "fixture_can_be_core_source_backed"
 
 
+def test_report_blocks_default_only_runtime_surface_from_operator_summary():
+    report = build_strong_promotion_report(
+        deck_name="ThinMulliganDeck",
+        fixture_stage="core_source_backed_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "semantic_blockers": [],
+            "default_only_runtime_surfaces": ["mulligan"],
+        },
+        source_claim_gap_report={"summary": {"blocked_cards": 0}, "cards": {}},
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["verdict"] == "PROMOTION_BLOCKED"
+    assert report["runtime_lowering_status"] == "LOAD_SAFE_WITH_POLICY_OR_REVIEW_ROWS"
+    assert {
+        "reason": "default_only_surface_not_strong_evidence",
+        "surface": "mulligan",
+    } in report["semantic_blockers"]
+
+
 def test_report_blocks_strong_promotion_when_deck_surface_gap_is_open():
     first_missing_chain = {
         "surface": "mulligan",
