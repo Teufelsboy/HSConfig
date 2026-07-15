@@ -144,6 +144,11 @@ diagnostic reports must not become apply gates. default-only runtime surfaces
 must be visible, not silent.
 source_evidence_closure.json is diagnostic-only package-quality summary, not an
 apply authority.
+operator_summary.json.source_backed_strong_closure and
+operator_summary.json.no_default_only_runtime_status are compact
+diagnostic-only summaries. They expose honest Strong closure and visible
+no-default-only runtime status; they do not create apply gates and do not
+replace reports/operator_summary.json authority.
 
 `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
 the normal HSConfig path.

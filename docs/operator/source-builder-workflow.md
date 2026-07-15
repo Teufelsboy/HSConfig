@@ -17,6 +17,14 @@ Normal path:
 7. Read `reports/operator_summary.json` first.
 8. Run `hsconfig apply` only after `reports/operator_summary.json` shows the package is runtime-load-safe. `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane. `--allow-source-informed` is a backward-compatible legacy no-op. It does not create a second apply path. Runtime apply decisions come from `reports/operator_summary.json`.
 
+Recommended fresh deck command:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply
+```
+
+If public sources are thin, the command still writes a valid package and reports the first missing source action. Do not manually relabel `SOURCE_BACKED_PARTIAL` as `SOURCE_BACKED_STRONG`.
+
 Guide strength is not the write gate. When `technical_status=VALID_PACKAGE` and
 `runtime_apply_mode=load_safe_apply`, HSConfig may apply the initial package
 even if `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`. Use the warnings to
@@ -43,6 +51,7 @@ Every card should reach one visible lane: `guide_backed`, `source_backed_static_
 Every expected runtime surface must be emitted, explicitly suppressed, or
 reported as a gap or source action. Thin or weak source is non-blocking, but it
 must stay visible instead of becoming hidden default-only runtime.
+`operator_summary.json.source_backed_strong_closure` and `operator_summary.json.no_default_only_runtime_status` are compact diagnostic-only summaries. They expose whether Strong closure is honest and whether default-only runtime stayed visible, but they do not create apply gates and do not replace `reports/operator_summary.json` authority.
 
 For Mulligan evidence, prefer exact, source-backed claims over broad archetype guesses. The source document builder accepts both canonical and convenience fields, but each claim should still preserve the source family, source confidence, selector, condition, and short evidence text so `Mulligan.json` can be rich without becoming a load-safety gate.
 

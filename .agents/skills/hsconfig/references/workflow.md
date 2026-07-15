@@ -11,6 +11,13 @@ Normal workflow:
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. Open `reports/operator_summary.json` first.
+Recommended fresh deck command:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply
+```
+
+If public sources are thin, the command still writes a valid package and reports the first missing source action. Do not manually relabel `SOURCE_BACKED_PARTIAL` as `SOURCE_BACKED_STRONG`.
 When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`.
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
@@ -30,6 +37,7 @@ Normal `prepare` reports include `operator_summary.json`, `deckstring_decode_rec
 `source_contract_audit.json.claim_lifecycle_rows` is diagnostic-only: it traces source -> policy -> surface gate -> builder/router -> emitted/suppressed. `policy_lane` is static policy, not runtime emission; readiness and apply authority stay in `operator_summary.json`. `hsconfig contract-doctor --package <package> --json` is optional runtime-read-only diagnostics; operator_summary.json remains the only normal apply authority.
 `source_to_runtime_explainability.json` is the card-readable diagnostic projection of the same chain. It names emitted runtime files, missing runtime files, first missing links, and next source actions per claim/card. `operator_summary.json.source_to_runtime_explainability_summary` is non-blocking and never grants apply permission.
 `source_evidence_closure.json` is the compact diagnostic package-quality closure summary; it mirrors source-to-runtime and operator summaries without creating another apply path.
+`operator_summary.json.source_backed_strong_closure` and `operator_summary.json.no_default_only_runtime_status` are compact diagnostic-only summaries. They expose honest Strong closure and visible no-default-only runtime status; they do not create apply gates and do not replace `reports/operator_summary.json` authority.
 The contract conformance snapshot is documentation-as-code for claim-kind policy and surface-gate drift; it does not create a second operator apply path, and operator_summary.json remains the normal apply authority.
 
 `contract_spine_rows` are diagnostic. They provide the compact source -> policy -> surface gate -> builder/router -> runtime effect chain for each claim kind. They do not grant apply permission, and operator_summary.json remains the normal apply authority.

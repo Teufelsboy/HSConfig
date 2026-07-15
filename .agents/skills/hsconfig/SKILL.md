@@ -17,6 +17,11 @@ Normal workflow:
 3. Open `reports/operator_summary.json` first.
 For fresh public-guide-backed configs, prefer `hsconfig configure ... --online-source --auto-source --source-url "<public-guide-url>" --json`; if no URL is known, use Codex/web research and repeated `--source-url`; weak or missing coverage is non-blocking and must stay visible in acquisition/operator reports.
 
+For an optimal fresh deck config, prefer the source-backed path:
+`hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
+
+Do not block a valid deck because public guide coverage is thin. Build the load-safe config, keep `operator_summary.json` as the apply authority, and report `first_missing_source_action` when `SOURCE_BACKED_STRONG` is not honestly closed.
+
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority.
 
 - Treat source claim kind and runtime surface authority as separate decisions.
@@ -55,6 +60,7 @@ Operator rules:
 - Never treat `policy_lane` alone as runtime emission. Check `source_contract_audit.json.claim_lifecycle_rows` for source -> policy -> surface gate -> builder/router -> emitted/suppressed diagnostics, and use `operator_summary.json` for normal readiness.
 - `reports/source_contract_audit.json` explains why each claim did or did not lower to `Mulligan.json`, `GlobalValues.json`, `Combo.json`, or `per-card <CARDID>.json`; it is diagnostic and does not replace `operator_summary.json`. Optional diagnostic: `hsconfig contract-doctor --package <package> --json`; operator_summary.json remains the only normal apply authority.
 - `reports/source_to_runtime_explainability.json` is the card-readable diagnostic projection with per-card closure rows, emitted/missing runtime files, first missing links, and next source actions; `reports/source_evidence_closure.json` is the compact diagnostic package-quality closure summary. In `operator_summary.json`, `closure_schema_current`, `cards_missing_closure`, and `default_only_runtime_surface_details` are diagnostic-only freshness/usefulness signals; `operator_summary.json remains the only normal apply authority`.
+- `operator_summary.json.source_backed_strong_closure` and `operator_summary.json.no_default_only_runtime_status` are compact diagnostic-only summaries. They expose honest Strong closure and visible no-default-only runtime status; they do not create apply gates and do not replace `reports/operator_summary.json` authority.
 - Open `operator_summary.json.source_claim_quality_summary` when a deck is valid but thin. It is non-blocking source-depth visibility, not a second apply path.
 - When a package is technically valid but source depth is weak, continue and report the debt. Do not block valid deck packages because a claim is low confidence, report-only, unsupported by a runtime surface, or visible only in `source_contract_audit.json`.
 - `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.

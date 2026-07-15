@@ -23,7 +23,12 @@ runtime apply is no longer blocked by source strength. The representative matrix
 ## SOURCE_BACKED_STRONG Contract
 
 HSConfig always attempts to generate a load-safe valid package for any valid deck code.
-`SOURCE_BACKED_STRONG` is an evidence label, not a package generation or load-safe apply gate.
+`SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation gate. HSConfig must still build a valid load-safe config when public source coverage is partial. A deck or surface may only be Strong when every lowerable claim has visible source text or deterministic official static semantics, no expected runtime surface is default-only, and `first_missing_source_action` is `none`.
+Operator shorthand: SOURCE_BACKED_STRONG is an evidence-quality label and not a second runtime-write gate.
+`reports/operator_summary.json` remains the only normal apply authority.
+Plain operator wording: operator_summary.json remains the only normal apply authority.
+
+`source_backed_strong_closure` and `no_default_only_runtime_status` are compact diagnostic-only `operator_summary.json` summaries. `source_backed_strong_closure` summarizes whether the visible source-to-runtime chain is closed enough for the Strong label. `no_default_only_runtime_status` summarizes whether expected runtime surfaces avoided hidden default-only output. They do not create apply gates, do not grant or deny runtime writes, and do not replace `reports/operator_summary.json` authority.
 
 A package may be `SOURCE_BACKED_STRONG` only when:
 

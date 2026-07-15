@@ -160,6 +160,41 @@ def test_source_backed_closure_uses_promotion_blocker_language():
     assert "runtime apply is no longer blocked by source strength" in text
 
 
+def test_docs_define_source_backed_strong_without_second_gate():
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "docs" / "operator" / "source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "SOURCE_BACKED_STRONG is an evidence-quality label" in text
+    assert "operator_summary.json remains the only normal apply authority" in text
+    assert "valid load-safe config" in text
+    assert "default-only" in text
+
+
+def test_operator_docs_define_closure_diagnostics_as_summaries_not_gates():
+    closure = Path("docs/operator/source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+    workflow = Path("docs/operator/source-builder-workflow.md").read_text(
+        encoding="utf-8"
+    )
+    policy = Path("docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    combined = "\n".join([closure, workflow, policy])
+
+    assert "source_backed_strong_closure" in combined
+    assert "no_default_only_runtime_status" in combined
+    assert (
+        "`source_backed_strong_closure` and "
+        "`no_default_only_runtime_status` are compact diagnostic-only "
+        "`operator_summary.json` summaries"
+    ) in closure
+    assert "They do not create apply gates" in closure
+    assert "do not replace `reports/operator_summary.json` authority" in closure
+
+
 def test_operator_docs_name_load_safe_apply_as_hsconfig_policy():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 
