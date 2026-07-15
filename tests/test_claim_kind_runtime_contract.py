@@ -384,7 +384,7 @@ def test_negated_opening_hand_text_does_not_allow_start_of_game_mulligan_keep():
     context = {
         "card_roles": {
             "CARD_START": {
-                "roles": ["start_of_game", "hero_power_transform"],
+                "roles": ["start_of_game", "hero_power_transform", "mulligan_anchor"],
             }
         }
     }

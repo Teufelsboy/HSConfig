@@ -368,6 +368,7 @@ def test_verifier_warns_for_negated_opening_hand_non_hand_qualifier_keep():
                     {
                         "claim_kind": "mulligan_keep",
                         "cards": ["NON_HAND_EFFECT"],
+                        "roles": ["mulligan_anchor"],
                         "deck_evaluation": "No Duplicates",
                         "evidence_text_short": (
                             "This effect matters, but do not keep it in the opening hand."

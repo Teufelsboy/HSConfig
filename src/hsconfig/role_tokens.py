@@ -122,29 +122,43 @@ def has_explicit_opening_hand_mulligan_intent(
         for role in roles
         for token in role_tokens(role)
     }
+    text = _opening_hand_mulligan_text(claims)
+    if _has_negated_opening_hand_mulligan_text(text):
+        return False
     if normalized_roles & EXPLICIT_OPENING_HAND_MULLIGAN_ROLES:
         return True
 
-    text_parts: list[str] = []
     for claim in _iter_claims(claims):
         if claim_role_tokens(claim) & EXPLICIT_OPENING_HAND_MULLIGAN_ROLES:
             return True
+    return _has_positive_opening_hand_mulligan_text(text)
+
+
+def _opening_hand_mulligan_text(
+    claims: Mapping[str, Any] | Iterable[Mapping[str, Any]] | None,
+) -> str:
+    text_parts: list[str] = []
+    for claim in _iter_claims(claims):
         for key in ("evidence_text_short", "claim", "text", "operator_meaning"):
             value = claim.get(key)
             if value:
                 text_parts.append(str(value))
-    text = " ".join(text_parts).lower()
-    return _has_positive_opening_hand_mulligan_text(text)
+    return " ".join(text_parts).lower()
+
+
+def _has_negated_opening_hand_mulligan_text(text: str) -> bool:
+    normalized = " ".join(text.split())
+    return bool(normalized) and any(
+        pattern.search(normalized)
+        for pattern in OPENING_HAND_MULLIGAN_NEGATED_PATTERNS
+    )
 
 
 def _has_positive_opening_hand_mulligan_text(text: str) -> bool:
     normalized = " ".join(text.split())
     if not normalized:
         return False
-    if any(
-        pattern.search(normalized)
-        for pattern in OPENING_HAND_MULLIGAN_NEGATED_PATTERNS
-    ):
+    if _has_negated_opening_hand_mulligan_text(normalized):
         return False
     return any(
         pattern.search(normalized)
