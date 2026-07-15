@@ -3,6 +3,7 @@ from __future__ import annotations
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
+from hsconfig.source_contract_audit import build_source_contract_audit
 
 
 def _fixture_audit() -> dict:
@@ -580,6 +581,69 @@ def test_explainability_points_to_first_missing_source_action_for_partial_deck()
         },
         runtime_files={"Mulligan.json"},
     )
+
+    row = report["card_rows"][0]
+    assert row["source_lane"] == "policy_fallback"
+    assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert row["runtime_lowering_status"] == "policy_backed_runtime"
+
+
+def test_explainability_preserves_policy_fallback_from_legacy_audit_report():
+    audit_report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [
+                {
+                    "card_id": "POLICY_KEEP",
+                    "name": "Policy Keep",
+                    "count": 1,
+                }
+            ],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "policy_keep_claim",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["POLICY_KEEP"],
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_lane": "policy_fallback",
+                }
+            ]
+        },
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "POLICY_KEEP",
+                    "action": "hold",
+                    "source_claim_ids": ["policy_keep_claim"],
+                }
+            ],
+            "suppressed_rules": [],
+        },
+        config_readiness_report={
+            "cards": {
+                "POLICY_KEEP": {
+                    "name": "Policy Keep",
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "readiness_lane": "mulligan_only",
+                    "first_missing_link": "none",
+                }
+            }
+        },
+        runtime_emission_index={
+            "policy_keep_claim": {
+                "decision": "emitted",
+                "runtime_surface": "Mulligan.json",
+                "emitted_files": ["Mulligan.json"],
+            }
+        },
+    )
+
+    report = build_source_to_runtime_explainability_report(audit_report)
 
     row = report["card_rows"][0]
     assert row["source_lane"] == "policy_fallback"

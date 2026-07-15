@@ -114,6 +114,8 @@ def build_source_contract_audit(
             "trust_ceiling": str(claim.get("trust_ceiling", "")),
             "source_title": str(claim.get("source_title", "")),
             "evidence_text_short": str(claim.get("evidence_text_short", "")),
+            "source_type": str(claim.get("source_type", "")),
+            "source_lane": str(claim.get("source_lane", "")),
             "cards": cards,
             "lane": lane,
             "policy_lane": policy_lane,

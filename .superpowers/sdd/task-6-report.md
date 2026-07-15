@@ -66,3 +66,58 @@ Result:
 
 - The red test initially failed at the new compact interface boundary rather than at field lookup. That still proves the requested compact source-policy explainability path was absent before implementation.
 - Pre-existing unrelated working-tree edits remain untouched in docs and skill files outside this task scope.
+
+## Review Follow-up: Legacy Policy Fallback Preservation
+
+### RED
+
+Added a regression that creates a source-contract audit from a
+`policy_backed_autonomous_mulligan` `mulligan_keep` claim with
+`source_lane=policy_fallback`, emits `Mulligan.json`, and passes that audit
+through the legacy positional explainability interface.
+
+```powershell
+python -m pytest tests/test_source_to_runtime_explainability.py::test_explainability_preserves_policy_fallback_from_legacy_audit_report -q
+```
+
+Before the fix: `1 failed in 0.29s`.
+
+The legacy row was incorrectly projected as `source_lane=runtime_lowered`
+because `build_source_contract_audit()` discarded the original source metadata.
+
+### GREEN
+
+`build_source_contract_audit()` now carries `source_type` and `source_lane`
+from each original claim into its canonical `claim_rows` projection. The
+existing explainability enrichment therefore retains the policy fallback
+without inventing source-backed evidence.
+
+The regression now verifies:
+
+- `source_lane=policy_fallback`
+- `first_missing_source_action=add_explicit_mulligan_source`
+- `runtime_lowering_status=policy_backed_runtime`
+
+### Files Changed
+
+- `src/hsconfig/source_contract_audit.py`
+- `tests/test_source_to_runtime_explainability.py`
+- `.superpowers/sdd/task-6-report.md`
+
+### Tests
+
+```powershell
+python -m pytest tests/test_source_to_runtime_explainability.py::test_explainability_preserves_policy_fallback_from_legacy_audit_report -q
+# 1 passed in 0.11s
+
+python -m pytest tests/test_source_to_runtime_explainability.py tests/test_source_claim_gap_report.py tests/test_operator_summary.py tests/test_source_contract_closure_wave.py -q
+# 115 passed in 15.14s
+
+git diff --check
+# exit 0
+```
+
+### Concerns
+
+- This remains diagnostic-only: no apply gate or deck-blocking behavior was added.
+- Pre-existing unrelated working-tree edits remain untouched.
