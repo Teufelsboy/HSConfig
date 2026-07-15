@@ -155,9 +155,7 @@ def collect_public_source_records(
         "source_record_count": len(records),
         "failed_fetch_count": len(failures),
         "failures": failures,
-        "first_missing_source_action": (
-            "none" if records else "add_public_guide_url_or_use_static_semantics"
-        ),
+        "first_missing_source_action": _report_first_missing_source_action(records),
     }
     return {
         "schema_version": 1,
@@ -166,6 +164,16 @@ def collect_public_source_records(
         "source_records": records,
         "source_acquisition_report": report,
     }
+
+
+def _report_first_missing_source_action(records: Sequence[Mapping[str, Any]]) -> str:
+    if not records:
+        return "add_public_guide_url_or_use_static_semantics"
+    for record in records:
+        action = str(record.get("first_missing_source_action") or "").strip()
+        if action and action != "none":
+            return action
+    return "none"
 
 
 def _default_fetcher(

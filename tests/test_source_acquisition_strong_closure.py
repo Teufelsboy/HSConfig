@@ -29,6 +29,14 @@ def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
             "the current Shadow Priest deck.</p>"
             "</body></html>"
         ),
+        "https://example.test/stale-guide": (
+            "<html><head><title>Shadow Priest Mulligan Guide 2025</title></head>"
+            "<body><p>Published July 15, 2025.</p>"
+            "<p>Mulligan: Keep Papercraft Angel.</p>"
+            "<p>This full current-looking guide explains opening turns, matchup posture, "
+            "hero power usage, pressure planning, and detailed mulligan priorities.</p>"
+            "</body></html>"
+        ),
     }
     return 200, "text/html", pages[url].encode("utf-8")
 
@@ -106,6 +114,46 @@ def test_acquisition_marks_decklist_and_snippets_non_promoting():
     assert by_url["https://example.test/snippet"]["strong_promotion_eligible"] is False
 
 
+def test_acquisition_report_uses_first_missing_action_from_non_strong_records():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "CARD_001", "name": "Patches the Pirate", "cost": 1, "count": 1},
+        ],
+    }
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=[
+            "https://example.test/decklist-only",
+            "https://example.test/snippet",
+            "https://example.test/stale-guide",
+        ],
+        current_date="2026-07-15",
+        fetcher=_fetcher,
+        resolver=_resolver,
+    )
+
+    records = payload["source_records"]
+    assert [record["source_document_kind"] for record in records] == [
+        "decklist",
+        "snippet",
+        "guide",
+    ]
+    assert {record["strong_promotion_eligible"] for record in records} == {False}
+    missing_actions = [
+        record["first_missing_source_action"]
+        for record in records
+        if record["first_missing_source_action"] != "none"
+    ]
+    assert missing_actions
+    assert payload["source_acquisition_report"]["first_missing_source_action"] == missing_actions[0]
+
+
 def test_acquisition_prefers_current_publication_year_over_older_history():
     deck_identity = {
         "deck_name": "ShadowPriest",
@@ -136,24 +184,12 @@ def test_acquisition_policy_fields_make_stale_guides_non_strong():
         "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2}],
     }
 
-    def fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
-        del url, timeout_seconds
-        html = (
-            "<html><head><title>Shadow Priest Mulligan Guide 2025</title></head>"
-            "<body><p>Published July 15, 2025.</p>"
-            "<p>Mulligan: Keep Papercraft Angel.</p>"
-            "<p>This full current-looking guide explains opening turns, matchup posture, "
-            "hero power usage, pressure planning, and detailed mulligan priorities.</p>"
-            "</body></html>"
-        )
-        return 200, "text/html", html.encode("utf-8")
-
     payload = collect_public_source_records(
         deck_name="ShadowPriest",
         deck_identity=deck_identity,
         source_urls=["https://example.test/stale-guide"],
         current_date="2026-07-15",
-        fetcher=fetcher,
+        fetcher=_fetcher,
         resolver=_resolver,
     )
 

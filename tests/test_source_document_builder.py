@@ -86,6 +86,49 @@ def test_source_document_builder_carries_strong_source_quality_metadata():
     assert qualified["strong_promotion_eligible"] is True
 
 
+def test_source_document_builder_blocks_stale_candidate_strong_guide_claims():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/old-fixture-guide",
+            "source_title": "Old Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2024-01-01T00:00:00Z",
+            "deck_name": "Fixture",
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "deck_match_scope": "deck_or_archetype_matched",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "stance": "keep",
+                    "evidence_text_short": "Mulligan: Keep Card A.",
+                    "source_confidence": "high",
+                    "source_record_strength": "candidate_strong",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+        current_date="2026-07-07",
+    )
+    claim = bundle["claims"][0]
+    qualified = qualify_source_claim(claim)
+
+    assert claim["freshness_status"] == "stale"
+    assert claim["claim_confidence"] == "medium"
+    assert qualified["promotion_eligible"] is True
+    assert qualified["strong_promotion_eligible"] is False
+
+
 def test_source_document_builder_preserves_non_promoting_partial_metadata():
     deck_identity = {
         "deck_name": "Fixture",

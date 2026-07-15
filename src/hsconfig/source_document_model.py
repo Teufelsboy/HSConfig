@@ -305,6 +305,9 @@ def _strong_promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bo
         return False
     if source_type not in {"community_guide", "public_guide"}:
         return False
+    freshness_status = _normalized_text(claim.get("freshness_status"))
+    if freshness_status and freshness_status != "current":
+        return False
     if _normalized_text(claim.get("source_visibility")) != "full_text":
         return False
     if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
