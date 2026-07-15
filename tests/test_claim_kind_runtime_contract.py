@@ -8,6 +8,7 @@ from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.source_document_model import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    qualify_source_claim,
     runtime_claim_kind,
     surface_gate_decision,
 )
@@ -201,6 +202,37 @@ def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():
 
     assert decision.allowed is False
     assert decision.reason == "claim_kind_not_mulligan_surface"
+
+
+def test_hero_power_transform_is_strong_static_but_not_opening_hand_relevant():
+    claim = qualify_source_claim(
+        {
+            "claim_id": "claim-sw448",
+            "claim_kind": "hero_power_transform",
+            "source_type": "official_card_data",
+            "card_ids": ["SW_448"],
+        }
+    )
+
+    assert claim["promotion_eligible"] is True
+    assert claim["strong_static_claim"] is True
+    assert claim["opening_hand_relevant"] is False
+    assert claim["runtime_lowering"] in {"cardid_or_contract_only", "contract_only"}
+
+
+def test_policy_backed_claim_is_never_strong_promotion_evidence():
+    claim = qualify_source_claim(
+        {
+            "claim_id": "policy-keep",
+            "claim_kind": "mulligan_keep",
+            "source_type": "policy_backed_autonomous_mulligan",
+            "card_ids": ["CARD_001"],
+        }
+    )
+
+    assert claim["promotion_eligible"] is False
+    assert claim["strong_static_claim"] is False
+    assert claim["source_lane"] == "policy_fallback"
 
 
 def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():

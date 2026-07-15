@@ -168,6 +168,83 @@ def runtime_claim_kind(claim: Mapping[str, Any]) -> str:
     return normalized_claim_kind(claim)
 
 
+def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
+    """Return source-quality metadata for strong promotion diagnostics."""
+    normalized = dict(claim)
+    claim_kind = normalized_claim_kind(normalized)
+    source_type = str(normalized.get("source_type") or normalized.get("provenance") or "")
+    normalized["claim_kind"] = claim_kind
+    normalized["source_lane"] = _source_lane(source_type, normalized)
+    normalized["deck_match_scope"] = str(normalized.get("deck_match_scope") or "unknown")
+    normalized["opening_hand_relevant"] = _opening_hand_relevant(claim_kind, normalized)
+    normalized["runtime_lowering"] = _runtime_lowering(claim_kind)
+    normalized["promotion_eligible"] = _promotion_eligible(source_type, normalized)
+    normalized["strong_static_claim"] = bool(
+        normalized["promotion_eligible"]
+        and claim_kind
+        in {
+            "hero_power_transform",
+            "card_role",
+            "gameplan_posture",
+            "targeting_rule",
+            "combo_sequence",
+            "mulligan_keep",
+            "mulligan_discard",
+        }
+    )
+    return normalized
+
+
+def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
+    if source_type == "policy_backed_autonomous_mulligan":
+        return "policy_fallback"
+    if source_type in {"official_card_data", "hearthstonejson", "blizzard_card_library"}:
+        return "official_static_semantics"
+    if source_type in {"community_guide", "public_guide"}:
+        return str(claim.get("source_lane") or "deck_matched_public_guide")
+    if source_type in {"replay_stat_aggregate", "hsreplay", "hsguru"}:
+        return "statistical_enrichment"
+    return str(claim.get("source_lane") or "unknown")
+
+
+def _opening_hand_relevant(claim_kind: str, claim: Mapping[str, Any]) -> bool:
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        return True
+    if "opening_hand_relevant" in claim:
+        return bool(claim["opening_hand_relevant"])
+    return False
+
+
+def _runtime_lowering(claim_kind: str) -> str:
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        return "mulligan"
+    if claim_kind == "combo_sequence":
+        return "combo"
+    if claim_kind in {"targeting_rule", "hero_power_transform", "card_role"}:
+        return "cardid_or_contract_only"
+    if claim_kind == "gameplan_posture":
+        return "globalvalues_or_contract_only"
+    return "contract_only"
+
+
+def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
+    if source_type == "policy_backed_autonomous_mulligan":
+        return False
+    if source_type in {"default_runtime", "generated_default"}:
+        return False
+    if claim.get("source_blocked") is True:
+        return False
+    if str(claim.get("source_visibility") or "") == "snippet_only":
+        return False
+    return source_type in {
+        "official_card_data",
+        "hearthstonejson",
+        "blizzard_card_library",
+        "community_guide",
+        "public_guide",
+    }
+
+
 def claim_can_lower_to_runtime(claim: dict) -> bool:
     """Return whether a source claim is allowed to affect generated runtime config."""
     trust_ceiling = str(claim.get("trust_ceiling", "")).strip().lower()
