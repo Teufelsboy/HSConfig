@@ -346,6 +346,11 @@ def _build_strong_closure_summary(
         and bool(strong_rows)
         and has_explicit_mulligan_source
     )
+    first_missing_source_action = _strong_closure_first_missing_source_action(
+        source_backed_strong_ready=source_backed_strong_ready,
+        has_explicit_mulligan_source=has_explicit_mulligan_source,
+        blockers=blockers,
+    )
     return {
         "technical_no_block": True,
         "semantic_status": (
@@ -357,10 +362,23 @@ def _build_strong_closure_summary(
         "strong_evidence_row_count": len(strong_rows),
         "strong_candidate": strong_candidate,
         "strong_candidate_blockers": list(blockers),
-        "first_missing_source_action": (
-            "none" if source_backed_strong_ready else "add_explicit_mulligan_source"
-        ),
+        "first_missing_source_action": first_missing_source_action,
     }
+
+
+def _strong_closure_first_missing_source_action(
+    *,
+    source_backed_strong_ready: bool,
+    has_explicit_mulligan_source: bool,
+    blockers: Sequence[str],
+) -> str:
+    if source_backed_strong_ready:
+        return "none"
+    if not has_explicit_mulligan_source:
+        return "add_explicit_mulligan_source"
+    if "no_apply_surface_guide_candidate" in blockers:
+        return "add_runtime_lowerable_apply_surface_source"
+    return "add_current_deck_guide_or_mulligan_guide"
 
 
 def _strong_candidate_blockers(
@@ -469,8 +487,6 @@ def _row_has_card_specific_claim(row: Mapping[str, Any]) -> bool:
 def _is_apply_surface_candidate(row: Mapping[str, Any]) -> bool:
     claim_kind = _text(row.get("claim_kind", ""))
     if claim_kind in {"mulligan_keep", "mulligan_discard", "hero_power_transform"}:
-        return False
-    if not _row_has_card_specific_claim(row):
         return False
     return _is_runtime_contract_candidate(row)
 

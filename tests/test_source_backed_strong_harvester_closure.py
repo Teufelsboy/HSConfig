@@ -15,6 +15,7 @@ def _shadow_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
         <p>Mulligan: keep Papercraft Angel, Twilight Deceptor, Raise Dead, and Shadowbomber.</p>
         <p>Do not keep any 4 cost or higher cards.</p>
         <p>Darkbishop Benedictus enables the Shadow hero power. Mind Spike can go face or clear enemy minions.</p>
+        <p>Use the Mind Spike pressure plan as a runtime posture overlay for face and board decisions.</p>
       </body>
     </html>
     """
@@ -80,9 +81,9 @@ def test_shadowpriest_full_source_chain_promotes_without_benedictus_keep():
     report = bundle["source_autopilot_report"]
     summary = report["strong_closure_summary"]
     assert summary["technical_no_block"] is True
-    assert summary["source_backed_strong_ready"] is False
-    assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert summary["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert summary["source_backed_strong_ready"] is True
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["first_missing_source_action"] == "none"
     assert report["first_missing_source_action"] == summary["first_missing_source_action"]
 
 
@@ -207,5 +208,5 @@ def test_current_guide_with_mulligan_and_effect_but_no_apply_surface_stays_parti
     assert summary["technical_no_block"] is True
     assert summary["source_backed_strong_ready"] is False
     assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert summary["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert summary["first_missing_source_action"] == "add_runtime_lowerable_apply_surface_source"
     assert report["first_missing_source_action"] == summary["first_missing_source_action"]

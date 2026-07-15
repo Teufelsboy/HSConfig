@@ -77,6 +77,29 @@ Additional regression coverage:
 
 The controller-approved Task-1 scope included a preflight correction, so this report records the implementation and review fix rather than rewriting history to red-test-only.
 
+Second Task-1 review-fix red phase:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_source_backed_strong_harvester_closure.py -q
+```
+
+Result before the fix: `2 failed, 1 passed`. The positive ShadowPriest acquisition -> claim compiler -> autopilot path still reported `SOURCE_BACKED_PARTIAL`, and the missing-apply-surface case still returned `add_explicit_mulligan_source` even though an explicit mulligan source was already present.
+
+Second Task-1 review-fix green phase:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_source_backed_strong_harvester_closure.py tests/test_source_autopilot.py tests/test_source_acquisition.py tests/test_source_claim_compiler.py -q
+```
+
+Result: `39 passed`.
+
+Second review-fix notes:
+
+- The positive ShadowPriest E2E fixture now proves full closure through acquisition, claim compiler, and autopilot: `technical_no_block=true`, `source_backed_strong_ready=true`, `semantic_status=SOURCE_BACKED_STRONG`, and `first_missing_source_action=none`.
+- Darkbishop Benedictus still compiles as `hero_power_transform` / start-of-game evidence and is still excluded from mulligan keeps.
+- If a strong guide already has an explicit mulligan source but lacks a non-mulligan runtime-lowerable apply surface, the canonical action is now `add_runtime_lowerable_apply_surface_source`.
+- Top-level `first_missing_source_action` remains delegated to `strong_closure_summary.first_missing_source_action`, so report levels do not disagree.
+
 ## Concerns
 
 None.
