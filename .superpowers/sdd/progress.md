@@ -543,7 +543,7 @@ Plan: `docs/superpowers/plans/2026-07-15-hsconfig-source-backed-strong-harvester
 Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-backed-strong-closure-profiles-v2.md`
 
 - [x] Task 0: Preflight and plan anchor (`e9bcd38`); active branch `codex/hsconfig-source-backed-strong-autopilot`; no shadow workspace created; installed skill update is outside repo scope.
-- [ ] Task 1: Add Closure Profile Model
+- [x] Task 1: Add Closure Profile Model (commit `604cdab`; focused test `5 passed`; task review approved)
 - [ ] Task 2: Wire Profiles Into Strong Promotion Summary
 - [ ] Task 3: Relax Source Autopilot First-Missing Link With Profiles
 - [ ] Task 4: Update 11-Deck Matrix Expectations
