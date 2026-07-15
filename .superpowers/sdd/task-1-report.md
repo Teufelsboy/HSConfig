@@ -1,84 +1,126 @@
-# Task 1 Report: Index the New Research Package Without Making It Operator Guidance
+# Task 1 Report: Source Bundle Artifact
 
-Status: DONE
+## Status
 
-## What Changed
+`DONE_WITH_CONCERNS`
 
-- Added `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`.
-- Indexed `2026-07-14-hsconfig-source-contract-logic-guardrail-audit` in `docs/research/current-truth.md` as Contract-spine Guardrail v2 evidence.
-- Added a docs regression test in `tests/test_docs_active_path.py` to verify:
-  - the current-truth index names the research package;
-  - the package is labelled as research evidence only;
-  - the package is explicitly not operator instructions or runtime input;
-  - `operator_summary.json` remains the normal apply authority;
-  - source-contract and source-to-runtime reports remain diagnostic.
+Commit: `79b76ab639c9081dcbfa6a4af76ee9d830c115f0` (`feat: write source bundle artifact`)
 
-## RED Evidence
+## Implemented
+
+- Added `src/hsconfig/source_bundle.py` with `build_source_bundle(...)`.
+  - Produces schema version 1 with deck identity, copied source records and claims,
+    copied explainability card coverage, default-only surfaces, and promotion metadata.
+  - Determines the first missing source action without changing package, apply, or
+    runtime behavior.
+  - Normalizes existing internal router action names to the Task-1 public diagnostic
+    action contract only. This affects `source_bundle.json` explainability and does
+    not contribute apply authority.
+- Updated `src/hsconfig/commands/configure.py` to read the completed package
+  reports, write `04_package/reports/source_bundle.json`, and expose the result as
+  `source_bundle_path` in `configure_summary.json`.
+- Added the unit schema test in `tests/test_source_bundle.py`.
+- Added an online-source configure integration test in
+  `tests/test_configure_online_source.py` and consolidated the existing online
+  fixture setup into the shared helper used by both tests.
+
+## Safety Boundaries Verified
+
+- `operator_summary.json` remains the normal apply authority. Configure only reads
+  it to construct the diagnostic bundle; it is not modified.
+- `source_bundle.json` is written after package preparation and before validation.
+  It is not passed to `apply_payload`, and it cannot alter runtime writes.
+- The online-source test fixture's Darkbishop row (`SW_448`) remains a
+  `hero_power_transform`, reports `next_source_action: "none"`, and is backed by
+  `SW_448.json`; no Mulligan claim or opening-hand behavior was introduced.
+- No decoded deck is blocked or made load-unsafe by this change. Existing configure
+  source tests remain green and still assert `load_safe_apply`.
+- Policy/default rows do not acquire new strong-promotion authority; the new bundle
+  copies existing operator/explainability diagnostics only.
+
+## TDD Evidence
+
+### Red: required source-bundle schema test
 
 Command:
 
 ```powershell
-python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
+python -m pytest tests/test_source_bundle.py::test_source_bundle_exposes_source_claim_runtime_chain -q
 ```
 
-Result: expected failure.
-
-Key failure:
+Output:
 
 ```text
-FileNotFoundError: [Errno 2] No such file or directory: 'docs\\research\\2026-07-14-hsconfig-source-contract-logic-guardrail-audit\\README.md'
-1 failed in 0.24s
+ERROR collecting tests/test_source_bundle.py
+ModuleNotFoundError: No module named 'hsconfig.source_bundle'
+1 error in 0.26s
 ```
 
-## GREEN Evidence
+### Green: source-bundle unit test
 
 Command:
 
 ```powershell
-python -m pytest -q tests/test_docs_active_path.py::test_current_truth_names_2026_07_14_contract_guardrail_audit
+python -m pytest tests/test_source_bundle.py -q
 ```
 
-Result:
+Output:
 
 ```text
-1 passed in 0.08s
+1 passed in 0.10s
 ```
 
-Additional verification:
+### Red: configure integration contract
+
+Command:
 
 ```powershell
-python -m pytest -q tests/test_docs_active_path.py
+python -m pytest tests/test_configure_online_source.py::test_configure_writes_source_bundle_for_online_source -q
 ```
 
-Result:
+Output before public diagnostic normalization:
 
 ```text
-34 passed in 0.10s
+AssertionError: assert 'add_runtime_lowerable_claim_or_router_support' in {
+  'add_explicit_mulligan_source',
+  'map_claim_kind_or_keep_report_only',
+  'none',
+  'replace_default_only_runtime_surface_with_source_or_policy_claim'
+}
+1 failed in 5.41s
 ```
 
-## Files Changed
+The current fixture's internal report action came from already-emitted Mulligan
+claims. The source-bundle projection now maps that internal action to the task's
+public `add_explicit_mulligan_source` action while retaining the original report
+unchanged.
 
-- `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/README.md`
-- `docs/research/current-truth.md`
-- `tests/test_docs_active_path.py`
+### Green: focused Task-1 regression suite
 
-Existing research artifacts under `docs/research/2026-07-14-hsconfig-source-contract-logic-guardrail-audit/` were left as evidence artifacts and staged with the research package path:
+Command:
 
-- `fields.yaml`
-- `outline.yaml`
-- `results/Current_HSConfig_Contract_Spine_Guardrails.json`
-- `results/HearthRanger_VisionAI_Runtime_Surface_Boundary.json`
-- `results/Hearthstone_Semantic_False-Lowering_Risks.json`
-- `results/Lean_Any-Deck_Autonomy_And_No-Block_Contract.json`
+```powershell
+python -m pytest tests/test_source_bundle.py tests/test_configure_online_source.py tests/test_configure_auto_source.py -q
+```
 
-## Self-Review
+Final output:
 
-- Scope stayed within the task brief.
-- No operator docs were changed.
-- No runtime surface, apply gate, candidate promotion, replay parsing, winrate validation, post-game tuning, or HSTuner behavior was introduced.
-- The README uses the brief's wording that the package is evidence only, not operator guidance, not runtime input, and not an apply gate.
-- The current-truth entry keeps `operator_summary.json` as the only normal apply authority and keeps source-contract/source-to-runtime/mechanic warnings diagnostic and non-blocking.
+```text
+9 passed in 1.91s
+```
 
-## Concerns
+### Additional checks
 
-- None.
+```powershell
+git diff --check
+```
+
+Output: no whitespace errors.
+
+## Concern
+
+I started `python -m pytest -q` twice after the runner returned early while both
+full-suite processes continued in the background. Both reached 16% progress but
+did not finish after several minutes of sustained CPU use, so I terminated the
+redundant processes to leave no active test runners. The required focused Task-1
+suite passed; the full repository suite has not been completed in this task.
