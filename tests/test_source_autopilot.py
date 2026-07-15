@@ -197,7 +197,11 @@ def test_extract_source_evidence_rows_infers_visibility_for_legacy_and_thin_reco
         "source_title": "ThinDeck Guide 2026",
         "source_family": "guide",
         "publication_year": 2026,
-        "normalized_text": "ThinDeck Guide 2026",
+        "normalized_text": (
+            "ThinDeck Guide 2026 explains the current mulligan plan, card roles, "
+            "targeting priorities, matchup pressure, sequencing, resource use, "
+            "and runtime-relevant play patterns for this exact deck."
+        ),
         "deck_match": {
             "deck_name": "ThinDeck",
             "archetype": "thindeck",
@@ -313,6 +317,49 @@ def test_source_autopilot_does_not_call_snippet_structured_claims_strong():
         current_date="2026-07-15",
     )
 
+    assert bundle["source_autopilot_report"]["runtime_contract_candidate_count"] == 1
+    assert bundle["source_autopilot_report"]["strong_candidate"] is False
+
+
+def test_source_autopilot_infers_legacy_short_text_claims_as_snippet_only():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-legacy-snippet",
+                "source_title": "ThinDeck Guide 2026",
+                "source_family": "guide",
+                "publication_year": 2026,
+                "normalized_text": "ThinDeck guide.",
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "stance": "prefer_enemy_hero",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    rows = bundle["source_evidence_rows"]
+    assert rows[0]["source_visibility"] == "snippet_only"
     assert bundle["source_autopilot_report"]["runtime_contract_candidate_count"] == 1
     assert bundle["source_autopilot_report"]["strong_candidate"] is False
 

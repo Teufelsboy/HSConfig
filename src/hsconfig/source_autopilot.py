@@ -382,9 +382,11 @@ def _source_visibility_for_documents(source: Mapping[str, Any]) -> str:
     if family in DECKLIST_FAMILIES:
         return "decklist_only"
     if family in GUIDE_FAMILIES:
+        normalized_text = _text(source.get("normalized_text", ""))
+        if normalized_text and len(normalized_text) < 180:
+            return "snippet_only"
         if source.get("mulligan") or _as_list(source.get("claims", [])):
             return "full_text"
-        normalized_text = _text(source.get("normalized_text", ""))
         if len(normalized_text) >= 180:
             return "full_text"
     return "unknown"
