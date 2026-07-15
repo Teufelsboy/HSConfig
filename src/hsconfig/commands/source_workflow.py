@@ -228,6 +228,7 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         source_urls=list(getattr(args, "source_url", []) or []),
         current_date=getattr(args, "current_date", None),
         fetcher=_fixture_fetcher(getattr(args, "source_fixture_url_map_json", None)),
+        resolver=_fixture_resolver(getattr(args, "source_fixture_url_map_json", None)),
         timeout_seconds=float(getattr(args, "source_fetch_timeout_seconds", 6.0)),
     )
     compiled = compile_source_search_records(
@@ -278,6 +279,17 @@ def _fixture_fetcher(path_value: str | None):
         return 200, "text/html", Path(str(fixture_path)).read_bytes()
 
     return fetcher
+
+
+def _fixture_resolver(path_value: str | None):
+    if not path_value:
+        return None
+
+    def resolver(hostname: str) -> list[str]:
+        del hostname
+        return ["93.184.216.34"]
+
+    return resolver
 
 
 def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:

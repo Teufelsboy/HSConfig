@@ -16,6 +16,8 @@ Normal workflow:
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. Open `reports/operator_summary.json` first.
+For fresh public-guide-backed configs, prefer `hsconfig configure ... --online-source --auto-source --source-url "<public-guide-url>" --json`; if no URL is known, use web research and repeated `--source-url`; weak or missing coverage is non-blocking and must stay visible in acquisition/operator reports.
+
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority.
 
 - Treat source claim kind and runtime surface authority as separate decisions.

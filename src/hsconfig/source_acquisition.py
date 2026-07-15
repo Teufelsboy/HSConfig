@@ -2,19 +2,15 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from html.parser import HTMLParser
+from http.client import HTTPSConnection
 from ipaddress import ip_address
+from socket import create_connection, gaierror, getaddrinfo
 from typing import Any, Callable, Mapping, Sequence
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, OpenerDirector, Request, build_opener
 
 
 Fetcher = Callable[[str, float], tuple[int, str, bytes]]
-
-
-class _NoRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
-        return None
+HostResolver = Callable[[str], Sequence[str]]
 
 
 class _VisibleTextParser(HTMLParser):
@@ -65,28 +61,36 @@ def collect_public_source_records(
     source_urls: Sequence[str],
     current_date: str | date | None = None,
     fetcher: Fetcher | None = None,
+    resolver: HostResolver | None = None,
     timeout_seconds: float = 6.0,
 ) -> dict[str, Any]:
-    fetch = fetcher or _default_fetcher
+    resolve = resolver or _default_resolver
     records: list[dict[str, Any]] = []
     failures: list[dict[str, str]] = []
     deduped_urls = _dedupe_urls(source_urls)
     retrieved_at = _iso_datetime(current_date)
 
     for url in deduped_urls:
-        validation_error = validate_public_source_url(url)
+        validation_error, validated_addresses = _public_source_url_validation(url, resolver=resolve)
         if validation_error:
             failures.append({"url": url, "error": validation_error})
             continue
 
         try:
-            status, content_type, body = fetch(url, timeout_seconds)
+            if fetcher is None:
+                status, content_type, body = _default_fetcher(
+                    url,
+                    timeout_seconds,
+                    validated_addresses=validated_addresses,
+                )
+            else:
+                status, content_type, body = fetcher(url, timeout_seconds)
         except Exception as exc:
             failures.append({"url": url, "error": type(exc).__name__})
             continue
 
         if 300 <= status < 400:
-            redirect_error = _redirect_validation_error(content_type)
+            redirect_error = _redirect_validation_error(content_type, resolver=resolve)
             failures.append({"url": url, "error": redirect_error or f"http_status_{status}"})
             continue
 
@@ -134,32 +138,80 @@ def collect_public_source_records(
     }
 
 
-def _default_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
-    opener = build_opener(_NoRedirectHandler())
-    return _fetch_with_opener(url, timeout_seconds, opener)
-
-
-def _fetch_with_opener(
+def _default_fetcher(
     url: str,
     timeout_seconds: float,
-    opener: OpenerDirector,
+    *,
+    validated_addresses: Sequence[str] | None = None,
 ) -> tuple[int, str, bytes]:
-    request = Request(url, headers={"User-Agent": "HSConfig/1.0 source acquisition"})
+    addresses = tuple(validated_addresses or ())
+    if not addresses:
+        validation_error, addresses = _public_source_url_validation(
+            url,
+            resolver=_default_resolver,
+        )
+        if validation_error:
+            raise ValueError(validation_error)
+    return _fetch_with_validated_address(url, timeout_seconds, addresses[0])
+
+
+class _ValidatedAddressHTTPSConnection(HTTPSConnection):
+    def __init__(
+        self,
+        hostname: str,
+        port: int,
+        validated_address: str,
+        timeout_seconds: float,
+    ) -> None:
+        super().__init__(hostname, port=port, timeout=timeout_seconds)
+        self._validated_address = validated_address
+
+    def connect(self) -> None:
+        sock = create_connection(
+            (self._validated_address, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+def _fetch_with_validated_address(
+    url: str,
+    timeout_seconds: float,
+    validated_address: str,
+) -> tuple[int, str, bytes]:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("non_public_https_url")
+    hostname = parsed.hostname.lower()
+    port = parsed.port or 443
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    host_header = hostname if port == 443 else f"{hostname}:{port}"
+    connection = _ValidatedAddressHTTPSConnection(
+        hostname,
+        port,
+        validated_address,
+        timeout_seconds,
+    )
     try:
-        with opener.open(request, timeout=timeout_seconds) as response:
-            return (
-                int(response.status),
-                str(response.headers.get("Content-Type", "")),
-                response.read(400_000),
-            )
-    except HTTPError as exc:
-        location = str(exc.headers.get("Location", ""))
-        content_type = str(exc.headers.get("Content-Type", ""))
+        connection.request(
+            "GET",
+            path,
+            headers={
+                "Host": host_header,
+                "User-Agent": "HSConfig/1.0 source acquisition",
+            },
+        )
+        response = connection.getresponse()
+        content_type = str(response.getheader("Content-Type", ""))
+        location = str(response.getheader("Location", ""))
         if location:
             content_type = f"{content_type}; location={location}".strip("; ")
-        return int(exc.code), content_type, b""
-    except URLError:
-        raise
+        return int(response.status), content_type, response.read(400_000)
+    finally:
+        connection.close()
 
 
 def _matched_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
@@ -195,25 +247,67 @@ def _dedupe_urls(urls: Sequence[str]) -> list[str]:
     return result
 
 
-def validate_public_source_url(url: str) -> str | None:
+def validate_public_source_url(url: str, *, resolver: HostResolver | None = None) -> str | None:
+    validation_error, _ = _public_source_url_validation(
+        url,
+        resolver=resolver or _default_resolver,
+    )
+    return validation_error
+
+
+def _public_source_url_validation(
+    url: str,
+    *,
+    resolver: HostResolver,
+) -> tuple[str | None, tuple[str, ...]]:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
-        return "non_public_https_url"
+        return "non_public_https_url", ()
     hostname = parsed.hostname.lower()
     if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
-        return "non_public_https_url"
+        return "non_public_https_url", ()
     try:
         address = ip_address(hostname)
     except ValueError:
-        return None
-    return None if address.is_global else "non_public_https_url"
+        return _hostname_validation_result(hostname, resolver)
+    if not address.is_global:
+        return "non_public_https_url", ()
+    return None, (str(address),)
 
 
-def _redirect_validation_error(content_type: str) -> str | None:
+def _hostname_validation_result(
+    hostname: str,
+    resolver: HostResolver,
+) -> tuple[str | None, tuple[str, ...]]:
+    try:
+        addresses = tuple(str(address) for address in resolver(hostname))
+    except Exception:
+        return "dns_resolution_failed", ()
+    if not addresses:
+        return "dns_resolution_failed", ()
+    for address_value in addresses:
+        try:
+            address = ip_address(str(address_value))
+        except ValueError:
+            return "dns_resolution_failed", ()
+        if not address.is_global:
+            return "non_public_https_url", ()
+    return None, addresses
+
+
+def _default_resolver(hostname: str) -> list[str]:
+    try:
+        infos = getaddrinfo(hostname, None)
+    except gaierror:
+        raise
+    return sorted({info[4][0] for info in infos})
+
+
+def _redirect_validation_error(content_type: str, *, resolver: HostResolver) -> str | None:
     location = _location_from_content_type(content_type)
     if not location:
         return None
-    validation_error = validate_public_source_url(location)
+    validation_error, _ = _public_source_url_validation(location, resolver=resolver)
     if validation_error:
         return f"redirect_target_{validation_error}"
     return None
