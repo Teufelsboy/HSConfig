@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from hsconfig.cli import main
 from hsconfig.source_acquisition import collect_public_source_records
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_autopilot import build_source_autopilot_bundle
+
+
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
 
 
 def _shadow_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
@@ -134,79 +144,42 @@ def test_decklist_only_builds_evidence_but_cannot_promote_strong():
     assert bundle["source_autopilot_report"]["first_missing_source_action"] == summary["first_missing_source_action"]
 
 
-def test_current_guide_with_mulligan_and_effect_but_no_apply_surface_stays_partial():
-    deck_identity = {
-        "deck_name": "ShadowPriest",
-        "deck_slug": "shadowpriest",
-        "deck_code_hash": "sha256:shadow-effect-only",
-        "cards": [
-            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
-            {"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
-        ],
-    }
+def test_current_shadowpriest_guide_can_close_aggro_profile_without_extra_apply_surface(
+    tmp_path: Path, capsys, monkeypatch
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
+    package_dir = tmp_path / "ShadowPriest"
 
-    bundle = build_source_autopilot_bundle(
-        deck_name="ShadowPriest",
-        deck_identity=deck_identity,
-        source_search_records=[
-            {
-                "source_url": "https://example.test/shadow-effect-only",
-                "source_title": "Shadow Priest Mulligan Guide 2026",
-                "source_family": "guide",
-                "source_visibility": "full_text",
-                "publication_year": 2026,
-                "normalized_text": (
-                    "ShadowPriest current guide with a full mulligan section, "
-                    "card-specific opening hand advice, hero power transformation notes, "
-                    "and enough source text to be a visible full-text public guide."
-                ),
-                "deck_match": {
-                    "deck_name": "ShadowPriest",
-                    "archetype": "shadowpriest",
-                    "matched_card_ids": ["TOY_381", "SW_448"],
-                },
-                "claims": [
-                    {
-                        "claim_kind": "mulligan_keep",
-                        "cards": ["TOY_381"],
-                        "stance": "keep",
-                        "source_confidence": "high",
-                    },
-                    {
-                        "claim_kind": "hero_power_transform",
-                        "cards": ["SW_448"],
-                        "timing": "start_of_game",
-                        "stance": "enable_shadow_hero_power",
-                        "source_confidence": "high",
-                    },
-                ],
-            }
-        ],
-        current_date="2026-07-15",
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package_dir),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    summary = json.loads(
+        (package_dir / "reports" / "operator_summary.json").read_text(
+            encoding="utf-8"
+        )
     )
 
-    rows = bundle["source_evidence_rows"]
-    keep_cards = {
-        card_id
-        for row in rows
-        if row["claim_kind"] == "mulligan_keep"
-        for card_id in row["cards"]
-    }
-    effect_cards = {
-        card_id
-        for row in rows
-        if row["claim_kind"] == "hero_power_transform"
-        for card_id in row["cards"]
-    }
-    report = bundle["source_autopilot_report"]
-    summary = report["strong_closure_summary"]
-
-    assert "SW_448" not in keep_cards
-    assert "SW_448" in effect_cards
-    assert report["strong_candidate"] is False
-    assert "no_apply_surface_guide_candidate" in report["strong_candidate_blockers"]
-    assert summary["technical_no_block"] is True
-    assert summary["source_backed_strong_ready"] is False
-    assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert summary["first_missing_source_action"] == "add_runtime_lowerable_apply_surface_source"
-    assert report["first_missing_source_action"] == summary["first_missing_source_action"]
+    assert code == 0
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    closure = summary["source_backed_strong_closure"]
+    assert closure["closure_profile"] == "aggro_burn_hero_power"
+    assert closure["closure_profile_closed"] is True
+    assert closure["closure_profile_first_missing_link"] == "none"
+    assert closure["default_only_runtime_surfaces"] == []

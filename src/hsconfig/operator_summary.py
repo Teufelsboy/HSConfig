@@ -8,6 +8,10 @@ from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.report_ownership import build_report_ownership
+from hsconfig.strong_closure_profiles import (
+    ClosureProfileVerdict,
+    evaluate_closure_profile,
+)
 
 
 VALID_STATUSES = {"passed", "pass", "valid", "ok", "success"}
@@ -167,6 +171,26 @@ def build_operator_summary(
     strong_promotion_evidence_blockers.extend(
         _source_quality_lane_blockers(source_claim_gap_report)
     )
+    preliminary_default_only_runtime_surfaces = _default_only_runtime_surfaces(
+        preliminary_config_usefulness
+    )
+    closure_profile_verdict = _closure_profile_verdict(
+        deck_name=deck_name,
+        source_claim_gap_report=source_claim_gap_report,
+        source_contract_audit_report=source_contract_audit_report,
+        source_to_runtime_explainability_report=source_to_runtime_explainability_report,
+        generated_files=generated_files,
+        default_only_runtime_surfaces=preliminary_default_only_runtime_surfaces,
+    )
+    closure_profile_strong_eligible = (
+        closure_profile_verdict.strong_eligible
+        if _closure_profile_has_claim_evidence(
+            source_claim_gap_report=source_claim_gap_report,
+            source_contract_audit_report=source_contract_audit_report,
+            source_to_runtime_explainability_report=source_to_runtime_explainability_report,
+        )
+        else None
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -175,6 +199,7 @@ def build_operator_summary(
         claim_conflict_report=claim_conflict_report,
         unsupported_conditions=unsupported_conditions,
         strong_promotion_evidence_blockers=strong_promotion_evidence_blockers,
+        closure_profile_strong_eligible=closure_profile_strong_eligible,
     )
     primary_blockers = _primary_blockers(technical_validation, technical_status)
     warnings = _warnings(
@@ -266,6 +291,7 @@ def build_operator_summary(
         semantic_blockers=semantic_blockers,
         default_only_runtime_surfaces=default_only_runtime_surfaces,
         source_claim_gap_report=source_claim_gap_report,
+        closure_profile_verdict=closure_profile_verdict,
     )
     summary = {
         "schema_version": 1,
@@ -373,6 +399,7 @@ def _source_backed_strong_closure(
     semantic_blockers: list[dict[str, Any]],
     default_only_runtime_surfaces: list[str],
     source_claim_gap_report: dict[str, Any] | None,
+    closure_profile_verdict: ClosureProfileVerdict,
 ) -> dict[str, Any]:
     if isinstance(report, dict):
         promotion_ready = report.get("promotion_ready") is True
@@ -384,6 +411,10 @@ def _source_backed_strong_closure(
             "promotion_ready": promotion_ready,
             "first_missing_source_action": first_missing_source_action,
             "diagnostic_only": True,
+            **_closure_profile_summary_fields(
+                closure_profile_verdict,
+                default_only_runtime_surfaces=default_only_runtime_surfaces,
+            ),
         }
 
     source_gaps_closed = _source_claim_gaps_closed(source_claim_gap_report)
@@ -406,6 +437,26 @@ def _source_backed_strong_closure(
         "promotion_ready": promotion_ready,
         "first_missing_source_action": first_missing_source_action,
         "diagnostic_only": True,
+        **_closure_profile_summary_fields(
+            closure_profile_verdict,
+            default_only_runtime_surfaces=default_only_runtime_surfaces,
+        ),
+    }
+
+
+def _closure_profile_summary_fields(
+    verdict: ClosureProfileVerdict,
+    *,
+    default_only_runtime_surfaces: list[str],
+) -> dict[str, Any]:
+    return {
+        "default_only_runtime_surfaces": list(default_only_runtime_surfaces),
+        "closure_profile": verdict.profile_name,
+        "closure_profile_closed": verdict.closed,
+        "closure_profile_first_missing_link": verdict.first_missing_link,
+        "closure_profile_missing_claim_groups": list(verdict.missing_claim_groups),
+        "closure_profile_missing_surfaces": list(verdict.missing_surfaces),
+        "closure_profile_apply_blocking": verdict.apply_blocking,
     }
 
 
@@ -869,6 +920,167 @@ def _source_quality_lane_blockers(
     return blockers
 
 
+def _closure_profile_verdict(
+    *,
+    deck_name: str,
+    source_claim_gap_report: dict[str, Any] | None,
+    source_contract_audit_report: dict[str, Any] | None,
+    source_to_runtime_explainability_report: dict[str, Any] | None,
+    generated_files: list[str],
+    default_only_runtime_surfaces: list[str],
+) -> ClosureProfileVerdict:
+    claim_rows = _closure_profile_claim_rows(
+        source_claim_gap_report=source_claim_gap_report,
+        source_contract_audit_report=source_contract_audit_report,
+        source_to_runtime_explainability_report=source_to_runtime_explainability_report,
+    )
+    source_claim_kinds = [
+        str(row.get("claim_kind") or "")
+        for row in claim_rows
+        if _closure_profile_claim_is_promotion_eligible(row)
+    ]
+    suppressed_claim_kinds = [
+        str(row.get("claim_kind") or "")
+        for row in claim_rows
+        if _closure_profile_claim_is_suppressed(row)
+    ]
+    primary_mechanics = _closure_profile_primary_mechanics(
+        deck_name=deck_name,
+        claim_kinds=source_claim_kinds,
+    )
+    return evaluate_closure_profile(
+        archetype_bucket=_closure_profile_archetype_bucket(
+            deck_name=deck_name,
+            primary_mechanics=primary_mechanics,
+        ),
+        primary_mechanics=primary_mechanics,
+        source_claim_kinds=source_claim_kinds,
+        emitted_surfaces=_runtime_surface_filenames(generated_files),
+        default_only_surfaces=default_only_runtime_surfaces,
+        suppressed_claim_kinds=suppressed_claim_kinds,
+    )
+
+
+def _closure_profile_has_claim_evidence(
+    *,
+    source_claim_gap_report: dict[str, Any] | None,
+    source_contract_audit_report: dict[str, Any] | None,
+    source_to_runtime_explainability_report: dict[str, Any] | None,
+) -> bool:
+    return bool(
+        _closure_profile_claim_rows(
+            source_claim_gap_report=source_claim_gap_report,
+            source_contract_audit_report=source_contract_audit_report,
+            source_to_runtime_explainability_report=source_to_runtime_explainability_report,
+        )
+    )
+
+
+def _closure_profile_claim_rows(
+    *,
+    source_claim_gap_report: dict[str, Any] | None,
+    source_contract_audit_report: dict[str, Any] | None,
+    source_to_runtime_explainability_report: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    rows.extend(
+        _list_of_dicts(
+            (source_to_runtime_explainability_report or {}).get("claim_lifecycle_rows")
+        )
+    )
+    rows.extend(
+        _list_of_dicts(
+            (source_contract_audit_report or {}).get("claim_lifecycle_rows")
+        )
+    )
+    rows.extend(_list_of_dicts((source_contract_audit_report or {}).get("claim_rows")))
+    rows.extend(
+        _list_of_dicts((source_claim_gap_report or {}).get("suppressed_claim_rows"))
+    )
+
+    for card_row in _list_of_dicts(
+        (source_to_runtime_explainability_report or {}).get("card_rows")
+    ):
+        strongest = card_row.get("strongest_claim_kind")
+        if strongest:
+            rows.append({"claim_kind": strongest, "promotion_eligible": True})
+        closure = card_row.get("closure", {})
+        if isinstance(closure, dict):
+            for claim_kind in closure.get("claim_kinds", []):
+                rows.append({"claim_kind": claim_kind, "promotion_eligible": True})
+    return [row for row in rows if str(row.get("claim_kind") or "")]
+
+
+def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        return [row for row in value.values() if isinstance(row, dict)]
+    if not isinstance(value, list):
+        return []
+    return [row for row in value if isinstance(row, dict)]
+
+
+def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
+    if row.get("promotion_eligible") is True:
+        return True
+    if row.get("promotion_eligible") is False:
+        return False
+    lane_values = {
+        str(row.get("source_lane") or ""),
+        str(row.get("policy_lane") or ""),
+        str(row.get("lane") or ""),
+    }
+    if any(lane in NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS for lane in lane_values):
+        return False
+    if str(row.get("operator_impact") or "") == "diagnostic_only" and not any(
+        lane_values
+    ):
+        return False
+    return True
+
+
+def _closure_profile_claim_is_suppressed(row: dict[str, Any]) -> bool:
+    return (
+        row.get("suppressed") is True
+        or str(row.get("runtime_lowering") or "") == "suppressed"
+    )
+
+
+def _closure_profile_primary_mechanics(
+    *,
+    deck_name: str,
+    claim_kinds: list[str],
+) -> list[str]:
+    mechanics: set[str] = set()
+    normalized_deck_name = deck_name.lower()
+    if "shadow" in normalized_deck_name and "priest" in normalized_deck_name:
+        mechanics.update({"aggro", "burn", "shadow_hero_power"})
+    if "hero_power_transform" in claim_kinds:
+        mechanics.add("shadow_hero_power")
+    if "targeting_rule" in claim_kinds:
+        mechanics.add("burn")
+    if "combo_sequence" in claim_kinds:
+        mechanics.add("combo")
+    return sorted(mechanics)
+
+
+def _closure_profile_archetype_bucket(
+    *,
+    deck_name: str,
+    primary_mechanics: list[str],
+) -> str:
+    return " ".join([deck_name, *primary_mechanics]).strip()
+
+
+def _runtime_surface_filenames(generated_files: list[str]) -> list[str]:
+    filenames: list[str] = []
+    for path in generated_files:
+        normalized = str(path).replace("\\", "/")
+        filename = normalized.rsplit("/", 1)[-1]
+        if filename:
+            filenames.append(filename)
+    return filenames
+
+
 def _semantic_status(
     *,
     technical_status: str,
@@ -878,6 +1090,7 @@ def _semantic_status(
     claim_conflict_report: dict[str, Any] | None,
     unsupported_conditions: list[dict[str, Any]] | None,
     strong_promotion_evidence_blockers: list[dict[str, Any]] | None = None,
+    closure_profile_strong_eligible: bool | None = None,
 ) -> str:
     if technical_status == "INVALID_PACKAGE":
         return "INVALID_PACKAGE"
@@ -926,6 +1139,8 @@ def _semantic_status(
         and source_evidence_warnings == 0
         and uncovered_card_count == 0
     ):
+        if closure_profile_strong_eligible is False:
+            return "VALID_BUT_NOT_GUIDE_STRONG"
         return "SOURCE_BACKED_STRONG"
     if (
         generic_low_confidence > 0

@@ -2780,6 +2780,11 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         mulligan_plan_report=_source_backed_mulligan_plan_report(),
         source_to_runtime_explainability_report={
             "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [
+                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
+                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
+                {"claim_kind": "hero_power_transform", "promotion_eligible": True},
+            ],
             "card_rows": [],
         },
         strong_promotion_report={
@@ -2796,9 +2801,53 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         "promotion_ready": True,
         "first_missing_source_action": "none",
         "diagnostic_only": True,
+        "default_only_runtime_surfaces": [],
+        "closure_profile": "aggro_burn_hero_power",
+        "closure_profile_closed": True,
+        "closure_profile_first_missing_link": "none",
+        "closure_profile_missing_claim_groups": [],
+        "closure_profile_missing_surfaces": [],
+        "closure_profile_apply_blocking": False,
     }
     assert summary["first_missing_source_action"] == "none"
     assert summary["no_default_only_runtime_status"] == "clean"
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_profile_miss_stays_non_apply_blocking():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [
+                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
+                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
+            ],
+            "card_rows": [],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile"] == "aggro_burn_hero_power"
+    assert closure["closure_profile_closed"] is False
+    assert closure["closure_profile_first_missing_link"] == (
+        "missing_claim_group:targeting_rule|hero_power_transform|card_role"
+    )
+    assert closure["closure_profile_missing_claim_groups"] == [
+        "targeting_rule|hero_power_transform|card_role"
+    ]
+    assert closure["closure_profile_missing_surfaces"] == []
+    assert closure["closure_profile_apply_blocking"] is False
     assert summary["runtime_apply_allowed"] is True
 
 
