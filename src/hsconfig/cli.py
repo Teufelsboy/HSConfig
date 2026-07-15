@@ -15,6 +15,7 @@ from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
     run_research_deck_command,
+    run_source_autopilot_command,
     run_source_manifest_command,
 )
 from hsconfig.package_builder import research_contract_payload
@@ -36,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_source_manifest_command(args)
     if args.command == "draft-source-documents":
         return run_draft_source_documents_command(args)
+    if args.command == "source-autopilot":
+        return run_source_autopilot_command(args)
     if args.command == "research-deck":
         return run_research_deck_command(args)
     if args.command == "research-contract":

@@ -13,9 +13,10 @@ from hsconfig.input_loading import (
     load_cards,
     load_source_evidence,
 )
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
+from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
@@ -27,6 +28,10 @@ def run_source_manifest_command(args: argparse.Namespace) -> int:
 
 def run_draft_source_documents_command(args: argparse.Namespace) -> int:
     return run_payload_command(args, draft_source_documents_payload)
+
+
+def run_source_autopilot_command(args: argparse.Namespace) -> int:
+    return run_payload_command(args, source_autopilot_payload)
 
 
 def run_research_deck_command(args: argparse.Namespace) -> int:
@@ -124,6 +129,70 @@ def draft_source_documents_payload(
             "deck_slug": deck_identity["deck_slug"],
             "written_files": [str(source_path), str(report_path)],
             "draft_summary": draft["draft_summary"],
+        },
+        0,
+    )
+
+
+def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    prepare_research_output_dir(out)
+
+    cards_payload = load_cards(
+        args.cards_json,
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        allow_placeholder=args.allow_placeholder,
+    )
+    deck_identity = build_deck_identity(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        cards=cards_payload["cards"],
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
+    )
+    source_payload = read_json(args.source_search_results_json)
+    source_records = source_payload.get("records", source_payload) if isinstance(source_payload, dict) else source_payload
+    if not isinstance(source_records, list):
+        raise ValueError(
+            "--source-search-results-json must contain a list or an object with a records list"
+        )
+
+    bundle = build_source_autopilot_bundle(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        source_search_records=source_records,
+        current_date=getattr(args, "current_date", None),
+    )
+    ranked_path = out / "ranked_sources.json"
+    evidence_path = out / "source_evidence_rows.json"
+    source_path = out / "source_documents.json"
+    draft_report_path = out / "source_document_draft_report.json"
+    report_path = out / "source_autopilot_report.json"
+    write_json(ranked_path, {"schema_version": 1, "ranked_sources": bundle["ranked_sources"]})
+    write_json(
+        evidence_path,
+        {"schema_version": 1, "evidence_rows": bundle["source_evidence_rows"]},
+    )
+    write_json(source_path, bundle["source_documents_payload"])
+    write_json(draft_report_path, bundle["source_document_draft_report"])
+    write_json(report_path, bundle["source_autopilot_report"])
+    return (
+        {
+            "status": "OK",
+            "deck_name": args.deck_name,
+            "deck_slug": deck_identity["deck_slug"],
+            "source_autopilot_report": str(report_path),
+            "source_documents_json": str(source_path),
+            "source_evidence_json": str(evidence_path),
+            "written_files": [
+                str(ranked_path),
+                str(evidence_path),
+                str(source_path),
+                str(draft_report_path),
+                str(report_path),
+            ],
         },
         0,
     )

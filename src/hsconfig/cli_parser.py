@@ -132,6 +132,25 @@ def build_parser() -> argparse.ArgumentParser:
     draft_source_documents.add_argument("--allow-placeholder", action="store_true")
     draft_source_documents.add_argument("--json", action="store_true")
 
+    source_autopilot = subparsers.add_parser(
+        "source-autopilot",
+        help="inspected source search to strict source documents stage",
+        description=(
+            "Inspected source search to strict source documents stage. "
+            "Consumes compact public source records, ranks them, emits source evidence rows, "
+            "drafts strict source_documents.json, and reports whether the input can support "
+            "source-backed strong promotion. This command does not write runtime files."
+        ),
+    )
+    source_autopilot.add_argument("--deck-name", required=True)
+    source_autopilot.add_argument("--deck-code", required=True)
+    source_autopilot.add_argument("--source-search-results-json", required=True)
+    source_autopilot.add_argument("--out", required=True)
+    source_autopilot.add_argument("--cards-json")
+    source_autopilot.add_argument("--allow-placeholder", action="store_true")
+    source_autopilot.add_argument("--current-date")
+    source_autopilot.add_argument("--json", action="store_true")
+
     research_deck = subparsers.add_parser(
         "research-deck",
         help="inspected source document normalization stage",
