@@ -9,6 +9,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
+- If compact public source-search records exist, run `hsconfig configure --auto-source --source-search-results-json ...`.
 - Open `reports/operator_summary.json` first.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
 - Warnings are follow-up work, not a second apply path.
@@ -41,6 +42,14 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 This command runs the lower-level pre-run chain, writes a validated package, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`.
 
+When current guide/search records are already captured, use the source-autopilot bridge:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
+```
+
+This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required. `reports/operator_summary.json` remains the only normal apply authority.
+
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.
@@ -70,8 +79,8 @@ Lower-level inspected path: `source-manifest -> draft-source-documents -> resear
 Use this path when each source and research stage must be inspected before package preparation.
 
 1. Run `hsconfig source-manifest` to get aliases, card targets, and research questions.
-2. Write short source evidence rows from current guide, archetype, mulligan, card-text, and metadata sources.
-3. Run `hsconfig draft-source-documents` to turn evidence rows into strict `source_documents.json`.
+2. If compact public source-search records already exist, run `hsconfig source-autopilot`; otherwise write short source evidence rows from current guide, archetype, mulligan, card-text, and metadata sources.
+3. Run `hsconfig draft-source-documents` only when you are manually turning evidence rows into strict `source_documents.json`.
 4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
 5. Run `hsconfig prepare --guide-sources-json ...` to compile the pre-run package and reports.
 6. Run `hsconfig validate --package <package> --json` before handoff or runtime apply.

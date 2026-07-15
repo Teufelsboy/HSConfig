@@ -53,23 +53,32 @@
         {
           "claim_kind": "card_role",
           "cards": ["TOY_381"],
-          "stance": "early_board_pressure",
-          "evidence_text_short": "Papercraft Angel is part of the cheap pressure mulligan plan.",
-          "source_confidence": "high"
+          "stance": "zero_cost_mind_spike_pressure",
+          "evidence_text_short": "Papercraft Angel makes the Hero Power cost 0 and supports repeated Mind Spike pressure turns.",
+          "source_confidence": "high",
+          "runtime_block": "BeforeUseHeroPowerBonus",
+          "runtime_value": "8",
+          "condition": "*"
         },
         {
           "claim_kind": "card_role",
           "cards": ["SCH_514"],
           "stance": "reload_after_pressure",
           "evidence_text_short": "Raise Dead supports aggressive refill after cheap minions are used.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "condition": "*"
         },
         {
           "claim_kind": "card_role",
           "cards": ["GVG_009"],
           "stance": "face_damage_pressure",
           "evidence_text_short": "Shadowbomber belongs to the cheap face damage pressure plan.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "runtime_block": "BeforePlayCardBonus",
+          "runtime_value": "8",
+          "condition": "*"
         }
       ]
     }

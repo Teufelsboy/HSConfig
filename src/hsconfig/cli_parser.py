@@ -17,7 +17,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Normal operator docs: docs/operator/README.md\n"
             "Preferred normal path: configure.\n"
-            "Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> "
+            "Lower-level inspected path: source-manifest -> "
+            "draft-source-documents -> research-deck -> "
             f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
             "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."
@@ -40,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--out", required=True)
     configure.add_argument("--runtime-root", required=True)
     configure.add_argument("--source-evidence-json")
+    configure.add_argument("--auto-source", action="store_true")
+    configure.add_argument("--source-search-results-json")
     configure.add_argument("--cards-json")
     configure.add_argument("--collectible-cards-json")
     configure.add_argument("--full-cards-json")

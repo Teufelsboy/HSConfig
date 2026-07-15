@@ -48,7 +48,7 @@ def test_rank_public_sources_prefers_current_matching_guides_over_decklists():
     assert ranked[1]["source_rank_lane"] == "decklist_only"
 
 
-def test_extract_source_evidence_rows_preserves_darkbishop_effect_not_mulligan_keep():
+def test_extract_source_evidence_rows_preserves_darkbishop_effect_without_mulligan_row():
     records = _fixture("source_search_shadowpriest_2026.json")["records"]
 
     rows = extract_source_evidence_rows(
@@ -70,10 +70,7 @@ def test_extract_source_evidence_rows_preserves_darkbishop_effect_not_mulligan_k
     ]
     assert any(row["claim_kind"] == "hero_power_transform" for row in darkbishop_rows)
     assert not any(row["claim_kind"] == "mulligan_keep" for row in darkbishop_rows)
-    assert any(
-        row["claim_kind"] == "mulligan_discard" and row.get("cards") == ["SW_448"]
-        for row in darkbishop_rows
-    )
+    assert not any(row["claim_kind"] == "mulligan_discard" for row in darkbishop_rows)
 
 
 def test_build_source_autopilot_bundle_outputs_strict_source_documents():
@@ -121,6 +118,48 @@ def test_build_source_autopilot_bundle_keeps_weak_sources_non_blocking_and_visib
     assert report["status"] == "OK"
     assert report["source_rank_summary"]["decklist_only"] == 1
     assert report["strong_candidate"] is False
+    assert report["first_missing_source_action"] == "add_current_deck_guide_or_mulligan_guide"
+
+
+def test_build_source_autopilot_bundle_does_not_call_deck_scoped_guide_strong():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+    record = {
+        "source_url": "https://example.com/thin-guide",
+        "source_title": "Thin Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-15T00:00:00Z",
+        "deck_match": {
+            "deck_name": "ThinDeck",
+            "archetype": "aggro_fixture",
+            "matched_card_ids": ["CARD_001"],
+        },
+        "claims": [
+            {
+                "claim_kind": "archetype",
+                "scope": "deck",
+                "stance": "aggressive",
+                "evidence_text_short": "The deck is an aggressive strategy.",
+                "source_confidence": "high",
+            }
+        ],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[record],
+        current_date="2026-07-15",
+    )
+
+    report = bundle["source_autopilot_report"]
+    assert report["strong_candidate"] is False
+    assert report["runtime_contract_candidate_count"] == 0
+    assert report["card_specific_runtime_contract_candidate_count"] == 0
     assert report["first_missing_source_action"] == "add_current_deck_guide_or_mulligan_guide"
 
 

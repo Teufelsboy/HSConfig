@@ -2,7 +2,7 @@
 
 HSConfig can already build a valid initial package from deck input. It reaches `SOURCE_BACKED_STRONG` when current structured guide sources provide enough card-specific, runtime-lowerable claims.
 
-The next autonomy improvement is not another runtime surface. It is stronger source acquisition before `research-deck` and `prepare`.
+The current lightweight autonomy bridge is `hsconfig source-autopilot` or `hsconfig configure --auto-source --source-search-results-json ...`. The next improvement is stronger source acquisition before those compact records are handed to `source-autopilot`, not another runtime gate or runtime surface.
 
 ## Input
 
@@ -13,7 +13,7 @@ The next autonomy improvement is not another runtime surface. It is stronger sou
 
 ## Required Output
 
-The source builder must emit `source_documents.json` with:
+The source builder must emit compact public source-search records that `source-autopilot` can turn into `source_documents.json` with:
 
 - `card_role` claims for every deck card that would otherwise be `generic_low_confidence`
 - `mulligan_keep` or explicit non-keep evidence for mulligan anchors
@@ -32,6 +32,7 @@ The source builder must emit `source_documents.json` with:
 
 ## Success Criteria
 
+- `source-autopilot` reports `strong_candidate=false` for decklist-only/static inputs and only reports `strong_candidate=true` for current guide-backed, card-specific, runtime-lowerable evidence.
 - `hsconfig research-deck` consumes the generated source documents without schema errors.
 - `hsconfig prepare` produces `VALID_PACKAGE`.
 - `source_claim_gap_report.json` has fewer blocked cards than deck-only static semantics.

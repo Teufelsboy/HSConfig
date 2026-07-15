@@ -10,6 +10,7 @@ from hsconfig.commands.common import emit_result
 from hsconfig.commands.source_workflow import (
     draft_source_documents_payload,
     research_deck_payload,
+    source_autopilot_payload,
     source_manifest_payload,
 )
 from hsconfig.package_builder import prepare_package_payload
@@ -31,9 +32,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     manifest_dir = out / "01_manifest"
     draft_dir = out / "02_source_documents"
+    autopilot_dir = out / "02_source_autopilot"
     research_dir = out / "03_research"
     package_dir = out / "04_package"
-    for stage_dir in (manifest_dir, draft_dir, research_dir, package_dir):
+    for stage_dir in (manifest_dir, draft_dir, autopilot_dir, research_dir, package_dir):
         stage_dir.mkdir(parents=True, exist_ok=True)
 
     common = {
@@ -61,7 +63,41 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         )
 
     source_documents_json = None
-    if getattr(args, "source_evidence_json", None):
+    source_autopilot_path = None
+    if bool(getattr(args, "auto_source", False)):
+        if not getattr(args, "source_search_results_json", None):
+            return _finish(
+                out,
+                "failed",
+                {
+                    "stage": "source-autopilot",
+                    "errors": [
+                        "--source-search-results-json is required when --auto-source is used"
+                    ],
+                },
+                1,
+            )
+        try:
+            autopilot_payload, autopilot_status = source_autopilot_payload(
+                SimpleNamespace(
+                    **common,
+                    source_search_results_json=args.source_search_results_json,
+                    current_date=getattr(args, "current_date", None),
+                    out=str(autopilot_dir),
+                )
+            )
+        except Exception as exc:
+            return _finish_stage_exception(out, "source-autopilot", exc)
+        if autopilot_status != 0:
+            return _finish(
+                out,
+                "failed",
+                {"stage": "source-autopilot", **autopilot_payload},
+                autopilot_status,
+            )
+        source_autopilot_path = autopilot_dir
+        source_documents_json = autopilot_dir / "source_documents.json"
+    elif getattr(args, "source_evidence_json", None):
         try:
             draft_payload, draft_status = draft_source_documents_payload(
                 SimpleNamespace(
@@ -170,6 +206,12 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "OK",
         {
             "manifest_path": str(manifest_dir / "source_research_manifest.json"),
+            "source_autopilot_path": (
+                str(source_autopilot_path) if source_autopilot_path else None
+            ),
+            "source_documents_json": (
+                str(source_documents_json) if source_documents_json else None
+            ),
             "research_path": str(research_dir),
             "package_path": str(package_dir),
             "apply_performed": bool(getattr(args, "apply", False)),

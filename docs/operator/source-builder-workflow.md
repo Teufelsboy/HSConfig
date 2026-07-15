@@ -9,8 +9,8 @@ Identity fields such as `hs_id` keep deck rows and examples unambiguous before g
 Normal path:
 
 1. Run `hsconfig source-manifest` to get deck aliases, card targets, and research questions.
-2. Use Codex research to collect short evidence rows from current guide, mulligan, card-text, and metadata sources.
-3. Run `hsconfig draft-source-documents` to convert evidence rows into `source_documents.json`.
+2. Prefer `hsconfig source-autopilot` when compact public source-search records already exist; it writes ranked sources, evidence rows, and `source_documents.json`.
+3. Use Codex research plus `hsconfig draft-source-documents` only when you are manually collecting short evidence rows from current guide, mulligan, card-text, and metadata sources.
 4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
 5. Run `hsconfig prepare --guide-sources-json ...` to compile the package.
 6. Read `reports/operator_summary.json` first.
@@ -22,6 +22,8 @@ even if `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`. Use the warnings to
 improve future source depth; do not treat them as load-safety blockers.
 
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
+
+`source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required.
 
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
 

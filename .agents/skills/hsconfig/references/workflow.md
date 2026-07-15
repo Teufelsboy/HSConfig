@@ -1,17 +1,17 @@
 # Workflow
 
 Preferred normal path: `hsconfig configure`.
-
-Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
-
+Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply.
+Manual-only fallback path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 For the normal operator entry point, start at `docs/operator/README.md`.
 
 Normal workflow:
 
 1. Prefer `hsconfig configure ...` for normal operation.
 2. Use lower-level commands only when inspecting a stage:
-   `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
+   `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. Open `reports/operator_summary.json` first.
+When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; decklist-only and static records do not promote `SOURCE_BACKED_STRONG`.
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 

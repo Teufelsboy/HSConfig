@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import date, datetime
 from typing import Any, Mapping, Sequence
 
+from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 
@@ -190,6 +191,8 @@ def _mulligan_rows(
         for card in deck_identity.get("cards", []):
             if not isinstance(card, Mapping):
                 continue
+            if _is_non_opening_hand_effect_card(card):
+                continue
             cost = _int_or_none(card.get("cost"))
             card_id = _text(card.get("card_id", ""))
             if cost is not None and cost >= cost_min and card_id:
@@ -240,16 +243,30 @@ def _build_report(
     lowerable_guide_rows = [
         row
         for row in guide_rows
-        if _text(row.get("claim_kind", "")) not in {"source_note", "generic_advice"}
+        if _is_runtime_contract_candidate(row)
+    ]
+    card_specific_lowerable_guide_rows = [
+        row
+        for row in lowerable_guide_rows
+        if _row_has_card_specific_claim(row)
     ]
     warnings = verification.get("warnings", [])
-    strong_candidate = bool(lowerable_guide_rows) and not draft.get("unresolved_mentions") and not warnings
+    strong_candidate = (
+        bool(card_specific_lowerable_guide_rows)
+        and not draft.get("unresolved_mentions")
+        and verification.get("status") == "passed"
+        and not warnings
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
         "status": "OK",
         "source_rank_summary": dict(sorted(lane_counts.items())),
         "claim_kind_counts": dict(sorted(claim_counts.items())),
+        "runtime_contract_candidate_count": len(lowerable_guide_rows),
+        "card_specific_runtime_contract_candidate_count": len(
+            card_specific_lowerable_guide_rows
+        ),
         "strong_candidate": strong_candidate,
         "first_missing_source_action": (
             "none" if strong_candidate else "add_current_deck_guide_or_mulligan_guide"
@@ -260,6 +277,38 @@ def _build_report(
             "warning_count": len(warnings) if isinstance(warnings, list) else 0,
         },
     }
+
+
+def _is_runtime_contract_candidate(row: Mapping[str, Any]) -> bool:
+    policy = source_contract_policy_by_claim_kind().get(_text(row.get("claim_kind", "")))
+    if not isinstance(policy, Mapping):
+        return False
+    if not bool(policy.get("runtime_lowerable")):
+        return False
+    allowed_surfaces = {str(surface) for surface in policy.get("allowed_surfaces", [])}
+    if not allowed_surfaces:
+        return False
+    if (
+        allowed_surfaces & {"mulligan", "cardid", "combo"}
+        and not _row_has_card_specific_claim(row)
+    ):
+        return False
+    if "combo" in allowed_surfaces and not row.get("sequence"):
+        return False
+    claim_kind = _text(row.get("claim_kind", ""))
+    if claim_kind in {"discover_choice", "choose_one_choice"} and not row.get(
+        "option_card_id"
+    ):
+        return False
+    if claim_kind in {"card_role", "known_bad_pattern"} and not row.get("runtime_block"):
+        return False
+    return True
+
+
+def _row_has_card_specific_claim(row: Mapping[str, Any]) -> bool:
+    return bool(
+        _as_list(row.get("cards", [])) or _as_list(row.get("card_mentions", []))
+    )
 
 
 def _source_base(
@@ -326,6 +375,20 @@ def _rank_lane(
     if family in STATIC_FAMILIES:
         return "static_semantics_only"
     return "source_unclassified"
+
+
+def _is_non_opening_hand_effect_card(card: Mapping[str, Any]) -> bool:
+    role_tokens = {
+        _text(role).lower()
+        for role in _as_list(card.get("roles", []))
+        if _text(role)
+    }
+    if role_tokens & {"start_of_game", "hero_power_transform", "deckbuilding_effect"}:
+        return True
+    text = _text(card.get("text", "")).lower()
+    if "start of game" in text:
+        return True
+    return _norm(card.get("name", "")) == "darkbishopbenedictus"
 
 
 def _deck_card_ids(deck_identity: Mapping[str, Any]) -> set[str]:

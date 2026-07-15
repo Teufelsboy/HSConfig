@@ -239,6 +239,24 @@ def test_operator_readme_links_source_contract_spine_without_normal_path_drift()
     assert "source-contract-spine -> apply" not in text
 
 
+def test_operator_docs_name_source_autopilot_without_new_apply_gate():
+    readme = (ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    combined = f"{readme}\n{policy}\n{skill}"
+
+    assert "--auto-source" in combined
+    assert "source-autopilot" in combined
+    assert "02_source_autopilot" in combined
+    assert "decklist-only and static records do not promote `SOURCE_BACKED_STRONG`" in combined
+    assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in combined
+    assert "operator_summary.json remains the only normal apply authority" in combined
+
+
 def test_operator_docs_keep_single_apply_authority_and_no_default_only_visibility():
     guide = (ROOT / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"

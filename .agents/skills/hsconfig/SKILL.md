@@ -7,15 +7,16 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
-For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`; Lower-level inspected path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
+For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`; Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply.
 Inputs: deck name, deck code, runtime root for `prepare`, `build`, and `apply`, short source evidence rows from current guide research, optional researched `source_documents.json`, and normalized guide sources from `hsconfig research-deck`.
 
 Normal workflow:
 
 1. Prefer `hsconfig configure ...` for normal operation.
 2. Use lower-level commands only when inspecting a stage:
-   `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
+   `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. Open `reports/operator_summary.json` first.
+`hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority.
 
 - Treat source claim kind and runtime surface authority as separate decisions.
   Generate the package for any valid deck, but only write a runtime row when
@@ -71,9 +72,4 @@ Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan
 Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
 ## References
-
-- `references/workflow.md`
-- `references/visionai-surfaces.md`
-- `references/guide-research-policy.md`
-- `references/globalvalues-policy.md`
-- `references/card-behavior-policy.md`
+`references/workflow.md`; `references/visionai-surfaces.md`; `references/guide-research-policy.md`; `references/globalvalues-policy.md`; `references/card-behavior-policy.md`

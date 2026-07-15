@@ -48,6 +48,16 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 ]
 ```
 
+## Source Autopilot
+
+`hsconfig source-autopilot` consumes compact public source-search records and writes ranked sources, source evidence rows, strict `source_documents.json`, and `source_autopilot_report.json`. The normal bridge is:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
+```
+
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+
 ## Source Truth Is Not Runtime Authority
 
 Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may

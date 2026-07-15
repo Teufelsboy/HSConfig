@@ -146,10 +146,12 @@ def test_skill_names_configure_normal_workflow():
     assert "1. Prefer `hsconfig configure ...` for normal operation." in text
     assert (
         "2. Use lower-level commands only when inspecting a stage:\n"
-        "   `source-manifest -> draft-source-documents -> research-deck -> "
-        "prepare -> validate -> apply`."
+        "   `source-manifest -> source-autopilot or draft-source-documents -> "
+        "research-deck -> prepare -> validate -> apply`."
     ) in text
     assert "3. Open `reports/operator_summary.json` first." in text
+    assert "`hsconfig configure --auto-source --source-search-results-json ...`" in text
+    assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
 
 
 def test_skill_docs_preserve_hsconfig_boundaries_without_verbatim_duplication():
@@ -205,6 +207,9 @@ def test_active_docs_show_normal_source_document_operator_path():
     ]
     required_terms = {
         "source_documents.json",
+        "source-autopilot",
+        "--auto-source",
+        "02_source_autopilot",
         "hsconfig research-deck --source-documents-json",
         "hsconfig prepare --guide-sources-json",
         "operator_summary.json",

@@ -4,6 +4,16 @@ Use current deck guides and data sources as strategic priors when live research 
 
 Every source document should be written as structured JSON and normalized with `hsconfig research-deck`. Prefer the source-builder path: `hsconfig source-manifest`, short evidence rows, `hsconfig draft-source-documents`, then `hsconfig research-deck --source-documents-json`. Runtime files stay clean; provenance and confidence stay in reports.
 
+## Source Autopilot
+
+`hsconfig source-autopilot` consumes compact public source-search records and writes ranked sources, source evidence rows, strict `source_documents.json`, and `source_autopilot_report.json`. The normal bridge is:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
+```
+
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+
 Accepted source types:
 
 - official card text
