@@ -116,7 +116,12 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["semantic_blockers"][0]["reason"] == "cards_need_guide_claims"
+    blocker_reasons = {
+        str(blocker.get("reason", ""))
+        for blocker in operator["semantic_blockers"]
+    }
+    assert "cards_need_guide_claims" in blocker_reasons
+    assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
     assert explainability["operator_attention"][0]["first_missing_link"] == "needs_runtime_surface"
     assert operator["default_only_runtime_surfaces"] == []
     assert "SW_448" not in mulligan_text

@@ -61,6 +61,7 @@ def test_source_informed_rows_are_expected_current_candidates():
             "source_informed_apply_readiness": "blocked",
             "source_informed_blocking_reasons": [
                 "generic_low_confidence_cards",
+                "generic_low_confidence_not_strong_evidence",
                 "policy_claim_not_strong_evidence",
                 "source_evidence_warnings",
                 "uncovered_cards",
@@ -81,6 +82,7 @@ def test_source_informed_rows_are_expected_current_candidates():
             "source_informed_apply_readiness": "blocked",
             "source_informed_blocking_reasons": [
                 "generic_low_confidence_cards",
+                "generic_low_confidence_not_strong_evidence",
                 "source_evidence_warnings",
                 "uncovered_cards",
             ],
@@ -153,6 +155,7 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     )
     assert treant_druid["source_informed_blocking_reasons"] == [
         "generic_low_confidence_cards",
+        "generic_low_confidence_not_strong_evidence",
         "policy_claim_not_strong_evidence",
         "source_evidence_warnings",
         "uncovered_cards",
@@ -184,6 +187,7 @@ def test_source_informed_rows_have_explicit_closure_decisions():
     )
     assert pirate_dh["source_informed_blocking_reasons"] == [
         "generic_low_confidence_cards",
+        "generic_low_confidence_not_strong_evidence",
         "source_evidence_warnings",
         "uncovered_cards",
     ]

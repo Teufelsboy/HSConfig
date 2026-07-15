@@ -55,6 +55,7 @@ EXPECTED_SOURCE_INFORMED_VISIBILITY = {
         "operator_action": "preserve_source_informed_with_evidence_gap",
         "source_informed_blocking_reasons": [
             "generic_low_confidence_cards",
+            "generic_low_confidence_not_strong_evidence",
             "policy_claim_not_strong_evidence",
             "source_evidence_warnings",
             "uncovered_cards",
@@ -75,6 +76,7 @@ EXPECTED_SOURCE_INFORMED_VISIBILITY = {
         "operator_action": "preserve_source_informed_with_evidence_gap",
         "source_informed_blocking_reasons": [
             "generic_low_confidence_cards",
+            "generic_low_confidence_not_strong_evidence",
             "source_evidence_warnings",
             "uncovered_cards",
         ],

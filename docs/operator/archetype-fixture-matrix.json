@@ -135,7 +135,7 @@
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_card_specific_source_claim",
         "source_informed_apply_readiness": "blocked",
-        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "policy_claim_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "generic_low_confidence_not_strong_evidence", "policy_claim_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
         "closure_state": "source_informed_blocked",
         "closure_priority": 5,
         "operator_action": "preserve_source_informed_with_evidence_gap"
@@ -261,7 +261,7 @@
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_card_specific_source_claim",
         "source_informed_apply_readiness": "blocked",
-        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "source_evidence_warnings", "uncovered_cards"],
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "generic_low_confidence_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
         "closure_state": "source_informed_blocked",
         "closure_priority": 6,
         "operator_action": "preserve_source_informed_with_evidence_gap"
