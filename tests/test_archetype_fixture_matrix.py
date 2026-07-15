@@ -18,28 +18,68 @@ EXPECTED_DECKS = {
 }
 CORE_FIXTURES = {
     "BigShaman",
-    "CtAPaladin",
-    "Discolock",
     "ImbueMage",
     "MechPala",
-    "PirateDH",
     "PirateRogue",
     "ShadowPriest",
-    "TreantDruid",
 }
 SOURCE_INFORMED_VALID_FIXTURES = EXPECTED_DECKS - CORE_FIXTURES
 EXPECTED_STRONGNESS_GAPS = {
     "ShadowPriest": "none",
-    "CtAPaladin": "none",
+    "CtAPaladin": "needs_explicit_mulligan_source",
     "PirateRogue": "none",
     "BigShaman": "none",
-    "Discolock": "none",
-    "TreantDruid": "none",
+    "Discolock": "needs_explicit_mulligan_source",
+    "TreantDruid": "needs_card_specific_source_claim",
     "ImbueMage": "none",
     "MechPala": "none",
     "Kingslayer": "needs_mulligan_claim_for_quick_pick",
     "Boarlock": "needs_mulligan_claim_for_fracking",
-    "PirateDH": "none",
+    "PirateDH": "needs_card_specific_source_claim",
+}
+EXPECTED_SOURCE_INFORMED_VISIBILITY = {
+    "CtAPaladin": {
+        "operator_action": "preserve_source_informed_with_evidence_gap",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence"],
+        "stop_condition": None,
+    },
+    "Discolock": {
+        "operator_action": "preserve_source_informed_with_evidence_gap",
+        "source_informed_blocking_reasons": [
+            "policy_claim_not_strong_evidence",
+            "source_evidence_warnings",
+        ],
+        "stop_condition": None,
+    },
+    "TreantDruid": {
+        "operator_action": "preserve_source_informed_with_evidence_gap",
+        "source_informed_blocking_reasons": [
+            "generic_low_confidence_cards",
+            "policy_claim_not_strong_evidence",
+            "source_evidence_warnings",
+            "uncovered_cards",
+        ],
+        "stop_condition": None,
+    },
+    "Kingslayer": {
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
+        "stop_condition": "exact_kingslayer_quick_pick_mulligan_source_unavailable",
+    },
+    "Boarlock": {
+        "operator_action": "preserve_source_informed_with_explicit_stop_condition",
+        "source_informed_blocking_reasons": ["unsupported_conditions_present"],
+        "stop_condition": "exact_boarlock_fracking_mulligan_source_unavailable",
+    },
+    "PirateDH": {
+        "operator_action": "preserve_source_informed_with_evidence_gap",
+        "source_informed_blocking_reasons": [
+            "generic_low_confidence_cards",
+            "source_evidence_warnings",
+            "uncovered_cards",
+        ],
+        "stop_condition": None,
+    },
 }
 EXPECTED_DECK_IDENTITIES = {
     "ShadowPriest": {
@@ -189,20 +229,11 @@ def test_each_fixture_row_documents_strongness_visibility():
         if row["fixture_stage"] == "core_source_backed_fixture":
             assert visibility["operator_action"] == "keep_as_core_control_fixture"
             assert visibility.get("stop_condition") is None
-        elif deck_name == "Boarlock":
-            assert visibility["operator_action"] == (
-                "preserve_source_informed_with_explicit_stop_condition"
-            )
-            assert visibility["stop_condition"] == (
-                "exact_boarlock_fracking_mulligan_source_unavailable"
-            )
-        elif deck_name == "Kingslayer":
-            assert visibility["operator_action"] == (
-                "preserve_source_informed_with_explicit_stop_condition"
-            )
-            assert visibility["stop_condition"] == (
-                "exact_kingslayer_quick_pick_mulligan_source_unavailable"
-            )
         else:
-            assert visibility["operator_action"] == "close_existing_source_informed_fixture"
-            assert visibility.get("stop_condition") is None
+            expected = EXPECTED_SOURCE_INFORMED_VISIBILITY[deck_name]
+            assert visibility["operator_action"] == expected["operator_action"]
+            assert (
+                visibility["source_informed_blocking_reasons"]
+                == expected["source_informed_blocking_reasons"]
+            )
+            assert visibility.get("stop_condition") == expected["stop_condition"]

@@ -27,18 +27,22 @@
       "archetype_bucket": "recruit_board_flood",
       "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "core_source_backed_fixture",
+      "fixture_stage": "source_informed_valid_fixture",
       "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
       "source_urls": [
         "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
         "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/"
       ],
       "reason": "Archetype-level Boogie Down and CtA Paladin discussion supports board-flood identity and a candidate keep, but not exact-list strong runtime evidence.",
-      "first_missing_source_action": "find_exact_cta_paladin_mulligan_and_runtime_guide",
+      "first_missing_source_action": "add_explicit_mulligan_source",
       "strongness_visibility": {
-        "current_stage": "core_source_backed_fixture",
-        "first_strongness_gap": "none",
-        "operator_action": "keep_as_core_control_fixture"
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_explicit_mulligan_source",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 3,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
       },
       "decision_families_proven": ["recruit_board_flood", "aura_pressure"],
       "known_coverage_limits": ["does_not_cover_reactive_control"]
@@ -85,7 +89,7 @@
       "archetype_bucket": "discard_hand_mutation",
       "primary_mechanics": ["discard", "hand_mutation", "payoff_summon"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "core_source_backed_fixture",
+      "fixture_stage": "source_informed_valid_fixture",
       "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
       "source_urls": [
         "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
@@ -93,11 +97,15 @@
         "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide"
       ],
       "reason": "Public sources support Discolock discard identity and payoff cards, but exact current mulligan and discard sequencing are still partial.",
-      "first_missing_source_action": "find_explicit_current_wild_discolock_mulligan_and_discard_sequence_guide",
+      "first_missing_source_action": "add_explicit_mulligan_source",
       "strongness_visibility": {
-        "current_stage": "core_source_backed_fixture",
-        "first_strongness_gap": "none",
-        "operator_action": "keep_as_core_control_fixture"
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_explicit_mulligan_source",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence", "source_evidence_warnings"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 4,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
       },
       "decision_families_proven": ["discard_payoff", "hand_mutation"],
       "known_coverage_limits": ["does_not_cover_exact_combo"]
@@ -110,17 +118,21 @@
       "archetype_bucket": "token_board_snowball",
       "primary_mechanics": ["token_board", "treant", "board_buff"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "core_source_backed_fixture",
+      "fixture_stage": "source_informed_valid_fixture",
       "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
       "source_urls": [
         "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
       ],
       "reason": "Public sources support Treant/token board identity, but exact representative-list mulligan and runtime card-role claims remain partial.",
-      "first_missing_source_action": "find_explicit_wild_treantdruid_mulligan_and_runtime_guide",
+      "first_missing_source_action": "add_card_specific_source_claim",
       "strongness_visibility": {
-        "current_stage": "core_source_backed_fixture",
-        "first_strongness_gap": "none",
-        "operator_action": "keep_as_core_control_fixture"
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_card_specific_source_claim",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "policy_claim_not_strong_evidence", "source_evidence_warnings", "uncovered_cards"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 5,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
       },
       "decision_families_proven": ["token_board", "board_buff"],
       "known_coverage_limits": ["does_not_cover_single_target_removal"]
@@ -228,18 +240,22 @@
       "archetype_bucket": "pirate_hero_attack_pressure",
       "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
-      "fixture_stage": "core_source_backed_fixture",
+      "fixture_stage": "source_informed_valid_fixture",
       "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
       "source_urls": [
         "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
         "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
       ],
       "reason": "Public sources support fast Pirate Demon Hunter identity but not exact mulligan or runtime sequencing.",
-      "first_missing_source_action": "find_explicit_wild_piratedh_mulligan_or_gameplay_guide",
+      "first_missing_source_action": "add_card_specific_source_claim",
       "strongness_visibility": {
-        "current_stage": "core_source_backed_fixture",
-        "first_strongness_gap": "none",
-        "operator_action": "keep_as_core_control_fixture"
+        "current_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_card_specific_source_claim",
+        "source_informed_apply_readiness": "blocked",
+        "source_informed_blocking_reasons": ["generic_low_confidence_cards", "source_evidence_warnings", "uncovered_cards"],
+        "closure_state": "source_informed_blocked",
+        "closure_priority": 6,
+        "operator_action": "preserve_source_informed_with_evidence_gap"
       },
       "decision_families_proven": ["pirate_tempo", "hero_attack"],
       "known_coverage_limits": ["does_not_cover_reactive_control"]

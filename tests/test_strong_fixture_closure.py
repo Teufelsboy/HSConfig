@@ -36,3 +36,29 @@ def test_core_source_backed_fixture_stage_requires_source_backed_strong(
     assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] == 0
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
+
+
+@pytest.mark.parametrize("deck", load_archetype_matrix(), ids=lambda row: row["deck_name"])
+def test_source_backed_partial_fixtures_stay_load_safe_without_strong_claim(
+    tmp_path,
+    monkeypatch,
+    deck,
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
+    if deck.get("expected_semantic_status") != "SOURCE_BACKED_PARTIAL":
+        pytest.skip(f"{deck['deck_name']} is not expected to stay source-backed partial")
+
+    result = prepare_fixture_deck(tmp_path, deck)
+    operator = result["operator"]
+    promotion = result["strong_promotion_report"]
+
+    assert result["exit_code"] == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert promotion["verdict"] == "PROMOTION_BLOCKED"
+    assert promotion["static_contract_status"] == "SOURCE_BACKED_PARTIAL"
