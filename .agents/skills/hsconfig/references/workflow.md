@@ -5,17 +5,8 @@ Lower-level inspected path: source-manifest -> source-autopilot or draft-source-
 Manual-only fallback path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 For the normal operator entry point, start at `docs/operator/README.md`.
 
-Normal workflow:
-
-1. Prefer `hsconfig configure ...` for normal operation.
-2. Use lower-level commands only when inspecting a stage:
-   `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
-3. Open `reports/operator_summary.json` first.
-Recommended fresh deck command:
-
-```powershell
-hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply
-```
+Normal workflow: prefer `hsconfig configure ...`; use lower-level commands only when inspecting a stage (`source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`); open `reports/operator_summary.json` first.
+Recommended fresh deck command: `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
 
 If public sources are thin, the command still writes a valid package and reports the first missing source action. Do not manually relabel `SOURCE_BACKED_PARTIAL` as `SOURCE_BACKED_STRONG`.
 When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`.

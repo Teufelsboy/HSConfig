@@ -17,9 +17,7 @@ Normal workflow:
 3. Open `reports/operator_summary.json` first.
 For fresh public-guide-backed configs, prefer `hsconfig configure ... --online-source --auto-source --source-url "<public-guide-url>" --json`; if no URL is known, use Codex/web research and repeated `--source-url`; weak or missing coverage is non-blocking and must stay visible in acquisition/operator reports.
 
-For an optimal fresh deck config, prefer the source-backed path:
-`hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
-
+For an optimal fresh deck config, prefer the source-backed path: `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
 Do not block a valid deck because public guide coverage is thin. Build the load-safe config, keep `operator_summary.json` as the apply authority, and report `first_missing_source_action` when `SOURCE_BACKED_STRONG` is not honestly closed.
 
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority.
@@ -36,7 +34,6 @@ Do not block a valid deck because public guide coverage is thin. Build the load-
 - Contract invariant closure means: single apply authority, no silent default-only success, claim-kind surface discipline, and effect-not-mulligan canary coverage. It is diagnostic proof, not another runtime apply gate. `operator_summary.json remains the only normal apply authority`. Diagnostic reports must not become apply gates; default-only runtime surfaces must be visible, not silent; `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside the normal HSConfig path.
 
 Operator rules:
-
 - Decode the deck code first, then resolve exact CardID identity before writing config.
 - `hsconfig configure` is the normal one-command path; `source-manifest`, `draft-source-documents`, `hsconfig research-deck --source-documents-json`, and `hsconfig prepare --guide-sources-json` are inspected stages for fixtures, debugging, and research contract review.
 - Use `reports/operator_summary.json` as the single operator gate. `VALID_PACKAGE` is runtime validity; `SOURCE_BACKED_STRONG`, `STATIC_SEMANTICS_USABLE`, and `VALID_BUT_NOT_GUIDE_STRONG` are confidence and source-depth labels.
@@ -76,10 +73,7 @@ Operator rules:
 - Keep exact CardID identity, full `GlobalValues` coverage, the profile report, the pre-run boundary, and no replay analysis.
 - Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
-
 ## Expert Paths
-Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs.
-Use `--allow-placeholder` only for deterministic fixture or preview tests.
-
+Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 ## References
 `references/workflow.md`; `references/visionai-surfaces.md`; `references/guide-research-policy.md`; `references/globalvalues-policy.md`; `references/card-behavior-policy.md`
