@@ -160,6 +160,46 @@ def test_drafter_preserves_non_hand_semantic_qualifiers_through_mulligan_gate():
     assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
 
 
+def test_drafter_preserves_evidence_policy_fields():
+    draft = draft_source_documents(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        evidence_rows=[
+            {
+                "source_url": "https://example.invalid/shadow-priest",
+                "source_title": "Shadow Priest Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-15T00:00:00Z",
+                "claim_kind": "mulligan_keep",
+                "card_mentions": ["Mind Spike Enabler"],
+                "stance": "keep",
+                "evidence_text_short": "Mulligan: keep Mind Spike Enabler.",
+                "source_confidence": "high",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "source_rank_lane": "guide_current_deck_match",
+                "deck_match_scope": "deck_or_archetype_matched",
+                "source_record_strength": "candidate_strong",
+                "promotion_eligible": True,
+                "strong_promotion_eligible": True,
+                "promotion_blockers": [],
+                "first_missing_source_action": "none",
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    document = draft["source_documents"][0]
+    claim = document["claims"][0]
+
+    assert document["source_rank_lane"] == "guide_current_deck_match"
+    assert document["first_missing_source_action"] == "none"
+    assert claim["source_rank_lane"] == "guide_current_deck_match"
+    assert claim["strong_promotion_eligible"] is True
+    assert claim["promotion_blockers"] == []
+    assert claim["first_missing_source_action"] == "none"
+
+
 @pytest.mark.parametrize("timing", ["Opening Hand", "mulligan"])
 def test_drafter_preserves_explicit_mulligan_timing_for_real_opening_hand_claim(timing):
     deck_identity = {

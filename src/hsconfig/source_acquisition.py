@@ -8,6 +8,8 @@ from socket import create_connection, gaierror, getaddrinfo
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
+from hsconfig.source_evidence_policy import classify_source_evidence
+
 
 Fetcher = Callable[[str, float], tuple[int, str, bytes]]
 HostResolver = Callable[[str], Sequence[str]]
@@ -123,21 +125,25 @@ def collect_public_source_records(
             publication_year=publication_year,
             current_date=current_date,
         )
-        records.append(
-            {
-                "source_url": url,
-                "source_title": parsed["title"] or url,
-                "source_family": source_family,
-                "source_visibility": visibility,
-                "source_lane_hint": lane_hint,
-                "publication_year": publication_year,
-                "source_record_strength": strength,
-                "retrieved_at": retrieved_at,
-                "deck_match": deck_match,
-                "deck_match_scope": deck_match_scope,
-                "normalized_text": parsed["text"],
-            }
+        record = {
+            "source_url": url,
+            "source_title": parsed["title"] or url,
+            "source_family": source_family,
+            "source_visibility": visibility,
+            "source_lane_hint": lane_hint,
+            "publication_year": publication_year,
+            "source_record_strength": strength,
+            "retrieved_at": retrieved_at,
+            "deck_match": deck_match,
+            "deck_match_scope": deck_match_scope,
+            "normalized_text": parsed["text"],
+        }
+        policy = classify_source_evidence(
+            record,
+            deck_name=deck_name,
+            current_date=current_date,
         )
+        records.append({**record, **_record_policy_fields(policy)})
 
     report = {
         "schema_version": 1,
@@ -345,6 +351,23 @@ def _source_record_strength(
     if visibility in {"decklist_only", "full_text"}:
         return "partial"
     return "diagnostic_only"
+
+
+def _record_policy_fields(policy: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        key: policy[key]
+        for key in (
+            "source_lane",
+            "source_rank_lane",
+            "deck_match_scope",
+            "promotion_eligible",
+            "strong_promotion_eligible",
+            "trust_ceiling",
+            "promotion_blockers",
+            "first_missing_source_action",
+        )
+        if key in policy
+    }
 
 
 def _current_year(current_date: str | date | None) -> int | None:

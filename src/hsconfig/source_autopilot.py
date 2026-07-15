@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
+from hsconfig.source_evidence_policy import classify_source_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
 
 GUIDE_FAMILIES = {"guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
@@ -69,6 +70,12 @@ def rank_public_sources(
             current_year,
             row,
         )
+        policy = classify_source_evidence(
+            row,
+            deck_name=deck_name,
+            current_date=current_date,
+        )
+        row.update(_policy_fields(policy, include_rank_lane=False))
         row["source_rank_index"] = index
         ranked.append(row)
 
@@ -434,6 +441,11 @@ def _source_base(
         match = {}
     source_rank_lane = _text(source.get("source_rank_lane", ""))
     deck_match_scope = _deck_match_scope(source, deck_name)
+    policy = classify_source_evidence(
+        source,
+        deck_name=deck_name,
+        current_date=current_date,
+    )
     base: dict[str, Any] = {
         "source_url": _text(source.get("source_url", "")),
         "source_title": _text(source.get("source_title", "")),
@@ -441,11 +453,17 @@ def _source_base(
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
         "source_visibility": _source_visibility_for_documents(source),
         "source_rank_lane": source_rank_lane,
-        "source_lane": _source_lane_for_rank(source_rank_lane, deck_match_scope),
+        "source_lane": _text(source.get("source_lane", ""))
+        or _source_lane_for_rank(source_rank_lane, deck_match_scope),
         "deck_match_scope": deck_match_scope,
         "deck_name": _text(match.get("deck_name", "")),
         "archetype": _text(match.get("archetype", "")),
     }
+    base.update(_policy_fields(policy, include_rank_lane=False))
+    base["source_rank_lane"] = source_rank_lane
+    base["source_visibility"] = _source_visibility_for_documents(source)
+    base["deck_match_scope"] = deck_match_scope
+    base["source_lane"] = _text(source.get("source_lane", "")) or base["source_lane"]
     source_record_strength = _text(source.get("source_record_strength", ""))
     if source_record_strength:
         base["source_record_strength"] = source_record_strength
@@ -457,6 +475,25 @@ def _source_base(
         if _text(source.get(key, "")):
             base[key] = _text(source[key])
     return base
+
+
+def _policy_fields(
+    policy: Mapping[str, Any],
+    *,
+    include_rank_lane: bool,
+) -> dict[str, Any]:
+    keys = [
+        "source_lane",
+        "deck_match_scope",
+        "promotion_eligible",
+        "strong_promotion_eligible",
+        "trust_ceiling",
+        "promotion_blockers",
+        "first_missing_source_action",
+    ]
+    if include_rank_lane:
+        keys.append("source_rank_lane")
+    return {key: policy[key] for key in keys if key in policy}
 
 
 def _source_family_for_documents(source: Mapping[str, Any]) -> str:
@@ -632,12 +669,20 @@ def _is_strong_guide_lane_shape(
 
 def _strong_lane_blockers(row: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
+    if row.get("promotion_eligible") is False:
+        blockers.append("promotion_explicitly_disabled")
+    if row.get("strong_promotion_eligible") is False:
+        blockers.extend(
+            str(blocker)
+            for blocker in _as_list(row.get("promotion_blockers", []))
+            if str(blocker)
+        )
     if _is_non_promoting_claim(row):
         blockers.append("non_promoting_source_record")
     source_record_strength = _text(row.get("source_record_strength", "")).lower()
     if source_record_strength and source_record_strength != "candidate_strong":
         blockers.append(f"non_strong_source_record_strength_{source_record_strength}")
-    return blockers
+    return sorted(set(blockers))
 
 
 def _current_year(current_date: str | date | None) -> int | None:
