@@ -297,3 +297,81 @@ def test_compile_source_search_records_does_not_treat_generic_gameplay_keep_pros
         claim["claim_kind"] == "mulligan_keep"
         for claim in payload["records"][0]["claims"]
     )
+
+
+def test_compile_preserves_acquisition_classification_fields():
+    acquired = [
+        {
+            "source_url": "https://example.test/shadowpriest",
+            "source_title": "Shadow Priest Mulligan Guide 2026",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_lane_hint": "public_guide",
+            "source_record_strength": "candidate_strong",
+            "publication_year": 2026,
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["TOY_381"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": "Mulligan: Keep Papercraft Angel.",
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    record = payload["records"][0]
+    assert record["source_visibility"] == "full_text"
+    assert record["source_lane_hint"] == "public_guide"
+    assert record["source_record_strength"] == "candidate_strong"
+    assert record["publication_year"] == 2026
+    assert record["deck_match_scope"] == "deck_or_archetype_matched"
+
+
+def test_compile_keeps_snippet_only_guides_diagnostic_only():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_slug": "thindeck",
+        "deck_code_hash": "sha256:thin",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/thin-snippet",
+            "source_title": "ThinDeck Mulligan Guide",
+            "source_family": "guide",
+            "source_visibility": "snippet_only",
+            "source_lane_hint": "unknown",
+            "source_record_strength": "diagnostic_only",
+            "publication_year": 2026,
+            "deck_match": {
+                "deck_name": "ThinDeck",
+                "archetype": "thindeck",
+                "matched_card_ids": ["CARD_001"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": "Mulligan: Keep Fixture Card.",
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    record = payload["records"][0]
+    assert record["source_visibility"] == "snippet_only"
+    assert record["mulligan"]["keep_card_ids"] == []
+    assert record["claims"] == []
+    assert payload["source_claim_compiler_report"]["promotion_candidate_count"] == 0
+    assert payload["source_claim_compiler_report"]["unsupported_claims"][0]["reason"] == (
+        "snippet_only_source_not_lowerable"
+    )

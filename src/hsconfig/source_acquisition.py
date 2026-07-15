@@ -111,7 +111,10 @@ def collect_public_source_records(
         )
         source_family = _infer_source_family(url, parsed["text"])
         visibility = _source_visibility(source_family, parsed["text"])
-        publication_year = _publication_year_from_text(f'{parsed["title"]} {parsed["text"]}')
+        publication_year = _publication_year_from_text(
+            f'{parsed["title"]} {parsed["text"]}',
+            current_date=current_date,
+        )
         lane_hint = _source_lane_hint(source_family, visibility)
         strength = _source_record_strength(
             source_family=source_family,
@@ -305,11 +308,22 @@ def _source_lane_hint(source_family: str, visibility: str) -> str:
     return "public_page"
 
 
-def _publication_year_from_text(text: str) -> int | None:
-    for year in range(2020, 2031):
-        if str(year) in text:
-            return year
-    return None
+def _publication_year_from_text(
+    text: str,
+    *,
+    current_date: str | date | None = None,
+) -> int | None:
+    years = sorted({year for year in range(2020, 2031) if str(year) in text})
+    if not years:
+        return None
+    current_year = _current_year(current_date)
+    if current_year in years:
+        return current_year
+    if current_year is not None:
+        current_or_past = [year for year in years if year <= current_year]
+        if current_or_past:
+            return max(current_or_past)
+    return max(years)
 
 
 def _source_record_strength(

@@ -348,7 +348,7 @@ def _source_base(
         "source_title": _text(source.get("source_title", "")),
         "source_family": _source_family_for_documents(source),
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
-        "source_visibility": _text(source.get("source_visibility", "full_text")),
+        "source_visibility": _text(source.get("source_visibility", "unknown")),
         "source_lane": _source_lane_for_rank(source_rank_lane, deck_match_scope),
         "deck_match_scope": deck_match_scope,
         "deck_name": _text(match.get("deck_name", "")),

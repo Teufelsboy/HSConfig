@@ -19,6 +19,16 @@ def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
             "<body><p>Deck code: AAEBA-example</p><ul><li>Patches the Pirate</li></ul></body></html>"
         ),
         "https://example.test/snippet": "<html><body><p>Shadow Priest list.</p></body></html>",
+        "https://example.test/multi-year-guide": (
+            "<html><head><title>Shadow Priest Guide 2026</title></head>"
+            "<body><p>Originally tested in 2024.</p>"
+            "<p>Updated July 15, 2026.</p>"
+            "<p>Mulligan: Keep Papercraft Angel.</p>"
+            "<p>This current Wild guide explains the opening turns, pressure plan, "
+            "hero power usage, matchup posture, and exact mulligan priorities for "
+            "the current Shadow Priest deck.</p>"
+            "</body></html>"
+        ),
     }
     return 200, "text/html", pages[url].encode("utf-8")
 
@@ -80,3 +90,25 @@ def test_acquisition_marks_decklist_and_snippets_non_promoting():
     assert by_url["https://example.test/decklist-only"]["source_record_strength"] == "partial"
     assert by_url["https://example.test/snippet"]["source_visibility"] == "snippet_only"
     assert by_url["https://example.test/snippet"]["source_record_strength"] == "diagnostic_only"
+
+
+def test_acquisition_prefers_current_publication_year_over_older_history():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2}],
+    }
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/multi-year-guide"],
+        current_date="2026-07-15",
+        fetcher=_fetcher,
+        resolver=_resolver,
+    )
+
+    record = payload["source_records"][0]
+    assert record["publication_year"] == 2026
+    assert record["source_record_strength"] == "candidate_strong"
