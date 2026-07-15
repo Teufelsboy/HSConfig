@@ -275,6 +275,91 @@ def test_rank_public_sources_uses_publication_year_field():
     assert ranked[0]["source_rank_lane"] == "guide_current_deck_match"
 
 
+def test_source_autopilot_does_not_call_snippet_structured_claims_strong():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-snippet",
+                "source_title": "ThinDeck Guide 2026",
+                "source_family": "guide",
+                "source_visibility": "snippet_only",
+                "publication_year": 2026,
+                "normalized_text": "ThinDeck guide.",
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "stance": "prefer_enemy_hero",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    assert bundle["source_autopilot_report"]["runtime_contract_candidate_count"] == 1
+    assert bundle["source_autopilot_report"]["strong_candidate"] is False
+
+
+def test_source_autopilot_does_not_call_stale_structured_guide_claims_strong():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-guide",
+                "source_title": "ThinDeck Guide 2025",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2025,
+                "normalized_text": "ThinDeck current style guide with target priorities.",
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "stance": "prefer_enemy_hero",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    assert bundle["ranked_sources"][0]["source_rank_lane"] == "guide_card_overlap"
+    assert bundle["source_autopilot_report"]["runtime_contract_candidate_count"] == 1
+    assert bundle["source_autopilot_report"]["strong_candidate"] is False
+
+
 def test_source_autopilot_never_blocks_config_creation_for_thin_or_empty_sources():
     thin_payload = _fixture("source_search_decklist_only.json")
     deck_identity = {

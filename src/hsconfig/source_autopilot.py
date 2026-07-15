@@ -144,6 +144,7 @@ def build_source_autopilot_bundle(
             evidence_rows=evidence_rows,
             draft=draft,
             verification=verification,
+            current_date=current_date,
         ),
     }
 
@@ -238,6 +239,7 @@ def _build_report(
     evidence_rows: Sequence[Mapping[str, Any]],
     draft: Mapping[str, Any],
     verification: Mapping[str, Any],
+    current_date: str | date | None,
 ) -> dict[str, Any]:
     lane_counts = Counter(_text(source.get("source_rank_lane", "")) for source in ranked_sources)
     claim_counts = Counter(_text(row.get("claim_kind", "")) for row in evidence_rows)
@@ -250,7 +252,7 @@ def _build_report(
         if _is_runtime_contract_candidate(row)
     ]
     strong_lowerable_guide_rows = [
-        row for row in lowerable_guide_rows if _is_strong_guide_lane(row)
+        row for row in lowerable_guide_rows if _is_strong_guide_lane(row, current_date)
     ]
     card_specific_lowerable_guide_rows = [
         row
@@ -343,17 +345,24 @@ def _source_base(
         match = {}
     source_rank_lane = _text(source.get("source_rank_lane", ""))
     deck_match_scope = _deck_match_scope(source, deck_name)
-    return {
+    base: dict[str, Any] = {
         "source_url": _text(source.get("source_url", "")),
         "source_title": _text(source.get("source_title", "")),
         "source_family": _source_family_for_documents(source),
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
         "source_visibility": _source_visibility_for_documents(source),
+        "source_rank_lane": source_rank_lane,
         "source_lane": _source_lane_for_rank(source_rank_lane, deck_match_scope),
         "deck_match_scope": deck_match_scope,
         "deck_name": _text(match.get("deck_name", "")),
         "archetype": _text(match.get("archetype", "")),
     }
+    if source.get("publication_year") is not None:
+        base["publication_year"] = source["publication_year"]
+    for key in ("published_at", "publication_date", "published_date"):
+        if _text(source.get(key, "")):
+            base[key] = _text(source[key])
+    return base
 
 
 def _source_family_for_documents(source: Mapping[str, Any]) -> str:
@@ -502,8 +511,20 @@ def _deck_match_scope(source: Mapping[str, Any], deck_name: str) -> str:
     return "unknown"
 
 
-def _is_strong_guide_lane(row: Mapping[str, Any]) -> bool:
-    return _text(row.get("source_lane", "")) == "deck_matched_public_guide"
+def _is_strong_guide_lane(
+    row: Mapping[str, Any],
+    current_date: str | date | None,
+) -> bool:
+    if _text(row.get("source_lane", "")) != "deck_matched_public_guide":
+        return False
+    if _text(row.get("source_rank_lane", "")) != "guide_current_deck_match":
+        return False
+    if _text(row.get("source_visibility", "")).lower() != "full_text":
+        return False
+    current_year = _current_year(current_date)
+    if current_year is None:
+        return False
+    return _publication_year(row) == current_year
 
 
 def _current_year(current_date: str | date | None) -> int | None:
@@ -512,7 +533,7 @@ def _current_year(current_date: str | date | None) -> int | None:
     text = _text(current_date)
     if len(text) >= 4 and text[:4].isdigit():
         return int(text[:4])
-    return None
+    return datetime.utcnow().year
 
 
 def _iso_datetime(current_date: str | date | None) -> str:
