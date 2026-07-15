@@ -291,6 +291,10 @@ def _build_report(
         verification=verification,
     )
     strong_candidate = not blockers
+    strong_closure_summary = _build_strong_closure_summary(
+        evidence_rows=evidence_rows,
+        current_date=current_date,
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -303,6 +307,7 @@ def _build_report(
         ),
         "strong_candidate": strong_candidate,
         "strong_candidate_blockers": blockers,
+        "strong_closure_summary": strong_closure_summary,
         "first_missing_source_action": (
             "none" if strong_candidate else "add_current_deck_guide_or_mulligan_guide"
         ),
@@ -317,6 +322,36 @@ def _build_report(
             "status": verification.get("status"),
             "warning_count": len(warnings) if isinstance(warnings, list) else 0,
         },
+    }
+
+
+def _build_strong_closure_summary(
+    *,
+    evidence_rows: Sequence[Mapping[str, Any]],
+    current_date: str | date | None,
+) -> dict[str, Any]:
+    strong_rows = [
+        row
+        for row in evidence_rows
+        if _is_strong_guide_lane(row, current_date) and _is_runtime_contract_candidate(row)
+    ]
+    has_explicit_mulligan_source = any(
+        _text(row.get("claim_kind", "")) in {"mulligan_keep", "mulligan_discard"}
+        for row in strong_rows
+    )
+    source_backed_strong_ready = bool(strong_rows) and has_explicit_mulligan_source
+    return {
+        "technical_no_block": True,
+        "semantic_status": (
+            "SOURCE_BACKED_STRONG"
+            if source_backed_strong_ready
+            else "SOURCE_BACKED_PARTIAL"
+        ),
+        "source_backed_strong_ready": source_backed_strong_ready,
+        "strong_evidence_row_count": len(strong_rows),
+        "first_missing_source_action": (
+            "none" if source_backed_strong_ready else "add_explicit_mulligan_source"
+        ),
     }
 
 
