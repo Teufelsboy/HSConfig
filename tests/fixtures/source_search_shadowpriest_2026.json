@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "deck_name": "ShadowPriest",
+  "records": [
+    {
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+      "source_title": "Voidburn Wild Aggro Shadow Priest",
+      "source_family": "guide",
+      "retrieved_at": "2026-07-15T00:00:00Z",
+      "deck_match": {
+        "deck_name": "ShadowPriest",
+        "archetype": "aggro_burn_hero_power_transform",
+        "matched_card_ids": ["SW_448", "SCH_514", "SW_446", "SW_444", "TOY_381", "GVG_009"]
+      },
+      "mulligan": {
+        "keep_card_ids": ["TOY_381", "SW_444", "SCH_514", "GVG_009"],
+        "discard_cost_min": 4,
+        "evidence_text_short": "Guide mulligan keeps cheap pressure cards and says not to keep cards costing 4 or more."
+      },
+      "claims": [
+        {
+          "claim_kind": "gameplan_posture",
+          "scope": "deck",
+          "stance": "aggressive_burn_pressure",
+          "evidence_text_short": "The deck is an aggressive Shadow Priest burn strategy.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "hero_power_transform",
+          "cards": ["SW_448"],
+          "stance": "enable_mind_spike_shadow_hero_power",
+          "evidence_text_short": "Darkbishop Benedictus enables the Shadow Priest hero power plan.",
+          "source_confidence": "high",
+          "semantic_qualifiers": {
+            "zone_scope": "Deck",
+            "state_requirements": ["deckbuilding_effect"]
+          }
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["SW_446"],
+          "stance": "prefer_enemy_hero",
+          "evidence_text_short": "Voidtouched Attendant belongs to the face-damage pressure plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "targeting_rule",
+          "cards": ["SW_444"],
+          "stance": "advance_face_damage_plan",
+          "evidence_text_short": "Twilight Deceptor belongs to the low-cost pressure and burn plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["TOY_381"],
+          "stance": "early_board_pressure",
+          "evidence_text_short": "Papercraft Angel is part of the cheap pressure mulligan plan.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["SCH_514"],
+          "stance": "reload_after_pressure",
+          "evidence_text_short": "Raise Dead supports aggressive refill after cheap minions are used.",
+          "source_confidence": "high"
+        },
+        {
+          "claim_kind": "card_role",
+          "cards": ["GVG_009"],
+          "stance": "face_damage_pressure",
+          "evidence_text_short": "Shadowbomber belongs to the cheap face damage pressure plan.",
+          "source_confidence": "high"
+        }
+      ]
+    }
+  ]
+}
