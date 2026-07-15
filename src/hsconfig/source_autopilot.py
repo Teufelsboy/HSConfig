@@ -223,6 +223,8 @@ def _explicit_claim_rows(source: Mapping[str, Any], base: Mapping[str, Any]) -> 
         if not isinstance(claim, Mapping):
             continue
         row = {**base, **dict(claim)}
+        if base.get("promotion_eligible") is False or claim.get("promotion_eligible") is False:
+            row["promotion_eligible"] = False
         row.setdefault(
             "source_confidence",
             "high" if str(base.get("source_family", "")).lower() in GUIDE_FAMILIES else "medium",
@@ -256,6 +258,12 @@ def _build_report(
     strong_lowerable_guide_rows = [
         row for row in lowerable_guide_rows if _is_strong_guide_lane(row, current_date)
     ]
+    strong_shaped_non_promoting_rows = [
+        row
+        for row in lowerable_guide_rows
+        if _is_strong_guide_lane_shape(row, current_date)
+        and _strong_lane_blockers(row)
+    ]
     card_specific_lowerable_guide_rows = [
         row
         for row in strong_lowerable_guide_rows
@@ -270,6 +278,7 @@ def _build_report(
     blockers = _strong_candidate_blockers(
         card_specific_lowerable_guide_rows=card_specific_lowerable_guide_rows,
         apply_surface_guide_rows=apply_surface_guide_rows,
+        strong_shaped_non_promoting_rows=strong_shaped_non_promoting_rows,
         draft=draft,
         verification=verification,
     )
@@ -307,10 +316,20 @@ def _strong_candidate_blockers(
     *,
     card_specific_lowerable_guide_rows: Sequence[Mapping[str, Any]],
     apply_surface_guide_rows: Sequence[Mapping[str, Any]],
+    strong_shaped_non_promoting_rows: Sequence[Mapping[str, Any]],
     draft: Mapping[str, Any],
     verification: Mapping[str, Any],
 ) -> list[str]:
     blockers: list[str] = []
+    if not card_specific_lowerable_guide_rows or not apply_surface_guide_rows:
+        for blocker in sorted(
+            {
+                blocker
+                for row in strong_shaped_non_promoting_rows
+                for blocker in _strong_lane_blockers(row)
+            }
+        ):
+            blockers.append(blocker)
     if not card_specific_lowerable_guide_rows:
         blockers.append("no_card_specific_runtime_contract_candidate")
     if not apply_surface_guide_rows:
@@ -427,6 +446,11 @@ def _source_base(
         "deck_name": _text(match.get("deck_name", "")),
         "archetype": _text(match.get("archetype", "")),
     }
+    source_record_strength = _text(source.get("source_record_strength", ""))
+    if source_record_strength:
+        base["source_record_strength"] = source_record_strength
+    if source.get("promotion_eligible") is False:
+        base["promotion_eligible"] = False
     if source.get("publication_year") is not None:
         base["publication_year"] = source["publication_year"]
     for key in ("published_at", "publication_date", "published_date"):
@@ -587,6 +611,13 @@ def _is_strong_guide_lane(
     row: Mapping[str, Any],
     current_date: str | date | None,
 ) -> bool:
+    return _is_strong_guide_lane_shape(row, current_date) and not _strong_lane_blockers(row)
+
+
+def _is_strong_guide_lane_shape(
+    row: Mapping[str, Any],
+    current_date: str | date | None,
+) -> bool:
     if _text(row.get("source_lane", "")) != "deck_matched_public_guide":
         return False
     if _text(row.get("source_rank_lane", "")) != "guide_current_deck_match":
@@ -597,6 +628,16 @@ def _is_strong_guide_lane(
     if current_year is None:
         return False
     return _publication_year(row) == current_year
+
+
+def _strong_lane_blockers(row: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if _is_non_promoting_claim(row):
+        blockers.append("non_promoting_source_record")
+    source_record_strength = _text(row.get("source_record_strength", "")).lower()
+    if source_record_strength and source_record_strength != "candidate_strong":
+        blockers.append(f"non_strong_source_record_strength_{source_record_strength}")
+    return blockers
 
 
 def _current_year(current_date: str | date | None) -> int | None:

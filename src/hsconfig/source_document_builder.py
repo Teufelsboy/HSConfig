@@ -256,6 +256,9 @@ def _normalize_source_claim(
     source_lane = _claim_source_lane(raw_claim, document)
     if source_lane:
         claim["source_lane"] = source_lane
+    for key in ("promotion_eligible", "source_record_strength"):
+        if key in raw_claim:
+            claim[key] = raw_claim[key]
     if deck_name:
         claim["deck_name"] = deck_name
     if document.get("archetype"):

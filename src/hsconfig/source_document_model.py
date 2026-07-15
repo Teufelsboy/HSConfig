@@ -278,6 +278,8 @@ def _runtime_lowering(claim_kind: str) -> str:
 
 
 def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
+    if "promotion_eligible" in claim and not _bool_value(claim["promotion_eligible"]):
+        return False
     if source_type == "policy_backed_autonomous_mulligan":
         return False
     if source_type in {"default_runtime", "generated_default"}:
@@ -297,6 +299,9 @@ def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
 
 def _strong_promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
     if not _promotion_eligible(source_type, claim):
+        return False
+    source_record_strength = _normalized_text(claim.get("source_record_strength"))
+    if source_record_strength and source_record_strength != "candidate_strong":
         return False
     if source_type not in {"community_guide", "public_guide"}:
         return False

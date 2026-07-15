@@ -86,6 +86,49 @@ def test_source_document_builder_carries_strong_source_quality_metadata():
     assert qualified["strong_promotion_eligible"] is True
 
 
+def test_source_document_builder_preserves_non_promoting_partial_metadata():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/partial-guide",
+            "source_title": "Partial Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "deck_name": "Fixture",
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "deck_match_scope": "deck_or_archetype_matched",
+            "claims": [
+                {
+                    "claim_kind": "targeting_rule",
+                    "cards": ["CARD_A"],
+                    "target_scope": "enemy_hero",
+                    "evidence_text_short": "Use Card A as face damage.",
+                    "source_confidence": "high",
+                    "promotion_eligible": False,
+                    "source_record_strength": "partial",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    claim = bundle["claims"][0]
+    qualified = qualify_source_claim(claim)
+    assert claim["promotion_eligible"] is False
+    assert claim["source_record_strength"] == "partial"
+    assert qualified["promotion_eligible"] is False
+    assert qualified["strong_promotion_eligible"] is False
+
+
 def test_source_document_builder_preserves_explicit_claim_id_in_coverage():
     deck_identity = {
         "deck_name": "Fixture",

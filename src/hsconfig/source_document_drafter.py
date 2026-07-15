@@ -138,6 +138,8 @@ def _claim_from_row(row: dict[str, Any], cards: list[str]) -> dict[str, Any]:
         "source_lane",
         "deck_match_scope",
         "source_visibility",
+        "promotion_eligible",
+        "source_record_strength",
         *QUALIFIER_KEYS,
     ):
         if key in row:

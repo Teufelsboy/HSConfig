@@ -16,6 +16,15 @@ SOURCE_CLAIM_FIELDS = {
     "source_confidence",
 }
 
+ALLOWED_EXPECTED_RUNTIME_SURFACE_STATUSES = {
+    "source_backed",
+    "policy_backed",
+    "static_semantics_backed",
+    "not_expected",
+    "suppressed_with_reason",
+    "explicit_gap",
+}
+
 
 SEMANTIC_ARCHETYPE_FIXTURES = [
     {
@@ -307,8 +316,7 @@ def _write_fixture(tmp_path: Path, fixture: dict) -> tuple[Path, Path]:
     return cards_path, sources_path
 
 
-@pytest.mark.parametrize("fixture", SEMANTIC_ARCHETYPE_FIXTURES, ids=lambda item: item["deck_name"])
-def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_path, fixture):
+def _prepare_semantic_fixture(tmp_path: Path, fixture: dict) -> dict:
     cards_path, sources_path = _write_fixture(tmp_path, fixture)
     out = tmp_path / fixture["deck_name"]
     exit_code = main(
@@ -329,10 +337,70 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
             "--json",
         ]
     )
-    assert exit_code == 0
-
     reports = out / "reports"
     operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    return {"exit_code": exit_code, "out": out, "reports": reports, "operator": operator}
+
+
+def _expected_surface_status(surface: str, ledger_row: dict, usefulness: dict) -> str:
+    status = ledger_row["status"]
+    if status in ALLOWED_EXPECTED_RUNTIME_SURFACE_STATUSES:
+        return status
+    surface_row = usefulness.get("surfaces", {}).get(surface, {})
+    if surface_row.get("status") == "not_expected":
+        return "not_expected"
+    if status == "warning_only":
+        return "explicit_gap"
+    return status
+
+
+def build_no_default_only_matrix(tmp_path: Path) -> list[dict]:
+    rows = []
+    for fixture in SEMANTIC_ARCHETYPE_FIXTURES:
+        prepared = _prepare_semantic_fixture(tmp_path, fixture)
+        operator = prepared["operator"]
+        usefulness = operator["config_usefulness"]
+        for ledger_row in operator["surface_status_ledger"]:
+            rows.append(
+                {
+                    "deck_name": fixture["deck_name"],
+                    "surface": ledger_row["surface"],
+                    "technical_status": operator["technical_status"],
+                    "expected_runtime_surface_status": _expected_surface_status(
+                        ledger_row["surface"],
+                        ledger_row,
+                        usefulness,
+                    ),
+                    "silent_default_only": (
+                        ledger_row["default_only"] is True
+                        and ledger_row["apply_blocking"] is False
+                        and not ledger_row.get("first_missing_link")
+                    ),
+                }
+            )
+    return rows
+
+
+def test_representative_matrix_has_no_silent_default_only_surfaces(tmp_path):
+    rows = build_no_default_only_matrix(tmp_path)
+    assert rows
+    for row in rows:
+        assert row["technical_status"] == "VALID_PACKAGE", row
+        assert (
+            row["expected_runtime_surface_status"]
+            in ALLOWED_EXPECTED_RUNTIME_SURFACE_STATUSES
+        ), row
+        assert row.get("silent_default_only") is False, row
+
+
+@pytest.mark.parametrize("fixture", SEMANTIC_ARCHETYPE_FIXTURES, ids=lambda item: item["deck_name"])
+def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_path, fixture):
+    prepared = _prepare_semantic_fixture(tmp_path, fixture)
+    out = prepared["out"]
+    reports = prepared["reports"]
+    operator = prepared["operator"]
+    assert prepared["exit_code"] == 0
+
     deck_dirs = [path for path in (out / "CustomConfig").iterdir() if path.is_dir()]
     assert len(deck_dirs) == 1
     deck_dir = deck_dirs[0]
