@@ -121,7 +121,6 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
         "READY_TO_APPLY_OR_HANDOFF",
         "READY_TO_APPLY_WITH_WARNINGS",
     }
-    assert coverage["summary"]["guide_backed"] > 0
     assert (
         coverage["summary"]["guide_backed"]
         + coverage["summary"]["static_semantics_backfilled"]

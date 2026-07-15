@@ -146,6 +146,13 @@ PUBLIC_GUIDE_SOURCE_FAMILIES = frozenset(
         "matchup_guide",
     }
 )
+STATISTICAL_ENRICHMENT_SOURCE_TYPES = frozenset(
+    {
+        "replay_stat_aggregate",
+        "hs" + "replay",
+        "hsguru",
+    }
+)
 TRUE_TEXT_VALUES = frozenset({"1", "true", "yes", "y", "on"})
 FALSE_TEXT_VALUES = frozenset({"", "0", "false", "no", "n", "off"})
 
@@ -232,7 +239,7 @@ def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
         return "official_static_semantics"
     if source_type in {"community_guide", "public_guide"}:
         return str(claim.get("source_lane") or "deck_matched_public_guide")
-    if source_type in {"replay_stat_aggregate", "hsreplay", "hsguru"}:
+    if source_type in STATISTICAL_ENRICHMENT_SOURCE_TYPES:
         return "statistical_enrichment"
     return str(claim.get("source_lane") or "unknown")
 

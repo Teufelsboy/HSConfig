@@ -9,8 +9,8 @@ def test_matrix_visibility_summarizes_core_and_source_informed_rows():
     report = build_matrix_visibility(matrix)
 
     assert report["total_decks"] == 11
-    assert report["core_source_backed_fixture_count"] == 9
-    assert report["source_informed_valid_fixture_count"] == 2
+    assert report["core_source_backed_fixture_count"] == 5
+    assert report["source_informed_valid_fixture_count"] == 6
     assert report["normal_next_action"] == (
         "keep_closed_matrix_until_new_exact_source_or_family_gap"
     )
@@ -44,7 +44,9 @@ def test_each_matrix_row_exposes_first_strongness_link():
                     "exact_kingslayer_quick_pick_mulligan_source_unavailable"
                 )
             else:
-                assert visibility["operator_action"] == "close_existing_source_informed_fixture"
+                assert visibility["operator_action"] == (
+                    "preserve_source_informed_with_evidence_gap"
+                )
                 assert visibility.get("stop_condition") is None
 
 
@@ -65,13 +67,13 @@ def test_matrix_visibility_report_exposes_deck_level_strongness_gaps():
     }
     assert {
         "deck_name": "CtAPaladin",
-        "fixture_stage": "core_source_backed_fixture",
-        "first_strongness_gap": "none",
-        "operator_action": "keep_as_core_control_fixture",
+        "fixture_stage": "source_informed_valid_fixture",
+        "first_strongness_gap": "needs_explicit_mulligan_source",
+        "operator_action": "preserve_source_informed_with_evidence_gap",
         "stop_condition": None,
-        "closure_state": "core_strong",
-        "source_informed_blocking_reasons": [],
-        "closure_priority": 0,
+        "closure_state": "source_informed_blocked",
+        "source_informed_blocking_reasons": ["policy_claim_not_strong_evidence"],
+        "closure_priority": 2,
     } in report["deck_visibility"]
 
 

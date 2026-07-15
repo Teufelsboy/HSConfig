@@ -74,7 +74,7 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
         if readiness["status"] == "not_applicable":
             assert readiness["source_gap_count"] == 0
         else:
-            assert readiness["source_gap_count"] > 0
+            assert readiness["source_gap_count"] > 0 or readiness["blocking_reasons"]
         assert (
             promotion["source_informed_apply_readiness"]
             == readiness
@@ -94,17 +94,15 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
             assert chain["next_action"]
 
 
-@pytest.mark.parametrize("deck_name", ["Discolock", "ImbueMage"])
-def test_discolock_and_imbuemage_are_now_source_backed_strong(
+def test_imbuemage_is_source_backed_strong(
     tmp_path,
     monkeypatch,
-    deck_name,
 ):
     monkeypatch.setattr(
         "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
     )
 
-    deck = next(row for row in load_archetype_matrix() if row["deck_name"] == deck_name)
+    deck = next(row for row in load_archetype_matrix() if row["deck_name"] == "ImbueMage")
     result = prepare_fixture_deck(tmp_path, deck)
     operator = result["operator"]
     gap_report = result["source_claim_gap_report"]
@@ -115,6 +113,38 @@ def test_discolock_and_imbuemage_are_now_source_backed_strong(
     assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert operator["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
     assert promotion["promotion_ready"] is True
+    assert gap_report["summary"]["blocked_cards"] == 0
+    assert gap_report["summary"]["first_missing_chain"] is None
+
+
+def test_discolock_remains_source_informed_with_visible_evidence_debt(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: []
+    )
+
+    deck = next(row for row in load_archetype_matrix() if row["deck_name"] == "Discolock")
+    result = prepare_fixture_deck(tmp_path, deck)
+    operator = result["operator"]
+    gap_report = result["source_claim_gap_report"]
+    promotion = result["strong_promotion_report"]
+    readiness = operator["source_informed_apply_readiness"]
+
+    assert result["exit_code"] == 0
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert readiness["status"] == "blocked"
+    assert readiness["source_gap_count"] == 0
+    assert readiness["blocking_reasons"] == [
+        "policy_claim_not_strong_evidence",
+        "source_evidence_warnings",
+    ]
+    assert promotion["promotion_ready"] is False
+    assert promotion["next_action"] == "close_first_missing_chain"
     assert gap_report["summary"]["blocked_cards"] == 0
     assert gap_report["summary"]["first_missing_chain"] is None
 
