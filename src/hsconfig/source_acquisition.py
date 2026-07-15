@@ -131,8 +131,11 @@ def collect_public_source_records(
             "source_family": source_family,
             "source_visibility": visibility,
             "source_lane_hint": lane_hint,
+            "source_category": _source_category(source_family, visibility, lane_hint),
+            "source_document_kind": _source_document_kind(source_family, visibility),
             "publication_year": publication_year,
             "source_record_strength": strength,
+            "source_strength": strength,
             "retrieved_at": retrieved_at,
             "deck_match": deck_match,
             "deck_match_scope": deck_match_scope,
@@ -311,6 +314,30 @@ def _source_lane_hint(source_family: str, visibility: str) -> str:
         return "static_semantics"
     if visibility == "snippet_only":
         return "unknown"
+    return "public_page"
+
+
+def _source_category(source_family: str, visibility: str, lane_hint: str) -> str:
+    if lane_hint == "public_guide":
+        return "public_guide"
+    if source_family == "decklist":
+        return "decklist"
+    if source_family in {"static_semantics", "hearthstonejson_static_semantics"}:
+        return "static_semantics"
+    if visibility == "snippet_only":
+        return "diagnostic"
+    return lane_hint or "public_page"
+
+
+def _source_document_kind(source_family: str, visibility: str) -> str:
+    if source_family == "decklist":
+        return "decklist"
+    if visibility == "snippet_only":
+        return "snippet"
+    if source_family == "guide":
+        return "guide"
+    if source_family in {"static_semantics", "hearthstonejson_static_semantics"}:
+        return "static_semantics"
     return "public_page"
 
 

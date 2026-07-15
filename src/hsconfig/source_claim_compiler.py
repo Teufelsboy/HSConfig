@@ -42,10 +42,15 @@ def compile_source_search_records(
         for key in (
             "source_visibility",
             "source_lane_hint",
+            "source_category",
+            "source_document_kind",
+            "source_strength",
             "source_record_strength",
         ):
             if _text(acquired.get(key, "")):
                 compiled[key] = _text(acquired[key])
+        if "source_strength" not in compiled and _text(compiled.get("source_record_strength", "")):
+            compiled["source_strength"] = _text(compiled["source_record_strength"])
         if acquired.get("publication_year") is not None:
             compiled["publication_year"] = acquired["publication_year"]
         for key in ("published_at", "publication_date", "published_date"):
@@ -285,6 +290,7 @@ def _claim(
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "claim_kind": claim_kind,
+        "claim_family": _claim_family(claim_kind),
         "stance": stance,
         "scope": scope,
         "evidence_text_short": evidence_text_short,
@@ -296,6 +302,22 @@ def _claim(
     if timing:
         row["timing"] = timing
     return row
+
+
+def _claim_family(claim_kind: str) -> str:
+    if claim_kind.startswith("mulligan_"):
+        return "mulligan"
+    if claim_kind in {"hero_power_transform", "mechanic_usage"}:
+        return "card_effect"
+    if claim_kind in {"gameplan_posture", "targeting_rule"}:
+        return "gameplan"
+    if claim_kind in {"card_role"}:
+        return "card_role"
+    if claim_kind in {"combo_sequence"}:
+        return "combo"
+    if claim_kind in {"discover_choice", "choose_one_choice"}:
+        return "choice"
+    return "source_claim"
 
 
 def _deck_match(deck_name: str, acquired: Mapping[str, Any]) -> dict[str, Any]:

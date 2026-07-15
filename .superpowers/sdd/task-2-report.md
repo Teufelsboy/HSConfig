@@ -1,30 +1,28 @@
 # Task 2 Report
 
 - Status: DONE
-- Files changed
+- Scope: Task-2 files only plus this report.
+- Files changed:
+  - `src/hsconfig/source_acquisition.py`
   - `src/hsconfig/source_claim_compiler.py`
+  - `tests/test_source_acquisition_strong_closure.py`
   - `tests/test_source_claim_compiler.py`
   - `.superpowers/sdd/task-2-report.md`
-- Requirements implemented
-  - Added compiler coverage for guide text that uses `keep` without explicit mulligan/opening-hand context, ensuring it produces no `mulligan_keep` claim and remains visible in unsupported diagnostics.
-  - Added compiler coverage for decklist card-role claims, ensuring they remain visible but non-promoting via `promotion_eligible=False`.
-  - Added `promotion_eligible` to emitted compiler claims, defaulting to `True`.
-  - Marked decklist/static card-role claims as `promotion_eligible=False`.
-  - Kept guide `hero_power_transform` claims explicitly promotion eligible while preserving `timing="start_of_game"` and not creating mulligan rows for non-opening-hand effect cards.
-  - Changed unsupported full-text guide records with no lowerable compiler claims to report `unsupported_or_non_runtime_claim`.
-  - Made compiler promotion counting ignore claims explicitly marked `promotion_eligible=False`.
-- Tests run, exact command and result
-  - RED: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_claim_compiler.py -q`
-    - Result: `1 failed, 10 passed in 0.25s`
-    - Expected failure: `test_compile_decklist_card_role_is_non_promoting` raised `KeyError: 'promotion_eligible'`.
-  - GREEN focused: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_claim_compiler.py -q`
-    - Result: `11 passed in 0.15s`
-  - GREEN required: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_claim_compiler.py tests/test_claim_kind_runtime_contract.py -q`
-    - Result: `62 passed in 0.59s`
-- Self-review notes
-  - Diff stayed within the requested implementation/test files plus this report.
-  - No commit was created, per coordinator instruction.
-  - The brief's commit step was intentionally skipped because the user explicitly said not to commit.
-  - Git diff review showed only expected claim-schema/test/report changes; Git printed line-ending normalization warnings for the two touched Python files.
-- Concerns
-  - None.
+- Requirements covered:
+  - Current full-text deck/mulligan guides expose `strong_promotion_eligible=True` and `first_missing_source_action=none`.
+  - Decklist-only, snippet-only, stale, and static/card-text evidence remains non-strong and diagnostic/non-promoting.
+  - Acquisition now emits stable narrow metadata aliases: `source_category`, `source_document_kind`, and `source_strength`.
+  - Claim compiler preserves `source_strength` and emits `claim_family` for lowerable and non-promoting claims.
+  - Darkbishop-style start-of-game effect text remains `hero_power_transform` / `card_effect` and does not create a `mulligan_keep`.
+  - No runtime/apply authority was added; this task only marks source/claim evidence quality.
+- Red evidence:
+  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_acquisition_strong_closure.py tests/test_source_claim_compiler.py -q`
+  - Result: `6 failed, 11 passed`
+  - Expected failures: missing `source_category`, `source_strength`, and `claim_family` fields.
+- Green evidence:
+  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_acquisition_strong_closure.py tests/test_source_claim_compiler.py -q`
+  - Result: `17 passed in 0.20s`
+- Self-review:
+  - Diff stayed inside the requested write scope.
+  - Existing no-block behavior is unchanged: weak sources remain visible diagnostics instead of package-generation blockers.
+  - Git reported only line-ending normalization warnings during diff/stat commands.

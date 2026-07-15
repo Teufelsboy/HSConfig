@@ -64,8 +64,13 @@ def test_acquisition_marks_full_text_guides_as_candidate_strong():
     record = payload["source_records"][0]
     assert record["source_visibility"] == "full_text"
     assert record["source_lane_hint"] == "public_guide"
+    assert record["source_category"] == "public_guide"
+    assert record["source_document_kind"] == "guide"
     assert record["publication_year"] == 2026
     assert record["source_record_strength"] == "candidate_strong"
+    assert record["source_strength"] == "candidate_strong"
+    assert record["strong_promotion_eligible"] is True
+    assert record["first_missing_source_action"] == "none"
 
 
 def test_acquisition_marks_decklist_and_snippets_non_promoting():
@@ -88,8 +93,17 @@ def test_acquisition_marks_decklist_and_snippets_non_promoting():
     by_url = {record["source_url"]: record for record in payload["source_records"]}
     assert by_url["https://example.test/decklist-only"]["source_visibility"] == "decklist_only"
     assert by_url["https://example.test/decklist-only"]["source_record_strength"] == "partial"
+    assert by_url["https://example.test/decklist-only"]["source_category"] == "decklist"
+    assert by_url["https://example.test/decklist-only"]["source_document_kind"] == "decklist"
+    assert by_url["https://example.test/decklist-only"]["source_strength"] == "partial"
+    assert by_url["https://example.test/decklist-only"]["strong_promotion_eligible"] is False
+    assert by_url["https://example.test/decklist-only"]["first_missing_source_action"] != "none"
     assert by_url["https://example.test/snippet"]["source_visibility"] == "snippet_only"
     assert by_url["https://example.test/snippet"]["source_record_strength"] == "diagnostic_only"
+    assert by_url["https://example.test/snippet"]["source_category"] == "diagnostic"
+    assert by_url["https://example.test/snippet"]["source_document_kind"] == "snippet"
+    assert by_url["https://example.test/snippet"]["source_strength"] == "diagnostic_only"
+    assert by_url["https://example.test/snippet"]["strong_promotion_eligible"] is False
 
 
 def test_acquisition_prefers_current_publication_year_over_older_history():
@@ -112,3 +126,39 @@ def test_acquisition_prefers_current_publication_year_over_older_history():
     record = payload["source_records"][0]
     assert record["publication_year"] == 2026
     assert record["source_record_strength"] == "candidate_strong"
+
+
+def test_acquisition_policy_fields_make_stale_guides_non_strong():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2}],
+    }
+
+    def fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        html = (
+            "<html><head><title>Shadow Priest Mulligan Guide 2025</title></head>"
+            "<body><p>Published July 15, 2025.</p>"
+            "<p>Mulligan: Keep Papercraft Angel.</p>"
+            "<p>This full current-looking guide explains opening turns, matchup posture, "
+            "hero power usage, pressure planning, and detailed mulligan priorities.</p>"
+            "</body></html>"
+        )
+        return 200, "text/html", html.encode("utf-8")
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/stale-guide"],
+        current_date="2026-07-15",
+        fetcher=fetcher,
+        resolver=_resolver,
+    )
+
+    record = payload["source_records"][0]
+    assert record["source_visibility"] == "full_text"
+    assert record["publication_year"] == 2025
+    assert record["strong_promotion_eligible"] is False
+    assert record["first_missing_source_action"] == "add_current_publication_metadata_or_current_guide"

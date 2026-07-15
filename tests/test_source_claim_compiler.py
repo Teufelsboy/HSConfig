@@ -178,6 +178,7 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
     )
     assert {
         "claim_kind": "mulligan_keep",
+        "claim_family": "mulligan",
         "stance": "keep",
         "scope": "card",
         "evidence_text_short": "Mulligan: Keep Papercraft Angel",
@@ -226,6 +227,7 @@ def test_compile_source_search_records_limits_hero_power_transform_to_enabler():
     assert transform_claims == [
         {
             "claim_kind": "hero_power_transform",
+            "claim_family": "card_effect",
             "stance": "enable_shadow_hero_power",
             "scope": "card",
             "evidence_text_short": "Darkbishop Benedictus enables the Shadow hero power",
@@ -264,6 +266,7 @@ def test_compile_source_search_records_uses_gameplan_for_hero_power_target_text(
     assert not any(claim["claim_kind"] == "targeting_rule" for claim in claims)
     assert {
         "claim_kind": "gameplan_posture",
+        "claim_family": "gameplan",
         "stance": "hero_power_board_or_face_pressure",
         "scope": "deck",
         "evidence_text_short": (
@@ -333,8 +336,10 @@ def test_compile_preserves_acquisition_classification_fields():
     assert record["source_visibility"] == "full_text"
     assert record["source_lane_hint"] == "public_guide"
     assert record["source_record_strength"] == "candidate_strong"
+    assert record["source_strength"] == "candidate_strong"
     assert record["publication_year"] == 2026
     assert record["deck_match_scope"] == "deck_or_archetype_matched"
+    assert record["claims"][0]["claim_family"] == "mulligan"
 
 
 def test_compile_keeps_snippet_only_guides_diagnostic_only():
@@ -441,5 +446,98 @@ def test_compile_decklist_card_role_is_non_promoting():
 
     claim = compiled["records"][0]["claims"][0]
     assert claim["claim_kind"] == "card_role"
+    assert claim["claim_family"] == "card_role"
     assert claim["source_confidence"] == "medium"
     assert claim["promotion_eligible"] is False
+
+
+def test_compiler_does_not_turn_key_effect_text_into_mulligan_keep():
+    deck_identity = {
+        "cards": [
+            {"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+        ]
+    }
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "source_record_strength": "candidate_strong",
+                "source_title": "Shadow Priest Guide 2026",
+                "source_url": "https://example.test/shadow",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "TOY_381"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "normalized_text": (
+                    "Mulligan: keep Papercraft Angel. "
+                    "Darkbishop Benedictus enables the Shadow hero power and Mind Spike."
+                ),
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    claims = [claim for record in payload["records"] for claim in record["claims"]]
+    keep_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "mulligan_keep"
+        for card_id in claim["cards"]
+    }
+    transform_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "hero_power_transform"
+        for card_id in claim["cards"]
+    }
+    assert keep_ids == {"TOY_381"}
+    assert transform_ids == {"SW_448"}
+    assert {
+        claim["claim_family"]
+        for claim in claims
+        if claim["claim_kind"] in {"mulligan_keep", "hero_power_transform"}
+    } == {"mulligan", "card_effect"}
+
+
+def test_compile_static_card_text_is_non_promoting():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [{"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1}],
+    }
+    acquired = [
+        {
+            "source_url": "static://hearthstonejson/SW_448",
+            "source_title": "Darkbishop Benedictus card text",
+            "source_family": "static_semantics",
+            "source_visibility": "full_text",
+            "source_record_strength": "partial",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["SW_448"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+        }
+    ]
+
+    compiled = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    claim = compiled["records"][0]["claims"][0]
+    assert claim["claim_kind"] == "card_role"
+    assert claim["claim_family"] == "card_role"
+    assert claim["promotion_eligible"] is False
+    assert compiled["source_claim_compiler_report"]["promotion_candidate_count"] == 0
