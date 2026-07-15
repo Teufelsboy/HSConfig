@@ -143,3 +143,50 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+
+
+def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_thin_cards_json(cards_json)
+    fixture_map = tmp_path / "empty_map.json"
+    fixture_map.write_text("{}", encoding="utf-8")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "ThinDeck",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(runtime),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--auto-source",
+            "--source-url",
+            "https://example.test/missing",
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
+    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+
+    assert status == 0
+    assert acquisition["failed_fetch_count"] == 1
+    assert acquisition["first_missing_source_action"] == "add_public_guide_url_or_use_static_semantics"
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
