@@ -85,19 +85,20 @@ def _compile_guide_claims(
     deck_identity: Mapping[str, Any],
     text: str,
 ) -> None:
-    keep_ids = _explicit_keep_card_ids(deck_identity, text)
-    if keep_ids:
+    keep_rows = _explicit_keep_rows(deck_identity, text)
+    if keep_rows:
+        keep_ids = [row["card_id"] for row in keep_rows]
         compiled["mulligan"] = {
             "keep_card_ids": keep_ids,
-            "evidence_text_short": _short_evidence(text, marker="keep"),
+            "evidence_text_short": keep_rows[0]["evidence_text_short"],
         }
-        for card_id in keep_ids:
+        for row in keep_rows:
             compiled["claims"].append(
                 _claim(
                     "mulligan_keep",
-                    [card_id],
+                    [row["card_id"]],
                     "keep",
-                    compiled["mulligan"]["evidence_text_short"],
+                    row["evidence_text_short"],
                     "high",
                     scope="card",
                     timing="mulligan",
@@ -176,8 +177,9 @@ def _compile_non_promoting_card_roles(
             )
 
 
-def _explicit_keep_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
-    keep_ids: list[str] = []
+def _explicit_keep_rows(deck_identity: Mapping[str, Any], text: str) -> list[dict[str, str]]:
+    keep_rows: list[dict[str, str]] = []
+    seen: set[str] = set()
     for keep_sentence in _positive_keep_sentences(text):
         lowered_sentence = keep_sentence.lower()
         for card in _deck_cards(deck_identity):
@@ -188,10 +190,16 @@ def _explicit_keep_card_ids(deck_identity: Mapping[str, Any], text: str) -> list
                 and card_id
                 and name.lower() in lowered_sentence
                 and not _is_non_opening_hand_effect_card(card)
-                and card_id not in keep_ids
+                and card_id not in seen
             ):
-                keep_ids.append(card_id)
-    return keep_ids
+                seen.add(card_id)
+                keep_rows.append(
+                    {
+                        "card_id": card_id,
+                        "evidence_text_short": keep_sentence[:220],
+                    }
+                )
+    return keep_rows
 
 
 def _discard_cost_min(text: str) -> int | None:

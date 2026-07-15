@@ -170,6 +170,16 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
     )
 
     assert payload["records"][0]["mulligan"]["keep_card_ids"] == ["TOY_381"]
+    assert payload["records"][0]["mulligan"]["evidence_text_short"] == "Keep Papercraft Angel"
+    assert {
+        "claim_kind": "mulligan_keep",
+        "stance": "keep",
+        "scope": "card",
+        "evidence_text_short": "Keep Papercraft Angel",
+        "source_confidence": "high",
+        "cards": ["TOY_381"],
+        "timing": "mulligan",
+    } in payload["records"][0]["claims"]
     assert not any(
         claim["claim_kind"] == "mulligan_keep" and claim.get("cards") == ["BAR_735"]
         for claim in payload["records"][0]["claims"]
