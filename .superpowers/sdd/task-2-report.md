@@ -6,64 +6,87 @@ DONE
 
 ## Task
 
-Add a compact active source-contract spine reference while keeping it diagnostic-only and outside the normal operator command path.
+HSConfig Source-Backed Strong Contract Closure, Task 2: claim qualification and source lanes.
+
+Add `qualify_source_claim` so raw source claim dictionaries expose source-quality fields for strong-promotion diagnostics without making `SOURCE_BACKED_STRONG` a load-safe prerequisite.
 
 ## Changed Files
 
-- `docs/operator/source-contract-spine.md`: new diagnostic source-contract spine reference covering normal runtime surfaces, all supported claim kinds, false-lowering boundaries, and the single apply authority.
-- `docs/operator/README.md`: added a late diagnostic pointer to `docs/operator/source-contract-spine.md` without adding it to the first normal-path section.
-- `docs/operator/guide-research-policy.md`: added the source-to-runtime decision rule.
-- `tests/test_operator_docs_contract_policy.py`: added Task 2 docs-policy tests for the new reference and README placement.
-- `.superpowers/sdd/task-2-report.md`: implementation evidence for this worker task.
+- `src/hsconfig/source_document_model.py`: added `qualify_source_claim` plus private source-lane, opening-hand relevance, runtime-lowering, and promotion-eligibility helpers.
+- `tests/test_claim_kind_runtime_contract.py`: added tests proving hero-power-transform claims can be strong static evidence without opening-hand relevance, and policy-backed claims never promote strong evidence.
+- `.superpowers/sdd/task-2-report.md`: refreshed this report for the current Task 2 worker run.
+
+`tests/test_source_contract_conformance.py` was not edited; it was included in targeted verification and stayed green.
 
 ## RED Evidence
 
 Command:
 
 ```powershell
-python -m pytest -q tests/test_operator_docs_contract_policy.py::test_source_contract_spine_reference_is_active_but_not_an_apply_gate tests/test_operator_docs_contract_policy.py::test_operator_readme_links_source_contract_spine_without_normal_path_drift
+python -m pytest tests/test_claim_kind_runtime_contract.py::test_hero_power_transform_is_strong_static_but_not_opening_hand_relevant tests/test_claim_kind_runtime_contract.py::test_policy_backed_claim_is_never_strong_promotion_evidence -q
 ```
 
 Result:
 
 ```text
-2 failed in 0.20s
+ERROR tests/test_claim_kind_runtime_contract.py
+1 error in 0.53s
 ```
 
-Expected failures:
+Expected failure:
 
-- `test_source_contract_spine_reference_is_active_but_not_an_apply_gate` failed with `FileNotFoundError` for `docs/operator/source-contract-spine.md`.
-- `test_operator_readme_links_source_contract_spine_without_normal_path_drift` failed because `docs/operator/README.md` did not yet contain `docs/operator/source-contract-spine.md`.
+- Import failed because `qualify_source_claim` did not exist in `hsconfig.source_document_model`.
 
 ## GREEN Evidence
 
 Command:
 
 ```powershell
-python -m pytest -q tests/test_operator_docs_contract_policy.py tests/test_docs_active_path.py
+python -m pytest tests/test_claim_kind_runtime_contract.py::test_hero_power_transform_is_strong_static_but_not_opening_hand_relevant tests/test_claim_kind_runtime_contract.py::test_policy_backed_claim_is_never_strong_promotion_evidence -q
 ```
 
 Result:
 
 ```text
-42 passed in 0.17s
+2 passed in 0.37s
+```
+
+Targeted contract suite:
+
+```powershell
+python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_source_contract_conformance.py -q
+```
+
+Result:
+
+```text
+65 passed in 0.43s
 ```
 
 Additional check:
 
 ```powershell
-git diff --check -- docs/operator/source-contract-spine.md docs/operator/README.md docs/operator/guide-research-policy.md tests/test_operator_docs_contract_policy.py
+git diff --check
 ```
 
 Result: exit code 0; only existing CRLF normalization warnings were printed.
 
+## Commit
+
+Source/test commit:
+
+```text
+1bf6bd6e82881909c4f06bc2b7d15e006a5916be feat: qualify source claims for strong promotion
+```
+
 ## Scope Notes
 
-- Did not modify `.superpowers/sdd/task-1-report.md`.
-- Did not add HSTuner, replay parsing, winrate validation, post-game tuning, candidate promotion, runtime-evidence analysis, new runtime surfaces, or a second apply gate.
-- Preserved `reports/operator_summary.json` as the only normal apply authority.
-- Preserved the Darkbishop Benedictus boundary: effect semantics can stay encoded, but start-of-game hero-power effects are not opening-hand mulligan keeps without explicit opening-hand evidence.
+- `SOURCE_BACKED_STRONG` remains an evidence-quality label; no load-safe apply gate was added.
+- Policy-backed and default/generated runtime sources are not promotion eligible.
+- `hero_power_transform` can qualify as a strong static claim from official/static sources, with `opening_hand_relevant=False` by default and runtime lowering limited to CardID/contract style handling.
+- No runtime surfaces or dependencies were added.
 
 ## Concerns
 
-- The working tree had a pre-existing modification to `.superpowers/sdd/task-1-report.md`; it was not touched or staged by this task.
+- The implementation follows the task brief's helper contract directly. It does not yet wire qualification into broader promotion/reporting flows; that is outside Task 2 and belongs to later plan tasks.
+- `git diff --check` emitted only Git line-ending normalization warnings for touched Python files.
