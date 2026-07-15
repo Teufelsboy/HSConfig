@@ -9,8 +9,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
-- If public guide URLs are available, run `hsconfig configure --online-source --auto-source --source-url ...`.
-- If compact public source-search records exist, run `hsconfig configure --auto-source --source-search-results-json ...`.
+- Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
 - Open `reports/operator_summary.json` first.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
 - Warnings are follow-up work, not a second apply path.
