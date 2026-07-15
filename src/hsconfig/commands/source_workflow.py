@@ -16,7 +16,9 @@ from hsconfig.input_loading import (
 from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
+from hsconfig.source_acquisition import collect_public_source_records
 from hsconfig.source_autopilot import build_source_autopilot_bundle
+from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
@@ -32,6 +34,10 @@ def run_draft_source_documents_command(args: argparse.Namespace) -> int:
 
 def run_source_autopilot_command(args: argparse.Namespace) -> int:
     return run_payload_command(args, source_autopilot_payload)
+
+
+def run_source_acquire_command(args: argparse.Namespace) -> int:
+    return run_payload_command(args, source_acquire_payload)
 
 
 def run_research_deck_command(args: argparse.Namespace) -> int:
@@ -196,6 +202,80 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         },
         0,
     )
+
+
+def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    out = Path(args.out)
+    prepare_research_output_dir(out)
+
+    cards_payload = load_cards(
+        getattr(args, "cards_json", None),
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
+    )
+    deck_identity = build_deck_identity(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        cards=cards_payload["cards"],
+        hero_dbf_id=cards_payload.get("hero_dbf_id"),
+        format=cards_payload.get("format"),
+        sideboards=cards_payload.get("sideboards", []),
+    )
+    acquired = collect_public_source_records(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        source_urls=list(getattr(args, "source_url", []) or []),
+        current_date=getattr(args, "current_date", None),
+        fetcher=_fixture_fetcher(getattr(args, "source_fixture_url_map_json", None)),
+        timeout_seconds=float(getattr(args, "source_fetch_timeout_seconds", 6.0)),
+    )
+    compiled = compile_source_search_records(
+        deck_name=args.deck_name,
+        deck_identity=deck_identity,
+        acquired_records=acquired["source_records"],
+        current_date=getattr(args, "current_date", None),
+    )
+
+    acquisition_path = out / "source_acquisition_report.json"
+    compiler_path = out / "source_claim_compiler_report.json"
+    source_search_path = out / "source_search_results.json"
+    write_json(acquisition_path, acquired["source_acquisition_report"])
+    write_json(compiler_path, compiled["source_claim_compiler_report"])
+    write_json(source_search_path, compiled)
+    return (
+        {
+            "status": "OK",
+            "deck_name": args.deck_name,
+            "deck_slug": deck_identity["deck_slug"],
+            "source_search_results_json": str(source_search_path),
+            "source_acquisition_report": str(acquisition_path),
+            "source_claim_compiler_report": str(compiler_path),
+            "written_files": [
+                str(acquisition_path),
+                str(compiler_path),
+                str(source_search_path),
+            ],
+        },
+        0,
+    )
+
+
+def _fixture_fetcher(path_value: str | None):
+    if not path_value:
+        return None
+    mapping = read_json(path_value)
+    if not isinstance(mapping, dict):
+        raise ValueError("--source-fixture-url-map-json must contain a URL to file path object")
+
+    def fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        del timeout_seconds
+        fixture_path = mapping.get(url)
+        if fixture_path is None:
+            return 404, "text/plain", b"fixture url not mapped"
+        return 200, "text/html", Path(str(fixture_path)).read_bytes()
+
+    return fetcher
 
 
 def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:

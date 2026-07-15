@@ -154,6 +154,26 @@ def build_parser() -> argparse.ArgumentParser:
     source_autopilot.add_argument("--current-date")
     source_autopilot.add_argument("--json", action="store_true")
 
+    source_acquire = subparsers.add_parser(
+        "source-acquire",
+        help="inspected public source acquisition and claim compiler stage",
+        description=(
+            "Inspected public source acquisition and claim compiler stage. "
+            "Fetches bounded public source URLs, compiles source search records, "
+            "and writes source_search_results.json for source-autopilot."
+        ),
+    )
+    source_acquire.add_argument("--deck-name", required=True)
+    source_acquire.add_argument("--deck-code", required=True)
+    source_acquire.add_argument("--source-url", action="append", default=[])
+    source_acquire.add_argument("--source-fixture-url-map-json")
+    source_acquire.add_argument("--source-fetch-timeout-seconds", type=float, default=6.0)
+    source_acquire.add_argument("--current-date")
+    source_acquire.add_argument("--out", required=True)
+    source_acquire.add_argument("--cards-json")
+    source_acquire.add_argument("--allow-placeholder", action="store_true")
+    source_acquire.add_argument("--json", action="store_true")
+
     research_deck = subparsers.add_parser(
         "research-deck",
         help="inspected source document normalization stage",
