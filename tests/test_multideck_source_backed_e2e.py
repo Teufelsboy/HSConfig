@@ -236,6 +236,7 @@ def build_representative_multideck_matrix(tmp_path: Path) -> list[dict]:
             {
                 "deck_name": deck["deck_name"],
                 "technical_status": operator["technical_status"],
+                "operator_summary": operator,
                 "runtime_apply_allowed": operator["runtime_apply_allowed"],
                 "semantic_status": operator["semantic_status"],
                 "default_only_runtime_surfaces": operator["default_only_runtime_surfaces"],
@@ -251,6 +252,7 @@ def build_representative_multideck_matrix(tmp_path: Path) -> list[dict]:
                     for row in prepared["source_evidence_index"]
                 ),
                 "source_autopilot_report": bundle["source_autopilot_report"],
+                "strong_promotion_report": prepared["strong_promotion_report"],
                 "promotion_ready": prepared["strong_promotion_report"][
                     "promotion_ready"
                 ],
@@ -491,3 +493,58 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
                 assert row["promotion_ready"] is False, row
         else:
             raise AssertionError(f"unhandled expected evidence status: {expected}")
+
+
+def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+
+    expected_partial = {
+        "CtAPaladin",
+        "Discolock",
+        "TreantDruid",
+        "Kingslayer",
+        "Boarlock",
+        "PirateDH",
+    }
+    expected_strong_or_strong_ready = {
+        "ShadowPriest",
+        "PirateRogue",
+        "BigShaman",
+        "ImbueMage",
+        "MechPala",
+    }
+
+    for row in build_representative_multideck_matrix(tmp_path):
+        deck_name = row["deck_name"]
+        operator = row["operator_summary"]
+        strong_report = row["strong_promotion_report"]
+
+        assert operator["technical_status"] == "VALID_PACKAGE", row
+        assert operator["runtime_apply_allowed"] is True, row
+        assert operator["runtime_apply_contract"]["apply_authority"] == (
+            "reports/operator_summary.json"
+        )
+        assert operator["next_action"] in {
+            "READY_TO_APPLY_OR_HANDOFF",
+            "READY_TO_APPLY_WITH_WARNINGS",
+            "SOURCE_CLOSURE_NEEDED",
+        }
+        assert operator["source_backed_strong_closure"]["diagnostic_only"] is True
+        assert operator["source_backed_strong_closure"][
+            "first_missing_source_action"
+        ] == strong_report["first_missing_source_action"]
+        assert operator["first_missing_source_action"] == strong_report[
+            "first_missing_source_action"
+        ]
+        assert operator["no_default_only_runtime_status"] == "clean"
+
+        if deck_name in expected_partial:
+            assert (
+                operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+                or strong_report["promotion_ready"] is False
+            ), row
+            assert strong_report["first_missing_source_action"] != "none", row
+        if deck_name in expected_strong_or_strong_ready:
+            assert operator["default_only_runtime_surfaces"] == [], row

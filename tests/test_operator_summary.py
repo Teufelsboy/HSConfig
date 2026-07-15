@@ -2771,6 +2771,37 @@ def test_operator_summary_explains_default_only_surfaces_without_blocking_apply(
     assert summary["no_default_only_verdict"]["blocking"] is False
 
 
+def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        generated_files=["Mulligan.json", "GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "card_rows": [],
+        },
+        strong_promotion_report={
+            "promotion_ready": True,
+            "first_missing_source_action": "none",
+        },
+    )
+
+    assert summary["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert summary["source_backed_strong_closure"] == {
+        "status": "ready",
+        "promotion_ready": True,
+        "first_missing_source_action": "none",
+        "diagnostic_only": True,
+    }
+    assert summary["first_missing_source_action"] == "none"
+    assert summary["no_default_only_runtime_status"] == "clean"
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_no_default_only_verdict_none_detected():
     summary = build_operator_summary(
         deck_name="Clean Deck",
@@ -2863,6 +2894,7 @@ def test_operator_summary_no_default_only_verdict_visible_warning():
 
     assert summary["runtime_apply_allowed"] is True
     assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["no_default_only_runtime_status"] == "has_default_only_surfaces"
     assert summary["no_default_only_verdict"] == {
         "status": "visible_warning",
         "default_only_runtime_surface_count": 1,

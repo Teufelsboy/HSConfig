@@ -194,10 +194,18 @@ def assert_load_safe_no_block_package(operator_summary: dict):
     assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
+    assert operator_summary["source_backed_strong_closure"]["diagnostic_only"] is True
+    assert operator_summary["source_backed_strong_closure"]["status"] in {
+        "not_reported",
+        "ready",
+        "needs_source_closure",
+    }
+    assert isinstance(operator_summary["first_missing_source_action"], str)
 
 
 def assert_no_default_only_runtime_surfaces(operator: dict) -> None:
     assert operator["default_only_runtime_surfaces"] == []
+    assert operator["no_default_only_runtime_status"] == "clean"
     mulligan_policy = operator["mulligan_policy_status"]
     assert mulligan_policy["default_only"] is False
     assert mulligan_policy["status"] in {

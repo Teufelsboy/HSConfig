@@ -129,7 +129,6 @@ def build_operator_summary(
         config_readiness_summary = _normalize_readiness_summary_aliases(
             config_readiness_report
         )
-    _ = strong_promotion_report
 
     technical_validation = technical_validation or {"status": "unknown"}
     unsupported_conditions = unsupported_conditions or []
@@ -258,6 +257,16 @@ def build_operator_summary(
         mechanic_drift_summary=mechanic_drift_summary,
         source_informed_apply_readiness=source_informed_apply_readiness,
     )
+    default_only_runtime_surfaces = _default_only_runtime_surfaces(config_usefulness)
+    source_backed_strong_closure = _source_backed_strong_closure(
+        report=strong_promotion_report,
+        technical_status=technical_status,
+        semantic_status=semantic_status,
+        next_action=next_action,
+        semantic_blockers=semantic_blockers,
+        default_only_runtime_surfaces=default_only_runtime_surfaces,
+        source_claim_gap_report=source_claim_gap_report,
+    )
     summary = {
         "schema_version": 1,
         "deck": {
@@ -287,9 +296,14 @@ def build_operator_summary(
         "semantic_blockers": semantic_blockers,
         "config_usefulness": config_usefulness,
         "mulligan_policy_status": _mulligan_policy_status(config_usefulness),
-        "default_only_runtime_surfaces": _default_only_runtime_surfaces(
-            config_usefulness
+        "default_only_runtime_surfaces": default_only_runtime_surfaces,
+        "no_default_only_runtime_status": _no_default_only_runtime_status(
+            default_only_runtime_surfaces
         ),
+        "source_backed_strong_closure": source_backed_strong_closure,
+        "first_missing_source_action": source_backed_strong_closure[
+            "first_missing_source_action"
+        ],
         "no_default_only_verdict": _no_default_only_verdict(
             technical_status,
             config_usefulness,
@@ -348,6 +362,142 @@ def refresh_generated_file_accounting(
     )
     refreshed["report_ownership"] = build_report_ownership()
     return refreshed
+
+
+def _source_backed_strong_closure(
+    *,
+    report: dict[str, Any] | None,
+    technical_status: str,
+    semantic_status: str,
+    next_action: str,
+    semantic_blockers: list[dict[str, Any]],
+    default_only_runtime_surfaces: list[str],
+    source_claim_gap_report: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if isinstance(report, dict):
+        promotion_ready = report.get("promotion_ready") is True
+        first_missing_source_action = str(
+            report.get("first_missing_source_action") or "unknown"
+        )
+        return {
+            "status": "ready" if promotion_ready else "needs_source_closure",
+            "promotion_ready": promotion_ready,
+            "first_missing_source_action": first_missing_source_action,
+            "diagnostic_only": True,
+        }
+
+    source_gaps_closed = _source_claim_gaps_closed(source_claim_gap_report)
+    promotion_ready = (
+        technical_status == "VALID_PACKAGE"
+        and semantic_status == "SOURCE_BACKED_STRONG"
+        and next_action == "READY_TO_APPLY_OR_HANDOFF"
+        and not semantic_blockers
+        and not default_only_runtime_surfaces
+        and source_gaps_closed
+    )
+    first_missing_source_action = _derived_first_missing_source_action(
+        promotion_ready=promotion_ready,
+        semantic_blockers=semantic_blockers,
+        default_only_runtime_surfaces=default_only_runtime_surfaces,
+        source_claim_gap_report=source_claim_gap_report,
+    )
+    return {
+        "status": "ready" if promotion_ready else "needs_source_closure",
+        "promotion_ready": promotion_ready,
+        "first_missing_source_action": first_missing_source_action,
+        "diagnostic_only": True,
+    }
+
+
+def _no_default_only_runtime_status(surfaces: list[str] | None) -> str:
+    if surfaces is None:
+        return "not_reported"
+    return "clean" if not surfaces else "has_default_only_surfaces"
+
+
+def _source_claim_gaps_closed(report: dict[str, Any] | None) -> bool:
+    if not isinstance(report, dict):
+        return True
+    summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        return True
+    return (
+        _int_value(summary.get("blocked_cards", 0)) == 0
+        and _int_value(summary.get("deck_surface_gap_count", 0)) == 0
+        and _first_missing_chain(report) is None
+    )
+
+
+def _derived_first_missing_source_action(
+    *,
+    promotion_ready: bool,
+    semantic_blockers: list[dict[str, Any]],
+    default_only_runtime_surfaces: list[str],
+    source_claim_gap_report: dict[str, Any] | None,
+) -> str:
+    if promotion_ready:
+        return "none"
+    first_missing_chain = _first_missing_chain(source_claim_gap_report)
+    if first_missing_chain is not None:
+        action = str(first_missing_chain.get("next_action") or "")
+        if action:
+            return action
+        missing_link = str(first_missing_chain.get("first_missing_link") or "")
+        return _source_action_for_missing_link(missing_link)
+    if default_only_runtime_surfaces:
+        return "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    for blocker in semantic_blockers:
+        if not isinstance(blocker, dict):
+            continue
+        code = str(blocker.get("code") or blocker.get("reason") or "")
+        action = _source_action_for_blocker(code)
+        if action != "close_first_missing_chain":
+            return action
+    return "close_first_missing_chain"
+
+
+def _first_missing_chain(report: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(report, dict):
+        return None
+    summary = report.get("summary", {})
+    if isinstance(summary, dict):
+        canonical = summary.get("first_missing_chain")
+        if isinstance(canonical, dict):
+            return canonical
+    legacy = report.get("first_missing_chain")
+    return legacy if isinstance(legacy, dict) else None
+
+
+def _source_action_for_blocker(code: str) -> str:
+    if code == "policy_claim_not_strong_evidence":
+        return "add_explicit_mulligan_source"
+    if code == "default_only_surface_not_strong_evidence":
+        return "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    if code == "snippet_only_source_not_strong_evidence":
+        return "replace_snippet_only_source_with_accessible_source"
+    if code == "runtime_row_missing_source_claim":
+        return "add_runtime_source_claim"
+    if code == "static_claim_not_runtime_observed":
+        return "collect_runtime_evidence_or_mark_contract_only"
+    if code == "cards_need_mulligan_claims":
+        return "add_explicit_mulligan_source"
+    if code == "cards_need_runtime_surface":
+        return "add_runtime_lowerable_claim_or_router_support"
+    if code == "cards_need_guide_claims":
+        return "add_card_specific_source_claim"
+    return "close_first_missing_chain"
+
+
+def _source_action_for_missing_link(missing_link: str) -> str:
+    if missing_link == "needs_mulligan_claim":
+        return "add_explicit_mulligan_source"
+    if missing_link == "needs_runtime_surface":
+        return "add_runtime_lowerable_claim_or_router_support"
+    if missing_link == "needs_guide_claim":
+        return "add_card_specific_source_claim"
+    if missing_link == "runtime_evidence":
+        return "collect_runtime_evidence_or_mark_contract_only"
+    return "close_first_missing_chain"
 
 
 def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
