@@ -1,0 +1,299 @@
+{
+  "summary": "Across Wild ShadowPriest, PirateRogue, PirateDH, MechPala, TreantDruid, and Discolock style decks, the most stable source-backed aggressive pattern is: mulligan for cheap proactive starts or draw/cost-reduction pieces, create early board or direct damage pressure immediately, and shift attacks to face as soon as the next-turn lethal clock becomes realistic. The strongest negative pattern is also consistent: do not turn deck-defining identity cards or expensive payoff cards into automatic opening keeps just because they define the archetype; source-backed guides repeatedly separate start-of-game effects, top-end payoffs, and refill/burst engines from the cards you actually want in the opener.",
+  "source_urls": [
+    "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+    "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+    "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+    "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees",
+    "https://www.hearthpwn.com/decks/1408850-legend-hyper-mech-paladin-asia-server",
+    "https://www.reddit.com/r/wildhearthstone/comments/esypn1/what_deck_beats_mech_paladin/",
+    "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/",
+    "https://www.reddit.com/r/wildhearthstone/comments/102jp6o/is_pirate_rogue_unstoppable_when_they_curve_into/",
+    "https://outof.games/realms/hearthstone/decks/14565-wild-pirate-demon-hunter",
+    "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+  ],
+  "deck_or_archetype_scope": "Cross-deck aggressive Wild patterns drawn from burn-heavy ShadowPriest, pirate-based Rogue and Demon Hunter, sticky-board MechPala and TreantDruid, and discard-tempo Discolock. These findings are intended as archetype-family guidance for HSConfig source documents, not as a claim that every single list in each archetype uses the exact same 30 cards.",
+  "source_backed_claim_candidates": [
+    {
+      "claim_kind": "mulligan_keep",
+      "scope": "Aggressive Wild decks keep cheap proactive starters, especially 1-drops, 2-drops, and draw or cost-reduction pieces that guarantee early pressure.",
+      "cards_or_scope": [
+        "ShadowPriest: Voidtouched Attendant, Incorporeal Corporal, Mind Eater, Shadowbomber, Frenzied Felwing with support",
+        "MechPala: Click-Clocker, Galvanizer, Mechwarper, Radar Detector, Crystology",
+        "PirateDH [uncertain]: 1-cost pirates and draw support",
+        "PirateRogue: 1-drops and early pirate board makers"
+      ],
+      "confidence": "high",
+      "evidence_text": "Shadow Priest guides explicitly keep proactive early cards and search aggressively for turn-1 or turn-2 development. Mech Paladin explicitly keeps Click-Clocker, Galvanizer or Mechwarper, and Radar Detector. Pirate archetype sources emphasize early pirates, immediate board, and quick face pressure.",
+      "evidence_urls": [
+        "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.hearthpwn.com/decks/1408850-legend-hyper-mech-paladin-asia-server",
+        "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+      ]
+    },
+    {
+      "claim_kind": "mulligan_discard",
+      "scope": "Expensive payoff cards, refill pieces without the right opener, and deck-defining effect cards should not be auto-kept.",
+      "cards_or_scope": [
+        "Darkbishop Benedictus",
+        "Nightshade Matron",
+        "Lakkari Felhound",
+        "Doomguard",
+        "The Soularium outside specific support",
+        "Goru the Mightree [uncertain]"
+      ],
+      "confidence": "high",
+      "evidence_text": "The Shadow Priest mulligan guide says Darkbishop Benedictus is never wanted in the opening hand even though it fuels the archetype. The Discolock guide says Nightshade Matron, Lakkari Felhound, and Doomguard do not belong in the starting hand, and The Soularium is only a situational keep. Treant Druid treats Goru as a late push card rather than an opening-hand priority [uncertain].",
+      "evidence_urls": [
+        "https://www.reddit.com/r/CompetitiveHS/comments/11nxk42/top_25_legend_burn_shadow_priest_indepth_mulligan/",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees"
+      ]
+    },
+    {
+      "claim_kind": "gameplan_posture",
+      "scope": "The default aggressive posture is to build early pressure, then convert to a face race rather than preserving full board control.",
+      "cards_or_scope": [
+        "ShadowPriest",
+        "PirateRogue",
+        "PirateDH",
+        "TreantDruid"
+      ],
+      "confidence": "high",
+      "evidence_text": "Shadow Priest explicitly says to start and win a face race, even against aggressive decks. Pirate Rogue sources describe using early pirates to secure board while also going face. Treant Druid explicitly says the goal is to make the opponent hit zero quickly, then go face once the buff turn is ready. Pirate DH is directly described as a very aggressive version that tries to swing the match immediately.",
+      "evidence_urls": [
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees",
+        "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+      ]
+    },
+    {
+      "claim_kind": "targeting_rule",
+      "scope": "Face-targeting is the aggressive default, but short-term board trades are correct when they preserve the damage clock or remove the exact obstacle to lethal.",
+      "cards_or_scope": [
+        "ShadowPriest hero power and burst cards",
+        "PirateRogue Ship's Cannon and weapon damage",
+        "TreantDruid Mulchmuncher and buff turns",
+        "MechPala early magnetic pressure"
+      ],
+      "confidence": "high",
+      "evidence_text": "Shadow Priest explicitly says to calculate hand damage in advance and decide when to stop using the hero power on minions and start pointing everything face. Pirate Rogue sources say Cannon shots and weapons help clear the board so pirates stick around and push damage. Treant Druid says Mulchmuncher is used to remove the obstacle that stops trees from hitting for lethal.",
+      "evidence_urls": [
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.reddit.com/r/wildhearthstone/comments/jkfvbl/typed_pirate_on_the_search_and_made_a_deck_out_of/",
+        "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees"
+      ]
+    },
+    {
+      "claim_kind": "card_role",
+      "scope": "Aggro lists repeatedly split cards into opener pieces, refill pieces, burst finishers, and board-conversion pieces instead of treating all damage cards equally.",
+      "cards_or_scope": [
+        "ShadowPriest: opener pieces versus burst finishers like Mind Blast and Leeroy Jenkins",
+        "Discolock: Hand of Gul'dan as draw engine rather than generic top-end",
+        "TreantDruid: Composting and Aeroponics as refill engines; Savage Roar and Arbor Up as finishers",
+        "PirateRogue: Ship's Cannon as pressure engine; Leeroy Jenkins or burst weapon turns as finishers [uncertain]"
+      ],
+      "confidence": "high",
+      "evidence_text": "Multiple guides describe dedicated refill packages and dedicated lethal packages. This supports a richer source-document model than a single generic 'aggressive card' label.",
+      "evidence_urls": [
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees",
+        "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/"
+      ]
+    },
+    {
+      "claim_kind": "mechanic_usage",
+      "scope": "Each aggressive shell converts one mechanic into damage: ShadowPriest uses burn and hero power reach, pirate decks use cheap tribal tempo plus weapon or cannon pressure, MechPala uses cost reduction plus sticky magnetic scaling, TreantDruid uses board flood plus buff burst, and Discolock uses discard-driven draw and tempo.",
+      "cards_or_scope": [
+        "Darkbishop Benedictus",
+        "Ship's Cannon",
+        "Swordfish [uncertain]",
+        "Mechwarper",
+        "Galvanizer",
+        "Security Automaton",
+        "Savage Roar",
+        "Arbor Up",
+        "Hand of Gul'dan"
+      ],
+      "confidence": "high",
+      "evidence_text": "The public guides repeatedly tie archetype identity to a small mechanic core rather than to a single card. That is useful for source_documents.json because the mechanic can be expressed as multiple atomic claims rather than one vague deck summary.",
+      "evidence_urls": [
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.reddit.com/r/wildhearthstone/comments/a8r18z/wild_tempo_pirate_rogue/",
+        "https://www.hearthpwn.com/decks/1408850-legend-hyper-mech-paladin-asia-server",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd"
+      ]
+    },
+    {
+      "claim_kind": "known_bad_pattern",
+      "scope": "The repeated strategic error is over-trading or holding the wrong part of the deck in the opener when the deck actually wins through speed and reach.",
+      "cards_or_scope": [
+        "ShadowPriest over-controlling the board",
+        "PirateRogue dragging the game too long",
+        "MechPala relying on slow hands without early discount or draw",
+        "Discolock keeping high-cost discard payoffs"
+      ],
+      "confidence": "high",
+      "evidence_text": "Shadow Priest explicitly warns that the deck wins by face racing; Pirate Rogue sources say longer games are bad for the deck; Mech Paladin sources emphasize explosive early turns and note weak performance without key setup pieces; Discolock explicitly rejects several expensive mulligan keeps.",
+      "evidence_urls": [
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.reddit.com/r/wildhearthstone/comments/102jp6o/is_pirate_rogue_unstoppable_when_they_curve_into/",
+        "https://www.reddit.com/r/wildhearthstone/comments/esypn1/what_deck_beats_mech_paladin/",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd"
+      ]
+    },
+    {
+      "claim_kind": "combo_sequence",
+      "scope": "Some aggressive decks still have exact early power-sequences that are specific enough to encode separately from broad posture.",
+      "cards_or_scope": [
+        "MechPala: Galvanizer plus Mechwarper plus Security Automaton plus cheap mechs",
+        "TreantDruid: board stick plus Savage Roar or Arbor Up",
+        "ShadowPriest: damage sequencing around hero power and burst",
+        "PirateDH disruption timing with Glide or Mana Burn [uncertain]"
+      ],
+      "confidence": "medium [uncertain]",
+      "evidence_text": "Mech Paladin gives an explicit turn-2 or turn-3 sequencing example. Treant Druid clearly frames the lethal turn around a board plus buff. Shadow Priest explains when to preserve or deploy hand damage. Pirate DH community discussion points to timing-sensitive disruption, but the public guide coverage is thinner than ideal.",
+      "evidence_urls": [
+        "https://www.hearthpwn.com/decks/1408850-legend-hyper-mech-paladin-asia-server",
+        "https://outof.games/realms/hearthstone/decks/34426-happy-little-trees",
+        "https://outof.games/news/5444-shadowburst-priest-wild-hearthstone-full-deck-guide-on-the-wildest-of-thursdays/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+      ]
+    }
+  ],
+  "mulligan_implications": [
+    {
+      "rule": "Represent cheap proactive keeps as first-class `mulligan_keep` claims, not as vague 'aggressive opener' summaries.",
+      "evidence_basis": "ShadowPriest, MechPala, and pirate guides all name concrete keep cards.",
+      "example_scope": "Voidtouched Attendant; Incorporeal Corporal; Click-Clocker; Galvanizer; Mechwarper; Radar Detector; 1-cost pirates"
+    },
+    {
+      "rule": "Represent explicit opener throws as `mulligan_discard` claims when the guide names them.",
+      "evidence_basis": "CompetitiveHS Shadow Priest explicitly says Darkbishop Benedictus is never wanted in the mulligan; the Discolock guide explicitly rejects Nightshade Matron, Lakkari Felhound, and Doomguard in the opener.",
+      "example_scope": "Do not infer 'deck-defining means keep'."
+    },
+    {
+      "rule": "Keep conditional synergy holds separate from unconditional holds.",
+      "evidence_basis": "ShadowPriest keeps Frenzied Felwing only with supporting 1-drops and keeps specific synergy cards only with the right partner.",
+      "example_scope": "Synergy-only keeps need their own atomic claims rather than being flattened into unconditional hold rows."
+    },
+    {
+      "rule": "Model refill cards separately from opener cards, because some refill pieces are keeps and others are not.",
+      "evidence_basis": "Hand of Gul'dan is a special keep in Discolock, while other expensive discard payoffs are not; Radar Detector is an early keep in MechPala because it still supports early pressure.",
+      "example_scope": "HSConfig should not treat all draw engines the same."
+    },
+    {
+      "rule": "Allow matchup-conditional mulligan claims only when the guide names the matchup or opponent class.",
+      "evidence_basis": "Shadow Priest has matchup-specific keeps like Shadowcloth Needle into Mage, Paladin, and Warlock.",
+      "example_scope": "Conditional keeps should stay visible but separate from unconditional rows."
+    },
+    {
+      "rule": "Do not add a default discard interpretation for unidentified slow cards without source text.",
+      "evidence_basis": "Some slow-looking cards are still legitimate keeps in certain aggressive shells, and aggressive guides often make exceptions.",
+      "example_scope": "Hand of Gul'dan is the clearest counterexample."
+    }
+  ],
+  "card_behavior_implications": [
+    {
+      "card_or_cardid": "Darkbishop Benedictus",
+      "implication": "Encode as a deck-defining start-of-game hero-power transformation, but also encode a separate `mulligan_discard` claim because strong guide evidence says the archetype does not want Benedictus in the opener."
+    },
+    {
+      "card_or_cardid": "Hand of Gul'dan",
+      "implication": "Treat as a draw-engine exception in aggressive mulligan logic: it is not simply an expensive late card, because source text says it is a valuable keep."
+    },
+    {
+      "card_or_cardid": "Nightshade Matron / Lakkari Felhound / Doomguard",
+      "implication": "Treat as explicit non-keeps in Discolock-style aggressive lists unless a source says otherwise."
+    },
+    {
+      "card_or_cardid": "Savage Roar / Arbor Up",
+      "implication": "Treat as burst-conversion cards whose primary role is to end the game after a board sticks, not as routine tempo spells."
+    },
+    {
+      "card_or_cardid": "Mulchmuncher",
+      "implication": "Treat as an obstacle-removal card that clears the one taunt or blocker preventing lethal, not as a generic value trade tool."
+    },
+    {
+      "card_or_cardid": "Ship's Cannon",
+      "implication": "Treat as a pressure engine that can both clear and hit face; its behavior should reflect damage conversion rather than passive board presence."
+    },
+    {
+      "card_or_cardid": "Galvanizer / Mechwarper / Security Automaton",
+      "implication": "Treat as a sequencing cluster: cost reducers and payoff bodies belong to exact early swing lines, not just independent card-role labels."
+    },
+    {
+      "card_or_cardid": "Glide / Mana Burn in PirateDH [uncertain]",
+      "implication": "Public discussion suggests timing-sensitive disruption value in an otherwise all-in aggressive shell, but the exact safe lowering shape remains [uncertain]."
+    }
+  ],
+  "globalvalues_implications": [
+    "GlobalValues for aggressive Wild decks should strongly prefer early tempo, board deployment, and opponent-health pressure over attrition or late-game value.",
+    "Face damage should be treated as the default payoff axis once the board or hand presents a credible lethal clock.",
+    "Board trades should remain allowed only when they preserve a faster kill, remove a taunt, or stop immediate board collapse.",
+    "Hero-power pressure is source-backed for ShadowPriest specifically and should not be silently generalized to non-hero-power aggro shells.",
+    "Aggressive decks with refill engines should not be mislabeled as midrange or value decks just because they draw cards; the draw exists to sustain pressure.",
+    "Aggressive decks with tribal or token mechanics should carry a 'stick board then convert' posture rather than a generic 'always trade' posture.",
+    "PirateDH disruption timing as a GlobalValues-level posture is possible but still [uncertain] because the public source base is thinner and more discussion-driven than the other decks."
+  ],
+  "source_document_schema_implications": [
+    {
+      "implication": "Use atomic claims. One source sentence should become one claim about keep, discard, target posture, or exact sequence, not a mixed summary."
+    },
+    {
+      "implication": "Separate `hero_power_transform` or other start-of-game effects from mulligan claims so deck-defining effects do not leak into opening-hand logic."
+    },
+    {
+      "implication": "Support both positive and negative opener claims. Aggro guides often tell you exactly what not to keep."
+    },
+    {
+      "implication": "Support exact sequence claims for explosive decks when the guide gives a concrete line, such as the MechPala reducer-plus-payoff start."
+    },
+    {
+      "implication": "Support `card_role` granularity that distinguishes opener, refill, pressure engine, obstacle remover, and lethal converter."
+    },
+    {
+      "implication": "Preserve confidence and freshness metadata per claim because some aggressive archetype evidence is guide-quality and some is forum-quality [uncertain]."
+    }
+  ],
+  "source_backed_strong_implications": [
+    "SOURCE_BACKED_STRONG can be reached honestly for aggressive decks when the package includes concrete keeps, concrete non-keeps, face-race posture, and named finisher patterns from public sources.",
+    "A strong closure for aggro does not require proving runtime winrate or replay correctness; it requires proving that specific source-backed claims exist and are represented faithfully.",
+    "The ShadowPriest Benedictus case is the clearest proof that source-backed strength must allow 'deck-defining effect' and 'do not keep this card' to coexist.",
+    "Aggro source-backed strength should prefer strict, named claims over broad motivational prose like 'play fast' or 'be aggressive'.",
+    "Community guides are sufficient for many claim kinds, but confidence should stay below maximum when the evidence is old, matchup-limited, or based on forum discussion [uncertain]."
+  ],
+  "no_default_only_implications": [
+    "Do not silently fall back to a generic aggro mulligan policy when the guide gave exact keep and throw instructions.",
+    "Do not hide missing negative mulligan evidence by defaulting every unnamed expensive card to discard.",
+    "Do not silently convert 'go face' prose into exact target-routing rows unless the representation boundary is documented.",
+    "When an aggressive claim is useful but not safely lowerable, keep it visible as report-only guidance rather than pretending the package is fully source-backed.",
+    "Mark thinly sourced archetype-family extrapolations explicitly instead of letting them masquerade as equally strong as the ShadowPriest or Discolock evidence."
+  ],
+  "autonomy_and_slimness_implications": [
+    "A lean source-document builder can cover most aggressive decks by looking for four minimal evidence families: opener keeps, opener non-keeps, face-race posture, and finisher or conversion cards.",
+    "The builder should prefer a small number of strong community guides over wide but shallow decklist scraping.",
+    "Aggro family synthesis can stay autonomous if it records exact source URLs and claim text, then emits only the atomic claims that are actually present.",
+    "The workflow stays small if it avoids replay mining and avoids runtime-only validation for claims that are already explicit in public guides.",
+    "A thin-evidence warning is cheaper and more honest than adding a second approval gate for PirateDH-style cases."
+  ],
+  "risks": [
+    "Some supporting evidence is community discussion rather than formal guide prose, especially for PirateDH and part of PirateRogue, so a few family-level generalizations remain [uncertain].",
+    "Several sources are older than the current 2026 Wild card pool, so the exact 30-card lists may drift even when the aggressive pattern remains stable.",
+    "Aggressive archetypes can split into sub-variants; for example burn-heavy ShadowPriest and swarm-heavy ShadowPriest do not always mulligan or finish the same way.",
+    "Forum or Reddit evidence can describe real archetype behavior but is less authoritative than a dedicated guide from a top pilot.",
+    "MechPala and TreantDruid examples strongly support burst-conversion posture, but matchup-specific throws and keeps are not equally well documented across all variants [uncertain]."
+  ],
+  "uncertain": [
+    "source_backed_claim_candidates",
+    "card_behavior_implications",
+    "globalvalues_implications",
+    "risks"
+  ]
+}

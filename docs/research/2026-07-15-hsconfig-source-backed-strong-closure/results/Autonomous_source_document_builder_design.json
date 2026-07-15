@@ -1,0 +1,224 @@
+{
+  "summary": "The smallest honest autonomous builder is a thin pre-configure stage that runs `source-manifest`, fetches only three public source families, converts them into short atomic evidence rows, passes those rows through the existing deterministic `draft-source-documents` and `verify_source_documents` steps, and then relies on the existing `source_claim_gap_report.json` plus `strong_promotion_report.json` to expose the exact first missing strongness link. The builder should never block a valid deck: when public guide coverage is thin, it should still emit schema-valid metadata and static-semantics-backed source documents, allow HSConfig to continue into a valid load-safe package, and report the remaining guide or runtime-surface gaps instead of inventing strong claims.",
+  "source_urls": [
+    "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide",
+    "https://www.hsguru.com/meta",
+    "https://www.hsguru.com/stats/explanation",
+    "https://api.hearthstonejson.com/v1/199503/enUS/cards.json",
+    "https://hearthstone.blizzard.com/en-us/cards?set=wild",
+    "https://www.hearthstonetopdecks.com/decks/budget-aggro-face-warrior-deck-list-guide/"
+  ],
+  "deck_or_archetype_scope": "All valid HSConfig deck inputs. The builder is archetype-aware through `source-manifest`, but it must degrade safely for any valid deck code, including off-meta lists with no exact public guide coverage.",
+  "source_backed_claim_candidates": [
+    {
+      "claim_kind": "card_role",
+      "cards_or_scope": "Per deck card",
+      "confidence": "high when a public guide explicitly names the card as a core enabler, payoff, or tech piece; medium when the role comes only from exact card text or public archetype context",
+      "evidence_text": "Emit when guide prose or exact card text states what the card does for the deck plan. Prefer explicit guide wording for strongness; allow metadata-backed role rows for deterministic non-block coverage."
+    },
+    {
+      "claim_kind": "mulligan_keep",
+      "cards_or_scope": "Exact deck card or exact conditional keep set",
+      "confidence": "high only with explicit opening-hand keep language from a public guide or mulligan source",
+      "evidence_text": "Emit only for exact keep statements such as always keep, keep with Coin, keep versus fast decks, or keep with a named hand partner. Do not infer from general card power, mulligan impact summaries, or start-of-game effects."
+    },
+    {
+      "claim_kind": "mulligan_discard",
+      "cards_or_scope": "Exact deck card or exact discard-away rule",
+      "confidence": "high only with explicit toss or discard wording from a public guide or mulligan source",
+      "evidence_text": "Use separate claim rows for cards a guide says to throw back, or to keep only when a condition is met and otherwise toss. This closes mulligan honesty without forcing every useful statement into a keep row."
+    },
+    {
+      "claim_kind": "gameplan_posture",
+      "cards_or_scope": "Deck scope",
+      "confidence": "medium when a public guide describes the pre-game plan clearly",
+      "evidence_text": "Emit only for broad pre-game posture such as board flood, weapon pressure, big recruit, or hero-power pressure. This may inform GlobalValues posture but must not become numeric tuning."
+    },
+    {
+      "claim_kind": "targeting_rule",
+      "cards_or_scope": "Per deck card",
+      "confidence": "high when exact card text or public guide text identifies the target direction",
+      "evidence_text": "Use public card text and exact guide wording to encode friendly-versus-enemy, face-versus-board, or own-minion targeting rules. This is a deterministic static-semantics lane and does not require replay evidence."
+    },
+    {
+      "claim_kind": "hero_power_transform",
+      "cards_or_scope": "Per deck card",
+      "confidence": "high when the transform is explicit in card text or exact guide text",
+      "evidence_text": "Emit for start-of-game or deckbuilding effects that transform hero power or deck state. This is valid card behavior evidence but must stay separate from opening-hand mulligan intent."
+    },
+    {
+      "claim_kind": "mechanic_usage",
+      "cards_or_scope": "Per deck card or tightly linked card set",
+      "confidence": "high when the mechanic and the current runtime surface are both documented; medium when only the mechanic is explicit",
+      "evidence_text": "Emit only when the public source identifies a mechanic that the current HSConfig runtime surface already knows how to lower, such as recruit, deathrattle reuse, or similar exact semantics."
+    },
+    {
+      "claim_kind": "known_bad_pattern",
+      "cards_or_scope": "Per deck card",
+      "confidence": "high when exact guide text or exact card text makes the wrong target or wrong sequencing obvious",
+      "evidence_text": "Use for deterministic anti-patterns such as beneficial effects that should stay on friendly minions, not enemy minions. This is a useful static lane because it improves first-run safety without claiming matchup proof."
+    },
+    {
+      "claim_kind": "combo_sequence",
+      "cards_or_scope": "Exact ordered multi-card sequence",
+      "confidence": "high only with exact ordered public evidence",
+      "evidence_text": "Emit only when a public guide gives a real ordered combo line. Do not synthesize combo order from decklists, card text, or vague strategic descriptions."
+    }
+  ],
+  "mulligan_implications": [
+    {
+      "point": "The builder should treat Mulligan as the strictest honesty lane.",
+      "implication": "Only explicit opening-hand keep or throw language should become `mulligan_keep` or `mulligan_discard`. General deck strength, meta popularity, or generic one-drop heuristics should not count toward `SOURCE_BACKED_STRONG`."
+    },
+    {
+      "point": "Conditional mulligan rules should stay atomic.",
+      "implication": "Emit separate rows for always keep, with Coin, without Coin, versus fast decks, versus slow decks, versus a class family, and with-hand-partner keeps. This matches the current schema and avoids losing exact source intent."
+    },
+    {
+      "point": "Start-of-game non-hand effects must be guarded.",
+      "implication": "Cards like hero-power transforms or deckbuilding effects should emit `hero_power_transform` or related non-hand evidence, not a keep row, unless the public guide explicitly says to keep the card in the opening hand."
+    },
+    {
+      "point": "No-block operation still needs a visible Mulligan lane.",
+      "implication": "If no exact mulligan source exists, the builder should let current policy-backed autonomous Mulligan logic keep `Mulligan.json` useful, but the report must show that the deck remains policy-backed or source-informed rather than strong."
+    },
+    {
+      "point": "The exact missing link should stay obvious.",
+      "implication": "When explicit mulligan evidence is absent, the first missing chain should remain `needs_mulligan_claim` with the exact blocked card or deck-surface row, not a vague statement that the deck needs more research."
+    }
+  ],
+  "card_behavior_implications": [
+    {
+      "point": "Public card metadata is the deterministic backbone for non-block behavior rows.",
+      "implication": "Use HearthstoneJSON and Blizzard card text for exact `targeting_rule`, `hero_power_transform`, `known_bad_pattern`, and some `mechanic_usage` rows because these claims can be card-specific without requiring live gameplay evidence."
+    },
+    {
+      "point": "Guide text should enrich behavior only when it sharpens a supported runtime surface.",
+      "implication": "A guide may clarify friendly target preference, enemy-face pressure, or payoff timing, but the builder should only attach `runtime_block` or `runtime_value` when the current router and verifier already support that surface."
+    },
+    {
+      "point": "Choice mechanics need exact option identity.",
+      "implication": "Do not emit `discover_choice` or `choose_one_choice` unless the exact option card is source-backed and resolvable. Otherwise leave the gap visible as an unresolved or unsupported option-identity problem."
+    },
+    {
+      "point": "Combo rows need ordered public evidence.",
+      "implication": "Decklists and card text can prove that cards interact, but they do not prove the correct ordered combo sequence for `Combo.json`. Keep that surface closed unless public prose provides the order honestly."
+    },
+    {
+      "point": "Meta pages are auxiliary, not a behavior authority.",
+      "implication": "Use public meta or deck pages to confirm archetype context and search aliases, but do not let them silently promote runtime-lowerable behavior unless they contain explicit per-card text that survives the same atomic evidence-row contract."
+    }
+  ],
+  "globalvalues_implications": [
+    {
+      "point": "The builder should write posture, not tuning.",
+      "implication": "Only `gameplan_posture` belongs in the autonomous public-source builder for `GlobalValues.json`. Numeric tuning remains out of scope because the current contract requires runtime evidence before numeric writes."
+    },
+    {
+      "point": "Deck-level posture should come from explicit pre-game descriptions.",
+      "implication": "Good sources are overview sections that say the deck floods the board, cheats big minions, pressures with weapon swings, or wins through hero power. Winrate trends and popularity tables are not enough."
+    },
+    {
+      "point": "Static semantics can support posture but should not replace guide intent.",
+      "implication": "Card text can reinforce a posture classification, yet the builder should keep posture confidence lower when no public guide describes the plan explicitly."
+    },
+    {
+      "point": "Hero-power or deckbuilding effects may matter without becoming Mulligan claims.",
+      "implication": "Those effects can support posture and per-card behavior while still staying outside opening-hand keeps and outside numeric GlobalValues tuning."
+    }
+  ],
+  "source_document_schema_implications": [
+    {
+      "point": "Keep the current two-layer contract.",
+      "implication": "The autonomous builder should gather `evidence_rows.json` first, then call the existing deterministic `draft-source-documents` step instead of generating final `source_documents.json` directly with a second schema implementation."
+    },
+    {
+      "point": "Keep document grouping stable.",
+      "implication": "Each source document should remain grouped by `source_url`, `source_title`, `source_family`, and `retrieved_at`, with deck name and archetype attached exactly once per public source."
+    },
+    {
+      "point": "Keep claims short and atomic.",
+      "implication": "Each claim should encode one condition, one stance, and one claim kind. If the same card has an always-keep rule and a with-Coin rule, they should be separate claims."
+    },
+    {
+      "point": "Preserve cross-source support without inflating prose.",
+      "implication": "Use `source_refs` when multiple public pages support the same normalized claim, but keep `evidence_text_short` short enough for the existing verifier and downstream explainability reports."
+    },
+    {
+      "point": "Reuse the current draft and verification reports.",
+      "implication": "The builder should always emit `source_document_draft_report.json` with `draft_summary`, `unresolved_mentions`, and `source_evidence_report` so mention-resolution failures stay visible before `prepare`."
+    }
+  ],
+  "source_backed_strong_implications": [
+    {
+      "point": "Strongness should remain closure-based, not source-count-based.",
+      "implication": "The deck reaches `SOURCE_BACKED_STRONG` only when exact blocked cards and blocked deck surfaces are closed, not when the builder has fetched a lot of public pages."
+    },
+    {
+      "point": "Card text alone closes only part of the chain.",
+      "implication": "Metadata and static semantics can close some targeting, role, mechanic, and transform lanes, but they do not replace exact guide-backed Mulligan anchors or exact ordered combo evidence."
+    },
+    {
+      "point": "Meta sources should not masquerade as guide strength.",
+      "implication": "Public meta pages are useful for archetype discovery and source ranking, but they should remain auxiliary unless they provide explicit card-level language that satisfies the same evidence contract as a guide."
+    },
+    {
+      "point": "The builder should not invent a new blocker model.",
+      "implication": "Use the existing `source_claim_gap_report.json` summary and `strong_promotion_report.json` first-missing-chain output as the canonical explanation of why strongness did or did not close."
+    },
+    {
+      "point": "No guide is a valid result, not a failure state.",
+      "implication": "When a deck has only metadata-backed coverage, the builder should still produce a valid source-document package and let HSConfig report `VALID_BUT_NOT_GUIDE_STRONG` honestly."
+    }
+  ],
+  "no_default_only_implications": [
+    {
+      "point": "The builder should always contribute something deterministic.",
+      "implication": "Even when guide search fails, emit public card-text and metadata claims so `source_documents.json` is not empty and per-card explainability improves over a pure default-only path."
+    },
+    {
+      "point": "Policy-backed Mulligan should stay explicit.",
+      "implication": "If exact mulligan evidence is missing, keep the current policy-backed autonomous Mulligan lane visible as policy-backed. Do not relabel it as source-backed or silently merge it into guide coverage."
+    },
+    {
+      "point": "Suppressed claims should remain inspectable.",
+      "implication": "Unsupported conditions, unsupported claim kinds, unresolved mentions, and low-specificity runtime hints should show up in `source_document_draft_report`, `suppressed_claim_rows`, or the gap report instead of disappearing."
+    },
+    {
+      "point": "Default-only should mean truly empty evidence, not unreported evidence loss.",
+      "implication": "If a surface stays default-only after the builder runs, the reports should state exactly whether the loss came from no public source, unresolved card naming, unsupported runtime lowering, or blocked option identity."
+    }
+  ],
+  "autonomy_and_slimness_implications": [
+    {
+      "point": "Keep the source family set minimal.",
+      "implication": "Use only three public adapters by default: guide or mulligan pages, public deck or meta context pages, and public card metadata pages. Avoid login-gated sources, replay feeds, OCR, browser automation, and post-game telemetry."
+    },
+    {
+      "point": "Reuse current HSConfig seams.",
+      "implication": "The builder should wrap `source-manifest`, evidence-row collection, `draft-source-documents`, and existing verification or gap reports instead of adding a parallel planner, parallel schema, or parallel blocker taxonomy."
+    },
+    {
+      "point": "Make fetch behavior bounded and deterministic.",
+      "implication": "Search by manifest aliases and candidate archetypes, cap the number of fetched pages per source family, cache by URL plus retrieval time plus deck hash, and stop once the first usable guide and the required card metadata have been harvested."
+    },
+    {
+      "point": "Keep no-block as the hard requirement.",
+      "implication": "Network failure, stale guide links, or missing guide coverage should downgrade confidence only. They must not stop a valid deck from reaching a schema-valid source document set and a later `VALID_PACKAGE` attempt."
+    },
+    {
+      "point": "Prefer disclosure over sophistication.",
+      "implication": "When the builder cannot close strongness, the useful output is a small receipt that says which URLs were used, which claims were emitted, which mentions were unresolved, and which exact first missing chain remains."
+    }
+  ],
+  "risks": [
+    "Public guide sites can change markup, disappear, or stop exposing deck text in a scraper-friendly way.",
+    "Older public guides may describe a related archetype but not the current exact list, which can tempt false strongness if alias matching is too loose.",
+    "Card-name resolution can fail on renamed cards, localized names, or ambiguous shorthand, producing unresolved mentions that must stay visible.",
+    "Public meta and deck pages often provide popularity or impact context without exact prose; over-reading those pages would create fake guide confidence.",
+    "Card text and metadata can prove static semantics, but they cannot honestly prove Mulligan strategy, matchup-specific keeps, or exact combo order by themselves.",
+    "Some mechanics still need exact option identity or a supported runtime surface before they can lower, so a public-source builder alone cannot close every strongness chain.",
+    "Freshness remains a live risk: public sources can lag behind balance patches or list changes, so retrieval timestamps and conservative confidence labels remain necessary."
+  ],
+  "uncertain": []
+}

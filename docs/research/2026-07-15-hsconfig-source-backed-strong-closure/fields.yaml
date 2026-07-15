@@ -1,0 +1,55 @@
+field_categories:
+  - category: source_backed_strong_closure
+    fields:
+      - name: summary
+        type: string
+        required: true
+        description: Concise finding for this research item.
+      - name: source_urls
+        type: array
+        required: true
+        description: Public URLs used as source evidence.
+      - name: deck_or_archetype_scope
+        type: string
+        required: true
+        description: Which deck, archetype, or deck family the findings apply to.
+      - name: source_backed_claim_candidates
+        type: array
+        required: true
+        description: Candidate HSConfig source-document claims with claim_kind, cards or scope, confidence, and evidence text.
+      - name: mulligan_implications
+        type: array
+        required: true
+        description: Opening-hand keep/discard implications and explicit non-hand effect warnings.
+      - name: card_behavior_implications
+        type: array
+        required: true
+        description: Per-card CardID behavior, targeting, combo, mechanic, or known-bad-pattern implications.
+      - name: globalvalues_implications
+        type: array
+        required: true
+        description: Deck posture or GlobalValues implications that are source-backed versus runtime-evidence-only.
+      - name: source_document_schema_implications
+        type: array
+        required: true
+        description: How the finding should be represented in source_documents.json.
+      - name: source_backed_strong_implications
+        type: array
+        required: true
+        description: What this finding means for reaching SOURCE_BACKED_STRONG honestly.
+      - name: no_default_only_implications
+        type: array
+        required: true
+        description: How to keep default-only or policy-only surfaces visible instead of silent.
+      - name: autonomy_and_slimness_implications
+        type: array
+        required: true
+        description: How the workflow can stay autonomous, no-block, and small.
+      - name: risks
+        type: array
+        required: true
+        description: Remaining correctness, source, freshness, or overfitting risks.
+      - name: uncertain
+        type: array
+        required: true
+        description: Field names or claims that remain uncertain.

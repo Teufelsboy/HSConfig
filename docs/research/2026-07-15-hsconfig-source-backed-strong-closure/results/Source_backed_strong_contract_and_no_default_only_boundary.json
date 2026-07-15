@@ -1,0 +1,213 @@
+{
+  "summary": "Current public Hearthstone sources can honestly promote HSConfig beyond static semantics only when they provide either deterministic official card facts or direct, deck-matching strategic text such as explicit keeps, throws, target rules, or exact combo instructions. Card APIs, deckstrings, replay-stat products, policy-backed mulligan, and default runtime rows are still valuable, but they do not by themselves prove guide-backed strength and must stay visibly diagnostic instead of silently counting as `SOURCE_BACKED_STRONG` evidence.",
+  "source_urls": [
+    "https://hearthstonejson.com/docs/cards.html",
+    "https://api.hearthstonejson.com/v1/latest/enUS/cards.collectible.json",
+    "https://us.forums.blizzard.com/en/hearthstone/t/card-library-and-card-api-launched/8158",
+    "https://hearthsim.info/docs/deckstrings/",
+    "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+    "https://www.hearthpwn.com/decks/1448423-holy-wrath-paladin-90-winrate-to-legend",
+    "https://articles.hsreplay.net/2020/07/23/card-mulligan-data/",
+    "https://hsreplay.net/mulligan-gv2/",
+    "https://articles.hsreplay.net/2019/06/04/mulligan-guides-and-arch-villain-rafaam/",
+    "https://articles.hsreplay.net/2017/04/04/introducing-hsreplay-net-statistics/"
+  ],
+  "deck_or_archetype_scope": "Cross-deck contract audit for Wild Shadow Priest and representative Wild aggro, weapon, recruit, discard, and combo/control families. A public Holy Wrath guide is included only as a pattern example for exact combo-sequence wording, not as a Wild metagame claim.",
+  "source_backed_claim_candidates": [
+    {
+      "claim_kind": "hero_power_transform",
+      "cards_or_scope": [
+        "Darkbishop Benedictus",
+        "CORE_SW_448"
+      ],
+      "confidence": "high",
+      "source_basis": "official public card data",
+      "evidence_text": "The live public card payload states that Darkbishop Benedictus has a Start of Game effect that enters Shadowform if the deck's spells are all Shadow. This is strong source support for preserving the hero-power-transform lane.",
+      "promotion_impact": "Can count toward `SOURCE_BACKED_STRONG` for the non-hand effect lane when the deck actually satisfies the condition, but it does not imply an opening-hand keep."
+    },
+    {
+      "claim_kind": "mulligan_keep",
+      "cards_or_scope": [
+        "Papercraft Angel",
+        "Shadowcloth Needle",
+        "Twilight Deceptor",
+        "Manafeeder Panthara",
+        "Shadowed Spirit",
+        "Ethereal Oracle"
+      ],
+      "confidence": "medium [uncertain]",
+      "source_basis": "current public community guide text",
+      "evidence_text": "A current public Wild Aggro Shadow Priest guide gives explicit keep instructions for named cards in the opening hand. This is direct strategic text and is materially stronger than decklist-only evidence.",
+      "promotion_impact": "Can support `mulligan_keep` claims for the exact listed deck or a very close deck-family match, but not for generic Shadow Priest without scope matching and freshness checks."
+    },
+    {
+      "claim_kind": "mulligan_discard",
+      "cards_or_scope": [
+        "Darkbishop Benedictus",
+        "other cards costing 4 or more in the cited deck"
+      ],
+      "confidence": "medium [uncertain]",
+      "source_basis": "current public community guide text",
+      "evidence_text": "The same public guide explicitly says not to keep any cards costing 4 or more. Because Darkbishop Benedictus costs 5 in that deck, the source text supports a discard boundary instead of a keep boundary.",
+      "promotion_impact": "This is exactly the kind of source-backed discard evidence that prevents a start-of-game effect card from leaking into Mulligan keep logic."
+    },
+    {
+      "claim_kind": "targeting_rule",
+      "cards_or_scope": [
+        "Shadowform hero power in aggro Shadow Priest"
+      ],
+      "confidence": "medium [uncertain]",
+      "source_basis": "current public community guide text",
+      "evidence_text": "The cited Wild Shadow Priest guide says to use the shadow hero power to clear the enemy board to maintain control or to go face against control and combo decks. That is direct target-selection guidance with an explicit condition.",
+      "promotion_impact": "Can support conditional CardID behavior or diagnostic targeting guidance when the condition is preserved verbatim instead of flattened into one unconditional target rule."
+    },
+    {
+      "claim_kind": "combo_sequence",
+      "cards_or_scope": [
+        "Holy Wrath combo shell"
+      ],
+      "confidence": "medium [uncertain]",
+      "source_basis": "public deck guide with exact combo wording",
+      "evidence_text": "The cited Holy Wrath guide states the main goal as bringing a named high-cost card to the top of the deck and then casting Holy Wrath at the opponent's hero. This is an exact ordered combo description rather than vague synergy language.",
+      "promotion_impact": "Shows the ceiling for honest `combo_sequence`: explicit ordered steps can promote a combo lane; vague combo labels or archetype names cannot."
+    }
+  ],
+  "mulligan_implications": [
+    {
+      "rule": "Only explicit keep or throw text from a current deck-matching guide should count as source-backed Mulligan evidence.",
+      "reason": "Public card databases and deckstrings describe composition and card text, but they do not say what to keep in the opening hand."
+    },
+    {
+      "rule": "Start-of-game non-hand effects such as Darkbishop Benedictus should preserve their effect lane without being inferred as keeps.",
+      "reason": "Official card text proves the effect, not the opening-hand retention decision."
+    },
+    {
+      "rule": "HSReplay mulligan products and stat pages may inform `policy_backed_autonomous_mulligan` or diagnostic notes, but they must not be counted as guide-backed strong evidence by default.",
+      "reason": "They are aggregated replay/statistics products, some features are premium-gated, and HSReplay has publicly documented a past misleading-statistics fix plus current mechanic limits such as missing Outcast hand-position handling in Mulligan G-V2."
+    },
+    {
+      "rule": "Decklist-only public sources should leave `needs_mulligan_claim` visible instead of being auto-promoted into a keep set.",
+      "reason": "A deck existing publicly is not the same as a source explicitly explaining its opening-hand plan."
+    }
+  ],
+  "card_behavior_implications": [
+    {
+      "implication": "Official card data is strong enough for exact identity, text, basic mechanics, play requirements when present, and deterministic non-hand effects such as hero-power transforms.",
+      "boundary": "This supports preserving supported effect semantics, but not free-form strategic interpretation."
+    },
+    {
+      "implication": "Direct public guide text can support `targeting_rule`, `card_role`, and `known_bad_pattern` only when the wording is explicit and conditions are preserved.",
+      "boundary": "Conditioned advice such as 'clear board versus aggro, go face versus control/combo' should remain conditioned in the claim rather than collapsed into one unconditional target."
+    },
+    {
+      "implication": "HSReplay-style 'popular targets' and 'discover choices' are useful public signals for diagnostics and prioritization.",
+      "boundary": "They are statistic-backed tendencies, not exact card-by-card authoritative instructions for one package, so unresolved target or option identity must remain diagnostic or suppressed unless a guide or deterministic rule corroborates it."
+    },
+    {
+      "implication": "Random generation pools, hidden-information secret timing, repeated location activation, and unresolved choice identities should stay warning-first or report-only.",
+      "boundary": "Current public data-source reality still does not provide exact, stable, deck-specific pre-run authority for those lanes."
+    }
+  ],
+  "globalvalues_implications": [
+    {
+      "implication": "Direct guide statements can honestly support coarse deck posture such as aggro pressure, burn finish, board-control-first early turns, or combo setup priority.",
+      "strength": "This is stronger than static semantics because it comes from public strategic text rather than inferred card roles alone."
+    },
+    {
+      "implication": "Exact numeric GlobalValues tuning should not be promoted from public guides, public card APIs, or deckstrings alone.",
+      "strength": "Without runtime evidence or a first-party deterministic mapping, numeric tuning is archetype-informed or policy-backed, not source-backed strong."
+    },
+    {
+      "implication": "A single community guide may justify a deckwide posture label for one deck snapshot, but broad cross-archetype generalization should stay conservative. [uncertain]",
+      "strength": "Community guide quality and freshness vary, so deckwide posture should stay tied to deck-match scope and source date."
+    }
+  ],
+  "source_document_schema_implications": [
+    {
+      "schema_need": "Every claim should carry `source_type` or equivalent provenance such as `official_card_data`, `official_api`, `editorial_guide`, `community_guide`, `replay_stat_aggregate`, `local_policy`, or `default_runtime`.",
+      "why": "This prevents policy-backed or stat-backed rows from being silently read as guide-backed strength."
+    },
+    {
+      "schema_need": "Every claim should carry `source_date`, `deck_match_scope`, and a short evidence text field.",
+      "why": "Freshness and deck alignment are part of the truth boundary for strategic claims."
+    },
+    {
+      "schema_need": "Claims should explicitly encode hand relevance, for example `opening_hand_relevant=true` or `non_hand_effect=true`.",
+      "why": "This blocks start-of-game effect cards from being misrouted into Mulligan keep behavior."
+    },
+    {
+      "schema_need": "Each claim should record whether it is `promotion_eligible` for `SOURCE_BACKED_STRONG` and which runtime surface it is allowed to lower to.",
+      "why": "The promotion boundary should be explicit in the source document, not reconstructed later from mixed signals."
+    },
+    {
+      "schema_need": "Replay-stat and policy rows should be storable but marked as non-promoting support lanes.",
+      "why": "They are operationally useful, but they are a different evidence class from direct strategic source text."
+    }
+  ],
+  "source_backed_strong_implications": [
+    {
+      "implication": "A package can only be called `SOURCE_BACKED_STRONG` when each promoted strategic surface is backed by either deterministic official card facts or current direct strategic text with deck-match scope.",
+      "effect": "Static card semantics alone are not enough for strong promotion in archetypes that need keeps, discards, target rules, or combo timing."
+    },
+    {
+      "implication": "Official card data can close deterministic effect lanes such as hero-power transforms, card identity, and some card-text-backed behavior, but it cannot by itself prove a Mulligan plan or matchup plan.",
+      "effect": "Packages may become richer than `STATIC_SEMANTICS_USABLE` without yet being honestly `SOURCE_BACKED_STRONG`."
+    },
+    {
+      "implication": "A package with any `policy_backed` Mulligan lane or any `default_only` runtime surface should not be promoted to `SOURCE_BACKED_STRONG`.",
+      "effect": "The package can still be valid and load-safe; it just cannot be described as guide-backed strong."
+    },
+    {
+      "implication": "Warning-only mechanics remain diagnostic by default and should block strong promotion only when they correspond to a missing strategic lane that the package is trying to claim as source-backed.",
+      "effect": "This keeps the strong contract honest without turning every warning into a second apply gate."
+    }
+  ],
+  "no_default_only_implications": [
+    {
+      "implication": "`policy_backed_autonomous_mulligan` must remain visibly labeled as policy-backed in reports, operator summaries, and any claim ledger.",
+      "reason": "Useful fallback behavior must not be mistaken for guide-backed evidence."
+    },
+    {
+      "implication": "Every `default_only` surface should stay visible in the surface ledger, detail report, and explainability chain.",
+      "reason": "A default runtime row is quality debt, not hidden success and not source-backed strength."
+    },
+    {
+      "implication": "Promotion logic should exclude `policy_backed`, `warning_only`, and `default_only` surfaces from the evidence count for `SOURCE_BACKED_STRONG`.",
+      "reason": "Otherwise the system launders fallback output into semantic strength."
+    },
+    {
+      "implication": "When a source-backed claim is missing, HSConfig should preserve an explicit gap reason such as `needs_mulligan_claim`, `needs_runtime_surface`, or `needs_combo_sequence` instead of silently filling the lane with a baseline default.",
+      "reason": "The operator must be able to see the first missing link."
+    }
+  ],
+  "autonomy_and_slimness_implications": [
+    {
+      "implication": "A lean autonomous source builder only needs three primary external lanes: official card data, deck identity from the deckstring, and direct public guide text.",
+      "value": "This keeps the workflow small while still allowing honest promotion beyond static semantics."
+    },
+    {
+      "implication": "Replay-stat products and policy rules should be attached as optional enrichment, not mandatory promotion evidence.",
+      "value": "The workflow stays autonomous and useful even when premium stats are unavailable or noisy."
+    },
+    {
+      "implication": "Suppression is often better than heuristic overreach.",
+      "value": "If target identity, choice identity, or Mulligan intent is not exact, the builder should emit the gap and move on instead of inventing a strong claim."
+    },
+    {
+      "implication": "The strong contract should remain a semantic label, not a second runtime apply gate.",
+      "value": "This preserves the current no-block product boundary while still improving honesty and explainability."
+    }
+  ],
+  "risks": [
+    "Community guide sites are public and useful, but many are user-generated, can be stale, and may describe one list snapshot rather than a durable archetype truth. Freshness and deck-match scope need to be enforced.",
+    "Official and public card-data sources expose identity and text well, but they do not provide exhaustive strategic guidance, stable hidden-information timing, or exact resolved random-pool choice authority for every edge case.",
+    "Replay-stat products are powerful but method-dependent. HSReplay has publicly documented both premium gating and a past misleading-mulligan-statistics fix, which is enough reason to keep stat-derived guidance distinct from guide-backed source truth.",
+    "Some decks will have no current public guide with explicit keeps, throws, targets, or combo ordering. In those cases the honest outcome is a valid package with visible source gaps, not a forced strong promotion.",
+    "The Holy Wrath example is intentionally cross-format and used only as a wording-pattern proof for exact combo-source text, not as evidence about the Wild representative matrix. [uncertain]"
+  ],
+  "uncertain": [
+    "source_backed_claim_candidates",
+    "globalvalues_implications",
+    "risks"
+  ]
+}

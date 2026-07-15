@@ -1,0 +1,208 @@
+{
+  "summary": "Current public 2026 sources still show Wild Shadow Priest as a live archetype, with a burn-oriented XL shell and a lower-curve Shadow Priest shell both retaining Darkbishop Benedictus as a core deck-inclusion card. The strongest current closure is to preserve SW_448 as a hero_power_transform source claim, keep explicit opener guidance only for cards that the 2026 written guide actually names, and avoid treating Benedictus as an opening-hand keep because the guide instead says to avoid keeping 4-cost-or-higher cards.",
+  "source_urls": [
+    "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+    "https://hearthstone-decks.net/wild-decks/priest-wild-decks/shadow-priest-priest-wild-decks/",
+    "https://www.hsguru.com/deck/21533434",
+    "https://www.hsguru.com/deck/11156421",
+    "https://playhearthstone.com/en-us/cards/64443-darkbishop-benedictus/"
+  ],
+  "deck_or_archetype_scope": "Wild Shadow Priest in July 2026, with strongest direct written-guide coverage for a 40-card aggro/burn Shadow Priest list and live meta overlap from current 2026 XL Shadow Priest and Shadow Priest deck pages that still include Darkbishop Benedictus.",
+  "source_backed_claim_candidates": [
+    {
+      "claim_kind": "hero_power_transform",
+      "cards": [
+        "SW_448"
+      ],
+      "stance": "shadowform_mind_spike",
+      "confidence": "high",
+      "evidence_text": "The official Darkbishop Benedictus card library page describes a Start of Game Shadowform transformation when the deck's spells are all Shadow, and the current 2026 guide is built around using the Shadow hero power as part of the deck's game plan.",
+      "source_url": "https://playhearthstone.com/en-us/cards/64443-darkbishop-benedictus/"
+    },
+    {
+      "claim_kind": "gameplan_posture",
+      "scope": "deck",
+      "stance": "aggressive_burn_hero_power_pressure",
+      "confidence": "high",
+      "evidence_text": "The May 3, 2026 Wild Shadow Priest guide says the deck is extremely aggro, often wins by turns 6-8, and uses the Shadow hero power plus burn to pressure opponents before slower decks stabilize or combo.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "targeting_rule",
+      "scope": "transformed_hero_power",
+      "stance": "clear_board_vs_board_decks_go_face_vs_control_combo",
+      "confidence": "high",
+      "evidence_text": "The current guide says to use the Shadow hero power to clear the enemy board to maintain board control, or to send it face against control and combo decks.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "mulligan_keep",
+      "cards": [
+        "TOY_381"
+      ],
+      "stance": "keep",
+      "confidence": "high",
+      "evidence_text": "The current guide explicitly lists Papercraft Angel among the opener keeps.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "mulligan_keep",
+      "cards": [
+        "SW_444"
+      ],
+      "stance": "keep",
+      "confidence": "high",
+      "evidence_text": "The current guide explicitly lists Twilight Deceptor among the opener keeps.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "mulligan_discard",
+      "cards": [
+        "SW_448"
+      ],
+      "stance": "discard",
+      "confidence": "medium",
+      "evidence_text": "The current guide says not to keep any 4-cost-or-higher cards. Because Darkbishop Benedictus is a 5-cost card in that same deck, the source does not support opening-hand keep behavior for Benedictus.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "card_role",
+      "cards": [
+        "TOY_381"
+      ],
+      "stance": "hero_power_support",
+      "confidence": "high",
+      "evidence_text": "The guide pairs Papercraft Angel with repeated hero power usage and highlights coin plus hero power lines, which makes Papercraft Angel a direct hero-power support card in this archetype.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "card_role",
+      "cards": [
+        "SW_444"
+      ],
+      "stance": "shadow_draw_damage_turn_support",
+      "confidence": "high",
+      "evidence_text": "The guide recommends keeping Twilight Deceptor and specifically calls out hero power plus Twilight Deceptor lines, which supports a damage-turn draw role.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "card_role",
+      "cards": [
+        "DS1_233"
+      ],
+      "stance": "burn_reach",
+      "confidence": "high",
+      "evidence_text": "The guide describes finishing opponents with burn and specifically references Mind Blast as part of the chip-damage and finishing plan.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "card_role",
+      "cards": [
+        "VAC_419"
+      ],
+      "stance": "burn_reach",
+      "confidence": "high",
+      "evidence_text": "The guide describes finishing opponents with burn and specifically references Acupuncture as part of the chip-damage and finishing plan.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    },
+    {
+      "claim_kind": "known_bad_pattern",
+      "scope": "mulligan",
+      "stance": "do_not_keep_expensive_cards",
+      "confidence": "high",
+      "evidence_text": "The guide explicitly says not to keep any 4-cost-or-higher cards in the opener, which is a source-backed anti-pattern for this Shadow Priest branch.",
+      "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    }
+  ],
+  "mulligan_implications": [
+    {
+      "type": "keep",
+      "cards": [
+        "TOY_381",
+        "SW_444"
+      ],
+      "detail": "Papercraft Angel and Twilight Deceptor have explicit current guide support as opener keeps."
+    },
+    {
+      "type": "discard",
+      "cards": [
+        "SW_448"
+      ],
+      "detail": "The current guide's 'do not keep 4-cost-or-higher cards' rule blocks a Benedictus opener keep for this guide-backed branch."
+    },
+    {
+      "type": "non_hand_effect_warning",
+      "cards": [
+        "SW_448"
+      ],
+      "detail": "Darkbishop Benedictus remains source-backed for start-of-game hero power transformation even when it is not source-backed as an opening-hand keep."
+    },
+    {
+      "type": "boundary",
+      "cards": [],
+      "detail": "No current source gathered in this pass explicitly says to keep Darkbishop Benedictus in the opener, so HSConfig should not generate that keep by default."
+    }
+  ],
+  "card_behavior_implications": [
+    {
+      "card_id": "SW_448",
+      "implication": "Preserve a hero_power_transform lane for Benedictus and keep it separate from Mulligan.json."
+    },
+    {
+      "card_id": "SW_448",
+      "implication": "The transformed hero power has matchup-dependent targeting: use it for early board control versus board decks and for face pressure versus control or combo decks."
+    },
+    {
+      "card_id": "TOY_381",
+      "implication": "Papercraft Angel should be treated as hero-power support rather than generic stats-only pressure."
+    },
+    {
+      "card_id": "SW_444",
+      "implication": "Twilight Deceptor should be treated as a damage-turn draw enabler that pairs with hero power and other self-damage or burn turns."
+    },
+    {
+      "card_id": "DS1_233",
+      "implication": "Mind Blast remains a burn-reach card in the current Shadow Priest branch and should support lethal or near-lethal face pressure."
+    },
+    {
+      "card_id": "VAC_419",
+      "implication": "Acupuncture remains a burn-reach card in the current Shadow Priest branch and should support lethal or near-lethal face pressure."
+    }
+  ],
+  "globalvalues_implications": [
+    "Deck posture should remain aggressive and burn-oriented, not value-oriented or control-oriented.",
+    "Hero power pressure is a real deck-level axis after Benedictus transforms the hero power at the start of the game.",
+    "The current written guide supports a split posture: stabilize board with the hero power against faster decks, then redirect damage face against slower decks.",
+    "Current 2026 HSGuru and Hearthstone-Decks pages confirm that Benedictus remains live in active Shadow Priest shells, so hero-power-transform semantics are still current rather than purely historical."
+  ],
+  "source_document_schema_implications": [
+    "Encode SW_448 as hero_power_transform with Shadowform or Mind Spike posture, not as mulligan_keep.",
+    "Encode TOY_381 and SW_444 as explicit mulligan_keep claims for the guide-backed 2026 branch because the written guide names them directly.",
+    "Encode a transformed-hero-power targeting rule at deck scope or Benedictus-linked scope because the guide gives explicit board-versus-face usage guidance.",
+    "Encode the 4-cost-or-higher opener warning as mulligan_discard or known_bad_pattern instead of vague descriptive prose.",
+    "Keep DS1_233 and VAC_419 as burn-reach card_role claims that align with the live 2026 Shadow Priest shells where those cards are present."
+  ],
+  "source_backed_strong_implications": [
+    "Current public evidence is strong enough to keep Shadow Priest honest on Benedictus transform semantics, aggressive posture, explicit Papercraft or Twilight mulligan keeps, and burn-finisher roles.",
+    "Current public evidence is not strong enough to justify a Benedictus opener keep, so SOURCE_BACKED_STRONG should preserve the transform while leaving SW_448 out of source-backed mulligan keeps.",
+    "Current public evidence is also not strong enough in this pass to promote older Shadow Priest-specific opener keeps that were not repeated in the 2026 sources gathered here.",
+    "This closure is strongest for the 2026 burn or XL Shadow Priest family and should use overlap claims when bridging to the lower-curve current Shadow Priest branch."
+  ],
+  "no_default_only_implications": [
+    "Do not silently convert Benedictus from an effect-enabler into an opener keep just because the deck depends on it.",
+    "Do not default missing current mulligan evidence for cards like Voidtouched Attendant from older Shadow Priest materials when the current guide gathered here does not restate that keep.",
+    "If a current variant only proves live archetype overlap through deck-list pages, keep uncovered cards visible as uncovered instead of inventing guide-backed keeps or targeting rules."
+  ],
+  "autonomy_and_slimness_implications": [
+    "A slim autonomous builder can close this deck from one current written guide, one current archetype listing page, one or two current live deck pages, and the official Benedictus card page.",
+    "Behavior claims should come only from explicit guide text or official card text; pure deck-list pages should only prove live archetype overlap and card presence.",
+    "The smallest honest output is a focused source_documents payload centered on Benedictus transform, aggressive posture, transformed hero-power usage, explicit current keeps, and burn reach."
+  ],
+  "risks": [
+    "The best current written source found in this pass is a May 3, 2026 user guide rather than a large editorial meta guide.",
+    "Current Wild Shadow Priest is split between at least one XL burn shell and one lower-curve Shadow Priest shell, so only overlap claims should be treated as archetype-wide.",
+    "Current archetype listing pages prove the deck is live in July 2026 but do not themselves provide mulligan text.",
+    "The official Benedictus card page proves start-of-game transform semantics but does not provide any opener keep recommendation."
+  ],
+  "uncertain": []
+}

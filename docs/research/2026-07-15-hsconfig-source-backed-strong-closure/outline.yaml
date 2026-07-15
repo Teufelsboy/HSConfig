@@ -1,0 +1,55 @@
+topic: hsconfig-source-backed-strong-closure
+description: >
+  Focused research for closing HSConfig from STATIC_SEMANTICS_USABLE to
+  SOURCE_BACKED_STRONG without adding a second apply gate, default-only output,
+  or broad orchestration. Research should identify guide-backed claims that can
+  become strict source_documents.json input for ShadowPriest and representative
+  Wild decks.
+execution:
+  output_dir: C:\Users\darbo\Documents\HSConfig\docs\research\2026-07-15-hsconfig-source-backed-strong-closure\results
+  batch_size: 5
+  items_per_agent: 1
+items:
+  - name: ShadowPriest guide backed claim closure
+    category: deck-source-research
+    description: >
+      Find current public guide or meta sources for Wild Shadow Priest or the
+      exact deck-adjacent archetype. Extract source-backed claims that can map
+      to HSConfig claim kinds: mulligan_keep, mulligan_discard, card_role,
+      targeting_rule, gameplan_posture, hero_power_transform, mechanic_usage,
+      known_bad_pattern, or combo_sequence. Pay special attention to Darkbishop
+      Benedictus: preserve start-of-game hero power transformation without
+      treating the card as an opening-hand keep unless a guide explicitly says
+      so.
+  - name: Aggro and burn deck source patterns
+    category: cross-deck-source-research
+    description: >
+      Use ShadowPriest, PirateRogue, PirateDH, MechPala, TreantDruid, and
+      Discolock style Wild decks to identify source-backed source-document
+      patterns for aggressive decks: opening keeps, face-targeting, curve
+      posture, early-board pressure, burn finishers, and cards that should not
+      be kept despite deck-defining effects.
+  - name: Combo control and big deck source patterns
+    category: cross-deck-source-research
+    description: >
+      Use CtAPaladin, BigShaman, Kingslayer, Boarlock, and similar Wild decks to
+      identify source-backed source-document patterns for non-aggro decks:
+      combo_sequence, setup/payoff timing, weapon posture, recruit or summon
+      targets, known bad patterns, and runtime-evidence-only versus source-backed
+      posture boundaries.
+  - name: Source backed strong contract and no default only boundary
+    category: contract-design-research
+    description: >
+      Audit the intended HSConfig source-backed-strong contract against current
+      public Hearthstone data-source realities. Decide which facts can honestly
+      promote a package beyond static semantics, which warnings must remain
+      diagnostic, and how to prevent policy-backed or default-only output from
+      being silently read as guide-backed strength.
+  - name: Autonomous source document builder design
+    category: workflow-design-research
+    description: >
+      Propose the smallest autonomous source-document builder that can turn deck
+      input plus public guide/meta/card sources into source_documents.json before
+      hsconfig configure. It must stay lean, no-block for any valid deck, and
+      should expose exact missing links when SOURCE_BACKED_STRONG cannot be
+      reached honestly.

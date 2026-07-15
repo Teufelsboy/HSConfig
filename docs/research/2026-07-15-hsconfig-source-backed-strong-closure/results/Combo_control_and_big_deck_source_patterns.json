@@ -1,0 +1,187 @@
+{
+  "summary": "For Wild non-aggro source documents, the strongest honest patterns are: use exact ordered combo text for Boarlock `combo_sequence`; use explicit weapon, tutor, and repeated-attack guidance for Kingslayer weapon posture; use explicit cheat, recruit, and friendly-target text for Big Shaman; and use CtAPaladin mainly as a recruit or summon contrast deck rather than as evidence for combo-control posture. In HSConfig terms, these patterns support source-backed `combo_sequence`, `gameplan_posture`, `mechanic_usage`, `targeting_rule`, and `known_bad_pattern` rows, while numeric tuning, matchup greed, and most attack-threshold choices still remain runtime-evidence-only.",
+  "source_urls": [
+    "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+    "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+    "https://www.hsguru.com/deck/28505455",
+    "https://www.hearthpwn.com/decks/1350009-85-wr-big-shaman-to-legend-wild-scholomance-update",
+    "https://www.hsguru.com/deck/27216881",
+    "https://www.hsguru.com/deck/21886916",
+    "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+    "https://www.hsguru.com/deck/10391393",
+    "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+    "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+    "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+    "https://www.hsguru.com/deck/34297608",
+    "https://www.hsguru.com/deck/34322767"
+  ],
+  "deck_or_archetype_scope": "Wild cross-deck source-document patterns for Boarlock combo-control, Kingslayer weapon-pressure, Big Shaman big-cheat or recruit shells, and CtAPaladin as a recruit or summon contrast boundary.",
+  "source_backed_claim_candidates": [
+    {
+      "deck_scope": "Boarlock",
+      "claim_kind": "combo_sequence",
+      "cards_or_scope": [
+        "Elwynn Boar",
+        "Bloodbloom",
+        "Bat Mask",
+        "Plague of Flames"
+      ],
+      "timing_kind": "same_turn",
+      "operator": ">>",
+      "confidence": "high",
+      "evidence_text": "The strongest non-aggro exact-sequence source is the Boarlock finisher line that explicitly describes holding Boar, assembling the four-card setup, and executing the kill in one turn.",
+      "source_urls": [
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "https://www.hsguru.com/deck/34297608",
+        "https://www.hsguru.com/deck/34322767"
+      ]
+    },
+    {
+      "deck_scope": "Boarlock",
+      "claim_kind": "gameplan_posture",
+      "cards_or_scope": "deck",
+      "stance": "combo_control_resource_setup",
+      "confidence": "medium",
+      "evidence_text": "Boarlock sources consistently describe the deck as a setup-first combo shell that spends early turns finding pieces, surviving, and then cashing out one exact finisher turn rather than curving for ordinary board pressure.",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk"
+      ]
+    },
+    {
+      "deck_scope": "Kingslayer",
+      "claim_kind": "mechanic_usage",
+      "cards_or_scope": [
+        "Kingsbane",
+        "Silverleaf Poison",
+        "Kingsbane tutors"
+      ],
+      "stance": "weapon_sequence",
+      "confidence": "high",
+      "evidence_text": "The clearest source-backed weapon posture is Kingslayer's repeated line of finding Kingsbane, buffing it, drawing through attacks, and repeating face-pressure turns.",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+        "https://www.hsguru.com/deck/10391393",
+        "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue"
+      ]
+    },
+    {
+      "deck_scope": "Kingslayer",
+      "claim_kind": "targeting_rule",
+      "cards_or_scope": [
+        "Kingsbane",
+        "hero attack follow-up cards"
+      ],
+      "stance": "prefer_enemy_hero_when_safe",
+      "confidence": "medium",
+      "evidence_text": "The guide-level Kingslayer pattern is to turn weapon growth into repeated hero swings and card draw, which supports face-pressure posture only as a conditional attack rule, not as an unconditional ignore-board command.",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+        "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue"
+      ]
+    },
+    {
+      "deck_scope": "Big Shaman",
+      "claim_kind": "gameplan_posture",
+      "cards_or_scope": [
+        "Ancestor's Call",
+        "Muckmorpher",
+        "Thunderbringer",
+        "Neptulon the Tidehunter"
+      ],
+      "stance": "big_cheat_recruit_payoff",
+      "confidence": "high",
+      "evidence_text": "Big Shaman sources explicitly describe a control-style setup deck that cheats oversized minions early, reuses them, and wins through delayed payoff turns rather than early board racing.",
+      "source_urls": [
+        "https://www.hearthpwn.com/decks/1350009-85-wr-big-shaman-to-legend-wild-scholomance-update",
+        "https://www.hsguru.com/deck/27216881",
+        "https://www.hsguru.com/deck/21886916"
+      ]
+    },
+    {
+      "deck_scope": "Big Shaman",
+      "claim_kind": "known_bad_pattern",
+      "cards_or_scope": [
+        "Ancestral Spirit",
+        "Reincarnate",
+        "Jam Session"
+      ],
+      "stance": "beneficial_friendly_targeting_only",
+      "confidence": "high",
+      "evidence_text": "Big Shaman's own-friendly reuse package creates a clean known-bad-pattern boundary: buff, reborn, or death-loop support text should map to friendly-target posture and should not drift into enemy-target actions.",
+      "source_urls": [
+        "https://www.hearthpwn.com/decks/1350009-85-wr-big-shaman-to-legend-wild-scholomance-update",
+        "https://www.hsguru.com/deck/27216881"
+      ]
+    },
+    {
+      "deck_scope": "CtAPaladin",
+      "claim_kind": "mechanic_usage",
+      "cards_or_scope": [
+        "Boogie Down",
+        "Call to Arms",
+        "Crusader Aura"
+      ],
+      "stance": "recruit_or_summon_board_flood_contrast",
+      "confidence": "high",
+      "evidence_text": "CtAPaladin is useful here as a source-backed contrast deck: it gives clear recruit or summon-from-deck wording and payoff timing, but its public deck discussion is still board-flood aggro or midrange, not combo-control.",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+        "https://www.hsguru.com/deck/28505455"
+      ]
+    }
+  ],
+  "mulligan_implications": [
+    "Only convert deck text into `mulligan_keep` when the source names an opening-hand keep directly. Big Shaman has a clean named keep for `Ancestor's Call`, Kingslayer has a clean keep lane for Kingsbane, Kingsbane tutors, and Silverleaf Poison, and CtAPaladin has a clean keep lane for Boogie Down plus some matchup-specific keeps.",
+    "Boarlock shows why generic combo advice is not enough by itself. The public discussion mixes keeping combo pieces, early removal, or card draw by matchup, so only explicit named keeps should lower; generic setup praise should stay outside the mulligan lane.",
+    "Conditional matchup keeps are still valid source claims if the guide states the condition explicitly. CtAPaladin's Irondeep Trogg or anti-spell keeps and Big Shaman's conditional Muckmorpher keeps belong in explicit source rows, not in vague summary prose.",
+    "Do not promote setup importance, top-end payoffs, or start-of-game style semantics into `mulligan_keep`. A card can be source-backed as core, payoff, or engine without becoming an opening-hand hold."
+  ],
+  "card_behavior_implications": [
+    "Boarlock's best source-backed per-card behavior is exact combo assembly: Elwynn Boar is the win-condition anchor, Bat Mask is the health-to-board converter, Bloodbloom is the mana bridge, and Plague of Flames is the same-turn sacrifice or cleanup piece. That is a real `combo_sequence`, not a generic synergy sentence.",
+    "Kingslayer's per-card behavior should center on weapon sequencing and repeated hero attacks. Kingsbane, Silverleaf Poison, and weapon tutors support `mechanic_usage` or conditional `targeting_rule` rows; they do not justify unconditional face-only automation when a survival trade is required.",
+    "Big Shaman's per-card behavior should separate cheat, payoff, and own-target support. `Ancestor's Call`, `Muckmorpher`, and `Thunderbringer` fit cheat or recruit behavior, while `Ancestral Spirit` and `Reincarnate` fit own-friendly target rules and known-bad-pattern warnings against enemy misuse.",
+    "CtAPaladin's summon-from-deck cards are useful as card-role or mechanic examples for recruit or summon language, but the archetype should not be overfit into non-aggro behavior rows just because the wording is clear."
+  ],
+  "globalvalues_implications": [
+    "A source-backed `gameplan_posture` can honestly lower only to broad Step 1 posture, not to numeric greed. For this deck set, that means Boarlock can support combo-control setup posture, Kingslayer can support weapon-pressure posture, and Big Shaman can support big-cheat or recruit posture.",
+    "Exact numeric tuning remains runtime-evidence-only. Kill-turn expectations, how hard Kingslayer should force face damage, how greedy Big Shaman can be with cheat effects, or how long Boarlock can hold removal before spending it should not be claimed as source-backed GlobalValues numbers.",
+    "CtAPaladin should be treated as a posture boundary case. Its recruit and payoff text is valuable, but its board-flood gameplan should not be imported into the non-aggro GlobalValues template that this research item is trying to strengthen.",
+    "If a deck has strong CardID or Combo evidence but only partial posture evidence, HSConfig should keep the package useful with those lowerable surfaces and leave the remaining GlobalValues debt visible rather than inventing source-backed numbers."
+  ],
+  "source_document_schema_implications": [
+    "Represent exact Boarlock finishers as `combo_sequence` claims with ordered `sequence`, explicit `timing_kind`, and explicit operator text. This is the cleanest source-backed pattern in the set and should be treated as the model for non-aggro combo rows.",
+    "Represent Big Shaman as multiple rows instead of one loose 'big deck' paragraph: `gameplan_posture` for cheat or recruit posture, `mechanic_usage` for recruit or deathrattle text, and `targeting_rule` or `known_bad_pattern` for own-friendly support actions.",
+    "Represent Kingslayer weapon shells through `mechanic_usage` and selective `targeting_rule` claims, plus only explicitly named mulligan rows. Avoid broad 'weapon deck means attack face' prose because the lowerable part is conditional posture, not blind aggression.",
+    "Represent CtAPaladin only as recruit or summon contrast evidence in this non-aggro research. Its summon language can support `mechanic_usage` or `card_role` rows, but it should not be the template for the non-aggro `gameplan_posture` rows.",
+    "Keep source-backed posture and runtime-evidence-only tuning separate in the source document itself. Use source rows to say what family of plan is supported, and keep numbers or matchup thresholds outside source-backed claims unless a real public source states them exactly."
+  ],
+  "source_backed_strong_implications": [
+    "Reaching `SOURCE_BACKED_STRONG` honestly for non-aggro decks depends on exactness, not on deck reputation. Boarlock needs named combo order and timing, Kingslayer needs named weapon-sequence guidance, and Big Shaman needs named cheat or recruit posture plus named friendly-target rules.",
+    "A deck should not promote just because it has many card-role notes. The decisive rows are the ones that close lowerable surfaces cleanly: exact mulligan claims, exact combo order, exact posture, and exact supported CardID behavior.",
+    "CtAPaladin helps define the negative boundary. Clear summon wording alone does not make a deck a valid source-backed non-aggro posture representative, so strong promotion for this research family should stay attached to the genuinely non-aggro rows.",
+    "Where a source only proves broad setup or payoff timing but not exact numbers, `SOURCE_BACKED_STRONG` can still be honest if the lowered row stays broad and the numeric debt remains visible rather than guessed."
+  ],
+  "no_default_only_implications": [
+    "If no exact mulligan source exists, keep the gap visible and fall back only to policy-backed autonomous coverage where allowed. Do not silently convert combo importance, deck identity, or top-end status into fake source-backed keeps.",
+    "If a deck has source-backed posture but no source-backed numeric tuning, emit only the broad posture lane and leave the numeric surface absent or diagnostic. That preserves a non-default useful package without pretending the numbers are proven.",
+    "If a deck has good recruit, summon, or weapon text but lacks exact combo timing, keep CardID or GlobalValues rows visible and let Combo remain explicitly unclosed. This is better than hiding the gap behind generic synergy language.",
+    "CtAPaladin is especially useful for showing that clear summon text can make non-default card-role rows while still leaving the non-aggro posture family unpromoted."
+  ],
+  "autonomy_and_slimness_implications": [
+    "This research supports a slim representative pattern set. One combo-control deck, one weapon-pressure deck, one big-cheat or recruit deck, and one contrast summon deck are enough to define the main non-aggro source-document families without widening the matrix unnecessarily.",
+    "The cleanest autonomous rule is claim-kind-first and exact-source-first: only named keeps lower to Mulligan, only explicit ordered combos lower to Combo, only broad source-backed posture lowers to GlobalValues, and only supported target or behavior text lowers to CardID rows.",
+    "Keeping numeric greed, matchup pivots, and over-time optimization in the runtime-evidence lane preserves autonomy because HSConfig can still build a valid pre-run package without pretending it knows replay-proven numbers.",
+    "Known-bad-pattern rows are a small but high-value addition for non-aggro decks. Big Shaman shows that a compact friendly-target warning can prevent obvious misplays without adding a large new runtime surface."
+  ],
+  "risks": [
+    "Several public sources here are community sources rather than official guides, so deck-language freshness can drift quickly when Wild lists change.",
+    "CtAPaladin is intentionally a boundary or contrast case, not a primary non-aggro representative. Over-weighting it would distort the non-aggro conclusions.",
+    "Boarlock combo lists can vary between older Rod or Phylactery shells and newer Bat Mask shells, so only the exact cited sequence should be treated as source-backed.",
+    "Kingslayer guides often generalize weapon pressure at a high level. Without explicit conditional wording, it is easy to over-lower that into unconditional hero-attack behavior.",
+    "Big Shaman list drift can change the exact payoff package even when the cheat pattern stays stable, so recruit or summon target claims should remain tied to named cards from the cited list.",
+    "Any attempt to attach exact Step 1 numbers to these sources would overstate what the public evidence actually proves and would blur the runtime-evidence boundary."
+  ],
+  "uncertain": []
+}
