@@ -25,6 +25,49 @@ def _source_backed_mulligan_plan_report():
     }
 
 
+def _strong_candidate_with_lane_counts(lane_counts):
+    return build_operator_summary(
+        deck_name="LaneCountFixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 3,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 3,
+            "runtime_emitted": 3,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_claim_gap_report={
+            "summary": {"source_quality_lane_counts": lane_counts}
+        },
+        generated_files=["CustomConfig/lanecountfixture/GlobalValues.json"],
+    )
+
+
+def _semantic_blocker_codes(summary):
+    return {blocker.get("code") for blocker in summary.get("semantic_blockers", [])}
+
+
 @pytest.mark.parametrize(
     ("surface", "runtime_files", "expected"),
     [
@@ -749,6 +792,7 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
             "cards_needing_combo_sequence=0",
             "cards_needing_condition_lowering=0",
             "cards_needing_mechanic_lowering=0",
+            "positive_strong_source_quality_lane>0_when_lane_summary_present",
         ],
     }
     assert summary["semantic_blockers"][0] == {
@@ -1882,6 +1926,54 @@ def test_operator_summary_source_quality_lanes_block_strong_without_blocking_app
     }
     assert "default_runtime_not_strong_evidence" in blocker_codes
     assert "snippet_only_source_not_strong_evidence" in blocker_codes
+
+
+def test_policy_backed_lane_count_blocks_strong_without_blocking_apply():
+    summary = _strong_candidate_with_lane_counts(
+        {"policy_backed": 1, "guide_backed": 1}
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert "policy_claim_not_strong_evidence" in _semantic_blocker_codes(summary)
+
+
+def test_decklist_only_lane_count_blocks_strong_without_blocking_apply():
+    summary = _strong_candidate_with_lane_counts(
+        {"decklist_only": 1, "guide_backed": 1}
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert "decklist_only_not_strong_evidence" in _semantic_blocker_codes(summary)
+
+
+def test_present_lane_summary_without_positive_strong_lane_blocks_strong():
+    summary = _strong_candidate_with_lane_counts({"generic_low_confidence": 1})
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert "missing_positive_strong_source_lane" in _semantic_blocker_codes(summary)
+
+
+def test_empty_present_lane_summary_blocks_strong():
+    summary = _strong_candidate_with_lane_counts({})
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert "missing_positive_strong_source_lane" in _semantic_blocker_codes(summary)
+
+
+def test_guide_backed_lane_count_allows_strong_promotion():
+    summary = _strong_candidate_with_lane_counts({"guide_backed": 1})
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
 
 
 def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():

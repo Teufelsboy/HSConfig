@@ -25,6 +25,7 @@ SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "cards_needing_combo_sequence=0",
     "cards_needing_condition_lowering=0",
     "cards_needing_mechanic_lowering=0",
+    "positive_strong_source_quality_lane>0_when_lane_summary_present",
 ]
 READINESS_GAP_SUMMARY_KEYS = (
     "cards_needing_guide_claims",
@@ -71,6 +72,24 @@ SURFACE_RUNTIME_FILES = {
 CARDID_NON_SURFACE_FILES = {"Mulligan.json", "GlobalValues.json", "Combo.json"}
 DIAGNOSTIC_ONLY_UNSUPPORTED_SOURCES = {
     "policy_backed_autonomous_mulligan",
+}
+STRONG_SOURCE_QUALITY_LANES = {
+    "deck_matched_public_guide",
+    "guide_backed",
+    "source_backed_static_semantics",
+    "official_static_semantics",
+    "static_semantics_backfilled",
+}
+NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS = {
+    "policy_fallback": "policy_claim_not_strong_evidence",
+    "policy_backed": "policy_claim_not_strong_evidence",
+    "default_runtime": "default_runtime_not_strong_evidence",
+    "snippet_only": "snippet_only_source_not_strong_evidence",
+    "decklist_only": "decklist_only_not_strong_evidence",
+    "archetype_inferred": "archetype_inferred_not_strong_evidence",
+    "explicit_low_confidence": "explicit_low_confidence_not_strong_evidence",
+    "generic_low_confidence": "generic_low_confidence_not_strong_evidence",
+    "contract_gap": "contract_gap_not_strong_evidence",
 }
 
 
@@ -658,17 +677,14 @@ def _source_quality_lane_blockers(
         if isinstance(source_claim_gap_report, dict)
         else {}
     )
+    if not isinstance(summary, dict) or "source_quality_lane_counts" not in summary:
+        return []
     lane_counts = summary.get("source_quality_lane_counts", {})
     if not isinstance(lane_counts, dict):
         return []
 
-    blocker_code_by_lane = {
-        "policy_fallback": "policy_claim_not_strong_evidence",
-        "default_runtime": "default_runtime_not_strong_evidence",
-        "snippet_only": "snippet_only_source_not_strong_evidence",
-    }
     blockers: list[dict[str, Any]] = []
-    for lane, code in blocker_code_by_lane.items():
+    for lane, code in NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS.items():
         count = _int_value(lane_counts.get(lane, 0))
         if count == 0:
             continue
@@ -678,6 +694,20 @@ def _source_quality_lane_blockers(
                 "reason": code,
                 "source_quality_lane": lane,
                 "count": count,
+                "blocking_strength": "blocks_source_backed_strong",
+                "report": "reports/source_claim_gap_report.json",
+            }
+        )
+    has_positive_strong_lane = any(
+        _int_value(lane_counts.get(lane, 0)) > 0
+        for lane in STRONG_SOURCE_QUALITY_LANES
+    )
+    if not has_positive_strong_lane:
+        blockers.append(
+            {
+                "code": "missing_positive_strong_source_lane",
+                "reason": "missing_positive_strong_source_lane",
+                "count": 0,
                 "blocking_strength": "blocks_source_backed_strong",
                 "report": "reports/source_claim_gap_report.json",
             }

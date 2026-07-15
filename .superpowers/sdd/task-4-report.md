@@ -42,3 +42,38 @@ Self-review notes
 Concerns
 - An unrelated untracked file exists and was not touched: `docs/superpowers/plans/2026-07-15-hsconfig-source-acquisition-strong-closure.md`.
 - Git reports line-ending normalization warnings for touched LF files; no content issue was observed in the diff.
+
+Review fix update - 2026-07-15 18:58:17 +02:00
+
+Files changed
+- `src/hsconfig/operator_summary.py`
+- `tests/test_operator_summary.py`
+- `.superpowers/sdd/task-4-report.md`
+
+Fix details
+- Expanded source quality lane-count handling to current producer lane names.
+- `policy_fallback` and `policy_backed` now emit `policy_claim_not_strong_evidence`.
+- `decklist_only` now emits `decklist_only_not_strong_evidence`.
+- Other non-strong producer lanes now block only strong promotion: `default_runtime`, `snippet_only`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, and `contract_gap`.
+- Added a positive strong lane requirement only when `source_quality_lane_counts` is present.
+- Positive strong lanes accepted for strong promotion are `deck_matched_public_guide`, `guide_backed`, `source_backed_static_semantics`, `official_static_semantics`, and `static_semantics_backfilled`.
+- Missing positive strong lane now emits `missing_positive_strong_source_lane`.
+- Technical status and runtime apply permission remain unchanged; blockers are semantic strongness evidence only.
+
+Regression coverage added
+- `policy_backed` plus `guide_backed` stays `VALID_PACKAGE` and apply-allowed, but not `SOURCE_BACKED_STRONG`.
+- `decklist_only` plus `guide_backed` stays `VALID_PACKAGE` and apply-allowed, but not `SOURCE_BACKED_STRONG`.
+- Present lane summaries with `generic_low_confidence` only or `{}` do not promote just from `source_backed` depth and positive claim count.
+- `guide_backed` only still permits `SOURCE_BACKED_STRONG`.
+
+Tests run, exact command and result
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py -q`
+  - TDD red after fixture correction: `4 failed, 83 passed in 0.81s`.
+  - Expected failures: `policy_backed`, `decklist_only`, `generic_low_confidence`, and empty lane summaries still promoted to `SOURCE_BACKED_STRONG`.
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py -q`
+  - Green after fix: `87 passed in 0.51s`.
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q`
+  - Final result: `112 passed in 0.39s`.
+
+Concerns
+- No new concerns.
