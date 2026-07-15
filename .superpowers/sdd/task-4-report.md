@@ -77,3 +77,17 @@ Tests run, exact command and result
 
 Concerns
 - No new concerns.
+
+Review fix update - policy_fallback coverage
+
+Files changed
+- `tests/test_operator_summary.py`
+- `.superpowers/sdd/task-4-report.md`
+
+Fix details
+- Added direct `source_quality_lane_counts={"policy_fallback": 1, "guide_backed": 1}` coverage for the operator-summary lane-count path.
+- The regression asserts `VALID_PACKAGE`, `runtime_apply_allowed=true`, no `SOURCE_BACKED_STRONG`, and `policy_claim_not_strong_evidence`.
+
+Tests run, exact command and result
+- `$env:PYTHONPATH='src'; python -m pytest tests/test_operator_summary.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q`
+  - Final result after policy_fallback coverage: `113 passed in 0.61s`.

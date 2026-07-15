@@ -1939,6 +1939,17 @@ def test_policy_backed_lane_count_blocks_strong_without_blocking_apply():
     assert "policy_claim_not_strong_evidence" in _semantic_blocker_codes(summary)
 
 
+def test_policy_fallback_lane_count_blocks_strong_without_blocking_apply():
+    summary = _strong_candidate_with_lane_counts(
+        {"policy_fallback": 1, "guide_backed": 1}
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert "policy_claim_not_strong_evidence" in _semantic_blocker_codes(summary)
+
+
 def test_decklist_only_lane_count_blocks_strong_without_blocking_apply():
     summary = _strong_candidate_with_lane_counts(
         {"decklist_only": 1, "guide_backed": 1}
