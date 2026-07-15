@@ -20,11 +20,13 @@
           "claim_kind": "hero_power_transform",
           "cards": ["SW_448"],
           "card_ids": ["SW_448"],
+          "timing": "start_of_game",
           "stance": "shadowform_mind_spike",
           "opening_hand_relevant": false,
           "source_type": "public_guide",
           "evidence_text_short": "Shadow Priest uses Darkbishop Benedictus for the Shadowform hero power as part of its burst plan.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "mulligan_keep",
@@ -195,11 +197,13 @@
           "claim_kind": "hero_power_transform",
           "cards": ["SW_448"],
           "card_ids": ["SW_448"],
+          "timing": "start_of_game",
           "stance": "shadowform_mind_spike",
           "opening_hand_relevant": false,
           "source_type": "official_card_data",
           "evidence_text_short": "Darkbishop Benedictus enters Shadowform at the start of the game if every spell in your deck is Shadow.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         }
       ]
     },

@@ -29,9 +29,11 @@
         {
           "claim_kind": "hero_power_transform",
           "cards": ["SW_448"],
+          "timing": "start_of_game",
           "stance": "enable_mind_spike_shadow_hero_power",
           "evidence_text_short": "Darkbishop Benedictus enables the Shadow Priest hero power plan.",
           "source_confidence": "high",
+          "promotion_eligible": true,
           "semantic_qualifiers": {
             "zone_scope": "Deck",
             "state_requirements": ["deckbuilding_effect"]

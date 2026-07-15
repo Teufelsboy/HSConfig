@@ -95,6 +95,10 @@ def test_extract_source_evidence_rows_preserves_darkbishop_effect_without_mullig
     assert not any(row["claim_kind"] == "mulligan_discard" for row in darkbishop_rows)
 
 
+def test_extract_source_evidence_rows_preserves_darkbishop_effect_not_mulligan_keep():
+    test_extract_source_evidence_rows_preserves_darkbishop_effect_without_mulligan_row()
+
+
 def test_build_source_autopilot_bundle_outputs_strict_source_documents():
     payload = _fixture("source_search_shadowpriest_2026.json")
 

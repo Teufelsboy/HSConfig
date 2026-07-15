@@ -30,6 +30,33 @@ def _darkbishop_claims(path: Path):
     return claims
 
 
+def read_json(path: Path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def prepare_shadowpriest_depth_fixture(tmp_path: Path):
+    package = tmp_path / "shadowpriest_strong"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    return package
+
+
 def test_shadowpriest_darkbishop_fixtures_mark_effect_as_non_opening_hand_claim():
     fixture_expectations = {
         Path("tests/fixtures/shadowpriest_guide_sources.json"): {"public_guide"},
@@ -46,6 +73,9 @@ def test_shadowpriest_darkbishop_fixtures_mark_effect_as_non_opening_hand_claim(
         assert {claim["claim_kind"] for claim in claims} == {"hero_power_transform"}
         assert {claim.get("source_type") for claim in claims} == expected_source_types
         assert all(claim.get("card_ids") == ["SW_448"] for claim in claims)
+        if path.name == "source_documents_shadowpriest_strong.json":
+            assert all(claim.get("timing") == "start_of_game" for claim in claims)
+            assert all(claim.get("promotion_eligible") is True for claim in claims)
         assert all(claim.get("opening_hand_relevant") is False for claim in claims)
 
 
@@ -353,3 +383,33 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     )
     assert darkbishop_card_row["strongest_claim_kind"] == "hero_power_transform"
     assert darkbishop_card_row["closure"]["default_only_risk"] is False
+
+
+def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(tmp_path):
+    package = prepare_shadowpriest_depth_fixture(tmp_path)
+    operator = read_json(package / "reports" / "operator_summary.json")
+    mulligan = read_json(package / "CustomConfig" / "shadowpriest" / "Mulligan.json")
+    darkbishop = read_json(package / "CustomConfig" / "shadowpriest" / "SW_448.json")
+    explainability = read_json(package / "reports" / "source_to_runtime_explainability.json")
+
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["default_only_runtime_surfaces"] == []
+    concrete_keeps = [
+        row["mulligan"]
+        for row in mulligan["Mulligan"]["values"]
+        if row["value"] == "hold" and row["mulligan"] != "*"
+    ]
+    hero_power_values = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+
+    assert "SW_448" not in concrete_keeps
+    assert hero_power_values
+    assert any(
+        row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
+        and row["condition"] == "*"
+        and row["value"] == "6"
+        for row in hero_power_values
+    )
+    sw448 = next(row for row in explainability["card_rows"] if row["card_id"] == "SW_448")
+    assert sw448["strongest_claim_kind"] == "hero_power_transform"
+    assert sw448["first_missing_source_action"] == "none"
