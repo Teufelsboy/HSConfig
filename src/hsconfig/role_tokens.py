@@ -1,15 +1,44 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
 
 ROLE_HINT_KEYS = ("roles", "semantic_families", "mechanic_families")
-OPENING_HAND_MULLIGAN_TEXT_MARKERS = (
-    "opening hand",
-    "opening-hand",
-    "mulligan",
-    "starting hand",
+OPENING_HAND_MULLIGAN_POSITIVE_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"\b(?:always|hard|snap)\s+keep\b",
+        (
+            r"\b(?:keep|hold)\b.{0,80}"
+            r"\b(?:opening hand|opening-hand|starting hand|mulligan)\b"
+        ),
+        (
+            r"\b(?:opening hand|opening-hand|starting hand|mulligan)\b"
+            r".{0,80}\b(?:keep|hold)\b"
+        ),
+    )
+)
+OPENING_HAND_MULLIGAN_NEGATED_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        (
+            r"\b(?:do not|don't|dont|never|should not|shouldn't|avoid|not)\b"
+            r".{0,50}\b(?:keep|hold)\b.{0,100}"
+            r"\b(?:opening hand|opening-hand|starting hand|mulligan)\b"
+        ),
+        (
+            r"\b(?:opening hand|opening-hand|starting hand|mulligan)\b.{0,50}"
+            r"\b(?:do not|don't|dont|never|should not|shouldn't|avoid|not)\b"
+            r".{0,50}\b(?:keep|hold)\b"
+        ),
+        (
+            r"\b(?:not|never)\s+(?:an?\s+)?"
+            r"(?:opening hand|opening-hand|starting hand|mulligan)\s+"
+            r"(?:keep|hold)\b"
+        ),
+    )
 )
 EXPLICIT_OPENING_HAND_MULLIGAN_ROLES = frozenset(
     {
@@ -105,7 +134,22 @@ def has_explicit_opening_hand_mulligan_intent(
             if value:
                 text_parts.append(str(value))
     text = " ".join(text_parts).lower()
-    return any(marker in text for marker in OPENING_HAND_MULLIGAN_TEXT_MARKERS)
+    return _has_positive_opening_hand_mulligan_text(text)
+
+
+def _has_positive_opening_hand_mulligan_text(text: str) -> bool:
+    normalized = " ".join(text.split())
+    if not normalized:
+        return False
+    if any(
+        pattern.search(normalized)
+        for pattern in OPENING_HAND_MULLIGAN_NEGATED_PATTERNS
+    ):
+        return False
+    return any(
+        pattern.search(normalized)
+        for pattern in OPENING_HAND_MULLIGAN_POSITIVE_PATTERNS
+    )
 
 
 def _iter_claims(

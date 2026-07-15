@@ -423,15 +423,16 @@ def _surface_status_ledger(
     if not isinstance(surfaces, dict):
         return []
 
-    risky_details = _default_only_risk_card_details(
-        source_to_runtime_explainability_report
-    )
-    first_risky = risky_details[0] if risky_details else {}
     rows: list[dict[str, Any]] = []
     for surface, row in sorted(surfaces.items()):
         if not isinstance(row, dict):
             continue
         status = _surface_ledger_status(row)
+        risky_details = _default_only_risk_card_details(
+            source_to_runtime_explainability_report,
+            surface=str(surface),
+        )
+        first_risky = risky_details[0] if risky_details else {}
         first_missing_link = row.get("first_gap_reason") or first_risky.get(
             "first_missing_link"
         )

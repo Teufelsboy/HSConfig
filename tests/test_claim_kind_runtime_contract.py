@@ -370,6 +370,31 @@ def test_explicit_opening_hand_start_of_game_mulligan_claim_can_lower():
     assert decision.reason == "allowed"
 
 
+def test_negated_opening_hand_text_does_not_allow_start_of_game_mulligan_keep():
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["CARD_START"],
+        "evidence_text_short": (
+            "CARD_START changes the starting Hero Power, but do not keep it "
+            "in the opening hand."
+        ),
+    }
+    context = {
+        "card_roles": {
+            "CARD_START": {
+                "roles": ["start_of_game", "hero_power_transform"],
+            }
+        }
+    }
+
+    decision = surface_gate_decision(claim, "mulligan", context)
+
+    assert decision.allowed is False
+    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+
+
 def test_explicit_opening_hand_start_of_game_claim_builds_mulligan_rule():
     plan = build_mulligan_plan(
         deck_name="FixtureDeck",

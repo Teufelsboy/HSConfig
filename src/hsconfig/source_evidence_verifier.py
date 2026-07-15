@@ -4,7 +4,11 @@ from ipaddress import ip_address
 from typing import Any
 from urllib.parse import urlsplit
 
-from hsconfig.role_tokens import START_OF_GAME_NON_HAND_EFFECT_ROLES, claim_role_tokens
+from hsconfig.role_tokens import (
+    START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    claim_role_tokens,
+    has_explicit_opening_hand_mulligan_intent,
+)
 from hsconfig.source_document_model import (
     DECK_EVALUATION_NON_HAND_EFFECTS,
     GENERATED_NON_OPENING_HAND_SCOPES,
@@ -49,14 +53,6 @@ ACTIONABLE_SPECIFICITY_KEYS = (
     "operator",
     "option_card_id",
     "semantic_qualifiers",
-)
-OPENING_HAND_LANGUAGE = (
-    "mulligan",
-    "opening hand",
-    "starting hand",
-    "keep this",
-    "always keep",
-    "hard keep",
 )
 SUSPICIOUS_KEEP_ROLE_KEYS = (
     "roles",
@@ -269,11 +265,9 @@ def _with_normalized_semantic_qualifiers(claim: dict[str, Any]) -> dict[str, Any
 
 
 def _has_explicit_opening_hand_evidence(claim: dict[str, Any], evidence: str) -> bool:
-    return _has_opening_hand_language(evidence) or has_qualifier(claim, "timing", "mulligan")
-
-
-def _has_opening_hand_language(evidence: str) -> bool:
-    return any(term in evidence for term in OPENING_HAND_LANGUAGE)
+    return has_explicit_opening_hand_mulligan_intent(
+        {**claim, "evidence_text_short": evidence}
+    ) or has_qualifier(claim, "timing", "mulligan")
 
 
 def _claim_role_hints(claim: dict[str, Any]) -> set[str]:

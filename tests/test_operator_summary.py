@@ -2670,6 +2670,63 @@ def test_default_only_surface_details_filter_example_cards_to_runtime_surface():
     ]
 
 
+def test_surface_status_ledger_uses_surface_specific_default_only_details():
+    summary = build_operator_summary(
+        deck_name="Thin Deck",
+        deck_code="AAEBAQAAAA==",
+        technical_validation={"status": "passed", "errors": []},
+        config_readiness_summary={
+            "runtime_emitted": 0,
+            "report_only_supported": 0,
+            "cards_needing_runtime_surface": 1,
+        },
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+        card_behavior_plan_report={"rows": []},
+        source_to_runtime_explainability_report={
+            "card_rows": [
+                {
+                    "card_id": "AAA_MULL",
+                    "name": "Mulligan Missing Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "runtime_surfaces": ["Mulligan.json"],
+                        "default_only_risk": True,
+                        "first_missing_link": "needs_mulligan_claim",
+                        "next_source_action": "add_mulligan_keep_or_discard_claim",
+                    },
+                },
+                {
+                    "card_id": "ZZZ_CARDID",
+                    "name": "CardID Missing Card",
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "runtime_surfaces": ["ZZZ_CARDID.json"],
+                        "default_only_risk": True,
+                        "first_missing_link": "needs_runtime_surface",
+                        "next_source_action": "add_cardid_behavior_claim",
+                    },
+                },
+            ]
+        },
+    )
+
+    rows = {row["surface"]: row for row in summary["surface_status_ledger"]}
+
+    assert rows["mulligan"]["first_missing_link"] == (
+        "no_source_backed_or_policy_backed_mulligan_keeps"
+    )
+    assert rows["cardid_behavior"]["first_missing_link"] == "needs_runtime_surface"
+    assert rows["cardid_behavior"]["next_source_action"] == "add_cardid_behavior_claim"
+
+
 def test_default_only_surface_details_do_not_assign_producer_unassigned_rows():
     explainability_report = build_source_to_runtime_explainability_report(
         {
