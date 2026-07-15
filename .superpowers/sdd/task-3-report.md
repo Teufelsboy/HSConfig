@@ -1,44 +1,48 @@
-Status: DONE
+# Task 3 Report: Strong Closure Ledger
 
-Files changed
+## Scope
+
+Implemented the compact Strong Closure Ledger diagnostics for the existing promotion and explainability spine.
+
+Changed files:
+
 - `src/hsconfig/source_autopilot.py`
+- `src/hsconfig/source_to_runtime_explainability.py`
+- `tests/test_strong_closure_ledger.py`
 - `tests/test_source_autopilot.py`
-- `.superpowers/sdd/task-3-report.md`
+- `tests/test_source_to_runtime_explainability.py`
 
-Requirements implemented
-- Added the focused source-autopilot closure-ledger regression test from the Task 3 brief.
-- Added `strong_candidate_blockers` to `source_autopilot_report`.
-- Added `first_missing_source_action_by_card` to `source_autopilot_report`.
-- Added `non_promoting_claim_count` to `source_autopilot_report`.
-- Kept the change diagnostic-only: no apply gate, load gate, runtime-write behavior, or source-document mutation was added.
-- Preserved existing `strong_candidate` behavior by deriving it from the same blocker prerequisites.
+`src/hsconfig/strong_promotion_report.py` already satisfied the required default-only and closed-chain assertions, so no production edit was needed there.
 
-Tests run, exact command and result
-- `$env:PYTHONPATH='src'; python -m pytest tests/test_source_autopilot.py::test_source_autopilot_reports_strong_blockers_per_card -q`
-  - Red result before implementation: `1 failed in 0.35s`
-  - Expected failure: `KeyError: 'strong_candidate_blockers'`
-- `$env:PYTHONPATH='src'; python -m pytest tests/test_source_autopilot.py::test_source_autopilot_reports_strong_blockers_per_card -q`
-  - Green result after implementation: `1 passed in 0.13s`
-- `$env:PYTHONPATH='src'; python -m pytest tests/test_source_autopilot.py -q`
-  - Result: `13 passed in 0.18s`
+## Behavior
 
-TDD evidence if applicable
-- Test was added first.
-- Focused test failed before implementation because the new report field was missing.
-- Implementation was added after the failing test was observed.
-- Focused test and full source-autopilot test file passed after implementation.
+- `source_autopilot_report` now exposes `first_missing_source_action_by_surface` alongside the existing strong closure summary and by-card action map.
+- Explainability card rows now expose `closure_lane`, `strong_ready`, and `default_only_blocker` as compact row-level diagnostics.
+- Default-only runtime surfaces remain promotion blockers for `SOURCE_BACKED_STRONG`.
+- Partial or missing source closure remains non-blocking for load-safe package creation.
 
-Self-review notes
-- `strong_candidate_blockers` is computed from the existing strong-candidate prerequisites:
-  - card-specific lowerable strong guide rows
-  - apply-surface strong guide rows
-  - unresolved draft mentions
-  - source-document verification status
-  - source-document verification warnings
-- Per-card closure action only marks cards as `none` when a current full-text deck-matched public guide row supplies a runtime-contract candidate for that card.
-- `non_promoting_claim_count` counts explicit `promotion_eligible is False` rows and legacy/raw decklist or static `card_role` rows that are non-promoting by the completed Task 1-2 contract.
-- Existing weak-source behavior remains non-blocking and visible.
+## Verification
 
-Concerns
-- The required fixture `source_search_decklist_only.json` still contains a raw `card_role` claim without the newer `promotion_eligible=False` marker. The report counter handles that as a diagnostic fallback without mutating evidence rows.
-- Git status shows an unrelated untracked plan file outside this task's write scope: `docs/superpowers/plans/2026-07-15-hsconfig-source-acquisition-strong-closure.md`. It was left untouched.
+Red run:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_strong_closure_ledger.py tests/test_source_autopilot.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q
+```
+
+Result: 3 failed, 41 passed. Failures were the expected missing `first_missing_source_action_by_surface`, `closure_lane`, and `default_only_blocker` fields.
+
+Green run:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/test_strong_closure_ledger.py tests/test_source_autopilot.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q
+```
+
+Result: 44 passed.
+
+## Gate Boundary
+
+No second apply gate was added. The new fields are report diagnostics only:
+
+- `source_autopilot_report` remains an evidence and readiness report.
+- `source_to_runtime_explainability` keeps `authority: diagnostic_only`, `operator_gate_impact: diagnostic_only`, and `apply_blocking: False`.
+- No runtime writer path, apply command, or `operator_summary.json` authority path was changed.

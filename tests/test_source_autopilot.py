@@ -480,3 +480,30 @@ def test_source_autopilot_reports_strong_blockers_per_card():
         == "add_current_deck_guide_or_mulligan_guide"
     )
     assert report["non_promoting_claim_count"] >= 1
+
+
+def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
+    bundle = build_source_autopilot_bundle(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "cards": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Fixture Card",
+                    "cost": 1,
+                    "count": 2,
+                }
+            ]
+        },
+        source_search_records=[],
+        current_date="2026-07-15",
+    )
+
+    report = bundle["source_autopilot_report"]
+    summary = report["strong_closure_summary"]
+    assert summary["technical_no_block"] is True
+    assert summary["source_backed_strong_ready"] is False
+    assert summary["first_missing_source_action"] != "none"
+    assert report["first_missing_source_action_by_surface"]["mulligan"] == (
+        "add_explicit_mulligan_source"
+    )

@@ -316,6 +316,11 @@ def _build_report(
             evidence_rows,
             current_date=current_date,
         ),
+        "first_missing_source_action_by_surface": _first_missing_source_action_by_surface(
+            evidence_rows,
+            current_date=current_date,
+            summary=strong_closure_summary,
+        ),
         "non_promoting_claim_count": _non_promoting_claim_count(evidence_rows),
         "draft_summary": draft["draft_summary"],
         "verification_summary": {
@@ -439,6 +444,49 @@ def _first_missing_source_action_by_card(
             else "add_current_deck_guide_or_mulligan_guide"
         )
     return by_card
+
+
+def _first_missing_source_action_by_surface(
+    evidence_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+    summary: Mapping[str, Any],
+) -> dict[str, str]:
+    strong_surfaces: set[str] = set()
+    partial_surfaces: set[str] = set()
+    for row in evidence_rows:
+        surfaces = _runtime_surfaces_for_row(row)
+        if not surfaces:
+            continue
+        if _is_strong_guide_lane(row, current_date) and _is_runtime_contract_candidate(
+            row
+        ):
+            strong_surfaces.update(surfaces)
+        else:
+            partial_surfaces.update(surfaces)
+
+    surfaces_to_report = strong_surfaces | partial_surfaces | {"mulligan"}
+    first_missing = _text(summary.get("first_missing_source_action", ""))
+    by_surface: dict[str, str] = {}
+    for surface in sorted(surfaces_to_report):
+        if surface in strong_surfaces:
+            by_surface[surface] = "none"
+        elif surface == "mulligan":
+            by_surface[surface] = "add_explicit_mulligan_source"
+        elif first_missing and first_missing != "none":
+            by_surface[surface] = first_missing
+        else:
+            by_surface[surface] = "add_current_deck_guide_or_mulligan_guide"
+    return by_surface
+
+
+def _runtime_surfaces_for_row(row: Mapping[str, Any]) -> set[str]:
+    policy = source_contract_policy_by_claim_kind().get(
+        _text(row.get("claim_kind", ""))
+    )
+    if not isinstance(policy, Mapping):
+        return set()
+    return {str(surface) for surface in policy.get("allowed_surfaces", []) if str(surface)}
 
 
 def _non_promoting_claim_count(evidence_rows: Sequence[Mapping[str, Any]]) -> int:

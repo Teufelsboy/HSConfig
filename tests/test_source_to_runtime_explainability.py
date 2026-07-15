@@ -174,6 +174,9 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "next_source_action": "none",
         "first_missing_source_action": "none",
         "runtime_lowering_status": "source_backed_runtime",
+        "closure_lane": "source_backed_runtime_lowered",
+        "strong_ready": True,
+        "default_only_blocker": False,
         "closure": {
             "lane": "runtime_backed",
             "claim_kinds": ["mulligan_keep"],
@@ -658,6 +661,31 @@ def test_explainability_exposes_policy_backed_runtime_as_non_strong():
     assert row["source_lane"] == "policy_fallback"
     assert row["runtime_lowering_status"] == "policy_backed_runtime"
     assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert row["closure_lane"] == "policy_backed"
+    assert row["strong_ready"] is False
+    assert row["default_only_blocker"] is False
+
+
+def test_explainability_exposes_default_only_blocker_on_card_row():
+    report = build_source_to_runtime_explainability_report(
+        audit={
+            "claim_rows": [
+                {
+                    "card_id": "CARD_DEFAULT",
+                    "claim_kind": "mulligan_keep",
+                    "source_lane": "runtime_lowered",
+                    "first_missing_link": "default_only_runtime_surface",
+                    "runtime_backed": False,
+                }
+            ]
+        },
+        runtime_files=set(),
+    )
+
+    row = report["card_rows"][0]
+    assert row["closure_lane"] == "explicit_gap"
+    assert row["strong_ready"] is False
+    assert row["default_only_blocker"] is True
 
 
 def test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan():

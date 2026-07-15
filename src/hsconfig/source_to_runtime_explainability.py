@@ -181,6 +181,7 @@ def _card_rows(
             why_not_emitted=why_not_emitted,
             claim_kind=claim_kind,
         )
+        closure_lane = _closure_lane(related_claims, runtime_backed)
         card_row = {
             "card_id": str(card_id),
             "name": str(raw_card.get("name", "")),
@@ -213,6 +214,11 @@ def _card_rows(
             "runtime_lowering_status": _runtime_lowering_status(
                 related_claims,
                 runtime_backed,
+            ),
+            "closure_lane": closure_lane,
+            "strong_ready": closure_lane == "source_backed_runtime_lowered",
+            "default_only_blocker": (
+                first_missing_link == "default_only_runtime_surface"
             ),
         }
         card_row["closure"] = _closure_row(
@@ -813,6 +819,33 @@ def _runtime_lowering_status(
     if related_claims:
         return "source_backed_contract_only"
     return "missing_source_claim"
+
+
+def _closure_lane(
+    related_claims: Sequence[Mapping[str, Any]], runtime_backed: bool
+) -> str:
+    if runtime_backed and any(
+        _is_source_backed_strong_claim(claim) for claim in related_claims
+    ):
+        return "source_backed_runtime_lowered"
+    if _has_policy_backed_mulligan(related_claims) or any(
+        str(claim.get("policy_lane")) == "policy_fallback"
+        or str(claim.get("source_lane")) == "policy_fallback"
+        for claim in related_claims
+    ):
+        return "policy_backed"
+    if runtime_backed:
+        return "runtime_backed_non_strong"
+    return "explicit_gap"
+
+
+def _is_source_backed_strong_claim(claim: Mapping[str, Any]) -> bool:
+    if claim.get("promotion_eligible") is True:
+        return True
+    if str(claim.get("source_type")) == "policy_backed_autonomous_mulligan":
+        return False
+    lane = str(claim.get("source_lane") or claim.get("policy_lane") or "")
+    return lane in {"runtime_lowered", "runtime_lowerable", "deck_matched_public_guide"}
 
 
 def _has_policy_backed_mulligan(related_claims: Sequence[Mapping[str, Any]]) -> bool:
