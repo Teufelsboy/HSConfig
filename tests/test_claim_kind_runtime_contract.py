@@ -220,6 +220,67 @@ def test_hero_power_transform_is_strong_static_but_not_opening_hand_relevant():
     assert claim["runtime_lowering"] in {"cardid_or_contract_only", "contract_only"}
 
 
+def test_source_family_card_text_hero_power_transform_promotes_as_official_static_claim():
+    claim = qualify_source_claim(
+        {
+            "claim_id": "claim-sw448-card-text",
+            "claim_kind": "hero_power_transform",
+            "source_family": "card_text",
+            "cards": ["SW_448"],
+        }
+    )
+
+    assert claim["source_lane"] == "official_static_semantics"
+    assert claim["promotion_eligible"] is True
+    assert claim["strong_static_claim"] is True
+    assert claim["opening_hand_relevant"] is False
+
+
+@pytest.mark.parametrize("source_family", ["guide", "mulligan_guide"])
+def test_source_family_public_guides_promote_in_public_guide_lane(source_family):
+    claim = qualify_source_claim(
+        {
+            "claim_id": f"claim-public-guide-{source_family}",
+            "claim_kind": "mulligan_keep",
+            "source_family": source_family,
+            "cards": ["EX1_001"],
+        }
+    )
+
+    assert claim["source_lane"] == "deck_matched_public_guide"
+    assert claim["promotion_eligible"] is True
+    assert claim["strong_static_claim"] is True
+
+
+def test_string_false_opening_hand_relevant_stays_false():
+    claim = qualify_source_claim(
+        {
+            "claim_id": "claim-sw448-string-false",
+            "claim_kind": "hero_power_transform",
+            "source_family": "card_text",
+            "cards": ["SW_448"],
+            "opening_hand_relevant": "false",
+        }
+    )
+
+    assert claim["opening_hand_relevant"] is False
+
+
+def test_string_true_source_blocked_prevents_public_guide_promotion():
+    claim = qualify_source_claim(
+        {
+            "claim_id": "claim-source-blocked",
+            "claim_kind": "mulligan_keep",
+            "source_type": "public_guide",
+            "source_blocked": "true",
+            "cards": ["EX1_001"],
+        }
+    )
+
+    assert claim["promotion_eligible"] is False
+    assert claim["strong_static_claim"] is False
+
+
 def test_policy_backed_claim_is_never_strong_promotion_evidence():
     claim = qualify_source_claim(
         {

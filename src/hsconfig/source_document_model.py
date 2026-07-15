@@ -130,6 +130,24 @@ GENERATED_NON_OPENING_HAND_SCOPES = frozenset(
         "shuffled",
     }
 )
+STATIC_SEMANTIC_SOURCE_FAMILIES = frozenset(
+    {
+        "card_text",
+        "metadata",
+        "hearthstonejson",
+        "static_semantics",
+        "hearthstonejson_static_semantics",
+    }
+)
+PUBLIC_GUIDE_SOURCE_FAMILIES = frozenset(
+    {
+        "guide",
+        "mulligan_guide",
+        "matchup_guide",
+    }
+)
+TRUE_TEXT_VALUES = frozenset({"1", "true", "yes", "y", "on"})
+FALSE_TEXT_VALUES = frozenset({"", "0", "false", "no", "n", "off"})
 
 
 @dataclass(frozen=True)
@@ -172,7 +190,7 @@ def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
     """Return source-quality metadata for strong promotion diagnostics."""
     normalized = dict(claim)
     claim_kind = normalized_claim_kind(normalized)
-    source_type = str(normalized.get("source_type") or normalized.get("provenance") or "")
+    source_type = _quality_source_type(normalized)
     normalized["claim_kind"] = claim_kind
     normalized["source_lane"] = _source_lane(source_type, normalized)
     normalized["deck_match_scope"] = str(normalized.get("deck_match_scope") or "unknown")
@@ -195,6 +213,18 @@ def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _quality_source_type(claim: Mapping[str, Any]) -> str:
+    source_type = _normalized_text(claim.get("source_type") or claim.get("provenance"))
+    if source_type:
+        return source_type
+    source_family = _normalized_text(claim.get("source_family"))
+    if source_family in STATIC_SEMANTIC_SOURCE_FAMILIES:
+        return "official_card_data"
+    if source_family in PUBLIC_GUIDE_SOURCE_FAMILIES:
+        return "public_guide"
+    return ""
+
+
 def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
     if source_type == "policy_backed_autonomous_mulligan":
         return "policy_fallback"
@@ -211,7 +241,7 @@ def _opening_hand_relevant(claim_kind: str, claim: Mapping[str, Any]) -> bool:
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
         return True
     if "opening_hand_relevant" in claim:
-        return bool(claim["opening_hand_relevant"])
+        return _bool_value(claim["opening_hand_relevant"])
     return False
 
 
@@ -232,9 +262,9 @@ def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
         return False
     if source_type in {"default_runtime", "generated_default"}:
         return False
-    if claim.get("source_blocked") is True:
+    if _bool_value(claim.get("source_blocked")):
         return False
-    if str(claim.get("source_visibility") or "") == "snippet_only":
+    if _normalized_text(claim.get("source_visibility")) == "snippet_only":
         return False
     return source_type in {
         "official_card_data",
@@ -243,6 +273,22 @@ def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
         "community_guide",
         "public_guide",
     }
+
+
+def _normalized_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in TRUE_TEXT_VALUES:
+            return True
+        if normalized in FALSE_TEXT_VALUES:
+            return False
+    return bool(value)
 
 
 def claim_can_lower_to_runtime(claim: dict) -> bool:
