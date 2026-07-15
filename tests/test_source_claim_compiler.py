@@ -61,7 +61,7 @@ def test_compile_source_search_records_extracts_atomic_shadowpriest_claims():
     assert record["mulligan"]["discard_cost_min"] == 4
     claim_kinds = [claim["claim_kind"] for claim in record["claims"]]
     assert "hero_power_transform" in claim_kinds
-    assert "targeting_rule" in claim_kinds
+    assert "gameplan_posture" in claim_kinds
     assert not any(
         claim["claim_kind"] == "mulligan_keep" and claim.get("cards") == ["BAR_735"]
         for claim in record["claims"]
@@ -144,3 +144,113 @@ def test_compile_source_search_records_reports_unsupported_broad_claims():
             ),
         }
     ]
+
+
+def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions():
+    acquired = [
+        {
+            "source_url": "https://example.test/shadowpriest",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-15T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["TOY_381", "BAR_735"],
+            },
+            "normalized_text": "Do not keep Darkbishop Benedictus. Keep Papercraft Angel.",
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    assert payload["records"][0]["mulligan"]["keep_card_ids"] == ["TOY_381"]
+    assert not any(
+        claim["claim_kind"] == "mulligan_keep" and claim.get("cards") == ["BAR_735"]
+        for claim in payload["records"][0]["claims"]
+    )
+
+
+def test_compile_source_search_records_limits_hero_power_transform_to_enabler():
+    acquired = [
+        {
+            "source_url": "https://example.test/shadowpriest",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-15T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["BAR_735", "TOY_381", "SW_444"],
+            },
+            "normalized_text": (
+                "Darkbishop Benedictus enables the Shadow hero power. "
+                "Keep Papercraft Angel and Twilight Deceptor."
+            ),
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    transform_claims = [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "hero_power_transform"
+    ]
+    assert transform_claims == [
+        {
+            "claim_kind": "hero_power_transform",
+            "stance": "enable_shadow_hero_power",
+            "scope": "card",
+            "evidence_text_short": "Darkbishop Benedictus enables the Shadow hero power",
+            "source_confidence": "high",
+            "cards": ["BAR_735"],
+            "timing": "start_of_game",
+        }
+    ]
+
+
+def test_compile_source_search_records_uses_gameplan_for_hero_power_target_text():
+    acquired = [
+        {
+            "source_url": "https://example.test/shadowpriest",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-15T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["BAR_735"],
+            },
+            "normalized_text": "Mind Spike can clear the enemy board or go face against slower decks.",
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    claims = payload["records"][0]["claims"]
+    assert not any(claim["claim_kind"] == "targeting_rule" for claim in claims)
+    assert {
+        "claim_kind": "gameplan_posture",
+        "stance": "hero_power_board_or_face_pressure",
+        "scope": "deck",
+        "evidence_text_short": (
+            "Mind Spike can clear the enemy board or go face against slower decks"
+        ),
+        "source_confidence": "high",
+    } in claims

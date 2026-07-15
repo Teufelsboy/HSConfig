@@ -128,11 +128,7 @@ def _compile_guide_claims(
                 )
 
     if _mentions_any(text, ["darkbishop", "shadow hero power", "shadowform"]):
-        card_ids = _card_ids_named(
-            deck_identity,
-            text,
-            fallback_names=["Darkbishop Benedictus"],
-        )
+        card_ids = _card_ids_by_names(deck_identity, ["Darkbishop Benedictus"])
         compiled["claims"].append(
             _claim(
                 "hero_power_transform",
@@ -148,12 +144,12 @@ def _compile_guide_claims(
     if _mentions_any(text, ["mind spike", "go face", "clear the enemy board"]):
         compiled["claims"].append(
             _claim(
-                "targeting_rule",
+                "gameplan_posture",
                 [],
-                "conditional_board_or_face_pressure",
+                "hero_power_board_or_face_pressure",
                 _short_evidence(text, marker="mind spike"),
                 "high",
-                scope="hero_power",
+                scope="deck",
             )
         )
 
@@ -181,22 +177,20 @@ def _compile_non_promoting_card_roles(
 
 
 def _explicit_keep_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
-    keep_sentence = _sentence_containing(text, "keep")
-    if not keep_sentence:
-        return []
-
-    lowered_sentence = keep_sentence.lower()
     keep_ids: list[str] = []
-    for card in _deck_cards(deck_identity):
-        name = _text(card.get("name", ""))
-        card_id = _text(card.get("card_id", ""))
-        if (
-            name
-            and card_id
-            and name.lower() in lowered_sentence
-            and not _is_non_opening_hand_effect_card(card)
-        ):
-            keep_ids.append(card_id)
+    for keep_sentence in _positive_keep_sentences(text):
+        lowered_sentence = keep_sentence.lower()
+        for card in _deck_cards(deck_identity):
+            name = _text(card.get("name", ""))
+            card_id = _text(card.get("card_id", ""))
+            if (
+                name
+                and card_id
+                and name.lower() in lowered_sentence
+                and not _is_non_opening_hand_effect_card(card)
+                and card_id not in keep_ids
+            ):
+                keep_ids.append(card_id)
     return keep_ids
 
 
@@ -236,19 +230,16 @@ def _is_promoting_guide_record(record: Mapping[str, Any]) -> bool:
     )
 
 
-def _card_ids_named(
+def _card_ids_by_names(
     deck_identity: Mapping[str, Any],
-    text: str,
-    *,
-    fallback_names: Sequence[str] = (),
+    names: Sequence[str],
 ) -> list[str]:
-    lowered = text.lower()
-    fallback = {name.lower() for name in fallback_names}
+    accepted_names = {name.lower() for name in names}
     result: list[str] = []
     for card in _deck_cards(deck_identity):
         name = _text(card.get("name", ""))
         card_id = _text(card.get("card_id", ""))
-        if card_id and name and (name.lower() in lowered or name.lower() in fallback):
+        if card_id and name and name.lower() in accepted_names:
             result.append(card_id)
     return result
 
@@ -305,6 +296,29 @@ def _sentence_containing(text: str, marker: str) -> str:
         if marker_lower in sentence.lower():
             return sentence
     return ""
+
+
+def _positive_keep_sentences(text: str) -> list[str]:
+    result: list[str] = []
+    for sentence in _sentences(text):
+        lowered = sentence.lower()
+        if "keep" not in lowered:
+            continue
+        if _is_negative_keep_sentence(lowered):
+            continue
+        result.append(sentence)
+    return result
+
+
+def _is_negative_keep_sentence(lowered_sentence: str) -> bool:
+    negative_markers = (
+        "do not keep",
+        "don't keep",
+        "dont keep",
+        "never keep",
+        "not keep",
+    )
+    return any(marker in lowered_sentence for marker in negative_markers)
 
 
 def _short_evidence(text: str, marker: str | None = None) -> str:
