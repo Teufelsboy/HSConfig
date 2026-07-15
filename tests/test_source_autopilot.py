@@ -436,3 +436,29 @@ def test_source_autopilot_never_blocks_config_creation_for_thin_or_empty_sources
         empty_bundle["source_autopilot_report"]["first_missing_source_action"]
         == "add_current_deck_guide_or_mulligan_guide"
     )
+
+
+def test_source_autopilot_reports_strong_blockers_per_card():
+    payload = _fixture("source_search_decklist_only.json")
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=payload["records"],
+        current_date="2026-07-15",
+    )
+
+    report = bundle["source_autopilot_report"]
+    assert report["strong_candidate"] is False
+    assert "no_card_specific_runtime_contract_candidate" in report["strong_candidate_blockers"]
+    assert (
+        report["first_missing_source_action_by_card"]["CARD_001"]
+        == "add_current_deck_guide_or_mulligan_guide"
+    )
+    assert report["non_promoting_claim_count"] >= 1

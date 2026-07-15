@@ -140,6 +140,7 @@ def build_source_autopilot_bundle(
         },
         "source_autopilot_report": _build_report(
             deck_name=deck_name,
+            deck_identity=deck_identity,
             ranked_sources=ranked_sources,
             evidence_rows=evidence_rows,
             draft=draft,
@@ -235,6 +236,7 @@ def _explicit_claim_rows(source: Mapping[str, Any], base: Mapping[str, Any]) -> 
 def _build_report(
     *,
     deck_name: str,
+    deck_identity: Mapping[str, Any],
     ranked_sources: Sequence[Mapping[str, Any]],
     evidence_rows: Sequence[Mapping[str, Any]],
     draft: Mapping[str, Any],
@@ -265,13 +267,13 @@ def _build_report(
         if _is_apply_surface_candidate(row)
     ]
     warnings = verification.get("warnings", [])
-    strong_candidate = (
-        bool(card_specific_lowerable_guide_rows)
-        and bool(apply_surface_guide_rows)
-        and not draft.get("unresolved_mentions")
-        and verification.get("status") == "passed"
-        and not warnings
+    blockers = _strong_candidate_blockers(
+        card_specific_lowerable_guide_rows=card_specific_lowerable_guide_rows,
+        apply_surface_guide_rows=apply_surface_guide_rows,
+        draft=draft,
+        verification=verification,
     )
+    strong_candidate = not blockers
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -283,15 +285,83 @@ def _build_report(
             card_specific_lowerable_guide_rows
         ),
         "strong_candidate": strong_candidate,
+        "strong_candidate_blockers": blockers,
         "first_missing_source_action": (
             "none" if strong_candidate else "add_current_deck_guide_or_mulligan_guide"
         ),
+        "first_missing_source_action_by_card": _first_missing_source_action_by_card(
+            deck_identity,
+            evidence_rows,
+            current_date=current_date,
+        ),
+        "non_promoting_claim_count": _non_promoting_claim_count(evidence_rows),
         "draft_summary": draft["draft_summary"],
         "verification_summary": {
             "status": verification.get("status"),
             "warning_count": len(warnings) if isinstance(warnings, list) else 0,
         },
     }
+
+
+def _strong_candidate_blockers(
+    *,
+    card_specific_lowerable_guide_rows: Sequence[Mapping[str, Any]],
+    apply_surface_guide_rows: Sequence[Mapping[str, Any]],
+    draft: Mapping[str, Any],
+    verification: Mapping[str, Any],
+) -> list[str]:
+    blockers: list[str] = []
+    if not card_specific_lowerable_guide_rows:
+        blockers.append("no_card_specific_runtime_contract_candidate")
+    if not apply_surface_guide_rows:
+        blockers.append("no_apply_surface_guide_candidate")
+    if draft.get("unresolved_mentions"):
+        blockers.append("unresolved_source_mentions")
+    if verification.get("status") != "passed":
+        blockers.append("source_document_verification_failed")
+    warnings = verification.get("warnings", [])
+    if warnings:
+        blockers.append("source_document_warnings")
+    return blockers
+
+
+def _first_missing_source_action_by_card(
+    deck_identity: Mapping[str, Any],
+    evidence_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+) -> dict[str, str]:
+    by_card: dict[str, str] = {}
+    source_backed_cards = {
+        str(card_id)
+        for row in evidence_rows
+        if _is_strong_guide_lane(row, current_date) and _is_runtime_contract_candidate(row)
+        for card_id in _as_list(row.get("cards", []))
+        if str(card_id)
+    }
+    for card in deck_identity.get("cards", []):
+        if not isinstance(card, Mapping):
+            continue
+        card_id = _text(card.get("card_id", ""))
+        if not card_id:
+            continue
+        by_card[card_id] = (
+            "none"
+            if card_id in source_backed_cards
+            else "add_current_deck_guide_or_mulligan_guide"
+        )
+    return by_card
+
+
+def _non_promoting_claim_count(evidence_rows: Sequence[Mapping[str, Any]]) -> int:
+    return sum(1 for row in evidence_rows if _is_non_promoting_claim(row))
+
+
+def _is_non_promoting_claim(row: Mapping[str, Any]) -> bool:
+    if row.get("promotion_eligible") is False:
+        return True
+    family = _text(row.get("source_family", "")).lower()
+    return family in (DECKLIST_FAMILIES | STATIC_FAMILIES) and row.get("claim_kind") == "card_role"
 
 
 def _is_runtime_contract_candidate(row: Mapping[str, Any]) -> bool:
