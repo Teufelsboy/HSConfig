@@ -23,7 +23,8 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "Keep all Blood Treant you see, and other 1-cost cards, with Vicious Slitherspear, Living Roots and Forest Seedlings, preferably.",
-          "source_confidence": "high"
+          "source_confidence": "low",
+          "operator_note": "The guide supports a Treant Druid mulligan pattern, but this exact representative list remains partial under the stronger source gate."
         },
         {
           "claim_kind": "card_role",
@@ -32,7 +33,8 @@
           "runtime_block": "BeforePlayCardBonus",
           "runtime_value": "7",
           "evidence_text_short": "Blood Treant is an early pressure starter that helps Treant Druid build a gigantic board right away.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "operator_note": "Keep the card-role hint visible but do not use it as exact-list strong runtime evidence.",
           "source_refs": [
             "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
           ]

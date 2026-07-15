@@ -7,6 +7,7 @@
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "CtAPaladin",
       "archetype": "recruit_board_flood",
+      "deck_match_scope": "archetype_matched_not_exact_list",
       "claims": [
         {
           "claim_kind": "gameplan_posture",
@@ -14,7 +15,9 @@
           "cards": [],
           "stance": "aggro_board_flood",
           "evidence_text_short": "Boogie Down Paladin is the second best aggro deck in the format.",
-          "source_confidence": "medium"
+          "source_confidence": "low",
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Archetype-level tier-list evidence supports board-flood identity only; it is not exact list-matched runtime evidence."
         }
       ]
     },
@@ -25,6 +28,7 @@
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "CtAPaladin",
       "archetype": "recruit_board_flood",
+      "deck_match_scope": "archetype_matched_not_exact_list",
       "claims": [
         {
           "claim_kind": "mulligan_keep",
@@ -33,7 +37,9 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "The more accurate title of the deck is Boogie Down Paladin (which tells you what card to actually mulligan for).",
-          "source_confidence": "medium"
+          "source_confidence": "low",
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "The source gives archetype-level Boogie Down advice, not exact-list CtA Paladin strong evidence."
         }
       ]
     },

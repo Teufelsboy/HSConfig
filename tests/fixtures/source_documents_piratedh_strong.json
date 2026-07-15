@@ -7,6 +7,7 @@
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "PirateDH",
       "archetype": "pirate_hero_attack_pressure",
+      "deck_match_scope": "archetype_matched_not_exact_list",
       "claims": [
         {
           "claim_kind": "gameplan_posture",
@@ -60,7 +61,12 @@
           "runtime_block": "BeforePlayCardBonus",
           "runtime_value": "7",
           "evidence_text_short": "The aggressive Pirate DH list opens with Mistake, Patches the Pirate, Parachute Brigand, and Treasure Distributor to flood the board early.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Public sources establish fast pirate aggro identity only; exact opener mapping remains policy-backed.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
@@ -74,7 +80,12 @@
           "runtime_block": "BeforePhysicalAttackBonus",
           "runtime_value": "8",
           "evidence_text_short": "The aggressive Pirate DH list goes all in on hero attack turns with Dispose of Evidence, Magnifying Glaive, Adrenaline Fiend, and Dangerous Cliffside.",
-          "source_confidence": "high",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Hero-attack timing is useful policy guidance, not exact public guide-backed runtime sequencing.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
@@ -88,7 +99,12 @@
           "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
           "runtime_value": "8",
           "evidence_text_short": "The pilot advice is to swing the match immediately, so attack-based pressure should prefer enemy hero damage when survival trades are not required.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Targeting preference is inferred from aggro identity and should not prove SOURCE_BACKED_STRONG.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
@@ -101,7 +117,12 @@
           "runtime_block": "BeforePlayCardBonus",
           "runtime_value": "7",
           "evidence_text_short": "Mana Burn and Glide are timing-sensitive disruption pieces that buy another turn or reshuffle the opponent before the next attack push.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Disruption timing is source-informed but not exact guide-backed runtime evidence.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
@@ -114,7 +135,12 @@
           "runtime_block": "BeforePlayCardBonus",
           "runtime_value": "7",
           "evidence_text_short": "Field of Strife is the board-wide attack buff spell that keeps the pirate opener converting into pressure.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Board-buff timing remains policy fallback without exact public sequencing text.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"
@@ -127,7 +153,12 @@
           "runtime_block": "OnBoardBonus",
           "runtime_value": "7",
           "evidence_text_short": "Hozen Roughhouser keeps pirate attacks hitting harder once the board is already established.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "source_type": "policy_backed_autonomous_mulligan",
+          "source_lane": "policy_fallback",
+          "promotion_eligible": false,
+          "deck_match_scope": "archetype_matched_not_exact_list",
+          "operator_note": "Attack-buff support is retained for load-safe behavior but does not count as strong public evidence.",
           "source_refs": [
             "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
             "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend"

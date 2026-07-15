@@ -6,6 +6,7 @@
       "source_family": "guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "Kingslayer",
+      "deck_match_scope": "archetype_matched_not_exact_list",
       "claims": [
         {
           "claim_kind": "gameplan_posture",

@@ -14,6 +14,7 @@
           "stance": "aggro",
           "evidence_text_short": "Discolock converts discard hand mutation into board pressure and burn payoff turns.",
           "source_confidence": "medium",
+          "operator_note": "Public sources support Discolock identity, but exact modern keep and runtime sequencing remain partial.",
           "source_refs": [
             "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
             "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
@@ -28,7 +29,8 @@
           "runtime_block": "BeforePlayCardBonus",
           "runtime_value": "8",
           "evidence_text_short": "Soulfire, Wicked Whispers, Chamber of Viscidus, and Ocular Occultist are discard outlets that mutate the hand state.",
-          "source_confidence": "high",
+          "source_confidence": "low",
+          "operator_note": "Treat discard-outlet sequencing as partial unless an exact current guide backs this runtime timing.",
           "source_refs": [
             "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
             "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd"
@@ -41,7 +43,8 @@
           "selector_kind": "card",
           "stance": "keep",
           "evidence_text_short": "Keep Boneweb Egg as an early discard payoff that turns discard into board presence.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "operator_note": "Keep as load-safe partial evidence; exact current mulligan table support is insufficient.",
           "source_refs": [
             "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
             "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide"
@@ -52,7 +55,8 @@
           "cards": ["BT_300", "SCH_147", "RLK_534", "CATA_499"],
           "stance": "discard_payoff",
           "evidence_text_short": "Hand of Gul'dan, Boneweb Egg, Soul Barrage, and Disposable Acolytes reward being played or discarded.",
-          "source_confidence": "high",
+          "source_confidence": "low",
+          "operator_note": "Payoff grouping is archetype-supported but not exact runtime lowering evidence.",
           "source_refs": [
             "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
             "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide"
@@ -63,7 +67,8 @@
           "cards": ["EX1_308", "DMF_119", "END_016"],
           "stance": "sequence_discard_outlet",
           "evidence_text_short": "Do not spend random discard outlets before checking whether the hand contains required non-discard resources.",
-          "source_confidence": "medium",
+          "source_confidence": "low",
+          "operator_note": "Sequencing caution stays visible but should not promote SOURCE_BACKED_STRONG.",
           "source_refs": [
             "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
             "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd"

@@ -28,6 +28,13 @@
       "primary_mechanics": ["recruit", "board_flood", "aura_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/"
+      ],
+      "reason": "Archetype-level Boogie Down and CtA Paladin discussion supports board-flood identity and a candidate keep, but not exact-list strong runtime evidence.",
+      "first_missing_source_action": "find_exact_cta_paladin_mulligan_and_runtime_guide",
       "strongness_visibility": {
         "current_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
@@ -79,6 +86,14 @@
       "primary_mechanics": ["discard", "hand_mutation", "payoff_summon"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
+        "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
+        "https://www.hearthpwn.com/decks/791053-legend-3-discardlock-guide"
+      ],
+      "reason": "Public sources support Discolock discard identity and payoff cards, but exact current mulligan and discard sequencing are still partial.",
+      "first_missing_source_action": "find_explicit_current_wild_discolock_mulligan_and_discard_sequence_guide",
       "strongness_visibility": {
         "current_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
@@ -96,6 +111,12 @@
       "primary_mechanics": ["token_board", "treant", "board_buff"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend"
+      ],
+      "reason": "Public sources support Treant/token board identity, but exact representative-list mulligan and runtime card-role claims remain partial.",
+      "first_missing_source_action": "find_explicit_wild_treantdruid_mulligan_and_runtime_guide",
       "strongness_visibility": {
         "current_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
@@ -147,6 +168,14 @@
       "primary_mechanics": ["weapon", "pirate", "attack_sequence"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+        "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+        "https://www.hsguru.com/deck/36087994"
+      ],
+      "reason": "Weapon-pressure sources support the archetype, but exact Quick Pick mulligan evidence remains unavailable.",
+      "first_missing_source_action": "find_exact_kingslayer_quick_pick_mulligan_source",
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_mulligan_claim_for_quick_pick",
@@ -169,6 +198,15 @@
       "primary_mechanics": ["combo", "control", "resource_setup"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json", "Combo.json"],
       "fixture_stage": "source_informed_valid_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+        "https://www.hsguru.com/deck/34322767"
+      ],
+      "reason": "Combo identity and static combo sequencing are documented, but the Fracking mulligan row is generic low-confidence card-draw advice.",
+      "first_missing_source_action": "find_explicit_boarlock_fracking_mulligan_source",
       "strongness_visibility": {
         "current_stage": "source_informed_valid_fixture",
         "first_strongness_gap": "needs_mulligan_claim_for_fracking",
@@ -191,6 +229,13 @@
       "primary_mechanics": ["pirate", "hero_attack", "tempo_pressure"],
       "expected_runtime_surfaces": ["GlobalValues.json", "Mulligan.json", "<CARDID>.json"],
       "fixture_stage": "core_source_backed_fixture",
+      "expected_semantic_status": "SOURCE_BACKED_PARTIAL",
+      "source_urls": [
+        "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+        "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/"
+      ],
+      "reason": "Public sources support fast Pirate Demon Hunter identity but not exact mulligan or runtime sequencing.",
+      "first_missing_source_action": "find_explicit_wild_piratedh_mulligan_or_gameplay_guide",
       "strongness_visibility": {
         "current_stage": "core_source_backed_fixture",
         "first_strongness_gap": "none",
