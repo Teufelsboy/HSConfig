@@ -109,11 +109,26 @@ def collect_public_source_records(
             parsed["title"],
             parsed["text"],
         )
+        source_family = _infer_source_family(url, parsed["text"])
+        visibility = _source_visibility(source_family, parsed["text"])
+        publication_year = _publication_year_from_text(f'{parsed["title"]} {parsed["text"]}')
+        lane_hint = _source_lane_hint(source_family, visibility)
+        strength = _source_record_strength(
+            source_family=source_family,
+            visibility=visibility,
+            deck_match_scope=deck_match_scope,
+            publication_year=publication_year,
+            current_date=current_date,
+        )
         records.append(
             {
                 "source_url": url,
                 "source_title": parsed["title"] or url,
-                "source_family": _infer_source_family(url, parsed["text"]),
+                "source_family": source_family,
+                "source_visibility": visibility,
+                "source_lane_hint": lane_hint,
+                "publication_year": publication_year,
+                "source_record_strength": strength,
                 "retrieved_at": retrieved_at,
                 "deck_match": deck_match,
                 "deck_match_scope": deck_match_scope,
@@ -265,6 +280,66 @@ def _infer_source_family(url: str, text: str) -> str:
     if "deck code" in lowered or "decklist" in lowered:
         return "decklist"
     return "public_page"
+
+
+def _source_visibility(source_family: str, text: str) -> str:
+    lowered = text.lower()
+    if source_family == "decklist":
+        return "decklist_only"
+    if len(text) < 180:
+        return "snippet_only"
+    if any(marker in lowered for marker in ("mulligan", "guide", "matchup", "keep ")):
+        return "full_text"
+    return "unknown"
+
+
+def _source_lane_hint(source_family: str, visibility: str) -> str:
+    if source_family == "guide" and visibility == "full_text":
+        return "public_guide"
+    if source_family == "decklist":
+        return "decklist"
+    if source_family in {"static_semantics", "hearthstonejson_static_semantics"}:
+        return "static_semantics"
+    if visibility == "snippet_only":
+        return "unknown"
+    return "public_page"
+
+
+def _publication_year_from_text(text: str) -> int | None:
+    for year in range(2020, 2031):
+        if str(year) in text:
+            return year
+    return None
+
+
+def _source_record_strength(
+    *,
+    source_family: str,
+    visibility: str,
+    deck_match_scope: str,
+    publication_year: int | None,
+    current_date: str | date | None,
+) -> str:
+    current_year = _current_year(current_date)
+    if (
+        source_family == "guide"
+        and visibility == "full_text"
+        and deck_match_scope in {"deck_or_archetype_matched", "deck_matched"}
+        and publication_year == current_year
+    ):
+        return "candidate_strong"
+    if visibility in {"decklist_only", "full_text"}:
+        return "partial"
+    return "diagnostic_only"
+
+
+def _current_year(current_date: str | date | None) -> int | None:
+    if isinstance(current_date, date):
+        return current_date.year
+    text = str(current_date or "")
+    if len(text) >= 4 and text[:4].isdigit():
+        return int(text[:4])
+    return None
 
 
 def _dedupe_urls(urls: Sequence[str]) -> list[str]:
