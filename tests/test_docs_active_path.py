@@ -314,7 +314,7 @@ def test_active_docs_do_not_reintroduce_stale_matrix_counts_or_closure_targets()
         "Close the current Kingslayer and Boarlock",
     ]
     required = [
-        "After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.",
+        "After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are",
         "Research artifacts are evidence, not operator instructions.",
     ]
 

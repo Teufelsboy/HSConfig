@@ -48,7 +48,7 @@ When public guide URLs are available for a fresh config, use the online source p
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
 
-This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. It can reach `SOURCE_BACKED_STRONG` only when acquired sources contain exact deck-matching guide claims that lower through the existing source-to-runtime contract. If sources are thin, unavailable, stale, or only decklist/static evidence, HSConfig still builds a load-safe package when technically valid and reports the first missing source link.
+This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. It can reach `SOURCE_BACKED_STRONG` only when acquired sources contain exact deck-matching guide claims or explicit supported static effect semantics that lower through the existing source-to-runtime contract. If sources are thin, unavailable, stale, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a load-safe package when technically valid and reports the first missing source link.
 
 When current guide/search records are already captured, use the source-autopilot bridge:
 
@@ -56,7 +56,7 @@ When current guide/search records are already captured, use the source-autopilot
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required. `reports/operator_summary.json` remains the only normal apply authority.
+This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required. `reports/operator_summary.json` remains the only normal apply authority.
 
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
@@ -342,7 +342,7 @@ stop conditions. Do not widen the representative matrix to a twelfth deck to
 avoid these rows. Add or promote only when exact source evidence closes a
 preserved stop condition.
 
-After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
+After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are the four partial representative rows: CtAPaladin, Discolock, TreantDruid, and PirateDH.
 
 The representative fixture matrix proves source-depth breadth. The universal
 no-block matrix proves the separate runtime promise: every valid listed deck

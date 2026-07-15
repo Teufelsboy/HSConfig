@@ -11,7 +11,7 @@ Normal workflow:
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. Open `reports/operator_summary.json` first.
-When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; decklist-only and static records do not promote `SOURCE_BACKED_STRONG`.
+When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`.
 
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
@@ -72,7 +72,7 @@ Use `first_warning_boundary` as the first next-inspection item and `warning_boun
 
 Every card should land in a visible source-depth lane before preparation: guide-backed claim, source-backed static semantics, archetype-inferred role, explicit low confidence, generic low confidence, or contract gap. When a guide-backed card surface is documented, the runtime file family is `per-card <CARDID>.json`.
 
-Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks. `core_source_backed_fixture` rows are strict controls; `source_informed_valid_fixture` rows are valid packages with visible gaps. After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
+Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks. `core_source_backed_fixture` rows are strict controls; `source_informed_valid_fixture` rows are valid packages with visible gaps. After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH.
 
 Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 

@@ -252,7 +252,10 @@ def test_operator_docs_name_source_autopilot_without_new_apply_gate():
     assert "--auto-source" in combined
     assert "source-autopilot" in combined
     assert "02_source_autopilot" in combined
-    assert "decklist-only and static records do not promote `SOURCE_BACKED_STRONG`" in combined
+    assert "static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`" in combined
+    assert "static records without explicit runtime-surface claims" not in combined
+    assert "Core source-backed fixtures should cover ShadowPriest, BigShaman, Discolock" not in combined
+    assert "current actionable source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH" in combined
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in combined
     assert "operator_summary.json remains the only normal apply authority" in combined
 

@@ -12,7 +12,7 @@ Every source document should be written as structured JSON and normalized with `
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
 Accepted source types:
 
@@ -36,10 +36,11 @@ Rejected source types:
 - `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
 - `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
 - `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
+- `decklist_only`: deck list or deck-code page without explicit guide claim text.
 - `policy_fallback`: internal autonomous rule used to keep packages useful.
 - `default_runtime`: generated default row with no source claim.
 
-Only `official_static_semantics`, `deck_matched_public_guide`, and carefully documented `archetype_matched_public_guide` may promote claims. `statistical_enrichment`, `policy_fallback`, and `default_runtime` must not prove `SOURCE_BACKED_STRONG` by themselves.
+Only explicit `official_static_semantics`, explicit `deck_matched_public_guide`, and explicit `archetype_matched_public_guide` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
 
 Short evidence row shape for `--source-evidence-json`:
 

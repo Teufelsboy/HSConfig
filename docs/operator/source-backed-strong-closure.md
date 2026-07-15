@@ -22,23 +22,31 @@ runtime apply is no longer blocked by source strength. The representative matrix
 
 ## SOURCE_BACKED_STRONG Contract
 
-HSConfig always attempts to build a technically valid package for a decoded deck.
-`SOURCE_BACKED_STRONG` is not required for package generation or load-safe apply.
+HSConfig always attempts to generate a load-safe valid package for any valid deck code.
+`SOURCE_BACKED_STRONG` is an evidence label, not a package generation or load-safe apply gate.
 
 A package may be `SOURCE_BACKED_STRONG` only when:
 
 - `technical_status=VALID_PACKAGE`
 - `runtime_apply_allowed=true`
-- every emitted normal runtime row is tied to a non-default source claim or an explicit non-promoting policy fallback
+- every emitted normal runtime row is tied to a non-default promoting source claim
 - `default_only_runtime_surfaces=[]`
+- every expected runtime surface is emitted, explicitly suppressed, or reported as a gap or source action
+- strong evidence comes only from explicit `deck_matched_public_guide`, explicit `archetype_matched_public_guide`, or explicit `official_static_semantics` claims that match the target surface
+- `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples do not count as strong evidence
 - policy-backed rows do not count as strong evidence
 - snippet-only sources do not count as strong evidence
 - static-only claims are marked as `contract_only` or `review_only` unless the runtime surface can safely represent them
 
 An explicit policy fallback may keep a package useful and load-safe, but it
 keeps the affected row partial until a promoting source lane covers it.
+Thin or weak source remains non-blocking, but it must stay visible through
+operator/source action fields instead of becoming hidden default-only runtime.
 
-Darkbishop Benedictus is the canonical boundary case: the start-of-game hero-power transform belongs in contract/CardID semantics, not in opening-hand mulligan keep logic unless an explicit mulligan source says to keep the card.
+Darkbishop Benedictus is the canonical boundary case: preserve the start-of-game
+`hero_power_transform`, Mind Spike, and Shadow runtime effect in contract/CardID
+semantics, but never infer an opening-hand keep unless an explicit mulligan
+source says to keep the card.
 
 ## Promotion Rule
 

@@ -744,8 +744,8 @@ def test_skill_names_preserved_closure_rows_and_no_actionable_target():
     )
 
     expected = (
-        "After durable Boarlock and Kingslayer preservation, there is no current "
-        "actionable source-informed closure target."
+        "After durable Boarlock and Kingslayer preservation, the current actionable "
+        "source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH."
     )
     assert expected in skill
     assert expected in workflow

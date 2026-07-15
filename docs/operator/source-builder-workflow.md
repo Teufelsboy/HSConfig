@@ -9,7 +9,7 @@ Identity fields such as `hs_id` keep deck rows and examples unambiguous before g
 Normal path:
 
 1. Run `hsconfig source-manifest` to get deck aliases, card targets, and research questions.
-2. Prefer `hsconfig configure --online-source --auto-source --source-url ...` for a fresh public-guide-backed package when URLs are available.
+2. Prefer `hsconfig configure --online-source --auto-source --source-url ...` for a fresh public-guide-backed package when URLs are available; if no URL is known, use Codex/web research to find current public guide URLs and repeat `--source-url` for each useful source.
 3. Prefer `hsconfig source-autopilot` when compact public source-search records already exist; it writes ranked sources, evidence rows, and `source_documents.json`.
 4. Use Codex research plus `hsconfig draft-source-documents` only when you are manually collecting short evidence rows from current guide, mulligan, card-text, and metadata sources.
 5. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
@@ -21,10 +21,13 @@ Guide strength is not the write gate. When `technical_status=VALID_PACKAGE` and
 `runtime_apply_mode=load_safe_apply`, HSConfig may apply the initial package
 even if `semantic_status=VALID_BUT_NOT_GUIDE_STRONG`. Use the warnings to
 improve future source depth; do not treat them as load-safety blockers.
+For any valid deck code, HSConfig still attempts to generate a load-safe valid
+package. `SOURCE_BACKED_STRONG` is an evidence label, not a generation/apply
+gate.
 
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
-`source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required.
+`source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, decklist-only pages, statistical enrichment, policy fallback, snippets, default/runtime examples, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics are still required.
 
 Autonomous source path:
 
@@ -34,9 +37,12 @@ hsconfig source-autopilot --deck-name "<DeckName>" --deck-code "<DeckCode>" --so
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
 
-`source-acquire` fetches bounded public pages and writes compact source records. Fetch failures, thin pages, decklist-only records, and static metadata remain visible diagnostics; they do not block a technically valid package and do not promote `SOURCE_BACKED_STRONG`.
+`source-acquire` fetches bounded public pages and writes compact source records. Fetch failures, thin pages, decklist-only records, and static metadata without explicit supported effect semantics remain visible diagnostics; they do not block a technically valid package and do not promote `SOURCE_BACKED_STRONG`.
 
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
+Every expected runtime surface must be emitted, explicitly suppressed, or
+reported as a gap or source action. Thin or weak source is non-blocking, but it
+must stay visible instead of becoming hidden default-only runtime.
 
 For Mulligan evidence, prefer exact, source-backed claims over broad archetype guesses. The source document builder accepts both canonical and convenience fields, but each claim should still preserve the source family, source confidence, selector, condition, and short evidence text so `Mulligan.json` can be rich without becoming a load-safety gate.
 

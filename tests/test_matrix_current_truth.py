@@ -196,8 +196,8 @@ def test_closure_doc_names_partial_rows_without_claiming_them_strong():
     )
 
     expected = (
-        "After durable Boarlock and Kingslayer preservation, there is no current "
-        "actionable source-informed closure target."
+        "After durable Boarlock and Kingslayer preservation, the current actionable "
+        "source-informed closure targets are the four partial representative rows"
     )
     assert expected in operator_text
     assert "Next actionable closure target after durable Boarlock preservation" not in operator_text

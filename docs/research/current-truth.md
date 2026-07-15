@@ -4,7 +4,7 @@ Research artifacts are evidence, not operator instructions.
 
 Normal operator path starts at `docs/operator/README.md`.
 
-After durable Boarlock and Kingslayer preservation, there is no current actionable source-informed closure target.
+After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH.
 
 ## 2026-07-11 Surface authority split
 

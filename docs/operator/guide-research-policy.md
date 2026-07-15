@@ -26,10 +26,11 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 - `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
 - `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
 - `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
+- `decklist_only`: deck list or deck-code page without explicit guide claim text.
 - `policy_fallback`: internal autonomous rule used to keep packages useful.
 - `default_runtime`: generated default row with no source claim.
 
-Only `official_static_semantics`, `deck_matched_public_guide`, and carefully documented `archetype_matched_public_guide` may promote claims. `statistical_enrichment`, `policy_fallback`, and `default_runtime` must not prove `SOURCE_BACKED_STRONG` by themselves.
+Only explicit `official_static_semantics`, explicit `deck_matched_public_guide`, and explicit `archetype_matched_public_guide` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
 
 ## Structured Source Format
 
@@ -67,7 +68,7 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
 ## Online Source Acquisition
 
@@ -76,6 +77,11 @@ When public guide URLs are known, HSConfig can acquire bounded public source tex
 ```powershell
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
+
+When no URL is known, use Codex/web research to find current public guide URLs,
+then pass each useful URL with repeated `--source-url`. If research finds only
+thin or weak sources, continue with the package and keep the missing source
+actions visible in operator reports.
 
 Online source acquisition promotion rule:
 
@@ -111,6 +117,8 @@ not allow or block runtime writes. default-only runtime surfaces must be
 visible, not silent: a valid load-safe package may proceed with warnings, but
 the reports must show whether a card is runtime-backed, source-action-needed,
 diagnostic-only, or baseline-only-visible.
+No hidden default-only runtime is allowed: every expected surface must be
+emitted, explicitly suppressed, or reported as a gap or source action.
 `source_to_runtime_explainability.json` includes per-card closure rows, and
 `default_only_runtime_surface_details` summarizes default-only risk in
 `operator_summary.json`; both remain diagnostic because operator_summary.json
@@ -140,6 +148,10 @@ documented and identity is resolved:
 - generated random pools as deterministic per-card behavior
 - Discover or Choose One preference without exact option identity
 - numeric GlobalValues tuning without runtime evidence
+
+HSConfig still attempts to generate a load-safe valid package for any valid deck
+code. Weak source depth is non-blocking quality debt, and operator/source action
+fields must expose the next missing evidence or surface link.
 
 No-silent-default-only contract: a valid package must not hide baseline-only runtime behavior. Default-only surfaces are reported as visible quality debt through `operator_summary.json`, `default_only_runtime_surface_details`, and `source_to_runtime_explainability.json`; they are not an apply blocker unless the technical package is invalid. operator_summary.json remains the only normal apply authority.
 
@@ -414,8 +426,11 @@ claims that bypass the surface gates.
 ## Per-Card Depth Rule
 
 For representative archetype breadth, use `docs/operator/archetype-fixture-matrix.json`.
-Core source-backed fixtures should cover ShadowPriest, BigShaman, Discolock,
-Kingslayer, and ImbueMage before broadening to the second-wave decks.
+Core source-backed controls remain ShadowPriest, BigShaman, and ImbueMage.
+Boarlock and Kingslayer are durable preserved source-informed controls with
+explicit stop conditions. The current actionable source-informed closure
+targets are CtAPaladin, Discolock, TreantDruid, and PirateDH; close those
+visible partial rows before broadening to more representative decks.
 
 Before normal `hsconfig prepare`, Codex should try to give every deck card at
 least one structured expectation. The preferred order is card-specific guide
