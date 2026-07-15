@@ -58,6 +58,21 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
+## Online Source Acquisition
+
+When public guide URLs are known, HSConfig can acquire bounded public source text before `source-autopilot`:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
+```
+
+Online source acquisition promotion rule:
+
+- Public guide pages can promote `mulligan_keep`, `mulligan_discard`, `targeting_rule`, `card_role`, `known_bad_pattern`, and exact `combo_sequence` only when the claim is explicit and deck-matching.
+- Official/static card data can promote deterministic identity and supported effect lanes such as `hero_power_transform`, but cannot prove opening-hand keeps or exact combo order by itself.
+- Decklists, meta pages, snippets, and fetch failures remain source-informed or diagnostic. They do not count as `SOURCE_BACKED_STRONG`.
+- A valid deck must never fail only because public source acquisition is weak.
+
 ## Source Truth Is Not Runtime Authority
 
 Source documents can be true and still not lower to runtime JSON. `claim_kind` is the runtime-routing authority. The surface gate decides whether a claim may

@@ -9,6 +9,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
+- If public guide URLs are available, run `hsconfig configure --online-source --auto-source --source-url ...`.
 - If compact public source-search records exist, run `hsconfig configure --auto-source --source-search-results-json ...`.
 - Open `reports/operator_summary.json` first.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
@@ -41,6 +42,14 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 ```
 
 This command runs the lower-level pre-run chain, writes a validated package, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`.
+
+When public guide URLs are available for a fresh config, use the online source path:
+
+```powershell
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
+```
+
+This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. It can reach `SOURCE_BACKED_STRONG` only when acquired sources contain exact deck-matching guide claims that lower through the existing source-to-runtime contract. If sources are thin, unavailable, stale, or only decklist/static evidence, HSConfig still builds a load-safe package when technically valid and reports the first missing source link.
 
 When current guide/search records are already captured, use the source-autopilot bridge:
 

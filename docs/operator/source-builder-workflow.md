@@ -9,12 +9,13 @@ Identity fields such as `hs_id` keep deck rows and examples unambiguous before g
 Normal path:
 
 1. Run `hsconfig source-manifest` to get deck aliases, card targets, and research questions.
-2. Prefer `hsconfig source-autopilot` when compact public source-search records already exist; it writes ranked sources, evidence rows, and `source_documents.json`.
-3. Use Codex research plus `hsconfig draft-source-documents` only when you are manually collecting short evidence rows from current guide, mulligan, card-text, and metadata sources.
-4. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
-5. Run `hsconfig prepare --guide-sources-json ...` to compile the package.
-6. Read `reports/operator_summary.json` first.
-7. Run `hsconfig apply` only after `reports/operator_summary.json` shows the package is runtime-load-safe. `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane. `--allow-source-informed` is a backward-compatible legacy no-op. It does not create a second apply path. Runtime apply decisions come from `reports/operator_summary.json`.
+2. Prefer `hsconfig configure --online-source --auto-source --source-url ...` for a fresh public-guide-backed package when URLs are available.
+3. Prefer `hsconfig source-autopilot` when compact public source-search records already exist; it writes ranked sources, evidence rows, and `source_documents.json`.
+4. Use Codex research plus `hsconfig draft-source-documents` only when you are manually collecting short evidence rows from current guide, mulligan, card-text, and metadata sources.
+5. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
+6. Run `hsconfig prepare --guide-sources-json ...` to compile the package.
+7. Read `reports/operator_summary.json` first.
+8. Run `hsconfig apply` only after `reports/operator_summary.json` shows the package is runtime-load-safe. `READY_TO_APPLY_WITH_WARNINGS` / `ALLOWED_WITH_WARNINGS` is the normal load-safe lane. `--allow-source-informed` is a backward-compatible legacy no-op. It does not create a second apply path. Runtime apply decisions come from `reports/operator_summary.json`.
 
 Guide strength is not the write gate. When `technical_status=VALID_PACKAGE` and
 `runtime_apply_mode=load_safe_apply`, HSConfig may apply the initial package
@@ -24,6 +25,16 @@ improve future source depth; do not treat them as load-safety blockers.
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
 `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims are still required.
+
+Autonomous source path:
+
+```powershell
+hsconfig source-acquire --deck-name "<DeckName>" --deck-code "<DeckCode>" --source-url "<public-guide-url>" --out "outputs/<DeckName>/02_source_acquisition" --json
+hsconfig source-autopilot --deck-name "<DeckName>" --deck-code "<DeckCode>" --source-search-results-json "outputs/<DeckName>/02_source_acquisition/source_search_results.json" --out "outputs/<DeckName>/03_source_autopilot" --json
+hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
+```
+
+`source-acquire` fetches bounded public pages and writes compact source records. Fetch failures, thin pages, decklist-only records, and static metadata remain visible diagnostics; they do not block a technically valid package and do not promote `SOURCE_BACKED_STRONG`.
 
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
 
