@@ -116,6 +116,7 @@ def test_output_ownership_manifest_classifies_every_generated_file():
         "reports/operator_summary.json",
         "reports/source_contract_audit.json",
         "reports/source_to_runtime_explainability.json",
+        "reports/source_evidence_closure.json",
         "reports/mechanic_drift_report.json",
         "reports/strong_promotion_report.json",
         "reports/output_ownership_manifest.json",

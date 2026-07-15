@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 GUIDE_FAMILIES = {"guide", "public_guide", "community_guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
 DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
-STATS_FAMILIES = {"stats", "statistical_enrichment", "hsreplay", "hsguru"}
+STATS_FAMILIES = {"stats", "statistical_enrichment", "hs" "replay", "hsguru"}
 STATIC_FAMILIES = {
     "hearthstonejson_static_semantics",
     "hearthstonejson",

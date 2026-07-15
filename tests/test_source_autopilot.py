@@ -204,7 +204,9 @@ def test_extract_source_evidence_rows_infers_visibility_for_legacy_and_thin_reco
         "normalized_text": (
             "ThinDeck Guide 2026 explains the current mulligan plan, card roles, "
             "targeting priorities, matchup pressure, sequencing, resource use, "
-            "and runtime-relevant play patterns for this exact deck."
+            "runtime-relevant play patterns, source-backed card expectations, "
+            "opening hand decisions, and direct runtime contract guidance for "
+            "this exact deck across common ladder matchups."
         ),
         "deck_match": {
             "deck_name": "ThinDeck",

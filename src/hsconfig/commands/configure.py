@@ -20,6 +20,7 @@ from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
+from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
@@ -242,6 +243,15 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         operator_summary,
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
+    )
+    write_json(
+        reports_dir / "source_evidence_closure.json",
+        build_source_evidence_closure_report(
+            deck_name=args.deck_name,
+            deck_code=args.deck_code,
+            operator_summary=operator_summary,
+            source_to_runtime_explainability_report=explainability_report,
+        ),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
 

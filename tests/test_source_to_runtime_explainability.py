@@ -186,6 +186,19 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
             "first_missing_link": None,
             "next_source_action": "none",
         },
+        "evidence_chain": [
+            {
+                "claim_id": "keep_claim",
+                "claim_kind": "mulligan_keep",
+                "source_lane": "runtime_lowered",
+                "source_type": "",
+                "runtime_surface": "mulligan",
+                "runtime_files": ["Mulligan.json"],
+                "resolution_reason": "emitted",
+                "first_missing_link": None,
+                "first_missing_source_action": "none",
+            }
+        ],
     }
     assert rows["CARD_NUM"]["best_source_lane"] == "runtime_evidence_required"
     assert rows["CARD_NUM"]["first_missing_link"] == "runtime_evidence"
@@ -207,6 +220,43 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "first_missing_link": "runtime_evidence",
         "next_source_action": "collect_runtime_evidence",
     }
+
+
+def test_explainability_card_rows_include_evidence_chain_for_runtime_and_gaps():
+    report = build_source_to_runtime_explainability_report(_fixture_audit())
+    rows = {row["card_id"]: row for row in report["card_rows"]}
+
+    assert rows["CARD_KEEP"]["evidence_chain"] == [
+        {
+            "claim_id": "keep_claim",
+            "claim_kind": "mulligan_keep",
+            "source_lane": "runtime_lowered",
+            "source_type": "",
+            "runtime_surface": "mulligan",
+            "runtime_files": ["Mulligan.json"],
+            "resolution_reason": "emitted",
+            "first_missing_link": None,
+            "first_missing_source_action": "none",
+        }
+    ]
+    numeric_chain = {
+        row["claim_id"]: row for row in rows["CARD_NUM"]["evidence_chain"]
+    }
+    assert numeric_chain["numeric_claim"] == {
+        "claim_id": "numeric_claim",
+        "claim_kind": "globalvalue_numeric_tuning",
+        "source_lane": "runtime_evidence_required",
+        "source_type": "",
+        "runtime_surface": "globalvalues",
+        "runtime_files": ["GlobalValues.json"],
+        "resolution_reason": "runtime_evidence_required",
+        "first_missing_link": "runtime_evidence",
+        "first_missing_source_action": "collect_runtime_evidence",
+    }
+    assert numeric_chain["unknown_claim"]["resolution_reason"] == "unsupported_or_unmapped"
+    assert numeric_chain["unknown_claim"]["first_missing_source_action"] == (
+        "map_claim_kind_or_keep_report_only"
+    )
 
 
 def test_explainability_operator_attention_rows_prioritize_missing_links():

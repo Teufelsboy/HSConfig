@@ -2577,6 +2577,7 @@ def test_operator_summary_counts_closure_lanes_without_apply_authority():
     )
 
     explainability = summary["source_to_runtime_explainability_summary"]
+    closure_summary = summary["source_evidence_closure_summary"]
 
     assert summary["runtime_apply_allowed"] is True
     assert explainability["non_blocking"] is True
@@ -2588,6 +2589,20 @@ def test_operator_summary_counts_closure_lanes_without_apply_authority():
     assert explainability["cards_with_closure"] == 3
     assert explainability["cards_missing_closure"] == 0
     assert explainability["closure_schema_current"] is True
+    assert closure_summary == {
+        "non_blocking": True,
+        "cards_total": 3,
+        "lane_counts": {
+            "baseline_only_visible": 1,
+            "runtime_backed": 1,
+            "source_action_needed": 1,
+        },
+        "default_only_risk_count": 1,
+        "cards_with_evidence_chain": 0,
+        "cards_missing_evidence_chain": 3,
+        "first_missing_source_action_counts": {},
+        "next_report_to_open": "reports/source_to_runtime_explainability.json",
+    }
 
 
 def test_operator_summary_marks_missing_closure_rows_as_non_blocking_diagnostic():

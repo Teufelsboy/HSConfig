@@ -12,6 +12,7 @@ ACTIVE_APPLY_PATHS = [
 DIAGNOSTIC_ONLY_TOKENS = [
     "source_contract_audit",
     "source_to_runtime_explainability",
+    "source_evidence_closure",
     "contract_spine_rows",
     "claim_lifecycle_rows",
     "source_contract_conformance",
@@ -24,6 +25,8 @@ FORBIDDEN_DIAGNOSTIC_IMPORTS = [
     "import hsconfig.source_contract_audit",
     "from hsconfig.source_to_runtime_explainability",
     "import hsconfig.source_to_runtime_explainability",
+    "from hsconfig.source_evidence_closure",
+    "import hsconfig.source_evidence_closure",
     "from hsconfig.source_contract_conformance",
     "import hsconfig.source_contract_conformance",
 ]

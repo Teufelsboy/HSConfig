@@ -391,6 +391,7 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     mulligan = read_json(package / "CustomConfig" / "shadowpriest" / "Mulligan.json")
     darkbishop = read_json(package / "CustomConfig" / "shadowpriest" / "SW_448.json")
     explainability = read_json(package / "reports" / "source_to_runtime_explainability.json")
+    closure = read_json(package / "reports" / "source_evidence_closure.json")
 
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
@@ -413,3 +414,10 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     sw448 = next(row for row in explainability["card_rows"] if row["card_id"] == "SW_448")
     assert sw448["strongest_claim_kind"] == "hero_power_transform"
     assert sw448["first_missing_source_action"] == "none"
+    claim_kinds = {row["claim_kind"] for row in sw448["evidence_chain"]}
+    assert "hero_power_transform" in claim_kinds
+    assert "mulligan_keep" not in claim_kinds
+    assert closure["authority"] == "diagnostic_only"
+    assert closure["apply_blocking"] is False
+    assert closure["operator_gate"] == "reports/operator_summary.json"
+    assert closure["semantic_status"] == "SOURCE_BACKED_STRONG"

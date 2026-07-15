@@ -1985,6 +1985,9 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
             encoding="utf-8"
         )
     )
+    source_evidence_closure = json.loads(
+        (reports / "source_evidence_closure.json").read_text(encoding="utf-8")
+    )
     operator_summary = json.loads(
         (reports / "operator_summary.json").read_text(encoding="utf-8")
     )
@@ -2009,8 +2012,16 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert "reports/source_contract_audit.json" in generated
     assert "reports/source_contract_audit.md" in generated
     assert "reports/source_to_runtime_explainability.json" in generated
+    assert "reports/source_evidence_closure.json" in generated
     assert explainability["authority"] == "diagnostic_only"
     assert explainability["apply_blocking"] is False
+    assert source_evidence_closure["authority"] == "diagnostic_only"
+    assert source_evidence_closure["apply_blocking"] is False
+    assert source_evidence_closure["operator_gate"] == "reports/operator_summary.json"
+    assert (
+        source_evidence_closure["source_evidence_closure_summary"]
+        == operator_summary["source_evidence_closure_summary"]
+    )
     assert explainability["summary"]["claims_total"] == len(
         explainability["claim_rows"]
     )

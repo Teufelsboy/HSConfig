@@ -37,6 +37,7 @@ KNOWN_DIAGNOSTIC_REPORT_FILES = frozenset(
         "reports/runtime_apply_receipt.json",
         "reports/semantic_enrichment_report.json",
         "reports/source_contract_audit.md",
+        "reports/source_evidence_closure.json",
         "reports/source_evidence_index.json",
         "reports/source_evidence_verification_report.json",
         "reports/source_bundle.json",

@@ -62,6 +62,7 @@ def rank_public_sources(
             score += 10
         if not _is_public_https(row.get("source_url", "")):
             score -= 100
+        row["source_visibility"] = _source_visibility_for_documents(row)
         row["source_rank_score"] = score
         row["source_rank_lane"] = _rank_lane(
             family,
@@ -441,8 +442,10 @@ def _source_base(
         match = {}
     source_rank_lane = _text(source.get("source_rank_lane", ""))
     deck_match_scope = _deck_match_scope(source, deck_name)
+    source_visibility = _source_visibility_for_documents(source)
+    source_for_policy = {**dict(source), "source_visibility": source_visibility}
     policy = classify_source_evidence(
-        source,
+        source_for_policy,
         deck_name=deck_name,
         current_date=current_date,
     )
@@ -451,7 +454,7 @@ def _source_base(
         "source_title": _text(source.get("source_title", "")),
         "source_family": _source_family_for_documents(source),
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
-        "source_visibility": _source_visibility_for_documents(source),
+        "source_visibility": source_visibility,
         "source_rank_lane": source_rank_lane,
         "source_lane": _text(source.get("source_lane", ""))
         or _source_lane_for_rank(source_rank_lane, deck_match_scope),
@@ -461,7 +464,7 @@ def _source_base(
     }
     base.update(_policy_fields(policy, include_rank_lane=False))
     base["source_rank_lane"] = source_rank_lane
-    base["source_visibility"] = _source_visibility_for_documents(source)
+    base["source_visibility"] = source_visibility
     base["deck_match_scope"] = deck_match_scope
     base["source_lane"] = _text(source.get("source_lane", "")) or base["source_lane"]
     source_record_strength = _text(source.get("source_record_strength", ""))
@@ -514,12 +517,10 @@ def _source_visibility_for_documents(source: Mapping[str, Any]) -> str:
         return "decklist_only"
     if family in GUIDE_FAMILIES:
         normalized_text = _text(source.get("normalized_text", ""))
-        if normalized_text and len(normalized_text) < 180:
-            return "snippet_only"
-        if source.get("mulligan") or _as_list(source.get("claims", [])):
-            return "full_text"
         if len(normalized_text) >= 180:
             return "full_text"
+        if normalized_text:
+            return "snippet_only"
     return "unknown"
 
 

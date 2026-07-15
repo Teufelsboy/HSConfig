@@ -142,6 +142,8 @@ normal HSConfig output must not emit `Presume.json` or `Concede.json`.
 reports/operator_summary.json remains the only normal apply authority.
 diagnostic reports must not become apply gates. default-only runtime surfaces
 must be visible, not silent.
+source_evidence_closure.json is diagnostic-only package-quality summary, not an
+apply authority.
 
 `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside
 the normal HSConfig path.
@@ -246,12 +248,13 @@ Confidence lanes:
 `operator_summary.json` is the main readiness file and single operator gate. The research contract lives under `reports/research/` and includes archetype, claims, card roles, mulligan anchors, usage expectations, known bad patterns, and GlobalValues intent.
 
 Unsupported claims appear in `unsupported_claims_report.json`. Uncovered cards appear in `claim_coverage_report.json`.
-Use `source_to_runtime_explainability.json` as the primary card-readable repair map. It is the first place to inspect emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. `source_claim_gap_report.json` is secondary diagnostic evidence for source-depth history and must not be treated as an apply gate.
+Use `source_to_runtime_explainability.json` as the primary card-readable repair map. It is the first place to inspect emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. source_evidence_closure.json is the compact diagnostic package-quality summary. `source_claim_gap_report.json` is secondary diagnostic evidence for source-depth history and must not be treated as an apply gate.
 
 Depth reports:
 
 - `per_card_config_readiness_report.json`: card-level lane, runtime surfaces, and first missing link.
 - `guide_source_depth_report.json`: source-depth status, source families, claim kinds, and research warnings.
+- `source_evidence_closure.json`: compact package-quality closure summary; diagnostic only.
 - `source_claim_gap_report.json`: secondary diagnostic evidence for card/source gap history.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 

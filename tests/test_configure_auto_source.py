@@ -110,9 +110,15 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
     package = out / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
+    source_evidence_closure = _read_json(
+        package / "reports" / "source_evidence_closure.json"
+    )
+    ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
     mulligan_text = "\n".join(
         path.read_text(encoding="utf-8") for path in package.glob("CustomConfig/*/Mulligan.json")
     )
+    ownership_rows = {row["file"]: row for row in ownership["files"]}
+    generated_files = {path.replace("\\", "/") for path in operator["generated_files"]}
 
     assert code == 0
     assert summary["status"] == "OK"
@@ -136,6 +142,20 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         assert operator["guide_strength_summary"][key] == 0
     assert "SW_448" not in mulligan_text
     assert list(package.glob("CustomConfig/*/SW_448.json"))
+    assert source_evidence_closure["authority"] == "diagnostic_only"
+    assert source_evidence_closure["apply_blocking"] is False
+    assert source_evidence_closure["operator_gate"] == "reports/operator_summary.json"
+    assert source_evidence_closure["semantic_status"] == operator["semantic_status"]
+    assert "reports/source_evidence_closure.json" in generated_files
+    assert (
+        ownership_rows["reports/source_evidence_closure.json"]["authority"]
+        == "diagnostic_source_evidence_closure"
+    )
+    assert (
+        ownership_rows["reports/source_evidence_closure.json"]["classification"]
+        == "diagnostic"
+    )
+    assert ownership_rows["reports/source_evidence_closure.json"]["can_block_apply"] is False
 
 
 def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(

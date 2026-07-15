@@ -225,6 +225,9 @@ def build_operator_summary(
             source_to_runtime_explainability_report
         )
     )
+    source_evidence_closure_summary = _source_evidence_closure_summary(
+        source_to_runtime_explainability_report
+    )
     next_action, apply_policy = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
@@ -310,6 +313,7 @@ def build_operator_summary(
         "source_to_runtime_explainability_summary": (
             source_to_runtime_explainability_summary
         ),
+        "source_evidence_closure_summary": source_evidence_closure_summary,
         "output_ownership_summary": _output_ownership_summary(
             output_ownership_manifest
         ),
@@ -1108,6 +1112,65 @@ def _source_to_runtime_explainability_summary(
         "cards_with_closure": len(closure_rows),
         "cards_missing_closure": cards_missing_closure,
         "closure_schema_current": bool(card_rows) and cards_missing_closure == 0,
+        "next_report_to_open": next_report,
+    }
+
+
+def _source_evidence_closure_summary(report: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {
+            "non_blocking": True,
+            "cards_total": 0,
+            "lane_counts": {},
+            "default_only_risk_count": 0,
+            "cards_with_evidence_chain": 0,
+            "cards_missing_evidence_chain": 0,
+            "first_missing_source_action_counts": {},
+            "next_report_to_open": None,
+        }
+    card_rows = report.get("card_rows", [])
+    if not isinstance(card_rows, list):
+        card_rows = []
+    lane_counts: Counter[str] = Counter()
+    first_missing_source_action_counts: Counter[str] = Counter()
+    default_only_risk_count = 0
+    cards_with_evidence_chain = 0
+    for row in card_rows:
+        if not isinstance(row, dict):
+            continue
+        closure = row.get("closure", {})
+        if isinstance(closure, dict):
+            lane = str(closure.get("lane") or "").strip()
+            if lane:
+                lane_counts[lane] += 1
+            if closure.get("default_only_risk"):
+                default_only_risk_count += 1
+        evidence_chain = row.get("evidence_chain", [])
+        if isinstance(evidence_chain, list) and evidence_chain:
+            cards_with_evidence_chain += 1
+        first_missing_source_action = str(
+            row.get("first_missing_source_action") or ""
+        ).strip()
+        if first_missing_source_action and first_missing_source_action != "none":
+            first_missing_source_action_counts[first_missing_source_action] += 1
+    next_report = None
+    summary = report.get("summary", {})
+    if isinstance(summary, dict):
+        raw_next_report = summary.get("next_report_to_open")
+        if isinstance(raw_next_report, str) and raw_next_report:
+            next_report = raw_next_report
+    if next_report is None and card_rows:
+        next_report = "reports/source_to_runtime_explainability.json"
+    return {
+        "non_blocking": True,
+        "cards_total": len(card_rows),
+        "lane_counts": dict(sorted(lane_counts.items())),
+        "default_only_risk_count": default_only_risk_count,
+        "cards_with_evidence_chain": cards_with_evidence_chain,
+        "cards_missing_evidence_chain": max(0, len(card_rows) - cards_with_evidence_chain),
+        "first_missing_source_action_counts": dict(
+            sorted(first_missing_source_action_counts.items())
+        ),
         "next_report_to_open": next_report,
     }
 

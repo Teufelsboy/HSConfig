@@ -61,6 +61,24 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "open_order": "2",
         },
         {
+            "file": "reports/source_evidence_closure.json",
+            "producer": "prepare",
+            "authority": "diagnostic_source_evidence_closure",
+            "classification": "diagnostic",
+            "answers": (
+                "compact source evidence closure summary for generated package quality"
+            ),
+            "contains": (
+                "semantic status, runtime apply mode, default-only surfaces, "
+                "source-to-runtime summary, source evidence closure summary"
+            ),
+            "notes": (
+                "diagnostic only; does not grant apply permission; "
+                "does not replace operator_summary.json"
+            ),
+            "open_order": "2.5",
+        },
+        {
             "file": "reports/source_claim_gap_report.json",
             "authority": "repair_contract",
             "classification": "diagnostic",

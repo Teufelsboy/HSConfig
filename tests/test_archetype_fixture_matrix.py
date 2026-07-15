@@ -37,6 +37,19 @@ EXPECTED_STRONGNESS_GAPS = {
     "Boarlock": "needs_mulligan_claim_for_fracking",
     "PirateDH": "needs_card_specific_source_claim",
 }
+EXPECTED_FIRST_MISSING_SOURCE_ACTIONS = {
+    "ShadowPriest": "none",
+    "CtAPaladin": "add_current_cta_paladin_mulligan_keep_source",
+    "PirateRogue": "none",
+    "BigShaman": "none",
+    "Discolock": "add_current_discolock_mulligan_keep_source",
+    "TreantDruid": "add_treant_card_role_or_mulligan_source",
+    "ImbueMage": "none",
+    "MechPala": "none",
+    "Kingslayer": "add_quick_pick_mulligan_keep_or_discard_source",
+    "Boarlock": "add_fracking_mulligan_keep_or_discard_source",
+    "PirateDH": "add_pirate_dh_card_role_or_mulligan_source",
+}
 EXPECTED_SOURCE_INFORMED_VISIBILITY = {
     "CtAPaladin": {
         "operator_action": "preserve_source_informed_with_evidence_gap",
@@ -163,11 +176,24 @@ def test_archetype_fixture_matrix_has_actionable_rows():
         assert "GlobalValues.json" in row["expected_runtime_surfaces"]
         assert "Mulligan.json" in row["expected_runtime_surfaces"]
         assert "<CARDID>.json" in row["expected_runtime_surfaces"]
+        assert row["runtime_apply_allowed"] is True
+        assert row["default_only_runtime_surfaces"] == []
         assert row["fixture_stage"] in {
             "core_source_backed_fixture",
             "source_informed_valid_fixture",
             "future_fixture",
         }
+        assert row["expected_semantic_status"] in {
+            "SOURCE_BACKED_STRONG",
+            "SOURCE_BACKED_PARTIAL",
+        }
+        assert row.get("first_missing_source_action", "none") == (
+            EXPECTED_FIRST_MISSING_SOURCE_ACTIONS[row["deck_name"]]
+        )
+        if row["fixture_stage"] == "core_source_backed_fixture":
+            assert row["expected_semantic_status"] == "SOURCE_BACKED_STRONG"
+        elif row["fixture_stage"] == "source_informed_valid_fixture":
+            assert row["expected_semantic_status"] == "SOURCE_BACKED_PARTIAL"
 
 
 def test_archetype_fixture_matrix_uses_supplied_deck_identities():

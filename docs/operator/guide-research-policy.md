@@ -111,18 +111,21 @@ Open `reports/operator_summary.json` first. Other reports explain source quality
 
 reports/operator_summary.json remains the only normal apply authority.
 diagnostic reports must not become apply gates: `source_contract_audit.json`,
-`source_to_runtime_explainability.json`, mechanic visibility reports, source
-quality reports, and claim lifecycle projections explain what happened but do
-not allow or block runtime writes. default-only runtime surfaces must be
-visible, not silent: a valid load-safe package may proceed with warnings, but
-the reports must show whether a card is runtime-backed, source-action-needed,
-diagnostic-only, or baseline-only-visible.
+`source_to_runtime_explainability.json`, `source_evidence_closure.json`,
+mechanic visibility reports, source quality reports, and claim lifecycle
+projections explain what happened but do not allow or block runtime writes.
+default-only runtime surfaces must be visible, not silent: a valid load-safe
+package may proceed with warnings, but the reports must show whether a card is
+runtime-backed, source-action-needed, diagnostic-only, or baseline-only-visible.
 No hidden default-only runtime is allowed: every expected surface must be
 emitted, explicitly suppressed, or reported as a gap or source action.
 `source_to_runtime_explainability.json` includes per-card closure rows, and
 `default_only_runtime_surface_details` summarizes default-only risk in
 `operator_summary.json`; both remain diagnostic because operator_summary.json
 remains the only normal apply authority.
+`source_evidence_closure.json` is also diagnostic-only: it is a compact package
+quality summary of source-to-runtime closure, default-only risk, next report,
+and first missing source actions.
 
 Closure freshness is diagnostic-only. `operator_summary.json remains the only normal apply authority`; `closure_schema_current`, `cards_missing_closure`, `closure_lane_counts`, and `default_only_runtime_surface_details` explain whether a freshly generated package exposes every card's source-to-runtime state. They must not become a second runtime-write gate.
 
@@ -480,6 +483,9 @@ the same diagnostic chain. It summarizes emitted runtime files, missing runtime
 files, first missing links, and next source actions per claim/card. Its
 `operator_summary.json.source_to_runtime_explainability_summary` block is
 non-blocking and never grants apply permission.
+`source_evidence_closure.json` is the compact diagnostic closure summary for
+the same evidence; it mirrors package-quality status and never grants apply
+permission.
 
 Use `source_to_runtime_explainability.json` as the primary card-readable repair map. It is the first place to inspect emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. `source_claim_gap_report.json` is secondary diagnostic evidence for source-depth history and must not be treated as an apply gate.
 
@@ -493,6 +499,7 @@ Use `source_to_runtime_explainability.json` as the primary card-readable repair 
 - `unsupported_claims_report.json`: rejected source claims with reasons.
 - `source_contract_audit.json`: per-claim and per-card explanation for why evidence did or did not lower to a runtime surface; `claim_lifecycle_rows` are diagnostic only.
 - `source_to_runtime_explainability.json`: claim/card projection that names emitted files, missing files, first missing links, and next source actions; diagnostic only.
+- `source_evidence_closure.json`: compact package-quality closure summary; diagnostic only.
 - `source_claim_gap_report.json`: secondary diagnostic evidence for card/source gap history.
 - `strong_promotion_report.json`: promotion verdict and the reason a package does or does not reach `SOURCE_BACKED_STRONG`.
 - `mulligan_plan_report.json`: concrete keep/discard plan before runtime compilation.

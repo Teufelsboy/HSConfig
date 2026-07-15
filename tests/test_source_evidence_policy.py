@@ -35,6 +35,69 @@ def test_current_full_text_deck_matched_guide_can_promote():
     assert row["first_missing_source_action"] == "none"
 
 
+def test_structured_current_deck_guide_claims_need_explicit_full_text_visibility():
+    row = classify_source_evidence(
+        {
+            "source_family": "guide",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_url": "https://example.test/shadowpriest",
+            "source_visibility": "full_text",
+            "published_at": "2026-07-01T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_446"],
+            },
+            "mulligan": {"keep_card_ids": ["SW_446"]},
+            "claims": [
+                {
+                    "claim_kind": "hero_power_transform",
+                    "cards": ["SW_448"],
+                    "stance": "enable_mind_spike_shadow_hero_power",
+                }
+            ],
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 15),
+    )
+
+    assert row["source_visibility"] == "full_text"
+    assert row["source_lane"] == "deck_matched_public_guide"
+    assert row["promotion_eligible"] is True
+    assert row["strong_promotion_eligible"] is True
+    assert row["first_missing_source_action"] == "none"
+
+
+def test_structured_current_deck_guide_claims_without_source_text_do_not_self_certify():
+    row = classify_source_evidence(
+        {
+            "source_family": "guide",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_url": "https://example.test/shadowpriest",
+            "published_at": "2026-07-01T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_446"],
+            },
+            "mulligan": {"keep_card_ids": ["SW_446"]},
+            "claims": [
+                {
+                    "claim_kind": "hero_power_transform",
+                    "cards": ["SW_448"],
+                    "stance": "enable_mind_spike_shadow_hero_power",
+                }
+            ],
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 15),
+    )
+
+    assert row["source_visibility"] == "unknown"
+    assert row["promotion_eligible"] is False
+    assert row["strong_promotion_eligible"] is False
+    assert "source_visibility_unknown_not_strong" in row["promotion_blockers"]
+    assert row["first_missing_source_action"] == "add_full_text_public_guide_source"
+
+
 def test_decklist_stats_snippet_policy_and_partial_records_never_promote():
     cases = [
         {"source_family": "decklist", "source_visibility": "decklist_only"},

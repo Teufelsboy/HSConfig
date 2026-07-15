@@ -9,6 +9,9 @@ def test_report_ownership_covers_operator_reports():
     assert by_file["reports/source_to_runtime_explainability.json"]["answers"] == (
         "which exact source-to-runtime link is missing before a card can be stronger"
     )
+    assert by_file["reports/source_evidence_closure.json"]["answers"] == (
+        "compact source evidence closure summary for generated package quality"
+    )
     assert by_file["reports/source_contract_audit.json"]["answers"] == (
         "why each source claim did or did not lower to runtime config"
     )
@@ -69,6 +72,18 @@ def test_source_to_runtime_explainability_is_diagnostic_not_gate():
     assert explainability["authority"] == "diagnostic_source_to_runtime_projection"
     assert explainability["open_order"] == "2"
     assert "does not grant apply permission" in explainability["notes"]
+
+
+def test_source_evidence_closure_is_diagnostic_not_gate():
+    rows = build_report_ownership()
+    by_file = {row["file"]: row for row in rows}
+
+    closure = by_file["reports/source_evidence_closure.json"]
+
+    assert closure["authority"] == "diagnostic_source_evidence_closure"
+    assert closure["classification"] == "diagnostic"
+    assert closure["open_order"] == "2.5"
+    assert "does not grant apply permission" in closure["notes"]
 
 
 def test_source_contract_conformance_is_not_operator_report():

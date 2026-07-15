@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from hashlib import sha256
 from typing import Any
+
+from hsconfig.mechanic_support import (
+    mechanic_default_runtime_block,
+    mechanic_report_only_reason,
+    mechanic_static_claim_allowed,
+)
 
 
 TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -111,6 +118,9 @@ WARNING_ONLY_MECHANICS = {
     "shatter",
     "excavate",
 }
+
+SOURCE_FAMILY = "hearthstonejson_static_semantics"
+SOURCE_TYPE = "official_card_data"
 
 
 def _has_deck_condition(lowered: str) -> bool:
@@ -250,6 +260,180 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
         "evidence": _dedupe_evidence(evidence),
         "warning_only": sorted(families & WARNING_ONLY_MECHANICS),
     }
+
+
+def build_static_semantics_source_records(
+    deck_identity: Mapping[str, Any],
+    cards_by_id: Mapping[str, Mapping[str, Any]],
+    *,
+    build_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build source-record rows from deterministic card data.
+
+    This intentionally emits effect/mechanic claims only. Opening-hand
+    decisions still require explicit guide claims and are never inferred here.
+    """
+    source_build_id = str(build_id or "unresolved-build")
+    records: list[dict[str, Any]] = []
+    deck_name = str(deck_identity.get("deck_name") or deck_identity.get("name") or "Deck")
+
+    source_cards = {str(card_id): dict(card) for card_id, card in cards_by_id.items()}
+    for target_card_id in _deck_card_ids(deck_identity, source_cards):
+        raw_card = source_cards.get(target_card_id)
+        if not isinstance(raw_card, Mapping):
+            continue
+        card = dict(raw_card)
+        card_id = str(card.get("card_id") or card.get("id") or target_card_id)
+        claims = _static_claims_for_card(card_id, card)
+        if not claims:
+            continue
+        records.append(
+            {
+                "source_family": SOURCE_FAMILY,
+                "source_type": SOURCE_TYPE,
+                "source_title": f"HearthstoneJSON static semantics {source_build_id} {card_id}",
+                "source_url": f"hearthstonejson://{source_build_id}/{card_id}",
+                "source_visibility": "full_text",
+                "source_record_strength": "static_semantics",
+                "source_rank_lane": "static_semantics_only",
+                "source_lane": "official_static_semantics",
+                "deck_match_scope": "deck_identity_static",
+                "promotion_eligible": True,
+                "strong_promotion_eligible": False,
+                "trust_ceiling": "static_semantics",
+                "promotion_blockers": ["static_semantics_not_public_guide"],
+                "first_missing_source_action": "none",
+                "deck_name": deck_name,
+                "card_id": card_id,
+                "card_name": str(card.get("name") or card_id),
+                "build_id": source_build_id,
+                "claims": claims,
+            }
+        )
+    return records
+
+
+def _deck_card_ids(
+    deck_identity: Mapping[str, Any],
+    cards_by_id: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    deck_cards = deck_identity.get("cards")
+    ids: list[str] = []
+    if isinstance(deck_cards, list):
+        for row in deck_cards:
+            if not isinstance(row, Mapping):
+                continue
+            card_id = row.get("card_id") or row.get("id") or row.get("cardId")
+            if card_id:
+                ids.append(str(card_id))
+    return sorted(dict.fromkeys(ids))
+
+
+def _static_claims_for_card(card_id: str, card: Mapping[str, Any]) -> list[dict[str, Any]]:
+    semantics = infer_static_semantics(card)
+    families = set(semantics["families"])
+    claims: list[dict[str, Any]] = []
+
+    if "hero_power_transform" in families:
+        claims.append(
+            _static_source_claim(
+                card_id,
+                card,
+                claim_kind="hero_power_transform",
+                mechanic="hero_power_transform",
+                stance="enable_transformed_hero_power",
+                semantics=semantics,
+            )
+        )
+
+    emitted = {
+        (str(claim["claim_kind"]), str(claim.get("mechanic", ""))) for claim in claims
+    }
+    for family in sorted(families):
+        if family == "hero_power_transform":
+            continue
+        if family == "hero_power" and "hero_power_transform" in families:
+            continue
+        if not mechanic_static_claim_allowed(family) and family not in WARNING_ONLY_MECHANICS:
+            continue
+        key = ("mechanic_usage", family)
+        if key in emitted:
+            continue
+        claims.append(
+            _static_source_claim(
+                card_id,
+                card,
+                claim_kind="mechanic_usage",
+                mechanic=family,
+                stance=f"use_{family}_according_to_card_text",
+                semantics=semantics,
+            )
+        )
+        emitted.add(key)
+
+    return claims
+
+
+def _static_source_claim(
+    card_id: str,
+    card: Mapping[str, Any],
+    *,
+    claim_kind: str,
+    mechanic: str,
+    stance: str,
+    semantics: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence = _plain_text(str(card.get("text") or ""))
+    card_name = str(card.get("name") or card_id)
+    runtime_block = mechanic_default_runtime_block(mechanic) or ""
+    report_only_reason = mechanic_report_only_reason(mechanic)
+    trust_ceiling = "report_only" if report_only_reason and not runtime_block else "static_semantics"
+    claim = {
+        "claim_id": _static_claim_id(card_id, claim_kind, mechanic, evidence),
+        "claim_kind": claim_kind,
+        "claim_type": claim_kind,
+        "source": SOURCE_FAMILY,
+        "source_family": SOURCE_FAMILY,
+        "source_type": SOURCE_TYPE,
+        "source_title": "HearthstoneJSON static card text",
+        "source_url": "",
+        "source_lane": "official_static_semantics",
+        "source_rank_lane": "static_semantics_only",
+        "source_record_strength": "static_semantics",
+        "source_visibility": "full_text",
+        "deck_match_scope": "deck_identity_static",
+        "promotion_eligible": trust_ceiling != "report_only",
+        "strong_promotion_eligible": False,
+        "claim_readiness": "source_backed_static_semantics",
+        "trust_ceiling": trust_ceiling,
+        "confidence": "source_backed_static_semantics",
+        "source_confidence": "high",
+        "claim_confidence": "high",
+        "support_status": "static_semantics",
+        "cards": [card_id],
+        "card_mentions": [card_name],
+        "stance": stance,
+        "mechanic": mechanic,
+        "mechanic_family": mechanic,
+        "semantic_families": sorted(semantics.get("families", [])),
+        "warning_only": sorted(semantics.get("warning_only", [])),
+        "opening_hand_relevant": False,
+        "runtime_block": runtime_block,
+        "runtime_suppression_reason": report_only_reason,
+        "first_missing_source_action": "none",
+        "claim": evidence or f"{card_name} static semantics.",
+        "evidence_text_short": evidence or f"{card_name} static semantics.",
+        "source_refs": [SOURCE_FAMILY],
+    }
+    if evidence:
+        claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
+    claim["source_claim_ids"] = [claim["claim_id"]]
+    return claim
+
+
+def _static_claim_id(card_id: str, claim_kind: str, mechanic: str, evidence: str) -> str:
+    digest = sha256(f"{card_id}|{claim_kind}|{mechanic}|{evidence}".encode("utf-8")).hexdigest()
+    return f"static-{digest[:16]}"
 
 
 def _add(families: set[str], evidence: list[dict[str, str]], family: str, source: str, value: str) -> None:

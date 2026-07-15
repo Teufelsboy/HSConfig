@@ -44,6 +44,7 @@ from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
 )
+from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
@@ -404,6 +405,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "operator_summary.json",
             "strong_promotion_report.json",
             "output_ownership_manifest.json",
+            "source_evidence_closure.json",
         ),
     )
     output_ownership_manifest = build_output_ownership_manifest(generated_files)
@@ -419,7 +421,19 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         operator_summary=operator_summary,
         source_claim_gap_report=source_claim_gap_report,
     )
+    source_evidence_closure_report = build_source_evidence_closure_report(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        operator_summary=operator_summary,
+        source_to_runtime_explainability_report=(
+            source_to_runtime_explainability_report
+        ),
+    )
     write_json(reports_dir / "strong_promotion_report.json", strong_promotion_report)
+    write_json(
+        reports_dir / "source_evidence_closure.json",
+        source_evidence_closure_report,
+    )
     write_json(reports_dir / "operator_summary.json", operator_summary)
     code = 0 if report["status"] == "passed" else 1
     return (

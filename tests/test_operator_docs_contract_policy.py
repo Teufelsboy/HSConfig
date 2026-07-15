@@ -292,6 +292,7 @@ def test_active_docs_describe_per_card_closure_without_second_gate():
     assert "default_only_runtime_surface_details" in active_text
     assert "operator_summary.json remains the only normal apply authority" in active_text
     assert "source_to_runtime_explainability.json" in active_text
+    assert "source_evidence_closure.json" in active_text
 
 
 def test_active_docs_describe_fresh_closure_proof_without_new_apply_gate():
@@ -350,6 +351,7 @@ def test_docs_keep_source_claim_gap_report_secondary_to_explainability():
         "source_to_runtime_explainability.json is the primary card-readable repair map"
         in combined
     )
+    assert "source_evidence_closure.json is the compact diagnostic package-quality summary" in combined
     assert "source_claim_gap_report.json is secondary diagnostic evidence" in combined
     assert "Use `source_claim_gap_report.json` to inspect the first missing source" not in combined
     assert "operator_summary.json remains the only normal apply authority" in combined

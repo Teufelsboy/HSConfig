@@ -74,9 +74,10 @@ Use this loop to run `hsconfig configure`, then inspect source-contract and no-d
 4. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
 5. `default_only_runtime_surfaces` must be inspected when non-empty.
 6. `source_to_runtime_explainability.json` is diagnostic.
-7. `source_contract_audit.json` is diagnostic.
-8. Do not add another runtime-write authority for real-deck usage.
-9. Concrete defects get targeted fixes; warnings do not become blockers.
+7. `source_evidence_closure.json` is diagnostic.
+8. `source_contract_audit.json` is diagnostic.
+9. Do not add another runtime-write authority for real-deck usage.
+10. Concrete defects get targeted fixes; warnings do not become blockers.
 
 The loop is intentionally narrow. It proves that a real deck can move through the existing normal path without turning source-depth warnings, closure freshness, default-only diagnostics, or mechanic visibility into runtime-write permission.
 
@@ -205,6 +206,7 @@ It does not grant apply permission. Use `reports/operator_summary.json` as the g
 | --- | --- | --- |
 | `reports/operator_summary.json` | normal operator gate | what to do next |
 | `reports/source_to_runtime_explainability.json` | diagnostic source-to-runtime projection | which exact source-to-runtime link is missing before a card can be stronger |
+| `reports/source_evidence_closure.json` | diagnostic source evidence closure | compact package-quality closure summary without apply authority |
 | `reports/source_contract_audit.json` | diagnostic source-to-runtime explanation | why each source claim did or did not lower to runtime config |
 | `reports/source_claim_gap_report.json` | secondary diagnostic evidence for card/source gap history | which card link is missing first |
 | `reports/strong_promotion_report.json` | promotion confirmation | whether the package can be called source-backed strong |
@@ -223,6 +225,11 @@ compact `source_to_runtime_explainability_summary` in `operator_summary.json` is
 non-blocking and does not grant apply permission.
 
 source_to_runtime_explainability.json is the primary card-readable repair map for source-to-runtime closure. It names emitted runtime files, missing runtime files, first missing links, closure lanes, and next source actions. source_claim_gap_report.json is secondary diagnostic evidence for older source-depth workflows; it must not become the first operator report and does not grant or deny apply permission.
+
+`reports/source_evidence_closure.json` is the compact diagnostic closure summary
+for package quality. It mirrors the operator/source-to-runtime summaries,
+default-only risk, next report, and first missing source-action counts without
+becoming an apply authority.
 
 Fresh package proof should show `reports/operator_summary.json.source_to_runtime_explainability_summary.closure_schema_current=true` and `cards_missing_closure=0`. If closure rows are missing, treat the package as stale or diagnostically incomplete and regenerate it; this is not a runtime apply gate. Default-only surfaces must not be silent: open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` before reading a package as qualitatively complete.
 

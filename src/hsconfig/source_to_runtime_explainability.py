@@ -222,6 +222,7 @@ def _card_rows(
                 audit_claim_rows,
             ),
         )
+        card_row["evidence_chain"] = _evidence_chain(str(card_id), related_claims)
         rows.append(card_row)
     return rows
 
@@ -341,6 +342,76 @@ def _closure_row(
         "first_missing_link": first_missing_link,
         "next_source_action": row.get("next_source_action"),
     }
+
+
+def _evidence_chain(
+    card_id: str,
+    related_claims: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for claim in related_claims:
+        emitted_files = _string_list(claim.get("emitted_runtime_files"))
+        not_emitted_files = _string_list(claim.get("not_emitted_runtime_files"))
+        runtime_files = sorted(
+            set(emitted_files)
+            | set(not_emitted_files)
+            | set(_card_expected_runtime_files(card_id, claim))
+        )
+        first_missing_link = _normalized_missing_link(claim.get("first_missing_link"))
+        why_not_emitted = _normalized_empty(claim.get("why_not_emitted"))
+        claim_kind = str(claim.get("claim_kind", ""))
+        rows.append(
+            {
+                "claim_id": str(claim.get("claim_id", "")),
+                "claim_kind": claim_kind,
+                "source_lane": str(
+                    claim.get("source_lane") or claim.get("policy_lane") or ""
+                ),
+                "source_type": str(claim.get("source_type") or ""),
+                "runtime_surface": _first_runtime_surface(runtime_files),
+                "runtime_files": runtime_files,
+                "resolution_reason": _evidence_chain_resolution(claim),
+                "first_missing_link": first_missing_link,
+                "first_missing_source_action": _first_missing_source_action(
+                    related_claims=[claim],
+                    first_missing_link=first_missing_link,
+                    why_not_emitted=why_not_emitted,
+                    claim_kind=claim_kind,
+                    next_source_action=_next_source_action(
+                        first_missing_link=first_missing_link,
+                        why_not_emitted=why_not_emitted,
+                        claim_kind=claim_kind,
+                    ),
+                ),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda row: (
+            LANE_RANK.get(str(row.get("source_lane", "report_only")), 99),
+            str(row.get("claim_id", "")),
+        ),
+    )
+
+
+def _first_runtime_surface(runtime_files: Sequence[str]) -> str:
+    surfaces = _runtime_surfaces_from_files(runtime_files)
+    return surfaces[0] if surfaces else ""
+
+
+def _evidence_chain_resolution(claim: Mapping[str, Any]) -> str:
+    if str(claim.get("builder_or_router_decision", "")) == "emitted":
+        return "emitted"
+    why_not_emitted = _normalized_empty(claim.get("why_not_emitted"))
+    if why_not_emitted is not None:
+        return why_not_emitted
+    first_missing_link = _normalized_missing_link(claim.get("first_missing_link"))
+    if first_missing_link is not None:
+        return first_missing_link
+    surface_gate_reason = _normalized_empty(claim.get("surface_gate_reason"))
+    if surface_gate_reason is not None:
+        return surface_gate_reason
+    return str(claim.get("policy_lane") or "report_only")
 
 
 def _normalized_audit(
