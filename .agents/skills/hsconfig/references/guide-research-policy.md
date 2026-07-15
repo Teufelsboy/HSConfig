@@ -30,6 +30,17 @@ Rejected source types:
 - stale claims that contradict current card text
 - advice that cannot be mapped to Mulligan, CardID behavior, Combo, or GlobalValues posture
 
+## Source Lanes
+
+- `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
+- `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
+- `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
+- `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
+- `policy_fallback`: internal autonomous rule used to keep packages useful.
+- `default_runtime`: generated default row with no source claim.
+
+Only `official_static_semantics`, `deck_matched_public_guide`, and carefully documented `archetype_matched_public_guide` may promote claims. `statistical_enrichment`, `policy_fallback`, and `default_runtime` must not prove `SOURCE_BACKED_STRONG` by themselves.
+
 Short evidence row shape for `--source-evidence-json`:
 
 ```json

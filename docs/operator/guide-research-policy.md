@@ -20,6 +20,17 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 - stale claims that contradict current card text
 - claims that cannot be mapped to a documented runtime surface or report-only note
 
+## Source Lanes
+
+- `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
+- `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
+- `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
+- `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
+- `policy_fallback`: internal autonomous rule used to keep packages useful.
+- `default_runtime`: generated default row with no source claim.
+
+Only `official_static_semantics`, `deck_matched_public_guide`, and carefully documented `archetype_matched_public_guide` may promote claims. `statistical_enrichment`, `policy_fallback`, and `default_runtime` must not prove `SOURCE_BACKED_STRONG` by themselves.
+
 ## Structured Source Format
 
 Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.

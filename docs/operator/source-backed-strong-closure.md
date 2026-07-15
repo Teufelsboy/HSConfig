@@ -20,6 +20,26 @@ The fixture matrix also documents `decision_families_proven` and `known_coverage
 
 runtime apply is no longer blocked by source strength. The representative matrix still preserves source-strength truth, but `VALID_PACKAGE` plus `runtime_load_safe=true` is enough for an initial load-safe runtime write. Source-informed rows remain valuable because they expose confidence debt, not because they should block usable package handoff.
 
+## SOURCE_BACKED_STRONG Contract
+
+HSConfig always attempts to build a technically valid package for a decoded deck.
+`SOURCE_BACKED_STRONG` is not required for package generation or load-safe apply.
+
+A package may be `SOURCE_BACKED_STRONG` only when:
+
+- `technical_status=VALID_PACKAGE`
+- `runtime_apply_allowed=true`
+- every emitted normal runtime row is tied to a non-default source claim or an explicit non-promoting policy fallback
+- `default_only_runtime_surfaces=[]`
+- policy-backed rows do not count as strong evidence
+- snippet-only sources do not count as strong evidence
+- static-only claims are marked as `contract_only` or `review_only` unless the runtime surface can safely represent them
+
+An explicit policy fallback may keep a package useful and load-safe, but it
+keeps the affected row partial until a promoting source lane covers it.
+
+Darkbishop Benedictus is the canonical boundary case: the start-of-game hero-power transform belongs in contract/CardID semantics, not in opening-hand mulligan keep logic unless an explicit mulligan source says to keep the card.
+
 ## Promotion Rule
 
 A matrix row may move from `source_informed_valid_fixture` to `core_source_backed_fixture` only when a fixture prepare run proves:
