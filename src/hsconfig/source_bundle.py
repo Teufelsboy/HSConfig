@@ -39,7 +39,7 @@ def _first_missing_source_action(
     if default_only:
         return "replace_default_only_runtime_surface_with_source_or_policy_claim"
     for row in card_rows:
-        action = row.get("next_source_action")
+        action = row.get("first_missing_source_action") or row.get("next_source_action")
         if action and action != "none":
             return _bundle_source_action(str(action), row)
     return "none"

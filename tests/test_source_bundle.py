@@ -51,3 +51,23 @@ def test_source_bundle_exposes_source_claim_runtime_chain():
     assert bundle["promotion"]["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert bundle["promotion"]["first_missing_source_action"] == "none"
     assert bundle["card_coverage"][0]["card_id"] == "SW_448"
+
+
+def test_source_bundle_prefers_first_missing_source_action_over_legacy_next_action():
+    bundle = build_source_bundle(
+        deck_name="ThinDeck",
+        deck_code="AAEBA-test",
+        source_records=[],
+        claims=[],
+        operator_summary={"default_only_runtime_surfaces": []},
+        explainability_report={
+            "card_rows": [
+                {
+                    "first_missing_source_action": "add_explicit_mulligan_source",
+                    "next_source_action": "map_claim_kind_or_keep_report_only",
+                }
+            ]
+        },
+    )
+
+    assert bundle["promotion"]["first_missing_source_action"] == "add_explicit_mulligan_source"

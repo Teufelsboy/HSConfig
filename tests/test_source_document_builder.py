@@ -3,6 +3,7 @@ from hsconfig.source_document_model import (
     SUPPORTED_CLAIM_READINESS,
     SUPPORTED_SPECIFICITY_STATUSES,
     claim_can_lower_to_runtime,
+    qualify_source_claim,
 )
 from hsconfig.source_document_builder import build_source_document_bundle
 
@@ -45,6 +46,82 @@ def test_source_document_builder_atomizes_claims_and_tracks_coverage():
     assert bundle["claim_coverage_report"]["cards"]["CARD_A"]["coverage_status"] == "guide_backed"
     assert bundle["claim_coverage_report"]["cards"]["CARD_B"]["coverage_status"] == "uncovered_low_confidence"
     assert bundle["source_evidence_index"][0]["source_url"] == "https://example.invalid/guide"
+
+
+def test_source_document_builder_carries_strong_source_quality_metadata():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/fixture-guide",
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "deck_name": "Fixture",
+            "source_visibility": "full_text",
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "stance": "keep",
+                    "evidence_text_short": "Mulligan: Keep Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+    qualified = qualify_source_claim(bundle["claims"][0])
+
+    assert bundle["claims"][0]["source_visibility"] == "full_text"
+    assert bundle["claims"][0]["deck_match_scope"] == "deck_or_archetype_matched"
+    assert qualified["source_lane"] == "deck_matched_public_guide"
+    assert qualified["strong_promotion_eligible"] is True
+
+
+def test_source_document_builder_preserves_explicit_claim_id_in_coverage():
+    deck_identity = {
+        "deck_name": "Fixture",
+        "cards": [{"card_id": "CARD_A", "count": 2, "name": "Card A"}],
+    }
+    source_documents = [
+        {
+            "source_url": "https://example.invalid/fixture-guide",
+            "source_title": "Fixture Guide",
+            "source_family": "guide",
+            "retrieved_at": "2026-07-07T00:00:00Z",
+            "deck_name": "Fixture",
+            "claims": [
+                {
+                    "claim_id": "claim_explicit_fixture_keep",
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["CARD_A"],
+                    "stance": "keep",
+                    "evidence_text_short": "Mulligan: Keep Card A.",
+                    "source_confidence": "high",
+                }
+            ],
+        }
+    ]
+
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_documents,
+    )
+
+    claim = bundle["claims"][0]
+    coverage = bundle["claim_coverage_report"]["cards"]["CARD_A"]
+    assert claim["claim_id"] == "claim_explicit_fixture_keep"
+    assert claim["source_claim_ids"] == ["claim_explicit_fixture_keep"]
+    assert coverage["source_claim_ids"] == ["claim_explicit_fixture_keep"]
 
 
 def test_source_document_builder_preserves_mulligan_selectors():

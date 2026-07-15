@@ -34,10 +34,14 @@ def compile_source_search_records(
             "source_family": source_family or "public_page",
             "retrieved_at": _text(acquired.get("retrieved_at", "")) or _iso_datetime(current_date),
             "deck_match": _deck_match(deck_name, acquired),
+            "deck_match_scope": _text(acquired.get("deck_match_scope", "")) or "unknown",
             "mulligan": {"keep_card_ids": []},
             "claims": [],
             "source_claim_compiler_index": index,
         }
+        for key in ("published_at", "publication_date", "published_date"):
+            if _text(acquired.get(key, "")):
+                compiled[key] = _text(acquired[key])
 
         if source_family in GUIDE_FAMILIES:
             _compile_guide_claims(compiled, deck_identity, text)
@@ -310,12 +314,19 @@ def _positive_keep_sentences(text: str) -> list[str]:
     result: list[str] = []
     for sentence in _sentences(text):
         lowered = sentence.lower()
-        if "keep" not in lowered:
+        if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
             continue
         if _is_negative_keep_sentence(lowered):
             continue
         result.append(sentence)
     return result
+
+
+def _has_explicit_mulligan_context(lowered_sentence: str) -> bool:
+    return any(
+        marker in lowered_sentence
+        for marker in ("mulligan", "opening hand", "opening-hand")
+    )
 
 
 def _is_negative_keep_sentence(lowered_sentence: str) -> bool:

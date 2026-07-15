@@ -23,6 +23,15 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "notes": "diagnostic only; does not replace operator_summary.json",
         },
         {
+            "file": "reports/source_bundle.json",
+            "producer": "configure",
+            "authority": "diagnostic_source_bundle",
+            "classification": "diagnostic",
+            "answers": "the collected source-to-runtime diagnostic chain for configure",
+            "open_order": "12",
+            "notes": "diagnostic only; does not replace operator_summary.json",
+        },
+        {
             "file": "reports/source_contract_audit.json",
             "authority": "diagnostic_source_to_runtime_explanation",
             "classification": "diagnostic",

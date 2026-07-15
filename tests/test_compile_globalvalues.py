@@ -157,6 +157,7 @@ def test_compile_globalvalues_adds_known_overlay_key_missing_from_runtime_baseli
 
     assert config["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
     assert profile["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert profile["expected_overlay_keys"] == ["MyHeroPowerValue"]
     assert profile["key_count"] == len(config)
     assert profile["keys"]["MyHeroPowerValue"]["decision"] == "overlay_changed"
 
@@ -278,6 +279,7 @@ def test_compile_globalvalues_authority_matrix_baseline_blocks_implicit_overlays
     assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.00"
     assert result["config"]["GlobalDivineShield"]["values"][0]["value"] == "1.00"
     assert result["profile"]["changed_keys"] == []
+    assert result["profile"]["expected_overlay_keys"] == []
     assert result["profile"]["keys"]["MyHeroPowerValue"]["decision"] == "baseline_confirmed"
 
 
@@ -319,6 +321,7 @@ def test_compile_globalvalues_authority_matrix_uses_only_allowed_rows_and_reason
     assert result["config"]["SecondTurnValueWeight"]["values"][0]["value"] == "1"
     assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
     assert result["profile"]["changed_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["expected_overlay_keys"] == ["MyHeroPowerValue"]
     profile = result["profile"]["keys"]["MyHeroPowerValue"]
     assert profile["decision"] == "overlay_changed"
     assert profile["reason"] == "hero_power_pressure_prioritizes_hero_power"

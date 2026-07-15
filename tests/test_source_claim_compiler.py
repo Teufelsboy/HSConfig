@@ -36,7 +36,7 @@ def test_compile_source_search_records_extracts_atomic_shadowpriest_claims():
                 ],
             },
             "normalized_text": (
-                "Keep Papercraft Angel, Twilight Deceptor, Raise Dead, and "
+                "Mulligan: Keep Papercraft Angel, Twilight Deceptor, Raise Dead, and "
                 "Shadowbomber. Do not keep any 4 cost or higher cards. "
                 "Darkbishop Benedictus enables the Shadow hero power. Mind "
                 "Spike can clear the enemy board or go face against slower decks."
@@ -158,7 +158,10 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
                 "archetype": "shadowpriest",
                 "matched_card_ids": ["TOY_381", "BAR_735"],
             },
-            "normalized_text": "Do not keep Darkbishop Benedictus. Keep Papercraft Angel.",
+            "normalized_text": (
+                "Mulligan: Do not keep Darkbishop Benedictus. "
+                "Mulligan: Keep Papercraft Angel."
+            ),
         }
     ]
 
@@ -170,12 +173,14 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
     )
 
     assert payload["records"][0]["mulligan"]["keep_card_ids"] == ["TOY_381"]
-    assert payload["records"][0]["mulligan"]["evidence_text_short"] == "Keep Papercraft Angel"
+    assert payload["records"][0]["mulligan"]["evidence_text_short"] == (
+        "Mulligan: Keep Papercraft Angel"
+    )
     assert {
         "claim_kind": "mulligan_keep",
         "stance": "keep",
         "scope": "card",
-        "evidence_text_short": "Keep Papercraft Angel",
+        "evidence_text_short": "Mulligan: Keep Papercraft Angel",
         "source_confidence": "high",
         "cards": ["TOY_381"],
         "timing": "mulligan",
@@ -200,7 +205,7 @@ def test_compile_source_search_records_limits_hero_power_transform_to_enabler():
             },
             "normalized_text": (
                 "Darkbishop Benedictus enables the Shadow hero power. "
-                "Keep Papercraft Angel and Twilight Deceptor."
+                "Mulligan: Keep Papercraft Angel and Twilight Deceptor."
             ),
         }
     ]
@@ -264,3 +269,31 @@ def test_compile_source_search_records_uses_gameplan_for_hero_power_target_text(
         ),
         "source_confidence": "high",
     } in claims
+
+
+def test_compile_source_search_records_does_not_treat_generic_gameplay_keep_prose_as_mulligan():
+    deck_identity = {
+        "deck_name": "FireMage",
+        "cards": [{"card_id": "CS2_029", "name": "Fireball", "cost": 4, "count": 2}],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/firemage",
+            "source_title": "Fire Mage gameplay notes",
+            "source_family": "guide",
+            "normalized_text": "Use Fireball to keep pressure on the opponent.",
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="FireMage",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    assert payload["records"][0]["mulligan"]["keep_card_ids"] == []
+    assert not any(
+        claim["claim_kind"] == "mulligan_keep"
+        for claim in payload["records"][0]["claims"]
+    )

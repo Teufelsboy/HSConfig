@@ -64,6 +64,9 @@ def compile_globalvalues(
         for key in overlays
         if key not in default_values and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
     )
+    expected_overlay_keys = sorted(
+        key for key in overlays if key not in TOP_LEVEL_KEYS
+    )
 
     config = {
         key: deepcopy(value) if key in TOP_LEVEL_KEYS else _values_block(value)
@@ -134,6 +137,7 @@ def compile_globalvalues(
         "profile": {
             "key_count": len(profile_keys),
             "generated_overlay_keys": generated_overlay_keys,
+            "expected_overlay_keys": expected_overlay_keys,
             "changed_keys": changed_keys,
             "unchanged_keys": unchanged_keys,
             "keys": key_profiles,

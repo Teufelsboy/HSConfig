@@ -103,17 +103,20 @@ def collect_public_source_records(
             continue
 
         parsed = extract_visible_text(body.decode("utf-8", errors="replace"))
+        deck_match, deck_match_scope = _deck_match_evidence(
+            deck_name,
+            deck_identity,
+            parsed["title"],
+            parsed["text"],
+        )
         records.append(
             {
                 "source_url": url,
                 "source_title": parsed["title"] or url,
                 "source_family": _infer_source_family(url, parsed["text"]),
                 "retrieved_at": retrieved_at,
-                "deck_match": {
-                    "deck_name": deck_name,
-                    "archetype": _slug(deck_name),
-                    "matched_card_ids": _matched_card_ids(deck_identity, parsed["text"]),
-                },
+                "deck_match": deck_match,
+                "deck_match_scope": deck_match_scope,
                 "normalized_text": parsed["text"],
             }
         )
@@ -227,6 +230,34 @@ def _matched_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
     return matches
 
 
+def _deck_match_evidence(
+    deck_name: str,
+    deck_identity: Mapping[str, Any],
+    title: str,
+    text: str,
+) -> tuple[dict[str, Any], str]:
+    matched_card_ids = _matched_card_ids(deck_identity, text)
+    deck_name_evidenced = bool(_norm(deck_name)) and _norm(deck_name) in _norm(
+        f"{title} {text}"
+    )
+    if deck_name_evidenced and matched_card_ids:
+        scope = "deck_or_archetype_matched"
+    elif deck_name_evidenced:
+        scope = "title_or_content_match"
+    elif matched_card_ids:
+        scope = "card_overlap"
+    else:
+        scope = "unknown"
+    return (
+        {
+            "deck_name": deck_name if scope != "unknown" else "unknown",
+            "archetype": _slug(deck_name) if deck_name_evidenced else "unknown",
+            "matched_card_ids": matched_card_ids,
+        },
+        scope,
+    )
+
+
 def _infer_source_family(url: str, text: str) -> str:
     lowered = f"{url} {text}".lower()
     if "mulligan" in lowered or "guide" in lowered or "keep " in lowered:
@@ -330,4 +361,8 @@ def _iso_datetime(current_date: str | date | None) -> str:
 
 
 def _slug(value: str) -> str:
+    return "".join(ch.lower() for ch in value if ch.isalnum())
+
+
+def _norm(value: str) -> str:
     return "".join(ch.lower() for ch in value if ch.isalnum())

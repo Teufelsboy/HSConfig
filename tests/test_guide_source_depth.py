@@ -296,6 +296,9 @@ def test_diagnostic_static_report_only_claims_do_not_block_source_backed_depth()
                     "trust_ceiling": "guide",
                     "cards": ["CARD_GUIDE"],
                     "source_family": "guide",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "deck_or_archetype_matched",
+                    "source_visibility": "full_text",
                 },
                 {
                     "claim_kind": "mechanic_usage",
@@ -338,6 +341,9 @@ def test_guide_source_depth_separates_strong_lowerable_from_report_only():
                     "trust_ceiling": "guide",
                     "cards": ["CARD_A"],
                     "source_family": "guide",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "deck_or_archetype_matched",
+                    "source_visibility": "full_text",
                 },
                 {
                     "claim_kind": "card_role",
@@ -363,3 +369,33 @@ def test_guide_source_depth_separates_strong_lowerable_from_report_only():
     assert report["summary"]["report_only_claims"] == 1
     assert report["summary"]["blocked_runtime_claims"] == 1
     assert report["source_depth_status"] == "needs_more_research"
+
+
+def test_guide_source_depth_does_not_count_unqualified_guide_claim_as_strong():
+    result = build_guide_source_depth_report(
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_type": "public_guide",
+                    "source_lane": "source_unclassified",
+                    "deck_match_scope": "unknown",
+                    "cards": ["CARD_001"],
+                }
+            ]
+        },
+        config_readiness_report={
+            "summary": {"total_cards": 1},
+            "cards": {
+                "CARD_001": {
+                    "readiness_lane": "runtime_emitted",
+                    "first_missing_link": "none",
+                }
+            },
+        },
+    )
+
+    assert result["summary"]["strong_lowerable_claims"] == 0
+    assert result["source_depth_status"] != "source_backed"

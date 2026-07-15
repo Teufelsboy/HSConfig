@@ -237,19 +237,46 @@ def test_source_family_card_text_hero_power_transform_promotes_as_official_stati
 
 
 @pytest.mark.parametrize("source_family", ["guide", "mulligan_guide"])
-def test_source_family_public_guides_promote_in_public_guide_lane(source_family):
+def test_source_family_public_guides_promote_when_their_deck_match_is_evidenced(source_family):
     claim = qualify_source_claim(
         {
             "claim_id": f"claim-public-guide-{source_family}",
             "claim_kind": "mulligan_keep",
             "source_family": source_family,
             "cards": ["EX1_001"],
+            "source_visibility": "full_text",
+            "deck_match_scope": "deck_or_archetype_matched",
         }
     )
 
     assert claim["source_lane"] == "deck_matched_public_guide"
     assert claim["promotion_eligible"] is True
     assert claim["strong_static_claim"] is True
+    assert claim["strong_promotion_eligible"] is True
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"source_visibility": "snippet_only", "deck_match_scope": "deck_or_archetype_matched"},
+        {"source_visibility": "unknown", "deck_match_scope": "deck_or_archetype_matched"},
+        {"source_lane": "source_unclassified", "deck_match_scope": "unknown"},
+        {"source_type": "policy_backed_autonomous_mulligan"},
+        {"source_type": "generated_default"},
+        {"source_type": "official_card_data"},
+    ],
+)
+def test_weak_or_static_quality_metadata_cannot_be_strong_promotion_evidence(metadata):
+    claim = qualify_source_claim(
+        {
+            "claim_kind": "mulligan_keep",
+            "source_type": "public_guide",
+            "cards": ["EX1_001"],
+            **metadata,
+        }
+    )
+
+    assert claim["strong_promotion_eligible"] is False
 
 
 def test_string_false_opening_hand_relevant_stays_false():

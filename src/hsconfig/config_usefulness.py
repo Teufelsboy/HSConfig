@@ -174,6 +174,7 @@ def _cardid_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str
         status = "thin"
     return {
         "status": status,
+        "default_only": bool(rows) and not meaningful_rows,
         "meaningful_cardid_row_count": len(meaningful_rows),
         "cards_with_meaningful_cardid_rows": len(cards),
         "runtime_emitted_card_count": runtime_emitted,
@@ -196,6 +197,7 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
         status = "thin"
     return {
         "status": status,
+        "default_only": combo_expected and not combos,
         "combo_expected": combo_expected,
         "combo_row_count": len(combos),
         "suppressed_combo_claim_count": len(suppressed),
@@ -205,11 +207,14 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
 def _globalvalues_surface(report: dict[str, Any]) -> dict[str, Any]:
     changed_keys = _list(report.get("changed_keys"))
     unchanged_keys = _list(report.get("unchanged_keys"))
+    expected_overlay_keys = _list(report.get("expected_overlay_keys"))
     profiled_key_count = len(changed_keys) + len(unchanged_keys)
     return {
         "status": "rich" if changed_keys else "thin",
+        "default_only": bool(expected_overlay_keys) and not changed_keys,
         "changed_key_count": len(changed_keys),
         "unchanged_key_count": len(unchanged_keys),
+        "expected_overlay_key_count": len(expected_overlay_keys),
         "profiled_key_count": profiled_key_count,
     }
 

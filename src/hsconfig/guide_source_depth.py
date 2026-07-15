@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import claim_can_lower_to_runtime, qualify_source_claim
 
 
 SUPPORTED_READINESS_LANES = {
@@ -190,9 +190,11 @@ def _claim_kind(claim: dict[str, Any]) -> str:
 
 
 def _is_strong_lowerable_claim(claim: dict[str, Any]) -> bool:
+    qualified = qualify_source_claim(claim)
     return (
         claim_can_lower_to_runtime(claim)
         and str(claim.get("claim_readiness", "")).lower() == "guide_backed"
+        and qualified["strong_promotion_eligible"] is True
         and _claim_source_family(claim).lower()
         not in {"hearthstonejson_static_semantics", "static_semantics", "metadata", "card_text"}
     )

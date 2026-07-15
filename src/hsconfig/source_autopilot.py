@@ -41,8 +41,12 @@ def rank_public_sources(
             for card_id in _as_list(match.get("matched_card_ids", []))
             if _text(card_id)
         }
-        deck_name_match = _norm(match.get("deck_name", "")) == normalized_deck_name
         card_overlap = len(deck_card_ids & matched_ids)
+        deck_name_match = _has_independent_deck_match(
+            row,
+            normalized_deck_name,
+            card_overlap=card_overlap,
+        )
         score = 0
         if family in GUIDE_FAMILIES:
             score += 60
@@ -53,7 +57,7 @@ def rank_public_sources(
         if deck_name_match:
             score += 25
         score += min(card_overlap, 10) * 3
-        if _record_year(row) == current_year:
+        if current_year is not None and _publication_year(row) == current_year:
             score += 10
         if not _is_public_https(row.get("source_url", "")):
             score -= 100
@@ -245,14 +249,23 @@ def _build_report(
         for row in guide_rows
         if _is_runtime_contract_candidate(row)
     ]
+    strong_lowerable_guide_rows = [
+        row for row in lowerable_guide_rows if _is_strong_guide_lane(row)
+    ]
     card_specific_lowerable_guide_rows = [
         row
-        for row in lowerable_guide_rows
+        for row in strong_lowerable_guide_rows
         if _row_has_card_specific_claim(row)
+    ]
+    apply_surface_guide_rows = [
+        row
+        for row in strong_lowerable_guide_rows
+        if _is_apply_surface_candidate(row)
     ]
     warnings = verification.get("warnings", [])
     strong_candidate = (
         bool(card_specific_lowerable_guide_rows)
+        and bool(apply_surface_guide_rows)
         and not draft.get("unresolved_mentions")
         and verification.get("status") == "passed"
         and not warnings
@@ -311,6 +324,15 @@ def _row_has_card_specific_claim(row: Mapping[str, Any]) -> bool:
     )
 
 
+def _is_apply_surface_candidate(row: Mapping[str, Any]) -> bool:
+    claim_kind = _text(row.get("claim_kind", ""))
+    if claim_kind in {"mulligan_keep", "mulligan_discard", "hero_power_transform"}:
+        return False
+    if not _row_has_card_specific_claim(row):
+        return False
+    return _is_runtime_contract_candidate(row)
+
+
 def _source_base(
     deck_name: str,
     source: Mapping[str, Any],
@@ -319,12 +341,17 @@ def _source_base(
     match = source.get("deck_match", {})
     if not isinstance(match, Mapping):
         match = {}
+    source_rank_lane = _text(source.get("source_rank_lane", ""))
+    deck_match_scope = _deck_match_scope(source, deck_name)
     return {
         "source_url": _text(source.get("source_url", "")),
         "source_title": _text(source.get("source_title", "")),
         "source_family": _source_family_for_documents(source),
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
-        "deck_name": deck_name,
+        "source_visibility": _text(source.get("source_visibility", "full_text")),
+        "source_lane": _source_lane_for_rank(source_rank_lane, deck_match_scope),
+        "deck_match_scope": deck_match_scope,
+        "deck_name": _text(match.get("deck_name", "")),
         "archetype": _text(match.get("archetype", "")),
     }
 
@@ -365,7 +392,8 @@ def _rank_lane(
         family in GUIDE_FAMILIES
         and deck_name_match
         and card_overlap > 0
-        and _record_year(source) == current_year
+        and current_year is not None
+        and _publication_year(source) == current_year
     ):
         return "guide_current_deck_match"
     if family in GUIDE_FAMILIES and card_overlap > 0:
@@ -375,6 +403,15 @@ def _rank_lane(
     if family in STATIC_FAMILIES:
         return "static_semantics_only"
     return "source_unclassified"
+
+
+def _source_lane_for_rank(source_rank_lane: str, deck_match_scope: str) -> str:
+    if source_rank_lane in {"guide_current_deck_match", "guide_card_overlap"} and deck_match_scope in {
+        "deck_matched",
+        "deck_or_archetype_matched",
+    }:
+        return "deck_matched_public_guide"
+    return source_rank_lane or "unknown"
 
 
 def _is_non_opening_hand_effect_card(card: Mapping[str, Any]) -> bool:
@@ -400,10 +437,54 @@ def _deck_card_ids(deck_identity: Mapping[str, Any]) -> set[str]:
 
 
 def _record_year(record: Mapping[str, Any]) -> int | None:
-    retrieved = _text(record.get("retrieved_at", ""))
-    if len(retrieved) >= 4 and retrieved[:4].isdigit():
-        return int(retrieved[:4])
+    return _publication_year(record)
+
+
+def _publication_year(record: Mapping[str, Any]) -> int | None:
+    published = _text(
+        record.get("published_at")
+        or record.get("publication_date")
+        or record.get("published_date")
+    )
+    if len(published) >= 4 and published[:4].isdigit():
+        return int(published[:4])
     return None
+
+
+def _has_independent_deck_match(
+    source: Mapping[str, Any],
+    normalized_deck_name: str,
+    *,
+    card_overlap: int,
+) -> bool:
+    if not normalized_deck_name:
+        return False
+    source_text = _norm(
+        f"{_text(source.get('source_title', ''))} "
+        f"{_text(source.get('normalized_text', ''))}"
+    )
+    match = source.get("deck_match", {})
+    declared_deck_name = _norm(match.get("deck_name", "")) if isinstance(match, Mapping) else ""
+    return declared_deck_name == normalized_deck_name and (
+        normalized_deck_name in source_text or card_overlap > 0
+    )
+
+
+def _deck_match_scope(source: Mapping[str, Any], deck_name: str) -> str:
+    explicit = _text(source.get("deck_match_scope", ""))
+    if explicit:
+        return explicit
+    match = source.get("deck_match", {})
+    if not isinstance(match, Mapping):
+        match = {}
+    matched_ids = _as_list(match.get("matched_card_ids", []))
+    if _has_independent_deck_match(source, _norm(deck_name), card_overlap=len(matched_ids)):
+        return "deck_or_archetype_matched"
+    return "unknown"
+
+
+def _is_strong_guide_lane(row: Mapping[str, Any]) -> bool:
+    return _text(row.get("source_lane", "")) == "deck_matched_public_guide"
 
 
 def _current_year(current_date: str | date | None) -> int | None:

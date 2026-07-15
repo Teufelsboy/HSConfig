@@ -16,6 +16,8 @@ from hsconfig.commands.source_workflow import (
 )
 from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
+from hsconfig.operator_summary import refresh_generated_file_accounting
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
 
@@ -231,6 +233,17 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             explainability_report=explainability_report,
         ),
     )
+    generated_files = sorted(
+        {*(str(path) for path in operator_summary.get("generated_files", [])), "reports/source_bundle.json"}
+    )
+    output_ownership_manifest = build_output_ownership_manifest(generated_files)
+    write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
+    operator_summary = refresh_generated_file_accounting(
+        operator_summary,
+        generated_files=generated_files,
+        output_ownership_manifest=output_ownership_manifest,
+    )
+    write_json(reports_dir / "operator_summary.json", operator_summary)
 
     try:
         validate_payload_result, validate_status = validate_payload(

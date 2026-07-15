@@ -33,8 +33,11 @@ def draft_source_documents(
                 "source_title": key[1],
                 "source_family": key[2],
                 "retrieved_at": key[3],
-                "deck_name": str(row.get("deck_name", deck_name)),
+                "deck_name": str(row.get("deck_name", "")),
                 "archetype": str(row.get("archetype", "")),
+                "source_lane": str(row.get("source_lane", "unknown")),
+                "deck_match_scope": str(row.get("deck_match_scope", "unknown")),
+                "source_visibility": str(row.get("source_visibility", "unknown")),
                 "claims": [],
             },
         )
@@ -132,6 +135,9 @@ def _claim_from_row(row: dict[str, Any], cards: list[str]) -> dict[str, Any]:
         "option_card_id",
         "choice_card_id",
         "semantic_qualifiers",
+        "source_lane",
+        "deck_match_scope",
+        "source_visibility",
         *QUALIFIER_KEYS,
     ):
         if key in row:

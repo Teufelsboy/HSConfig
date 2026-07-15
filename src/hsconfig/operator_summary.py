@@ -308,6 +308,22 @@ def _output_ownership_summary(report: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def refresh_generated_file_accounting(
+    operator_summary: dict[str, Any],
+    *,
+    generated_files: list[str],
+    output_ownership_manifest: dict[str, Any],
+) -> dict[str, Any]:
+    """Refresh post-prepare diagnostic artifacts without changing apply authority."""
+    refreshed = dict(operator_summary)
+    refreshed["generated_files"] = sorted(str(path) for path in generated_files)
+    refreshed["output_ownership_summary"] = _output_ownership_summary(
+        output_ownership_manifest
+    )
+    refreshed["report_ownership"] = build_report_ownership()
+    return refreshed
+
+
 def _runtime_unsupported_condition_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         row

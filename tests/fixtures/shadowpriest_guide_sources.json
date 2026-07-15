@@ -140,6 +140,7 @@
         "claim_kind": "combo_sequence",
         "cards": ["SW_446", "DS1_233"],
         "sequence": ["SW_446", "DS1_233"],
+        "timing_kind": "same_turn",
         "values": ["12", "10"],
         "stance": "amplify_burn_reach",
         "evidence_text_short": "Pair Voidtouched Attendant with Mind Blast when available to amplify burn reach.",

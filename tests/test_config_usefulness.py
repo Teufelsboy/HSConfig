@@ -310,3 +310,28 @@ def test_config_usefulness_surfaces_match_expected_runtime_surface_registry():
     assert tuple(sorted(usefulness["surfaces"])) == tuple(
         sorted(EXPECTED_RUNTIME_SURFACES)
     )
+
+
+def test_config_usefulness_marks_unchanged_and_baseline_normal_surfaces_default_only():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="SOURCE_BACKED_STRONG",
+        config_readiness_summary={"cards_needing_combo_sequence": 1},
+        mulligan_plan_report={
+            "rules": [{"card": "CARD_001", "selector_kind": "card", "action": "hold"}],
+            "quality": {"has_concrete_keeps": True},
+        },
+        card_behavior_plan_report={
+            "rows": [{"card_id": "CARD_001", "meaningful_runtime_surface": False}],
+        },
+        combo_plan_report={"combos": [], "suppressed": []},
+        globalvalues_profile_report={
+            "changed_keys": [],
+            "unchanged_keys": ["EnemySecretValue"],
+            "expected_overlay_keys": ["EnemySecretValue"],
+        },
+    )
+
+    assert usefulness["surfaces"]["globalvalues"]["default_only"] is True
+    assert usefulness["surfaces"]["cardid_behavior"]["default_only"] is True
+    assert usefulness["surfaces"]["combo"]["default_only"] is True

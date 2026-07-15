@@ -94,6 +94,35 @@ def test_collect_public_source_records_keeps_fetch_failures_non_blocking():
     )
 
 
+def test_collect_public_source_records_does_not_assign_requested_deck_without_page_evidence():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_slug": "thindeck",
+        "deck_code_hash": "sha256:thin",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    def unrelated_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        return 200, "text/html", b"<html><title>Other Deck</title><p>Unrelated page.</p></html>"
+
+    payload = collect_public_source_records(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/unrelated"],
+        current_date="2026-07-15",
+        fetcher=unrelated_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    record = payload["source_records"][0]
+    assert record["deck_match"]["deck_name"] == "unknown"
+    assert record["deck_match"]["matched_card_ids"] == []
+    assert record["deck_match_scope"] == "unknown"
+    assert "publication_date" not in record
+
+
 def test_validate_public_source_url_rejects_local_and_private_targets():
     assert validate_public_source_url("https://example.test/guide", resolver=_public_resolver) is None
     assert validate_public_source_url("http://example.test/guide") == "non_public_https_url"

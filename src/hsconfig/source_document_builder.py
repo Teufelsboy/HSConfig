@@ -118,6 +118,7 @@ def build_source_document_bundle(
             normalized, unsupported = _normalize_source_claim(
                 raw_claim,
                 document=document,
+                deck_identity=deck_identity,
                 source_ref=source_ref,
                 claim_index=claim_index,
                 known_card_ids=deck_card_ids,
@@ -161,6 +162,7 @@ def _normalize_source_claim(
     raw_claim: dict[str, Any],
     *,
     document: dict[str, Any],
+    deck_identity: dict[str, Any],
     source_ref: str,
     claim_index: int,
     known_card_ids: set[str],
@@ -217,6 +219,10 @@ def _normalize_source_claim(
     source_refs = [source_ref, *[str(item) for item in raw_claim.get("source_refs", [])]]
     if document.get("source_url"):
         source_refs.append(str(document["source_url"]))
+    deck_match_scope = _claim_deck_match_scope(raw_claim, document, deck_identity)
+    deck_name = _clean_text(document.get("deck_name", ""))
+    if not deck_name and deck_match_scope in {"deck_matched", "deck_or_archetype_matched"}:
+        deck_name = _clean_text(deck_identity.get("deck_name", ""))
     claim = {
         "claim_kind": claim_kind,
         "claim_type": _legacy_claim_type(claim_kind),
@@ -226,6 +232,8 @@ def _normalize_source_claim(
         "source_title": str(document.get("source_title", "")),
         "source_family": str(document.get("source_family", "guide")),
         "retrieved_at": str(document.get("retrieved_at", "")),
+        "source_visibility": _claim_source_visibility(raw_claim, document),
+        "deck_match_scope": deck_match_scope,
         "freshness_status": freshness_status,
         "cards": cards,
         "scope": scope,
@@ -245,6 +253,13 @@ def _normalize_source_claim(
         "support_status": _support_status_for_readiness(readiness),
         "source_refs": list(dict.fromkeys(source_refs)),
     }
+    source_lane = _claim_source_lane(raw_claim, document)
+    if source_lane:
+        claim["source_lane"] = source_lane
+    if deck_name:
+        claim["deck_name"] = deck_name
+    if document.get("archetype"):
+        claim["archetype"] = str(document.get("archetype", ""))
     if "sequence" in raw_claim:
         claim["sequence"] = _normalize_cards(raw_claim["sequence"])
     if "values" in raw_claim:
@@ -285,9 +300,62 @@ def _normalize_source_claim(
     )
     if evidence:
         claim["evidence_hash"] = sha256(evidence.encode("utf-8")).hexdigest()[:16]
-    claim["claim_id"] = _claim_id(claim)
+    claim["claim_id"] = _clean_text(raw_claim.get("claim_id", "")) or _claim_id(claim)
     claim["source_claim_ids"] = [claim["claim_id"]]
     return claim, None
+
+
+def _claim_source_visibility(
+    raw_claim: dict[str, Any],
+    document: dict[str, Any],
+) -> str:
+    value = _clean_text(raw_claim.get("source_visibility", ""))
+    if value:
+        return value
+    value = _clean_text(document.get("source_visibility", ""))
+    return value or "full_text"
+
+
+def _claim_source_lane(
+    raw_claim: dict[str, Any],
+    document: dict[str, Any],
+) -> str:
+    for container in (raw_claim, document):
+        value = _clean_text(container.get("source_lane", ""))
+        if value and value.lower() != "unknown":
+            return value
+    return ""
+
+
+def _claim_deck_match_scope(
+    raw_claim: dict[str, Any],
+    document: dict[str, Any],
+    deck_identity: dict[str, Any],
+) -> str:
+    for container in (raw_claim, document):
+        value = _clean_text(container.get("deck_match_scope", ""))
+        if value and value.lower() != "unknown":
+            return value
+    if _clean_text(document.get("deck_name", "")) or _clean_text(
+        document.get("archetype", "")
+    ):
+        return "deck_or_archetype_matched"
+    if _document_matches_deck_identity(document, deck_identity):
+        return "deck_or_archetype_matched"
+    return "unknown"
+
+
+def _document_matches_deck_identity(
+    document: dict[str, Any],
+    deck_identity: dict[str, Any],
+) -> bool:
+    deck_name = _compact_text(deck_identity.get("deck_name", ""))
+    if not deck_name:
+        return False
+    searchable = _compact_text(
+        f"{document.get('source_title', '')} {document.get('source_url', '')}"
+    )
+    return bool(searchable and deck_name in searchable)
 
 
 def _build_claim_coverage_report(
@@ -480,7 +548,7 @@ def _trust_ceiling(*, claim_readiness: str, source_family: str) -> str:
         return "report_only"
     if claim_readiness == "source_backed_static_semantics":
         return "static_semantics"
-    if source_family.lower() in {"guide", "mulligan_guide", "matchup_guide"}:
+    if source_family.lower() in {"guide", "guide_fixture", "mulligan_guide", "matchup_guide"}:
         return "guide"
     return "source"
 
@@ -532,6 +600,10 @@ def _normalize_cards(cards: Any) -> list[str]:
         if card and card not in normalized:
             normalized.append(card)
     return normalized
+
+
+def _compact_text(value: Any) -> str:
+    return "".join(ch for ch in str(value or "").lower() if ch.isalnum())
 
 
 def _raw_claim_kind(raw_claim: dict[str, Any]) -> Any:

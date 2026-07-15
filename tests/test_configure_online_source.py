@@ -76,6 +76,19 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
         "map_claim_kind_or_keep_report_only",
     }
 
+    package = Path(result["package_path"])
+    operator = _read_json(package / "reports" / "operator_summary.json")
+    ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
+    ownership_rows = {row["file"]: row for row in ownership["files"]}
+
+    assert "reports/source_bundle.json" in operator["generated_files"]
+    assert any(
+        row["file"] == "reports/source_bundle.json"
+        and row["classification"] == "diagnostic"
+        for row in operator["report_ownership"]
+    )
+    assert ownership_rows["reports/source_bundle.json"]["diagnostic_only"] is True
+
 
 def test_configure_online_source_builds_source_backed_shadowpriest_package(
     tmp_path: Path,
@@ -99,7 +112,7 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         out / "03_source_autopilot" / "source_documents.json"
     )
     assert acquisition["records"][0]["source_family"] == "guide"
-    assert autopilot["strong_candidate"] is True
+    assert autopilot["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"

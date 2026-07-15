@@ -142,6 +142,7 @@ STATIC_SEMANTIC_SOURCE_FAMILIES = frozenset(
 PUBLIC_GUIDE_SOURCE_FAMILIES = frozenset(
     {
         "guide",
+        "guide_fixture",
         "mulligan_guide",
         "matchup_guide",
     }
@@ -204,6 +205,10 @@ def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
     normalized["opening_hand_relevant"] = _opening_hand_relevant(claim_kind, normalized)
     normalized["runtime_lowering"] = _runtime_lowering(claim_kind)
     normalized["promotion_eligible"] = _promotion_eligible(source_type, normalized)
+    normalized["strong_promotion_eligible"] = _strong_promotion_eligible(
+        source_type,
+        normalized,
+    )
     normalized["strong_static_claim"] = bool(
         normalized["promotion_eligible"]
         and claim_kind
@@ -238,7 +243,15 @@ def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
     if source_type in {"official_card_data", "hearthstonejson", "blizzard_card_library"}:
         return "official_static_semantics"
     if source_type in {"community_guide", "public_guide"}:
-        return str(claim.get("source_lane") or "deck_matched_public_guide")
+        explicit_lane = str(claim.get("source_lane") or "")
+        if explicit_lane:
+            return explicit_lane
+        if str(claim.get("deck_match_scope") or "").lower() in {
+            "deck_matched",
+            "deck_or_archetype_matched",
+        }:
+            return "deck_matched_public_guide"
+        return "unknown"
     if source_type in STATISTICAL_ENRICHMENT_SOURCE_TYPES:
         return "statistical_enrichment"
     return str(claim.get("source_lane") or "unknown")
@@ -279,6 +292,21 @@ def _promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
         "blizzard_card_library",
         "community_guide",
         "public_guide",
+    }
+
+
+def _strong_promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bool:
+    if not _promotion_eligible(source_type, claim):
+        return False
+    if source_type not in {"community_guide", "public_guide"}:
+        return False
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return False
+    if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+        return False
+    return _normalized_text(claim.get("deck_match_scope")) in {
+        "deck_matched",
+        "deck_or_archetype_matched",
     }
 
 

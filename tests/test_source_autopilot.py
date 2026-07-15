@@ -48,6 +48,28 @@ def test_rank_public_sources_prefers_current_matching_guides_over_decklists():
     assert ranked[1]["source_rank_lane"] == "decklist_only"
 
 
+def test_rank_public_sources_does_not_treat_retrieval_time_as_publication_currency():
+    ranked = rank_public_sources(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=[
+            {
+                "source_url": "https://example.test/shadowpriest",
+                "source_title": "Shadow Priest guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-15T00:00:00Z",
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446"],
+                },
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    assert ranked[0]["source_rank_lane"] == "guide_card_overlap"
+
+
 def test_extract_source_evidence_rows_preserves_darkbishop_effect_without_mulligan_row():
     records = _fixture("source_search_shadowpriest_2026.json")["records"]
 
