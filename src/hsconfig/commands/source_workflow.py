@@ -249,8 +249,10 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
             "deck_name": args.deck_name,
             "deck_slug": deck_identity["deck_slug"],
             "source_search_results_json": str(source_search_path),
-            "source_acquisition_report": str(acquisition_path),
-            "source_claim_compiler_report": str(compiler_path),
+            "source_acquisition_report": acquired["source_acquisition_report"],
+            "source_claim_compiler_report": compiled["source_claim_compiler_report"],
+            "source_acquisition_report_json": str(acquisition_path),
+            "source_claim_compiler_report_json": str(compiler_path),
             "written_files": [
                 str(acquisition_path),
                 str(compiler_path),
