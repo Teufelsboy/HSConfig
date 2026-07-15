@@ -4,12 +4,17 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from ipaddress import ip_address
 from typing import Any, Callable, Mapping, Sequence
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, OpenerDirector, Request, build_opener
 
 
 Fetcher = Callable[[str, float], tuple[int, str, bytes]]
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        return None
 
 
 class _VisibleTextParser(HTMLParser):
@@ -69,14 +74,20 @@ def collect_public_source_records(
     retrieved_at = _iso_datetime(current_date)
 
     for url in deduped_urls:
-        if not _is_public_https(url):
-            failures.append({"url": url, "error": "non_public_https_url"})
+        validation_error = validate_public_source_url(url)
+        if validation_error:
+            failures.append({"url": url, "error": validation_error})
             continue
 
         try:
             status, content_type, body = fetch(url, timeout_seconds)
         except Exception as exc:
             failures.append({"url": url, "error": type(exc).__name__})
+            continue
+
+        if 300 <= status < 400:
+            redirect_error = _redirect_validation_error(content_type)
+            failures.append({"url": url, "error": redirect_error or f"http_status_{status}"})
             continue
 
         if status < 200 or status >= 300:
@@ -124,14 +135,29 @@ def collect_public_source_records(
 
 
 def _default_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+    opener = build_opener(_NoRedirectHandler())
+    return _fetch_with_opener(url, timeout_seconds, opener)
+
+
+def _fetch_with_opener(
+    url: str,
+    timeout_seconds: float,
+    opener: OpenerDirector,
+) -> tuple[int, str, bytes]:
     request = Request(url, headers={"User-Agent": "HSConfig/1.0 source acquisition"})
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:
+        with opener.open(request, timeout=timeout_seconds) as response:
             return (
                 int(response.status),
                 str(response.headers.get("Content-Type", "")),
                 response.read(400_000),
             )
+    except HTTPError as exc:
+        location = str(exc.headers.get("Location", ""))
+        content_type = str(exc.headers.get("Content-Type", ""))
+        if location:
+            content_type = f"{content_type}; location={location}".strip("; ")
+        return int(exc.code), content_type, b""
     except URLError:
         raise
 
@@ -169,18 +195,36 @@ def _dedupe_urls(urls: Sequence[str]) -> list[str]:
     return result
 
 
-def _is_public_https(url: str) -> bool:
+def validate_public_source_url(url: str) -> str | None:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname:
-        return False
+        return "non_public_https_url"
     hostname = parsed.hostname.lower()
     if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
-        return False
+        return "non_public_https_url"
     try:
         address = ip_address(hostname)
     except ValueError:
-        return True
-    return address.is_global
+        return None
+    return None if address.is_global else "non_public_https_url"
+
+
+def _redirect_validation_error(content_type: str) -> str | None:
+    location = _location_from_content_type(content_type)
+    if not location:
+        return None
+    validation_error = validate_public_source_url(location)
+    if validation_error:
+        return f"redirect_target_{validation_error}"
+    return None
+
+
+def _location_from_content_type(content_type: str) -> str:
+    for segment in content_type.split(";"):
+        segment = segment.strip()
+        if segment.lower().startswith("location="):
+            return segment.split("=", 1)[1].strip()
+    return ""
 
 
 def _iso_datetime(current_date: str | date | None) -> str:

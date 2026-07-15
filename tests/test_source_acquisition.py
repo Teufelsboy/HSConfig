@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hsconfig.source_acquisition import collect_public_source_records, extract_visible_text
+from hsconfig.source_acquisition import (
+    collect_public_source_records,
+    extract_visible_text,
+    validate_public_source_url,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "source_pages"
@@ -80,3 +84,45 @@ def test_collect_public_source_records_keeps_fetch_failures_non_blocking():
         payload["source_acquisition_report"]["first_missing_source_action"]
         == "add_public_guide_url_or_use_static_semantics"
     )
+
+
+def test_validate_public_source_url_rejects_local_and_private_targets():
+    assert validate_public_source_url("https://example.test/guide") is None
+    assert validate_public_source_url("http://example.test/guide") == "non_public_https_url"
+    assert validate_public_source_url("https://localhost/guide") == "non_public_https_url"
+    assert validate_public_source_url("https://127.0.0.1/guide") == "non_public_https_url"
+    assert validate_public_source_url("https://10.0.0.1/guide") == "non_public_https_url"
+    assert validate_public_source_url("https://192.168.1.2/guide") == "non_public_https_url"
+
+
+def test_collect_public_source_records_rejects_private_redirect_targets():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_slug": "thindeck",
+        "deck_code_hash": "sha256:thin",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    def redirect_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        assert timeout_seconds == 2.0
+        if url == "https://example.test/redirect":
+            return 302, "text/html; location=https://127.0.0.1/private", b""
+        raise AssertionError(f"unexpected redirected fetch: {url}")
+
+    payload = collect_public_source_records(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/redirect"],
+        current_date="2026-07-15",
+        fetcher=redirect_fetcher,
+        timeout_seconds=2.0,
+    )
+
+    assert payload["source_records"] == []
+    assert payload["source_acquisition_report"]["failed_fetch_count"] == 1
+    assert payload["source_acquisition_report"]["failures"] == [
+        {
+            "url": "https://example.test/redirect",
+            "error": "redirect_target_non_public_https_url",
+        }
+    ]
