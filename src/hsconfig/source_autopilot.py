@@ -348,7 +348,7 @@ def _source_base(
         "source_title": _text(source.get("source_title", "")),
         "source_family": _source_family_for_documents(source),
         "retrieved_at": _text(source.get("retrieved_at", "")) or _iso_datetime(current_date),
-        "source_visibility": _text(source.get("source_visibility", "unknown")),
+        "source_visibility": _source_visibility_for_documents(source),
         "source_lane": _source_lane_for_rank(source_rank_lane, deck_match_scope),
         "deck_match_scope": deck_match_scope,
         "deck_name": _text(match.get("deck_name", "")),
@@ -363,6 +363,22 @@ def _source_family_for_documents(source: Mapping[str, Any]) -> str:
     if family == "hearthstonejson_static_semantics":
         return "static_semantics"
     return family or "guide"
+
+
+def _source_visibility_for_documents(source: Mapping[str, Any]) -> str:
+    explicit = _text(source.get("source_visibility", "")).lower()
+    if explicit:
+        return explicit
+    family = _text(source.get("source_family", "")).lower()
+    if family in DECKLIST_FAMILIES:
+        return "decklist_only"
+    if family in GUIDE_FAMILIES:
+        if source.get("mulligan") or _as_list(source.get("claims", [])):
+            return "full_text"
+        normalized_text = _text(source.get("normalized_text", ""))
+        if len(normalized_text) >= 180:
+            return "full_text"
+    return "unknown"
 
 
 def _append_unique(rows: list[dict[str, Any]], seen: set[tuple[Any, ...]], row: dict[str, Any]) -> None:
@@ -441,6 +457,9 @@ def _record_year(record: Mapping[str, Any]) -> int | None:
 
 
 def _publication_year(record: Mapping[str, Any]) -> int | None:
+    explicit_year = _int_or_none(record.get("publication_year"))
+    if explicit_year is not None:
+        return explicit_year
     published = _text(
         record.get("published_at")
         or record.get("publication_date")

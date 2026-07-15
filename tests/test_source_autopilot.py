@@ -185,7 +185,7 @@ def test_build_source_autopilot_bundle_does_not_call_deck_scoped_guide_strong():
     assert report["first_missing_source_action"] == "add_current_deck_guide_or_mulligan_guide"
 
 
-def test_extract_source_evidence_rows_defaults_missing_visibility_to_unknown():
+def test_extract_source_evidence_rows_infers_visibility_for_legacy_and_thin_records():
     deck_identity = {
         "deck_name": "ThinDeck",
         "deck_code_hash": "sha256:thin",
@@ -197,6 +197,7 @@ def test_extract_source_evidence_rows_defaults_missing_visibility_to_unknown():
         "source_title": "ThinDeck Guide 2026",
         "source_family": "guide",
         "publication_year": 2026,
+        "normalized_text": "ThinDeck Guide 2026",
         "deck_match": {
             "deck_name": "ThinDeck",
             "archetype": "thindeck",
@@ -224,7 +225,54 @@ def test_extract_source_evidence_rows_defaults_missing_visibility_to_unknown():
         current_date="2026-07-15",
     )
 
-    assert rows[0]["source_visibility"] == "unknown"
+    assert rows[0]["source_visibility"] == "full_text"
+
+    thin_record = dict(record)
+    thin_record.pop("claims")
+    rows = extract_source_evidence_rows(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        ranked_sources=rank_public_sources(
+            deck_name="ThinDeck",
+            deck_identity=deck_identity,
+            source_search_records=[thin_record],
+            current_date="2026-07-15",
+        ),
+        current_date="2026-07-15",
+    )
+
+    assert rows == []
+
+
+def test_rank_public_sources_uses_publication_year_field():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    ranked = rank_public_sources(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-guide",
+                "source_title": "ThinDeck Guide 2026",
+                "source_family": "guide",
+                "publication_year": 2026,
+                "normalized_text": "ThinDeck guide with a current mulligan plan.",
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    assert ranked[0]["source_rank_lane"] == "guide_current_deck_match"
 
 
 def test_source_autopilot_never_blocks_config_creation_for_thin_or_empty_sources():
