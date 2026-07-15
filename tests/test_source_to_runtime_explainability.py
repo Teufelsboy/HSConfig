@@ -162,6 +162,7 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "card_id": "CARD_KEEP",
         "name": "Keep Card",
         "best_source_lane": "runtime_lowered",
+        "source_lane": "runtime_lowered",
         "strongest_claim_id": "keep_claim",
         "strongest_claim_kind": "mulligan_keep",
         "first_missing_link": None,
@@ -170,6 +171,8 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
         "why_not_emitted": None,
         "apply_blocked": False,
         "next_source_action": "none",
+        "first_missing_source_action": "none",
+        "runtime_lowering_status": "source_backed_runtime",
         "closure": {
             "lane": "runtime_backed",
             "claim_kinds": ["mulligan_keep"],
@@ -217,6 +220,9 @@ def test_explainability_operator_attention_rows_prioritize_missing_links():
             "default_only_risk": False,
             "first_missing_link": "runtime_evidence",
             "next_source_action": "collect_runtime_evidence",
+            "source_lane": "runtime_evidence_required",
+            "first_missing_source_action": "collect_runtime_evidence",
+            "runtime_lowering_status": "source_backed_contract_only",
             "strongest_claim_id": "numeric_claim",
             "strongest_claim_kind": "globalvalue_numeric_tuning",
             "emitted_runtime_files": [],
@@ -230,6 +236,9 @@ def test_explainability_operator_attention_rows_prioritize_missing_links():
             "default_only_risk": False,
             "first_missing_link": None,
             "next_source_action": "none",
+            "source_lane": "runtime_lowered",
+            "first_missing_source_action": "none",
+            "runtime_lowering_status": "source_backed_runtime",
             "strongest_claim_id": "keep_claim",
             "strongest_claim_kind": "mulligan_keep",
             "emitted_runtime_files": ["Mulligan.json"],
@@ -290,6 +299,9 @@ def test_explainability_operator_attention_marks_no_missing_link_without_runtime
             "default_only_risk": False,
             "first_missing_link": None,
             "next_source_action": "none",
+            "source_lane": "report_only",
+            "first_missing_source_action": "none",
+            "runtime_lowering_status": "source_backed_contract_only",
             "strongest_claim_id": "report_claim",
             "strongest_claim_kind": "source_note",
             "emitted_runtime_files": [],
@@ -327,6 +339,9 @@ def test_explainability_operator_attention_exposes_baseline_default_only_risk():
             "default_only_risk": True,
             "first_missing_link": None,
             "next_source_action": "none",
+            "source_lane": "report_only",
+            "first_missing_source_action": "none",
+            "runtime_lowering_status": "missing_source_claim",
             "strongest_claim_id": None,
             "strongest_claim_kind": None,
             "emitted_runtime_files": [],
@@ -548,3 +563,25 @@ def test_explainability_card_rows_include_compact_closure_lane():
         "first_missing_link": "opening_hand_mulligan_intent",
         "next_source_action": "add_explicit_opening_hand_mulligan_source",
     }
+
+
+def test_explainability_points_to_first_missing_source_action_for_partial_deck():
+    report = build_source_to_runtime_explainability_report(
+        audit={
+            "claim_rows": [
+                {
+                    "card_id": "PIRATE_DH_CARD",
+                    "claim_kind": "mulligan_keep",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "source_lane": "policy_fallback",
+                    "runtime_backed": True,
+                }
+            ]
+        },
+        runtime_files={"Mulligan.json"},
+    )
+
+    row = report["card_rows"][0]
+    assert row["source_lane"] == "policy_fallback"
+    assert row["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert row["runtime_lowering_status"] == "policy_backed_runtime"

@@ -1,55 +1,68 @@
-# Task 6 Report: Keep the Guardrail Runner Focused on This Boundary
+# Task 6 Report: Explainability and First Missing Source Action
 
 Status: DONE
 
 ## Files Changed
 
-- `tests/test_check_contract_guardrails.py`
+- `src/hsconfig/source_to_runtime_explainability.py`
+- `tests/test_source_to_runtime_explainability.py`
 - `.superpowers/sdd/task-6-report.md`
 
-`scripts/check_contract_guardrails.py` was not changed because the new runner-scope test passed against the existing `FOCUSED_CONTRACT_TESTS` list.
+`src/hsconfig/source_claim_gap_report.py` and `tests/test_source_claim_gap_report.py` were exercised by the focused test run but did not need code changes.
 
 ## Implementation
 
-- Added `test_guardrail_runner_includes_source_contract_v2_boundary_tests`.
-- The test asserts that `FOCUSED_CONTRACT_TESTS` includes the source-contract v2 boundary suite required by the task brief:
-  - source claim family registry
-  - contract spine sentinel, CLI, and docs tests
-  - single apply authority and no-second-gate tests
-  - semantic runtime negative boundaries
-  - universal Wild no-block matrix
-  - operator/docs active-path policy tests
-  - claim-kind runtime, card behavior router, and mechanic support tests
+- Added a policy-backed autonomous mulligan regression that covers compact `audit={claim_rows: [...]}` input plus `runtime_files`.
+- Kept the existing positional `source_contract_audit_report` input path working.
+- Added per-card `source_lane`, `first_missing_source_action`, and `runtime_lowering_status`.
+- Mirrored the same three fields into `operator_attention` so the operator-facing row names the source lane, the first missing source action, and the runtime lowering state.
+- Preserved legacy `best_source_lane`, `next_source_action`, and `closure` fields.
 
-## Evidence
-
-Targeted runner coverage test:
+## Red Evidence
 
 ```powershell
-python -m pytest -q tests/test_check_contract_guardrails.py::test_guardrail_runner_includes_source_contract_v2_boundary_tests
+python -m pytest tests/test_source_to_runtime_explainability.py tests/test_source_claim_gap_report.py -q
+```
+
+Result before implementation:
+
+```text
+1 failed, 22 passed in 0.33s
+```
+
+Failure:
+
+```text
+TypeError: build_source_to_runtime_explainability_report() got an unexpected keyword argument 'audit'
+```
+
+## Green Evidence
+
+Focused task tests:
+
+```powershell
+python -m pytest tests/test_source_to_runtime_explainability.py tests/test_source_claim_gap_report.py -q
 ```
 
 Result:
 
 ```text
-.                                                                        [100%]
-1 passed in 0.07s
+23 passed in 0.34s
 ```
 
-Full runner test file:
+Directly relevant operator/closure tests:
 
 ```powershell
-python -m pytest -q tests/test_check_contract_guardrails.py
+python -m pytest tests/test_operator_summary.py tests/test_source_contract_closure_wave.py -q
 ```
 
 Result:
 
 ```text
-....                                                                     [100%]
-4 passed in 0.53s
+91 passed in 14.79s
 ```
 
 ## Concerns
 
-- None for Task 6.
-- Pre-existing unrelated working-tree change remains untouched: `.superpowers/sdd/task-1-report.md`.
+- The red test initially failed at the new compact interface boundary rather than at field lookup. That still proves the requested compact source-policy explainability path was absent before implementation.
+- Pre-existing unrelated working-tree edits remain untouched in docs and skill files outside this task scope.
