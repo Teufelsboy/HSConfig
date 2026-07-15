@@ -22,10 +22,7 @@ def _write_fixture_map(path: Path, url: str, page_name: str) -> None:
     path.write_text(json.dumps({url: str(page)}), encoding="utf-8")
 
 
-def test_configure_online_source_builds_source_backed_shadowpriest_package(
-    tmp_path: Path,
-    monkeypatch,
-):
+def run_configure_with_fixture_online_source(tmp_path: Path, monkeypatch) -> dict:
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
     _write_shadow_cards_json(cards_json)
@@ -62,7 +59,30 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         ]
     )
 
-    summary = _read_json(out / "configure_summary.json")
+    assert status == 0
+    return _read_json(out / "configure_summary.json")
+
+
+def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkeypatch):
+    result = run_configure_with_fixture_online_source(tmp_path, monkeypatch)
+    bundle_path = Path(result["source_bundle_path"])
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+
+    assert bundle["schema_version"] == 1
+    assert bundle["promotion"]["first_missing_source_action"] in {
+        "none",
+        "replace_default_only_runtime_surface_with_source_or_policy_claim",
+        "add_explicit_mulligan_source",
+        "map_claim_kind_or_keep_report_only",
+    }
+
+
+def test_configure_online_source_builds_source_backed_shadowpriest_package(
+    tmp_path: Path,
+    monkeypatch,
+):
+    summary = run_configure_with_fixture_online_source(tmp_path, monkeypatch)
+    out = Path(summary["package_path"]).parent
     acquisition = _read_json(out / "02_source_acquisition" / "source_search_results.json")
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
     package = out / "04_package"
@@ -72,7 +92,6 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         path.read_text(encoding="utf-8") for path in package.glob("CustomConfig/*/Mulligan.json")
     )
 
-    assert status == 0
     assert summary["status"] == "OK"
     assert summary["source_acquisition_path"] == str(out / "02_source_acquisition")
     assert summary["source_autopilot_path"] == str(out / "03_source_autopilot")

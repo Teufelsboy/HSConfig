@@ -15,8 +15,9 @@ from hsconfig.commands.source_workflow import (
     source_manifest_payload,
 )
 from hsconfig.package_builder import prepare_package_payload
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
+from hsconfig.source_bundle import build_source_bundle
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
@@ -212,6 +213,25 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if prepare_status != 0:
         return _finish(out, "failed", {"stage": "prepare", **prepare_payload}, prepare_status)
 
+    reports_dir = package_dir / "reports"
+    guide_claim_bundle = read_json(reports_dir / "guide_claim_bundle.json")
+    operator_summary = read_json(reports_dir / "operator_summary.json")
+    explainability_report = read_json(
+        reports_dir / "source_to_runtime_explainability.json"
+    )
+    source_bundle_path = reports_dir / "source_bundle.json"
+    write_json(
+        source_bundle_path,
+        build_source_bundle(
+            deck_name=args.deck_name,
+            deck_code=args.deck_code,
+            source_records=guide_claim_bundle.get("source_evidence_index", []),
+            claims=guide_claim_bundle.get("claims", []),
+            operator_summary=operator_summary,
+            explainability_report=explainability_report,
+        ),
+    )
+
     try:
         validate_payload_result, validate_status = validate_payload(
             SimpleNamespace(package=str(package_dir), json=True)
@@ -260,6 +280,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             ),
             "research_path": str(research_dir),
             "package_path": str(package_dir),
+            "source_bundle_path": str(source_bundle_path),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },
