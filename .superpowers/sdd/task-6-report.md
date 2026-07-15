@@ -121,3 +121,51 @@ git diff --check
 
 - This remains diagnostic-only: no apply gate or deck-blocking behavior was added.
 - Pre-existing unrelated working-tree edits remain untouched.
+
+## Review Follow-up: Mulligan Claim-Kind Boundary
+
+### RED
+
+Added a compact-path regression with `source_type=policy_backed_autonomous_mulligan`,
+`claim_kind=card_role`, and runtime evidence. Before the production fix:
+
+```powershell
+python -m pytest tests/test_source_to_runtime_explainability.py::test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan -q
+# 1 failed in 0.24s
+# expected first_missing_source_action=none, got add_explicit_mulligan_source
+```
+
+### GREEN
+
+Narrowed `_has_policy_backed_mulligan()` so policy-backed explainability fallback
+requires both `source_type=policy_backed_autonomous_mulligan` and
+`claim_kind=mulligan_keep`. The regression now confirms non-mulligan claims use
+ordinary source-backed runtime values:
+
+- `first_missing_source_action=none`
+- `runtime_lowering_status=source_backed_runtime`
+
+### Files Changed
+
+- `src/hsconfig/source_to_runtime_explainability.py`
+- `tests/test_source_to_runtime_explainability.py`
+- `.superpowers/sdd/task-6-report.md`
+
+### Tests
+
+```powershell
+python -m pytest tests/test_source_to_runtime_explainability.py -q
+# 14 passed in 0.13s
+
+python -m pytest tests/test_source_to_runtime_explainability.py tests/test_source_claim_gap_report.py tests/test_operator_summary.py tests/test_source_contract_closure_wave.py -q
+# 116 passed in 14.13s
+
+git diff --check
+# exit 0
+```
+
+### Concerns
+
+- The predicate intentionally keeps policy fallback specific to explicit
+  `mulligan_keep` claims; other claim kinds retain normal source-backed status.
+- Pre-existing unrelated working-tree edits remain untouched in docs and skill files outside this task scope.

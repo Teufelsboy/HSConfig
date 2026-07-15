@@ -746,7 +746,8 @@ def _runtime_lowering_status(
 
 def _has_policy_backed_mulligan(related_claims: Sequence[Mapping[str, Any]]) -> bool:
     return any(
-        str(row.get("source_type")) == "policy_backed_autonomous_mulligan"
+        str(row.get("claim_kind")) == "mulligan_keep"
+        and str(row.get("source_type")) == "policy_backed_autonomous_mulligan"
         for row in related_claims
     )
 

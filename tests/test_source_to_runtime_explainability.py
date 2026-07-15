@@ -588,6 +588,26 @@ def test_explainability_points_to_first_missing_source_action_for_partial_deck()
     assert row["runtime_lowering_status"] == "policy_backed_runtime"
 
 
+def test_explainability_does_not_treat_policy_fallback_non_mulligan_as_mulligan():
+    report = build_source_to_runtime_explainability_report(
+        audit={
+            "claim_rows": [
+                {
+                    "card_id": "POLICY_ROLE",
+                    "claim_kind": "card_role",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                    "runtime_backed": True,
+                }
+            ]
+        },
+        runtime_files={"CardRole.json"},
+    )
+
+    row = report["card_rows"][0]
+    assert row["first_missing_source_action"] == "none"
+    assert row["runtime_lowering_status"] == "source_backed_runtime"
+
+
 def test_explainability_preserves_policy_fallback_from_legacy_audit_report():
     audit_report = build_source_contract_audit(
         deck_name="FixtureDeck",
