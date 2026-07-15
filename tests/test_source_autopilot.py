@@ -112,6 +112,11 @@ def test_build_source_autopilot_bundle_outputs_strict_source_documents():
     assert bundle["source_autopilot_report"]["status"] == "OK"
     assert bundle["source_autopilot_report"]["source_rank_summary"]["guide_current_deck_match"] == 1
     assert bundle["source_autopilot_report"]["claim_kind_counts"]["mulligan_keep"] == 4
+    summary = bundle["source_autopilot_report"]["strong_closure_summary"]
+    assert summary["technical_no_block"] is True
+    assert summary["source_backed_strong_ready"] is True
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["first_missing_source_action"] == "none"
     assert bundle["source_documents_payload"]["source_documents"]
 
     strict_bundle = build_source_document_bundle(
@@ -144,7 +149,11 @@ def test_build_source_autopilot_bundle_keeps_weak_sources_non_blocking_and_visib
     assert report["status"] == "OK"
     assert report["source_rank_summary"]["decklist_only"] == 1
     assert report["strong_candidate"] is False
-    assert report["first_missing_source_action"] == "add_current_deck_guide_or_mulligan_guide"
+    assert report["strong_closure_summary"]["technical_no_block"] is True
+    assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_closure_summary"]["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert report["first_missing_source_action"] == report["strong_closure_summary"]["first_missing_source_action"]
 
 
 def test_build_source_autopilot_bundle_does_not_call_deck_scoped_guide_strong():
@@ -186,7 +195,10 @@ def test_build_source_autopilot_bundle_does_not_call_deck_scoped_guide_strong():
     assert report["strong_candidate"] is False
     assert report["runtime_contract_candidate_count"] == 0
     assert report["card_specific_runtime_contract_candidate_count"] == 0
-    assert report["first_missing_source_action"] == "add_current_deck_guide_or_mulligan_guide"
+    assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_closure_summary"]["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert report["first_missing_source_action"] == report["strong_closure_summary"]["first_missing_source_action"]
 
 
 def test_extract_source_evidence_rows_infers_visibility_for_legacy_and_thin_records():
@@ -440,7 +452,7 @@ def test_source_autopilot_never_blocks_config_creation_for_thin_or_empty_sources
     assert thin_bundle["source_autopilot_report"]["strong_candidate"] is False
     assert (
         empty_bundle["source_autopilot_report"]["first_missing_source_action"]
-        == "add_current_deck_guide_or_mulligan_guide"
+        == "add_explicit_mulligan_source"
     )
 
 

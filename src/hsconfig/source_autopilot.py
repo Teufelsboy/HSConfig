@@ -294,6 +294,8 @@ def _build_report(
     strong_closure_summary = _build_strong_closure_summary(
         evidence_rows=evidence_rows,
         current_date=current_date,
+        strong_candidate=strong_candidate,
+        blockers=blockers,
     )
     return {
         "schema_version": 1,
@@ -308,9 +310,7 @@ def _build_report(
         "strong_candidate": strong_candidate,
         "strong_candidate_blockers": blockers,
         "strong_closure_summary": strong_closure_summary,
-        "first_missing_source_action": (
-            "none" if strong_candidate else "add_current_deck_guide_or_mulligan_guide"
-        ),
+        "first_missing_source_action": strong_closure_summary["first_missing_source_action"],
         "first_missing_source_action_by_card": _first_missing_source_action_by_card(
             deck_identity,
             evidence_rows,
@@ -329,6 +329,8 @@ def _build_strong_closure_summary(
     *,
     evidence_rows: Sequence[Mapping[str, Any]],
     current_date: str | date | None,
+    strong_candidate: bool,
+    blockers: Sequence[str],
 ) -> dict[str, Any]:
     strong_rows = [
         row
@@ -339,7 +341,11 @@ def _build_strong_closure_summary(
         _text(row.get("claim_kind", "")) in {"mulligan_keep", "mulligan_discard"}
         for row in strong_rows
     )
-    source_backed_strong_ready = bool(strong_rows) and has_explicit_mulligan_source
+    source_backed_strong_ready = (
+        strong_candidate
+        and bool(strong_rows)
+        and has_explicit_mulligan_source
+    )
     return {
         "technical_no_block": True,
         "semantic_status": (
@@ -349,6 +355,8 @@ def _build_strong_closure_summary(
         ),
         "source_backed_strong_ready": source_backed_strong_ready,
         "strong_evidence_row_count": len(strong_rows),
+        "strong_candidate": strong_candidate,
+        "strong_candidate_blockers": list(blockers),
         "first_missing_source_action": (
             "none" if source_backed_strong_ready else "add_explicit_mulligan_source"
         ),
