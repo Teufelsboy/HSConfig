@@ -10,6 +10,7 @@ from hsconfig.commands.common import emit_result
 from hsconfig.commands.source_workflow import (
     draft_source_documents_payload,
     research_deck_payload,
+    source_acquire_payload,
     source_autopilot_payload,
     source_manifest_payload,
 )
@@ -32,10 +33,18 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     manifest_dir = out / "01_manifest"
     draft_dir = out / "02_source_documents"
-    autopilot_dir = out / "02_source_autopilot"
+    source_acquisition_dir = out / "02_source_acquisition"
+    autopilot_dir = (
+        out / "03_source_autopilot"
+        if bool(getattr(args, "online_source", False))
+        else out / "02_source_autopilot"
+    )
     research_dir = out / "03_research"
     package_dir = out / "04_package"
-    for stage_dir in (manifest_dir, draft_dir, autopilot_dir, research_dir, package_dir):
+    stage_dirs = [manifest_dir, draft_dir, autopilot_dir, research_dir, package_dir]
+    if bool(getattr(args, "online_source", False)):
+        stage_dirs.append(source_acquisition_dir)
+    for stage_dir in stage_dirs:
         stage_dir.mkdir(parents=True, exist_ok=True)
 
     common = {
@@ -62,8 +71,42 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             manifest_status,
         )
 
+    source_acquisition_path = None
     source_documents_json = None
     source_autopilot_path = None
+    if bool(getattr(args, "online_source", False)):
+        try:
+            acquire_payload, acquire_status = source_acquire_payload(
+                SimpleNamespace(
+                    **common,
+                    source_url=list(getattr(args, "source_url", []) or []),
+                    source_fixture_url_map_json=getattr(
+                        args,
+                        "source_fixture_url_map_json",
+                        None,
+                    ),
+                    source_fetch_timeout_seconds=getattr(
+                        args,
+                        "source_fetch_timeout_seconds",
+                        6.0,
+                    ),
+                    current_date=getattr(args, "current_date", None),
+                    out=str(source_acquisition_dir),
+                )
+            )
+        except Exception as exc:
+            return _finish_stage_exception(out, "source-acquire", exc)
+        if acquire_status != 0:
+            return _finish(
+                out,
+                "failed",
+                {"stage": "source-acquire", **acquire_payload},
+                acquire_status,
+            )
+        args.source_search_results_json = acquire_payload["source_search_results_json"]
+        args.auto_source = True
+        source_acquisition_path = source_acquisition_dir
+
     if bool(getattr(args, "auto_source", False)):
         if not getattr(args, "source_search_results_json", None):
             return _finish(
@@ -206,6 +249,9 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "OK",
         {
             "manifest_path": str(manifest_dir / "source_research_manifest.json"),
+            "source_acquisition_path": (
+                str(source_acquisition_path) if source_acquisition_path else None
+            ),
             "source_autopilot_path": (
                 str(source_autopilot_path) if source_autopilot_path else None
             ),
