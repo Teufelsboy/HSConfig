@@ -133,6 +133,20 @@ def build_operator_summary(
         config_readiness_report,
         effective_config_readiness_summary,
     )
+    preliminary_config_usefulness = build_config_usefulness(
+        technical_status=technical_status,
+        semantic_status="",
+        config_readiness_summary=effective_config_readiness_summary,
+        config_readiness_report=config_readiness_report or {},
+        mulligan_plan_report=mulligan_plan_report or {},
+        card_behavior_plan_report=card_behavior_plan_report or {},
+        combo_plan_report=combo_plan_report or {},
+        globalvalues_profile_report=globalvalues_profile_report or {},
+    )
+    strong_promotion_evidence_blockers = _strong_promotion_evidence_blockers(
+        preliminary_config_usefulness,
+        mulligan_plan_report=mulligan_plan_report or {},
+    )
     semantic_status = _semantic_status(
         technical_status=technical_status,
         guide_source_depth=guide_source_depth,
@@ -140,6 +154,7 @@ def build_operator_summary(
         config_readiness_summary=effective_config_readiness_summary,
         claim_conflict_report=claim_conflict_report,
         unsupported_conditions=unsupported_conditions,
+        strong_promotion_evidence_blockers=strong_promotion_evidence_blockers,
     )
     primary_blockers = _primary_blockers(technical_validation, technical_status)
     warnings = _warnings(
@@ -163,6 +178,7 @@ def build_operator_summary(
         claim_conflict_report=claim_conflict_report or {},
         globalvalue_authority=globalvalue_authority or {},
         unsupported_conditions=unsupported_conditions or [],
+        strong_promotion_evidence_blockers=strong_promotion_evidence_blockers,
     )
     config_usefulness = build_config_usefulness(
         technical_status=technical_status,
@@ -573,6 +589,78 @@ def _technical_status(report: dict[str, Any]) -> str:
     return "VALID_PACKAGE" if status in VALID_STATUSES else "INVALID_PACKAGE"
 
 
+def _strong_promotion_evidence_blockers(
+    config_usefulness: dict[str, Any],
+    *,
+    mulligan_plan_report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    surfaces = (
+        config_usefulness.get("surfaces", {})
+        if isinstance(config_usefulness, dict)
+        else {}
+    )
+    if not isinstance(surfaces, dict):
+        return []
+
+    blockers: list[dict[str, Any]] = []
+    explicit_mulligan_report = _has_explicit_mulligan_report(mulligan_plan_report)
+    for surface, row in sorted(surfaces.items()):
+        if isinstance(row, dict) and row.get("default_only") is True:
+            if surface == "mulligan" and not explicit_mulligan_report:
+                continue
+            blockers.append(
+                {
+                    "code": "default_only_surface_not_strong_evidence",
+                    "reason": "default_only_surface_not_strong_evidence",
+                    "surface": str(surface),
+                    "blocking_strength": "blocks_source_backed_strong",
+                    "report": "reports/operator_summary.json",
+                }
+            )
+
+    source_backed_surface_count = _source_backed_surface_count(surfaces)
+    for surface, row in sorted(surfaces.items()):
+        if not isinstance(row, dict):
+            continue
+        if surface == "mulligan" and not explicit_mulligan_report:
+            continue
+        policy_claim_count = _int_value(row.get("policy_backed_rule_count", 0))
+        if str(row.get("status")) != "policy_backed" and policy_claim_count == 0:
+            continue
+        if source_backed_surface_count:
+            continue
+        blockers.append(
+            {
+                "code": "policy_claim_not_strong_evidence",
+                "reason": "policy_claim_not_strong_evidence",
+                "surface": str(surface),
+                "count": max(1, policy_claim_count),
+                "blocking_strength": "blocks_source_backed_strong",
+                "report": "reports/operator_summary.json",
+            }
+        )
+    return blockers
+
+
+def _has_explicit_mulligan_report(report: dict[str, Any]) -> bool:
+    if not isinstance(report, dict) or not report:
+        return False
+    return any(key in report for key in ("quality", "rules", "status", "default_only"))
+
+
+def _source_backed_surface_count(surfaces: dict[str, Any]) -> int:
+    count = 0
+    for row in surfaces.values():
+        if not isinstance(row, dict):
+            continue
+        if _int_value(row.get("source_backed_rule_count", 0)):
+            count += 1
+            continue
+        if str(row.get("status", "")) == "rich":
+            count += 1
+    return count
+
+
 def _semantic_status(
     *,
     technical_status: str,
@@ -581,6 +669,7 @@ def _semantic_status(
     config_readiness_summary: dict[str, Any] | None,
     claim_conflict_report: dict[str, Any] | None,
     unsupported_conditions: list[dict[str, Any]] | None,
+    strong_promotion_evidence_blockers: list[dict[str, Any]] | None = None,
 ) -> str:
     if technical_status == "INVALID_PACKAGE":
         return "INVALID_PACKAGE"
@@ -598,6 +687,7 @@ def _semantic_status(
     )
     conflict_count = _int_value((claim_conflict_report or {}).get("conflict_count", 0))
     readiness_gap_count = _readiness_gap_count(config_readiness_summary or {})
+    strong_evidence_blocker_count = len(strong_promotion_evidence_blockers or [])
     unsupported_condition_count = max(
         len(unsupported_conditions or []),
         _first_present_int(
@@ -623,6 +713,7 @@ def _semantic_status(
         and generic_low_confidence == 0
         and conflict_count == 0
         and readiness_gap_count == 0
+        and strong_evidence_blocker_count == 0
         and unsupported_condition_count == 0
         and source_evidence_warnings == 0
         and uncovered_card_count == 0
@@ -633,6 +724,7 @@ def _semantic_status(
         or uncovered_card_count > 0
         or conflict_count > 0
         or readiness_gap_count > 0
+        or (source_depth_status == "source_backed" and strong_evidence_blocker_count > 0)
         or unsupported_condition_count > 0
         or source_evidence_warnings > 0
     ):
@@ -1127,8 +1219,9 @@ def _semantic_blockers(
     claim_conflict_report: dict[str, Any],
     globalvalue_authority: dict[str, Any],
     unsupported_conditions: list[dict[str, Any]],
+    strong_promotion_evidence_blockers: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    blockers: list[dict[str, Any]] = []
+    blockers: list[dict[str, Any]] = list(strong_promotion_evidence_blockers or [])
     missing_link_reasons = {
         "needs_guide_claim": ("cards_need_guide_claims", "blocks_source_backed_strong"),
         "needs_runtime_surface": ("cards_need_runtime_surface", "report_visible_gap"),

@@ -1523,6 +1523,72 @@ def test_operator_summary_exposes_policy_backed_mulligan_status_without_default_
     assert summary["default_only_runtime_surfaces"] == []
 
 
+def test_policy_backed_package_is_load_safe_but_not_source_backed_strong():
+    summary = build_operator_summary(
+        deck_name="PolicyBackedDeck",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        generated_files=[
+            "CustomConfig/policybackeddeck/GlobalValues.json",
+            "CustomConfig/policybackeddeck/Mulligan.json",
+        ],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "runtime_emitted": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        mulligan_plan_report={
+            "rules": [
+                {
+                    "card": "PIRATE",
+                    "selector_kind": "card",
+                    "action": "hold",
+                    "source_type": "policy_backed_autonomous_mulligan",
+                }
+            ],
+            "quality": {
+                "status": "policy_backed",
+                "has_concrete_keeps": True,
+                "default_only": False,
+                "policy_backed_rule_count": 1,
+                "policy_backed_keep_rule_count": 1,
+                "policy_lanes": ["aggro"],
+                "policy_reasons": ["pirate_pressure"],
+            },
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == []
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert any(
+        row.get("code") == "policy_claim_not_strong_evidence"
+        for row in summary.get("semantic_blockers", [])
+    )
+
+
 def test_operator_summary_names_default_only_mulligan_surface_when_present():
     summary = build_operator_summary(
         deck_name="ThinDeck",
@@ -1548,6 +1614,63 @@ def test_operator_summary_names_default_only_mulligan_surface_when_present():
 
     assert summary["default_only_runtime_surfaces"] == ["mulligan"]
     assert summary["mulligan_policy_status"]["default_only"] is True
+
+
+def test_default_only_surface_blocks_strong_promotion_but_not_load_safe_apply():
+    summary = build_operator_summary(
+        deck_name="DefaultOnlyStrongCandidate",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 2,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        generated_files=[
+            "CustomConfig/defaultonlystrongcandidate/GlobalValues.json",
+            "CustomConfig/defaultonlystrongcandidate/Mulligan.json",
+        ],
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 2,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_summary={
+            "total_cards": 2,
+            "runtime_emitted": 1,
+            "generic_low_confidence": 0,
+            "cards_needing_guide_claims": 0,
+            "cards_needing_runtime_surface": 0,
+            "cards_needing_mulligan_claims": 0,
+            "cards_needing_combo_sequence": 0,
+            "cards_needing_condition_lowering": 0,
+            "cards_needing_mechanic_lowering": 0,
+        },
+        claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        mulligan_plan_report={
+            "rules": [],
+            "suppressed_rules": [],
+            "quality": {
+                "status": "thin",
+                "has_concrete_keeps": False,
+                "default_only": True,
+                "first_gap_reason": "no_source_backed_or_policy_backed_mulligan_keeps",
+            },
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert any(
+        row.get("code") == "default_only_surface_not_strong_evidence"
+        for row in summary.get("semantic_blockers", [])
+    )
 
 
 def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():
