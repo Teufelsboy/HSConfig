@@ -40,15 +40,23 @@ def compile_source_search_records(
             "source_claim_compiler_index": index,
         }
         for key in (
+            "source_type",
+            "provenance",
             "source_visibility",
             "source_lane_hint",
             "source_category",
             "source_document_kind",
             "source_strength",
             "source_record_strength",
+            "first_missing_source_action",
         ):
             if _text(acquired.get(key, "")):
                 compiled[key] = _text(acquired[key])
+        for key in ("promotion_eligible", "strong_promotion_eligible"):
+            if acquired.get(key) is not None:
+                compiled[key] = bool(acquired[key])
+        if isinstance(acquired.get("promotion_blockers"), list):
+            compiled["promotion_blockers"] = list(acquired["promotion_blockers"])
         if "source_strength" not in compiled and _text(compiled.get("source_record_strength", "")):
             compiled["source_strength"] = _text(compiled["source_record_strength"])
         if acquired.get("publication_year") is not None:
@@ -63,6 +71,9 @@ def compile_source_search_records(
                 unsupported_reason = "snippet_only_source_not_lowerable"
             else:
                 _compile_guide_claims(compiled, deck_identity, text)
+                if compiled.get("promotion_eligible") is False:
+                    for claim in compiled["claims"]:
+                        claim["promotion_eligible"] = False
         elif source_family in DECKLIST_FAMILIES or source_family in STATIC_FAMILIES:
             _compile_non_promoting_card_roles(compiled, acquired)
 

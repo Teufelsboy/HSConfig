@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 
 
@@ -541,3 +542,68 @@ def test_compile_static_card_text_is_non_promoting():
     assert claim["claim_family"] == "card_role"
     assert claim["promotion_eligible"] is False
     assert compiled["source_claim_compiler_report"]["promotion_candidate_count"] == 0
+
+
+def test_compile_default_runtime_guide_claims_are_non_promoting():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
+        ],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/default-runtime",
+            "source_title": "Generated ShadowPriest Default Runtime",
+            "source_family": "guide",
+            "source_type": "default_runtime",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "promotion_eligible": False,
+            "strong_promotion_eligible": False,
+            "promotion_blockers": ["non_promoting_source_type_default_runtime"],
+            "first_missing_source_action": "add_current_deck_guide_or_mulligan_guide",
+            "publication_year": 2026,
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["TOY_381", "SW_448"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": (
+                "Mulligan: keep Papercraft Angel. "
+                "Darkbishop Benedictus enables the Shadow hero power. "
+                "Mind Spike can clear the enemy board or go face."
+            ),
+        }
+    ]
+
+    compiled = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+    record = compiled["records"][0]
+
+    assert record["source_type"] == "default_runtime"
+    assert record["promotion_eligible"] is False
+    assert record["strong_promotion_eligible"] is False
+    assert "non_promoting_source_type_default_runtime" in record["promotion_blockers"]
+    assert {claim["promotion_eligible"] for claim in record["claims"]} == {False}
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_search_records=compiled["records"],
+        current_date="2026-07-15",
+    )
+    report = bundle["source_autopilot_report"]
+
+    assert report["strong_candidate"] is False
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
+    assert "non_promoting_source_type_default_runtime" in report["strong_candidate_blockers"]
