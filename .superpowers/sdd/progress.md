@@ -535,3 +535,18 @@ Plan: `docs/superpowers/plans/2026-07-15-hsconfig-source-backed-strong-harvester
 - [x] Task 4: Multideck No-Default-Only Proof (commit fa32a60; operator summary projects strong closure diagnostically; operator/multideck/wild no-block slice 119 passed)
 - [x] Task 5: Operator Docs And Installed Skill Sync (commits d3770d8 + 607de85; review clean; docs/skill 40 passed; installed skill sync verified)
 - [x] Task 6: Final Verification And Git Hygiene (final review fix committed; 223 targeted passed, 85 wider passed, full 1383 passed / 11 skipped; skill sync and diff check passed; pushed origin branch at 58b38c1)
+
+---
+
+# HSConfig Source-Backed Strong Closure Profiles v2 SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-backed-strong-closure-profiles-v2.md`
+
+- [x] Task 0: Preflight and plan anchor (`e9bcd38`); active branch `codex/hsconfig-source-backed-strong-autopilot`; no shadow workspace created; installed skill update is outside repo scope.
+- [ ] Task 1: Add Closure Profile Model
+- [ ] Task 2: Wire Profiles Into Strong Promotion Summary
+- [ ] Task 3: Relax Source Autopilot First-Missing Link With Profiles
+- [ ] Task 4: Update 11-Deck Matrix Expectations
+- [ ] Task 5: Preserve Darkbishop Effect-Not-Mulligan Canary
+- [ ] Task 6: Surface Profile Closure In Reports And Skill Guidance
+- [ ] Task 7: Final Verification And Sharp ShadowPriest Dry Run
