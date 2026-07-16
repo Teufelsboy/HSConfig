@@ -25,14 +25,23 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 - `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
 - `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
 - `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
+- `evergreen_wild_archetype`: full-text public Wild deck or archetype guide for an evergreen archetype pattern, with explicit deck/archetype match and concrete card overlap.
 - `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
 - `decklist_only`: deck list or deck-code page without explicit guide claim text.
 - `policy_fallback`: internal autonomous rule used to keep packages useful.
 - `default_runtime`: generated default row with no source claim.
 
-Only explicit `official_static_semantics`, explicit `deck_matched_public_guide`, and explicit `archetype_matched_public_guide` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
+Only explicit `official_static_semantics`, explicit current `deck_matched_public_guide`, explicit current `archetype_matched_public_guide`, and qualifying `evergreen_wild_archetype` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
 
 Static semantics are surface-scoped. Official or HearthstoneJSON static records may support deterministic CardID/effect rows such as hero-power transforms, but they do not prove deck-specific mulligan, combo, targeting, or gameplan posture without public guide evidence. Source-autopilot is preflight only; runtime default-only truth is read from `reports/operator_summary.json`.
+
+## Evergreen Wild Guide Rule
+
+`SOURCE_BACKED_STRONG` may use a current deck-matched public guide or `evergreen_wild_archetype` evidence when the source is full-text public guide material, deck- or archetype-matched, and names explicit overlap with the deck cards or strategic package being lowered. The evergreen lane exists for stable Wild archetypes where a current exact-list guide may be unavailable but a public Wild guide still gives concrete card-level or package-level advice that maps to the runtime surface.
+
+Old non-Wild guides, snippets, decklists, HSReplay/HSGuru aggregate stats, and static card databases are support or diagnostic evidence. They must not prove strategic runtime surfaces by themselves, including opening-hand Mulligan keeps, combo order, targeting posture, or gameplan posture, and they must not promote `SOURCE_BACKED_STRONG` without a matching guide claim.
+
+HearthstoneJSON and other static records may support deterministic CardID/effect rows like `hero_power_transform`, identity, or card-text semantics. They must not create opening-hand Mulligan keeps without an explicit mulligan claim from a qualifying guide source. operator_summary.json remains the only normal apply authority.
 
 ## Structured Source Format
 
