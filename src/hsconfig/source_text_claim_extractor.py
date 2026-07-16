@@ -109,18 +109,14 @@ def _hero_power_transform_claims(
 
 def _has_explicit_hero_power_association(card_name: str, text: str) -> bool:
     card = re.escape(card_name.lower())
-    action = r"(?:change|changes|changed|changing|transform|transforms|transformed|transforming|turn|turns|turned|turning)"
+    action = r"(?:change|changes|turn|turns|transform|transforms|upgrade|upgrades|replace|replaces)"
+    modifier = r"(?:(?:your|the|their|a|an|this|that|new|current)\s+){0,3}"
     target = r"(?:hero power|mind spike|shadowform)"
-    bounded_clause = r"[^.!?]{0,160}"
+    direct_target = rf"{modifier}{target}\b"
+    hero_power_target = rf"{modifier}hero power\s+(?:into|to)\s+(?:mind spike|shadowform)\b"
     return bool(
-        re.search(
-            rf"{card}{bounded_clause}\b{action}\w*\b{bounded_clause}\b{target}\b",
-            text,
-        )
-        or re.search(
-            rf"\b{target}\b{bounded_clause}\b{action}\w*\b{bounded_clause}{card}",
-            text,
-        )
+        re.search(rf"\b{card}\s+{action}\s+{direct_target}", text)
+        or re.search(rf"\b{card}\s+{action}\s+{hero_power_target}", text)
     )
 
 

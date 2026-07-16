@@ -150,3 +150,27 @@ def test_disjoint_card_and_hero_power_mentions_do_not_create_transform_claim():
     )
 
     assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)
+
+
+def test_same_sentence_disjoint_clauses_do_not_create_transform_claim():
+    source = {
+        "source_url": "https://example.test/disjoint-clauses",
+        "source_title": "Unrelated Guide",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "normalized_text": (
+            "Darkbishop Benedictus changes the matchup; Mind Spike is the hero power to use."
+        ),
+        "source_record_strength": "candidate_strong",
+    }
+
+    claims = extract_text_claims(
+        deck_name="ShadowPriest",
+        deck_identity=_shadow_identity(),
+        source_record=source,
+        current_date="2026-07-16",
+    )
+
+    assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)
