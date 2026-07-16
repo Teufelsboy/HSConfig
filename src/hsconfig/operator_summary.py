@@ -1058,6 +1058,8 @@ def _claim_row_from_card_row(
         "policy_lane",
         "lane",
         "operator_impact",
+        "source_confidence",
+        "claim_confidence",
     ):
         if key in card_row:
             row[key] = card_row[key]
@@ -1069,6 +1071,8 @@ def _claim_row_from_card_row(
             "policy_lane",
             "lane",
             "operator_impact",
+            "source_confidence",
+            "claim_confidence",
         ):
             if key in closure and key not in row:
                 row[key] = closure[key]

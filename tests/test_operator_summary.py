@@ -3129,6 +3129,47 @@ def test_operator_summary_card_rows_policy_lane_only_cannot_close_profile():
     assert summary["runtime_apply_allowed"] is True
 
 
+@pytest.mark.parametrize("confidence_key", ["source_confidence", "claim_confidence"])
+def test_operator_summary_card_rows_low_confidence_source_lane_cannot_close_profile(
+    confidence_key,
+):
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [],
+            "card_rows": [
+                {
+                    "card_id": "CARD_ONLY",
+                    "closure": {
+                        "source_lane": "guide_backed",
+                        confidence_key: "low",
+                        "claim_kinds": [
+                            "gameplan_posture",
+                            "mulligan_keep",
+                            "hero_power_transform",
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_card_rows_explicit_source_lane_can_close_profile():
     summary = build_operator_summary(
         deck_name="ShadowPriest",
