@@ -141,4 +141,4 @@ Result: `44 passed in 7.88s`.
 
 ### Commit
 
-Commit SHA: pending.
+Commit SHA: `e8dd846d780fe4759de9dcf66877b4c340647e77` (`test: align shadowpriest source fixture with strong evidence policy`).
