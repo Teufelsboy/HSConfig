@@ -70,6 +70,16 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
+`source_autopilot_report.json` should stay compact and machine-readable:
+`runtime_apply_authority` must remain `reports/operator_summary.json`,
+`default_only_runtime_surfaces` must expose hidden default-only risk, and
+`source_backed_strong_closure.closed` is only an evidence-quality summary.
+`card_rows` and `surface_rows` use diagnostic lanes such as `lowered`,
+`suppressed`, `source_gap`, `static_only`, and `emitted`; they explain source
+closure and do not create another apply gate. Strong closure returns empty
+first-missing maps, while partial closure lists only the first missing card or
+surface links.
+
 ## Online Source Acquisition
 
 When public guide URLs are known, HSConfig can acquire bounded public source text before `source-autopilot`:
@@ -333,6 +343,10 @@ Mulligan selector support:
 - Use plus-combo selectors when the source says a keep depends on a partner card.
 - Use wildcard selectors only when the source applies broadly to a known hand class.
 - Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
+- Cost-band discard text such as `do not keep any 4-cost or higher cards` may
+  emit `mulligan_discard` for every matching deck card, including
+  start-of-game enablers like Darkbishop Benedictus. This still must not create
+  `mulligan_keep`.
 
 ### Policy-backed autonomous Mulligan fallback
 
@@ -360,6 +374,9 @@ runtime semantics without being cards to keep in the opening hand. Darkbishop
 Benedictus is the reference case: the Shadowform / Mind Spike behavior belongs
 in card behavior semantics, but the card itself must not become a Mulligan.json
 hold unless a source explicitly describes opening-hand mulligan intent.
+If the same source gives explicit discard intent or a cost-band discard rule,
+that discard is a Mulligan claim and may be lowered separately; the effect row
+remains in per-card runtime semantics.
 
 This split also applies to odd/even, highlander, deck-size, starting-health,
 and start-in-deck effects. These effects may create CardID behavior, source

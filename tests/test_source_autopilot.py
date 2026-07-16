@@ -145,7 +145,7 @@ def test_extract_source_evidence_rows_preserves_darkbishop_effect_without_mullig
     ]
     assert any(row["claim_kind"] == "hero_power_transform" for row in darkbishop_rows)
     assert not any(row["claim_kind"] == "mulligan_keep" for row in darkbishop_rows)
-    assert not any(row["claim_kind"] == "mulligan_discard" for row in darkbishop_rows)
+    assert any(row["claim_kind"] == "mulligan_discard" for row in darkbishop_rows)
 
 
 def test_extract_source_evidence_rows_preserves_darkbishop_effect_not_mulligan_keep():

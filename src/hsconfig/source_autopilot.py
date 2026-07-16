@@ -10,9 +10,18 @@ from hsconfig.source_evidence_policy import classify_source_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.strong_closure_profiles import ClosureProfileVerdict, evaluate_closure_profile
 
-GUIDE_FAMILIES = {"guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
-DECKLIST_FAMILIES = {"decklist", "deck_snapshot", "deck_code"}
+GUIDE_FAMILIES = {
+    "guide",
+    "public_guide",
+    "community_guide",
+    "mulligan_guide",
+    "matchup_guide",
+    "guide_fixture",
+}
+DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
 STATIC_FAMILIES = {
+    "official_static_semantics",
+    "blizzard_card_library",
     "hearthstonejson_static_semantics",
     "static_semantics",
     "metadata",
@@ -206,8 +215,6 @@ def _mulligan_rows(
         for card in deck_identity.get("cards", []):
             if not isinstance(card, Mapping):
                 continue
-            if _is_non_opening_hand_effect_card(card):
-                continue
             cost = _int_or_none(card.get("cost"))
             card_id = _text(card.get("card_id", ""))
             if cost is not None and cost >= cost_min and card_id:
@@ -319,6 +326,8 @@ def _build_report(
         "deck_name": deck_name,
         "status": "OK",
         "semantic_status": strong_closure_summary["semantic_status"],
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "default_only_runtime_surfaces": [],
         "source_rank_summary": dict(sorted(lane_counts.items())),
         "claim_kind_counts": dict(sorted(claim_counts.items())),
         "runtime_contract_candidate_count": len(lowerable_guide_rows),
@@ -342,6 +351,16 @@ def _build_report(
             evidence_rows,
             current_date=current_date,
             summary=strong_closure_summary,
+        ),
+        "card_rows": _card_lane_rows(
+            deck_identity,
+            evidence_rows,
+            current_date=current_date,
+        ),
+        "surface_rows": _surface_lane_rows(
+            evidence_rows,
+            current_date=current_date,
+            profile_verdict=profile_verdict,
         ),
         "non_promoting_claim_count": _non_promoting_claim_count(evidence_rows),
         "draft_summary": draft["draft_summary"],
@@ -393,6 +412,7 @@ def _source_backed_strong_closure(
 ) -> dict[str, Any]:
     promotion_ready = bool(summary.get("source_backed_strong_ready"))
     return {
+        "closed": promotion_ready,
         "status": "ready" if promotion_ready else "needs_source_closure",
         "promotion_ready": promotion_ready,
         "first_missing_source_action": _text(
@@ -575,11 +595,8 @@ def _first_missing_source_action_by_card(
         card_id = _text(card.get("card_id", ""))
         if not card_id:
             continue
-        by_card[card_id] = (
-            "none"
-            if card_id in source_backed_cards
-            else "add_current_deck_guide_or_mulligan_guide"
-        )
+        if card_id not in source_backed_cards:
+            by_card[card_id] = "add_current_deck_guide_or_mulligan_guide"
     return by_card
 
 
@@ -604,17 +621,183 @@ def _first_missing_source_action_by_surface(
 
     surfaces_to_report = strong_surfaces | partial_surfaces | {"mulligan"}
     first_missing = _text(summary.get("first_missing_source_action", ""))
+    if first_missing == "none":
+        return {}
     by_surface: dict[str, str] = {}
     for surface in sorted(surfaces_to_report):
         if surface in strong_surfaces:
-            by_surface[surface] = "none"
-        elif surface == "mulligan":
+            continue
+        if surface == "mulligan":
             by_surface[surface] = "add_explicit_mulligan_source"
         elif first_missing and first_missing != "none":
             by_surface[surface] = first_missing
         else:
             by_surface[surface] = "add_current_deck_guide_or_mulligan_guide"
     return by_surface
+
+
+def _card_lane_rows(
+    deck_identity: Mapping[str, Any],
+    evidence_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for card in deck_identity.get("cards", []):
+        if not isinstance(card, Mapping):
+            continue
+        card_id = _text(card.get("card_id", ""))
+        if not card_id:
+            continue
+        card_rows = [
+            row
+            for row in evidence_rows
+            if card_id in {_text(value) for value in _as_list(row.get("cards", []))}
+        ]
+        claim_kinds = sorted({_text(row.get("claim_kind", "")) for row in card_rows if row.get("claim_kind")})
+        source_families = sorted({_text(row.get("source_family", "")) for row in card_rows if row.get("source_family")})
+        source_lanes = sorted(
+            {
+                _text(row.get("source_lane", ""))
+                or _text(row.get("source_rank_lane", ""))
+                for row in card_rows
+                if row.get("source_lane") or row.get("source_rank_lane")
+            }
+        )
+        runtime_surfaces = sorted(
+            {
+                _display_surface(surface)
+                for row in card_rows
+                for surface in _runtime_surfaces_for_row(row)
+            }
+        )
+        rows.append(
+            {
+                "card_id": card_id,
+                "card_name": _text(card.get("name", "")),
+                "lane": _card_lane(
+                    card_rows,
+                    current_date=current_date,
+                ),
+                "claim_kinds": claim_kinds,
+                "source_families": source_families,
+                "source_lanes": source_lanes,
+                "runtime_surfaces": runtime_surfaces,
+            }
+        )
+    return rows
+
+
+def _card_lane(
+    card_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+) -> str:
+    if any(
+        _is_strong_guide_lane(row, current_date) and _is_runtime_contract_candidate(row)
+        for row in card_rows
+    ):
+        return "lowered"
+    if any(
+        row.get("suppressed") is True
+        or _text(row.get("runtime_lowering", "")) == "suppressed"
+        for row in card_rows
+    ):
+        return "suppressed"
+    if any(_is_static_semantics_source(row) for row in card_rows):
+        return "static_only"
+    if card_rows:
+        return "source_gap"
+    return "source_gap"
+
+
+def _is_static_semantics_source(row: Mapping[str, Any]) -> bool:
+    lane = _text(row.get("source_lane", "")) or _text(row.get("source_rank_lane", ""))
+    lane = lane.lower()
+    if lane in {"decklist_only", "statistical_enrichment", "policy_fallback", "default_runtime"}:
+        return False
+    family = _text(row.get("source_family", "")).lower()
+    return family in STATIC_FAMILIES or lane in STATIC_FAMILIES
+
+
+def _surface_lane_rows(
+    evidence_rows: Sequence[Mapping[str, Any]],
+    *,
+    current_date: str | date | None,
+    profile_verdict: ClosureProfileVerdict,
+) -> list[dict[str, Any]]:
+    by_surface: dict[str, dict[str, Any]] = {}
+    for row in evidence_rows:
+        for surface in _runtime_surfaces_for_row(row):
+            display_surface = _display_surface(surface)
+            entry = by_surface.setdefault(
+                display_surface,
+                {
+                    "surface": display_surface,
+                    "lane": "source_gap",
+                    "claim_kinds": set(),
+                    "source_families": set(),
+                    "first_missing_source_action": "add_current_deck_guide_or_mulligan_guide",
+                },
+            )
+            if row.get("claim_kind"):
+                entry["claim_kinds"].add(_text(row.get("claim_kind", "")))
+            if row.get("source_family"):
+                entry["source_families"].add(_text(row.get("source_family", "")))
+            if (
+                _is_strong_guide_lane(row, current_date)
+                and _is_runtime_contract_candidate(row)
+            ):
+                entry["lane"] = "emitted"
+                entry["first_missing_source_action"] = "none"
+            elif (
+                entry["lane"] != "emitted"
+                and (
+                    row.get("suppressed") is True
+                    or _text(row.get("runtime_lowering", "")) == "suppressed"
+                )
+            ):
+                entry["lane"] = "suppressed"
+                entry["first_missing_source_action"] = _action_from_profile_gap(
+                    profile_verdict.first_missing_link
+                )
+
+    for surface in profile_verdict.missing_surfaces:
+        display_surface = _display_surface(surface)
+        by_surface.setdefault(
+            display_surface,
+            {
+                "surface": display_surface,
+                "lane": "source_gap",
+                "claim_kinds": set(),
+                "source_families": set(),
+                "first_missing_source_action": _action_from_profile_gap(
+                    profile_verdict.first_missing_link
+                ),
+            },
+        )
+
+    result: list[dict[str, Any]] = []
+    for surface, row in sorted(by_surface.items()):
+        result.append(
+            {
+                "surface": surface,
+                "lane": row["lane"],
+                "claim_kinds": sorted(row["claim_kinds"]),
+                "source_families": sorted(row["source_families"]),
+                "first_missing_source_action": row["first_missing_source_action"],
+            }
+        )
+    return result
+
+
+def _display_surface(surface: str) -> str:
+    return {
+        "globalvalues": "GlobalValues.json",
+        "mulligan": "Mulligan.json",
+        "combo": "Combo.json",
+        "cardid": "CardID.json",
+    }.get(surface, surface)
 
 
 def _runtime_surfaces_for_row(row: Mapping[str, Any]) -> set[str]:

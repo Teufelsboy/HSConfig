@@ -52,6 +52,18 @@ Darkbishop Benedictus is the canonical boundary case: preserve the start-of-game
 `hero_power_transform`, Mind Spike, and Shadow runtime effect in contract/CardID
 semantics, but never infer an opening-hand keep unless an explicit mulligan
 source says to keep the card.
+Explicit mulligan discard evidence is different: a current guide may say to
+throw Darkbishop directly or through a documented cost-band rule such as
+`do not keep 4-cost or higher cards`. That may emit `mulligan_discard`, while
+the start-of-game effect still belongs in the per-card runtime contract.
+
+`source_autopilot_report.json` is the compact preflight proof for this boundary.
+Use `runtime_apply_authority`, `default_only_runtime_surfaces`,
+`source_backed_strong_closure.closed`, `card_rows`, `surface_rows`,
+`first_missing_source_action_by_card`, and
+`first_missing_source_action_by_surface` as diagnostics only. Strong packages
+return empty first-missing maps; partial packages list only the first missing
+card or surface links that still need source closure.
 
 ## Promotion Rule
 

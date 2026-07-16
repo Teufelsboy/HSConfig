@@ -5,9 +5,18 @@ from datetime import date, datetime
 from typing import Any, Mapping, Sequence
 
 
-GUIDE_FAMILIES = {"guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
-DECKLIST_FAMILIES = {"decklist", "deck_snapshot", "deck_code"}
+GUIDE_FAMILIES = {
+    "guide",
+    "public_guide",
+    "community_guide",
+    "mulligan_guide",
+    "matchup_guide",
+    "guide_fixture",
+}
+DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
 STATIC_FAMILIES = {
+    "official_static_semantics",
+    "blizzard_card_library",
     "hearthstonejson_static_semantics",
     "static_semantics",
     "metadata",
@@ -88,6 +97,7 @@ def compile_source_search_records(
                 }
             )
 
+        compiled["claims"] = sorted(compiled["claims"], key=_claim_sort_key)
         records.append(compiled)
 
     claim_kind_counts = Counter(
@@ -138,14 +148,35 @@ def _compile_guide_claims(
                 )
             )
 
+    discard_rows = _explicit_discard_rows(deck_identity, text)
+    if discard_rows:
+        compiled.setdefault("mulligan", {"keep_card_ids": []})
+        compiled["mulligan"]["discard_card_ids"] = [
+            row["card_id"] for row in discard_rows
+        ]
+        compiled["mulligan"].setdefault(
+            "evidence_text_short",
+            discard_rows[0]["evidence_text_short"],
+        )
+        for row in discard_rows:
+            compiled["claims"].append(
+                _claim(
+                    "mulligan_discard",
+                    [row["card_id"]],
+                    "discard",
+                    row["evidence_text_short"],
+                    "high",
+                    scope="card",
+                    timing="mulligan",
+                )
+            )
+
     discard_cost_min = _discard_cost_min(text)
     if discard_cost_min is not None:
         compiled.setdefault("mulligan", {"keep_card_ids": []})
         compiled["mulligan"]["discard_cost_min"] = discard_cost_min
         evidence = _short_evidence(text, marker=f"{discard_cost_min} cost")
         for card in _deck_cards(deck_identity):
-            if _is_non_opening_hand_effect_card(card):
-                continue
             card_id = _text(card.get("card_id", ""))
             cost = _int_or_none(card.get("cost"))
             if card_id and cost is not None and cost >= discard_cost_min:
@@ -237,14 +268,37 @@ def _explicit_keep_rows(deck_identity: Mapping[str, Any], text: str) -> list[dic
     return keep_rows
 
 
+def _explicit_discard_rows(deck_identity: Mapping[str, Any], text: str) -> list[dict[str, str]]:
+    discard_rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for discard_sentence in _negative_keep_sentences(text):
+        lowered_sentence = discard_sentence.lower()
+        for card in _deck_cards(deck_identity):
+            name = _text(card.get("name", ""))
+            card_id = _text(card.get("card_id", ""))
+            if name and card_id and name.lower() in lowered_sentence and card_id not in seen:
+                seen.add(card_id)
+                discard_rows.append(
+                    {
+                        "card_id": card_id,
+                        "evidence_text_short": discard_sentence[:220],
+                    }
+                )
+    return discard_rows
+
+
 def _discard_cost_min(text: str) -> int | None:
     lowered = text.lower()
     for cost in range(1, 16):
         phrases = (
             f"do not keep any {cost} cost or higher",
+            f"do not keep any {cost}-cost or higher",
             f"don't keep any {cost} cost or higher",
+            f"don't keep any {cost}-cost or higher",
             f"do not keep {cost} cost or higher",
+            f"do not keep {cost}-cost or higher",
             f"don't keep {cost} cost or higher",
+            f"don't keep {cost}-cost or higher",
         )
         if any(phrase in lowered for phrase in phrases):
             return cost
@@ -373,6 +427,17 @@ def _positive_keep_sentences(text: str) -> list[str]:
     return result
 
 
+def _negative_keep_sentences(text: str) -> list[str]:
+    result: list[str] = []
+    for sentence in _sentences(text):
+        lowered = sentence.lower()
+        if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
+            continue
+        if _is_negative_keep_sentence(lowered):
+            result.append(sentence)
+    return result
+
+
 def _has_explicit_mulligan_context(lowered_sentence: str) -> bool:
     return any(
         marker in lowered_sentence
@@ -447,3 +512,13 @@ def _norm(value: Any) -> str:
 
 def _slug(value: str) -> str:
     return "".join(ch.lower() for ch in value if ch.isalnum())
+
+
+def _claim_sort_key(claim: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    cards = ",".join(str(card) for card in _as_list(claim.get("cards", [])))
+    return (
+        _text(claim.get("claim_kind", "")),
+        cards,
+        _text(claim.get("stance", "")),
+        _text(claim.get("evidence_text_short", "")),
+    )

@@ -8,6 +8,8 @@ GUIDE_FAMILIES = {"guide", "public_guide", "community_guide", "mulligan_guide", 
 DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
 STATS_FAMILIES = {"stats", "statistical_enrichment", "hs" "replay", "hsguru"}
 STATIC_FAMILIES = {
+    "official_static_semantics",
+    "blizzard_card_library",
     "hearthstonejson_static_semantics",
     "hearthstonejson",
     "official_card_data",
@@ -181,10 +183,13 @@ def _promotion_blockers(
         blockers.append(f"non_promoting_source_type_{source_type}")
     if family in DECKLIST_FAMILIES:
         blockers.append("decklist_only_not_strong_evidence")
+        blockers.append("decklist_not_guide")
     if family in STATS_FAMILIES:
         blockers.append("stats_only_not_strong_evidence")
+        blockers.append("stats_not_guide")
     if family in STATIC_FAMILIES:
         blockers.append("static_semantics_not_public_guide")
+        blockers.append("static_semantics_not_deck_strategy")
     if visibility != "full_text":
         blockers.append(f"source_visibility_{visibility}_not_strong")
     if deck_scope not in {"deck_matched", "deck_or_archetype_matched"}:

@@ -14,6 +14,13 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
+`source_autopilot_report.json` stays diagnostic. Read
+`runtime_apply_authority`, `default_only_runtime_surfaces`,
+`source_backed_strong_closure.closed`, `card_rows`, `surface_rows`, and the
+first-missing maps to understand closure debt. Strong closure returns empty
+first-missing maps; partial closure names the first missing card or surface
+link. None of these fields replaces `operator_summary.json` as apply authority.
+
 Accepted source types:
 
 - official card text
@@ -202,12 +209,17 @@ Mulligan selector support:
 - Use plus-combo selectors when the source says a keep depends on a partner card.
 - Use wildcard selectors only when the source applies broadly to a known hand class.
 - Use explicit discard selectors for guide-backed throws; do not infer discard from absent keep text.
+- Cost-band discard text such as `do not keep any 4-cost or higher cards` may
+  emit `mulligan_discard` for matching deck cards, including Darkbishop
+  Benedictus. It must not create `mulligan_keep`.
 
 Do not infer `mulligan_keep` from card importance, start-of-game effects,
 deckbuilding effects, hero-power-transform text, or generic "keep" wording.
 Preserve those effects as `hero_power_transform`, CardID behavior, or
 report-visible contract evidence. Emit a Mulligan keep only when a current
 mulligan source explicitly says the card should be kept in the opening hand.
+Explicit guide-backed discard intent remains separate and may lower to
+`mulligan_discard`; the effect row remains in per-card runtime semantics.
 
 Combo timing support:
 
