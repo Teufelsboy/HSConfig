@@ -1,45 +1,66 @@
-# Task 5 Report: Preserve Darkbishop Effect-Not-Mulligan Canary
+# Task 5 Report: Make Closure Reports Actionable By Card And Surface
 
 ## Status
 
 DONE
 
-## Scope completed
+## Red Evidence
 
-- Added one protective E2E canary in `tests/test_shadowpriest_e2e.py`.
-- The canary prepares the existing ShadowPriest strong source fixture and proves:
-  - `reports/operator_summary.json` reports `semantic_status` as `SOURCE_BACKED_STRONG`.
-  - `CustomConfig/shadowpriest/Mulligan.json` contains no `SW_448` entry.
-  - `CustomConfig/shadowpriest/SW_448.json` retains the Mind Spike hero-power behavior through `BeforeUseHeroPowerBonus` (or an explicit `hero_power_transform` marker).
-
-## Production-code decision
-
-No production files changed. The existing source-lowering and autonomous Mulligan policy paths already preserve the required distinction: Darkbishop Benedictus remains an emitted start-of-game hero-power effect but is not inferred as an opening-hand keep without explicit source text.
-
-## Verification
-
-Required canary command:
-
-```powershell
-python -m pytest tests/test_shadowpriest_e2e.py tests/test_claim_kind_runtime_contract.py -q
-```
-
-Result:
+Added `test_partial_deck_reports_specific_missing_card_and_surface_actions` in
+`tests/test_source_autopilot.py` before the production change. The required
+precision run then failed because the evidence-free `DEEP_014` card received the
+generic action instead of the Kingslayer-specific action:
 
 ```text
-55 passed in 15.61s
+python -m pytest -p no:cacheprovider tests\test_source_autopilot.py::test_partial_deck_reports_specific_missing_card_and_surface_actions -q
+1 failed
+AssertionError: assert 'add_current_card_specific_runtime_source' == 'add_kingslayer_quick_pick_mulligan_source'
 ```
 
-The canary did not fail, so the conditional follow-up run including `tests/test_autonomous_mulligan_policy.py` was not required. `git diff --check` completed without whitespace errors before commit.
+## Implementation
 
-## Constraints preserved
+- Added a minimal profile-aware fallback for cards with no evidence rows.
+- Preserved existing claim-kind actions when a card has partial evidence.
+- Added exact Kingslayer `DEEP_014` and Boarlock `WW_092` missing-source actions.
+- Added the generic profile-gap and Quick Pick Mulligan fallbacks from the task brief.
+- Added the no-block matrix visibility assertion for non-strong source closure.
+- Kept closure reporting diagnostic-only; `SOURCE_BACKED_STRONG` remains an apply-independent status.
 
-- HSConfig remains pre-run only; no replay, winrate, HSTuner, or post-game logic was added.
-- `operator_summary.json` remains the normal apply authority.
-- `SOURCE_BACKED_STRONG` is tested as source-confidence only, not as a runtime apply gate.
-- No source-confidence promotion rules or source schema changed.
-- Normal output behavior for `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` was not changed.
+## Green Evidence
+
+The precision test passed after implementation:
+
+```text
+1 passed in 0.31s
+```
+
+The required focused suite passed:
+
+```text
+python -m pytest -p no:cacheprovider tests\test_source_autopilot.py tests\test_universal_wild_no_block_matrix.py -q
+51 passed in 24.08s
+```
+
+`git diff --check` also passed.
+
+## Changed Files
+
+- `src/hsconfig/source_autopilot.py`
+- `tests/test_source_autopilot.py`
+- `tests/test_universal_wild_no_block_matrix.py`
+- `.superpowers/sdd/task-5-report.md`
 
 ## Commit
 
-`afc1388706857d541a31c83e6e0817bef4d9a657 test: preserve darkbishop effect not mulligan canary`
+Implementation and test commit:
+
+`fix: expose precise source closure actions`
+
+Commit SHA is recorded after the implementation commit and before this report's documentation commit.
+
+`ea937e110e95defbba6127dfa7e131470f7addf9`
+
+## Concerns
+
+- The task brief's original set-membership assertion allowed the old generic action and therefore passed before implementation. The test was strengthened to assert the requested precise Kingslayer action so the mandated red phase was meaningful.
+- No runtime writers, source text extraction, fixtures, docs outside this report, or apply gates were changed.
