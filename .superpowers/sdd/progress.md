@@ -572,4 +572,4 @@ Task 1: complete (commits c4c8fb8..9126bb8, re-review clean after unique evergre
 Task 2: complete (commits 9126bb8..a326a36, re-review clean after ranked-source policy action fix; minor helper-name nit noted)
 Task 3: complete (commit 907dde8, review clean; specific Wild closure profiles remain diagnostic-only)
 Task 4: complete (test-only Darkbishop/static-effect boundary lock; 88 runtime contract/router tests passed)
-Task 5: complete (commit 6e40266; docs/skill updated for evergreen Wild source closure; docs suite 37 passed; installed skill sync passed)
+Task 5: complete (commit 6e40266 plus review fix; operator docs, skill, and skill reference updated for evergreen Wild source closure; docs/skill suite 93 passed; installed skill sync passed)

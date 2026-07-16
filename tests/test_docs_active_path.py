@@ -479,11 +479,24 @@ def test_operator_docs_explain_effect_semantics_are_not_mulligan_keeps():
 def test_guide_research_policy_documents_evergreen_wild_source_closure():
     text = Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
 
-    assert "evergreen_wild_archetype" in text
-    assert "SOURCE_BACKED_STRONG" in text
-    assert "stats" in text
-    assert "must not prove" in text
-    assert "operator_summary.json remains the only normal apply authority" in text
+    required_terms = [
+        "evergreen_wild_archetype",
+        "SOURCE_BACKED_STRONG",
+        "full-text public Wild guide",
+        "explicit card overlap",
+        "old non-Wild guides",
+        "snippets",
+        "decklists",
+        "HSReplay/HSGuru aggregate stats",
+        "static card databases",
+        "hero_power_transform",
+        "must not prove strategic runtime surfaces by themselves",
+        "must not create opening-hand Mulligan keeps without an explicit mulligan claim",
+        "operator_summary.json remains the only normal apply authority",
+    ]
+
+    for term in required_terms:
+        assert term in text
 
 
 def test_source_builder_workflow_marks_source_informed_apply_as_legacy_noop():

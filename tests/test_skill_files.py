@@ -279,6 +279,32 @@ def test_guide_policy_documents_source_depth_contract():
             assert term in text
 
 
+def test_skill_source_policy_documents_evergreen_wild_closure_boundary():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    required_terms = [
+        "evergreen_wild_archetype",
+        "SOURCE_BACKED_STRONG",
+        "full-text public Wild guide",
+        "explicit card overlap",
+        "old non-Wild guides",
+        "snippets",
+        "decklists",
+        "HSReplay/HSGuru aggregate stats",
+        "static card databases",
+        "hero_power_transform",
+        "must not prove strategic runtime surfaces by themselves",
+        "must not create opening-hand Mulligan keeps without an explicit mulligan claim",
+        "operator_summary.json remains the only normal apply authority",
+    ]
+
+    for text in (skill, skill_policy):
+        for term in required_terms:
+            assert term in text
+
+
 def test_skill_documents_guide_depth_closure_reports():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
