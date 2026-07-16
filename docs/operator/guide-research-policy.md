@@ -32,6 +32,8 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 
 Only explicit `official_static_semantics`, explicit `deck_matched_public_guide`, and explicit `archetype_matched_public_guide` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
 
+Static semantics are surface-scoped. Official or HearthstoneJSON static records may support deterministic CardID/effect rows such as hero-power transforms, but they do not prove deck-specific mulligan, combo, targeting, or gameplan posture without public guide evidence. Source-autopilot is preflight only; runtime default-only truth is read from `reports/operator_summary.json`.
+
 ## Structured Source Format
 
 Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.
