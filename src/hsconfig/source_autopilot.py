@@ -315,6 +315,7 @@ def _build_report(
     ]
     strong_candidate = not hard_blockers and profile_verdict.closed
     strong_closure_summary = _build_strong_closure_summary(
+        ranked_sources=ranked_sources,
         evidence_rows=evidence_rows,
         current_date=current_date,
         strong_candidate=strong_candidate,
@@ -375,6 +376,7 @@ def _build_report(
 
 def _build_strong_closure_summary(
     *,
+    ranked_sources: Sequence[Mapping[str, Any]],
     evidence_rows: Sequence[Mapping[str, Any]],
     current_date: str | date | None,
     strong_candidate: bool,
@@ -393,7 +395,7 @@ def _build_strong_closure_summary(
         first_missing_source_action = "none"
     else:
         first_missing_source_action = (
-            _source_policy_missing_action(evidence_rows)
+            _source_policy_missing_action((*ranked_sources, *evidence_rows))
             or _action_from_profile_gap(profile_verdict.first_missing_link)
         )
     return {

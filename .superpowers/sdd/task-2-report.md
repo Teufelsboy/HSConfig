@@ -1,47 +1,81 @@
-Implemented and committed Task 2.
+# Task 2 Report: Source Autopilot Evergreen Wild Lane
 
-Changed:
-- src/hsconfig/operator_summary.py: wires evaluate_closure_profile(...) into operator summary generation, adds the new source_backed_strong_closure profile fields, and uses profile eligibility to refine SOURCE_BACKED_STRONG source confidence without touching runtime apply authority.
-- tests/test_source_backed_strong_harvester_closure.py: adds the prepared ShadowPriest guide regression proving aggro_burn_hero_power closes without requiring an extra generic apply surface.
-- tests/test_operator_summary.py: covers profile fields, profile miss demotion, and confirms profile misses do not block runtime apply.
+## Commit
 
-Review fix:
-- 424a0a9 fix: harden closure profile strong eligibility
-- Added optional gameplan_contract input to build_operator_summary and passed it from package_builder.
-- Made profile claim eligibility allowlist-based: promotion_eligible=True or known strong source lane only.
-- Explicitly rejects stats, unsupported_runtime_hint, decklist_only, snippet_only, policy/default-runtime fallback lanes, low-confidence lanes, contract_gap, and diagnostic-only rows without strong lane.
-- Stops reconstructed card-row fallback data from promoting unless it carries explicit provenance.
-- Reconciles strong_promotion_report readiness with profile closure.
+- `465c659e0e1648b8d0f01d5792354252b22a5bee`
+- Message: `feat: support evergreen Wild guide autopilot lanes`
 
-Second review fix:
-- ff8a79c fix: fail close closure profile evidence
-- Prohibited lanes reject before promotion_eligible=True is considered.
-- Bare promotion_eligible=True without strong provenance cannot close a profile.
-- Missing closure/profile claim evidence now fails closed for source confidence.
-- Derived promotion_ready now requires closure_profile_verdict.strong_eligible.
-- Added parameterized prohibited-lane coverage with promotion_eligible=True and no-lifecycle/card-row fallback regressions.
+## RED Test Evidence
 
-Third review fix:
-- d97bf02 fix: require strong provenance for closure profiles
-- source_confidence and claim_confidence low/thin/unknown-style values now reject before strong-lane checks.
-- Reconstructed card_rows can only positively qualify through explicit source_lane; policy_lane/lane/confidence metadata can reject but cannot positively qualify reconstructed fallback rows.
-- Added low-confidence and card-row policy-lane/source-lane boundary tests.
+Command:
 
-Final confidence fix:
-- 2500fd3 fix: preserve confidence on reconstructed closure rows
-- Reconstructed card_rows now preserve source_confidence and claim_confidence from card_row and nested closure before closure eligibility checks.
-- Added reconstructed-card-row low-confidence regressions.
+```powershell
+python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane tests/test_source_autopilot.py::test_source_autopilot_evergreen_wild_guide_can_close_strong_summary tests/test_source_autopilot.py::test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source -q
+```
 
-Validation run:
-- python -m pytest tests/test_source_backed_strong_harvester_closure.py tests/test_operator_summary.py tests/test_strong_closure_profiles.py -q -> 123 passed in 7.91s
-- python -m pytest tests/test_operator_summary.py -q -k "low_confidence or policy_lane or strong_provenance or card_rows_fallback" -> 10 passed, 105 deselected in 0.16s
-- python -m compileall -q src/hsconfig/operator_summary.py src/hsconfig/package_builder.py -> passed
+Result before implementation:
 
-Commit:
-- 2374e8d feat: use closure profiles for strong promotion
-- 424a0a9 fix: harden closure profile strong eligibility
-- ff8a79c fix: fail close closure profile evidence
-- d97bf02 fix: require strong provenance for closure profiles
-- 2500fd3 fix: preserve confidence on reconstructed closure rows
+- `3 failed`
+- Evergreen rank rows did not preserve `source_freshness_lane`.
+- Evergreen Wild full-text guide still ranked as `guide_card_overlap`.
+- Old non-Wild guide did not expose the required source-refresh action.
 
-Residual risk: profile input extraction is intentionally defensive across current report shapes; if future reports move claim-kind data into a new report-only structure, the extractor may need another narrow adapter. Runtime apply gating was not changed.
+## GREEN Test Evidence
+
+Targeted Task 2 tests:
+
+```powershell
+python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane tests/test_source_autopilot.py::test_source_autopilot_evergreen_wild_guide_can_close_strong_summary tests/test_source_autopilot.py::test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source -q
+```
+
+Result:
+
+- `3 passed in 0.15s`
+
+Autopilot regression file:
+
+```powershell
+python -m pytest tests/test_source_autopilot.py -q
+```
+
+Result:
+
+- `27 passed in 0.14s`
+
+Required Task 2 verification:
+
+```powershell
+python -m pytest tests/test_source_autopilot.py tests/test_source_evidence_policy.py -q
+```
+
+Result:
+
+- `38 passed in 0.25s`
+
+## Files Changed
+
+- `src/hsconfig/source_autopilot.py`
+- `tests/test_source_autopilot.py`
+
+## Notes
+
+- `rank_public_sources(...)` now preserves policy-derived `source_freshness_lane`.
+- Evergreen Wild full-text deck/archetype-matched guide rows can rank as `guide_evergreen_wild_archetype`.
+- `_is_strong_guide_lane(...)` accepts both `guide_current_deck_match` and `guide_evergreen_wild_archetype`, while still requiring full text, deck-matched public guide lane, and no policy blockers.
+- Stale non-evergreen full-text guide rows remain `SOURCE_BACKED_PARTIAL` and report `add_current_or_evergreen_wild_public_guide`.
+- Source preflight remains diagnostic and non-blocking.
+
+## Residual Risks
+
+- Only the required Task 2 targeted suite was run, not the full repository test suite.
+- The report file is intentionally uncommitted per task instruction.
+
+## Review Fix
+
+- Reviewer finding: stale non-evergreen full-text guide rows without structured claims lost the source-policy action because only extracted evidence rows were scanned.
+- Root cause: ranked source rows carried `source_not_current_or_evergreen_wild`, but empty `source_evidence_rows` caused the report to fall back to the closure-profile action.
+- RED command: `python -m pytest tests/test_source_autopilot.py::test_source_autopilot_stale_guide_without_claims_requests_current_or_evergreen_source -q`
+- RED result: exit 1; expected `add_current_or_evergreen_wild_public_guide`, got `add_current_card_specific_runtime_source`.
+- Fix: pass ranked source rows into `_build_strong_closure_summary(...)` and scan ranked source policy blockers before profile-gap fallbacks.
+- GREEN command: `python -m pytest tests/test_source_autopilot.py tests/test_source_evidence_policy.py -q`
+- GREEN result: exit 0; 39 passed in 0.22s.

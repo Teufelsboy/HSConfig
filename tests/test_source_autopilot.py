@@ -936,3 +936,50 @@ def test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_sourc
     assert report["first_missing_source_action"] == (
         "add_current_or_evergreen_wild_public_guide"
     )
+
+
+def test_source_autopilot_stale_guide_without_claims_requests_current_or_evergreen_source():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-guide",
+                "source_title": "ThinDeck Guide 2021",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2021,
+                "format_scope": "standard",
+                "source_record_strength": "candidate_strong",
+                "normalized_text": (
+                    "ThinDeck old non-Wild guide with target priorities and play patterns. " * 8
+                ),
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+    assert bundle["ranked_sources"][0]["source_freshness_lane"] == "stale_or_not_current"
+    assert "source_not_current_or_evergreen_wild" in bundle["ranked_sources"][0]["promotion_blockers"]
+    assert bundle["source_evidence_rows"] == []
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_closure_summary"]["first_missing_source_action"] == (
+        "add_current_or_evergreen_wild_public_guide"
+    )
+    assert report["first_missing_source_action"] == (
+        "add_current_or_evergreen_wild_public_guide"
+    )
