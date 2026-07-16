@@ -30,6 +30,26 @@ def test_every_matrix_deck_declares_closure_profile():
         assert deck["runtime_apply_allowed"] is True
 
 
+def test_representative_wild_matrix_uses_specific_closure_profiles():
+    expected_profiles = {
+        "ShadowPriest": "aggro_burn_hero_power",
+        "CtAPaladin": "board_flood_recruit",
+        "PirateRogue": "weapon_pressure",
+        "BigShaman": "cheat_recruit_big",
+        "Discolock": "discard_pressure",
+        "TreantDruid": "board_flood_recruit",
+        "ImbueMage": "hero_power_imbue",
+        "MechPala": "board_flood_recruit",
+        "Kingslayer": "weapon_pressure",
+        "Boarlock": "combo_setup",
+        "PirateDH": "weapon_pressure",
+    }
+
+    rows = {deck["deck_name"]: deck for deck in load_archetype_matrix()}
+    for deck_name, expected_profile in expected_profiles.items():
+        assert rows[deck_name]["closure_profile"] == expected_profile
+
+
 def _stub_empty_card_fetches(monkeypatch) -> None:
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", lambda timeout=10.0: [])

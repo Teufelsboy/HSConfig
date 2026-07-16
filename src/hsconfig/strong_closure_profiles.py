@@ -59,6 +59,33 @@ PROFILE_REQUIREMENTS: dict[str, ClosureProfileRequirement] = {
         ),
         required_surfaces=("GlobalValues.json", "Mulligan.json"),
     ),
+    "cheat_recruit_big": ClosureProfileRequirement(
+        profile_name="cheat_recruit_big",
+        required_any_claim_groups=(
+            ("gameplan_posture",),
+            ("mulligan_keep", "mulligan_discard", "card_role"),
+            ("mechanic_usage", "combo_sequence", "card_role"),
+        ),
+        required_surfaces=("GlobalValues.json", "Mulligan.json"),
+    ),
+    "discard_pressure": ClosureProfileRequirement(
+        profile_name="discard_pressure",
+        required_any_claim_groups=(
+            ("gameplan_posture",),
+            ("mulligan_keep", "mulligan_discard", "card_role"),
+            ("mechanic_usage", "known_bad_pattern", "card_role"),
+        ),
+        required_surfaces=("GlobalValues.json", "Mulligan.json"),
+    ),
+    "hero_power_imbue": ClosureProfileRequirement(
+        profile_name="hero_power_imbue",
+        required_any_claim_groups=(
+            ("gameplan_posture",),
+            ("mulligan_keep", "mulligan_discard", "card_role"),
+            ("hero_power_transform", "mechanic_usage", "card_role"),
+        ),
+        required_surfaces=("GlobalValues.json", "Mulligan.json"),
+    ),
     "generic_no_block": ClosureProfileRequirement(
         profile_name="generic_no_block",
         required_any_claim_groups=(("gameplan_posture", "card_role", "mechanic_usage"),),
@@ -71,6 +98,18 @@ def profile_for_archetype(archetype_bucket: str, mechanics: Iterable[str]) -> st
     bucket = archetype_bucket.lower()
     mechanic_set = {mechanic.lower() for mechanic in mechanics}
 
+    if "imbue" in bucket or "imbue" in mechanic_set:
+        return "hero_power_imbue"
+    if "discard" in bucket or "discard" in mechanic_set:
+        return "discard_pressure"
+    if (
+        "big" in bucket
+        or "cheat" in bucket
+        or "big_minion" in mechanic_set
+        or "cheat" in mechanic_set
+        or "summon_from_deck" in mechanic_set
+    ):
+        return "cheat_recruit_big"
     if "hero_power" in bucket or "shadow_hero_power" in mechanic_set:
         return "aggro_burn_hero_power"
     if "weapon" in bucket or "weapon" in mechanic_set or "hero_attack" in mechanic_set:
