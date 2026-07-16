@@ -101,6 +101,19 @@ NON_STRONG_CLOSURE_PROFILE_LANES = {
     "unsupported_runtime_hint",
     "diagnostic_only",
 }
+LOW_CONFIDENCE_CLOSURE_PROFILE_VALUES = {
+    "low",
+    "explicit_low_confidence",
+    "generic_low_confidence",
+    "uncovered_low_confidence",
+    "unknown",
+    "weak",
+    "thin",
+    "report_only",
+    "unsupported",
+    "unknown_future_mechanic",
+    "low_confidence_runtime_lowering",
+}
 
 
 def build_operator_summary(
@@ -1080,8 +1093,22 @@ def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
         str(row.get("claim_readiness") or ""),
         str(row.get("confidence") or ""),
     }
+    confidence_values = {
+        str(row.get("source_confidence") or ""),
+        str(row.get("claim_confidence") or ""),
+    }
+    normalized_confidence_values = {
+        value.strip().lower() for value in confidence_values if value
+    }
+    if any(
+        value in LOW_CONFIDENCE_CLOSURE_PROFILE_VALUES
+        for value in normalized_confidence_values
+    ):
+        return False
     if any(lane in NON_STRONG_CLOSURE_PROFILE_LANES for lane in lane_values):
         return False
+    if row.get("reconstructed_from_card_row") is True:
+        return str(row.get("source_lane") or "") in STRONG_SOURCE_QUALITY_LANES
     return any(lane in STRONG_SOURCE_QUALITY_LANES for lane in lane_values)
 
 

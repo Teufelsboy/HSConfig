@@ -3061,6 +3061,111 @@ def test_operator_summary_allowed_strong_lane_closes_profile_without_promotion_f
     assert summary["runtime_apply_allowed"] is True
 
 
+@pytest.mark.parametrize("confidence_key", ["source_confidence", "claim_confidence"])
+def test_operator_summary_low_confidence_blocks_guide_backed_profile_closure(
+    confidence_key,
+):
+    rows = [
+        {
+            "claim_kind": "gameplan_posture",
+            "source_lane": "guide_backed",
+            confidence_key: "low",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "source_lane": "guide_backed",
+            confidence_key: "low",
+        },
+        {
+            "claim_kind": "hero_power_transform",
+            "source_lane": "guide_backed",
+            confidence_key: "low",
+        },
+    ]
+
+    summary = _source_backed_profile_summary(rows)
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["promotion_ready"] is False
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_card_rows_policy_lane_only_cannot_close_profile():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [],
+            "card_rows": [
+                {
+                    "card_id": "CARD_ONLY",
+                    "closure": {
+                        "policy_lane": "guide_backed",
+                        "claim_kinds": [
+                            "gameplan_posture",
+                            "mulligan_keep",
+                            "hero_power_transform",
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_card_rows_explicit_source_lane_can_close_profile():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [],
+            "card_rows": [
+                {
+                    "card_id": "CARD_ONLY",
+                    "closure": {
+                        "source_lane": "guide_backed",
+                        "claim_kinds": [
+                            "gameplan_posture",
+                            "mulligan_keep",
+                            "hero_power_transform",
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert closure["closure_profile_closed"] is True
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_strong_report_ready_is_reconciled_with_profile_miss():
     summary = build_operator_summary(
         deck_name="ShadowPriest",
