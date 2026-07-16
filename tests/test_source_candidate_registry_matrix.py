@@ -6,6 +6,14 @@ from pathlib import Path
 from hsconfig.source_candidate_registry import source_candidates_for_deck
 
 
+PROOF_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "docs"
+    / "operator"
+    / "source-candidate-proof-decks.json"
+)
+
+
 DECKS = {
     "ShadowPriest": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
     "CtAPaladin": "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
@@ -109,4 +117,48 @@ def test_source_candidate_proof_doc_matches_registry_expectations():
         ]
         assert rows[deck_name]["expected_strong_promotion_status"] == (
             EXPECTED_STRONG_PROMOTION_STATUS[deck_name]
+        )
+
+
+def test_source_candidate_proof_rows_match_registry_contract():
+    proof = json.loads(PROOF_PATH.read_text(encoding="utf-8"))
+
+    assert proof["strongness_policy"].startswith("Candidate URLs are source acquisition seeds")
+
+    for row in proof["decks"]:
+        deck_name = row["deck_name"]
+        candidates = source_candidates_for_deck(deck_name)
+        urls = {candidate.url for candidate in candidates}
+        expected_urls = set(row["candidate_urls"])
+
+        assert len(candidates) >= row["expected_candidate_count_min"], deck_name
+        assert expected_urls <= urls, deck_name
+        assert {
+            candidate.strength_ceiling for candidate in candidates
+            if candidate.url in expected_urls
+        } == {row["expected_strength_ceiling"]}, deck_name
+
+        expected_action = row["first_missing_source_action"]
+        matching_actions = {
+            candidate.first_missing_source_action
+            for candidate in candidates
+            if candidate.url in expected_urls
+        }
+        assert matching_actions == {expected_action}, deck_name
+
+
+def test_context_only_candidates_cannot_declare_runtime_claim_kinds():
+    for deck_name in ["MechPala"]:
+        candidates = source_candidates_for_deck(deck_name)
+        context_candidates = [
+            candidate for candidate in candidates
+            if candidate.strength_ceiling == "context_only"
+        ]
+
+        assert context_candidates
+        assert all(candidate.expected_claim_kinds == () for candidate in context_candidates)
+        assert all(
+            candidate.first_missing_source_action
+            == "add_current_full_text_mulligan_or_gameplan_source"
+            for candidate in context_candidates
         )
