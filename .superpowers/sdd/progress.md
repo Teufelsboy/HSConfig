@@ -545,8 +545,9 @@ Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-backed-strong-closure-p
 - [x] Task 0: Preflight and plan anchor (`e9bcd38`); active branch `codex/hsconfig-source-backed-strong-autopilot`; no shadow workspace created; installed skill update is outside repo scope.
 - [x] Task 1: Add Closure Profile Model (commit `604cdab`; focused test `5 passed`; task review approved)
 - [x] Task 2: Wire Profiles Into Strong Promotion Summary (commits `2374e8d`, `424a0a9`, `ff8a79c`, `d97bf02`, `2500fd3`; focused suite `123 passed`; final task review approved)
-- [ ] Task 3: Relax Source Autopilot First-Missing Link With Profiles
+- [x] Task 3: Relax Source Autopilot First-Missing Link With Profiles (commits 616a025..709430f; review clean; focused source-autopilot suite 30 passed)
 - [ ] Task 4: Update 11-Deck Matrix Expectations
 - [ ] Task 5: Preserve Darkbishop Effect-Not-Mulligan Canary
 - [ ] Task 6: Surface Profile Closure In Reports And Skill Guidance
 - [ ] Task 7: Final Verification And Sharp ShadowPriest Dry Run
+
