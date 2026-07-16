@@ -289,6 +289,29 @@ def assert_runtime_surface_shape(deck_dir: Path, deck_card_ids: set[str]) -> Non
     assert not (deck_dir / "Concede.json").exists()
 
 
+def assert_darkbishop_effect_semantics_without_mulligan_keep(deck_dir: Path) -> None:
+    darkbishop_path = deck_dir / "SW_448.json"
+    assert darkbishop_path.is_file()
+    darkbishop = json.loads(darkbishop_path.read_text(encoding="utf-8"))
+    hero_power_bonus = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+    assert hero_power_bonus
+    assert any(
+        row.get("value")
+        and (
+            "shadow" in str(row.get("comment", "")).lower()
+            or "hero_power" in str(row.get("comment", "")).lower()
+        )
+        for row in hero_power_bonus
+    )
+    mulligan = json.loads(
+        (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
+    )
+    assert not any(
+        row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
+        for row in mulligan["Mulligan"]["values"]
+    )
+
+
 @pytest.mark.parametrize(("deck_name", "deck_code"), DECKS)
 def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     tmp_path: Path,
@@ -398,22 +421,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert "cards" in semantic_report
     assert_runtime_surface_shape(deck_dir, deck_card_ids)
     if deck_name == "ShadowPriest":
-        darkbishop_path = deck_dir / "SW_448.json"
-        assert darkbishop_path.is_file()
-        darkbishop = json.loads(darkbishop_path.read_text(encoding="utf-8"))
-        darkbishop_text = json.dumps(darkbishop)
-        assert (
-            "BeforeUseHeroPowerBonus" in darkbishop_text
-            or "Mind Spike" in darkbishop_text
-            or "Shadowform" in darkbishop_text
-        )
-        mulligan = json.loads(
-            (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
-        )
-        assert not any(
-            row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
-            for row in mulligan["Mulligan"]["values"]
-        )
+        assert_darkbishop_effect_semantics_without_mulligan_keep(deck_dir)
 
 
 def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeypatch):

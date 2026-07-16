@@ -18,6 +18,25 @@ from tests.test_configure_auto_source import (
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def assert_darkbishop_effect_semantics_without_mulligan_keep(
+    darkbishop: dict, mulligan: dict
+) -> None:
+    hero_power_bonus = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+    assert hero_power_bonus
+    assert any(
+        row.get("value")
+        and (
+            "shadow" in str(row.get("comment", "")).lower()
+            or "hero_power" in str(row.get("comment", "")).lower()
+        )
+        for row in hero_power_bonus
+    )
+    assert not any(
+        row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
+        for row in mulligan["Mulligan"]["values"]
+    )
+
+
 def _write_fixture_map(path: Path, url: str, page_name: str) -> None:
     page = FIXTURES / "source_pages" / page_name
     path.write_text(json.dumps({url: str(page)}), encoding="utf-8")
@@ -134,16 +153,7 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     darkbishop_path = deck_dir / "SW_448.json"
     assert darkbishop_path.is_file()
     darkbishop = _read_json(darkbishop_path)
-    darkbishop_text = json.dumps(darkbishop)
-    assert (
-        "BeforeUseHeroPowerBonus" in darkbishop_text
-        or "Mind Spike" in darkbishop_text
-        or "Shadowform" in darkbishop_text
-    )
-    assert not any(
-        row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
-        for row in mulligan["Mulligan"]["values"]
-    )
+    assert_darkbishop_effect_semantics_without_mulligan_keep(darkbishop, mulligan)
 
     source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
     flat_claims = [
