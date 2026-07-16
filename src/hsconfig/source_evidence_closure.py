@@ -20,6 +20,7 @@ def build_source_evidence_closure_report(
         operator_summary.get("source_to_runtime_explainability_summary")
     )
     closure_summary = _mapping(operator_summary.get("source_evidence_closure_summary"))
+    strong_closure = _mapping(operator_summary.get("source_backed_strong_closure"))
     return {
         "schema_version": 1,
         "authority": "diagnostic_only",
@@ -42,6 +43,14 @@ def build_source_evidence_closure_report(
         "source_to_runtime_summary": dict(source_to_runtime_summary),
         "source_to_runtime_explainability_summary": dict(explainability_summary),
         "source_evidence_closure_summary": dict(closure_summary),
+        "closure_profile": strong_closure.get("closure_profile", "unknown"),
+        "closure_profile_closed": bool(
+            strong_closure.get("closure_profile_closed", False)
+        ),
+        "closure_profile_first_missing_link": strong_closure.get(
+            "closure_profile_first_missing_link",
+            "unknown",
+        ),
         "first_missing_source_action_counts": dict(
             _mapping(closure_summary.get("first_missing_source_action_counts"))
         ),
