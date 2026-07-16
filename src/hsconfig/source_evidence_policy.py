@@ -83,6 +83,7 @@ def classify_source_evidence(
     )
     static_scope = _static_runtime_surface_scope(record, family)
     promotion_eligible = not blockers and family in GUIDE_FAMILIES
+    next_source_action = "none" if promotion_eligible else _first_missing_source_action(blockers)
 
     result.update(
         {
@@ -103,9 +104,8 @@ def classify_source_evidence(
                 else _trust_ceiling(family, visibility)
             ),
             "promotion_blockers": blockers,
-            "first_missing_source_action": (
-                "none" if promotion_eligible else _first_missing_source_action(blockers)
-            ),
+            "first_missing_source_action": next_source_action,
+            "next_source_action": next_source_action,
         }
     )
     return result
@@ -228,6 +228,8 @@ def _promotion_blockers(
     if family in STATIC_FAMILIES:
         blockers.append("static_semantics_not_public_guide")
         blockers.append("static_semantics_not_deck_strategy")
+    if family in GUIDE_FAMILIES and not _text(record.get("normalized_text") or record.get("text")):
+        blockers.append("missing_acquired_source_text")
     if visibility != "full_text":
         blockers.append(f"source_visibility_{visibility}_not_strong")
     if deck_scope not in {"deck_matched", "deck_or_archetype_matched"}:

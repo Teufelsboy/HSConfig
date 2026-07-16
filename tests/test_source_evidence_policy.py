@@ -42,6 +42,7 @@ def test_structured_current_deck_guide_claims_need_explicit_full_text_visibility
             "source_title": "Voidburn Wild Aggro Shadow Priest",
             "source_url": "https://example.test/shadowpriest",
             "source_visibility": "full_text",
+            "normalized_text": "A current ShadowPriest guide with mulligan and sequencing advice.",
             "published_at": "2026-07-01T00:00:00Z",
             "deck_match": {
                 "deck_name": "ShadowPriest",
@@ -65,6 +66,32 @@ def test_structured_current_deck_guide_claims_need_explicit_full_text_visibility
     assert row["promotion_eligible"] is True
     assert row["strong_promotion_eligible"] is True
     assert row["first_missing_source_action"] == "none"
+
+
+def test_metadata_only_full_text_guide_cannot_promote_without_acquired_source_text():
+    row = classify_source_evidence(
+        {
+            "source_family": "guide",
+            "source_title": "Voidburn Wild Aggro Shadow Priest",
+            "source_url": "https://example.test/shadowpriest",
+            "source_visibility": "full_text",
+            "published_at": "2026-07-01T00:00:00Z",
+            "source_record_strength": "candidate_strong",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_446"],
+            },
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 15),
+    )
+
+    assert row["promotion_eligible"] is False
+    assert row["strong_promotion_eligible"] is False
+    assert row["trust_ceiling"] != "source_backed_strong"
+    assert "missing_acquired_source_text" in row["promotion_blockers"]
+    assert row["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"
+    assert row["next_source_action"] == "add_current_or_evergreen_wild_public_guide"
 
 
 def test_structured_current_deck_guide_claims_without_source_text_do_not_self_certify():
