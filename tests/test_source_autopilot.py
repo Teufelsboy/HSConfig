@@ -536,7 +536,7 @@ def test_source_autopilot_reports_strong_blockers_per_card():
     assert "no_card_specific_runtime_contract_candidate" in report["strong_candidate_blockers"]
     assert (
         report["first_missing_source_action_by_card"]["CARD_001"]
-        == "add_current_deck_guide_or_mulligan_guide"
+        == "add_current_card_specific_runtime_source"
     )
     assert report["non_promoting_claim_count"] >= 1
 
@@ -563,8 +563,8 @@ def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
     assert summary["technical_no_block"] is True
     assert summary["source_backed_strong_ready"] is False
     assert summary["first_missing_source_action"] != "none"
-    assert report["first_missing_source_action_by_surface"]["mulligan"] == (
-        "add_explicit_mulligan_source"
+    assert report["first_missing_source_action_by_surface"]["Mulligan.json"] == (
+        "add_exact_mulligan_keep_or_discard_source"
     )
 
 
@@ -661,4 +661,94 @@ def test_source_autopilot_marks_runtime_default_only_surfaces_not_evaluated():
     )
     assert closure["default_only_runtime_surfaces_scope"] == (
         "source_preflight_not_runtime_proof"
+    )
+
+
+def test_source_autopilot_names_targeting_missing_action():
+    deck_identity = {
+        "deck_name": "TargetDeck",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Face Spell", "cost": 1, "count": 2},
+        ],
+    }
+    bundle = build_source_autopilot_bundle(
+        deck_name="TargetDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/target-deck",
+                "source_title": "Target Deck Current Guide",
+                "source_family": "guide",
+                "source_visibility": "snippet_only",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "TargetDeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "stance": "prefer_enemy_hero",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["first_missing_source_action_by_card"]["CARD_001"] == (
+        "add_card_specific_targeting_source"
+    )
+    assert report["first_missing_source_action_by_surface"]["CardID.json"] == (
+        "add_card_specific_targeting_source"
+    )
+
+
+def test_source_autopilot_names_combo_sequence_missing_action():
+    deck_identity = {
+        "deck_name": "ComboDeck",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Combo Piece", "cost": 1, "count": 2},
+        ],
+    }
+    bundle = build_source_autopilot_bundle(
+        deck_name="ComboDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/combo-deck",
+                "source_title": "Combo Deck Current Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "ComboDeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "normalized_text": "Combo Deck Current Guide. " * 20,
+                "claims": [
+                    {
+                        "claim_kind": "combo_sequence",
+                        "cards": ["CARD_001"],
+                        "stance": "assemble_combo",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["first_missing_source_action_by_card"]["CARD_001"] == (
+        "add_combo_sequence_source"
+    )
+    assert report["first_missing_source_action_by_surface"]["Combo.json"] == (
+        "add_combo_sequence_source"
     )

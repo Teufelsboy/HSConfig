@@ -448,6 +448,21 @@ def _action_from_profile_gap(first_missing_link: str) -> str:
     return "add_current_card_specific_runtime_source"
 
 
+def _source_action_for_claim_kind(claim_kind: str) -> str:
+    normalized = _text(claim_kind).lower()
+    if normalized in {"mulligan_keep", "mulligan_discard"}:
+        return "add_exact_mulligan_keep_or_discard_source"
+    if normalized == "targeting_rule":
+        return "add_card_specific_targeting_source"
+    if normalized == "combo_sequence":
+        return "add_combo_sequence_source"
+    if normalized in {"discover_choice", "choose_one_choice"}:
+        return "add_generated_entity_or_option_identity_source"
+    if normalized in {"hero_power_transform", "card_role", "mechanic_usage"}:
+        return "add_current_card_specific_runtime_source"
+    return "add_runtime_surface_lowering_source"
+
+
 def _closure_profile_verdict(
     *,
     deck_name: str,
@@ -599,7 +614,16 @@ def _first_missing_source_action_by_card(
         if not card_id:
             continue
         if card_id not in source_backed_cards:
-            by_card[card_id] = "add_current_deck_guide_or_mulligan_guide"
+            card_claim_kinds = [
+                _text(row.get("claim_kind", ""))
+                for row in evidence_rows
+                if card_id in {_text(value) for value in _as_list(row.get("cards", []))}
+            ]
+            by_card[card_id] = (
+                _source_action_for_claim_kind(card_claim_kinds[0])
+                if card_claim_kinds
+                else "add_current_card_specific_runtime_source"
+            )
     return by_card
 
 
@@ -630,12 +654,27 @@ def _first_missing_source_action_by_surface(
     for surface in sorted(surfaces_to_report):
         if surface in strong_surfaces:
             continue
+        surface_claim_kinds = [
+            _text(row.get("claim_kind", ""))
+            for row in evidence_rows
+            if surface in _runtime_surfaces_for_row(row)
+        ]
         if surface == "mulligan":
-            by_surface[surface] = "add_explicit_mulligan_source"
+            by_surface[_display_surface(surface)] = (
+                _source_action_for_claim_kind(surface_claim_kinds[0])
+                if surface_claim_kinds
+                else "add_exact_mulligan_keep_or_discard_source"
+            )
+        elif surface_claim_kinds:
+            by_surface[_display_surface(surface)] = _source_action_for_claim_kind(
+                surface_claim_kinds[0]
+            )
         elif first_missing and first_missing != "none":
-            by_surface[surface] = first_missing
+            by_surface[_display_surface(surface)] = first_missing
         else:
-            by_surface[surface] = "add_current_deck_guide_or_mulligan_guide"
+            by_surface[_display_surface(surface)] = (
+                "add_current_card_specific_runtime_source"
+            )
     return by_surface
 
 

@@ -265,7 +265,7 @@ def test_source_autopilot_partial_report_names_first_missing_link():
     assert report["runtime_apply_authority"] == "reports/operator_summary.json"
     assert report["source_backed_strong_closure"]["closed"] is False
     assert report["first_missing_source_action_by_card"] == {
-        "CARD_001": "add_current_deck_guide_or_mulligan_guide"
+        "CARD_001": "add_current_card_specific_runtime_source"
     }
     assert report["first_missing_source_action_by_surface"]
     assert report["card_rows"] == [
