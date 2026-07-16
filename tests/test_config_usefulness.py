@@ -335,3 +335,76 @@ def test_config_usefulness_marks_unchanged_and_baseline_normal_surfaces_default_
     assert usefulness["surfaces"]["globalvalues"]["default_only"] is True
     assert usefulness["surfaces"]["cardid_behavior"]["default_only"] is True
     assert usefulness["surfaces"]["combo"]["default_only"] is True
+
+
+def test_report_only_combo_claim_without_combo_json_is_not_default_only_runtime():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="STATIC_SEMANTICS_USABLE",
+        config_readiness_summary={"cards_needing_combo_sequence": 0},
+        mulligan_plan_report={
+            "rules": [{"card": "CARD_001", "selector_kind": "card", "action": "hold"}],
+            "quality": {"has_concrete_keeps": True},
+        },
+        card_behavior_plan_report={
+            "rows": [
+                {
+                    "card_id": "CARD_001",
+                    "meaningful_runtime_surface": True,
+                    "behavior_block": {"BeforePlayCardBonus": {"values": []}},
+                }
+            ],
+        },
+        combo_plan_report={
+            "combos": [],
+            "suppressed": [
+                {
+                    "claim_id": "combo_missing_timing",
+                    "reason": "missing_timing",
+                    "runtime_surface": "Combo.json",
+                }
+            ],
+        },
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+    )
+
+    combo = usefulness["surfaces"]["combo"]
+    assert combo["status"] == "report_only"
+    assert combo["combo_expected"] is True
+    assert combo["suppressed_combo_claim_count"] == 1
+    assert combo["default_only"] is False
+
+
+def test_combo_readiness_gap_stays_default_only_when_suppressed_claims_exist():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="SOURCE_BACKED_STRONG",
+        config_readiness_summary={"cards_needing_combo_sequence": 1},
+        mulligan_plan_report={
+            "rules": [{"card": "CARD_001", "selector_kind": "card", "action": "hold"}],
+            "quality": {"has_concrete_keeps": True},
+        },
+        card_behavior_plan_report={
+            "rows": [{"card_id": "CARD_001", "meaningful_runtime_surface": False}],
+        },
+        combo_plan_report={
+            "combos": [],
+            "suppressed": [
+                {
+                    "claim_id": "combo_missing_timing",
+                    "reason": "missing_timing",
+                    "runtime_surface": "Combo.json",
+                }
+            ],
+        },
+        globalvalues_profile_report={
+            "changed_keys": [],
+            "unchanged_keys": ["EnemySecretValue"],
+            "expected_overlay_keys": ["EnemySecretValue"],
+        },
+    )
+
+    combo = usefulness["surfaces"]["combo"]
+    assert combo["status"] == "report_only"
+    assert combo["combo_expected"] is True
+    assert combo["default_only"] is True

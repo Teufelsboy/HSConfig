@@ -513,6 +513,9 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     deck_dir = out / "CustomConfig" / "guide_cards"
     reports = out / "reports"
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    operator_summary = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
     combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
     combo_suppressions = json.loads(
         (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
@@ -529,6 +532,7 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]
     assert combo_suppressions[0]["reason"] == "missing_timing"
+    assert "combo" not in operator_summary["default_only_runtime_surfaces"]
 
 
 def test_build_accepts_source_documents_json_and_writes_source_evidence_report(

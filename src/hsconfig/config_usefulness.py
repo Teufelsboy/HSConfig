@@ -197,7 +197,7 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
         status = "thin"
     return {
         "status": status,
-        "default_only": combo_expected and not combos,
+        "default_only": bool(gap_count) and not combos,
         "combo_expected": combo_expected,
         "combo_row_count": len(combos),
         "suppressed_combo_claim_count": len(suppressed),
