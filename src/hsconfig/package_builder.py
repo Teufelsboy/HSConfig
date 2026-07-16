@@ -396,6 +396,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "source_to_runtime_explainability_report": (
             source_to_runtime_explainability_report
         ),
+        "gameplan_contract": gameplan_contract,
     }
     generated_files = _generated_package_files(
         out,

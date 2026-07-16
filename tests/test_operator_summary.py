@@ -2851,6 +2851,173 @@ def test_operator_summary_profile_miss_stays_non_apply_blocking():
     assert summary["runtime_apply_allowed"] is True
 
 
+def _source_backed_profile_summary(rows, *, gameplan_contract=None):
+    return build_operator_summary(
+        deck_name="Neutral Deck",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": len(rows),
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": rows,
+            "card_rows": [],
+        },
+        gameplan_contract=gameplan_contract,
+    )
+
+
+def _profile_claim_rows(*, source_lane):
+    return [
+        {"claim_kind": "gameplan_posture", "source_lane": source_lane},
+        {"claim_kind": "mulligan_keep", "source_lane": source_lane},
+        {"claim_kind": "hero_power_transform", "source_lane": source_lane},
+    ]
+
+
+def test_operator_summary_stats_lane_cannot_satisfy_closure_profile():
+    summary = _source_backed_profile_summary(_profile_claim_rows(source_lane="stats"))
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["closure_profile_first_missing_link"].startswith(
+        "missing_claim_group:"
+    )
+    assert closure["closure_profile_missing_claim_groups"]
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_unsupported_runtime_hint_cannot_satisfy_closure_profile():
+    summary = _source_backed_profile_summary(
+        _profile_claim_rows(source_lane="unsupported_runtime_hint")
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["closure_profile_first_missing_link"].startswith(
+        "missing_claim_group:"
+    )
+    assert closure["closure_profile_missing_claim_groups"]
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_card_rows_fallback_without_source_provenance_cannot_promote():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [],
+            "card_rows": [
+                {
+                    "card_id": "CARD_ONLY",
+                    "closure": {
+                        "claim_kinds": [
+                            "gameplan_posture",
+                            "mulligan_keep",
+                            "hero_power_transform",
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_strong_report_ready_is_reconciled_with_profile_miss():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [
+                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
+                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
+            ],
+            "card_rows": [],
+        },
+        strong_promotion_report={
+            "promotion_ready": True,
+            "first_missing_source_action": "none",
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert closure["closure_profile_closed"] is False
+    assert closure["promotion_ready"] is False
+    assert closure["status"] == "needs_source_closure"
+    assert summary["runtime_apply_allowed"] is True
+
+
+@pytest.mark.parametrize(
+    ("gameplan_contract", "claim_kinds", "expected_profile"),
+    [
+        (
+            {
+                "archetype_bucket": "weapon_sequence_pressure",
+                "primary_mechanics": ["weapon"],
+            },
+            ["gameplan_posture", "mulligan_keep", "targeting_rule"],
+            "weapon_pressure",
+        ),
+        (
+            {"archetype": "combo_setup", "primary_mechanics": ["combo"]},
+            ["gameplan_posture", "combo_sequence", "mulligan_keep"],
+            "combo_setup",
+        ),
+        (
+            {
+                "archetype_bucket": "board_flood_recruit",
+                "cards": {
+                    "CARD_A": {"mechanics": ["recruit"]},
+                },
+            },
+            ["gameplan_posture", "mulligan_keep", "mechanic_usage"],
+            "board_flood_recruit",
+        ),
+    ],
+)
+def test_operator_summary_uses_gameplan_contract_for_profile_selection(
+    gameplan_contract, claim_kinds, expected_profile
+):
+    rows = [
+        {"claim_kind": claim_kind, "promotion_eligible": True}
+        for claim_kind in claim_kinds
+    ]
+
+    summary = _source_backed_profile_summary(
+        rows,
+        gameplan_contract=gameplan_contract,
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert closure["closure_profile"] == expected_profile
+    assert closure["closure_profile_closed"] is True
+
+
 def test_operator_summary_no_default_only_verdict_none_detected():
     summary = build_operator_summary(
         deck_name="Clean Deck",

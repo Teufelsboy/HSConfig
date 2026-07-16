@@ -95,6 +95,12 @@ NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS = {
     "generic_low_confidence": "generic_low_confidence_not_strong_evidence",
     "contract_gap": "contract_gap_not_strong_evidence",
 }
+NON_STRONG_CLOSURE_PROFILE_LANES = {
+    *NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS,
+    "stats",
+    "unsupported_runtime_hint",
+    "diagnostic_only",
+}
 
 
 def build_operator_summary(
@@ -123,6 +129,7 @@ def build_operator_summary(
     source_to_runtime_explainability_report: dict[str, Any] | None = None,
     strong_promotion_report: dict[str, Any] | None = None,
     output_ownership_manifest: dict[str, Any] | None = None,
+    gameplan_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -181,6 +188,7 @@ def build_operator_summary(
         source_to_runtime_explainability_report=source_to_runtime_explainability_report,
         generated_files=generated_files,
         default_only_runtime_surfaces=preliminary_default_only_runtime_surfaces,
+        gameplan_contract=gameplan_contract,
     )
     closure_profile_strong_eligible = (
         closure_profile_verdict.strong_eligible
@@ -402,10 +410,17 @@ def _source_backed_strong_closure(
     closure_profile_verdict: ClosureProfileVerdict,
 ) -> dict[str, Any]:
     if isinstance(report, dict):
-        promotion_ready = report.get("promotion_ready") is True
+        promotion_ready = (
+            report.get("promotion_ready") is True
+            and closure_profile_verdict.strong_eligible
+        )
         first_missing_source_action = str(
             report.get("first_missing_source_action") or "unknown"
         )
+        if not closure_profile_verdict.strong_eligible:
+            first_missing_source_action = _source_action_for_profile_miss(
+                closure_profile_verdict
+            )
         return {
             "status": "ready" if promotion_ready else "needs_source_closure",
             "promotion_ready": promotion_ready,
@@ -928,6 +943,7 @@ def _closure_profile_verdict(
     source_to_runtime_explainability_report: dict[str, Any] | None,
     generated_files: list[str],
     default_only_runtime_surfaces: list[str],
+    gameplan_contract: dict[str, Any] | None,
 ) -> ClosureProfileVerdict:
     claim_rows = _closure_profile_claim_rows(
         source_claim_gap_report=source_claim_gap_report,
@@ -947,12 +963,15 @@ def _closure_profile_verdict(
     primary_mechanics = _closure_profile_primary_mechanics(
         deck_name=deck_name,
         claim_kinds=source_claim_kinds,
+        gameplan_contract=gameplan_contract,
+    )
+    archetype_bucket = _closure_profile_archetype_bucket(
+        deck_name=deck_name,
+        primary_mechanics=primary_mechanics,
+        gameplan_contract=gameplan_contract,
     )
     return evaluate_closure_profile(
-        archetype_bucket=_closure_profile_archetype_bucket(
-            deck_name=deck_name,
-            primary_mechanics=primary_mechanics,
-        ),
+        archetype_bucket=archetype_bucket,
         primary_mechanics=primary_mechanics,
         source_claim_kinds=source_claim_kinds,
         emitted_surfaces=_runtime_surface_filenames(generated_files),
@@ -1003,12 +1022,43 @@ def _closure_profile_claim_rows(
     ):
         strongest = card_row.get("strongest_claim_kind")
         if strongest:
-            rows.append({"claim_kind": strongest, "promotion_eligible": True})
+            rows.append(_claim_row_from_card_row(card_row, strongest))
         closure = card_row.get("closure", {})
         if isinstance(closure, dict):
             for claim_kind in closure.get("claim_kinds", []):
-                rows.append({"claim_kind": claim_kind, "promotion_eligible": True})
+                rows.append(_claim_row_from_card_row(card_row, claim_kind))
     return [row for row in rows if str(row.get("claim_kind") or "")]
+
+
+def _claim_row_from_card_row(
+    card_row: dict[str, Any],
+    claim_kind: Any,
+) -> dict[str, Any]:
+    row = {
+        "claim_kind": claim_kind,
+        "reconstructed_from_card_row": True,
+    }
+    for key in (
+        "promotion_eligible",
+        "source_lane",
+        "policy_lane",
+        "lane",
+        "operator_impact",
+    ):
+        if key in card_row:
+            row[key] = card_row[key]
+    closure = card_row.get("closure", {})
+    if isinstance(closure, dict):
+        for key in (
+            "promotion_eligible",
+            "source_lane",
+            "policy_lane",
+            "lane",
+            "operator_impact",
+        ):
+            if key in closure and key not in row:
+                row[key] = closure[key]
+    return row
 
 
 def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
@@ -1028,14 +1078,12 @@ def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
         str(row.get("source_lane") or ""),
         str(row.get("policy_lane") or ""),
         str(row.get("lane") or ""),
+        str(row.get("claim_readiness") or ""),
+        str(row.get("confidence") or ""),
     }
-    if any(lane in NON_STRONG_SOURCE_QUALITY_LANE_BLOCKERS for lane in lane_values):
+    if any(lane in NON_STRONG_CLOSURE_PROFILE_LANES for lane in lane_values):
         return False
-    if str(row.get("operator_impact") or "") == "diagnostic_only" and not any(
-        lane_values
-    ):
-        return False
-    return True
+    return any(lane in STRONG_SOURCE_QUALITY_LANES for lane in lane_values)
 
 
 def _closure_profile_claim_is_suppressed(row: dict[str, Any]) -> bool:
@@ -1049,10 +1097,20 @@ def _closure_profile_primary_mechanics(
     *,
     deck_name: str,
     claim_kinds: list[str],
+    gameplan_contract: dict[str, Any] | None,
 ) -> list[str]:
     mechanics: set[str] = set()
+    if isinstance(gameplan_contract, dict):
+        mechanics.update(_string_list(gameplan_contract.get("primary_mechanics")))
+        mechanics.update(_mechanics_from_gameplan_cards(gameplan_contract.get("cards")))
+        mechanics.update(
+            _string_list(gameplan_contract.get("mechanics"))
+        )
+        mechanics.update(
+            _string_list(gameplan_contract.get("semantic_families"))
+        )
     normalized_deck_name = deck_name.lower()
-    if "shadow" in normalized_deck_name and "priest" in normalized_deck_name:
+    if not mechanics and "shadow" in normalized_deck_name and "priest" in normalized_deck_name:
         mechanics.update({"aggro", "burn", "shadow_hero_power"})
     if "hero_power_transform" in claim_kinds:
         mechanics.add("shadow_hero_power")
@@ -1067,8 +1125,54 @@ def _closure_profile_archetype_bucket(
     *,
     deck_name: str,
     primary_mechanics: list[str],
+    gameplan_contract: dict[str, Any] | None,
 ) -> str:
+    if isinstance(gameplan_contract, dict):
+        archetype_bucket = str(
+            gameplan_contract.get("archetype_bucket")
+            or gameplan_contract.get("archetype")
+            or ""
+        ).strip()
+        if archetype_bucket:
+            return archetype_bucket
     return " ".join([deck_name, *primary_mechanics]).strip()
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if str(item)]
+    return []
+
+
+def _mechanics_from_gameplan_cards(cards: Any) -> list[str]:
+    if not isinstance(cards, dict):
+        return []
+    mechanics: set[str] = set()
+    for card in cards.values():
+        if not isinstance(card, dict):
+            continue
+        for key in (
+            "mechanics",
+            "mechanic_families",
+            "semantic_families",
+            "mechanic_roles",
+        ):
+            mechanics.update(_string_list(card.get(key)))
+    return sorted(mechanics)
+
+
+def _source_action_for_profile_miss(verdict: ClosureProfileVerdict) -> str:
+    if verdict.first_missing_link == "none":
+        return "none"
+    if verdict.first_missing_link.startswith("missing_claim_group:"):
+        return "add_profile_claim_group_source"
+    if verdict.first_missing_link.startswith("missing_surface:"):
+        return "add_profile_runtime_surface"
+    if verdict.first_missing_link.startswith("default_only_surface:"):
+        return "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    return "close_first_missing_chain"
 
 
 def _runtime_surface_filenames(generated_files: list[str]) -> list[str]:
