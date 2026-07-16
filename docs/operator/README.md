@@ -50,6 +50,12 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. It can reach `SOURCE_BACKED_STRONG` only when acquired sources contain exact deck-matching guide claims or explicit supported static effect semantics that lower through the existing source-to-runtime contract. If sources are thin, unavailable, stale, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a load-safe package when technically valid and reports the first missing source link.
 
+When `--online-source` is used, HSConfig also checks its source candidate
+registry for the deck name. These candidate URLs are acquisition seeds only.
+They reduce manual source entry, but they do not promote a package to
+`SOURCE_BACKED_STRONG` unless fetched full-text evidence passes source evidence
+policy, claim-kind normalization, surface gates, and closure profile checks.
+
 When current guide/search records are already captured, use the source-autopilot bridge:
 
 ```powershell
@@ -357,6 +363,11 @@ still creates a load-safe initial package even when source confidence remains
 warning-only.
 
 ## Supplemental Proof Decks
+
+`docs/operator/source-candidate-proof-decks.json` is the separate 12-deck
+source-candidate proof set. It proves that each user-supplied Wild deck has
+either a registry candidate or an explicit first missing source action.
+This proof set does not widen the representative fixture matrix and does not change runtime apply authority.
 
 `docs/operator/supplemental-proof-decks.json` lists decks that prove narrow command,
 syntax, or acceptance behavior without widening the representative matrix.

@@ -15,6 +15,11 @@ class SourceCandidate:
     expected_strength: str
     format_scope: str = "wild"
     evergreen_wild_archetype: bool = False
+    publication_year: int | None = None
+    source_visibility: str = "full_text"
+    strength_ceiling: str = "candidate_partial"
+    expected_claim_kinds: tuple[str, ...] = ()
+    first_missing_source_action: str = "add_current_deck_guide_or_mulligan_guide"
 
 
 _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
@@ -30,6 +35,186 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             ),
             priority=10,
             expected_strength="guide_current_deck_match",
+            publication_year=2026,
+            strength_ceiling="candidate_strong",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "mulligan_discard",
+                "targeting_rule",
+                "hero_power_transform",
+            ),
+            first_missing_source_action="none",
+        ),
+    ),
+    "ctapaladin": (
+        SourceCandidate(
+            url="https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+            source_family="community_guide",
+            deck_name="CtAPaladin",
+            archetype="wild_cta_paladin",
+            reason=(
+                "current Wild CtA Paladin positioning and card-choice evidence "
+                "without full mulligan closure"
+            ),
+            priority=8,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "card_role", "mechanic_usage"),
+            first_missing_source_action="add_current_cta_paladin_mulligan_keep_source",
+        ),
+    ),
+    "piraterogue": (
+        SourceCandidate(
+            url="https://www.hearthpwn.com/decks/1441097-ww-pirate-rogue",
+            source_family="guide",
+            deck_name="PirateRogue",
+            archetype="wild_pirate_rogue",
+            reason="Wild Pirate Rogue guide with tempo posture, mulligan, and combo package context",
+            priority=8,
+            expected_strength="guide_evergreen_archetype_partial",
+            publication_year=2024,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "mulligan_discard",
+                "card_role",
+                "combo_sequence",
+            ),
+            first_missing_source_action="add_current_pirate_rogue_mulligan_or_role_source",
+        ),
+    ),
+    "discolock": (
+        SourceCandidate(
+            url="https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
+            source_family="community_guide",
+            deck_name="Discolock",
+            archetype="wild_discard_warlock",
+            reason="recent Wild Discolock legend writeup with mulligan and pressure posture",
+            priority=8,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
+            first_missing_source_action="add_discolock_matchup_or_card_role_source",
+        ),
+    ),
+    "treantdruid": (
+        SourceCandidate(
+            url="https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+            source_family="community_guide",
+            deck_name="TreantDruid",
+            archetype="wild_treant_druid",
+            reason="Wild Treant Druid legend writeup with mulligan, posture, and matchup notes",
+            priority=8,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "card_role",
+                "mechanic_usage",
+            ),
+            first_missing_source_action="add_treant_druid_card_specific_source_claim",
+        ),
+    ),
+    "imbuemage": (
+        SourceCandidate(
+            url="https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
+            source_family="guide",
+            deck_name="ImbueMage",
+            archetype="wild_imbue_mage",
+            reason="current Wild Imbue Mage public guide candidate for hero-power package closure",
+            priority=8,
+            expected_strength="guide_current_deck_match",
+            publication_year=2026,
+            strength_ceiling="candidate_strong",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "card_role",
+                "hero_power_transform",
+            ),
+            first_missing_source_action="none",
+        ),
+    ),
+    "mechpala": (
+        SourceCandidate(
+            url="https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
+            source_family="decklist",
+            deck_name="MechPala",
+            archetype="wild_mech_paladin",
+            reason="current Wild Mech Paladin decklist/category context only",
+            priority=4,
+            expected_strength="meta_context_only",
+            publication_year=2026,
+            source_visibility="decklist_only",
+            strength_ceiling="context_only",
+            expected_claim_kinds=(),
+            first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
+        ),
+    ),
+    "kingslayer": (
+        SourceCandidate(
+            url="https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+            source_family="community_guide",
+            deck_name="Kingslayer",
+            archetype="wild_kingsbane_rogue",
+            reason="Wild Kingsbane/Kingslayer legend writeup candidate with partial weapon-plan evidence",
+            priority=7,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
+            first_missing_source_action="add_kingslayer_quick_pick_mulligan_source",
+        ),
+    ),
+    "boarlock": (
+        SourceCandidate(
+            url="https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+            source_family="guide",
+            deck_name="Boarlock",
+            archetype="wild_boarlock",
+            reason="Wild Boarlock combo writeup with combo sequence and partial mulligan evidence",
+            priority=7,
+            expected_strength="guide_combo_partial",
+            publication_year=2025,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("combo_sequence", "mulligan_keep", "card_role"),
+            first_missing_source_action="add_boarlock_fracking_mulligan_source",
+        ),
+    ),
+    "piratedh": (
+        SourceCandidate(
+            url="https://hearthstone-decks.net/pirate-demon-hunter-223-legend-mangekou-score-49-32/",
+            source_family="decklist_with_strategy",
+            deck_name="PirateDH",
+            archetype="wild_pirate_demon_hunter",
+            reason="Wild Pirate Demon Hunter legend page with partial strategy and mulligan context",
+            priority=7,
+            expected_strength="guide_archetype_partial",
+            publication_year=2025,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
+            first_missing_source_action="add_pirate_dh_card_role_or_mulligan_source",
+        ),
+    ),
+    "cutewarrior": (
+        SourceCandidate(
+            url="https://www.reddit.com/r/wildhearthstone/comments/13e0x4w/powersliding_with_cute_warrior_to_rank_278/",
+            source_family="community_guide",
+            deck_name="CuteWarrior",
+            archetype="wild_cute_warrior",
+            reason="evergreen Wild Cute Warrior guide with mulligan and payoff-role context",
+            priority=6,
+            expected_strength="guide_evergreen_archetype_partial",
+            publication_year=2023,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
+            first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
         ),
     ),
     "bigshaman": (
@@ -42,6 +227,17 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             priority=8,
             expected_strength="guide_evergreen_wild_archetype",
             evergreen_wild_archetype=True,
+            publication_year=2018,
+            strength_ceiling="candidate_strong",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "mulligan_discard",
+                "mechanic_usage",
+                "combo_sequence",
+                "card_role",
+            ),
+            first_missing_source_action="none",
         ),
     ),
 }

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.source_candidate_registry import SourceCandidate
 
 from tests.test_configure_auto_source import (
     SHADOWPRIEST_CODE,
@@ -227,6 +228,78 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
     assert status == 0
     assert acquisition["failed_fetch_count"] == 1
     assert acquisition["first_missing_source_action"] == "add_public_guide_url_or_use_static_semantics"
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+
+
+def test_candidate_registry_url_does_not_promote_without_full_text_claims(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_thin_cards_json(cards_json)
+    source_url = "https://example.test/thin-mech-paladin"
+    thin_page = tmp_path / "thin_mech_paladin.html"
+    thin_page.write_text(
+        "<html><title>Thin Mech Paladin Decklist</title>"
+        "<body>Mech Paladin decklist only. Deck code and card list only.</body></html>",
+        encoding="utf-8",
+    )
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(json.dumps({source_url: str(thin_page)}), encoding="utf-8")
+    monkeypatch.setattr(
+        "hsconfig.commands.configure.source_candidates_for_deck",
+        lambda deck_name, deck_code=None: [
+            SourceCandidate(
+                url=source_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="wild_mech_paladin",
+                reason="test candidate with a strong ceiling but thin fetched text",
+                priority=10,
+                expected_strength="guide_current_deck_match",
+                strength_ceiling="candidate_strong",
+                first_missing_source_action="none",
+            )
+        ],
+    )
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "MechPala",
+            "--deck-code",
+            "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+            "--runtime-root",
+            str(runtime),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+    acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
+    autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
+    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+
+    assert status == 0
+    assert summary["source_candidate_urls"] == [source_url]
+    assert acquisition["candidate_registry_url_count"] == 1
+    assert acquisition["source_record_count"] == 1
+    assert autopilot["strong_candidate"] is False
+    assert autopilot["first_missing_source_action"] != "none"
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"

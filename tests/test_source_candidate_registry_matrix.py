@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from hsconfig.source_candidate_registry import source_candidates_for_deck
+
+
+DECKS = {
+    "ShadowPriest": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+    "CtAPaladin": "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
+    "PirateRogue": "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==",
+    "BigShaman": "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
+    "Discolock": "AAEBAf0GBM4Hj4ID8aEG9qEGDbW5A9XRA9DhA5iSBauSBZXKBteXB4SZB6StB8ayB9a+B9m+B8+/BwAA",
+    "TreantDruid": "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==",
+    "ImbueMage": "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=",
+    "MechPala": "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+    "Kingslayer": "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=",
+    "Boarlock": "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA",
+    "PirateDH": "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==",
+    "CuteWarrior": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
+}
+
+
+EXPECTED_STRENGTH = {
+    "ShadowPriest": "candidate_strong",
+    "CtAPaladin": "candidate_partial",
+    "PirateRogue": "candidate_partial",
+    "BigShaman": "candidate_strong",
+    "Discolock": "candidate_partial",
+    "TreantDruid": "candidate_partial",
+    "ImbueMage": "candidate_strong",
+    "MechPala": "context_only",
+    "Kingslayer": "candidate_partial",
+    "Boarlock": "candidate_partial",
+    "PirateDH": "candidate_partial",
+    "CuteWarrior": "candidate_partial",
+}
+
+EXPECTED_STRONG_PROMOTION_STATUS = {
+    "ShadowPriest": "candidate_strong_if_fetched_claims_close",
+    "CtAPaladin": "partial_until_missing_source_action_closes",
+    "PirateRogue": "partial_until_missing_source_action_closes",
+    "BigShaman": "candidate_strong_if_fetched_claims_close",
+    "Discolock": "partial_until_missing_source_action_closes",
+    "TreantDruid": "partial_until_missing_source_action_closes",
+    "ImbueMage": "candidate_strong_if_fetched_claims_close",
+    "MechPala": "context_only_not_strong",
+    "Kingslayer": "partial_until_missing_source_action_closes",
+    "Boarlock": "partial_until_missing_source_action_closes",
+    "PirateDH": "partial_until_missing_source_action_closes",
+    "CuteWarrior": "partial_until_missing_source_action_closes",
+}
+
+
+def test_source_candidate_registry_covers_user_supplied_wild_decks():
+    missing = [
+        deck_name
+        for deck_name, deck_code in DECKS.items()
+        if not source_candidates_for_deck(deck_name, deck_code)
+    ]
+
+    assert missing == []
+
+
+def test_candidate_strength_ceiling_is_explicit_for_every_user_deck():
+    for deck_name, deck_code in DECKS.items():
+        candidates = source_candidates_for_deck(deck_name, deck_code)
+        assert candidates, deck_name
+        assert candidates[0].strength_ceiling == EXPECTED_STRENGTH[deck_name]
+        assert candidates[0].strength_ceiling in {
+            "candidate_strong",
+            "candidate_partial",
+            "context_only",
+        }, deck_name
+        assert candidates[0].first_missing_source_action, deck_name
+
+
+def test_context_only_candidates_do_not_claim_none_missing_action():
+    for deck_name, deck_code in DECKS.items():
+        for candidate in source_candidates_for_deck(deck_name, deck_code):
+            if candidate.strength_ceiling == "context_only":
+                assert candidate.first_missing_source_action != "none", candidate.url
+                assert candidate.expected_claim_kinds == (), candidate.url
+
+
+def test_source_candidate_proof_doc_matches_registry_expectations():
+    proof = json.loads(
+        Path("docs/operator/source-candidate-proof-decks.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    rows = {row["deck_name"]: row for row in proof["decks"]}
+
+    assert set(rows) == set(EXPECTED_STRENGTH)
+    for deck_name, expected_strength in EXPECTED_STRENGTH.items():
+        candidates = source_candidates_for_deck(deck_name, DECKS[deck_name])
+        assert rows[deck_name]["expected_strength_ceiling"] == expected_strength
+        assert rows[deck_name]["expected_runtime_generation_status"] == (
+            "load_safe_no_default_only"
+        )
+        assert rows[deck_name]["expected_candidate_count_min"] >= 1
+        assert rows[deck_name]["expected_candidate_count_min"] <= len(candidates)
+        assert rows[deck_name]["first_missing_source_action"] == (
+            candidates[0].first_missing_source_action
+        )
+        assert rows[deck_name]["candidate_urls"] == [
+            candidate.url for candidate in candidates
+        ]
+        assert rows[deck_name]["expected_strong_promotion_status"] == (
+            EXPECTED_STRONG_PROMOTION_STATUS[deck_name]
+        )

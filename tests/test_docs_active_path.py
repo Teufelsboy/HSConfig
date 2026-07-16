@@ -195,6 +195,22 @@ def test_operator_docs_define_closure_diagnostics_as_summaries_not_gates():
     assert "do not replace `reports/operator_summary.json` authority" in closure
 
 
+def test_operator_docs_define_source_candidate_proof_set_without_new_authority():
+    readme = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    closure = Path("docs/operator/source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+    proof = Path("docs/operator/source-candidate-proof-decks.json")
+    combined = "\n".join([readme, closure])
+
+    assert proof.exists()
+    assert "source-candidate-proof-decks.json" in combined
+    assert "candidate URLs" in closure
+    assert "must not promote `SOURCE_BACKED_STRONG`" in closure
+    assert "does not widen the representative fixture matrix" in readme
+    assert "does not change runtime apply authority" in readme
+
+
 def test_operator_docs_name_load_safe_apply_as_hsconfig_policy():
     text = Path("docs/operator/README.md").read_text(encoding="utf-8")
 

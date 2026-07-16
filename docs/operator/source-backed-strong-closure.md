@@ -80,6 +80,26 @@ does not bypass URL validation, page fetching, deck/card matching, claim
 extraction, or the Strong closure profile; weak or stale registry results stay
 visible as source actions rather than blocking a valid load-safe package.
 
+## 12-Deck Source Candidate Proof Set
+
+`docs/operator/source-candidate-proof-decks.json` tracks the user-supplied
+12-deck source candidate set. This file proves that HSConfig has a source
+acquisition seed or an explicit source gap for every supplied deck. It does not
+replace `docs/operator/archetype-fixture-matrix.json`, and it does not make
+candidate URLs promotion authority.
+
+Candidate rows can be:
+
+- `candidate_strong`: acquisition may reach `SOURCE_BACKED_STRONG` if fetched
+  full-text claims close the runtime surfaces.
+- `candidate_partial`: acquisition can improve source quality, but at least one
+  first missing source action is expected.
+- `context_only`: the source can confirm archetype or meta presence, but must
+  not promote `SOURCE_BACKED_STRONG`.
+
+Candidate URLs must not promote `SOURCE_BACKED_STRONG` without fetched,
+deck-matched, claim-kind-normalized, surface-gated full-text evidence.
+
 ## Promotion Rule
 
 A matrix row may move from `source_informed_valid_fixture` to `core_source_backed_fixture` only when a fixture prepare run proves:
@@ -141,6 +161,7 @@ their first missing chain.
 
 Do not widen the matrix to a twelfth deck to avoid these rows. Either close the first missing chain with deck-specific source evidence and runtime-surface lowering, or preserve the row as a visible source-informed control.
 
+Source candidate proof decks live in `docs/operator/source-candidate-proof-decks.json`.
 Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` and do not change the representative matrix count.
 
 ## Current Blocker Snapshot

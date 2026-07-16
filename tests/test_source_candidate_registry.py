@@ -32,3 +32,22 @@ def test_source_candidate_registry_marks_bigshaman_as_evergreen_wild_archetype()
 
 def test_source_candidate_registry_is_empty_for_unknown_decks():
     assert source_candidates_for_deck("UnknownDeck", "AAEBA-placeholder") == []
+
+
+def test_source_candidate_metadata_is_seed_not_authority():
+    candidates = source_candidates_for_deck(
+        "ShadowPriest",
+        "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+    )
+
+    assert candidates
+    first = candidates[0]
+    assert first.source_visibility in {"full_text", "decklist_only", "snippet_only"}
+    assert first.strength_ceiling in {
+        "candidate_strong",
+        "candidate_partial",
+        "context_only",
+    }
+    assert isinstance(first.expected_claim_kinds, tuple)
+    assert "mulligan_keep" in first.expected_claim_kinds
+    assert first.first_missing_source_action == "none"

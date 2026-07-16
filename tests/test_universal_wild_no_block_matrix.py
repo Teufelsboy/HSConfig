@@ -234,6 +234,20 @@ def assert_load_safe_no_block_package(operator_summary: dict):
 def assert_no_default_only_runtime_surfaces(operator: dict) -> None:
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["no_default_only_runtime_status"] == "clean"
+    assert operator["first_missing_source_action"]
+    ledger = {
+        row["surface"]: row
+        for row in operator.get("surface_status_ledger", [])
+    }
+    assert {"mulligan", "globalvalues", "cardid_behavior"} <= set(ledger)
+    assert ledger["mulligan"]["status"] in {
+        "source_backed",
+        "policy_backed",
+        "source_and_policy_backed",
+        "warning_only",
+    }
+    assert ledger["globalvalues"]["status"] != "default_only"
+    assert ledger["cardid_behavior"]["status"] != "default_only"
     mulligan_policy = operator["mulligan_policy_status"]
     assert mulligan_policy["default_only"] is False
     assert mulligan_policy["status"] in {
@@ -355,6 +369,15 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert "summary" in semantic_report
     assert "cards" in semantic_report
     assert_runtime_surface_shape(deck_dir, deck_card_ids)
+    if deck_name == "ShadowPriest":
+        assert (deck_dir / "SW_448.json").is_file()
+        mulligan = json.loads(
+            (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
+        )
+        assert not any(
+            row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
+            for row in mulligan["Mulligan"]["values"]
+        )
 
 
 def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeypatch):

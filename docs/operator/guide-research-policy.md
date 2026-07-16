@@ -111,6 +111,9 @@ The registry is a starting point, not authority: the fetched page still has to
 pass public-URL validation, deck/card matching, visibility, freshness, claim
 extraction, and source-autopilot closure before it can contribute to
 `SOURCE_BACKED_STRONG`.
+Registry `strength_ceiling` values are source-search ceilings only. They are
+not evidence fields and cannot promote a fetched decklist, snippet, stale page,
+or failed fetch.
 
 When no URL is known, use Codex/web research to find current public guide URLs,
 then pass each useful URL with repeated `--source-url`. If research finds only
@@ -406,6 +409,12 @@ This split also applies to odd/even, highlander, deck-size, starting-health,
 and start-in-deck effects. These effects may create CardID behavior, source
 diagnostics, or report-visible expectations. They do not create mulligan keeps
 from generic card importance, start-of-game text, or deckbuilding text.
+
+Effect-only source truth is not opening-hand truth. Static or guide evidence
+that a card changes the hero power, modifies deckbuilding, starts in deck, or
+applies before the mulligan can lower to supported CardID/effect surfaces, but
+it must not create `mulligan_keep` unless the source explicitly says the card
+should be kept in the opening hand.
 
 operator_summary.json remains the normal apply authority.
 
