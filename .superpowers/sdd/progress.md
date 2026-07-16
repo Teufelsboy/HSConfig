@@ -548,8 +548,9 @@ Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-backed-strong-closure-p
 - [x] Task 3: Relax Source Autopilot First-Missing Link With Profiles (commits 616a025..709430f; review clean; focused source-autopilot suite 30 passed)
 - [x] Task 4: Update 11-Deck Matrix Expectations (commit da02ebb; review clean; matrix tests 20 passed)
 - [x] Task 5: Preserve Darkbishop Effect-Not-Mulligan Canary (commit afc1388; review clean; ShadowPriest/claim canary 55 passed)
-- [ ] Task 6: Surface Profile Closure In Reports And Skill Guidance
+- [x] Task 6: Surface Profile Closure In Reports And Skill Guidance (commits 233ad1f, e37cdea; re-review clean; source-evidence/skill-sync 5 passed; installed skill sync verified)
 - [ ] Task 7: Final Verification And Sharp ShadowPriest Dry Run
+
 
 
 
