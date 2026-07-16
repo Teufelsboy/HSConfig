@@ -1,44 +1,47 @@
-# Task 2 Report
+Implemented and committed Task 2.
 
-- Status: DONE
-- Scope: Task-2 files only plus this report.
-- Files changed:
-  - `src/hsconfig/source_acquisition.py`
-  - `src/hsconfig/source_claim_compiler.py`
-  - `tests/test_source_acquisition_strong_closure.py`
-  - `tests/test_source_claim_compiler.py`
-  - `.superpowers/sdd/task-2-report.md`
-- Requirements covered:
-  - Current full-text deck/mulligan guides expose `strong_promotion_eligible=True` and `first_missing_source_action=none`.
-  - Decklist-only, snippet-only, stale, and static/card-text evidence remains non-strong and diagnostic/non-promoting.
-  - Acquisition now emits stable narrow metadata aliases: `source_category`, `source_document_kind`, and `source_strength`.
-  - Claim compiler preserves `source_strength` and emits `claim_family` for lowerable and non-promoting claims.
-  - Darkbishop-style start-of-game effect text remains `hero_power_transform` / `card_effect` and does not create a `mulligan_keep`.
-  - No runtime/apply authority was added; this task only marks source/claim evidence quality.
-- Red evidence:
-  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_acquisition_strong_closure.py tests/test_source_claim_compiler.py -q`
-  - Result: `6 failed, 11 passed`
-  - Expected failures: missing `source_category`, `source_strength`, and `claim_family` fields.
-- Green evidence:
-  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_acquisition_strong_closure.py tests/test_source_claim_compiler.py -q`
-  - Result: `17 passed in 0.20s`
-- Self-review:
-  - Diff stayed inside the requested write scope.
-  - Existing no-block behavior is unchanged: weak sources remain visible diagnostics instead of package-generation blockers.
-  - Git reported only line-ending normalization warnings during diff/stat commands.
+Changed:
+- src/hsconfig/operator_summary.py: wires evaluate_closure_profile(...) into operator summary generation, adds the new source_backed_strong_closure profile fields, and uses profile eligibility to refine SOURCE_BACKED_STRONG source confidence without touching runtime apply authority.
+- tests/test_source_backed_strong_harvester_closure.py: adds the prepared ShadowPriest guide regression proving aggro_burn_hero_power closes without requiring an extra generic apply surface.
+- tests/test_operator_summary.py: covers profile fields, profile miss demotion, and confirms profile misses do not block runtime apply.
 
-## Review Fix
+Review fix:
+- 424a0a9 fix: harden closure profile strong eligibility
+- Added optional gameplan_contract input to build_operator_summary and passed it from package_builder.
+- Made profile claim eligibility allowlist-based: promotion_eligible=True or known strong source lane only.
+- Explicitly rejects stats, unsupported_runtime_hint, decklist_only, snippet_only, policy/default-runtime fallback lanes, low-confidence lanes, contract_gap, and diagnostic-only rows without strong lane.
+- Stops reconstructed card-row fallback data from promoting unless it carries explicit provenance.
+- Reconciles strong_promotion_report readiness with profile closure.
 
-- Issue: non-promoting guide-shaped records such as `source_type=default_runtime` could lose their source-policy metadata in the compiler and later be reclassified as strong by Autopilot.
-- Fix:
-  - `source_type`, `provenance`, `promotion_eligible`, `strong_promotion_eligible`, `promotion_blockers`, and `first_missing_source_action` now survive acquisition -> compiler.
-  - If the source record is non-promoting, compiled claims are also marked `promotion_eligible=false`.
-  - Added `test_compile_default_runtime_guide_claims_are_non_promoting`.
-  - Updated the stale online-source thin-deck expectation to the newer precise `add_explicit_mulligan_source` action.
-- Green evidence:
-  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_claim_compiler.py::test_compile_default_runtime_guide_claims_are_non_promoting -q`
-  - Result: `1 passed in 0.14s`
-  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_configure_online_source.py -q`
-  - Result: `4 passed in 1.17s`
-  - Command: `$env:PYTHONPATH='src'; python -m pytest tests/test_source_backed_strong_harvester_closure.py tests/test_source_acquisition_strong_closure.py tests/test_source_claim_compiler.py tests/test_source_autopilot.py tests/test_strong_closure_ledger.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py tests/test_configure_online_source.py -q`
-  - Result: `69 passed in 1.69s`
+Second review fix:
+- ff8a79c fix: fail close closure profile evidence
+- Prohibited lanes reject before promotion_eligible=True is considered.
+- Bare promotion_eligible=True without strong provenance cannot close a profile.
+- Missing closure/profile claim evidence now fails closed for source confidence.
+- Derived promotion_ready now requires closure_profile_verdict.strong_eligible.
+- Added parameterized prohibited-lane coverage with promotion_eligible=True and no-lifecycle/card-row fallback regressions.
+
+Third review fix:
+- d97bf02 fix: require strong provenance for closure profiles
+- source_confidence and claim_confidence low/thin/unknown-style values now reject before strong-lane checks.
+- Reconstructed card_rows can only positively qualify through explicit source_lane; policy_lane/lane/confidence metadata can reject but cannot positively qualify reconstructed fallback rows.
+- Added low-confidence and card-row policy-lane/source-lane boundary tests.
+
+Final confidence fix:
+- 2500fd3 fix: preserve confidence on reconstructed closure rows
+- Reconstructed card_rows now preserve source_confidence and claim_confidence from card_row and nested closure before closure eligibility checks.
+- Added reconstructed-card-row low-confidence regressions.
+
+Validation run:
+- python -m pytest tests/test_source_backed_strong_harvester_closure.py tests/test_operator_summary.py tests/test_strong_closure_profiles.py -q -> 123 passed in 7.91s
+- python -m pytest tests/test_operator_summary.py -q -k "low_confidence or policy_lane or strong_provenance or card_rows_fallback" -> 10 passed, 105 deselected in 0.16s
+- python -m compileall -q src/hsconfig/operator_summary.py src/hsconfig/package_builder.py -> passed
+
+Commit:
+- 2374e8d feat: use closure profiles for strong promotion
+- 424a0a9 fix: harden closure profile strong eligibility
+- ff8a79c fix: fail close closure profile evidence
+- d97bf02 fix: require strong provenance for closure profiles
+- 2500fd3 fix: preserve confidence on reconstructed closure rows
+
+Residual risk: profile input extraction is intentionally defensive across current report shapes; if future reports move claim-kind data into a new report-only structure, the extractor may need another narrow adapter. Runtime apply gating was not changed.
