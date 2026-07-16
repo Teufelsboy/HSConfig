@@ -1,48 +1,42 @@
-# Task 3 Report: HSConfig Source Closure Autopilot V2
+# Task 3 Report: Full-Text Source Claim Extraction
 
-## Files Changed
+## Red Evidence
 
-- `src/hsconfig/strong_closure_profiles.py`
-- `tests/test_strong_closure_profiles.py`
-- `tests/test_universal_wild_no_block_matrix.py`
-- `docs/operator/archetype-fixture-matrix.json`
-
-## RED
-
-Command:
+Ran:
 
 ```powershell
-python -m pytest tests/test_strong_closure_profiles.py tests/test_universal_wild_no_block_matrix.py::test_representative_wild_matrix_uses_specific_closure_profiles -q
+python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
 ```
 
-Output summary:
+The test collection failed as expected with:
 
-- Exit code: 1
-- Result: 3 failed, 6 passed in 0.51s
-- Expected failures:
-  - `test_profile_routing_prefers_precise_wild_archetype_profiles`: `big_recruit_deathrattle_cheat` still routed to `board_flood_recruit` instead of `cheat_recruit_big`.
-  - `test_specific_wild_profiles_declare_expected_claim_groups_and_surfaces`: `PROFILE_REQUIREMENTS["cheat_recruit_big"]` was missing.
-  - `test_representative_wild_matrix_uses_specific_closure_profiles`: BigShaman still used `board_flood_recruit` in the matrix fixture.
-
-## GREEN
-
-Command:
-
-```powershell
-python -m pytest tests/test_strong_closure_profiles.py tests/test_universal_wild_no_block_matrix.py -q
+```text
+ModuleNotFoundError: No module named 'hsconfig.source_text_claim_extractor'
 ```
 
-Output summary:
+## Green Evidence
 
-- Exit code: 0
-- Result: 28 passed in 26.42s
+After implementation, the same command passed:
+
+```text
+...                                                                      [100%]
+3 passed in 0.09s
+```
+
+Coverage includes explicit Papercraft Angel mulligan retention, 4-cost-or-higher mulligan discards including `SW_448`, `SW_448` hero-power transformation, suppression of Darkbishop Benedictus as an opening-hand keep, and empty results for decklist-only, stats-only, and snippet-only records.
 
 ## Commit
 
-`907dde8feaddcdcf4eb66169bb45cba77c4af7a2`
+Feature implementation commit: `d816a61f64dc85fbe710c040388fcdaec735eae7`
+
+## Changed Files
+
+- `src/hsconfig/source_text_claim_extractor.py`
+- `tests/test_source_text_claim_extractor.py`
+- `.superpowers/sdd/task-3-report.md`
 
 ## Concerns
 
-- Shared workspace HEAD advanced to `a326a36` after the Task 3 commit; the Task 3 commit remains `907dde8feaddcdcf4eb66169bb45cba77c4af7a2` and contains only the scoped source/test/matrix files.
-- Existing unrelated workspace changes remain outside this commit, including `.superpowers/sdd/progress.md` and `docs/superpowers/plans/2026-07-16-hsconfig-source-closure-autopilot-v2.md`.
-- No closure apply gate was introduced; profile closure remains diagnostic-only via the existing `apply_blocking=False` verdict default and no runtime writer path was changed.
+- Extraction is intentionally narrow and deterministic. It only trusts full-text guide records with the designated strong source and rank lanes.
+- The implementation emits only the claim kinds required by this task and does not integrate with `source_autopilot.py`; later tasks own that integration.
+- Phrase matching is conservative and limited to the explicit text patterns in the task brief.
