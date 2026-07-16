@@ -752,3 +752,187 @@ def test_source_autopilot_names_combo_sequence_missing_action():
     assert report["first_missing_source_action_by_surface"]["Combo.json"] == (
         "add_combo_sequence_source"
     )
+
+
+def test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_code_hash": "sha256:shadow",
+        "deck_slug": "shadowpriest",
+        "cards": [
+            {"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
+            {"card_id": "SW_446", "name": "Voidtouched Attendant", "cost": 1, "count": 2},
+            {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
+        ],
+    }
+
+    ranked = rank_public_sources(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/wild-shadowpriest",
+                "source_title": "Wild ShadowPriest Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2021,
+                "format_scope": "wild",
+                "evergreen_wild_archetype": True,
+                "source_record_strength": "candidate_strong",
+                "normalized_text": (
+                    "Wild ShadowPriest full guide text with mulligan and gameplan. " * 8
+                ),
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "gameplan_posture",
+                        "stance": "aggressive_burn",
+                        "source_confidence": "high",
+                    },
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_446"],
+                        "stance": "keep",
+                        "source_confidence": "high",
+                    },
+                    {
+                        "claim_kind": "hero_power_transform",
+                        "cards": ["SW_448"],
+                        "stance": "mind_spike_start_effect",
+                        "source_confidence": "high",
+                    },
+                ],
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    assert ranked[0]["source_freshness_lane"] == "evergreen_wild_archetype"
+    assert ranked[0]["source_rank_lane"] == "guide_evergreen_wild_archetype"
+    assert ranked[0]["source_lane"] == "deck_matched_public_guide"
+    assert ranked[0]["strong_promotion_eligible"] is True
+
+
+def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_code_hash": "sha256:shadow",
+        "deck_slug": "shadowpriest",
+        "archetype_bucket": "aggro_burn_hero_power",
+        "primary_mechanics": ["shadow_hero_power", "burn"],
+        "cards": [
+            {"card_id": "SW_448", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
+            {"card_id": "SW_446", "name": "Voidtouched Attendant", "cost": 1, "count": 2},
+            {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
+        ],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/wild-shadowpriest",
+                "source_title": "Wild ShadowPriest Guide",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2021,
+                "format_scope": "wild",
+                "evergreen_wild_archetype": True,
+                "source_record_strength": "candidate_strong",
+                "normalized_text": (
+                    "Wild ShadowPriest full guide text with mulligan and gameplan. " * 8
+                ),
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "gameplan_posture",
+                        "stance": "aggressive_burn",
+                        "source_confidence": "high",
+                    },
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_446"],
+                        "stance": "keep",
+                        "source_confidence": "high",
+                    },
+                    {
+                        "claim_kind": "hero_power_transform",
+                        "cards": ["SW_448"],
+                        "stance": "mind_spike_start_effect",
+                        "source_confidence": "high",
+                    },
+                ],
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+    assert bundle["ranked_sources"][0]["source_rank_lane"] == "guide_evergreen_wild_archetype"
+    assert report["source_rank_summary"]["guide_evergreen_wild_archetype"] == 1
+    assert report["strong_candidate"] is True
+    assert report["strong_closure_summary"]["source_backed_strong_ready"] is True
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_STRONG"
+
+
+def test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_code_hash": "sha256:thin",
+        "deck_slug": "thindeck",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}],
+    }
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_search_records=[
+            {
+                "source_url": "https://example.com/thin-guide",
+                "source_title": "ThinDeck Guide 2021",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2021,
+                "format_scope": "standard",
+                "source_record_strength": "candidate_strong",
+                "normalized_text": (
+                    "ThinDeck old non-Wild guide with target priorities and play patterns. " * 8
+                ),
+                "deck_match": {
+                    "deck_name": "ThinDeck",
+                    "archetype": "thindeck",
+                    "matched_card_ids": ["CARD_001"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "claims": [
+                    {
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "stance": "prefer_enemy_hero",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+    assert bundle["ranked_sources"][0]["source_freshness_lane"] == "stale_or_not_current"
+    assert report["strong_candidate"] is False
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_closure_summary"]["first_missing_source_action"] == (
+        "add_current_or_evergreen_wild_public_guide"
+    )
+    assert report["first_missing_source_action"] == (
+        "add_current_or_evergreen_wild_public_guide"
+    )

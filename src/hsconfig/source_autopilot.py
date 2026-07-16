@@ -392,7 +392,10 @@ def _build_strong_closure_summary(
     if profile_verdict.closed:
         first_missing_source_action = "none"
     else:
-        first_missing_source_action = _action_from_profile_gap(profile_verdict.first_missing_link)
+        first_missing_source_action = (
+            _source_policy_missing_action(evidence_rows)
+            or _action_from_profile_gap(profile_verdict.first_missing_link)
+        )
     return {
         "technical_no_block": True,
         "semantic_status": (
@@ -446,6 +449,14 @@ def _action_from_profile_gap(first_missing_link: str) -> str:
     if first_missing_link.startswith("missing_surface:"):
         return "emit_or_explain_missing_runtime_surface"
     return "add_current_card_specific_runtime_source"
+
+
+def _source_policy_missing_action(evidence_rows: Sequence[Mapping[str, Any]]) -> str:
+    for row in evidence_rows:
+        blockers = {_text(blocker) for blocker in _as_list(row.get("promotion_blockers", []))}
+        if "source_not_current_or_evergreen_wild" in blockers:
+            return "add_current_or_evergreen_wild_public_guide"
+    return ""
 
 
 def _source_action_for_claim_kind(claim_kind: str) -> str:
@@ -956,6 +967,7 @@ def _policy_fields(
 ) -> dict[str, Any]:
     keys = [
         "source_lane",
+        "source_freshness_lane",
         "deck_match_scope",
         "promotion_eligible",
         "strong_promotion_eligible",
@@ -1024,6 +1036,13 @@ def _rank_lane(
         and _publication_year(source) == current_year
     ):
         return "guide_current_deck_match"
+    if (
+        family in GUIDE_FAMILIES
+        and deck_name_match
+        and card_overlap >= 2
+        and _is_evergreen_wild_source(source, current_year=current_year)
+    ):
+        return "guide_evergreen_wild_archetype"
     if family in GUIDE_FAMILIES and card_overlap > 0:
         return "guide_card_overlap"
     if family in DECKLIST_FAMILIES:
@@ -1033,8 +1052,33 @@ def _rank_lane(
     return "source_unclassified"
 
 
+def _is_evergreen_wild_source(source: Mapping[str, Any], *, current_year: int | None) -> bool:
+    publication_year = _publication_year(source)
+    if publication_year is None or current_year is None:
+        return False
+    age = current_year - publication_year
+    if age < 1 or age > 10:
+        return False
+    format_scope = _text(source.get("format_scope") or source.get("format")).lower()
+    if format_scope not in {"wild", "wild_archetype", "hearthstone_wild"} and not _truthy(
+        source.get("evergreen_wild_archetype")
+    ):
+        return False
+    return True
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).lower() in {"1", "true", "yes", "y"}
+
+
 def _source_lane_for_rank(source_rank_lane: str, deck_match_scope: str) -> str:
-    if source_rank_lane in {"guide_current_deck_match", "guide_card_overlap"} and deck_match_scope in {
+    if source_rank_lane in {
+        "guide_current_deck_match",
+        "guide_evergreen_wild_archetype",
+        "guide_card_overlap",
+    } and deck_match_scope in {
         "deck_matched",
         "deck_or_archetype_matched",
     }:
@@ -1127,14 +1171,23 @@ def _is_strong_guide_lane_shape(
 ) -> bool:
     if _text(row.get("source_lane", "")) != "deck_matched_public_guide":
         return False
-    if _text(row.get("source_rank_lane", "")) != "guide_current_deck_match":
+    source_rank_lane = _text(row.get("source_rank_lane", ""))
+    if source_rank_lane not in {
+        "guide_current_deck_match",
+        "guide_evergreen_wild_archetype",
+    }:
         return False
     if _text(row.get("source_visibility", "")).lower() != "full_text":
         return False
     current_year = _current_year(current_date)
     if current_year is None:
         return False
-    return _publication_year(row) == current_year
+    if source_rank_lane == "guide_current_deck_match":
+        return _publication_year(row) == current_year
+    return (
+        _text(row.get("source_freshness_lane", "")) == "evergreen_wild_archetype"
+        or _is_evergreen_wild_source(row, current_year=current_year)
+    )
 
 
 def _strong_lane_blockers(row: Mapping[str, Any]) -> list[str]:
