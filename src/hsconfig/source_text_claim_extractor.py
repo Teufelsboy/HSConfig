@@ -111,12 +111,14 @@ def _has_explicit_hero_power_association(card_name: str, text: str) -> bool:
     card = re.escape(card_name.lower())
     action = r"(?:change|changes|turn|turns|transform|transforms|upgrade|upgrades|replace|replaces)"
     modifier = r"(?:(?:your|the|their|a|an|this|that|new|current)\s+){0,3}"
-    target = r"(?:hero power|mind spike|shadowform)"
-    direct_target = rf"{modifier}{target}\b"
-    hero_power_target = rf"{modifier}hero power\s+(?:into|to)\s+(?:mind spike|shadowform)\b"
+    hero_power = rf"{modifier}hero power\b"
+    direct_hero_power = rf"{hero_power}(?!\s+[a-z])"
+    hero_power_target = rf"{hero_power}\s+(?:into|to)\s+(?:mind spike|shadowform)\b"
+    named_power_target = rf"{modifier}(?:mind spike|shadowform)\b"
     return bool(
-        re.search(rf"\b{card}\s+{action}\s+{direct_target}", text)
+        re.search(rf"\b{card}\s+{action}\s+{direct_hero_power}", text)
         or re.search(rf"\b{card}\s+{action}\s+{hero_power_target}", text)
+        or re.search(rf"\b{card}\s+{action}\s+{named_power_target}", text)
     )
 
 

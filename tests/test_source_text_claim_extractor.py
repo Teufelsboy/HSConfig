@@ -73,8 +73,12 @@ def test_decklist_only_source_extracts_no_runtime_claims():
         "source_title": "Mech Paladin Decklist",
         "source_family": "decklist",
         "source_visibility": "decklist_only",
-        "normalized_text": "Deck code and card list only.",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
         "publication_year": 2026,
+        "deck_match": {"deck_name": "MechPala", "matched_card_ids": ["CARD_1"]},
+        "source_record_strength": "candidate_strong",
+        "normalized_text": "Mulligan: keep Mech. Darkbishop Benedictus changes your hero power into Shadowform.",
     }
 
     assert extract_text_claims(
@@ -92,7 +96,13 @@ def test_stats_and_snippet_only_sources_extract_no_runtime_claims():
             "source_visibility": visibility,
             "source_lane": "deck_matched_public_guide",
             "source_rank_lane": "guide_current_deck_match",
-            "normalized_text": "Mulligan: keep Papercraft Angel.",
+            "publication_year": 2026,
+            "deck_match": {"deck_name": "ShadowPriest", "matched_card_ids": ["SW_448", "TOY_381"]},
+            "source_record_strength": "candidate_strong",
+            "normalized_text": (
+                "Mulligan: keep Papercraft Angel. "
+                "Darkbishop Benedictus changes your hero power into Shadowform."
+            ),
         }
 
         assert extract_text_claims(
@@ -174,3 +184,48 @@ def test_same_sentence_disjoint_clauses_do_not_create_transform_claim():
     )
 
     assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)
+
+
+def test_hero_power_strategy_is_not_a_direct_transform_claim():
+    source = {
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "publication_year": 2026,
+        "deck_match": {"deck_name": "ShadowPriest", "matched_card_ids": ["SW_448"]},
+        "source_record_strength": "candidate_strong",
+        "normalized_text": "Darkbishop Benedictus changes your hero power strategy.",
+    }
+
+    claims = extract_text_claims(
+        deck_name="ShadowPriest",
+        deck_identity=_shadow_identity(),
+        source_record=source,
+        current_date="2026-07-16",
+    )
+
+    assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)
+
+
+def test_direct_shadowform_wording_creates_transform_claim():
+    source = {
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "publication_year": 2026,
+        "deck_match": {"deck_name": "ShadowPriest", "matched_card_ids": ["SW_448"]},
+        "source_record_strength": "candidate_strong",
+        "normalized_text": "Darkbishop Benedictus changes your hero power into Shadowform.",
+    }
+
+    claims = extract_text_claims(
+        deck_name="ShadowPriest",
+        deck_identity=_shadow_identity(),
+        source_record=source,
+        current_date="2026-07-16",
+    )
+
+    assert [claim["claim_kind"] for claim in claims] == ["hero_power_transform"]
+    assert claims[0]["cards"] == ["SW_448"]
