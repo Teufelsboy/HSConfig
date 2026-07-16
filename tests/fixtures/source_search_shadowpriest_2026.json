@@ -7,8 +7,10 @@
       "source_title": "Voidburn Wild Aggro Shadow Priest",
       "source_family": "guide",
       "source_visibility": "full_text",
+      "source_record_strength": "candidate_strong",
       "retrieved_at": "2026-07-15T00:00:00Z",
       "published_at": "2026-07-01T00:00:00Z",
+      "normalized_text": "Wild ShadowPriest is an aggressive burn deck that uses cheap minions and direct damage to pressure the enemy hero. Mulligan guidance favors Papercraft Angel, Twilight Deceptor, Raise Dead, and Shadowbomber as cheap pressure or reload tools; avoid 4-cost or higher cards. At the start of the game, Darkbishop Benedictus provides the Shadowform hero power, enabling Mind Spike as repeatable face damage; this is a deckbuilding and start-of-game effect, not an opening-hand keep. Voidtouched Attendant amplifies the face-damage plan, Twilight Deceptor adds low-cost pressure, Papercraft Angel can make Mind Spike turns cheaper, Raise Dead reloads the board after early minions are spent, and Shadowbomber provides cheap face damage. Play aggressively and use the upgraded hero power and burn to close games.",
       "deck_match": {
         "deck_name": "ShadowPriest",
         "archetype": "aggro_burn_hero_power_transform",
