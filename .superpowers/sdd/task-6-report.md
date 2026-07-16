@@ -254,3 +254,81 @@ None.
 ## Review Follow-up: Report History Preservation
 
 The pre-Task-6 report history from commit `1534332` is preserved above. This Surface Profile Closure report is appended without replacing prior policy-fallback or mulligan claim-kind findings.
+
+---
+
+# Task 6 Report: No Hidden Default-Only Configure Output
+
+## Status
+
+DONE
+
+## Changed Files
+
+- `tests/test_universal_wild_no_block_matrix.py`
+- `tests/test_configure_online_source.py`
+- `.superpowers/sdd/task-6-report.md`
+
+No production files were changed. The existing generator satisfied the final
+runtime-evidence and no-block contract once the test reflected optional Combo
+surface emission.
+
+## RED Evidence
+
+Added the runtime-surface helper before changing production code and ran the
+matrix package test:
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_universal_wild_no_block_matrix.py::test_valid_wild_deck_produces_load_safe_warning_apply_package -q
+```
+
+Result: `12 failed in 11.18s`.
+
+The failure showed that every matrix package deliberately omits `Combo.json`;
+the new assertion incorrectly required a Combo file for every deck. The emitted
+`Mulligan.json`, `GlobalValues.json`, and card-ID files were present, while the
+operator ledger remained clean. Since an omitted optional Combo surface is not a
+hidden default-only emitted surface, the assertion was narrowed to every
+actually emitted JSON file plus the required Mulligan and GlobalValues files.
+
+## GREEN Evidence
+
+The corrected matrix assertion passed without a production change:
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_universal_wild_no_block_matrix.py::test_valid_wild_deck_produces_load_safe_warning_apply_package -q
+# 12 passed in 10.71s
+
+python -m pytest -p no:cacheprovider tests\test_universal_wild_no_block_matrix.py -q
+# 20 passed in 22.64s
+
+python -m pytest -p no:cacheprovider tests\test_configure_online_source.py -q
+# 5 passed in 1.50s
+
+git diff --check
+# exit 0
+```
+
+The matrix helper now proves that every emitted runtime JSON file has visible
+non-empty `values` rows, that the default-only ledger/status is clean, and that
+the required Mulligan, GlobalValues, and CardID behavior surfaces are not
+default-only. It is exercised from both the `prepare` and `configure` matrix
+paths.
+
+The ShadowPriest canary now reads `SW_448.json` directly and requires
+`BeforeUseHeroPowerBonus`, `Mind Spike`, or `Shadowform` semantics, while
+asserting `SW_448` is absent from every Mulligan keep/discard row. The online
+source path additionally proves partial source closure remains diagnostic-only:
+runtime apply is allowed, the source contract is non-blocking, no hard block is
+raised, and explainability does not apply-block.
+
+## Commit
+
+`b18fedc test: prove no hidden default-only runtime output`
+
+## Residual Risks
+
+- `Combo.json` remains intentionally optional. The regression validates it when
+  emitted rather than treating its absence as a default-only fallback.
+- The tests build isolated packages with fixture data and stubbed card fetches;
+  they do not prove a live HearthRanger runtime load.
