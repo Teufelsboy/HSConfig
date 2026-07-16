@@ -42,6 +42,45 @@ def test_shadowpriest_semantic_qualifiers_preserve_effect_without_mulligan_keep(
     )
 
 
+def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_hand(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    out = tmp_path / "pkg"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+        ]
+    )
+
+    deck_dir = out / "CustomConfig" / "shadowpriest"
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    benedictus_behavior = json.loads(
+        (deck_dir / "SW_448.json").read_text(encoding="utf-8")
+    )
+    summary = json.loads(
+        (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+
+    assert code == 0
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
+    assert (
+        "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)
+        or "BeforeUseHeroPowerBonus" in benedictus_behavior
+    )
+
+
 def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_lifecycle(
     tmp_path: Path,
 ):
