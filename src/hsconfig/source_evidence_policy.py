@@ -6,7 +6,16 @@ from typing import Any, Mapping
 
 GUIDE_FAMILIES = {"guide", "public_guide", "community_guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
 DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
-STATS_FAMILIES = {"stats", "statistical_enrichment", "hs" "replay", "hsguru"}
+STATS_FAMILIES = {
+    "stats",
+    "statistical_enrichment",
+    "hsreplay",
+    "hs_replay",
+    "hs-replay",
+    "hsguru",
+    "hs_guru",
+    "hs-guru",
+}
 STATIC_FAMILIES = {
     "official_static_semantics",
     "blizzard_card_library",
@@ -27,6 +36,13 @@ NON_PROMOTING_SOURCE_TYPES = {
     "default_runtime",
     "generated_default",
 }
+EVERGREEN_WILD_MAX_AGE_YEARS = 10
+EVERGREEN_WILD_MIN_MATCHED_CARDS = 2
+EVERGREEN_WILD_FORMAT_VALUES = {
+    "wild",
+    "wild_archetype",
+    "hearthstone_wild",
+}
 
 
 def classify_source_evidence(
@@ -43,12 +59,19 @@ def classify_source_evidence(
     deck_scope = _deck_match_scope(record, deck_name)
     publication_year = _publication_year(record)
     current_year = _current_year(current_date)
+    source_freshness_lane = _source_freshness_lane(
+        record,
+        family=family,
+        publication_year=publication_year,
+        current_year=current_year,
+    )
     source_rank_lane = _source_rank_lane(
         family,
         visibility,
         deck_scope,
         publication_year,
         current_year,
+        source_freshness_lane,
     )
     source_lane = _source_lane(source_rank_lane, deck_scope)
     blockers = _promotion_blockers(
@@ -67,6 +90,7 @@ def classify_source_evidence(
     result.update(
         {
             "source_visibility": visibility,
+            "source_freshness_lane": source_freshness_lane,
             "source_rank_lane": source_rank_lane,
             "source_lane": source_lane,
             "deck_match_scope": deck_scope,
@@ -141,6 +165,7 @@ def _source_rank_lane(
     deck_scope: str,
     publication_year: int | None,
     current_year: int | None,
+    source_freshness_lane: str,
 ) -> str:
     if family in DECKLIST_FAMILIES:
         return "decklist_only"
@@ -152,10 +177,16 @@ def _source_rank_lane(
         family in GUIDE_FAMILIES
         and visibility == "full_text"
         and deck_scope in {"deck_matched", "deck_or_archetype_matched"}
-        and current_year is not None
-        and publication_year == current_year
+        and source_freshness_lane == "current"
     ):
         return "guide_current_deck_match"
+    if (
+        family in GUIDE_FAMILIES
+        and visibility == "full_text"
+        and deck_scope in {"deck_matched", "deck_or_archetype_matched"}
+        and source_freshness_lane == "evergreen_wild_archetype"
+    ):
+        return "guide_evergreen_wild_archetype"
     if family in GUIDE_FAMILIES and visibility == "full_text":
         return "guide_full_text_not_current"
     if family in GUIDE_FAMILIES:
@@ -164,7 +195,10 @@ def _source_rank_lane(
 
 
 def _source_lane(source_rank_lane: str, deck_scope: str) -> str:
-    if source_rank_lane == "guide_current_deck_match" and deck_scope in {
+    if source_rank_lane in {
+        "guide_current_deck_match",
+        "guide_evergreen_wild_archetype",
+    } and deck_scope in {
         "deck_matched",
         "deck_or_archetype_matched",
     }:
@@ -203,24 +237,32 @@ def _promotion_blockers(
         blockers.append("deck_match_scope_not_strong")
     if publication_year is None:
         blockers.append("missing_publication_year")
-    elif current_year is not None and publication_year != current_year:
-        blockers.append("source_not_current_year")
+    elif source_rank_lane not in {
+        "guide_current_deck_match",
+        "guide_evergreen_wild_archetype",
+    } and current_year is not None and publication_year != current_year:
+        blockers.append("source_not_current_or_evergreen_wild")
     strength = _text(record.get("source_record_strength")).lower()
     if strength and strength != "candidate_strong":
         blockers.append(f"non_strong_source_record_strength_{strength}")
-    if source_rank_lane != "guide_current_deck_match":
+    if source_rank_lane not in {
+        "guide_current_deck_match",
+        "guide_evergreen_wild_archetype",
+    }:
         blockers.append(f"source_rank_lane_{source_rank_lane}_not_strong")
     return sorted(set(blockers))
 
 
 def _first_missing_source_action(blockers: list[str]) -> str:
-    if "missing_publication_year" in blockers or "source_not_current_year" in blockers:
-        return "add_current_publication_metadata_or_current_guide"
+    if "missing_publication_year" in blockers:
+        return "add_publication_metadata_or_current_guide"
+    if "source_not_current_or_evergreen_wild" in blockers:
+        return "add_current_or_evergreen_wild_public_guide"
     if any(blocker.startswith("source_visibility_") for blocker in blockers):
         return "add_full_text_public_guide_source"
     if "deck_match_scope_not_strong" in blockers:
         return "add_deck_or_archetype_matched_source"
-    return "add_current_deck_guide_or_mulligan_guide"
+    return "add_current_or_evergreen_wild_public_guide"
 
 
 def _trust_ceiling(family: str, visibility: str) -> str:
@@ -250,6 +292,57 @@ def _static_runtime_surface_scope(record: Mapping[str, Any], family: str) -> dic
         "static_runtime_surface_scope": "not_runtime_surface_static",
         "static_runtime_surface_limit": "static_semantics_does_not_prove_strategy_surface",
     }
+
+
+def _source_freshness_lane(
+    record: Mapping[str, Any],
+    *,
+    family: str,
+    publication_year: int | None,
+    current_year: int | None,
+) -> str:
+    if family not in GUIDE_FAMILIES:
+        return "not_guide"
+    if publication_year is None or current_year is None:
+        return "missing_publication_year"
+    if publication_year == current_year:
+        return "current"
+    if _is_evergreen_wild_source(record, publication_year=publication_year, current_year=current_year):
+        return "evergreen_wild_archetype"
+    return "stale_or_not_current"
+
+
+def _is_evergreen_wild_source(
+    record: Mapping[str, Any],
+    *,
+    publication_year: int,
+    current_year: int,
+) -> bool:
+    age = current_year - publication_year
+    if age < 1 or age > EVERGREEN_WILD_MAX_AGE_YEARS:
+        return False
+    format_scope = _text(record.get("format_scope") or record.get("format")).lower()
+    if format_scope not in EVERGREEN_WILD_FORMAT_VALUES and not _truthy(
+        record.get("evergreen_wild_archetype")
+    ):
+        return False
+    return _matched_card_count(record) >= EVERGREEN_WILD_MIN_MATCHED_CARDS
+
+
+def _matched_card_count(record: Mapping[str, Any]) -> int:
+    match = record.get("deck_match", {})
+    if not isinstance(match, Mapping):
+        return 0
+    matched = match.get("matched_card_ids", [])
+    if not isinstance(matched, list):
+        return 0
+    return len([card_id for card_id in matched if _text(card_id)])
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _text(value).lower() in {"1", "true", "yes", "y"}
 
 
 def _publication_year(record: Mapping[str, Any]) -> int | None:

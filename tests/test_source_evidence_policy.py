@@ -212,3 +212,86 @@ def test_static_semantics_never_promotes_mulligan_claims():
     assert result["strong_promotion_eligible"] is False
     assert result["static_runtime_surface_eligible"] is False
     assert result["static_runtime_surface_scope"] == "not_runtime_surface_static"
+
+
+def test_evergreen_wild_archetype_guide_can_be_strong_when_deck_matched():
+    row = classify_source_evidence(
+        {
+            "source_family": "public_guide",
+            "source_title": "Wild ShadowPriest Guide",
+            "source_url": "https://example.test/wild-shadowpriest",
+            "source_visibility": "full_text",
+            "publication_year": 2021,
+            "format_scope": "wild",
+            "evergreen_wild_archetype": True,
+            "source_record_strength": "candidate_strong",
+            "normalized_text": (
+                "Wild ShadowPriest guide. The deck is aggressive, starts with "
+                "Mind Spike from Darkbishop Benedictus, and keeps early pressure "
+                "cards such as Voidtouched Attendant and Shadowbomber."
+            ) * 4,
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+            },
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 16),
+    )
+
+    assert row["source_freshness_lane"] == "evergreen_wild_archetype"
+    assert row["source_rank_lane"] == "guide_evergreen_wild_archetype"
+    assert row["source_lane"] == "deck_matched_public_guide"
+    assert row["promotion_eligible"] is True
+    assert row["strong_promotion_eligible"] is True
+    assert row["promotion_blockers"] == []
+    assert row["first_missing_source_action"] == "none"
+
+
+def test_old_non_wild_guide_stays_partial_and_requests_current_or_evergreen_source():
+    row = classify_source_evidence(
+        {
+            "source_family": "public_guide",
+            "source_title": "Old Standard Guide",
+            "source_visibility": "full_text",
+            "publication_year": 2021,
+            "source_record_strength": "candidate_strong",
+            "normalized_text": "Old guide text for a deck that no longer matches the current format. " * 8,
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_446"],
+            },
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 16),
+    )
+
+    assert row["source_freshness_lane"] == "stale_or_not_current"
+    assert row["source_rank_lane"] == "guide_full_text_not_current"
+    assert row["strong_promotion_eligible"] is False
+    assert "source_not_current_or_evergreen_wild" in row["promotion_blockers"]
+    assert row["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"
+
+
+def test_hsreplay_and_hsguru_aliases_are_stats_only_support_lanes():
+    for family in ["hsreplay", "hs_replay", "hs-replay", "hsguru", "hs_guru", "hs-guru"]:
+        row = classify_source_evidence(
+            {
+                "source_family": family,
+                "source_visibility": "full_text",
+                "publication_year": 2026,
+                "source_record_strength": "candidate_strong",
+                "normalized_text": "Aggregate stats can support diagnostics but are not a full guide.",
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446"],
+                },
+            },
+            deck_name="ShadowPriest",
+            current_date=date(2026, 7, 16),
+        )
+
+        assert row["source_rank_lane"] == "statistical_enrichment"
+        assert row["promotion_eligible"] is False
+        assert row["strong_promotion_eligible"] is False
+        assert "stats_only_not_strong_evidence" in row["promotion_blockers"]
