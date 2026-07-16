@@ -231,14 +231,32 @@ def assert_load_safe_no_block_package(operator_summary: dict):
     assert isinstance(operator_summary["first_missing_source_action"], str)
 
 
-def assert_no_default_only_runtime_surfaces(operator: dict) -> None:
+def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) -> None:
+    required_files = {
+        "Mulligan.json",
+        "GlobalValues.json",
+    }
+    emitted_files = {path.name for path in deck_dir.glob("*.json")}
+    assert required_files <= emitted_files
+
+    for file_name in emitted_files:
+        path = deck_dir / file_name
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        runtime_rows = [
+            row
+            for block in payload.values()
+            if isinstance(block, dict)
+            for row in block.get("values", [])
+        ]
+        assert runtime_rows, f"{file_name} has no visible runtime rows"
+
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["no_default_only_runtime_status"] == "clean"
     assert operator["first_missing_source_action"]
-    ledger = {
-        row["surface"]: row
-        for row in operator.get("surface_status_ledger", [])
-    }
+    ledger_rows = operator.get("surface_status_ledger", [])
+    assert ledger_rows
+    assert all(row["status"] != "default_only" for row in ledger_rows)
+    ledger = {row["surface"]: row for row in ledger_rows}
     assert {"mulligan", "globalvalues", "cardid_behavior"} <= set(ledger)
     assert ledger["mulligan"]["status"] in {
         "source_backed",
@@ -246,8 +264,6 @@ def assert_no_default_only_runtime_surfaces(operator: dict) -> None:
         "source_and_policy_backed",
         "warning_only",
     }
-    assert ledger["globalvalues"]["status"] != "default_only"
-    assert ledger["cardid_behavior"]["status"] != "default_only"
     mulligan_policy = operator["mulligan_policy_status"]
     assert mulligan_policy["default_only"] is False
     assert mulligan_policy["status"] in {
@@ -345,7 +361,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
-    assert_no_default_only_runtime_surfaces(operator)
+    assert_no_runtime_surface_is_hidden_default(deck_dir, operator)
     no_block = operator["no_block_failure_mode_summary"]
     assert no_block["hard_block"] is False
     assert no_block["runtime_apply_allowed"] is True
@@ -382,7 +398,15 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert "cards" in semantic_report
     assert_runtime_surface_shape(deck_dir, deck_card_ids)
     if deck_name == "ShadowPriest":
-        assert (deck_dir / "SW_448.json").is_file()
+        darkbishop_path = deck_dir / "SW_448.json"
+        assert darkbishop_path.is_file()
+        darkbishop = json.loads(darkbishop_path.read_text(encoding="utf-8"))
+        darkbishop_text = json.dumps(darkbishop)
+        assert (
+            "BeforeUseHeroPowerBonus" in darkbishop_text
+            or "Mind Spike" in darkbishop_text
+            or "Shadowform" in darkbishop_text
+        )
         mulligan = json.loads(
             (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
         )
@@ -422,11 +446,15 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
                 encoding="utf-8"
             )
         )
+        deck_dirs = [
+            path for path in (out / "04_package" / "CustomConfig").iterdir() if path.is_dir()
+        ]
+        assert len(deck_dirs) == 1
+        deck_dir = deck_dirs[0]
         assert operator["technical_status"] == "VALID_PACKAGE"
         assert operator["runtime_load_safe"] is True
         assert operator["runtime_apply_mode"] == "load_safe_apply"
-        assert operator["default_only_runtime_surfaces"] == []
-        assert operator["mulligan_policy_status"]["default_only"] is False
+        assert_no_runtime_surface_is_hidden_default(deck_dir, operator)
         assert operator["source_contract_audit_summary"]["non_blocking"] is True
         source_quality = operator["source_claim_quality_summary"]
         assert source_quality["non_blocking"] is True

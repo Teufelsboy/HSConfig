@@ -102,9 +102,10 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     package = out / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
     explainability = _read_json(package / "reports" / "source_to_runtime_explainability.json")
-    mulligan_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in package.glob("CustomConfig/*/Mulligan.json")
-    )
+    deck_dirs = [path for path in (package / "CustomConfig").iterdir() if path.is_dir()]
+    assert len(deck_dirs) == 1
+    deck_dir = deck_dirs[0]
+    mulligan = _read_json(deck_dir / "Mulligan.json")
 
     assert summary["status"] == "OK"
     assert summary["source_acquisition_path"] == str(out / "02_source_acquisition")
@@ -117,6 +118,7 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is True
     blocker_reasons = {
         str(blocker.get("reason", ""))
         for blocker in operator["semantic_blockers"]
@@ -125,7 +127,23 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
     assert explainability["operator_attention"][0]["first_missing_link"] == "needs_runtime_surface"
     assert operator["default_only_runtime_surfaces"] == []
-    assert "SW_448" not in mulligan_text
+    assert operator["source_contract_audit_summary"]["non_blocking"] is True
+    assert operator["no_block_failure_mode_summary"]["hard_block"] is False
+    assert explainability["apply_blocking"] is False
+
+    darkbishop_path = deck_dir / "SW_448.json"
+    assert darkbishop_path.is_file()
+    darkbishop = _read_json(darkbishop_path)
+    darkbishop_text = json.dumps(darkbishop)
+    assert (
+        "BeforeUseHeroPowerBonus" in darkbishop_text
+        or "Mind Spike" in darkbishop_text
+        or "Shadowform" in darkbishop_text
+    )
+    assert not any(
+        row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
+        for row in mulligan["Mulligan"]["values"]
+    )
 
     source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
     flat_claims = [
