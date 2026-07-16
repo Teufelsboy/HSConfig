@@ -138,7 +138,7 @@ The failures covered `candidate_only`, `candidate_partial`, and disjoint card/he
 
 ### Commit
 
-Implementation commit SHA: recorded below after the implementation commit.
+Implementation commit SHA: `74fcfa4936b18cecd82d354ef0fd5be0d2c523ee`
 
 Changed files:
 
