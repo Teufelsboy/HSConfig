@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Mapping
 
@@ -32,13 +33,14 @@ def extract_text_claims(
 
 
 def _is_full_text_guide(source_record: Mapping[str, Any]) -> bool:
+    strength = _text(source_record.get("source_record_strength")).lower()
     family = _text(source_record.get("source_family")).lower()
     visibility = _text(source_record.get("source_visibility")).lower()
     lane = _text(source_record.get("source_lane")).lower()
     rank_lane = _text(source_record.get("source_rank_lane")).lower()
     return (
-        family
-        in {
+        strength == "candidate_strong"
+        and family in {
             "guide",
             "public_guide",
             "community_guide",
@@ -96,17 +98,30 @@ def _hero_power_transform_claims(
     for card in cards:
         card_id = _text(card.get("card_id"))
         name = _text(card.get("name"))
-        card_text = _text(card.get("text")).lower()
         if not card_id or not name:
             continue
-        mentions_card = name.lower() in text
-        mentions_power = "mind spike" in text or "shadowform" in text or "hero power" in text
-        start_of_game = "start of game" in card_text or "start of game" in text
-        if mentions_card and mentions_power and start_of_game:
+        if _has_explicit_hero_power_association(name, text):
             claims.append(
                 _claim(source_record, "hero_power_transform", card_id, f"{name} transforms the hero power.")
             )
     return claims
+
+
+def _has_explicit_hero_power_association(card_name: str, text: str) -> bool:
+    card = re.escape(card_name.lower())
+    action = r"(?:change|changes|changed|changing|transform|transforms|transformed|transforming|turn|turns|turned|turning)"
+    target = r"(?:hero power|mind spike|shadowform)"
+    bounded_clause = r"[^.!?]{0,160}"
+    return bool(
+        re.search(
+            rf"{card}{bounded_clause}\b{action}\w*\b{bounded_clause}\b{target}\b",
+            text,
+        )
+        or re.search(
+            rf"\b{target}\b{bounded_clause}\b{action}\w*\b{bounded_clause}{card}",
+            text,
+        )
+    )
 
 
 def _claim(source_record: Mapping[str, Any], claim_kind: str, card_id: str, evidence: str) -> dict[str, Any]:

@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.source_text_claim_extractor import extract_text_claims
 
 
@@ -99,3 +101,52 @@ def test_stats_and_snippet_only_sources_extract_no_runtime_claims():
             source_record=source,
             current_date="2026-07-16",
         ) == []
+
+
+@pytest.mark.parametrize("source_record_strength", ["candidate_only", "candidate_partial"])
+def test_non_strong_source_records_extract_no_runtime_claims(source_record_strength):
+    source = {
+        "source_url": "https://example.test/candidate",
+        "source_title": "Candidate Guide",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "normalized_text": (
+            "Mulligan: keep Papercraft Angel. "
+            "Darkbishop Benedictus changes your hero power into Mind Spike at the start of the game."
+        ),
+        "source_record_strength": source_record_strength,
+    }
+
+    assert extract_text_claims(
+        deck_name="ShadowPriest",
+        deck_identity=_shadow_identity(),
+        source_record=source,
+        current_date="2026-07-16",
+    ) == []
+
+
+def test_disjoint_card_and_hero_power_mentions_do_not_create_transform_claim():
+    source = {
+        "source_url": "https://example.test/disjoint",
+        "source_title": "Unrelated Guide",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "normalized_text": (
+            "Darkbishop Benedictus is in the deck. Mind Spike is effective. "
+            "Start of Game effects are checked before turn one."
+        ),
+        "source_record_strength": "candidate_strong",
+    }
+
+    claims = extract_text_claims(
+        deck_name="ShadowPriest",
+        deck_identity=_shadow_identity(),
+        source_record=source,
+        current_date="2026-07-16",
+    )
+
+    assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)

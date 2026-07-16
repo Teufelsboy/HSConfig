@@ -104,3 +104,48 @@ a12ddad162dd6793e3fcad18d194eb256725e444 fix: block policy and default-only stro
 ## Concerns
 
 - `tests/fixtures/source_documents_shadowpriest_strong.json` was updated because the required fixture closure test proved ShadowPriest had been relying on policy-backed mulligan rows. The added mulligan claims are backed by the fixture's existing public guide source.
+
+## Task 3 Source Extractor Boundary Fix
+
+### TDD Red Evidence
+
+Command:
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
+```
+
+Observed red output:
+
+```text
+3 failed, 3 passed
+```
+
+The failures covered `candidate_only`, `candidate_partial`, and disjoint card/hero-power mentions producing claims.
+
+### Fix
+
+- `source_text_claim_extractor.py` now permits full-text guide extraction only when `source_record_strength == "candidate_strong"`.
+- `hero_power_transform` now requires a bounded same-sentence association between the named card, a transformation verb, and `hero power`, `Mind Spike`, or `Shadowform`.
+- Card metadata and document-wide disjoint mentions no longer establish a transform claim.
+- Existing Papercraft keep, `SW_448` 4-cost discard, explicit Darkbishop-to-Mind-Spike transform, and `decklist_only` behavior remain covered.
+
+### Green Evidence
+
+```text
+6 passed in 0.09s
+```
+
+### Commit
+
+Implementation commit SHA: recorded below after the implementation commit.
+
+Changed files:
+
+- `src/hsconfig/source_text_claim_extractor.py`
+- `tests/test_source_text_claim_extractor.py`
+- `.superpowers/sdd/task-3-fix-report.md`
+
+### Concerns
+
+- The transform matcher intentionally accepts only bounded same-sentence wording with explicit transformation verbs; differently worded guide prose may require a future targeted pattern and test.
