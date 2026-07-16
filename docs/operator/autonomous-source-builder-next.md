@@ -1,6 +1,6 @@
 # Autonomous Source Builder Next Wave
 
-HSConfig can already build a valid initial package from deck input. It reaches `SOURCE_BACKED_STRONG` when current structured guide sources provide enough card-specific, runtime-lowerable claims.
+HSConfig can already build a valid initial package from deck input. It reaches `SOURCE_BACKED_STRONG` when current structured guide sources or qualifying `evergreen_wild_archetype` sources provide enough card-specific, runtime-lowerable claims.
 
 The current lightweight autonomy bridge is `hsconfig source-autopilot` or `hsconfig configure --auto-source --source-search-results-json ...`. The next improvement is stronger source acquisition before those compact records are handed to `source-autopilot`, not another runtime gate or runtime surface.
 
@@ -32,7 +32,7 @@ The source builder must emit compact public source-search records that `source-a
 
 ## Success Criteria
 
-- `source-autopilot` reports `strong_candidate=false` for decklist-only/static inputs and only reports `strong_candidate=true` for current guide-backed, card-specific, runtime-lowerable evidence.
+- `source-autopilot` reports `strong_candidate=false` for decklist-only/static inputs and only reports `strong_candidate=true` for current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable evidence.
 - `hsconfig research-deck` consumes the generated source documents without schema errors.
 - `hsconfig prepare` produces `VALID_PACKAGE`.
 - `source_claim_gap_report.json` has fewer blocked cards than deck-only static semantics.

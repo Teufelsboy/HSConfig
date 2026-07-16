@@ -34,4 +34,3 @@ Status: DONE
 - Representative Wild decks remain non-blocking.
 - No source-depth failure was converted into a hard apply block.
 - Default-only visibility remains diagnostic, not a second gate.
-

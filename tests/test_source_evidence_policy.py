@@ -305,8 +305,8 @@ def test_old_non_wild_guide_stays_partial_and_requests_current_or_evergreen_sour
     assert row["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"
 
 
-def test_hsreplay_and_hsguru_aliases_are_stats_only_support_lanes():
-    for family in ["hsreplay", "hs_replay", "hs-replay", "hsguru", "hs_guru", "hs-guru"]:
+def test_public_stats_families_are_stats_only_support_lanes():
+    for family in ["stats", "statistical_enrichment", "hsguru", "hs_guru", "hs-guru"]:
         row = classify_source_evidence(
             {
                 "source_family": family,

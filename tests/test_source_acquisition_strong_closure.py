@@ -196,5 +196,8 @@ def test_acquisition_policy_fields_make_stale_guides_non_strong():
     record = payload["source_records"][0]
     assert record["source_visibility"] == "full_text"
     assert record["publication_year"] == 2025
+    assert record["source_freshness_lane"] == "stale_or_not_current"
+    assert record["source_rank_lane"] == "guide_full_text_not_current"
     assert record["strong_promotion_eligible"] is False
-    assert record["first_missing_source_action"] == "add_current_publication_metadata_or_current_guide"
+    assert "source_not_current_or_evergreen_wild" in record["promotion_blockers"]
+    assert record["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"

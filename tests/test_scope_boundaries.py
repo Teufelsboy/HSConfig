@@ -10,7 +10,7 @@ FORBIDDEN_SRC_CONCEPTS = (
     (
         "HDT parsing",
         re.compile(
-            r"\bhdt[\s_-]*(?:parsing|parser|replay)\b|\bhsreplay\b|\bparse_hdt_replay\b|\bhdt_replay\b",
+            r"\bhdt[\s_-]*(?:parsing|parser|replay)\b|\bhs[\s_-]*replay\b|\bparse_hdt_replay\b|\bhdt_replay\b",
             re.I,
         ),
     ),
@@ -68,6 +68,8 @@ def test_scope_guard_terms_cover_likely_source_spellings():
             "HDT parsing",
             "HDT parser",
             "hsreplay",
+            "hs_replay",
+            "hs-replay",
             "parse_hdt_replay",
             "hdt_replay",
         ],

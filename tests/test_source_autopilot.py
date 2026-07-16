@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from hsconfig.deck_identity import build_deck_identity
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_autopilot import (
     _action_from_profile_gap,
@@ -31,6 +33,22 @@ SHADOW_DECK_IDENTITY = {
 
 def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def _matrix_deck_identity(deck_name: str) -> dict:
+    matrix = json.loads(
+        Path("docs/operator/archetype-fixture-matrix.json").read_text(encoding="utf-8")
+    )
+    deck = next(row for row in matrix["decks"] if row["deck_name"] == deck_name)
+    decoded = decode_deck_code(deck["deck_code"])
+    return build_deck_identity(
+        deck_name=deck["deck_name"],
+        deck_code=deck["deck_code"],
+        cards=decoded["cards"],
+        hero_dbf_id=decoded["hero_dbf_id"],
+        format=decoded["format"],
+        sideboards=decoded["sideboards"],
+    )
 
 
 def run_source_autopilot_fixture(name: str) -> dict:
@@ -882,6 +900,22 @@ def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
     assert report["strong_candidate"] is True
     assert report["strong_closure_summary"]["source_backed_strong_ready"] is True
     assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_STRONG"
+
+
+def test_source_autopilot_routes_imbuemage_source_search_to_hero_power_imbue():
+    payload = _fixture("source_search_11_deck_matrix.json")
+    bundle = build_source_autopilot_bundle(
+        deck_name="ImbueMage",
+        deck_identity=_matrix_deck_identity("ImbueMage"),
+        source_search_records=payload["records_by_deck"]["ImbueMage"],
+        current_date="2026-07-15",
+    )
+
+    report = bundle["source_autopilot_report"]
+    closure = report["source_backed_strong_closure"]
+    assert closure["closure_profile"] == "hero_power_imbue"
+    assert closure["closure_profile_closed"] is True
+    assert report["strong_candidate"] is True
 
 
 def test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source():

@@ -393,6 +393,7 @@ def _record_policy_fields(policy: Mapping[str, Any]) -> dict[str, Any]:
         key: policy[key]
         for key in (
             "source_lane",
+            "source_freshness_lane",
             "source_rank_lane",
             "deck_match_scope",
             "promotion_eligible",

@@ -35,7 +35,7 @@ gate.
 
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
-`source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, decklist-only pages, statistical enrichment, policy fallback, snippets, default/runtime examples, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics are still required.
+`source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, decklist-only pages, statistical enrichment, policy fallback, snippets, default/runtime examples, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims, or supported official static effect semantics, are still required.
 
 Autonomous source path:
 

@@ -12,7 +12,7 @@ Every source document should be written as structured JSON and normalized with `
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed, card-specific, runtime-lowerable claims or supported official static effect semantics can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims, or supported official static effect semantics, can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
 
 `source_autopilot_report.json` stays diagnostic. Read
 `runtime_apply_authority`, `default_only_runtime_surfaces`,

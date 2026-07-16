@@ -9,9 +9,6 @@ DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snaps
 STATS_FAMILIES = {
     "stats",
     "statistical_enrichment",
-    "hsreplay",
-    "hs_replay",
-    "hs-replay",
     "hsguru",
     "hs_guru",
     "hs-guru",

@@ -491,6 +491,7 @@ def _closure_profile_verdict(
     primary_mechanics = _primary_mechanics_for_profile(
         deck_name=deck_name,
         claim_kinds=promotion_eligible_claim_kinds,
+        evidence_rows=strong_rows,
     )
     archetype_bucket = _archetype_bucket_for_profile(
         deck_name=deck_name,
@@ -512,18 +513,66 @@ def _primary_mechanics_for_profile(
     *,
     deck_name: str,
     claim_kinds: Sequence[str],
+    evidence_rows: Sequence[Mapping[str, Any]] = (),
 ) -> list[str]:
     mechanics: set[str] = set()
     normalized_deck_name = deck_name.lower()
+    normalized_claim_kinds = {_text(claim_kind).lower() for claim_kind in claim_kinds}
+    _add_profile_mechanics_from_text(mechanics, deck_name)
+    for row in evidence_rows:
+        for key in ("mechanic", "primary_mechanics", "mechanics", "semantic_families"):
+            for value in _as_list(row.get(key)):
+                _add_profile_mechanics_from_text(mechanics, value)
+        for key in ("deck_name", "archetype"):
+            _add_profile_mechanics_from_text(mechanics, row.get(key))
     if "shadow" in normalized_deck_name and "priest" in normalized_deck_name:
         mechanics.update({"aggro", "burn", "shadow_hero_power"})
-    if "hero_power_transform" in claim_kinds:
+    if "hero_power_transform" in normalized_claim_kinds:
         mechanics.add("shadow_hero_power")
-    if "targeting_rule" in claim_kinds:
+        mechanics.add("hero_power")
+    if "targeting_rule" in normalized_claim_kinds:
         mechanics.add("burn")
-    if "combo_sequence" in claim_kinds:
+    if "combo_sequence" in normalized_claim_kinds:
         mechanics.add("combo")
     return sorted(mechanics)
+
+
+def _add_profile_mechanics_from_text(mechanics: set[str], value: Any) -> None:
+    text = _text(value).lower()
+    normalized = _norm(value)
+    if not text:
+        return
+    token_map = {
+        "aggro": ("aggro",),
+        "burn": ("burn",),
+        "combo": ("combo",),
+        "discard": ("discard",),
+        "recruit": ("recruit",),
+        "weapon": ("weapon",),
+        "pirate": ("pirate",),
+        "mech": ("mech",),
+        "magnetic": ("magnetic",),
+        "imbue": ("imbue",),
+        "big": ("big_minion",),
+        "cheat": ("cheat",),
+        "hero_power": ("hero_power",),
+        "heropower": ("hero_power",),
+        "shadow_hero_power": ("shadow_hero_power", "hero_power"),
+        "shadowheropower": ("shadow_hero_power", "hero_power"),
+        "spell_generation": ("spell_generation",),
+        "spellgeneration": ("spell_generation",),
+        "board_flood": ("board_flood",),
+        "boardflood": ("board_flood",),
+        "token_board": ("token_board",),
+        "tokenboard": ("token_board",),
+        "board_scaling": ("board_scaling",),
+        "boardscaling": ("board_scaling",),
+        "big_minion": ("big_minion",),
+        "bigminion": ("big_minion",),
+    }
+    for needle, labels in token_map.items():
+        if needle in text or needle in normalized:
+            mechanics.update(labels)
 
 
 def _archetype_bucket_for_profile(
