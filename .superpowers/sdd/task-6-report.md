@@ -318,11 +318,13 @@ paths.
 The ShadowPriest canary now reads `SW_448.json` directly and requires a
 non-empty `BeforeUseHeroPowerBonus.values` row with Shadow-specific hero-power
 transform semantics (`enable_shadow`, `Shadowform`, `Mind Spike`, `shadow
-hero`, or explicit transformed hero-power marker), while asserting `SW_448` is
-absent from every Mulligan keep/discard row. The online source path additionally
-proves partial source closure remains diagnostic-only: runtime apply is allowed,
-the source contract is non-blocking, no hard block is raised, and explainability
-does not apply-block.
+hero`, `enable_transformed_hero_power`, or `transformed_hero_power` marker),
+while asserting `SW_448` is absent from every Mulligan keep/discard row. Direct
+negative canaries reject generic `hero_power priority` and `transform hero_power
+priority` rows. The online source path additionally proves partial source
+closure remains diagnostic-only: runtime apply is allowed, the source contract
+is non-blocking, no hard block is raised, and explainability does not
+apply-block.
 
 ## Commit
 

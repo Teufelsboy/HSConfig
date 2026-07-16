@@ -41,7 +41,25 @@ def _has_shadow_hero_power_transform_semantics(row: dict) -> bool:
     return any(
         token in text
         for token in ("enable_shadow", "shadowform", "mind spike", "shadow hero")
-    ) or ("transform" in text and "hero_power" in text)
+    ) or any(
+        token in text
+        for token in ("enable_transformed_hero_power", "transformed_hero_power")
+    )
+
+
+def test_darkbishop_transform_semantic_guard_rejects_generic_hero_power_rows():
+    assert _has_shadow_hero_power_transform_semantics(
+        {"comment": "ShadowPriest: SW_448_enable_shadow_hero_power", "value": "6"}
+    )
+    assert _has_shadow_hero_power_transform_semantics(
+        {"comment": "ShadowPriest: SW_448_enable_transformed_hero_power", "value": "6"}
+    )
+    assert not _has_shadow_hero_power_transform_semantics(
+        {"comment": "generic hero_power priority", "value": "1"}
+    )
+    assert not _has_shadow_hero_power_transform_semantics(
+        {"comment": "generic transform hero_power priority", "value": "1"}
+    )
 
 
 def _write_fixture_map(path: Path, url: str, page_name: str) -> None:
