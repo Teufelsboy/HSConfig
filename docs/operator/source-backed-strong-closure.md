@@ -65,6 +65,12 @@ Use `runtime_apply_authority`, `default_only_runtime_surfaces`,
 return empty first-missing maps; partial packages list only the first missing
 card or surface links that still need source closure.
 
+`source_autopilot_report.json.default_only_runtime_surfaces` is a
+source-preflight diagnostic, not runtime-package proof. Runtime default-only
+truth is read from `reports/operator_summary.json`; source preflight exposes
+`default_only_runtime_surface_status=not_evaluated_in_source_preflight` so this
+boundary is machine-readable.
+
 ## Promotion Rule
 
 A matrix row may move from `source_informed_valid_fixture` to `core_source_backed_fixture` only when a fixture prepare run proves:

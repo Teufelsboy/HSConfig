@@ -298,3 +298,24 @@ def test_compact_source_guide_fixtures_exist_and_are_not_raw_page_dumps():
         text = (fixture_dir / name).read_text(encoding="utf-8")
         assert "<html" in text.lower()
         assert len(text.split()) < 250
+
+
+def test_source_autopilot_default_only_fields_are_preflight_not_runtime_authority():
+    bundle = build_source_autopilot_bundle(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=[_guide_record()],
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+
+    assert report["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert report["default_only_runtime_surfaces"] == []
+    assert report["default_only_runtime_surface_status"] == (
+        "not_evaluated_in_source_preflight"
+    )
+    assert report["default_only_runtime_surfaces_scope"] == (
+        "source_preflight_not_runtime_proof"
+    )
+    assert report["source_backed_strong_closure"]["diagnostic_only"] is True

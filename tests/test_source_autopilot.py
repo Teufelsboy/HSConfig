@@ -659,3 +659,6 @@ def test_source_autopilot_marks_runtime_default_only_surfaces_not_evaluated():
         closure["default_only_runtime_surface_status"]
         == "not_evaluated_in_source_preflight"
     )
+    assert closure["default_only_runtime_surfaces_scope"] == (
+        "source_preflight_not_runtime_proof"
+    )
