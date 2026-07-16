@@ -24,4 +24,3 @@ Status: DONE
 - No CardID row is emitted for `mulligan_keep`.
 - Darkbishop's start-of-game effect remains modeled as an effect/runtime behavior, not an opening-hand keep.
 - The change is test-only and keeps the runtime surface model narrow.
-
