@@ -149,3 +149,48 @@ Changed files:
 ### Concerns
 
 - The transform matcher intentionally accepts only bounded same-sentence wording with explicit transformation verbs; differently worded guide prose may require a future targeted pattern and test.
+
+## Task 3 Second-Fix: Direct Hero Power Association
+
+### TDD Red Evidence
+
+Added `test_same_sentence_disjoint_clauses_do_not_create_transform_claim` for:
+
+```text
+Darkbishop Benedictus changes the matchup; Mind Spike is the hero power to use.
+```
+
+Before the matcher change, the required focused command reported:
+
+```text
+1 failed, 6 passed
+```
+
+The failure confirmed that same-sentence but semantically disjoint clauses still emitted a `hero_power_transform` claim.
+
+### Fix
+
+- Replaced the sentence-wide co-occurrence matcher with card-first direct-association patterns.
+- Accepted explicit `change`, `turn`, `transform`, `upgrade`, and `replace` forms when their direct object is `hero power`, `Mind Spike`, or `Shadowform`.
+- Accepted the explicit `hero power into/to Mind Spike|Shadowform` construction.
+- Disjoint clauses such as `changes the matchup; Mind Spike ...` no longer qualify because `the matchup` is not an allowed direct object.
+
+### Green Evidence
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
+```
+
+```text
+7 passed in 0.09s
+```
+
+The existing positive `Darkbishop Benedictus changes your hero power into Mind Spike` test remains green.
+
+### Commit
+
+Implementation commit SHA:
+
+```text
+12f2713544009e5fe89c18f9ced6c4d82eb0a397 fix: require direct hero power transform claims
+```
