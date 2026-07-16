@@ -93,6 +93,17 @@ surface links.
 `card_closure_lanes` and `surface_closure_lanes` are compact aliases for those
 rows so automation can read lane status without parsing the detailed tables.
 
+Source-backed strong operator invariants:
+
+- Source-candidate registries are acquisition seeds only, not promotion authority.
+- Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
+- No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
+- `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
+- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
+- Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
+- Profile-aware closure and first-missing maps by card/surface are diagnostics.
+- No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
+
 ## Online Source Acquisition
 
 When public guide URLs are known, HSConfig can acquire bounded public source text before `source-autopilot`:

@@ -22,6 +22,16 @@ Do not block a valid deck because public guide coverage is thin. Build the load-
 
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority. In `source_autopilot_report.json`, `runtime_apply_authority`, `default_only_runtime_surfaces`, `source_backed_strong_closure.closed`, `card_rows`, `surface_rows`, and first-missing maps are diagnostics only.
 
+Source-backed strong closure invariants:
+- Source-candidate registries are acquisition seeds only, not promotion authority.
+- Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
+- No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
+- `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
+- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
+- Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
+- Profile-aware closure and first-missing maps by card/surface are diagnostics.
+- No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
+
 - Treat source claim kind and runtime surface authority as separate decisions. Generate a load-safe valid package for any valid deck code, but only write a runtime row when the claim passes that surface's gate; otherwise keep the claim visible in reports.
 - Treat the source candidate registry as acquisition input, not evidence authority. Registry URLs must still pass public URL validation, page fetch, deck/card matching, source policy, claim extraction, and source-autopilot closure. Check `source_candidate_urls`, `source_urls`, and `candidate_registry_url_count` when diagnosing online-source runs.
 - No hidden default-only runtime: every expected surface must be emitted, explicitly suppressed, or reported as a gap or source action.

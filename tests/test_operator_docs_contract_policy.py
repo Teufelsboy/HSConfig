@@ -2,10 +2,57 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+INSTALLED_HSCONFIG_SKILL = Path.home() / ".codex" / "skills" / "hsconfig" / "SKILL.md"
+
+SOURCE_BACKED_STRONG_TASK7_SENTINELS = [
+    "Source-candidate registries are acquisition seeds only, not promotion authority.",
+    "Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.",
+    "No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.",
+    "`source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.",
+    "`SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.",
+    "Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.",
+    "Profile-aware closure and first-missing maps by card/surface are diagnostics.",
+    "No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.",
+]
 
 
 def _compact(text: str) -> str:
     return " ".join(text.lower().split())
+
+
+def _assert_task7_sentinels(text: str) -> None:
+    for sentinel in SOURCE_BACKED_STRONG_TASK7_SENTINELS:
+        assert sentinel in text
+
+
+def test_source_backed_strong_operator_docs_state_task7_contracts():
+    text = "\n".join(
+        [
+            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / "docs/operator/guide-research-policy.md").read_text(
+                encoding="utf-8"
+            ),
+        ]
+    )
+
+    _assert_task7_sentinels(text)
+
+
+def test_repo_hsconfig_skill_states_task7_contracts():
+    text = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+
+    _assert_task7_sentinels(text)
+
+
+def test_installed_hsconfig_skill_states_task7_contracts_when_present():
+    if not INSTALLED_HSCONFIG_SKILL.exists():
+        return
+
+    text = INSTALLED_HSCONFIG_SKILL.read_text(encoding="utf-8")
+
+    _assert_task7_sentinels(text)
 
 
 def test_guide_research_policy_names_source_truth_boundary():

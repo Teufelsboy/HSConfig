@@ -30,6 +30,17 @@ Plain operator wording: operator_summary.json remains the only normal apply auth
 
 `source_backed_strong_closure` and `no_default_only_runtime_status` are compact diagnostic-only `operator_summary.json` summaries. `source_backed_strong_closure` summarizes whether the visible source-to-runtime chain is closed enough for the Strong label. `no_default_only_runtime_status` summarizes whether expected runtime surfaces avoided hidden default-only output. They do not create apply gates, do not grant or deny runtime writes, and do not replace `reports/operator_summary.json` authority.
 
+Operator invariants for source-backed strong closure:
+
+- Source-candidate registries are acquisition seeds only, not promotion authority.
+- Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
+- No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
+- `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
+- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
+- Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
+- Profile-aware closure and first-missing maps by card/surface are diagnostics.
+- No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
+
 A package may be `SOURCE_BACKED_STRONG` only when:
 
 - `technical_status=VALID_PACKAGE`
