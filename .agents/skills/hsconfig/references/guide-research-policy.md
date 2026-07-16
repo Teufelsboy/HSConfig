@@ -135,6 +135,12 @@ runtime-lowerable `gameplan_posture`; `Combo.json` only lowers complete
 claim kinds. Wrong-surface claims stay suppressed or report-only with explicit
 reasons.
 
+Online-source runs may start from the source candidate registry. Registry
+entries are only acquisition candidates; they must still pass public URL
+validation, fetch, deck/card matching, freshness, claim extraction, and
+source-autopilot closure. The compact metadata fields are
+`source_candidate_urls`, `source_urls`, and `candidate_registry_url_count`.
+
 The canonical claim lifecycle is the single diagnostic chain from source
 evidence to runtime eligibility: source claim -> normalized `claim_kind` ->
 semantic qualifiers -> conflict quarantine -> surface gate -> builder/router

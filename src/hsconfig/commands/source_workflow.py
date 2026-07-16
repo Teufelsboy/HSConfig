@@ -230,6 +230,9 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         fetcher=_fixture_fetcher(getattr(args, "source_fixture_url_map_json", None)),
         resolver=_fixture_resolver(getattr(args, "source_fixture_url_map_json", None)),
         timeout_seconds=float(getattr(args, "source_fetch_timeout_seconds", 6.0)),
+        candidate_registry_url_count=int(
+            getattr(args, "candidate_registry_url_count", 0) or 0
+        ),
     )
     compiled = compile_source_search_records(
         deck_name=args.deck_name,

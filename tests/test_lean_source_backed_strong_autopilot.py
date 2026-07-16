@@ -205,6 +205,8 @@ def test_source_autopilot_report_has_lean_machine_authority_fields():
     assert report["source_backed_strong_closure"]["promotion_ready"] is True
     assert report["first_missing_source_action_by_card"] == {}
     assert report["first_missing_source_action_by_surface"] == {}
+    assert report["card_closure_lanes"]["SW_448"] == "lowered"
+    assert report["surface_closure_lanes"]["Mulligan.json"] == "emitted"
     card_rows = {row["card_id"]: row for row in report["card_rows"]}
     assert card_rows["SW_448"]["lane"] == "lowered"
     assert "hero_power_transform" in card_rows["SW_448"]["claim_kinds"]

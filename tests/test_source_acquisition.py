@@ -67,6 +67,32 @@ def test_collect_public_source_records_fetches_bounded_public_pages():
     assert payload["source_acquisition_report"]["failed_fetch_count"] == 0
 
 
+def test_collect_public_source_records_reports_candidate_registry_url_count():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
+        ],
+    }
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/shadowpriest"],
+        current_date="2026-07-15",
+        fetcher=_fake_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+        candidate_registry_url_count=1,
+    )
+
+    assert payload["source_acquisition_report"]["candidate_registry_url_count"] == 1
+    assert payload["source_acquisition_report"]["explicit_source_url_count"] == 0
+
+
 def test_collect_public_source_records_keeps_fetch_failures_non_blocking():
     deck_identity = {
         "deck_name": "ThinDeck",

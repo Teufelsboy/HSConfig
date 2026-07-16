@@ -61,6 +61,7 @@ semantics.
 `source_autopilot_report.json` is the compact preflight proof for this boundary.
 Use `runtime_apply_authority`, `default_only_runtime_surfaces`,
 `source_backed_strong_closure.closed`, `card_rows`, `surface_rows`,
+`card_closure_lanes`, `surface_closure_lanes`,
 `first_missing_source_action_by_card`, and
 `first_missing_source_action_by_surface` as diagnostics only. Strong packages
 return empty first-missing maps; partial packages list only the first missing
@@ -71,6 +72,13 @@ source-preflight diagnostic, not runtime-package proof. Runtime default-only
 truth is read from `reports/operator_summary.json`; source preflight exposes
 `default_only_runtime_surface_status=not_evaluated_in_source_preflight` so this
 boundary is machine-readable.
+
+Online-source runs may begin from the built-in source candidate registry. The
+registry provides known public-guide URL candidates for selected representative
+Wild archetypes and records their count in the source acquisition report. It
+does not bypass URL validation, page fetching, deck/card matching, claim
+extraction, or the Strong closure profile; weak or stale registry results stay
+visible as source actions rather than blocking a valid load-safe package.
 
 ## Promotion Rule
 

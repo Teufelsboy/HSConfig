@@ -147,6 +147,111 @@ def test_compile_source_search_records_reports_unsupported_broad_claims():
     ]
 
 
+def test_compile_source_search_records_extracts_exact_ordered_combo_sequence():
+    acquired = [
+        {
+            "source_url": "https://example.test/shadow-combo",
+            "source_title": "ShadowPriest Combo Notes 2026",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "retrieved_at": "2026-07-15T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["SCH_514", "TOY_381"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": (
+                "Combo sequence: play Raise Dead into Papercraft Angel on the same turn "
+                "to reset minion pressure."
+            ),
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    combo_claims = [
+        claim
+        for claim in payload["records"][0]["claims"]
+        if claim["claim_kind"] == "combo_sequence"
+    ]
+    assert combo_claims == [
+        {
+            "claim_kind": "combo_sequence",
+            "claim_family": "combo",
+            "stance": "ordered_combo_sequence",
+            "scope": "deck",
+            "evidence_text_short": (
+                "Combo sequence: play Raise Dead into Papercraft Angel on the same turn "
+                "to reset minion pressure"
+            ),
+            "source_confidence": "high",
+            "promotion_eligible": True,
+            "cards": ["SCH_514", "TOY_381"],
+            "timing": "same_turn",
+            "sequence": ["SCH_514", "TOY_381"],
+        }
+    ]
+
+
+def test_compile_source_search_records_maps_weapon_draw_board_to_existing_posture_kind():
+    deck_identity = {
+        "deck_name": "Kingslayer",
+        "deck_slug": "kingslayer",
+        "deck_code_hash": "sha256:kingslayer",
+        "cards": [
+            {"card_id": "CFM_630", "name": "Kingsbane", "cost": 1, "count": 1},
+            {"card_id": "SCH_306", "name": "Secret Passage", "cost": 1, "count": 2},
+            {"card_id": "CS2_146", "name": "Southsea Deckhand", "cost": 1, "count": 2},
+        ],
+    }
+    acquired = [
+        {
+            "source_url": "https://example.test/kingslayer",
+            "source_title": "Kingslayer Rogue Guide 2026",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "retrieved_at": "2026-07-15T00:00:00Z",
+            "deck_match": {
+                "deck_name": "Kingslayer",
+                "archetype": "kingslayer",
+                "matched_card_ids": ["CFM_630", "SCH_306", "CS2_146"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": (
+                "Weapon plan: use Kingsbane to attack the enemy hero. "
+                "Draw engine: use Secret Passage to refill. "
+                "Board plan: flood the board with Southsea Deckhand and pirates."
+            ),
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="Kingslayer",
+        deck_identity=deck_identity,
+        acquired_records=acquired,
+        current_date="2026-07-15",
+    )
+
+    claims = payload["records"][0]["claims"]
+    claim_kinds = {claim["claim_kind"] for claim in claims}
+    stances = {claim["stance"] for claim in claims}
+    assert {"weapon_plan", "draw_engine", "board_plan"}.isdisjoint(claim_kinds)
+    assert claim_kinds == {"gameplan_posture"}
+    assert {
+        "weapon_pressure_plan",
+        "draw_engine_plan",
+        "board_pressure_plan",
+    } <= stances
+
+
 def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions():
     acquired = [
         {

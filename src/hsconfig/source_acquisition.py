@@ -65,6 +65,7 @@ def collect_public_source_records(
     fetcher: Fetcher | None = None,
     resolver: HostResolver | None = None,
     timeout_seconds: float = 6.0,
+    candidate_registry_url_count: int = 0,
 ) -> dict[str, Any]:
     resolve = resolver or _default_resolver
     records: list[dict[str, Any]] = []
@@ -152,6 +153,15 @@ def collect_public_source_records(
         "schema_version": 1,
         "deck_name": deck_name,
         "attempted_url_count": len(deduped_urls),
+        "candidate_registry_url_count": min(
+            max(0, int(candidate_registry_url_count)),
+            len(deduped_urls),
+        ),
+        "explicit_source_url_count": max(
+            0,
+            len(deduped_urls)
+            - min(max(0, int(candidate_registry_url_count)), len(deduped_urls)),
+        ),
         "source_record_count": len(records),
         "failed_fetch_count": len(failures),
         "failures": failures,

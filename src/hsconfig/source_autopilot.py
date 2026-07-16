@@ -322,6 +322,16 @@ def _build_report(
         blockers=blockers,
         profile_verdict=profile_verdict,
     )
+    card_rows = _card_lane_rows(
+        deck_identity,
+        evidence_rows,
+        current_date=current_date,
+    )
+    surface_rows = _surface_lane_rows(
+        evidence_rows,
+        current_date=current_date,
+        profile_verdict=profile_verdict,
+    )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -355,16 +365,14 @@ def _build_report(
             current_date=current_date,
             summary=strong_closure_summary,
         ),
-        "card_rows": _card_lane_rows(
-            deck_identity,
-            evidence_rows,
-            current_date=current_date,
-        ),
-        "surface_rows": _surface_lane_rows(
-            evidence_rows,
-            current_date=current_date,
-            profile_verdict=profile_verdict,
-        ),
+        "card_rows": card_rows,
+        "surface_rows": surface_rows,
+        "card_closure_lanes": {
+            row["card_id"]: row["lane"] for row in card_rows if row.get("card_id")
+        },
+        "surface_closure_lanes": {
+            row["surface"]: row["lane"] for row in surface_rows if row.get("surface")
+        },
         "non_promoting_claim_count": _non_promoting_claim_count(evidence_rows),
         "draft_summary": draft["draft_summary"],
         "verification_summary": {

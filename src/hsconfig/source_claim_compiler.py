@@ -219,6 +219,9 @@ def _compile_guide_claims(
             )
         )
 
+    _compile_combo_sequence_claims(compiled, deck_identity, text)
+    _compile_plan_posture_claims(compiled, text)
+
 
 def _compile_non_promoting_card_roles(
     compiled: dict[str, Any],
@@ -241,6 +244,98 @@ def _compile_non_promoting_card_roles(
                     promotion_eligible=False,
                 )
             )
+
+
+def _compile_combo_sequence_claims(
+    compiled: dict[str, Any],
+    deck_identity: Mapping[str, Any],
+    text: str,
+) -> None:
+    for sentence in _sentences(text):
+        lowered = sentence.lower()
+        if not any(
+            marker in lowered
+            for marker in ("combo sequence", "combo:", "sequence:", "into", "together")
+        ):
+            continue
+        sequence = _card_sequence_in_sentence(deck_identity, sentence)
+        if len(sequence) < 2:
+            continue
+        compiled["claims"].append(
+            _claim(
+                "combo_sequence",
+                sequence,
+                "ordered_combo_sequence",
+                sentence[:220],
+                "high",
+                scope="deck",
+                timing=_combo_timing(sentence),
+                extra={"sequence": sequence},
+            )
+        )
+
+
+def _compile_plan_posture_claims(compiled: dict[str, Any], text: str) -> None:
+    posture_markers = (
+        (
+            "weapon_pressure_plan",
+            ("weapon plan", "weapon pressure", "attack with your weapon", "kingsbane"),
+        ),
+        ("draw_engine_plan", ("draw engine", "draw plan", "refill", "cycle through")),
+        (
+            "board_pressure_plan",
+            ("board plan", "flood the board", "build a board", "wide board"),
+        ),
+    )
+    for stance, markers in posture_markers:
+        marker = _first_mentioned_marker(text, markers)
+        if not marker:
+            continue
+        compiled["claims"].append(
+            _claim(
+                "gameplan_posture",
+                [],
+                stance,
+                _short_evidence(text, marker=marker),
+                "high",
+                scope="deck",
+            )
+        )
+
+
+def _card_sequence_in_sentence(
+    deck_identity: Mapping[str, Any],
+    sentence: str,
+) -> list[str]:
+    lowered = sentence.lower()
+    found: list[tuple[int, str]] = []
+    seen: set[str] = set()
+    for card in _deck_cards(deck_identity):
+        name = _text(card.get("name", ""))
+        card_id = _text(card.get("card_id", ""))
+        if not name or not card_id or card_id in seen:
+            continue
+        index = lowered.find(name.lower())
+        if index < 0:
+            continue
+        seen.add(card_id)
+        found.append((index, card_id))
+    return [card_id for _, card_id in sorted(found)]
+
+
+def _combo_timing(sentence: str) -> str:
+    lowered = sentence.lower()
+    if "next turn" in lowered or "following turn" in lowered or "turn after" in lowered:
+        return "cross_turn"
+    return "same_turn"
+
+
+def _first_mentioned_marker(text: str, markers: Sequence[str]) -> str:
+    lowered = text.lower()
+    for marker in markers:
+        if marker in lowered:
+            return marker
+    return ""
 
 
 def _sentence_directly_keeps_card(lowered_sentence: str, card_name: str) -> bool:
@@ -414,6 +509,7 @@ def _claim(
     scope: str,
     timing: str | None = None,
     promotion_eligible: bool = True,
+    extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     row: dict[str, Any] = {
         "claim_kind": claim_kind,
@@ -428,6 +524,10 @@ def _claim(
         row["cards"] = cards
     if timing:
         row["timing"] = timing
+    if extra:
+        row.update(
+            {key: value for key, value in extra.items() if value not in (None, "", [])}
+        )
     return row
 
 

@@ -238,6 +238,65 @@ def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_sa
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
 
 
+def test_configure_online_source_uses_registry_when_source_url_is_omitted(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_shadow_cards_json(cards_json)
+    fixture_map = tmp_path / "fixture_url_map.json"
+    fixture_map.write_text(
+        json.dumps(
+            {
+                "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest": str(
+                    FIXTURES / "source_guides" / "shadowpriest_current_guide.html"
+                )
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "configure"
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+    acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
+    autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
+    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+
+    assert code == 0
+    assert any(
+        "voidburn-wild-aggro-shadow-priest" in url
+        for url in summary["source_candidate_urls"]
+    )
+    assert summary["source_urls"] == summary["source_candidate_urls"]
+    assert acquisition["candidate_registry_url_count"] == 1
+    assert acquisition["attempted_url_count"] == 1
+    assert acquisition["source_record_count"] == 1
+    assert autopilot["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["default_only_runtime_surfaces"] == []
+
+
 def test_configure_auto_source_requires_source_search_results_json(
     tmp_path: Path,
     monkeypatch,

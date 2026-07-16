@@ -575,3 +575,17 @@ Task 4: complete (test-only Darkbishop/static-effect boundary lock; 88 runtime c
 Task 5: complete (commit 6e40266 plus review fix; operator docs, skill, and skill reference updated for evergreen Wild source closure; docs/skill suite 93 passed; installed skill sync passed)
 Task 6: complete (no source changes; matrix/no-default-only 33 passed, apply/wild 53 passed, source 39 passed, runtime 88 passed, docs/skill 93 passed)
 Task 7: complete (review fixes applied; focused contract 148 passed; docs/scope/skill 99 passed; authority docs 95 passed; final full suite 1451 passed, 11 skipped; skill sync and diff checks passed; final re-review clean)
+
+---
+
+# HSConfig Source Documents Closure Engine SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-documents-closure-engine.md`
+
+- [x] Preflight and read-only subagent mapping: live HSConfig repo, configure/source workflow APIs, claim-kind taxonomy, and no-default-only tests checked.
+- [x] Task 1: Source candidate registry tests and implementation for selected Wild guide candidates.
+- [x] Task 2: Configure/source-acquisition wiring for registry URLs and acquisition metadata.
+- [x] Task 3: Claim compiler additions stay inside existing claim kinds: exact `combo_sequence` only, weapon/draw/board mapped to `gameplan_posture`.
+- [x] Task 4: Source-autopilot compact lane aliases added as diagnostics only.
+- [x] Task 5: Operator docs and repo skill guidance updated for registry, lane aliases, and apply-authority boundaries.
+- [x] Task 6: Full verification, installed skill sync, git hygiene, and final review completed; targeted, docs/skill, and full pytest suites passed before final staging.

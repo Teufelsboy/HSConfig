@@ -90,6 +90,8 @@ The bridge writes `02_source_autopilot/source_documents.json` and feeds it into 
 closure and do not create another apply gate. Strong closure returns empty
 first-missing maps, while partial closure lists only the first missing card or
 surface links.
+`card_closure_lanes` and `surface_closure_lanes` are compact aliases for those
+rows so automation can read lane status without parsing the detailed tables.
 
 ## Online Source Acquisition
 
@@ -98,6 +100,17 @@ When public guide URLs are known, HSConfig can acquire bounded public source tex
 ```powershell
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
+
+`configure --online-source` also consults the compact source candidate registry
+before acquisition. Registry URLs are public-guide candidates only; they are
+deduplicated with explicit `--source-url` values and shown in
+`configure_summary.json.source_candidate_urls`,
+`configure_summary.json.source_urls`, and
+`02_source_acquisition/source_acquisition_report.json.candidate_registry_url_count`.
+The registry is a starting point, not authority: the fetched page still has to
+pass public-URL validation, deck/card matching, visibility, freshness, claim
+extraction, and source-autopilot closure before it can contribute to
+`SOURCE_BACKED_STRONG`.
 
 When no URL is known, use Codex/web research to find current public guide URLs,
 then pass each useful URL with repeated `--source-url`. If research finds only

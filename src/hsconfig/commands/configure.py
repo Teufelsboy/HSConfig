@@ -20,6 +20,7 @@ from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
+from hsconfig.source_candidate_registry import candidate_urls, source_candidates_for_deck
 from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 
 
@@ -78,12 +79,19 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     source_acquisition_path = None
     source_documents_json = None
     source_autopilot_path = None
+    source_candidate_urls: list[str] = []
+    source_urls: list[str] = []
     if bool(getattr(args, "online_source", False)):
+        explicit_source_urls = list(getattr(args, "source_url", []) or [])
+        source_candidates = source_candidates_for_deck(args.deck_name, args.deck_code)
+        source_candidate_urls = candidate_urls(source_candidates)
+        source_urls = _dedupe_preserve_order([*explicit_source_urls, *source_candidate_urls])
         try:
             acquire_payload, acquire_status = source_acquire_payload(
                 SimpleNamespace(
                     **common,
-                    source_url=list(getattr(args, "source_url", []) or []),
+                    source_url=source_urls,
+                    candidate_registry_url_count=len(source_candidate_urls),
                     source_fixture_url_map_json=getattr(
                         args,
                         "source_fixture_url_map_json",
@@ -304,6 +312,8 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "research_path": str(research_dir),
             "package_path": str(package_dir),
             "source_bundle_path": str(source_bundle_path),
+            "source_candidate_urls": source_candidate_urls,
+            "source_urls": source_urls,
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },
@@ -347,3 +357,14 @@ def _finish_stage_exception_for_args(
 
 def _stage_exception_payload(stage: str, exc: Exception) -> dict[str, Any]:
     return {"stage": stage, "errors": [str(exc)]}
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
