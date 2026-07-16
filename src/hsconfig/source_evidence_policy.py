@@ -255,6 +255,8 @@ def _first_missing_source_action(blockers: list[str]) -> str:
         return "add_publication_metadata_or_current_guide"
     if "source_not_current_or_evergreen_wild" in blockers:
         return "add_current_or_evergreen_wild_public_guide"
+    if "decklist_only_not_strong_evidence" in blockers:
+        return "add_current_or_evergreen_wild_public_guide"
     if any(blocker.startswith("source_visibility_") for blocker in blockers):
         return "add_full_text_public_guide_source"
     if "deck_match_scope_not_strong" in blockers:

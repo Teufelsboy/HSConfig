@@ -327,3 +327,89 @@ def test_public_stats_families_are_stats_only_support_lanes():
         assert row["promotion_eligible"] is False
         assert row["strong_promotion_eligible"] is False
         assert "stats_only_not_strong_evidence" in row["promotion_blockers"]
+
+
+def test_current_full_text_deck_matched_guide_is_strong_eligible():
+    record = {
+        "source_url": "https://example.test/shadowpriest-guide",
+        "source_title": "2026 Wild ShadowPriest Guide",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+        "deck_match": {
+            "deck_name": "ShadowPriest",
+            "matched_card_ids": ["SW_448", "TOY_381"],
+        },
+        "normalized_text": "ShadowPriest guide with mulligan, burn posture, and Mind Spike plan.",
+        "source_record_strength": "candidate_strong",
+    }
+
+    result = classify_source_evidence(
+        record,
+        deck_name="ShadowPriest",
+        current_date="2026-07-16",
+    )
+
+    assert result["source_visibility"] == "full_text"
+    assert result["source_rank_lane"] == "guide_current_deck_match"
+    assert result["source_lane"] == "deck_matched_public_guide"
+    assert result["promotion_eligible"] is True
+    assert result["strong_promotion_eligible"] is True
+    assert result["trust_ceiling"] == "source_backed_strong"
+    assert result["promotion_blockers"] == []
+    assert result["first_missing_source_action"] == "none"
+
+
+def test_decklist_only_source_never_promotes_to_strong():
+    record = {
+        "source_url": "https://example.test/mech-paladin",
+        "source_title": "Mech Paladin Decklist",
+        "source_family": "decklist",
+        "source_visibility": "decklist_only",
+        "publication_year": 2026,
+        "deck_match": {
+            "deck_name": "MechPala",
+            "matched_card_ids": ["GVG_058", "BOT_906"],
+        },
+        "source_record_strength": "candidate_strong",
+    }
+
+    result = classify_source_evidence(record, deck_name="MechPala", current_date="2026-07-16")
+
+    assert result["source_rank_lane"] == "decklist_only"
+    assert result["source_lane"] == "decklist_only"
+    assert result["promotion_eligible"] is False
+    assert result["strong_promotion_eligible"] is False
+    assert result["trust_ceiling"] == "decklist_informed"
+    assert "decklist_only_not_strong_evidence" in result["promotion_blockers"]
+    assert result["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"
+
+
+def test_static_semantics_supports_cardid_effects_but_not_strategy_surfaces():
+    effect_record = {
+        "source_family": "hearthstonejson_static_semantics",
+        "claim_kind": "hero_power_transform",
+        "source_visibility": "full_text",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "publication_year": 2026,
+    }
+    strategy_record = {
+        "source_family": "hearthstonejson_static_semantics",
+        "claim_kind": "mulligan_keep",
+        "source_visibility": "full_text",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "publication_year": 2026,
+    }
+
+    effect = classify_source_evidence(effect_record, deck_name="ShadowPriest", current_date="2026-07-16")
+    strategy = classify_source_evidence(strategy_record, deck_name="ShadowPriest", current_date="2026-07-16")
+
+    assert effect["static_runtime_surface_eligible"] is True
+    assert effect["static_runtime_surface_scope"] == "cardid_effect"
+    assert effect["trust_ceiling"] == "static_semantics_only"
+    assert effect["strong_promotion_eligible"] is False
+
+    assert strategy["static_runtime_surface_eligible"] is False
+    assert strategy["static_runtime_surface_scope"] == "not_runtime_surface_static"
+    assert strategy["static_runtime_surface_limit"] == "static_semantics_does_not_prove_strategy_surface"
+    assert strategy["strong_promotion_eligible"] is False
