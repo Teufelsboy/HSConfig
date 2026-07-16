@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from tests.helpers.fixture_prepare import load_archetype_matrix
 
 
 DECKS = [
@@ -20,6 +21,13 @@ DECKS = [
     ("PirateDH", "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA=="),
     ("CuteWarrior", "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA="),
 ]
+
+
+def test_every_matrix_deck_declares_closure_profile():
+    for deck in load_archetype_matrix():
+        assert deck["closure_profile"]
+        assert "closure_profile_first_missing_link" in deck
+        assert deck["runtime_apply_allowed"] is True
 
 
 def _stub_empty_card_fetches(monkeypatch) -> None:

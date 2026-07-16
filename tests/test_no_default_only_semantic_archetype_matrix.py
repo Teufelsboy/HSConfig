@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from tests.helpers.fixture_prepare import load_archetype_matrix
 
 
 SOURCE_CLAIM_FIELDS = {
@@ -24,6 +25,13 @@ ALLOWED_EXPECTED_RUNTIME_SURFACE_STATUSES = {
     "suppressed_with_reason",
     "explicit_gap",
 }
+
+
+def test_profile_strong_rows_do_not_have_default_only_surfaces():
+    for deck in load_archetype_matrix():
+        if deck.get("expected_semantic_status") == "SOURCE_BACKED_STRONG":
+            assert deck.get("default_only_runtime_surfaces") == []
+            assert deck.get("closure_profile_first_missing_link") == "none"
 
 
 SEMANTIC_ARCHETYPE_FIXTURES = [
