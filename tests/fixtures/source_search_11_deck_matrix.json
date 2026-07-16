@@ -20,6 +20,13 @@
         },
         "claims": [
           {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "aggro_burn_hero_power_transform",
+            "evidence_text_short": "Current guide presents ShadowPriest as an aggressive burn deck around the Shadow hero power plan.",
+            "source_confidence": "high"
+          },
+          {
             "claim_kind": "hero_power_transform",
             "cards": ["SW_448"],
             "timing": "start_of_game",
@@ -244,6 +251,13 @@
         },
         "claims": [
           {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "big_recruit_deathrattle_cheat",
+            "evidence_text_short": "Current guide presents BigShaman as a big recruit and deathrattle cheat strategy.",
+            "source_confidence": "high"
+          },
+          {
             "claim_kind": "card_role",
             "cards": ["WW_382"],
             "source_confidence": "high",
@@ -422,6 +436,13 @@
           "evidence_text_short": "Current guide keeps Zilliax Deluxe 3000 as the exact low-curve mech anchor."
         },
         "claims": [
+          {
+            "claim_kind": "gameplan_posture",
+            "scope": "deck",
+            "stance": "mech_board_scaling",
+            "evidence_text_short": "Current guide presents MechPala as a mech board-scaling strategy.",
+            "source_confidence": "high"
+          },
           {
             "claim_kind": "targeting_rule",
             "cards": ["TSC_059"],

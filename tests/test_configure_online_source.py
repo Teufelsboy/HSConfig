@@ -176,7 +176,10 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
     assert summary["source_acquisition_path"] == str(out / "02_source_acquisition")
     assert summary["source_autopilot_path"] == str(out / "03_source_autopilot")
     assert autopilot["strong_candidate"] is False
-    assert autopilot["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert (
+        autopilot["first_missing_source_action"]
+        == "add_current_card_specific_runtime_source"
+    )
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"

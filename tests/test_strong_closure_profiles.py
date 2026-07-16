@@ -24,6 +24,16 @@ def test_weapon_deck_uses_weapon_pressure_profile():
     )
 
 
+def test_mech_board_scaling_uses_board_flood_profile_even_with_targeting():
+    assert (
+        profile_for_archetype(
+            "mech_board_scaling",
+            ["mech", "magnetic", "board_scaling", "burn"],
+        )
+        == "board_flood_recruit"
+    )
+
+
 def test_unknown_deck_uses_generic_profile_without_blocking():
     assert profile_for_archetype("unknown_homebrew", ["future_mechanic"]) == "generic_no_block"
 

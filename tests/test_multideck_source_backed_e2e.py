@@ -303,6 +303,11 @@ def test_source_search_11_deck_matrix_covers_representative_decks_with_honest_la
         assert bundle["source_evidence_rows"], deck_name
         report = bundle["source_autopilot_report"]
         if expected == "SOURCE_BACKED_STRONG":
+            documented_profile = matrix_by_deck[deck_name]["closure_profile"]
+            assert (
+                report["source_backed_strong_closure"]["closure_profile"]
+                == documented_profile
+            ), report
             assert report["strong_candidate"] is True, report
         if expected == "SOURCE_BACKED_PARTIAL":
             assert report["strong_candidate"] is False, report

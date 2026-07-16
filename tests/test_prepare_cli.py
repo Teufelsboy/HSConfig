@@ -339,6 +339,20 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
                         "archetype": "aggro_burn",
                         "claims": [
                             {
+                                "claim_kind": "gameplan_posture",
+                                "scope": "deck",
+                                "stance": "aggressive_burn_pressure",
+                                "reason": "Play Shadow Priest as an aggressive burn deck.",
+                                "source_confidence": "high",
+                            },
+                            {
+                                "claim_kind": "hero_power_transform",
+                                "cards": ["SW_448"],
+                                "timing": "start_of_game",
+                                "reason": "Darkbishop Benedictus enables the Shadow hero power package.",
+                                "source_confidence": "high",
+                            },
+                            {
                                 "claim_kind": "mulligan_keep",
                                 "cards": ["SW_446"],
                                 "condition": {"coin": True},

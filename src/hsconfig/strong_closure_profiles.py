@@ -77,7 +77,16 @@ def profile_for_archetype(archetype_bucket: str, mechanics: Iterable[str]) -> st
         return "weapon_pressure"
     if "combo" in bucket or "combo" in mechanic_set:
         return "combo_setup"
-    if "recruit" in bucket or "board_flood" in mechanic_set or "token_board" in mechanic_set:
+    if (
+        "recruit" in bucket
+        or "mech_board_scaling" in bucket
+        or "board_scaling" in bucket
+        or "board_flood" in mechanic_set
+        or "token_board" in mechanic_set
+        or "mech" in mechanic_set
+        or "magnetic" in mechanic_set
+        or "board_scaling" in mechanic_set
+    ):
         return "board_flood_recruit"
     if "aggro" in bucket or "burn" in mechanic_set or "pirate" in mechanic_set:
         return "aggro_burn_hero_power"

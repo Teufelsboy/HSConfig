@@ -22,8 +22,7 @@ Do not block a valid deck because public guide coverage is thin. Build the load-
 
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority.
 
-- Treat source claim kind and runtime surface authority as separate decisions.
-  Generate a load-safe valid package for any valid deck code, but only write a
+- Treat source claim kind and runtime surface authority as separate decisions. Generate a load-safe valid package for any valid deck code, but only write a
   runtime row when the claim passes that surface's gate; otherwise keep the
   claim visible in reports.
 - No hidden default-only runtime: every expected surface must be emitted, explicitly suppressed, or reported as a gap or source action.
