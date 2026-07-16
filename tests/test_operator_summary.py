@@ -60,8 +60,25 @@ def _strong_candidate_with_lane_counts(lane_counts):
         source_claim_gap_report={
             "summary": {"source_quality_lane_counts": lane_counts}
         },
-        generated_files=["CustomConfig/lanecountfixture/GlobalValues.json"],
+        source_to_runtime_explainability_report=_guide_backed_profile_report(
+            ["gameplan_posture"]
+        ),
+        generated_files=[
+            "CustomConfig/lanecountfixture/GlobalValues.json",
+            "CustomConfig/lanecountfixture/Mulligan.json",
+        ],
     )
+
+
+def _guide_backed_profile_report(claim_kinds):
+    return {
+        "summary": {"cards_with_first_missing_link": 0},
+        "claim_lifecycle_rows": [
+            {"claim_kind": claim_kind, "source_lane": "guide_backed"}
+            for claim_kind in claim_kinds
+        ],
+        "card_rows": [],
+    }
 
 
 def _semantic_blocker_codes(summary):
@@ -100,8 +117,14 @@ def test_source_backed_valid_package_is_ready_to_apply():
         guide_source_depth={"source_depth_status": "source_backed", "source_count": 2, "claim_count": 12},
         unsupported_conditions=[],
         globalvalue_authority={"blocked_until_runtime_evidence": []},
-        generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        generated_files=[
+            "CustomConfig/shadowpriest/GlobalValues.json",
+            "CustomConfig/shadowpriest/Mulligan.json",
+        ],
         mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report=_guide_backed_profile_report(
+            ["gameplan_posture", "mulligan_keep", "hero_power_transform"]
+        ),
     )
 
     assert summary["technical_status"] == "VALID_PACKAGE"
@@ -331,8 +354,14 @@ def test_runtime_evidence_globalvalues_are_warnings_not_semantic_blockers():
                 {"key": "EnemySecretValue"},
             ]
         },
-        generated_files=["CustomConfig/shadowpriest/GlobalValues.json"],
+        generated_files=[
+            "CustomConfig/shadowpriest/GlobalValues.json",
+            "CustomConfig/shadowpriest/Mulligan.json",
+        ],
         mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report=_guide_backed_profile_report(
+            ["gameplan_posture", "mulligan_keep", "hero_power_transform"]
+        ),
         claim_coverage_report={
             "summary": {
                 "guide_backed": 2,
@@ -1442,6 +1471,9 @@ def test_operator_summary_source_backed_exposes_load_safe_runtime_apply_mode():
             "cards_needing_mechanic_lowering": 0,
         },
         claim_conflict_report={"conflict_count": 0, "conflicts": []},
+        source_to_runtime_explainability_report=_guide_backed_profile_report(
+            ["gameplan_posture"]
+        ),
     )
 
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
@@ -1509,6 +1541,9 @@ def test_operator_summary_includes_nonblocking_config_usefulness():
         },
         combo_plan_report={"combos": [], "suppressed": []},
         globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+        source_to_runtime_explainability_report=_guide_backed_profile_report(
+            ["gameplan_posture"]
+        ),
     )
 
     assert summary["config_usefulness"]["status"] == "guide_aligned"
@@ -2505,7 +2540,7 @@ def test_operator_summary_exposes_source_to_runtime_explainability_without_block
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["runtime_apply_mode"] == "load_safe_apply"
     assert summary["runtime_apply_allowed"] is True
-    assert summary["apply_policy"] == "ALLOWED"
+    assert summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert explainability == {
         "non_blocking": True,
         "cards_total": 2,
@@ -2781,9 +2816,21 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         source_to_runtime_explainability_report={
             "summary": {"cards_with_first_missing_link": 0},
             "claim_lifecycle_rows": [
-                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
-                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
-                {"claim_kind": "hero_power_transform", "promotion_eligible": True},
+                {
+                    "claim_kind": "gameplan_posture",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
+                {
+                    "claim_kind": "hero_power_transform",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
             ],
             "card_rows": [],
         },
@@ -2829,8 +2876,16 @@ def test_operator_summary_profile_miss_stays_non_apply_blocking():
         source_to_runtime_explainability_report={
             "summary": {"cards_with_first_missing_link": 0},
             "claim_lifecycle_rows": [
-                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
-                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
+                {
+                    "claim_kind": "gameplan_posture",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
             ],
             "card_rows": [],
         },
@@ -2872,16 +2927,41 @@ def _source_backed_profile_summary(rows, *, gameplan_contract=None):
     )
 
 
-def _profile_claim_rows(*, source_lane):
+def _profile_claim_rows(*, source_lane=None, promotion_eligible=None):
+    row = {}
+    if source_lane is not None:
+        row["source_lane"] = source_lane
+    if promotion_eligible is not None:
+        row["promotion_eligible"] = promotion_eligible
     return [
-        {"claim_kind": "gameplan_posture", "source_lane": source_lane},
-        {"claim_kind": "mulligan_keep", "source_lane": source_lane},
-        {"claim_kind": "hero_power_transform", "source_lane": source_lane},
+        {"claim_kind": "gameplan_posture", **row},
+        {"claim_kind": "mulligan_keep", **row},
+        {"claim_kind": "hero_power_transform", **row},
     ]
 
 
-def test_operator_summary_stats_lane_cannot_satisfy_closure_profile():
-    summary = _source_backed_profile_summary(_profile_claim_rows(source_lane="stats"))
+@pytest.mark.parametrize(
+    "source_lane",
+    [
+        "stats",
+        "unsupported_runtime_hint",
+        "decklist_only",
+        "snippet_only",
+        "policy_fallback",
+        "policy_backed",
+        "default_runtime",
+        "archetype_inferred",
+        "explicit_low_confidence",
+        "generic_low_confidence",
+        "contract_gap",
+    ],
+)
+def test_operator_summary_prohibited_lane_with_promotion_flag_cannot_close_profile(
+    source_lane,
+):
+    summary = _source_backed_profile_summary(
+        _profile_claim_rows(source_lane=source_lane, promotion_eligible=True)
+    )
 
     closure = summary["source_backed_strong_closure"]
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
@@ -2893,18 +2973,15 @@ def test_operator_summary_stats_lane_cannot_satisfy_closure_profile():
     assert summary["runtime_apply_allowed"] is True
 
 
-def test_operator_summary_unsupported_runtime_hint_cannot_satisfy_closure_profile():
+def test_operator_summary_bare_promotion_flag_cannot_close_profile():
     summary = _source_backed_profile_summary(
-        _profile_claim_rows(source_lane="unsupported_runtime_hint")
+        _profile_claim_rows(promotion_eligible=True)
     )
 
     closure = summary["source_backed_strong_closure"]
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert closure["closure_profile_closed"] is False
-    assert closure["closure_profile_first_missing_link"].startswith(
-        "missing_claim_group:"
-    )
-    assert closure["closure_profile_missing_claim_groups"]
+    assert closure["promotion_ready"] is False
     assert summary["runtime_apply_allowed"] is True
 
 
@@ -2927,6 +3004,7 @@ def test_operator_summary_card_rows_fallback_without_source_provenance_cannot_pr
                 {
                     "card_id": "CARD_ONLY",
                     "closure": {
+                        "promotion_eligible": True,
                         "claim_kinds": [
                             "gameplan_posture",
                             "mulligan_keep",
@@ -2944,6 +3022,45 @@ def test_operator_summary_card_rows_fallback_without_source_provenance_cannot_pr
     assert summary["runtime_apply_allowed"] is True
 
 
+def test_operator_summary_missing_claim_evidence_fails_closed_for_strong_confidence():
+    summary = build_operator_summary(
+        deck_name="No Evidence Deck",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=["GlobalValues.json", "Mulligan.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        source_to_runtime_explainability_report={
+            "summary": {"cards_with_first_missing_link": 0},
+            "claim_lifecycle_rows": [],
+            "card_rows": [],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["promotion_ready"] is False
+    assert closure["status"] == "needs_source_closure"
+    assert summary["runtime_apply_allowed"] is True
+
+
+def test_operator_summary_allowed_strong_lane_closes_profile_without_promotion_flag():
+    summary = _source_backed_profile_summary(
+        _profile_claim_rows(source_lane="guide_backed")
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert closure["closure_profile_closed"] is True
+    assert closure["promotion_ready"] is True
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_strong_report_ready_is_reconciled_with_profile_miss():
     summary = build_operator_summary(
         deck_name="ShadowPriest",
@@ -2954,8 +3071,16 @@ def test_operator_summary_strong_report_ready_is_reconciled_with_profile_miss():
         source_to_runtime_explainability_report={
             "summary": {"cards_with_first_missing_link": 0},
             "claim_lifecycle_rows": [
-                {"claim_kind": "gameplan_posture", "promotion_eligible": True},
-                {"claim_kind": "mulligan_keep", "promotion_eligible": True},
+                {
+                    "claim_kind": "gameplan_posture",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
+                {
+                    "claim_kind": "mulligan_keep",
+                    "promotion_eligible": True,
+                    "source_lane": "guide_backed",
+                },
             ],
             "card_rows": [],
         },
@@ -3004,7 +3129,11 @@ def test_operator_summary_uses_gameplan_contract_for_profile_selection(
     gameplan_contract, claim_kinds, expected_profile
 ):
     rows = [
-        {"claim_kind": claim_kind, "promotion_eligible": True}
+        {
+            "claim_kind": claim_kind,
+            "promotion_eligible": True,
+            "source_lane": "guide_backed",
+        }
         for claim_kind in claim_kinds
     ]
 

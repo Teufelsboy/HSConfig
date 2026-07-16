@@ -197,7 +197,7 @@ def build_operator_summary(
             source_contract_audit_report=source_contract_audit_report,
             source_to_runtime_explainability_report=source_to_runtime_explainability_report,
         )
-        else None
+        else False
     )
     semantic_status = _semantic_status(
         technical_status=technical_status,
@@ -440,6 +440,7 @@ def _source_backed_strong_closure(
         and not semantic_blockers
         and not default_only_runtime_surfaces
         and source_gaps_closed
+        and closure_profile_verdict.strong_eligible
     )
     first_missing_source_action = _derived_first_missing_source_action(
         promotion_ready=promotion_ready,
@@ -1070,8 +1071,6 @@ def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
 
 
 def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
-    if row.get("promotion_eligible") is True:
-        return True
     if row.get("promotion_eligible") is False:
         return False
     lane_values = {
