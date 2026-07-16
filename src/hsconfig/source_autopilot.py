@@ -331,7 +331,6 @@ def _build_report(
         "source_backed_strong_closure": _source_backed_strong_closure(
             strong_closure_summary,
             profile_verdict,
-            default_only_runtime_surfaces=[],
         ),
         "first_missing_source_action": strong_closure_summary["first_missing_source_action"],
         "first_missing_source_action_by_card": _first_missing_source_action_by_card(
@@ -371,8 +370,6 @@ def _build_strong_closure_summary(
     )
     if profile_verdict.closed:
         first_missing_source_action = "none"
-    elif not strong_rows:
-        first_missing_source_action = "add_explicit_mulligan_source"
     else:
         first_missing_source_action = _action_from_profile_gap(profile_verdict.first_missing_link)
     return {
@@ -393,8 +390,6 @@ def _build_strong_closure_summary(
 def _source_backed_strong_closure(
     summary: Mapping[str, Any],
     profile_verdict: ClosureProfileVerdict,
-    *,
-    default_only_runtime_surfaces: Sequence[str],
 ) -> dict[str, Any]:
     promotion_ready = bool(summary.get("source_backed_strong_ready"))
     return {
@@ -404,7 +399,7 @@ def _source_backed_strong_closure(
             summary.get("first_missing_source_action", "")
         ),
         "diagnostic_only": True,
-        "default_only_runtime_surfaces": list(default_only_runtime_surfaces),
+        "default_only_runtime_surface_status": "not_evaluated_in_source_preflight",
         "closure_profile": profile_verdict.profile_name,
         "closure_profile_closed": profile_verdict.closed,
         "closure_profile_first_missing_link": profile_verdict.first_missing_link,

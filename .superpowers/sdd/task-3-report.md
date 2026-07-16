@@ -1,48 +1,32 @@
-# Task 3 Report: Strong Closure Ledger
+# Task 3 Report: Profile-Aware Source Autopilot
 
 ## Scope
 
-Implemented the compact Strong Closure Ledger diagnostics for the existing promotion and explainability spine.
+Implemented Task 3 and the follow-up review fixes for source-autopilot Strong closure profile handling.
 
 Changed files:
 
 - `src/hsconfig/source_autopilot.py`
-- `src/hsconfig/source_to_runtime_explainability.py`
-- `tests/test_strong_closure_ledger.py`
 - `tests/test_source_autopilot.py`
-- `tests/test_source_to_runtime_explainability.py`
-
-`src/hsconfig/strong_promotion_report.py` already satisfied the required default-only and closed-chain assertions, so no production edit was needed there.
+- `tests/test_source_backed_strong_harvester_closure.py`
 
 ## Behavior
 
-- `source_autopilot_report` now exposes `first_missing_source_action_by_surface` alongside the existing strong closure summary and by-card action map.
-- Explainability card rows now expose `closure_lane`, `strong_ready`, and `default_only_blocker` as compact row-level diagnostics.
-- Default-only runtime surfaces remain promotion blockers for `SOURCE_BACKED_STRONG`.
-- Partial or missing source closure remains non-blocking for load-safe package creation.
+- `source_autopilot_report` routes non-closed closure profiles through `_action_from_profile_gap(...)`.
+- No-strong-row source preflight no longer hardcodes `add_explicit_mulligan_source`; generic missing gameplan/card evidence reports `add_current_card_specific_runtime_source`.
+- ShadowPriest-style aggro hero-power profiles can close without an extra generic apply-surface guide candidate.
+- Autopilot closure detail does not claim generated-package default-only runtime surfaces were evaluated. It reports `default_only_runtime_surface_status: "not_evaluated_in_source_preflight"` and leaves runtime-surface authority to `operator_summary.json`.
 
 ## Verification
 
-Red run:
+Command:
 
 ```powershell
-$env:PYTHONPATH='src'; python -m pytest tests/test_strong_closure_ledger.py tests/test_source_autopilot.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q
+python -m pytest tests/test_source_autopilot.py tests/test_source_backed_strong_harvester_closure.py tests/test_strong_closure_profiles.py -q
 ```
 
-Result: 3 failed, 41 passed. Failures were the expected missing `first_missing_source_action_by_surface`, `closure_lane`, and `default_only_blocker` fields.
-
-Green run:
-
-```powershell
-$env:PYTHONPATH='src'; python -m pytest tests/test_strong_closure_ledger.py tests/test_source_autopilot.py tests/test_source_to_runtime_explainability.py tests/test_strong_promotion_report.py -q
-```
-
-Result: 44 passed.
+Result: 30 passed.
 
 ## Gate Boundary
 
-No second apply gate was added. The new fields are report diagnostics only:
-
-- `source_autopilot_report` remains an evidence and readiness report.
-- `source_to_runtime_explainability` keeps `authority: diagnostic_only`, `operator_gate_impact: diagnostic_only`, and `apply_blocking: False`.
-- No runtime writer path, apply command, or `operator_summary.json` authority path was changed.
+No runtime writer path, package builder path, matrix file, docs file, skill file, or `operator_summary.json` authority path was changed. Source autopilot remains source-preflight diagnostics only.

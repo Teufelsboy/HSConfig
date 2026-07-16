@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_autopilot import (
+    _action_from_profile_gap,
     build_source_autopilot_bundle,
     extract_source_evidence_rows,
     rank_public_sources,
@@ -38,6 +39,47 @@ def run_source_autopilot_fixture(name: str) -> dict:
         deck_name=payload["deck_name"],
         deck_identity=SHADOW_DECK_IDENTITY,
         source_search_records=payload["records"],
+        current_date="2026-07-15",
+    )
+    return bundle["source_autopilot_report"]
+
+
+def _current_guide_record(claims: list[dict], *, archetype: str = "aggro_fixture") -> dict:
+    return {
+        "source_url": "https://example.com/profile-guide",
+        "source_title": "Profile Fixture Guide 2026",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+        "normalized_text": (
+            "Profile Fixture Guide 2026 explains current mulligan decisions, "
+            "gameplan posture, target priorities, combo sequence planning, "
+            "runtime surfaces, card behavior, and source-backed play patterns "
+            "for this exact ladder deck across common matchups."
+        ),
+        "deck_match": {
+            "deck_name": "ProfileDeck",
+            "archetype": archetype,
+            "matched_card_ids": ["CARD_001", "CARD_002"],
+        },
+        "deck_match_scope": "deck_or_archetype_matched",
+        "claims": claims,
+    }
+
+
+def _profile_report(claims: list[dict], *, archetype: str = "aggro_fixture") -> dict:
+    bundle = build_source_autopilot_bundle(
+        deck_name="ProfileDeck",
+        deck_identity={
+            "deck_name": "ProfileDeck",
+            "deck_code_hash": "sha256:profile",
+            "deck_slug": "profiledeck",
+            "cards": [
+                {"card_id": "CARD_001", "name": "Fixture One", "cost": 1, "count": 2},
+                {"card_id": "CARD_002", "name": "Fixture Two", "cost": 2, "count": 2},
+            ],
+        },
+        source_search_records=[_current_guide_record(claims, archetype=archetype)],
         current_date="2026-07-15",
     )
     return bundle["source_autopilot_report"]
@@ -163,7 +205,10 @@ def test_build_source_autopilot_bundle_keeps_weak_sources_non_blocking_and_visib
     assert report["strong_closure_summary"]["technical_no_block"] is True
     assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
     assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert report["strong_closure_summary"]["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert (
+        report["strong_closure_summary"]["first_missing_source_action"]
+        == "add_current_card_specific_runtime_source"
+    )
     assert report["first_missing_source_action"] == report["strong_closure_summary"]["first_missing_source_action"]
 
 
@@ -208,7 +253,10 @@ def test_build_source_autopilot_bundle_does_not_call_deck_scoped_guide_strong():
     assert report["card_specific_runtime_contract_candidate_count"] == 0
     assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
     assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert report["strong_closure_summary"]["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert (
+        report["strong_closure_summary"]["first_missing_source_action"]
+        == "add_current_card_specific_runtime_source"
+    )
     assert report["first_missing_source_action"] == report["strong_closure_summary"]["first_missing_source_action"]
 
 
@@ -463,7 +511,7 @@ def test_source_autopilot_never_blocks_config_creation_for_thin_or_empty_sources
     assert thin_bundle["source_autopilot_report"]["strong_candidate"] is False
     assert (
         empty_bundle["source_autopilot_report"]["first_missing_source_action"]
-        == "add_explicit_mulligan_source"
+        == "add_current_card_specific_runtime_source"
     )
 
 
@@ -527,3 +575,87 @@ def test_source_autopilot_does_not_require_extra_non_mulligan_surface_when_profi
     assert report["first_missing_source_action"] == "none"
     assert report["source_backed_strong_closure"]["closure_profile"] == "aggro_burn_hero_power"
     assert report["source_backed_strong_closure"]["closure_profile_closed"] is True
+
+
+def test_source_autopilot_routes_missing_mulligan_group_through_profile_gap():
+    report = _profile_report(
+        [
+            {"claim_kind": "gameplan_posture", "scope": "deck", "stance": "aggressive"},
+            {
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_001"],
+                "stance": "prefer_enemy_hero",
+            },
+        ],
+        archetype="aggro_burn_fixture",
+    )
+
+    assert report["first_missing_source_action"] == (
+        "add_current_mulligan_keep_or_discard_source"
+    )
+
+
+def test_source_autopilot_routes_missing_targeting_group_through_profile_gap():
+    report = _profile_report(
+        [
+            {"claim_kind": "gameplan_posture", "scope": "deck", "stance": "aggressive"},
+            {"claim_kind": "mulligan_keep", "cards": ["CARD_001"], "stance": "keep"},
+        ],
+        archetype="aggro_burn_fixture",
+    )
+
+    assert report["first_missing_source_action"] == (
+        "add_current_targeting_or_card_behavior_source"
+    )
+
+
+def test_source_autopilot_routes_missing_combo_sequence_through_profile_gap():
+    report = _profile_report(
+        [
+            {"claim_kind": "gameplan_posture", "scope": "deck", "stance": "setup"},
+            {"claim_kind": "mulligan_keep", "cards": ["CARD_001"], "stance": "keep"},
+        ],
+        archetype="combo_setup_fixture",
+    )
+
+    assert report["first_missing_source_action"] == "add_current_combo_sequence_source"
+
+
+def test_source_autopilot_routes_missing_surface_gap_mapping():
+    assert (
+        _action_from_profile_gap("missing_surface:GlobalValues.json")
+        == "emit_or_explain_missing_runtime_surface"
+    )
+
+
+def test_source_autopilot_no_strong_rows_uses_profile_gap_not_mulligan_fallback():
+    bundle = build_source_autopilot_bundle(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "cards": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Fixture Card",
+                    "cost": 1,
+                    "count": 2,
+                }
+            ]
+        },
+        source_search_records=[],
+        current_date="2026-07-15",
+    )
+
+    assert bundle["source_autopilot_report"]["first_missing_source_action"] == (
+        "add_current_card_specific_runtime_source"
+    )
+
+
+def test_source_autopilot_marks_runtime_default_only_surfaces_not_evaluated():
+    report = run_source_autopilot_fixture("source_search_shadowpriest_2026.json")
+    closure = report["source_backed_strong_closure"]
+
+    assert "default_only_runtime_surfaces" not in closure
+    assert (
+        closure["default_only_runtime_surface_status"]
+        == "not_evaluated_in_source_preflight"
+    )

@@ -140,7 +140,7 @@ def test_decklist_only_builds_evidence_but_cannot_promote_strong():
     assert summary["technical_no_block"] is True
     assert summary["source_backed_strong_ready"] is False
     assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
-    assert summary["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert summary["first_missing_source_action"] == "add_current_card_specific_runtime_source"
     assert bundle["source_autopilot_report"]["first_missing_source_action"] == summary["first_missing_source_action"]
 
 
