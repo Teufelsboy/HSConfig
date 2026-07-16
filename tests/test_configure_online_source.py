@@ -127,6 +127,23 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert operator["default_only_runtime_surfaces"] == []
     assert "SW_448" not in mulligan_text
 
+    source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
+    flat_claims = [
+        claim
+        for document in source_documents["source_documents"]
+        for claim in document.get("claims", [])
+    ]
+    assert any(
+        claim.get("claim_kind") == "hero_power_transform"
+        and "SW_448" in claim.get("cards", [])
+        for claim in flat_claims
+    )
+    assert not any(
+        claim.get("claim_kind") == "mulligan_keep"
+        and "SW_448" in claim.get("cards", [])
+        for claim in flat_claims
+    )
+
 
 def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
     tmp_path: Path,

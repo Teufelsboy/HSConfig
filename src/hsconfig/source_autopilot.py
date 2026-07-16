@@ -8,6 +8,7 @@ from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_policy import classify_source_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
+from hsconfig.source_text_claim_extractor import extract_text_claims
 from hsconfig.strong_closure_profiles import ClosureProfileVerdict, evaluate_closure_profile
 
 GUIDE_FAMILIES = {
@@ -106,6 +107,13 @@ def extract_source_evidence_rows(
     for source in ranked_sources:
         base = _source_base(deck_name, source, current_date)
         for row in _mulligan_rows(deck_identity, source, base):
+            _append_unique(rows, seen, row)
+        for row in extract_text_claims(
+            deck_name=deck_name,
+            deck_identity=deck_identity,
+            source_record={**dict(source), **base},
+            current_date=current_date,
+        ):
             _append_unique(rows, seen, row)
         for row in _explicit_claim_rows(source, base):
             _append_unique(rows, seen, row)

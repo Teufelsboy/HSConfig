@@ -1017,3 +1017,55 @@ def test_source_autopilot_stale_guide_without_claims_requests_current_or_evergre
     assert report["first_missing_source_action"] == (
         "add_current_or_evergreen_wild_public_guide"
     )
+
+
+def test_autopilot_extracts_full_text_claims_before_closure_evaluation():
+    deck_identity = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "cost": 5,
+                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+            },
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "text": ""},
+        ]
+    }
+    records = [
+        {
+            "source_url": "https://example.test/shadowpriest",
+            "source_title": "2026 Wild ShadowPriest Guide",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "publication_year": 2026,
+            "source_record_strength": "candidate_strong",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "TOY_381"],
+            },
+            "normalized_text": (
+                "Mulligan: keep Papercraft Angel. "
+                "Do not keep any 4-cost or higher card. "
+                "Darkbishop Benedictus turns your hero power into Mind Spike at the start of the game."
+            ),
+        }
+    ]
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_search_records=records,
+        current_date="2026-07-16",
+    )
+
+    claims = bundle["source_evidence_rows"]
+    claim_pairs = {
+        (claim["claim_kind"], tuple(claim.get("cards", [])))
+        for claim in claims
+    }
+
+    assert ("mulligan_keep", ("TOY_381",)) in claim_pairs
+    assert ("mulligan_discard", ("SW_448",)) in claim_pairs
+    assert ("hero_power_transform", ("SW_448",)) in claim_pairs
+    assert ("mulligan_keep", ("SW_448",)) not in claim_pairs
+    assert bundle["source_autopilot_report"]["default_only_runtime_surfaces"] == []
