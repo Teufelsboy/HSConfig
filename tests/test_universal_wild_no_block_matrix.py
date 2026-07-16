@@ -311,6 +311,9 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
             out / "reports" / "source_to_runtime_explainability.json"
         ).read_text(encoding="utf-8")
     )
+    if operator["semantic_status"] != "SOURCE_BACKED_STRONG":
+        assert operator["first_missing_source_action"] != "none"
+        assert source_to_runtime["operator_attention"]
     semantic_report = json.loads(
         (out / "reports" / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )

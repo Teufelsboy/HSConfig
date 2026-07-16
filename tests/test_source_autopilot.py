@@ -559,6 +559,47 @@ def test_source_autopilot_reports_strong_blockers_per_card():
     assert report["non_promoting_claim_count"] >= 1
 
 
+def test_partial_deck_reports_specific_missing_card_and_surface_actions():
+    deck_identity = {
+        "cards": [
+            {"card_id": "DEEP_014", "name": "Quick Pick", "cost": 2, "text": "Draw a card."},
+            {"card_id": "CARD_002", "name": "Kingsbane", "cost": 1, "text": ""},
+        ]
+    }
+    records = [
+        {
+            "source_url": "https://example.test/kingslayer",
+            "source_title": "2026 Wild Kingsbane Rogue Guide",
+            "source_family": "community_guide",
+            "source_visibility": "full_text",
+            "publication_year": 2026,
+            "source_record_strength": "candidate_partial",
+            "deck_match": {
+                "deck_name": "Kingslayer",
+                "matched_card_ids": ["CARD_002"],
+            },
+            "normalized_text": "Kingsbane Rogue buffs weapon and attacks face. The guide does not mention Quick Pick mulligan.",
+        }
+    ]
+
+    bundle = build_source_autopilot_bundle(
+        deck_name="Kingslayer",
+        deck_identity=deck_identity,
+        source_search_records=records,
+        current_date="2026-07-16",
+    )
+
+    report = bundle["source_autopilot_report"]
+
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["source_backed_strong_closure"]["closed"] is False
+    assert report["first_missing_source_action"] != "none"
+    assert report["first_missing_source_action_by_card"]["DEEP_014"] == (
+        "add_kingslayer_quick_pick_mulligan_source"
+    )
+    assert "Mulligan.json" in report["first_missing_source_action_by_surface"]
+
+
 def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
     bundle = build_source_autopilot_bundle(
         deck_name="FixtureDeck",

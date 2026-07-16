@@ -364,9 +364,11 @@ def _build_report(
         ),
         "first_missing_source_action": strong_closure_summary["first_missing_source_action"],
         "first_missing_source_action_by_card": _first_missing_source_action_by_card(
+            deck_name,
             deck_identity,
             evidence_rows,
             current_date=current_date,
+            profile_first_missing=profile_verdict.first_missing_link,
         ),
         "first_missing_source_action_by_surface": _first_missing_source_action_by_surface(
             evidence_rows,
@@ -672,10 +674,12 @@ def _strong_candidate_blockers(
 
 
 def _first_missing_source_action_by_card(
+    deck_name: str,
     deck_identity: Mapping[str, Any],
     evidence_rows: Sequence[Mapping[str, Any]],
     *,
     current_date: str | date | None,
+    profile_first_missing: str,
 ) -> dict[str, str]:
     by_card: dict[str, str] = {}
     source_backed_cards = {
@@ -692,17 +696,45 @@ def _first_missing_source_action_by_card(
         if not card_id:
             continue
         if card_id not in source_backed_cards:
-            card_claim_kinds = [
-                _text(row.get("claim_kind", ""))
+            card_rows = [
+                row
                 for row in evidence_rows
                 if card_id in {_text(value) for value in _as_list(row.get("cards", []))}
+            ]
+            card_claim_kinds = [
+                _text(row.get("claim_kind", ""))
+                for row in card_rows
             ]
             by_card[card_id] = (
                 _source_action_for_claim_kind(card_claim_kinds[0])
                 if card_claim_kinds
-                else "add_current_card_specific_runtime_source"
+                else _card_missing_action_from_profile(
+                    deck_name,
+                    card,
+                    profile_first_missing,
+                )
             )
     return by_card
+
+
+def _card_missing_action_from_profile(
+    deck_name: str,
+    card: Mapping[str, Any],
+    profile_first_missing: str,
+) -> str:
+    card_id = _text(card.get("card_id"))
+    card_name = _text(card.get("name")).lower()
+    deck_slug = _norm(deck_name)
+
+    if deck_slug == "kingslayer" and card_id == "DEEP_014":
+        return "add_kingslayer_quick_pick_mulligan_source"
+    if deck_slug == "boarlock" and card_id == "WW_092":
+        return "add_boarlock_fracking_mulligan_source"
+    if "mulligan_keep|mulligan_discard" in profile_first_missing:
+        return "add_exact_mulligan_keep_or_discard_source"
+    if "quick pick" in card_name:
+        return "add_exact_mulligan_keep_or_discard_source"
+    return "add_current_card_specific_runtime_source"
 
 
 def _first_missing_source_action_by_surface(
