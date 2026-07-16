@@ -506,6 +506,174 @@ def test_compiler_does_not_turn_key_effect_text_into_mulligan_keep():
     } == {"mulligan", "card_effect"}
 
 
+def test_compiler_allows_explicit_opening_hand_keep_for_start_of_game_card():
+    deck_identity = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "cost": 5,
+                "count": 1,
+                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+            },
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+        ]
+    }
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "source_record_strength": "candidate_strong",
+                "source_title": "Shadow Priest Guide 2026",
+                "source_url": "https://example.test/shadow-explicit-keep",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "TOY_381"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "normalized_text": (
+                    "Mulligan: keep Darkbishop Benedictus in your opening hand when this guide "
+                    "explicitly calls for the card. Darkbishop Benedictus changes your hero power "
+                    "to Mind Spike."
+                ),
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    claims = [claim for record in payload["records"] for claim in record["claims"]]
+    keep_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "mulligan_keep"
+        for card_id in claim["cards"]
+    }
+    transform_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "hero_power_transform"
+        for card_id in claim["cards"]
+    }
+
+    assert keep_ids == {"SW_448"}
+    assert transform_ids == {"SW_448"}
+
+
+def test_compiler_does_not_keep_start_of_game_card_from_incidental_keep_sentence():
+    deck_identity = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "cost": 5,
+                "count": 1,
+                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+            },
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+        ]
+    }
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "source_record_strength": "candidate_strong",
+                "source_title": "Shadow Priest Guide 2026",
+                "source_url": "https://example.test/shadow-incidental-effect",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "TOY_381"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "normalized_text": (
+                    "Mulligan: keep Papercraft Angel while Darkbishop Benedictus enables the "
+                    "Shadow hero power and Mind Spike."
+                ),
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    claims = [claim for record in payload["records"] for claim in record["claims"]]
+    keep_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "mulligan_keep"
+        for card_id in claim["cards"]
+    }
+    transform_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "hero_power_transform"
+        for card_id in claim["cards"]
+    }
+
+    assert keep_ids == {"TOY_381"}
+    assert transform_ids == {"SW_448"}
+
+
+def test_compiler_does_not_keep_start_of_game_card_effect_in_mind():
+    deck_identity = {
+        "cards": [
+            {
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "cost": 5,
+                "count": 1,
+                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+            }
+        ]
+    }
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        acquired_records=[
+            {
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "source_record_strength": "candidate_strong",
+                "source_title": "Shadow Priest Guide 2026",
+                "source_url": "https://example.test/shadow-effect-in-mind",
+                "publication_year": 2026,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448"],
+                },
+                "deck_match_scope": "deck_or_archetype_matched",
+                "normalized_text": (
+                    "Mulligan: keep Darkbishop Benedictus's Shadowform effect "
+                    "in mind while choosing your opening hand."
+                ),
+            }
+        ],
+        current_date="2026-07-15",
+    )
+
+    claims = [claim for record in payload["records"] for claim in record["claims"]]
+    keep_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "mulligan_keep"
+        for card_id in claim["cards"]
+    }
+    transform_ids = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "hero_power_transform"
+        for card_id in claim["cards"]
+    }
+
+    assert keep_ids == set()
+    assert transform_ids == {"SW_448"}
+
+
 def test_compile_static_card_text_is_non_promoting():
     deck_identity = {
         "deck_name": "ShadowPriest",

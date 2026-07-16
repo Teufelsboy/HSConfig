@@ -50,12 +50,13 @@ operator/source action fields instead of becoming hidden default-only runtime.
 
 Darkbishop Benedictus is the canonical boundary case: preserve the start-of-game
 `hero_power_transform`, Mind Spike, and Shadow runtime effect in contract/CardID
-semantics, but never infer an opening-hand keep unless an explicit mulligan
-source says to keep the card.
-Explicit mulligan discard evidence is different: a current guide may say to
-throw Darkbishop directly or through a documented cost-band rule such as
-`do not keep 4-cost or higher cards`. That may emit `mulligan_discard`, while
-the start-of-game effect still belongs in the per-card runtime contract.
+semantics, but never infer an opening-hand keep from Start-of-Game, Shadowform,
+or Hero Power text alone. A `mulligan_keep` row for a Start-of-Game or
+hero-power-transform card is valid only when the same public guide sentence
+directly says to keep that exact card in the mulligan or opening hand.
+Incidental mentions such as "keep Papercraft Angel while Darkbishop enables the
+Shadow hero power" must keep Papercraft only and preserve Darkbishop as effect
+semantics.
 
 `source_autopilot_report.json` is the compact preflight proof for this boundary.
 Use `runtime_apply_authority`, `default_only_runtime_surfaces`,
@@ -151,3 +152,4 @@ Fresh local prepare runs for the current matrix state show:
 | Kingslayer | `SOURCE_BACKED_PARTIAL` | `DEEP_014` `Quick Pick` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
 | Boarlock | `SOURCE_BACKED_PARTIAL` | `WW_092` `Fracking` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
 | PirateDH | `SOURCE_BACKED_PARTIAL` | card-specific source claims needed for low-confidence or uncovered rows | `add_card_specific_source_claim` |
+| CuteWarrior | `SOURCE_BACKED_PARTIAL` | current full-text mulligan/gameplan source needed before partial warrior-specific rows can count as strong evidence | `add_current_full_text_mulligan_or_gameplan_source` |

@@ -243,6 +243,65 @@ def _compile_non_promoting_card_roles(
             )
 
 
+def _sentence_directly_keeps_card(lowered_sentence: str, card_name: str) -> bool:
+    normalized_sentence = " ".join(lowered_sentence.split())
+    normalized_name = card_name.lower()
+    keep_before_name = any(
+        _sentence_has_direct_keep_marker(normalized_sentence, f"{prefix}{normalized_name}")
+        for prefix in ("keep ", "keep the ", "keep your ")
+    )
+    name_before_keep = any(
+        _sentence_has_direct_keep_marker(normalized_sentence, phrase)
+        for phrase in (
+            f"{normalized_name} is a keep",
+            f"{normalized_name} is an auto keep",
+            f"{normalized_name} should be kept",
+            f"{normalized_name} can be kept",
+        )
+    )
+    return keep_before_name or name_before_keep
+
+
+def _sentence_has_direct_keep_marker(normalized_sentence: str, marker: str) -> bool:
+    start = normalized_sentence.find(marker)
+    while start >= 0:
+        tail = normalized_sentence[start + len(marker):]
+        if _tail_allows_direct_card_keep(tail):
+            return True
+        start = normalized_sentence.find(marker, start + 1)
+    return False
+
+
+def _tail_allows_direct_card_keep(tail: str) -> bool:
+    if not tail:
+        return True
+    if tail.startswith(("'", "’")):
+        return False
+    if tail[0] in ",;:)":
+        return True
+    return tail.startswith(
+        (
+            " in your opening hand",
+            " in the opening hand",
+            " in opening hand",
+            " in the mulligan",
+            " in mulligan",
+            " for ",
+            " against ",
+            " vs ",
+            " versus ",
+            " when ",
+            " if ",
+            " to ",
+            " because ",
+            " on ",
+            " with ",
+            " alongside ",
+            " and ",
+        )
+    )
+
+
 def _explicit_keep_rows(deck_identity: Mapping[str, Any], text: str) -> list[dict[str, str]]:
     keep_rows: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -255,7 +314,10 @@ def _explicit_keep_rows(deck_identity: Mapping[str, Any], text: str) -> list[dic
                 name
                 and card_id
                 and name.lower() in lowered_sentence
-                and not _is_non_opening_hand_effect_card(card)
+                and (
+                    not _is_non_opening_hand_effect_card(card)
+                    or _sentence_directly_keeps_card(lowered_sentence, name)
+                )
                 and card_id not in seen
             ):
                 seen.add(card_id)
