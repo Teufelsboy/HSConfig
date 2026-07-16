@@ -8,6 +8,7 @@ from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_policy import classify_source_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
+from hsconfig.strong_closure_profiles import ClosureProfileVerdict, evaluate_closure_profile
 
 GUIDE_FAMILIES = {"guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
 DECKLIST_FAMILIES = {"decklist", "deck_snapshot", "deck_code"}
@@ -290,17 +291,34 @@ def _build_report(
         draft=draft,
         verification=verification,
     )
-    strong_candidate = not blockers
+    profile_verdict = _closure_profile_verdict(
+        deck_name=deck_name,
+        evidence_rows=evidence_rows,
+        strong_rows=strong_lowerable_guide_rows,
+        current_date=current_date,
+    )
+    hard_blockers = [
+        blocker
+        for blocker in blockers
+        if blocker
+        not in {
+            "no_apply_surface_guide_candidate",
+            "no_card_specific_runtime_contract_candidate",
+        }
+    ]
+    strong_candidate = not hard_blockers and profile_verdict.closed
     strong_closure_summary = _build_strong_closure_summary(
         evidence_rows=evidence_rows,
         current_date=current_date,
         strong_candidate=strong_candidate,
         blockers=blockers,
+        profile_verdict=profile_verdict,
     )
     return {
         "schema_version": 1,
         "deck_name": deck_name,
         "status": "OK",
+        "semantic_status": strong_closure_summary["semantic_status"],
         "source_rank_summary": dict(sorted(lane_counts.items())),
         "claim_kind_counts": dict(sorted(claim_counts.items())),
         "runtime_contract_candidate_count": len(lowerable_guide_rows),
@@ -310,6 +328,11 @@ def _build_report(
         "strong_candidate": strong_candidate,
         "strong_candidate_blockers": blockers,
         "strong_closure_summary": strong_closure_summary,
+        "source_backed_strong_closure": _source_backed_strong_closure(
+            strong_closure_summary,
+            profile_verdict,
+            default_only_runtime_surfaces=[],
+        ),
         "first_missing_source_action": strong_closure_summary["first_missing_source_action"],
         "first_missing_source_action_by_card": _first_missing_source_action_by_card(
             deck_identity,
@@ -336,26 +359,22 @@ def _build_strong_closure_summary(
     current_date: str | date | None,
     strong_candidate: bool,
     blockers: Sequence[str],
+    profile_verdict: ClosureProfileVerdict,
 ) -> dict[str, Any]:
     strong_rows = [
         row
         for row in evidence_rows
         if _is_strong_guide_lane(row, current_date) and _is_runtime_contract_candidate(row)
     ]
-    has_explicit_mulligan_source = any(
-        _text(row.get("claim_kind", "")) in {"mulligan_keep", "mulligan_discard"}
-        for row in strong_rows
-    )
     source_backed_strong_ready = (
-        strong_candidate
-        and bool(strong_rows)
-        and has_explicit_mulligan_source
+        strong_candidate and bool(strong_rows) and profile_verdict.closed
     )
-    first_missing_source_action = _strong_closure_first_missing_source_action(
-        source_backed_strong_ready=source_backed_strong_ready,
-        has_explicit_mulligan_source=has_explicit_mulligan_source,
-        blockers=blockers,
-    )
+    if profile_verdict.closed:
+        first_missing_source_action = "none"
+    elif not strong_rows:
+        first_missing_source_action = "add_explicit_mulligan_source"
+    else:
+        first_missing_source_action = _action_from_profile_gap(profile_verdict.first_missing_link)
     return {
         "technical_no_block": True,
         "semantic_status": (
@@ -371,19 +390,142 @@ def _build_strong_closure_summary(
     }
 
 
-def _strong_closure_first_missing_source_action(
+def _source_backed_strong_closure(
+    summary: Mapping[str, Any],
+    profile_verdict: ClosureProfileVerdict,
     *,
-    source_backed_strong_ready: bool,
-    has_explicit_mulligan_source: bool,
-    blockers: Sequence[str],
-) -> str:
-    if source_backed_strong_ready:
+    default_only_runtime_surfaces: Sequence[str],
+) -> dict[str, Any]:
+    promotion_ready = bool(summary.get("source_backed_strong_ready"))
+    return {
+        "status": "ready" if promotion_ready else "needs_source_closure",
+        "promotion_ready": promotion_ready,
+        "first_missing_source_action": _text(
+            summary.get("first_missing_source_action", "")
+        ),
+        "diagnostic_only": True,
+        "default_only_runtime_surfaces": list(default_only_runtime_surfaces),
+        "closure_profile": profile_verdict.profile_name,
+        "closure_profile_closed": profile_verdict.closed,
+        "closure_profile_first_missing_link": profile_verdict.first_missing_link,
+        "closure_profile_missing_claim_groups": list(profile_verdict.missing_claim_groups),
+        "closure_profile_missing_surfaces": list(profile_verdict.missing_surfaces),
+        "closure_profile_apply_blocking": profile_verdict.apply_blocking,
+    }
+
+
+def _action_from_profile_gap(first_missing_link: str) -> str:
+    if first_missing_link == "none":
         return "none"
-    if not has_explicit_mulligan_source:
-        return "add_explicit_mulligan_source"
-    if "no_apply_surface_guide_candidate" in blockers:
-        return "add_runtime_lowerable_apply_surface_source"
-    return "add_current_deck_guide_or_mulligan_guide"
+    if first_missing_link.startswith("default_only_surface:"):
+        return "replace_default_only_surface_with_source_or_policy_row"
+    if "mulligan_keep|mulligan_discard" in first_missing_link:
+        return "add_current_mulligan_keep_or_discard_source"
+    if "targeting_rule" in first_missing_link:
+        return "add_current_targeting_or_card_behavior_source"
+    if "combo_sequence" in first_missing_link:
+        return "add_current_combo_sequence_source"
+    if first_missing_link.startswith("missing_surface:"):
+        return "emit_or_explain_missing_runtime_surface"
+    return "add_current_card_specific_runtime_source"
+
+
+def _closure_profile_verdict(
+    *,
+    deck_name: str,
+    evidence_rows: Sequence[Mapping[str, Any]],
+    strong_rows: Sequence[Mapping[str, Any]],
+    current_date: str | date | None,
+) -> ClosureProfileVerdict:
+    promotion_eligible_claim_kinds = [
+        _text(row.get("claim_kind", ""))
+        for row in strong_rows
+        if _text(row.get("claim_kind", ""))
+    ]
+    primary_mechanics = _primary_mechanics_for_profile(
+        deck_name=deck_name,
+        claim_kinds=promotion_eligible_claim_kinds,
+    )
+    archetype_bucket = _archetype_bucket_for_profile(
+        deck_name=deck_name,
+        evidence_rows=evidence_rows,
+        primary_mechanics=primary_mechanics,
+        current_date=current_date,
+    )
+    return evaluate_closure_profile(
+        archetype_bucket=archetype_bucket,
+        primary_mechanics=primary_mechanics,
+        source_claim_kinds=promotion_eligible_claim_kinds,
+        emitted_surfaces=_expected_emitted_surfaces(strong_rows),
+        default_only_surfaces=[],
+        suppressed_claim_kinds=_suppressed_claim_kinds(evidence_rows),
+    )
+
+
+def _primary_mechanics_for_profile(
+    *,
+    deck_name: str,
+    claim_kinds: Sequence[str],
+) -> list[str]:
+    mechanics: set[str] = set()
+    normalized_deck_name = deck_name.lower()
+    if "shadow" in normalized_deck_name and "priest" in normalized_deck_name:
+        mechanics.update({"aggro", "burn", "shadow_hero_power"})
+    if "hero_power_transform" in claim_kinds:
+        mechanics.add("shadow_hero_power")
+    if "targeting_rule" in claim_kinds:
+        mechanics.add("burn")
+    if "combo_sequence" in claim_kinds:
+        mechanics.add("combo")
+    return sorted(mechanics)
+
+
+def _archetype_bucket_for_profile(
+    *,
+    deck_name: str,
+    evidence_rows: Sequence[Mapping[str, Any]],
+    primary_mechanics: Sequence[str],
+    current_date: str | date | None,
+) -> str:
+    for row in evidence_rows:
+        archetype = _text(row.get("archetype", ""))
+        if archetype and _is_strong_guide_lane_shape(row, current_date):
+            return archetype
+    return " ".join([deck_name, *primary_mechanics]).strip()
+
+
+def _expected_emitted_surfaces(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    surfaces: set[str] = set()
+    for row in rows:
+        claim_kind = _text(row.get("claim_kind", ""))
+        allowed = _runtime_surfaces_for_row(row)
+        if "globalvalues" in allowed:
+            surfaces.add("GlobalValues.json")
+        if "mulligan" in allowed:
+            surfaces.add("Mulligan.json")
+        if "combo" in allowed:
+            surfaces.add("Combo.json")
+        if "cardid" in allowed:
+            for card_id in _as_list(row.get("cards", [])):
+                clean_card_id = _text(card_id)
+                if clean_card_id:
+                    surfaces.add(f"{clean_card_id}.json")
+            if claim_kind == "hero_power_transform" and not _as_list(row.get("cards", [])):
+                surfaces.add("CARDID.json")
+    return sorted(surfaces)
+
+
+def _suppressed_claim_kinds(evidence_rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    suppressed: set[str] = set()
+    for row in evidence_rows:
+        if (
+            row.get("suppressed") is True
+            or _text(row.get("runtime_lowering", "")) == "suppressed"
+        ):
+            claim_kind = _text(row.get("claim_kind", ""))
+            if claim_kind:
+                suppressed.add(claim_kind)
+    return sorted(suppressed)
 
 
 def _strong_candidate_blockers(

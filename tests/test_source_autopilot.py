@@ -32,6 +32,17 @@ def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
+def run_source_autopilot_fixture(name: str) -> dict:
+    payload = _fixture(name)
+    bundle = build_source_autopilot_bundle(
+        deck_name=payload["deck_name"],
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=payload["records"],
+        current_date="2026-07-15",
+    )
+    return bundle["source_autopilot_report"]
+
+
 def test_rank_public_sources_prefers_current_matching_guides_over_decklists():
     guide = _fixture("source_search_shadowpriest_2026.json")["records"][0]
     decklist = _fixture("source_search_decklist_only.json")["records"][0]
@@ -507,3 +518,12 @@ def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
     assert report["first_missing_source_action_by_surface"]["mulligan"] == (
         "add_explicit_mulligan_source"
     )
+
+
+def test_source_autopilot_does_not_require_extra_non_mulligan_surface_when_profile_closed():
+    report = run_source_autopilot_fixture("source_search_shadowpriest_2026.json")
+
+    assert report["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert report["first_missing_source_action"] == "none"
+    assert report["source_backed_strong_closure"]["closure_profile"] == "aggro_burn_hero_power"
+    assert report["source_backed_strong_closure"]["closure_profile_closed"] is True
