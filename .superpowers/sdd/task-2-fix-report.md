@@ -1,84 +1,60 @@
 # Task 2 Fix Report
 
-## Scope
+## Result
 
-- Fixed `qualify_source_claim()` source-family classification in `src/hsconfig/source_document_model.py`.
-- Added regression coverage in `tests/test_claim_kind_runtime_contract.py`.
-- Did not add runtime/apply gates or runtime surfaces.
-- Did not change `tests/test_source_contract_conformance.py`.
+Metadata-only guide records can no longer self-certify as strong source evidence.
+Guide promotion now requires acquired body text in `normalized_text` or `text`,
+even when raw metadata declares `source_visibility="full_text"`.
 
-## Root Cause
+## TDD Evidence
 
-`qualify_source_claim()` only derived source quality from `source_type` or `provenance`.
-Builder-shaped claims carry `source_family`, so `source_family="card_text"` and
-guide-family claims were classified as `source_lane="unknown"` and were not
-promotion eligible.
-
-## RED Evidence
-
-Command:
+RED command:
 
 ```powershell
-python -m pytest tests/test_claim_kind_runtime_contract.py -k "source_family or string_false or source_blocked" -q
+python -m pytest -p no:cacheprovider tests\test_source_evidence_policy.py -q
 ```
 
-Observed before the fix:
+Before the policy change, the new metadata-only regression failed because the
+record incorrectly returned `promotion_eligible=True`.
 
-```text
-5 failed, 40 deselected in 0.50s
-```
-
-Failures proved:
-
-- `source_family="card_text"` hero-power-transform claim produced `source_lane="unknown"` instead of `official_static_semantics`.
-- `source_family="guide"` and `source_family="mulligan_guide"` claims produced `source_lane="unknown"` instead of `deck_matched_public_guide`.
-- `opening_hand_relevant="false"` evaluated as `True`.
-- `source_blocked="true"` did not block public-guide promotion.
-
-## GREEN Evidence
-
-Focused regression slice:
+GREEN command:
 
 ```powershell
-python -m pytest tests/test_claim_kind_runtime_contract.py -k "source_family or string_false or source_blocked" -q
+python -m pytest -p no:cacheprovider tests\test_source_evidence_policy.py -q
 ```
+
+Result:
 
 ```text
-5 passed, 40 deselected in 0.30s
+15 passed in 0.12s
 ```
 
-Required verification:
-
-```powershell
-python -m pytest tests/test_claim_kind_runtime_contract.py tests/test_source_contract_conformance.py -q
-```
-
-```text
-70 passed in 0.49s
-```
-
-```powershell
-python -m pytest tests/test_apply_authority_boundary.py -q
-```
-
-```text
-4 passed in 0.10s
-```
+Additional verification:
 
 ```powershell
 git diff --check
 ```
 
-```text
-exit 0; Git emitted only LF-to-CRLF working-copy warnings for the two touched files.
-```
+Result: passed. Git only emitted existing LF-to-CRLF working-copy warnings.
 
 ## Commit
 
-- `8203dde0f7ebf0969e47b3f67e88e0bb1ec2f819` - `fix: qualify source-family claims`
+- SHA: `f56a4af58c14cd8ba8fbef0c9129b22c9418b93a`
+- Message: `fix: require acquired text for strong guide evidence`
+
+## Changed Files
+
+- `src/hsconfig/source_evidence_policy.py`
+- `tests/test_source_evidence_policy.py`
+- `.superpowers/sdd/task-2-fix-report.md`
 
 ## Concerns
 
-- None known.
-- The fix only maps known static source families to the official static lane and known public guide families to the public guide lane.
-- Policy/default/generated/snippet/source-blocked claims remain blocked from strong promotion.
+- No known concerns within the requested scope.
+- Existing positive guide promotion remains valid when acquired body text is present.
+- Decklist-only and static-semantics boundaries remain unchanged; static
+  `hero_power_transform` evidence is still effect-eligible but not mulligan-keep
+  strategy evidence.
+- The implementation commit does not include this report because the report
+  records that commit's final SHA; the report is a separate scoped follow-up
+  commit.
