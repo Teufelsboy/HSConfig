@@ -336,7 +336,7 @@ def _matched_card_count(record: Mapping[str, Any]) -> int:
     matched = match.get("matched_card_ids", [])
     if not isinstance(matched, list):
         return 0
-    return len([card_id for card_id in matched if _text(card_id)])
+    return len({_text(card_id) for card_id in matched if _text(card_id)})
 
 
 def _truthy(value: Any) -> bool:

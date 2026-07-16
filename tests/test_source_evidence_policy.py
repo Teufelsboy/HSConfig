@@ -248,6 +248,38 @@ def test_evergreen_wild_archetype_guide_can_be_strong_when_deck_matched():
     assert row["first_missing_source_action"] == "none"
 
 
+def test_evergreen_wild_archetype_requires_two_unique_matched_cards():
+    row = classify_source_evidence(
+        {
+            "source_family": "public_guide",
+            "source_title": "Wild ShadowPriest Guide",
+            "source_url": "https://example.test/wild-shadowpriest",
+            "source_visibility": "full_text",
+            "publication_year": 2021,
+            "format_scope": "wild",
+            "evergreen_wild_archetype": True,
+            "source_record_strength": "candidate_strong",
+            "normalized_text": (
+                "Wild ShadowPriest guide. The deck is aggressive, starts with "
+                "Mind Spike from Darkbishop Benedictus, and keeps early pressure "
+                "cards such as Voidtouched Attendant and Shadowbomber."
+            )
+            * 4,
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "matched_card_ids": ["SW_448", "SW_448"],
+            },
+        },
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 16),
+    )
+
+    assert row["source_freshness_lane"] == "stale_or_not_current"
+    assert row["source_rank_lane"] == "guide_full_text_not_current"
+    assert row["strong_promotion_eligible"] is False
+    assert "source_not_current_or_evergreen_wild" in row["promotion_blockers"]
+
+
 def test_old_non_wild_guide_stays_partial_and_requests_current_or_evergreen_source():
     row = classify_source_evidence(
         {
