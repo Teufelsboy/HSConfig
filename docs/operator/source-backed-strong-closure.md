@@ -41,7 +41,7 @@ A package may be `SOURCE_BACKED_STRONG` only when:
 - `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples do not count as strong evidence
 - policy-backed rows do not count as strong evidence
 - snippet-only sources do not count as strong evidence
-- static-only claims are marked as `contract_only` or `review_only` unless the runtime surface can safely represent them
+- explicit `official_static_semantics` may close deterministic CardID/effect surfaces such as `hero_power_transform`, but it does not prove deck-specific mulligan, combo, targeting, or gameplan posture by itself
 
 An explicit policy fallback may keep a package useful and load-safe, but it
 keeps the affected row partial until a promoting source lane covers it.

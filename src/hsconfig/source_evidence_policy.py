@@ -17,6 +17,11 @@ STATIC_FAMILIES = {
     "metadata",
     "card_text",
 }
+STATIC_CARDID_EFFECT_CLAIM_KINDS = {
+    "hero_power_transform",
+    "mechanic_usage",
+    "card_role",
+}
 NON_PROMOTING_SOURCE_TYPES = {
     "policy_backed_autonomous_mulligan",
     "default_runtime",
@@ -56,6 +61,7 @@ def classify_source_evidence(
         current_year=current_year,
         source_rank_lane=source_rank_lane,
     )
+    static_scope = _static_runtime_surface_scope(record, family)
     promotion_eligible = not blockers and family in GUIDE_FAMILIES
 
     result.update(
@@ -69,6 +75,7 @@ def classify_source_evidence(
             "strong_promotion_eligible": (
                 promotion_eligible and source_lane == "deck_matched_public_guide"
             ),
+            **static_scope,
             "trust_ceiling": (
                 "source_backed_strong"
                 if promotion_eligible
@@ -222,6 +229,27 @@ def _trust_ceiling(family: str, visibility: str) -> str:
     if visibility == "decklist_only":
         return "decklist_informed"
     return "source_informed_partial"
+
+
+def _static_runtime_surface_scope(record: Mapping[str, Any], family: str) -> dict[str, Any]:
+    claim_kind = _text(record.get("claim_kind", "")).lower()
+    if family not in STATIC_FAMILIES:
+        return {
+            "static_runtime_surface_eligible": False,
+            "static_runtime_surface_scope": "not_static_semantics",
+            "static_runtime_surface_limit": "",
+        }
+    if claim_kind in STATIC_CARDID_EFFECT_CLAIM_KINDS:
+        return {
+            "static_runtime_surface_eligible": True,
+            "static_runtime_surface_scope": "cardid_effect",
+            "static_runtime_surface_limit": "static_semantics_supports_cardid_effects_only",
+        }
+    return {
+        "static_runtime_surface_eligible": False,
+        "static_runtime_surface_scope": "not_runtime_surface_static",
+        "static_runtime_surface_limit": "static_semantics_does_not_prove_strategy_surface",
+    }
 
 
 def _publication_year(record: Mapping[str, Any]) -> int | None:

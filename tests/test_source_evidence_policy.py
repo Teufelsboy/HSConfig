@@ -153,3 +153,62 @@ def test_retrieved_at_does_not_count_as_publication_year():
 
     assert row["source_rank_lane"] != "guide_current_deck_match"
     assert "missing_publication_year" in row["promotion_blockers"]
+
+
+def test_official_static_semantics_can_support_cardid_but_not_deck_strategy():
+    record = {
+        "source_family": "official_static_semantics",
+        "source_type": "official_static_semantics",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "deck_match": {
+            "deck_name": "ShadowPriest",
+            "matched_card_ids": ["SW_448"],
+        },
+        "claim_kind": "hero_power_transform",
+        "cards": ["SW_448"],
+        "normalized_text": (
+            "Darkbishop Benedictus has Start of Game text that enters "
+            "Shadowform when the deck's spells are all Shadow."
+        ),
+    }
+
+    result = classify_source_evidence(
+        record,
+        deck_name="ShadowPriest",
+        current_date=date(2026, 7, 16),
+    )
+
+    assert result["trust_ceiling"] == "static_semantics_only"
+    assert result["strong_promotion_eligible"] is False
+    assert result["static_runtime_surface_eligible"] is True
+    assert result["static_runtime_surface_scope"] == "cardid_effect"
+    assert result["static_runtime_surface_limit"] == (
+        "static_semantics_supports_cardid_effects_only"
+    )
+    assert "static_semantics_not_deck_strategy" in result["promotion_blockers"]
+
+
+def test_static_semantics_never_promotes_mulligan_claims():
+    record = {
+        "source_family": "official_static_semantics",
+        "source_type": "official_static_semantics",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_or_archetype_matched",
+        "claim_kind": "mulligan_keep",
+        "cards": ["SW_448"],
+    }
+
+    result = classify_source_evidence(
+        record,
+        deck_name="ShadowPriest",
+        current_date="2026-07-16",
+    )
+
+    assert result["strong_promotion_eligible"] is False
+    assert result["static_runtime_surface_eligible"] is False
+    assert result["static_runtime_surface_scope"] == "not_runtime_surface_static"
