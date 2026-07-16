@@ -554,3 +554,21 @@ Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-backed-strong-closure-p
 
 
 
+
+---
+# HSConfig Source Closure Autopilot V2 SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-closure-autopilot-v2.md`
+
+- [ ] Task 1: Source Evidence Freshness And Family Normalization
+- [ ] Task 2: Align Source Autopilot Strong Lane With Evergreen Policy
+- [ ] Task 3: Strengthen Profile-Specific Closure Without Creating A Second Gate
+- [ ] Task 4: Lock Darkbishop And Static Semantics Runtime Boundaries
+- [ ] Task 5: Operator Docs And Skill Guidance For Strong-But-Honest Source Closure
+- [ ] Task 6: Matrix Verification And No Default-Only Regression Proof
+- [ ] Task 7: Final Verification, Diff Audit, And Push
+
+Task 1: complete (commits c4c8fb8..9126bb8, re-review clean after unique evergreen matched-card fix)
+Task 2: complete (commits 9126bb8..a326a36, re-review clean after ranked-source policy action fix; minor helper-name nit noted)
+Task 3: complete (commit 907dde8, review clean; specific Wild closure profiles remain diagnostic-only)
+Task 4: complete (test-only Darkbishop/static-effect boundary lock; 88 runtime contract/router tests passed)

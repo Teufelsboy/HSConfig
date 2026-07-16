@@ -346,6 +346,39 @@ def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
     assert routed["suppressed"] == []
 
 
+def test_darkbishop_static_effect_and_guide_mulligan_keep_are_independent_claims():
+    static_effect_claim = {
+        "claim_id": "darkbishop-static-hero-power",
+        "claim_kind": "hero_power_transform",
+        "claim_readiness": "source_backed_static_semantics",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["SW_448"],
+        "runtime_block": "BeforeUseHeroPowerBonus",
+        "runtime_value": 25,
+    }
+    guide_keep_claim = {
+        "claim_id": "voidtouched-guide-keep",
+        "claim_kind": "mulligan_keep",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": ["SW_446"],
+    }
+
+    darkbishop_mulligan = surface_gate_decision(static_effect_claim, "mulligan")
+    darkbishop_cardid = surface_gate_decision(static_effect_claim, "cardid")
+    voidtouched_mulligan = surface_gate_decision(guide_keep_claim, "mulligan")
+    routed = route_card_behavior_surfaces([static_effect_claim, guide_keep_claim])
+
+    assert darkbishop_mulligan.allowed is False
+    assert darkbishop_mulligan.reason == "claim_kind_not_mulligan_surface"
+    assert darkbishop_cardid.allowed is True
+    assert voidtouched_mulligan.allowed is True
+    assert routed["rows"][0]["card_id"] == "SW_448"
+    assert routed["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
+    assert routed["suppressed"][0]["claim_kind"] == "mulligan_keep"
+    assert routed["suppressed"][0]["reason"] == "claim_kind_not_cardid_surface"
+
+
 def test_legacy_claims_json_broad_keep_text_stays_non_mulligan_runtime():
     documents = guide_documents_from_legacy_claims(
         [
