@@ -600,6 +600,118 @@ def test_partial_deck_reports_specific_missing_card_and_surface_actions():
     assert "Mulligan.json" in report["first_missing_source_action_by_surface"]
 
 
+def test_profile_card_missing_actions_cover_known_deck_specific_cards():
+    cases = [
+        (
+            "Kingslayer",
+            "DEEP_014",
+            "Quick Pick",
+            "add_kingslayer_quick_pick_mulligan_source",
+        ),
+        (
+            "Boarlock",
+            "WW_092",
+            "Fracking",
+            "add_boarlock_fracking_mulligan_source",
+        ),
+    ]
+
+    for deck_name, card_id, card_name, expected_action in cases:
+        bundle = build_source_autopilot_bundle(
+            deck_name=deck_name,
+            deck_identity={
+                "cards": [
+                    {
+                        "card_id": card_id,
+                        "name": card_name,
+                        "cost": 2,
+                        "text": "Fixture card needing exact source closure.",
+                    },
+                    {
+                        "card_id": "CARD_002",
+                        "name": f"{deck_name} Core Card",
+                        "cost": 1,
+                        "text": "",
+                    },
+                ]
+            },
+            source_search_records=[
+                {
+                    "source_url": f"https://example.test/{deck_name.lower()}",
+                    "source_title": f"2026 Wild {deck_name} Guide",
+                    "source_family": "community_guide",
+                    "source_visibility": "full_text",
+                    "publication_year": 2026,
+                    "source_record_strength": "candidate_partial",
+                    "deck_match": {
+                        "deck_name": deck_name,
+                        "matched_card_ids": ["CARD_002"],
+                    },
+                    "normalized_text": (
+                        f"{deck_name} guide covers the core gameplan but not the target card."
+                    ),
+                }
+            ],
+            current_date="2026-07-16",
+        )
+
+        report = bundle["source_autopilot_report"]
+
+        assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+        assert report["first_missing_source_action_by_card"][card_id] == expected_action
+
+
+def test_partial_claim_kind_action_wins_before_profile_card_fallback():
+    cases = [
+        ("Kingslayer", "DEEP_014", "Quick Pick"),
+        ("Boarlock", "WW_092", "Fracking"),
+    ]
+
+    for deck_name, card_id, card_name in cases:
+        bundle = build_source_autopilot_bundle(
+            deck_name=deck_name,
+            deck_identity={
+                "cards": [
+                    {
+                        "card_id": card_id,
+                        "name": card_name,
+                        "cost": 2,
+                        "text": "Fixture card with a partial targeting claim.",
+                    }
+                ]
+            },
+            source_search_records=[
+                {
+                    "source_url": f"https://example.test/{deck_name.lower()}-partial",
+                    "source_title": f"2026 Wild {deck_name} Partial Guide",
+                    "source_family": "community_guide",
+                    "source_visibility": "full_text",
+                    "publication_year": 2026,
+                    "source_record_strength": "candidate_partial",
+                    "deck_match": {
+                        "deck_name": deck_name,
+                        "matched_card_ids": [card_id],
+                    },
+                    "claims": [
+                        {
+                            "claim_kind": "targeting_rule",
+                            "cards": [card_id],
+                            "evidence_text_short": "Target the opponent unless trading is lethal-safe.",
+                        }
+                    ],
+                }
+            ],
+            current_date="2026-07-16",
+        )
+
+        report = bundle["source_autopilot_report"]
+
+        assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+        assert report["first_missing_source_action_by_card"][card_id] == (
+            "add_card_specific_targeting_source"
+        )
+
+
 def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
     bundle = build_source_autopilot_bundle(
         deck_name="FixtureDeck",

@@ -311,9 +311,18 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
             out / "reports" / "source_to_runtime_explainability.json"
         ).read_text(encoding="utf-8")
     )
-    if operator["semantic_status"] != "SOURCE_BACKED_STRONG":
+    if deck_name == "Kingslayer":
+        assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert operator["first_missing_source_action"] != "none"
-        assert source_to_runtime["operator_attention"]
+        assert operator["runtime_apply_allowed"] is True
+        assert operator["source_backed_strong_closure"]["diagnostic_only"] is True
+        assert operator["source_backed_strong_closure"]["closure_profile_apply_blocking"] is False
+        assert source_to_runtime["authority"] == "diagnostic_only"
+        assert source_to_runtime["apply_blocking"] is False
+        assert any(
+            row["first_missing_source_action"] != "none"
+            for row in source_to_runtime["operator_attention"]
+        )
     semantic_report = json.loads(
         (out / "reports" / "semantic_enrichment_report.json").read_text(encoding="utf-8")
     )

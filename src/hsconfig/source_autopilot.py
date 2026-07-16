@@ -28,6 +28,10 @@ STATIC_FAMILIES = {
     "metadata",
     "card_text",
 }
+PROFILE_CARD_MISSING_SOURCE_ACTIONS = {
+    ("kingslayer", "DEEP_014"): "add_kingslayer_quick_pick_mulligan_source",
+    ("boarlock", "WW_092"): "add_boarlock_fracking_mulligan_source",
+}
 
 
 def rank_public_sources(
@@ -726,10 +730,8 @@ def _card_missing_action_from_profile(
     card_name = _text(card.get("name")).lower()
     deck_slug = _norm(deck_name)
 
-    if deck_slug == "kingslayer" and card_id == "DEEP_014":
-        return "add_kingslayer_quick_pick_mulligan_source"
-    if deck_slug == "boarlock" and card_id == "WW_092":
-        return "add_boarlock_fracking_mulligan_source"
+    if action := PROFILE_CARD_MISSING_SOURCE_ACTIONS.get((deck_slug, card_id)):
+        return action
     if "mulligan_keep|mulligan_discard" in profile_first_missing:
         return "add_exact_mulligan_keep_or_discard_source"
     if "quick pick" in card_name:
