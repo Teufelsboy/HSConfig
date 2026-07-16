@@ -565,7 +565,7 @@ Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-closure-autopilot-v2.md
 - [x] Task 3: Strengthen Profile-Specific Closure Without Creating A Second Gate
 - [x] Task 4: Lock Darkbishop And Static Semantics Runtime Boundaries
 - [x] Task 5: Operator Docs And Skill Guidance For Strong-But-Honest Source Closure
-- [ ] Task 6: Matrix Verification And No Default-Only Regression Proof
+- [x] Task 6: Matrix Verification And No Default-Only Regression Proof
 - [ ] Task 7: Final Verification, Diff Audit, And Push
 
 Task 1: complete (commits c4c8fb8..9126bb8, re-review clean after unique evergreen matched-card fix)
@@ -573,3 +573,4 @@ Task 2: complete (commits 9126bb8..a326a36, re-review clean after ranked-source 
 Task 3: complete (commit 907dde8, review clean; specific Wild closure profiles remain diagnostic-only)
 Task 4: complete (test-only Darkbishop/static-effect boundary lock; 88 runtime contract/router tests passed)
 Task 5: complete (commit 6e40266 plus review fix; operator docs, skill, and skill reference updated for evergreen Wild source closure; docs/skill suite 93 passed; installed skill sync passed)
+Task 6: complete (no source changes; matrix/no-default-only 33 passed, apply/wild 53 passed, source 39 passed, runtime 88 passed, docs/skill 93 passed)
