@@ -24,17 +24,24 @@ def assert_darkbishop_effect_semantics_without_mulligan_keep(
     hero_power_bonus = darkbishop["BeforeUseHeroPowerBonus"]["values"]
     assert hero_power_bonus
     assert any(
-        row.get("value")
-        and (
-            "shadow" in str(row.get("comment", "")).lower()
-            or "hero_power" in str(row.get("comment", "")).lower()
-        )
+        row.get("value") and _has_shadow_hero_power_transform_semantics(row)
         for row in hero_power_bonus
     )
     assert not any(
         row.get("mulligan") == "SW_448" or row.get("card_id") == "SW_448"
         for row in mulligan["Mulligan"]["values"]
     )
+
+
+def _has_shadow_hero_power_transform_semantics(row: dict) -> bool:
+    text = " ".join(
+        str(row.get(key, ""))
+        for key in ("comment", "condition", "target", "value", "name")
+    ).lower()
+    return any(
+        token in text
+        for token in ("enable_shadow", "shadowform", "mind spike", "shadow hero")
+    ) or ("transform" in text and "hero_power" in text)
 
 
 def _write_fixture_map(path: Path, url: str, page_name: str) -> None:
