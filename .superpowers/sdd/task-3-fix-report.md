@@ -194,3 +194,44 @@ Implementation commit SHA:
 ```text
 12f2713544009e5fe89c18f9ced6c4d82eb0a397 fix: require direct hero power transform claims
 ```
+
+## Task 3 Final Fix: Direct Transform Wording and Gate Coverage
+
+### TDD Red Evidence
+
+Command:
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
+```
+
+Observed red output:
+
+```text
+1 failed, 8 passed in 0.20s
+```
+
+The failing regression was `test_hero_power_strategy_is_not_a_direct_transform_claim`: the previous matcher accepted `Darkbishop Benedictus changes your hero power strategy.` because it stopped matching immediately after `hero power`. The decklist and stats/snippet no-claim fixtures were also upgraded to strong source metadata, including deck-match metadata and keep/transform wording, so their rejection exercises family/visibility gates independently of source strength.
+
+### Fix
+
+- The matcher now accepts a bare direct `hero power` object only when it is not followed by another noun, while retaining explicit `into/to Mind Spike|Shadowform` targets.
+- Direct named targets such as `changes into Shadowform` remain supported.
+- Added explicit positive coverage for `Darkbishop Benedictus changes your hero power into Shadowform.`
+- Added the requested negative coverage for `hero power strategy`.
+
+### Green Evidence
+
+```powershell
+python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
+```
+
+```text
+9 passed in 0.09s
+```
+
+### Latest Implementation Commit
+
+```text
+948a4e6c70500c89c2eb2f5040750942c00ae45d fix: harden direct transform text matching
+```
