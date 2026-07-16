@@ -3,6 +3,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLED_HSCONFIG_SKILL = Path.home() / ".codex" / "skills" / "hsconfig" / "SKILL.md"
+TASK7_OPERATOR_DOCS = [
+    "docs/operator/source-backed-strong-closure.md",
+    "docs/operator/guide-research-policy.md",
+]
 
 SOURCE_BACKED_STRONG_TASK7_SENTINELS = [
     "Source-candidate registries are acquisition seeds only, not promotion authority.",
@@ -26,18 +30,14 @@ def _assert_task7_sentinels(text: str) -> None:
 
 
 def test_source_backed_strong_operator_docs_state_task7_contracts():
-    text = "\n".join(
-        [
-            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
-                encoding="utf-8"
-            ),
-            (ROOT / "docs/operator/guide-research-policy.md").read_text(
-                encoding="utf-8"
-            ),
-        ]
-    )
-
-    _assert_task7_sentinels(text)
+    for relative_path in TASK7_OPERATOR_DOCS:
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        try:
+            _assert_task7_sentinels(text)
+        except AssertionError as exc:
+            raise AssertionError(
+                f"{relative_path} is missing one or more Task 7 sentinels"
+            ) from exc
 
 
 def test_repo_hsconfig_skill_states_task7_contracts():
