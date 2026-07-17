@@ -15,6 +15,7 @@ from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
     run_research_deck_command,
+    run_research_status_sync_command,
     run_source_acquire_command,
     run_source_autopilot_command,
     run_source_manifest_command,
@@ -52,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_contract_doctor_command(args)
     if args.command == "contract-spine-sentinel":
         return run_contract_spine_sentinel_command(args)
+    if args.command == "research-status-sync":
+        return run_research_status_sync_command(args)
     if args.command == "validate":
         return run_validate_command(args)
     return emit_result(

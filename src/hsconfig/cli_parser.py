@@ -236,6 +236,21 @@ def build_parser() -> argparse.ArgumentParser:
     contract_spine_sentinel.add_argument("--out", help="Optional JSON output path.")
     contract_spine_sentinel.add_argument("--json", action="store_true")
 
+    research_status_sync = subparsers.add_parser(
+        "research-status-sync",
+        help="diagnostic research snapshot status sync",
+        description=(
+            "Read a prepared package and historical research result JSON snapshots, "
+            "then report whether those snapshots are current, stale, conflicting, "
+            "or missing against the canonical operator summary. This command is "
+            "diagnostic only and never writes runtime files."
+        ),
+    )
+    research_status_sync.add_argument("--package", required=True)
+    research_status_sync.add_argument("--research-results-dir", required=True)
+    research_status_sync.add_argument("--out", help="Optional JSON output path.")
+    research_status_sync.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")

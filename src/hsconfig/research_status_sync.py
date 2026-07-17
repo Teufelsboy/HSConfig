@@ -18,12 +18,6 @@ SEED_STRENGTHS = {
     "stats_only",
     "unfetched_acquisition_seed",
 }
-RELATIONS = (
-    "current_with_canonical",
-    "stale_or_seed_only",
-    "conflicts_with_canonical",
-    "missing",
-)
 
 
 def build_research_status_sync_report(
@@ -31,194 +25,183 @@ def build_research_status_sync_report(
     research_result_paths: Sequence[str | Path],
 ) -> dict[str, Any]:
     package_path = Path(package_dir)
-    canonical_status = _canonical_status(package_path)
+    operator_summary = _read_json(package_path / NORMAL_APPLY_AUTHORITY)
+    canonical = _canonical_status(operator_summary)
     rows = [
-        _research_snapshot_row(canonical_status, Path(result_path))
-        for result_path in sorted(research_result_paths, key=lambda path: str(path))
+        _research_snapshot_row(canonical, Path(path))
+        for path in sorted(research_result_paths, key=lambda path: str(path))
     ]
-    if not rows:
-        rows.append(_missing_research_snapshot_row(canonical_status))
-
     return {
         "schema_version": 1,
+        "authority": DIAGNOSTIC_AUTHORITY,
+        "operator_gate_impact": DIAGNOSTIC_AUTHORITY,
         "normal_apply_authority": NORMAL_APPLY_AUTHORITY,
-        "research_snapshot_authority": DIAGNOSTIC_AUTHORITY,
-        "canonical_downgrade_allowed": False,
-        "canonical_promotion_allowed": False,
-        "source_status_apply_blocking": False,
-        "summary": _summary(canonical_status, rows),
-        "research_snapshots": rows,
+        "package": str(package_path),
+        "canonical_package_status": canonical,
+        "research_snapshot_rows": rows,
+        "summary": _summary(canonical, rows),
     }
 
 
-def _canonical_status(package_path: Path) -> str:
-    payload = _read_json(package_path / NORMAL_APPLY_AUTHORITY)
-    if not isinstance(payload, Mapping):
-        return "UNKNOWN"
-    return str(
-        payload.get("source_backed_status")
-        or payload.get("source_status")
-        or payload.get("static_contract_status")
-        or "UNKNOWN"
-    )
+def _read_json(path: Path) -> dict[str, Any]:
+    data = read_json(path)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    return data
+
+
+def _canonical_status(operator_summary: Mapping[str, Any]) -> dict[str, Any]:
+    deck = operator_summary.get("deck", {})
+    deck_name = deck.get("name", "") if isinstance(deck, Mapping) else ""
+    return {
+        "deck_name": str(deck_name),
+        "technical_status": str(operator_summary.get("technical_status") or ""),
+        "semantic_status": str(operator_summary.get("semantic_status") or ""),
+        "source_backed_status": str(
+            operator_summary.get("source_backed_status")
+            or operator_summary.get("source_status")
+            or operator_summary.get("static_contract_status")
+            or ""
+        ),
+        "source_strong_ready": bool(operator_summary.get("source_strong_ready", False)),
+        "first_missing_source_action": str(
+            operator_summary.get("first_missing_source_action") or ""
+        ),
+        "source_status_apply_blocking": bool(
+            operator_summary.get("source_status_apply_blocking", False)
+        ),
+        "source_status_diagnostic_only": bool(
+            operator_summary.get("source_status_diagnostic_only", True)
+        ),
+        "default_only_runtime_surfaces": list(
+            operator_summary.get("default_only_runtime_surfaces") or []
+        ),
+        "no_default_only_runtime_status": str(
+            operator_summary.get("no_default_only_runtime_status") or ""
+        ),
+    }
 
 
 def _research_snapshot_row(
-    canonical_status: str,
-    result_path: Path,
+    canonical: Mapping[str, Any],
+    path: Path,
 ) -> dict[str, Any]:
-    payload = _read_json(result_path)
-    research_status = _research_status(payload)
-    snapshot_kind = _research_snapshot_kind(payload, research_status)
-    return {
-        "path": str(result_path),
-        "deck_name": _deck_name(result_path, payload),
-        "canonical_status": canonical_status,
-        "research_status": research_status,
-        "snapshot_kind": snapshot_kind,
-        "relation_to_canonical": _snapshot_relation(
-            canonical_status=canonical_status,
-            research_status=research_status,
-            snapshot_kind=snapshot_kind,
-        ),
-        "recommended_refresh_action": _recommended_refresh_action(
-            canonical_status=canonical_status,
-            research_status=research_status,
-            snapshot_kind=snapshot_kind,
-        ),
-        "canonical_downgrade_allowed": False,
-        "canonical_promotion_allowed": False,
-        "source_status_apply_blocking": False,
-    }
-
-
-def _missing_research_snapshot_row(canonical_status: str) -> dict[str, Any]:
-    return {
-        "path": None,
-        "deck_name": None,
-        "canonical_status": canonical_status,
-        "research_status": None,
-        "snapshot_kind": "missing",
-        "relation_to_canonical": "missing",
-        "recommended_refresh_action": "run_research_deep_snapshot_refresh",
-        "canonical_downgrade_allowed": False,
-        "canonical_promotion_allowed": False,
-        "source_status_apply_blocking": False,
-    }
-
-
-def _research_status(payload: Any) -> str | None:
-    if not isinstance(payload, Mapping):
-        return None
-    status = (
-        payload.get("source_backed_status")
-        or payload.get("source_status")
-        or payload.get("static_contract_status")
+    data = _read_json(path)
+    research_status = _research_status(data)
+    research_strength = str(data.get("source_strength") or research_status or "")
+    research_kind = _research_snapshot_kind(research_strength, research_status)
+    relation = _snapshot_relation(
+        canonical_status=str(canonical["source_backed_status"]),
+        research_status=research_status,
+        research_kind=research_kind,
     )
-    return str(status) if status else None
+    return {
+        "path": str(path),
+        "deck_name": str(data.get("deck_name") or ""),
+        "canonical_deck_name": canonical["deck_name"],
+        "research_source_backed_status": research_status,
+        "research_source_strength": research_strength,
+        "research_snapshot_kind": research_kind,
+        "research_first_missing_source_action": str(
+            data.get("first_missing_source_action") or ""
+        ),
+        "canonical_source_backed_status": canonical["source_backed_status"],
+        "canonical_first_missing_source_action": canonical[
+            "first_missing_source_action"
+        ],
+        "snapshot_relation": relation,
+        "canonical_downgrade_allowed": False,
+        "canonical_promotion_allowed": False,
+        "source_status_apply_blocking": False,
+        "recommended_refresh_action": _recommended_refresh_action(relation),
+    }
 
 
-def _research_snapshot_kind(payload: Any, research_status: str | None) -> str:
-    if not isinstance(payload, Mapping):
-        return "missing"
-    if _contains_seed_only_strength(payload):
+def _research_status(data: Mapping[str, Any]) -> str:
+    explicit = str(
+        data.get("source_backed_status")
+        or data.get("source_status")
+        or data.get("static_contract_status")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    strength = str(data.get("source_strength") or "").strip()
+    if strength == STRONG_STATUS:
+        return STRONG_STATUS
+    if strength in SEED_STRENGTHS:
+        return PARTIAL_STATUS
+    return strength or "unknown"
+
+
+def _research_snapshot_kind(source_strength: str, research_status: str) -> str:
+    normalized = source_strength.strip()
+    if normalized in SEED_STRENGTHS:
         return "seed_only"
-    if research_status == STRONG_STATUS:
-        return "strong_snapshot"
-    if research_status == PARTIAL_STATUS:
-        return "partial_snapshot"
-    return "snapshot"
+    if normalized == STRONG_STATUS or research_status == STRONG_STATUS:
+        return "canonical_like"
+    if not normalized:
+        return "unknown"
+    return "status_snapshot"
 
 
 def _snapshot_relation(
     *,
     canonical_status: str,
-    research_status: str | None,
-    snapshot_kind: str,
+    research_status: str,
+    research_kind: str,
 ) -> str:
-    if snapshot_kind == "missing" or research_status is None:
-        return "missing"
-    if snapshot_kind == "seed_only":
+    if research_kind == "seed_only" and canonical_status == STRONG_STATUS:
         return "stale_or_seed_only"
-    if research_status == canonical_status:
+    if canonical_status == research_status:
         return "current_with_canonical"
-    return "conflicts_with_canonical"
+    if canonical_status == STRONG_STATUS and research_status != STRONG_STATUS:
+        return "stale_or_seed_only"
+    if canonical_status != research_status:
+        return "conflicts_with_canonical"
+    return "current_with_canonical"
 
 
-def _recommended_refresh_action(
-    *,
-    canonical_status: str,
-    research_status: str | None,
-    snapshot_kind: str,
-) -> str:
-    relation = _snapshot_relation(
-        canonical_status=canonical_status,
-        research_status=research_status,
-        snapshot_kind=snapshot_kind,
-    )
+def _recommended_refresh_action(relation: str) -> str:
     if relation == "current_with_canonical":
         return "none"
     if relation == "stale_or_seed_only":
-        return "refresh_research_snapshot"
+        return "refresh_research_snapshot_from_canonical_package"
     if relation == "conflicts_with_canonical":
-        return "refresh_package_or_research_snapshot"
-    return "run_research_deep_snapshot_refresh"
+        return "inspect_package_and_research_snapshot_before_updating_docs"
+    return "inspect_research_snapshot"
 
 
-def _summary(canonical_status: str, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    counts = {relation: 0 for relation in RELATIONS}
-    for row in rows:
-        relation = str(row.get("relation_to_canonical") or "")
-        if relation in counts:
-            counts[relation] += 1
+def _summary(
+    canonical: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    stale_or_seed_count = sum(
+        1 for row in rows if row["snapshot_relation"] == "stale_or_seed_only"
+    )
+    mismatch_count = sum(
+        1 for row in rows if row["snapshot_relation"] == "conflicts_with_canonical"
+    )
+    refresh_actions = sorted(
+        {
+            str(row["recommended_refresh_action"])
+            for row in rows
+            if row["recommended_refresh_action"] != "none"
+        }
+    )
     return {
-        "authoritative_status": canonical_status,
-        "normal_apply_authority": NORMAL_APPLY_AUTHORITY,
-        "research_snapshot_authority": DIAGNOSTIC_AUTHORITY,
+        "canonical_deck_name": canonical["deck_name"],
+        "canonical_source_backed_status": canonical["source_backed_status"],
+        "canonical_source_strong_ready": canonical["source_strong_ready"],
+        "canonical_first_missing_source_action": canonical[
+            "first_missing_source_action"
+        ],
+        "missing_research_snapshot": not rows,
+        "research_snapshot_count": len(rows),
+        "stale_or_seed_snapshot_count": stale_or_seed_count,
+        "status_mismatch_count": mismatch_count,
         "canonical_downgrade_allowed": False,
         "canonical_promotion_allowed": False,
         "source_status_apply_blocking": False,
-        "counts": counts,
+        "recommended_refresh_actions": refresh_actions,
     }
-
-
-def _deck_name(result_path: Path, payload: Any) -> str:
-    if isinstance(payload, Mapping):
-        deck_name = payload.get("deck_name") or payload.get("name")
-        if deck_name:
-            return str(deck_name)
-    return result_path.stem
-
-
-def _contains_seed_only_strength(payload: Mapping[str, Any]) -> bool:
-    strength = str(payload.get("source_strength") or payload.get("source_kind") or "")
-    if strength in SEED_STRENGTHS:
-        return True
-    acquisition = payload.get("source_acquisition")
-    if isinstance(acquisition, Mapping):
-        acquisition_strength = str(
-            acquisition.get("source_strength") or acquisition.get("source_kind") or ""
-        )
-        if acquisition_strength in SEED_STRENGTHS:
-            return True
-    items = payload.get("items")
-    if isinstance(items, Sequence) and not isinstance(items, (str, bytes)):
-        for item in items:
-            if not isinstance(item, Mapping):
-                continue
-            item_strength = str(
-                item.get("source_strength")
-                or item.get("source_kind")
-                or item.get("kind")
-                or ""
-            )
-            if item_strength in SEED_STRENGTHS:
-                return True
-    return False
-
-
-def _read_json(path: Path) -> Any:
-    try:
-        return read_json(path)
-    except (FileNotFoundError, ValueError):
-        return None

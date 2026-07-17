@@ -16,6 +16,7 @@ from hsconfig.input_loading import (
 from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
+from hsconfig.research_status_sync import build_research_status_sync_report
 from hsconfig.source_acquisition import collect_public_source_records
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
@@ -42,6 +43,10 @@ def run_source_acquire_command(args: argparse.Namespace) -> int:
 
 def run_research_deck_command(args: argparse.Namespace) -> int:
     return run_payload_command(args, research_deck_payload)
+
+
+def run_research_status_sync_command(args: argparse.Namespace) -> int:
+    return run_payload_command(args, research_status_sync_payload)
 
 
 def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -346,3 +351,45 @@ def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         },
         0,
     )
+
+
+def research_status_sync_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    report = build_research_status_sync_report(
+        package_dir=args.package,
+        research_result_paths=_research_result_paths(Path(args.research_results_dir)),
+    )
+    if getattr(args, "out", None):
+        out = Path(args.out)
+        _assert_safe_research_status_sync_output(out)
+        report = {**report, "written_report": str(out)}
+        write_json(out, report)
+    return report, 0
+
+
+def _research_result_paths(research_results_dir: Path) -> list[Path]:
+    if not research_results_dir.exists():
+        return []
+    if research_results_dir.is_file():
+        return [research_results_dir]
+    return sorted(research_results_dir.rglob("*.json"), key=lambda path: str(path))
+
+
+def _assert_safe_research_status_sync_output(path: Path) -> None:
+    parts = {part.lower() for part in path.parts}
+    runtime_file_names = {
+        "combo.json",
+        "concede.json",
+        "deck_config.ini",
+        "globalvalues.json",
+        "mulligan.json",
+        "presume.json",
+    }
+    name = path.name.lower()
+    if path.suffix.lower() != ".json":
+        raise ValueError(
+            "research-status-sync --out must be a .json diagnostic report path"
+        )
+    if "customconfig" in parts or name in runtime_file_names:
+        raise ValueError(
+            "research-status-sync --out must not target HearthRanger runtime files"
+        )
