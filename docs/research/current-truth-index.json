@@ -12,6 +12,7 @@
       "current_with_canonical",
       "stale_or_seed_only",
       "conflicts_with_canonical",
+      "different_deck_snapshot",
       "missing"
     ],
     "canonical_downgrade_allowed": false,

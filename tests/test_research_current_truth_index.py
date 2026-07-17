@@ -36,6 +36,21 @@ def test_current_truth_index_is_machine_readable_and_diagnostic_only():
     assert data["operator_gate_impact"] == "diagnostic_only"
     assert data["normal_operator_path"] == "docs/operator/README.md"
     assert data["normal_apply_authority"] == "reports/operator_summary.json"
+    assert data["research_snapshot_sync_policy"] == {
+        "command": "hsconfig research-status-sync",
+        "authority": "diagnostic_only",
+        "normal_apply_authority": "reports/operator_summary.json",
+        "research_snapshots_can_be": [
+            "current_with_canonical",
+            "stale_or_seed_only",
+            "conflicts_with_canonical",
+            "different_deck_snapshot",
+            "missing",
+        ],
+        "canonical_downgrade_allowed": False,
+        "canonical_promotion_allowed": False,
+        "source_status_apply_blocking": False,
+    }
     assert data["active_runtime_surfaces"] == [
         "Mulligan.json",
         "GlobalValues.json",

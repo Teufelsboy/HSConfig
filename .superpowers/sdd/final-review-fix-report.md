@@ -244,3 +244,79 @@ Exit code: 0.
 
 - The report was written after the fix commit so it could contain the real final commit hash; therefore the report file itself is a post-commit workspace artifact, not part of commit `1bd59df5c07ec300baae997868db4cfbb89f8c08`.
 - `git diff --check` returned exit code 0 with existing Windows line-ending normalization warnings only.
+
+---
+
+## Final Review Fix: Canonical Source Status Sync
+
+### Files Changed
+
+- `src/hsconfig/research_status_sync.py`
+  - Normalize deck identities before assigning snapshot relations.
+  - Classify non-matching snapshots as `different_deck_snapshot` before any status comparison.
+  - Base `missing_research_snapshot`, stale/conflict counts, and matching counts only on canonical-deck snapshots.
+  - Keep different-deck rows diagnostic and non-blocking with `inspect_research_snapshot_deck_identity`.
+- `src/hsconfig/commands/source_workflow.py`
+  - Write the unmodified diagnostic report for `--out`; do not add `written_report`.
+- `tests/test_research_status_sync.py`
+  - Cover mixed results, same-status different-deck snapshots, and results with no matching deck snapshot.
+- `tests/test_research_status_sync_cli.py`
+  - Assert that `--out` and stdout payloads are equal and omit `written_report`.
+- `tests/test_research_current_truth_index.py`
+  - Assert the exact machine-readable snapshot-sync policy, normal apply authority, and all diagnostic-only booleans.
+- `docs/research/current-truth-index.json`
+  - Add `different_deck_snapshot` to the documented relation contract.
+
+### Tests Run
+
+Command:
+
+```powershell
+python -m pytest tests/test_research_status_sync.py tests/test_research_status_sync_cli.py tests/test_research_current_truth_index.py -q -p no:cacheprovider
+```
+
+Output:
+
+```text
+...............                                                          [100%]
+15 passed in 0.92s
+```
+
+Command:
+
+```powershell
+python -m pytest tests/test_research_status_sync.py tests/test_research_status_sync_cli.py tests/test_research_current_truth.py tests/test_docs_active_path.py tests/test_source_status_resolver.py tests/test_operator_summary.py tests/test_universal_wild_no_block_matrix.py -q -p no:cacheprovider
+```
+
+Output:
+
+```text
+........................................................................ [ 35%]
+........................................................................ [ 70%]
+...........................................................              [100%]
+203 passed in 18.19s
+```
+
+Command:
+
+```powershell
+git diff --check -- src/hsconfig/research_status_sync.py src/hsconfig/commands/source_workflow.py tests/test_research_status_sync.py tests/test_research_status_sync_cli.py tests/test_research_current_truth_index.py docs/research/current-truth-index.json
+```
+
+Output:
+
+```text
+warning: in the working copy of 'docs/research/current-truth-index.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/hsconfig/commands/source_workflow.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/hsconfig/research_status_sync.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_research_current_truth_index.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_research_status_sync.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/test_research_status_sync_cli.py', LF will be replaced by CRLF the next time Git touches it
+```
+
+Exit code: 0.
+
+### Concerns
+
+- No functional concerns found. The diff check reports existing Windows line-ending normalization warnings only.
+- No files were staged or committed.

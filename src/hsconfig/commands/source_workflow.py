@@ -361,7 +361,6 @@ def research_status_sync_payload(args: argparse.Namespace) -> tuple[dict[str, An
     if getattr(args, "out", None):
         out = Path(args.out)
         _assert_safe_research_status_sync_output(out, package_dir=Path(args.package))
-        report = {**report, "written_report": str(out)}
         write_json(out, report)
     return report, 0
 

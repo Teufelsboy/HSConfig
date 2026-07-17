@@ -63,7 +63,7 @@ def test_research_status_sync_cli_writes_diagnostic_report(
     assert output["authority"] == "diagnostic_only"
     assert output["operator_gate_impact"] == "diagnostic_only"
     assert output["normal_apply_authority"] == "reports/operator_summary.json"
-    assert output["written_report"] == str(out)
+    assert "written_report" not in output
     assert output["summary"]["canonical_source_backed_status"] == "SOURCE_BACKED_STRONG"
     assert output["summary"]["stale_or_seed_snapshot_count"] == 1
     assert output["summary"]["source_status_apply_blocking"] is False

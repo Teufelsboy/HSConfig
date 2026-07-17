@@ -101,6 +101,87 @@ def test_matching_strong_research_snapshot_is_current_with_canonical(
     assert row["recommended_refresh_action"] == "none"
 
 
+def test_mixed_results_only_treat_matching_deck_snapshot_as_current(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    matching_result = _research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "Shadow Priest",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+        },
+    )
+    other_deck_result = _research_result(
+        tmp_path,
+        "CtAPaladin",
+        {
+            "deck_name": "CtAPaladin",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+        },
+    )
+
+    report = build_research_status_sync_report(
+        package_dir,
+        [matching_result, other_deck_result],
+    )
+
+    rows_by_deck = {
+        row["deck_name"]: row for row in report["research_snapshot_rows"]
+    }
+    assert rows_by_deck["Shadow Priest"]["snapshot_relation"] == "current_with_canonical"
+    assert rows_by_deck["CtAPaladin"]["snapshot_relation"] == "different_deck_snapshot"
+    assert report["summary"]["missing_research_snapshot"] is False
+    assert report["summary"]["matching_research_snapshot_count"] == 1
+
+
+def test_different_deck_strong_snapshot_is_not_current_with_canonical(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    other_deck_result = _research_result(
+        tmp_path,
+        "CtAPaladin",
+        {
+            "deck_name": "CtAPaladin",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [other_deck_result])
+
+    row = report["research_snapshot_rows"][0]
+    assert row["snapshot_relation"] == "different_deck_snapshot"
+    assert row["recommended_refresh_action"] == "inspect_research_snapshot_deck_identity"
+    assert row["canonical_downgrade_allowed"] is False
+    assert row["canonical_promotion_allowed"] is False
+
+
+def test_other_deck_results_do_not_hide_missing_matching_research_snapshot(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    other_deck_result = _research_result(
+        tmp_path,
+        "CtAPaladin",
+        {
+            "deck_name": "CtAPaladin",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [other_deck_result])
+
+    assert report["summary"]["research_snapshot_count"] == 1
+    assert report["summary"]["matching_research_snapshot_count"] == 0
+    assert report["summary"]["missing_research_snapshot"] is True
+
+
 def test_research_snapshot_cannot_promote_partial_package(tmp_path: Path) -> None:
     package_dir = tmp_path / "04_package"
     _write_json(
