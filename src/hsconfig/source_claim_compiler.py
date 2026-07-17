@@ -41,6 +41,7 @@ def compile_source_search_records(
             "source_url": acquired.get("source_url"),
             "source_title": acquired.get("source_title"),
             "source_family": source_family or "public_page",
+            "normalized_text": text,
             "retrieved_at": _text(acquired.get("retrieved_at", "")) or _iso_datetime(current_date),
             "deck_match": _deck_match(deck_name, acquired),
             "deck_match_scope": _text(acquired.get("deck_match_scope", "")) or "unknown",

@@ -2,11 +2,8 @@
 name: hsconfig
 description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages from a Hearthstone deck name and deck code. Use when Codex must build or validate direct Mulligan, GlobalValues, `per-card <CARDID>.json`, or Combo runtime config before games are played.
 ---
-
 # HSConfig
-
 Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
-
 For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`; Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply.
 Inputs: deck name, deck code, runtime root for `prepare`, `build`, and `apply`, short source evidence rows from current guide research, optional researched `source_documents.json`, and normalized guide sources from `hsconfig research-deck`.
 
@@ -19,19 +16,8 @@ For fresh public-guide-backed configs, prefer `hsconfig configure ... --online-s
 
 For an optimal fresh deck config, prefer the source-backed path: `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
 Do not block a valid deck because public guide coverage is thin. Build the load-safe config, keep `operator_summary.json` as the apply authority, and report `first_missing_source_action` when `SOURCE_BACKED_STRONG` is not honestly closed.
-
 `hsconfig configure --auto-source --source-search-results-json ...` runs the source-autopilot bridge and writes `02_source_autopilot/source_documents.json`; `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; operator_summary.json remains the only normal apply authority. In `source_autopilot_report.json`, `runtime_apply_authority`, `default_only_runtime_surfaces`, `source_backed_strong_closure.closed`, `card_rows`, `surface_rows`, and first-missing maps are diagnostics only.
-
-Source-backed strong closure invariants:
-- Source-candidate registries are acquisition seeds only, not promotion authority.
-- Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
-- No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
-- `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
-- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
-- Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
-- Profile-aware closure and first-missing maps by card/surface are diagnostics.
-- No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
-
+Source-backed strong closure invariants: Source-candidate registries are acquisition seeds only, not promotion authority. Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence. No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics. `source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority. `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate. Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text. Profile-aware closure and first-missing maps by card/surface are diagnostics. No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
 - Treat source claim kind and runtime surface authority as separate decisions. Generate a load-safe valid package for any valid deck code, but only write a runtime row when the claim passes that surface's gate; otherwise keep the claim visible in reports.
 - Treat the source candidate registry as acquisition input, not evidence authority. Registry URLs must still pass public URL validation, page fetch, deck/card matching, source policy, claim extraction, and source-autopilot closure. Check `source_candidate_urls`, `source_urls`, and `candidate_registry_url_count` when diagnosing online-source runs.
 - No hidden default-only runtime: every expected surface must be emitted, explicitly suppressed, or reported as a gap or source action.
@@ -44,7 +30,6 @@ Source-backed strong closure invariants:
 - Use the canonical claim lifecycle for source-to-runtime explanations: source claim -> normalized `claim_kind` -> semantic qualifiers -> conflict quarantine -> surface gate -> builder/router outcome -> emitted runtime row or suppression reason. quarantined claims suppress unsafe runtime rows, stay visible in reports, and do not block load-safe valid packages. source_contract_audit.json is diagnostic; operator_summary.json remains the only normal apply authority.
 - Source Contract Boundary: `claim_kind`, the source contract matrix, and the surface gate decide whether source evidence may lower to runtime config; effect relevance, guide importance, and archetype value do not bypass that chain. `operator_summary.json remains the normal apply authority`; source-contract reports are diagnostic only. Warnings are follow-up work, not runtime apply blockers. normal HSConfig output must not emit `Presume.json` or `Concede.json`.
 - Contract invariant closure means: single apply authority, no silent default-only success, claim-kind surface discipline, and effect-not-mulligan canary coverage. It is diagnostic proof, not another runtime apply gate. `operator_summary.json remains the only normal apply authority`. Diagnostic reports must not become apply gates; default-only runtime surfaces must be visible, not silent; `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` stay outside the normal HSConfig path.
-
 Operator rules:
 - Decode the deck code first, then resolve exact CardID identity before writing config.
 - `hsconfig configure` is the normal one-command path; `source-manifest`, `draft-source-documents`, `hsconfig research-deck --source-documents-json`, and `hsconfig prepare --guide-sources-json` are inspected stages for fixtures, debugging, and research contract review.

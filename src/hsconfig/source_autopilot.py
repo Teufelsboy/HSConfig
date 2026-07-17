@@ -118,7 +118,7 @@ def extract_source_evidence_rows(
             source_record={**dict(source), **base},
             current_date=current_date,
         ):
-            _append_unique(rows, seen, row)
+            _append_unique(rows, seen, {**base, **row})
         for row in _explicit_claim_rows(source, base):
             _append_unique(rows, seen, row)
     return rows
