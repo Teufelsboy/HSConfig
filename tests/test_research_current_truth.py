@@ -26,3 +26,14 @@ def test_current_truth_does_not_turn_research_into_apply_authority():
     ]
     for phrase in forbidden:
         assert phrase not in text.lower()
+
+
+def test_current_truth_documents_research_snapshot_status_sync():
+    text = (ROOT / "docs" / "research" / "current-truth.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "research-status-sync" in text
+    assert "research snapshots can be stale or seed-only" in text
+    assert "research snapshots do not downgrade canonical package status" in text
+    assert "operator_summary.json remains the only normal apply authority" in text

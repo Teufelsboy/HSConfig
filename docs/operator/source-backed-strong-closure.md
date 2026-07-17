@@ -48,6 +48,12 @@ feeds `operator_summary.json`, `strong_promotion_report.json`, and
 `source_evidence_closure.json`; it never overrides `technical_status`,
 `runtime_apply_mode`, or `runtime_apply_allowed`.
 
+`hsconfig research-status-sync` is a read-only diagnostic for historical
+`research-deep` JSON files. It compares snapshots with the canonical prepared
+package status in `reports/operator_summary.json`. A stale or seed-only
+snapshot must not downgrade `SOURCE_BACKED_STRONG`, must not promote a partial
+package, and does not create apply authority.
+
 Operator invariants for source-backed strong closure:
 
 - Source-candidate registries are acquisition seeds only, not promotion authority.

@@ -172,6 +172,22 @@ def test_docs_define_source_backed_strong_without_second_gate():
     assert "default-only" in text
 
 
+def test_operator_docs_name_research_status_sync_as_diagnostic_only():
+    docs = "\n".join(
+        [
+            Path("docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "research-status-sync" in docs
+    assert "diagnostic only" in docs
+    assert "must not downgrade `SOURCE_BACKED_STRONG`" in docs
+    assert "does not create apply authority" in docs
+
+
 def test_operator_docs_define_closure_diagnostics_as_summaries_not_gates():
     closure = Path("docs/operator/source-backed-strong-closure.md").read_text(
         encoding="utf-8"

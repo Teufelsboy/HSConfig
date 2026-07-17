@@ -4,6 +4,20 @@
   "operator_gate_impact": "diagnostic_only",
   "normal_operator_path": "docs/operator/README.md",
   "normal_apply_authority": "reports/operator_summary.json",
+  "research_snapshot_sync_policy": {
+    "command": "hsconfig research-status-sync",
+    "authority": "diagnostic_only",
+    "normal_apply_authority": "reports/operator_summary.json",
+    "research_snapshots_can_be": [
+      "current_with_canonical",
+      "stale_or_seed_only",
+      "conflicts_with_canonical",
+      "missing"
+    ],
+    "canonical_downgrade_allowed": false,
+    "canonical_promotion_allowed": false,
+    "source_status_apply_blocking": false
+  },
   "active_runtime_surfaces": [
     "Mulligan.json",
     "GlobalValues.json",

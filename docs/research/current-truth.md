@@ -19,6 +19,16 @@ Active docs win over historical evidence. Do not start a new architecture wave f
 
 Older research packages can explain why a decision happened, but they do not override the operator path, installed skill, or universal Wild no-block contract. If old evidence mentions normal `Presume.json`, `Concede.json`, replay tuning, winrate gates, or candidate promotion, treat that as historical context unless the active docs explicitly reintroduce it.
 
+## Research Snapshot Status Sync
+
+Use `hsconfig research-status-sync --package <04_package> --research-results-dir <results>`
+when `research-deep` JSON files appear to disagree with a prepared package.
+Research artifacts are evidence history, not operator instructions. Historical
+research snapshots can be stale or seed-only; research snapshots do not downgrade canonical package status, and they do not promote partial packages.
+They can recommend a refresh action for docs/research hygiene only.
+They do not create apply authority. `operator_summary.json remains the only
+normal apply authority`.
+
 ## Current Active Evidence
 
 - `2026-07-14-hsconfig-source-contract-logic-guardrail-audit`: Contract-spine Guardrail v2 evidence. Confirms the current two-lane model: technical load safety decides normal apply, while source-contract, source-to-runtime, and mechanic warnings stay diagnostic and non-blocking.
