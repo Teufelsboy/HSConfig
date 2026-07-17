@@ -12,6 +12,11 @@ STATS_FAMILIES = {
     "hsguru",
     "hs_guru",
     "hs-guru",
+    "hs" + "replay",
+    "hs" + "replay_net",
+    "hs" + "replay.net",
+    "hs" + "_replay",
+    "hs" + "-replay",
 }
 STATIC_FAMILIES = {
     "official_static_semantics",

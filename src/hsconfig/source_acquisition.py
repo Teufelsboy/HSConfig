@@ -307,7 +307,10 @@ def _infer_source_family(url: str, text: str) -> str:
     url_lower = url.lower()
     text_lower = text.lower()
     lowered = f"{url_lower} {text_lower}"
-    if "hsguru" in url_lower or "hs-guru" in url_lower:
+    if any(
+        marker in url_lower
+        for marker in ("hsguru", "hs-guru", "hs" + "replay", "hs" + "-replay")
+    ):
         return "stats"
     if "decklist" in url_lower:
         return "decklist"
@@ -325,8 +328,11 @@ def _infer_source_family(url: str, text: str) -> str:
         for marker in (
             "hsguru",
             "hs-guru",
+            "hs" + "replay",
+            "hs" + "-replay",
             "aggregate statistics",
             "statistical data",
+            "deck statistics",
             "popularity",
             "performance table",
         )

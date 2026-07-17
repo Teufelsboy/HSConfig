@@ -207,6 +207,59 @@ def test_decklist_and_stats_sources_are_non_promoting():
         assert record["first_missing_source_action"] != "none"
 
 
+def test_hsreplay_stats_sources_are_non_promoting_even_with_guide_words():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_slug": "thindeck",
+        "deck_code_hash": "sha256:thin",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}
+        ],
+    }
+
+    def hsreplay_stats_fetcher(
+        url: str, timeout_seconds: float
+    ) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        return (
+            200,
+            "text/html",
+            b"""
+            <html>
+              <head><title>HSReplay ThinDeck mulligan guide stats</title></head>
+              <body>
+                <h1>ThinDeck aggregate stats and performance table</h1>
+                <p>HSReplay deck statistics, popularity, mulligan guide data,
+                performance table, winrate, and card inclusion data for a Wild
+                decklist. This is aggregate statistical support only and does
+                not contain complete strategy instructions for runtime claims.</p>
+                <p>2026 Wild stats support for ThinDeck includes Fixture Card.</p>
+              </body>
+            </html>
+            """,
+        )
+
+    payload = collect_public_source_records(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_urls=["https://hsreplay.net/decks/example"],
+        current_date="2026-07-15",
+        fetcher=hsreplay_stats_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    record = payload["source_records"][0]
+    assert record["source_family"] == "stats"
+    assert record["source_visibility"] == "stats_only"
+    assert record["source_category"] == "stats"
+    assert record["source_record_strength"] != "candidate_strong"
+    assert record["promotion_eligible"] is False
+    assert record["strong_promotion_eligible"] is False
+    assert record["promotion_blockers"]
+    assert record["first_missing_source_action"] != "none"
+
+
 def test_full_text_guide_wins_over_stats_context_markers():
     deck_identity = {
         "deck_name": "ShadowPriest",
