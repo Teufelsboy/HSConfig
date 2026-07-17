@@ -12,14 +12,16 @@ Target branch: `main`
 - The repository had many historical local `codex/*` branches and 10 remote `origin/codex/*` branches.
 - One old safety stash existed from earlier source-contract work.
 
-## Safety Backups
+## Temporary Safety Bundles
 
-Two git bundle backups were created before destructive cleanup:
+Two temporary git bundle backups were created before destructive cleanup:
 
 - `.git\cleanup-backups\hsconfig-pre-branch-cleanup-20260717-161519.bundle`
 - `.git\cleanup-backups\hsconfig-post-main-pre-delete-20260717-163015.bundle`
 
-The second bundle was verified after `main` was updated and before branch deletion. It contains the cleaned `main`, the local branch refs that were deleted, the remote codex refs that were deleted, and the old `refs/stash` value. This keeps the removed branch/stash state recoverable without keeping the live repository cluttered.
+The second bundle was verified after `main` was updated and before branch deletion. It contained the cleaned `main`, the local branch refs that were deleted, the remote codex refs that were deleted, and the old `refs/stash` value.
+
+After the live cleanup was complete, the operator requested a no-backup final state. The temporary bundle files and the `.git\cleanup-backups` directory were therefore removed from the live repository.
 
 ## Quality Audit
 
@@ -74,9 +76,9 @@ All merged local `codex/*` branches were deleted. One remaining stale local scra
 `codex/hsconfig-source-claim-quality-autonomy-with-scratch-history`, was not merged into `main`.
 It was reviewed before deletion and found to be old scratch history that would roll back large parts of the current Source-Closure system. It was included in the verified backup bundle and then deleted from the live repository.
 
-## Stash Cleanup
+## Stash And Backup Cleanup
 
-The old safety stash was included in the verified backup bundle and then dropped from the live repository. This keeps the active repository clean while retaining recoverability through the bundle backup.
+The old safety stash was included in the temporary verified bundle before branch deletion and then dropped from the live repository. The temporary bundles were later removed as well, so the final local repository state contains no live stash and no backup bundle directory.
 
 ## Final Expected State
 
@@ -86,4 +88,4 @@ The old safety stash was included in the verified backup bundle and then dropped
 - Stash list: empty.
 - `main` tracks `origin/main`.
 - No open GitHub pull requests.
-
+- `.git\cleanup-backups`: absent.
