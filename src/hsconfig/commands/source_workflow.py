@@ -360,7 +360,7 @@ def research_status_sync_payload(args: argparse.Namespace) -> tuple[dict[str, An
     )
     if getattr(args, "out", None):
         out = Path(args.out)
-        _assert_safe_research_status_sync_output(out)
+        _assert_safe_research_status_sync_output(out, package_dir=Path(args.package))
         report = {**report, "written_report": str(out)}
         write_json(out, report)
     return report, 0
@@ -374,7 +374,7 @@ def _research_result_paths(research_results_dir: Path) -> list[Path]:
     return sorted(research_results_dir.rglob("*.json"), key=lambda path: str(path))
 
 
-def _assert_safe_research_status_sync_output(path: Path) -> None:
+def _assert_safe_research_status_sync_output(path: Path, *, package_dir: Path) -> None:
     parts = {part.lower() for part in path.parts}
     runtime_file_names = {
         "combo.json",
@@ -388,6 +388,11 @@ def _assert_safe_research_status_sync_output(path: Path) -> None:
     if path.suffix.lower() != ".json":
         raise ValueError(
             "research-status-sync --out must be a .json diagnostic report path"
+        )
+    operator_summary_path = package_dir / "reports" / "operator_summary.json"
+    if path.resolve() == operator_summary_path.resolve():
+        raise ValueError(
+            "research-status-sync --out must not target package operator_summary.json"
         )
     if "customconfig" in parts or name in runtime_file_names:
         raise ValueError(

@@ -126,6 +126,34 @@ def test_research_status_sync_cli_rejects_runtime_output_path(
     assert not runtime_out.exists()
 
 
+def test_research_status_sync_cli_rejects_package_operator_summary_output_path(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    package_dir = _package(tmp_path)
+    out = package_dir / "reports" / "operator_summary.json"
+    original_operator_summary = out.read_text(encoding="utf-8")
+
+    exit_code = main(
+        [
+            "research-status-sync",
+            "--package",
+            str(package_dir),
+            "--research-results-dir",
+            str(tmp_path / "research"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert output["status"] == "failed"
+    assert "must not target package operator_summary.json" in output["errors"][0]
+    assert out.read_text(encoding="utf-8") == original_operator_summary
+
+
 def test_research_status_sync_cli_rejects_non_json_output_path(
     tmp_path: Path,
     capsys,
