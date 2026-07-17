@@ -634,3 +634,16 @@ Plan: `docs/superpowers/plans/2026-07-17-hsconfig-source-contract-acceptance-loo
 - [x] Task 9: Operator docs and `.agents/skills/hsconfig/SKILL.md` state exact acceptance-loop wording for single apply authority, evidence-quality labels, non-blocking source status, default-only prevention, and Darkbishop effect-only boundaries; installed skill sync passed.
 - [x] Task 10: Final combined verification complete after final read-only review findings were fixed; targeted review edge tests passed (`5 passed`), focused plan suite passed (`241 passed`), full suite passed (`1524 passed, 11 skipped`), and remaining handoff checks ran after this ledger update.
 - [x] Final review fix: HSReplay aggregate stats now stay non-promoting even with guide words; targeted regression passed, source-acquisition suite passed (`14 passed`), focused plan suite passed (`236 passed`), full suite passed (`1525 passed, 11 skipped`), package validation passed, and installed skill sync passed.
+
+---
+
+# HSConfig Research Snapshot Status Sync SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-research-snapshot-status-sync.md`
+
+- [x] Task 1: Preflight baseline refreshed; resolver baseline passed before implementation.
+- [x] Task 2: Pure `research_status_sync` report logic added and verified (`tests/test_research_status_sync.py` passed); side-effect scan on the module had no matches.
+- [x] Task 3: `research-status-sync` CLI added with direct diagnostic report payload; CLI/router slice passed; review found one Important output-authority gap.
+- [x] Review fix: `--out <package>/reports/operator_summary.json` is rejected and preserves the original operator summary; re-review returned no Critical, Important, or Minor findings.
+- [x] Task 4: Current truth, operator docs, current-truth index, and repo-local skill document the diagnostic-only research snapshot boundary; docs tests passed and installed skill sync passed.
+- [x] Task 5: Final verification passed: focused suite `200 passed`, smoke suite `58 passed`, CLI suite `48 passed`, installed skill sync check passed, pure sync module side-effect scan had no matches, and output-authority re-review was clean.
