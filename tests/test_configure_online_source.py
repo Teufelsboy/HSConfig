@@ -112,17 +112,18 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     result = run_configure_with_fixture_online_source(tmp_path, monkeypatch)
     bundle_path = Path(result["source_bundle_path"])
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
-
-    assert bundle["schema_version"] == 1
-    assert bundle["promotion"]["first_missing_source_action"] in {
-        "none",
-        "replace_default_only_runtime_surface_with_source_or_policy_claim",
-        "add_explicit_mulligan_source",
-        "map_claim_kind_or_keep_report_only",
-    }
-
     package = Path(result["package_path"])
     operator = _read_json(package / "reports" / "operator_summary.json")
+
+    assert bundle["schema_version"] == 1
+    assert bundle["promotion"]["source_backed_status"] == operator[
+        "source_backed_status"
+    ]
+    assert bundle["promotion"]["semantic_status"] == operator["source_backed_status"]
+    assert bundle["promotion"]["first_missing_source_action"] == operator[
+        "first_missing_source_action"
+    ]
+
     ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
     ownership_rows = {row["file"]: row for row in ownership["files"]}
 
@@ -133,6 +134,81 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
         for row in operator["report_ownership"]
     )
     assert ownership_rows["reports/source_bundle.json"]["diagnostic_only"] is True
+
+
+def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
+    tmp_path: Path, monkeypatch
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_shadow_cards_json(cards_json)
+    source_url = "https://example.test/current-shadowpriest-guide"
+    current_guide = tmp_path / "current_shadowpriest_guide.html"
+    current_guide.write_text(
+        """
+        <html>
+          <head><title>ShadowPriest 2026 Full Mulligan Guide</title></head>
+          <body>
+            <h1>ShadowPriest 2026 Full Mulligan Guide</h1>
+            <p>Mulligan: Keep Papercraft Angel, Twilight Deceptor, Raise Dead,
+            and Shadowbomber for current Wild ShadowPriest openings.</p>
+            <p>Darkbishop Benedictus enables the Shadow hero power and Mind
+            Spike plan as a start-of-game effect, but this guide text does not
+            say to keep Darkbishop in the opening hand.</p>
+            <p>This full-text public guide discusses the deck plan, early burn
+            pressure, matchup posture, current Wild ladder context, and enough
+            card-specific overlap to be fetched and claim-normalized before any
+            runtime package can treat it as source-backed evidence.</p>
+          </body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(json.dumps({source_url: str(current_guide)}), encoding="utf-8")
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(runtime),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--auto-source",
+            "--source-url",
+            source_url,
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    assert status == 0
+    acquisition = _read_json(out / "02_source_acquisition" / "source_search_results.json")
+    autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
+    operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+
+    record = acquisition["records"][0]
+
+    assert record["source_category"] == "public_guide"
+    assert record["source_visibility"] == "full_text"
+    assert record["source_record_strength"] == "candidate_strong"
+    assert record["promotion_eligible"] is True
+    assert record["strong_promotion_eligible"] is True
+    assert record["first_missing_source_action"] == "none"
+    assert autopilot["strong_candidate"] is True
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["source_status_apply_blocking"] is False
 
 
 def test_configure_online_source_builds_source_backed_shadowpriest_package(

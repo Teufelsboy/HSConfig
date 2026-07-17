@@ -589,3 +589,47 @@ Plan: `docs/superpowers/plans/2026-07-16-hsconfig-source-documents-closure-engin
 - [x] Task 4: Source-autopilot compact lane aliases added as diagnostics only.
 - [x] Task 5: Operator docs and repo skill guidance updated for registry, lane aliases, and apply-authority boundaries.
 - [x] Task 6: Full verification, installed skill sync, git hygiene, and final review completed; targeted, docs/skill, and full pytest suites passed before final staging.
+
+---
+
+# HSConfig Canonical Source Status Sync SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-17-hsconfig-canonical-source-status-sync.md`
+
+- [x] Preflight: `git fetch --all --prune` completed, `HEAD...origin/main` was `0 0`, and the current plan path exists in `docs/superpowers/plans/`.
+- [x] Task 1: Worktree classified on branch `codex/hsconfig-canonical-source-status-sync`; changed files are limited to resolver/report consumers, tests, docs, skill sync, and the plan.
+- [x] Task 2: Canonical side-effect-free `src/hsconfig/source_status_resolver.py` verified; resolver unit tests passed (`10 passed`), and the forbidden side-effect scan had no matches.
+- [x] Task 3: `operator_summary.py` consumes the resolver and exposes canonical fields; default-only branch coverage tightened; operator-summary tests passed (`115 passed`).
+- [x] Task 4: `strong_promotion_report.py` and `source_evidence_closure.py` consume the resolver; focused report tests passed in the final suite.
+- [x] Task 5: Docs and `.agents/skills/hsconfig/SKILL.md` state the canonical resolver, diagnostic-only source status, and `operator_summary.json` apply authority; installed skill synced and `sync_installed_skill.py --check` passed.
+- [x] Task 6: Universal Wild no-block matrix verifies all supplied decks, no default-only runtime surfaces, canonical `source_status_*` non-blocking fields, and ShadowPriest/Darkbishop effect-not-mulligan behavior.
+- [x] Subagent review: three read-only reviewers found coverage gaps; gaps were fixed; final read-only review returned `Status: OK`.
+- [x] Task 7: Final verification passed: focused suite `185 passed`, docs policy `25 passed`, Wild/operator slice `137 passed`, skill sync check passed, `git diff --check` exited `0` with LF/CRLF warnings only, and upstream comparison stayed `0 0`.
+
+---
+
+# HSConfig Source-Backed Strong Config Builder SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-17-hsconfig-source-backed-strong-config-builder.md`
+
+- [x] Subagent review pass 1 found two Important gaps: `source_bundle.py` still derived promotion fields independently, and default-only runtime surfaces were not protected ahead of invalid technical status handling.
+- [x] Worker fix 1 made `source_bundle.py` consume canonical `operator_summary` fields and made default-only resolver handling non-strong before invalid-status fallback; focused tests passed (`21 passed`).
+- [x] Subagent re-review found one remaining Important gap: invalid technical package status could still preserve incoming `SOURCE_BACKED_STRONG` when no default-only surface existed.
+- [x] Worker fix 2 made invalid technical status resolve to `INVALID_PACKAGE` unconditionally and added a regression for conflicting incoming Strong status with no default-only surfaces.
+- [x] Final read-only subagent re-review returned `APPROVED` with no Critical or Important findings.
+- [x] Final verification passed: focused plan suite `233 passed`, full suite `1514 passed, 11 skipped`, installed skill sync check passed, and `git diff --check` exited `0` with LF/CRLF warnings only.
+
+---
+
+# HSConfig Source Contract Acceptance Loop SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-17-hsconfig-source-contract-acceptance-loop.md`
+
+- [x] Preflight: `git fetch --all --prune` completed; branch `codex/hsconfig-canonical-source-status-sync` stayed even with `origin/main` (`0 0`) before implementation.
+- [x] Tasks 1-2: Research outline, fields, 12 deck result JSON files, and `docs/operator/source-inputs/2026-07-17-user-wild-source-cross-check.json` were created by the research worker and validated for count, YAML/JSON shape, candidate-only usage, and deck coverage.
+- [x] Tasks 3-5: Source status remains canonical through `operator_summary`; `source_bundle.py` now consumes the canonical operator fields instead of deriving first-missing status from explainability fallback logic.
+- [x] Task 6: `tests/test_shadowpriest_source_contract_acceptance.py` verifies ShadowPriest reaches `SOURCE_BACKED_STRONG`, has no default-only runtime surfaces, keeps `source_status_apply_blocking=false`, excludes `SW_448` from Mulligan, and preserves Darkbishop effect semantics.
+- [x] Task 7: Online source acquisition explicitly classifies decklist and stats/HSGuru-style sources as non-promoting, while fetched current full-text guides can become strong candidates only after acquisition.
+- [x] Task 8: Universal Wild/no-block and ShadowPriest package validation remain in the focused verification set.
+- [x] Task 9: Operator docs and `.agents/skills/hsconfig/SKILL.md` state exact acceptance-loop wording for single apply authority, evidence-quality labels, non-blocking source status, default-only prevention, and Darkbishop effect-only boundaries; installed skill sync passed.
+- [x] Task 10: Final combined verification complete after final read-only review findings were fixed; targeted review edge tests passed (`5 passed`), focused plan suite passed (`241 passed`), full suite passed (`1524 passed, 11 skipped`), and remaining handoff checks ran after this ledger update.

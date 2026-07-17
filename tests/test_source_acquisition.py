@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from hsconfig import source_acquisition as source_acquisition_module
@@ -67,6 +68,61 @@ def test_collect_public_source_records_fetches_bounded_public_pages():
     assert payload["source_acquisition_report"]["failed_fetch_count"] == 0
 
 
+def test_collect_public_source_records_uses_utc_year_when_current_date_is_not_supplied(
+    monkeypatch,
+):
+    class FrozenDatetime(datetime):
+        @classmethod
+        def utcnow(cls):
+            return cls(2026, 7, 15)
+
+    monkeypatch.setattr(source_acquisition_module, "datetime", FrozenDatetime)
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
+        ],
+    }
+
+    def current_guide_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        return (
+            200,
+            "text/html",
+            b"""
+            <html>
+              <head><title>ShadowPriest 2026 Guide</title></head>
+              <body>
+                <h1>ShadowPriest 2026 Guide</h1>
+                <p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p>
+                <p>This public guide explains the opening hand, early pressure,
+                Shadow hero power plan, and matchup posture for the current
+                wild ShadowPriest archetype with enough full-text context to
+                qualify as a guide rather than a snippet.</p>
+              </body>
+            </html>
+            """,
+        )
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/shadowpriest"],
+        current_date=None,
+        fetcher=current_guide_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    record = payload["source_records"][0]
+    assert record["publication_year"] == 2026
+    assert record["source_record_strength"] == "candidate_strong"
+    assert record["source_strength"] == "candidate_strong"
+
+
 def test_collect_public_source_records_reports_candidate_registry_url_count():
     deck_identity = {
         "deck_name": "ShadowPriest",
@@ -91,6 +147,117 @@ def test_collect_public_source_records_reports_candidate_registry_url_count():
 
     assert payload["source_acquisition_report"]["candidate_registry_url_count"] == 1
     assert payload["source_acquisition_report"]["explicit_source_url_count"] == 0
+
+
+def test_decklist_and_stats_sources_are_non_promoting():
+    deck_identity = {
+        "deck_name": "ThinDeck",
+        "deck_slug": "thindeck",
+        "deck_code_hash": "sha256:thin",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Fixture Card", "cost": 1, "count": 2}
+        ],
+    }
+
+    def decklist_and_stats_fetcher(
+        url: str, timeout_seconds: float
+    ) -> tuple[int, str, bytes]:
+        del timeout_seconds
+        if url.endswith("decklist"):
+            return 200, "text/html", (FIXTURES / "decklist_only.html").read_bytes()
+        if "hsguru" in url:
+            return (
+                200,
+                "text/html",
+                b"""
+                <html>
+                  <head><title>HSGuru ThinDeck public stats</title></head>
+                  <body>
+                    <h1>ThinDeck popularity and aggregate statistics</h1>
+                    <p>Aggregate statistics, popularity, performance table,
+                    and card inclusion data for a Wild decklist. This page is
+                    stats support only and contains no full-text guide
+                    instructions for runtime surface claims.</p>
+                  </body>
+                </html>
+                """,
+            )
+        return 404, "text/plain", b"not found"
+
+    payload = collect_public_source_records(
+        deck_name="ThinDeck",
+        deck_identity=deck_identity,
+        source_urls=[
+            "https://example.test/decklist",
+            "https://www.hsguru.com/deck/12345",
+        ],
+        current_date="2026-07-15",
+        fetcher=decklist_and_stats_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    records = {record["source_category"]: record for record in payload["source_records"]}
+
+    assert set(records) == {"decklist", "stats"}
+    for record in records.values():
+        assert record["promotion_eligible"] is False
+        assert record["strong_promotion_eligible"] is False
+        assert record["promotion_blockers"]
+        assert record["first_missing_source_action"] != "none"
+
+
+def test_full_text_guide_wins_over_stats_context_markers():
+    deck_identity = {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
+        ],
+    }
+
+    def guide_with_stats_context(
+        url: str, timeout_seconds: float
+    ) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        return (
+            200,
+            "text/html",
+            b"""
+            <html>
+              <head><title>ShadowPriest 2026 Mulligan Guide</title></head>
+              <body>
+                <h1>ShadowPriest 2026 Mulligan Guide</h1>
+                <p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p>
+                <p>The guide mentions aggregate statistics and popularity as
+                context, but the strategic full-text guide content and explicit
+                opening-hand keep instructions remain the source family signal.</p>
+                <p>This current Wild guide explains early pressure, Shadow
+                damage, matchup posture, and card-specific opening decisions
+                with enough full-text context to qualify as a guide.</p>
+              </body>
+            </html>
+            """,
+        )
+
+    payload = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        source_urls=["https://example.test/shadowpriest-guide-with-stats-context"],
+        current_date="2026-07-15",
+        fetcher=guide_with_stats_context,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    record = payload["source_records"][0]
+    assert record["source_family"] == "guide"
+    assert record["source_visibility"] == "full_text"
+    assert record["source_category"] == "public_guide"
+    assert record["promotion_eligible"] is True
+    assert record["strong_promotion_eligible"] is True
 
 
 def test_collect_public_source_records_keeps_fetch_failures_non_blocking():

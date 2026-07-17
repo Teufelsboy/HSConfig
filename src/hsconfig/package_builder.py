@@ -429,6 +429,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         source_to_runtime_explainability_report=(
             source_to_runtime_explainability_report
         ),
+        source_claim_gap_report=source_claim_gap_report,
     )
     write_json(reports_dir / "strong_promotion_report.json", strong_promotion_report)
     write_json(

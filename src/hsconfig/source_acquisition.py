@@ -304,9 +304,34 @@ def _deck_match_evidence(
 
 
 def _infer_source_family(url: str, text: str) -> str:
-    lowered = f"{url} {text}".lower()
-    if "mulligan" in lowered or "guide" in lowered or "keep " in lowered:
+    url_lower = url.lower()
+    text_lower = text.lower()
+    lowered = f"{url_lower} {text_lower}"
+    if "hsguru" in url_lower or "hs-guru" in url_lower:
+        return "stats"
+    if "decklist" in url_lower:
+        return "decklist"
+    guide_word_is_negated = "no full-text guide" in text_lower or "not a guide" in text_lower
+    has_guide_signal = (
+        "mulligan" in text_lower
+        or "keep " in text_lower
+        or "/guide" in url_lower
+        or ("guide" in lowered and not guide_word_is_negated)
+    )
+    if has_guide_signal:
         return "guide"
+    if any(
+        marker in lowered
+        for marker in (
+            "hsguru",
+            "hs-guru",
+            "aggregate statistics",
+            "statistical data",
+            "popularity",
+            "performance table",
+        )
+    ):
+        return "stats"
     if "deck code" in lowered or "decklist" in lowered:
         return "decklist"
     return "public_page"
@@ -316,6 +341,8 @@ def _source_visibility(source_family: str, text: str) -> str:
     lowered = text.lower()
     if source_family == "decklist":
         return "decklist_only"
+    if source_family == "stats":
+        return "stats_only"
     if len(text) < 180:
         return "snippet_only"
     if any(marker in lowered for marker in ("mulligan", "guide", "matchup", "keep ")):
@@ -328,6 +355,8 @@ def _source_lane_hint(source_family: str, visibility: str) -> str:
         return "public_guide"
     if source_family == "decklist":
         return "decklist"
+    if source_family == "stats":
+        return "stats"
     if source_family in {"static_semantics", "hearthstonejson_static_semantics"}:
         return "static_semantics"
     if visibility == "snippet_only":
@@ -340,6 +369,8 @@ def _source_category(source_family: str, visibility: str, lane_hint: str) -> str
         return "public_guide"
     if source_family == "decklist":
         return "decklist"
+    if source_family == "stats":
+        return "stats"
     if source_family in {"static_semantics", "hearthstonejson_static_semantics"}:
         return "static_semantics"
     if visibility == "snippet_only":
@@ -350,6 +381,8 @@ def _source_category(source_family: str, visibility: str, lane_hint: str) -> str
 def _source_document_kind(source_family: str, visibility: str) -> str:
     if source_family == "decklist":
         return "decklist"
+    if source_family == "stats":
+        return "stats"
     if visibility == "snippet_only":
         return "snippet"
     if source_family == "guide":
@@ -422,7 +455,7 @@ def _current_year(current_date: str | date | None) -> int | None:
     text = str(current_date or "")
     if len(text) >= 4 and text[:4].isdigit():
         return int(text[:4])
-    return None
+    return datetime.utcnow().year
 
 
 def _dedupe_urls(urls: Sequence[str]) -> list[str]:

@@ -1,0 +1,29 @@
+{
+  "deck_name": "PirateDH",
+  "deck_code": "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==",
+  "archetype": "pirate_hero_attack_pressure",
+  "current_deck_sources": [
+    {
+      "url": "https://hearthstone-decks.net/pirate-demon-hunter-223-legend-mangekou-score-49-32/",
+      "source_family": "hearthstone_decks",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [
+    {
+      "url": "https://hs.cardsrealm.com/en-us/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+      "source_family": "cardsrealm",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1puveoq/is_pirate_dh_really_that_good/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    }
+  ],
+  "first_missing_source_action": "add_pirate_dh_card_role_or_mulligan_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

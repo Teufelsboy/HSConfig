@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -17,6 +18,65 @@ SOURCE_BACKED_STRONG_TASK7_SENTINELS = [
     "Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.",
     "Profile-aware closure and first-missing maps by card/surface are diagnostics.",
     "No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.",
+]
+CANONICAL_SOURCE_STATUS_SENTINELS = [
+    "src/hsconfig/source_status_resolver.py",
+    "source_backed_status",
+    "source_strong_ready",
+    "first_missing_source_action",
+    "source_missing_source_actions",
+    "source_status_reasons",
+    "source_status_diagnostic_only",
+    "source_status_apply_blocking",
+]
+SOURCE_STATUS_DIAGNOSTIC_SENTINELS = [
+    "`source_status_apply_blocking` must remain `false`",
+    "`default_only` is visible quality debt, not an apply blocker",
+    "source-preflight diagnostic, not runtime-package proof",
+    "candidate URLs promotion authority",
+]
+SOURCE_CONTRACT_ACCEPTANCE_DOCS = [
+    "docs/operator/source-backed-strong-closure.md",
+    "docs/operator/universal-wild-no-block-contract.md",
+    ".agents/skills/hsconfig/SKILL.md",
+]
+REQUIRED_CONTRACT_PHRASES = [
+    "operator_summary.json remains the only normal apply authority",
+    "SOURCE_BACKED_STRONG is an evidence-quality label",
+    "source_status_apply_blocking must remain false",
+    "default-only runtime surfaces prevent SOURCE_BACKED_STRONG",
+    "Darkbishop Benedictus",
+]
+STALE_CONTRACT_TERMS = [
+    "source report apply authority",
+    "candidate url proves strong",
+    "default-only strong",
+]
+SOURCE_INPUT_CONTRACT = (
+    ROOT
+    / "docs"
+    / "operator"
+    / "source-inputs"
+    / "2026-07-17-user-wild-source-cross-check.json"
+)
+SOURCE_RESEARCH_RESULTS = (
+    ROOT
+    / "docs"
+    / "research"
+    / "2026-07-17-hsconfig-source-contract-acceptance-loop"
+    / "results"
+)
+SOURCE_PROVENANCE_DIAGNOSTIC_SENTINELS = [
+    "`reports/source_evidence_closure.json` is the compact diagnostic package-quality closure summary.",
+    "decklists, HSReplay/HSGuru aggregate stats, static card databases, `policy_fallback`, `default_runtime`, and runtime examples are support/diagnostic only",
+    "does not bypass URL validation",
+]
+STALE_SOURCE_STATUS_TERMS = [
+    "source_closure_contract_proof",
+    "strong_receipt",
+    "source_class_max_ceiling",
+    "effective_source_status",
+    "promotion_blocker_reason",
 ]
 
 
@@ -53,6 +113,115 @@ def test_installed_hsconfig_skill_states_task7_contracts_when_present():
     text = INSTALLED_HSCONFIG_SKILL.read_text(encoding="utf-8")
 
     _assert_task7_sentinels(text)
+
+
+def test_active_docs_and_skill_name_canonical_source_status_resolver():
+    combined = "\n".join(
+        [
+            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    for sentinel in CANONICAL_SOURCE_STATUS_SENTINELS:
+        assert sentinel in combined
+
+
+def test_active_docs_and_skill_state_source_status_is_diagnostic_not_apply_gate():
+    combined = "\n".join(
+        [
+            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    for sentinel in SOURCE_STATUS_DIAGNOSTIC_SENTINELS:
+        assert sentinel in combined
+    for sentinel in SOURCE_PROVENANCE_DIAGNOSTIC_SENTINELS:
+        assert sentinel in combined
+
+
+def test_active_docs_and_skill_state_source_contract_acceptance_loop_exact_phrases():
+    for relative_path in SOURCE_CONTRACT_ACCEPTANCE_DOCS:
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        lowered = text.lower()
+
+        for phrase in REQUIRED_CONTRACT_PHRASES:
+            assert phrase in text
+        for stale_term in STALE_CONTRACT_TERMS:
+            assert stale_term not in lowered
+
+
+def test_user_wild_source_input_keeps_unfetched_candidates_non_authoritative():
+    payload = json.loads(SOURCE_INPUT_CONTRACT.read_text(encoding="utf-8"))
+
+    assert payload["usage"] == "source_candidates_only_not_runtime_authority"
+    assert len(payload["decks"]) == 12
+    for deck in payload["decks"]:
+        assert deck["deck_name"]
+        assert deck["deck_code"]
+        assert deck["first_missing_source_action"]
+        for record in deck["source_candidates"]:
+            assert record["source_strength"] == "unfetched_acquisition_seed"
+            assert record["promotion_role"] == (
+                "candidate_only_until_fetched_and_claim_normalized"
+            )
+            assert record["classification_note"] == (
+                "must_be_fetched_and_claim_normalized_before_source_strength_or_runtime_use"
+            )
+        for record in deck["non_promoting_support"]:
+            assert record["promotion_role"] == "context_only"
+
+
+def test_research_results_do_not_label_unfetched_sources_as_decklist_or_stats_only():
+    result_files = sorted(SOURCE_RESEARCH_RESULTS.glob("*.json"))
+
+    assert len(result_files) == 12
+    for result_file in result_files:
+        payload = json.loads(result_file.read_text(encoding="utf-8"))
+        assert payload["source_strength"] == "unfetched_acquisition_seed"
+        assert "not runtime authority" in payload["notes"]
+
+
+def test_active_source_status_contract_does_not_reintroduce_stale_terms():
+    active_text = "\n".join(
+        [
+            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    for stale_term in STALE_SOURCE_STATUS_TERMS:
+        assert stale_term not in active_text
+
+
+def test_installed_hsconfig_skill_does_not_reintroduce_stale_source_status_terms_when_present():
+    if not INSTALLED_HSCONFIG_SKILL.exists():
+        return
+
+    text = INSTALLED_HSCONFIG_SKILL.read_text(encoding="utf-8")
+
+    for sentinel in CANONICAL_SOURCE_STATUS_SENTINELS:
+        assert sentinel in text
+    for sentinel in SOURCE_STATUS_DIAGNOSTIC_SENTINELS[:2]:
+        assert sentinel in text
+    for stale_term in STALE_SOURCE_STATUS_TERMS:
+        assert stale_term not in text
 
 
 def test_guide_research_policy_names_source_truth_boundary():

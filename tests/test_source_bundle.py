@@ -28,6 +28,13 @@ def test_source_bundle_exposes_source_claim_runtime_chain():
         operator_summary={
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strong_ready": True,
+            "first_missing_source_action": "none",
+            "source_missing_source_actions": [],
+            "source_status_reasons": [],
+            "source_status_diagnostic_only": True,
+            "source_status_apply_blocking": False,
             "default_only_runtime_surfaces": [],
         },
         explainability_report={
@@ -49,25 +56,90 @@ def test_source_bundle_exposes_source_claim_runtime_chain():
     assert bundle["claim_count"] == 1
     assert bundle["default_only_runtime_surfaces"] == []
     assert bundle["promotion"]["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert bundle["promotion"]["source_strong_ready"] is True
     assert bundle["promotion"]["first_missing_source_action"] == "none"
+    assert bundle["promotion"]["source_missing_source_actions"] == []
+    assert bundle["promotion"]["source_status_reasons"] == []
+    assert bundle["promotion"]["source_status_diagnostic_only"] is True
+    assert bundle["promotion"]["source_status_apply_blocking"] is False
     assert bundle["card_coverage"][0]["card_id"] == "SW_448"
 
 
-def test_source_bundle_prefers_first_missing_source_action_over_legacy_next_action():
+def test_source_bundle_uses_operator_summary_as_source_status_authority():
     bundle = build_source_bundle(
         deck_name="ThinDeck",
         deck_code="AAEBA-test",
         source_records=[],
         claims=[],
-        operator_summary={"default_only_runtime_surfaces": []},
+        operator_summary={
+            "source_backed_status": "SOURCE_BACKED_PARTIAL",
+            "first_missing_source_action": "add_operator_declared_source_action",
+            "source_missing_source_actions": ["add_operator_declared_source_action"],
+            "source_status_reasons": ["operator_summary_declared_gap"],
+            "source_status_apply_blocking": False,
+            "default_only_runtime_surfaces": [],
+        },
         explainability_report={
             "card_rows": [
                 {
-                    "first_missing_source_action": "add_explicit_mulligan_source",
+                    "first_missing_source_action": "stale_explainability_gap",
                     "next_source_action": "map_claim_kind_or_keep_report_only",
                 }
             ]
         },
     )
 
-    assert bundle["promotion"]["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert (
+        bundle["promotion"]["first_missing_source_action"]
+        == "add_operator_declared_source_action"
+    )
+    assert bundle["promotion"]["source_missing_source_actions"] == [
+        "add_operator_declared_source_action"
+    ]
+    assert bundle["promotion"]["source_status_reasons"] == [
+        "operator_summary_declared_gap"
+    ]
+    assert bundle["promotion"]["source_status_apply_blocking"] is False
+
+
+def test_source_bundle_uses_canonical_operator_promotion_fields() -> None:
+    bundle = build_source_bundle(
+        deck_name="PartialDeck",
+        deck_code="AAEBA-partial",
+        source_records=[],
+        claims=[],
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_backed_status": "SOURCE_BACKED_PARTIAL",
+            "source_strong_ready": False,
+            "first_missing_source_action": "add_profile_runtime_surface",
+            "source_missing_source_actions": ["add_profile_runtime_surface"],
+            "source_status_reasons": ["source_claim_gap"],
+            "source_status_diagnostic_only": True,
+            "source_status_apply_blocking": False,
+            "default_only_runtime_surfaces": [],
+        },
+        explainability_report={
+            "card_rows": [
+                {
+                    "first_missing_source_action": "none",
+                    "next_source_action": "none",
+                }
+            ]
+        },
+    )
+
+    assert bundle["promotion"]["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert bundle["promotion"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert (
+        bundle["promotion"]["first_missing_source_action"]
+        == "add_profile_runtime_surface"
+    )
+    assert bundle["promotion"]["source_strong_ready"] is False
+    assert bundle["promotion"]["source_missing_source_actions"] == [
+        "add_profile_runtime_surface"
+    ]
+    assert bundle["promotion"]["source_status_reasons"] == ["source_claim_gap"]
+    assert bundle["promotion"]["source_status_diagnostic_only"] is True
+    assert bundle["promotion"]["source_status_apply_blocking"] is False

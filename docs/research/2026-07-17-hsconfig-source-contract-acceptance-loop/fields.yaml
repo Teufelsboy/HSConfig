@@ -1,0 +1,28 @@
+fields:
+  deck_name:
+    type: string
+    description: Exact HSConfig deck name.
+  archetype:
+    type: string
+    description: Wild archetype or closest public archetype label.
+  current_deck_sources:
+    type: array
+    description: Current public pages that list the deck or close archetype, with URL and source family.
+  guide_sources:
+    type: array
+    description: Full-text guide or guide-like public sources that contain strategic, mulligan, combo, or usage claims.
+  source_strength:
+    type: string
+    description: One of exact_full_text_guide, archetype_full_text_guide, decklist_or_stats_only, static_semantics_only, missing.
+  lowerable_claim_kinds:
+    type: array
+    description: Claim kinds supported by the available source text.
+  non_promoting_support:
+    type: array
+    description: Sources that are useful context but must not prove SOURCE_BACKED_STRONG by themselves.
+  first_missing_source_action:
+    type: string
+    description: Concrete next source action when strong closure is not proven.
+  notes:
+    type: string
+    description: Short implementation-relevant notes.

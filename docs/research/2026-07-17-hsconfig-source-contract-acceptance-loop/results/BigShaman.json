@@ -1,0 +1,18 @@
+{
+  "deck_name": "BigShaman",
+  "deck_code": "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
+  "archetype": "big_recruit_deathrattle_cheat",
+  "current_deck_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

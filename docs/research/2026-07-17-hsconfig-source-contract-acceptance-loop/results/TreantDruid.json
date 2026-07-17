@@ -1,0 +1,24 @@
+{
+  "deck_name": "TreantDruid",
+  "deck_code": "AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==",
+  "archetype": "token_board_snowball",
+  "current_deck_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+      "source_family": "reddit",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [
+    {
+      "url": "https://hs.cardsrealm.com/en-us/articles/titans-top-3-best-decks-to-reach-legend",
+      "source_family": "cardsrealm",
+      "promotion_role": "context_only"
+    }
+  ],
+  "first_missing_source_action": "add_treant_druid_card_specific_source_claim",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

@@ -32,6 +32,23 @@ Minimal load-safe runtime apply is deliberately narrower than normal prepare ric
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 
+Source closure status is diagnostic and canonicalized through
+`src/hsconfig/source_status_resolver.py`. `source_backed_status`,
+`source_strong_ready`, `first_missing_source_action`, and
+`source_missing_source_actions` can explain why a package is not
+`SOURCE_BACKED_STRONG`, but `source_status_apply_blocking` must remain `false`
+for valid load-safe packages.
+
+Acceptance-loop wording:
+
+- operator_summary.json remains the only normal apply authority.
+- SOURCE_BACKED_STRONG is an evidence-quality label.
+- source_status_apply_blocking must remain false.
+- default-only runtime surfaces prevent SOURCE_BACKED_STRONG.
+- Darkbishop Benedictus preserves start-of-game and hero-power-transform
+  semantics, but must not become a mulligan keep without explicit opening-hand
+  source text.
+
 ## Card Data Intake
 
 HSConfig uses a three-layer intake policy:

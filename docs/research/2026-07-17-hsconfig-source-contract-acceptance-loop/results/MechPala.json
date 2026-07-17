@@ -1,0 +1,18 @@
+{
+  "deck_name": "MechPala",
+  "deck_code": "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+  "archetype": "mech_board_scaling",
+  "current_deck_sources": [
+    {
+      "url": "https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
+      "source_family": "hearthstone_decks",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

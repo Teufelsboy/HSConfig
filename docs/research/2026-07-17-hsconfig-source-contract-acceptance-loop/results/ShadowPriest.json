@@ -1,0 +1,18 @@
+{
+  "deck_name": "ShadowPriest",
+  "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+  "archetype": "aggro_burn_hero_power_transform",
+  "current_deck_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

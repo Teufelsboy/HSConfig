@@ -1,0 +1,29 @@
+{
+  "deck_name": "CtAPaladin",
+  "deck_code": "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
+  "archetype": "recruit_board_flood",
+  "current_deck_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+      "source_family": "reddit",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    }
+  ],
+  "first_missing_source_action": "add_current_cta_paladin_mulligan_keep_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

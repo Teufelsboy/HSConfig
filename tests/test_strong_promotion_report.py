@@ -18,6 +18,12 @@ def test_report_marks_source_backed_strong_as_promotable():
     )
 
     assert report["promotion_ready"] is True
+    assert report["source_backed_status"] == "SOURCE_BACKED_STRONG"
+    assert report["source_strong_ready"] is True
+    assert report["source_missing_source_actions"] == []
+    assert report["source_status_reasons"] == ["source_backed_strong_ready"]
+    assert report["source_status_diagnostic_only"] is True
+    assert report["source_status_apply_blocking"] is False
     assert report["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
     assert report["next_action"] == "fixture_can_be_core_source_backed"
 
@@ -37,6 +43,14 @@ def test_report_blocks_default_only_runtime_surface_from_operator_summary():
     )
 
     assert report["promotion_ready"] is False
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["source_strong_ready"] is False
+    assert report["first_missing_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
+    assert report["default_only_runtime_surfaces"] == ["mulligan"]
+    assert report["source_status_reasons"] == ["default_only_runtime_surface"]
+    assert report["source_status_apply_blocking"] is False
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["runtime_lowering_status"] == "LOAD_SAFE_WITH_POLICY_OR_REVIEW_ROWS"
     assert {
@@ -84,6 +98,38 @@ def test_report_blocks_strong_promotion_when_deck_surface_gap_is_open():
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "close_first_missing_chain"
     assert report["first_missing_chain"] == first_missing_chain
+
+
+def test_report_uses_resolver_status_when_closure_profile_is_open():
+    report = build_strong_promotion_report(
+        deck_name="ShadowPriest",
+        fixture_stage="core_source_backed_fixture",
+        operator_summary={
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "semantic_blockers": [],
+            "source_backed_strong_closure": {
+                "closure_profile_closed": False,
+                "closure_profile_first_missing_link": "missing_surface:mulligan",
+                "closure_profile_apply_blocking": False,
+            },
+        },
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 0,
+                "deck_surface_gap_count": 0,
+                "first_missing_chain": None,
+            },
+            "cards": {},
+        },
+    )
+
+    assert report["promotion_ready"] is False
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["static_contract_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["first_missing_source_action"] == "add_profile_runtime_surface"
+    assert report["source_status_reasons"] == ["closure_profile_not_closed"]
 
 
 def test_report_explains_first_missing_chain_for_non_strong_deck():
@@ -149,6 +195,8 @@ def test_report_marks_source_informed_apply_ready_without_strong_promotion():
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "source_informed_apply_ready_but_not_strong"
     assert report["source_informed_apply_readiness"] == readiness
+    assert report["first_missing_source_action"] == "add_explicit_mulligan_source"
+    assert report["source_status_reasons"] == ["semantic_blocker"]
 
 
 @pytest.mark.parametrize("surface_name", ["Presume.json", "Concede.json"])
@@ -167,6 +215,9 @@ def test_report_blocks_strong_promotion_when_normal_path_optional_surface_exists
     )
 
     assert report["promotion_ready"] is False
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["source_strong_ready"] is False
+    assert report["source_status_reasons"] == ["semantic_blocker"]
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "close_first_missing_chain"
     assert {
@@ -199,6 +250,9 @@ def test_report_keeps_canonical_next_action_for_invalid_package():
     )
 
     assert report["promotion_ready"] is False
+    assert report["source_backed_status"] == "INVALID_PACKAGE"
+    assert report["source_strong_ready"] is False
+    assert report["source_status_reasons"] == ["technical_status_not_valid"]
     assert report["verdict"] == "PROMOTION_BLOCKED"
     assert report["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
     assert report["operator_status"]["operator_next_action"] == "FIX_PACKAGE_BEFORE_APPLY"

@@ -1,0 +1,18 @@
+{
+  "deck_name": "PirateRogue",
+  "deck_code": "AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==",
+  "archetype": "pirate_tempo_weapon_pressure",
+  "current_deck_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1441097-ww-pirate-rogue",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "add_current_pirate_rogue_mulligan_or_role_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

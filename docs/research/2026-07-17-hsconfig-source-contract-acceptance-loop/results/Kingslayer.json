@@ -1,0 +1,34 @@
+{
+  "deck_name": "Kingslayer",
+  "deck_code": "AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=",
+  "archetype": "weapon_sequence_pressure",
+  "current_deck_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+      "source_family": "reddit",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1p8sp6f/legend_1478_kingsbane_rogue/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://hearthstone.wiki.gg/wiki/Kingsbane_Rogue",
+      "source_family": "wiki_gg",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/36087994",
+      "source_family": "hsguru",
+      "promotion_role": "context_only"
+    }
+  ],
+  "first_missing_source_action": "add_kingslayer_quick_pick_mulligan_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

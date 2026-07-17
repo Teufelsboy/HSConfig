@@ -230,6 +230,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     explainability_report = read_json(
         reports_dir / "source_to_runtime_explainability.json"
     )
+    source_claim_gap_report = read_json(reports_dir / "source_claim_gap_report.json")
     source_bundle_path = reports_dir / "source_bundle.json"
     write_json(
         source_bundle_path,
@@ -259,6 +260,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             deck_code=args.deck_code,
             operator_summary=operator_summary,
             source_to_runtime_explainability_report=explainability_report,
+            source_claim_gap_report=source_claim_gap_report,
         ),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)

@@ -1,0 +1,18 @@
+{
+  "deck_name": "CuteWarrior",
+  "deck_code": "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=",
+  "archetype": "closest_public_archetype_not_in_fixture_matrix",
+  "current_deck_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/13e0x4w/powersliding_with_cute_warrior_to_rank_278/",
+      "source_family": "reddit",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

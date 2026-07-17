@@ -28,7 +28,25 @@ Operator shorthand: SOURCE_BACKED_STRONG is an evidence-quality label and not a 
 `reports/operator_summary.json` remains the only normal apply authority.
 Plain operator wording: operator_summary.json remains the only normal apply authority.
 
+Acceptance-loop wording:
+
+- operator_summary.json remains the only normal apply authority.
+- SOURCE_BACKED_STRONG is an evidence-quality label.
+- source_status_apply_blocking must remain false.
+- default-only runtime surfaces prevent SOURCE_BACKED_STRONG.
+- Darkbishop Benedictus preserves start-of-game and hero-power-transform
+  semantics, but must not become a mulligan keep without explicit opening-hand
+  source text.
+
 `source_backed_strong_closure` and `no_default_only_runtime_status` are compact diagnostic-only `operator_summary.json` summaries. `source_backed_strong_closure` summarizes whether the visible source-to-runtime chain is closed enough for the Strong label. `no_default_only_runtime_status` summarizes whether expected runtime surfaces avoided hidden default-only output. They do not create apply gates, do not grant or deny runtime writes, and do not replace `reports/operator_summary.json` authority.
+
+`source_backed_status`, `source_strong_ready`, `first_missing_source_action`,
+`source_missing_source_actions`, `source_status_reasons`,
+`source_status_diagnostic_only`, and `source_status_apply_blocking` are resolved
+by `src/hsconfig/source_status_resolver.py`. The same diagnostic-only resolver
+feeds `operator_summary.json`, `strong_promotion_report.json`, and
+`source_evidence_closure.json`; it never overrides `technical_status`,
+`runtime_apply_mode`, or `runtime_apply_allowed`.
 
 Operator invariants for source-backed strong closure:
 

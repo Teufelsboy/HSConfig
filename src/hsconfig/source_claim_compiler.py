@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import date, datetime
+import re
 from typing import Any, Mapping, Sequence
 
 
@@ -451,8 +452,20 @@ def _discard_cost_min(text: str) -> int | None:
         phrases = (
             f"do not keep any {cost} cost or higher",
             f"do not keep any {cost}-cost or higher",
+            f"do not keep any of the {cost} cost or higher",
+            f"do not keep any of the {cost}-cost or higher",
+            f"do not keep - any of the {cost} cost or higher",
+            f"do not keep - any of the {cost}-cost or higher",
             f"don't keep any {cost} cost or higher",
             f"don't keep any {cost}-cost or higher",
+            f"don't keep any of the {cost} cost or higher",
+            f"don't keep any of the {cost}-cost or higher",
+            f"don't keep - any of the {cost} cost or higher",
+            f"don't keep - any of the {cost}-cost or higher",
+            f"dont keep any of the {cost} cost or higher",
+            f"dont keep any of the {cost}-cost or higher",
+            f"dont keep - any of the {cost} cost or higher",
+            f"dont keep - any of the {cost}-cost or higher",
             f"do not keep {cost} cost or higher",
             f"do not keep {cost}-cost or higher",
             f"don't keep {cost} cost or higher",
@@ -578,15 +591,22 @@ def _sentence_containing(text: str, marker: str) -> str:
     return ""
 
 
+NEGATIVE_KEEP_MARKERS = (
+    "do not keep",
+    "don't keep",
+    "dont keep",
+    "never keep",
+    "not keep",
+)
+
+
 def _positive_keep_sentences(text: str) -> list[str]:
     result: list[str] = []
     for sentence in _sentences(text):
         lowered = sentence.lower()
         if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
             continue
-        if _is_negative_keep_sentence(lowered):
-            continue
-        result.append(sentence)
+        result.extend(_keep_clause_segments(sentence, polarity="positive"))
     return result
 
 
@@ -596,8 +616,7 @@ def _negative_keep_sentences(text: str) -> list[str]:
         lowered = sentence.lower()
         if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
             continue
-        if _is_negative_keep_sentence(lowered):
-            result.append(sentence)
+        result.extend(_keep_clause_segments(sentence, polarity="negative"))
     return result
 
 
@@ -609,14 +628,55 @@ def _has_explicit_mulligan_context(lowered_sentence: str) -> bool:
 
 
 def _is_negative_keep_sentence(lowered_sentence: str) -> bool:
-    negative_markers = (
-        "do not keep",
-        "don't keep",
-        "dont keep",
-        "never keep",
-        "not keep",
-    )
-    return any(marker in lowered_sentence for marker in negative_markers)
+    return _negative_keep_marker_index(lowered_sentence) is not None
+
+
+def _keep_clause_segments(sentence: str, *, polarity: str) -> list[str]:
+    lowered = sentence.lower()
+    events: list[tuple[int, str]] = []
+    negative_spans = _negative_keep_marker_spans(lowered)
+    events.extend((start, "negative") for start, _end in negative_spans)
+    for match in re.finditer(r"\bkeep\b", lowered):
+        if any(start <= match.start() < end for start, end in negative_spans):
+            continue
+        events.append((match.start(), "positive"))
+    events.sort(key=lambda row: row[0])
+    if not events:
+        return []
+    polarity_events: list[tuple[int, str]] = []
+    for event in events:
+        if not polarity_events or polarity_events[-1][1] != event[1]:
+            polarity_events.append(event)
+
+    result: list[str] = []
+    for index, (start_index, event_polarity) in enumerate(polarity_events):
+        if event_polarity != polarity:
+            continue
+        next_start = (
+            polarity_events[index + 1][0]
+            if index + 1 < len(polarity_events)
+            else len(sentence)
+        )
+        segment_start = 0 if index == 0 else start_index
+        segment = sentence[segment_start:next_start].strip(" -,:;")
+        if segment:
+            result.append(segment)
+    return result
+
+
+def _negative_keep_marker_spans(lowered_sentence: str) -> list[tuple[int, int]]:
+    spans = []
+    for marker in NEGATIVE_KEEP_MARKERS:
+        start = lowered_sentence.find(marker)
+        while start != -1:
+            spans.append((start, start + len(marker)))
+            start = lowered_sentence.find(marker, start + 1)
+    return sorted(spans)
+
+
+def _negative_keep_marker_index(lowered_sentence: str) -> int | None:
+    spans = _negative_keep_marker_spans(lowered_sentence)
+    return spans[0][0] if spans else None
 
 
 def _short_evidence(text: str, marker: str | None = None) -> str:

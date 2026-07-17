@@ -1780,6 +1780,17 @@ def test_default_only_surface_blocks_strong_promotion_but_not_load_safe_apply():
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["runtime_apply_allowed"] is True
     assert summary["default_only_runtime_surfaces"] == ["mulligan"]
+    assert summary["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert summary["source_strong_ready"] is False
+    assert summary["first_missing_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
+    assert summary["source_missing_source_actions"] == [
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    ]
+    assert summary["source_status_reasons"] == ["default_only_runtime_surface"]
+    assert summary["source_status_diagnostic_only"] is True
+    assert summary["source_status_apply_blocking"] is False
     assert summary["semantic_status"] != "SOURCE_BACKED_STRONG"
     assert any(
         row.get("code") == "default_only_surface_not_strong_evidence"
@@ -2811,6 +2822,11 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         deck_name="ShadowPriest",
         deck_code="AAEBA-test",
         technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
         generated_files=["Mulligan.json", "GlobalValues.json"],
         mulligan_plan_report=_source_backed_mulligan_plan_report(),
         source_to_runtime_explainability_report={
@@ -2856,7 +2872,13 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         "closure_profile_missing_surfaces": [],
         "closure_profile_apply_blocking": False,
     }
+    assert summary["source_backed_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["source_strong_ready"] is True
     assert summary["first_missing_source_action"] == "none"
+    assert summary["source_missing_source_actions"] == []
+    assert summary["source_status_reasons"] == ["source_backed_strong_ready"]
+    assert summary["source_status_diagnostic_only"] is True
+    assert summary["source_status_apply_blocking"] is False
     assert summary["no_default_only_runtime_status"] == "clean"
     assert summary["runtime_apply_allowed"] is True
 
@@ -2903,6 +2925,15 @@ def test_operator_summary_profile_miss_stays_non_apply_blocking():
     ]
     assert closure["closure_profile_missing_surfaces"] == []
     assert closure["closure_profile_apply_blocking"] is False
+    assert summary["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert summary["source_strong_ready"] is False
+    assert summary["first_missing_source_action"] == "add_profile_claim_group_source"
+    assert summary["source_missing_source_actions"] == [
+        "add_profile_claim_group_source"
+    ]
+    assert summary["source_status_reasons"] == ["closure_profile_not_closed"]
+    assert summary["source_status_diagnostic_only"] is True
+    assert summary["source_status_apply_blocking"] is False
     assert summary["runtime_apply_allowed"] is True
 
 

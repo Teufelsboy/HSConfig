@@ -1,0 +1,39 @@
+{
+  "deck_name": "Boarlock",
+  "deck_code": "AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA",
+  "archetype": "combo_control_resource",
+  "current_deck_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1sbe2mj/how_are_you_supposed_to_beat_boarlock/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1oy5brn/mulligan_advice_for_boarlock/",
+      "source_family": "reddit",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+      "source_family": "hearthpwn",
+      "promotion_role": "context_only"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/34322767",
+      "source_family": "hsguru",
+      "promotion_role": "context_only"
+    }
+  ],
+  "first_missing_source_action": "add_boarlock_fracking_mulligan_source",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

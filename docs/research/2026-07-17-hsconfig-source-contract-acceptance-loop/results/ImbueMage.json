@@ -1,0 +1,18 @@
+{
+  "deck_name": "ImbueMage",
+  "deck_code": "AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=",
+  "archetype": "hero_power_spell_generation",
+  "current_deck_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
+  "guide_sources": [],
+  "source_strength": "unfetched_acquisition_seed",
+  "lowerable_claim_kinds": [],
+  "non_promoting_support": [],
+  "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+}

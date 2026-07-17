@@ -50,6 +50,18 @@ def test_representative_wild_matrix_uses_specific_closure_profiles():
         assert rows[deck_name]["closure_profile"] == expected_profile
 
 
+def test_no_block_deck_matrix_matches_source_candidate_proof_manifest():
+    proof = json.loads(
+        Path("docs/operator/source-candidate-proof-decks.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert {deck_name for deck_name, _ in DECKS} == {
+        row["deck_name"] for row in proof["decks"]
+    }
+
+
 def _stub_empty_card_fetches(monkeypatch) -> None:
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     monkeypatch.setattr("hsconfig.commands.source_workflow.fetch_latest_cards", lambda timeout=10.0: [])
@@ -223,6 +235,19 @@ def assert_load_safe_no_block_package(operator_summary: dict):
         "reports/operator_summary.json"
     )
     assert operator_summary["source_backed_strong_closure"]["diagnostic_only"] is True
+    assert (
+        operator_summary["source_backed_strong_closure"][
+            "closure_profile_apply_blocking"
+        ]
+        is False
+    )
+    assert operator_summary["source_status_diagnostic_only"] is True
+    assert operator_summary["source_status_apply_blocking"] is False
+    assert operator_summary["source_backed_status"] in {
+        "SOURCE_BACKED_STRONG",
+        "SOURCE_BACKED_PARTIAL",
+    }
+    assert isinstance(operator_summary["source_missing_source_actions"], list)
     assert operator_summary["source_backed_strong_closure"]["status"] in {
         "not_reported",
         "ready",
@@ -251,8 +276,18 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
         assert runtime_rows, f"{file_name} has no visible runtime rows"
 
     assert operator["default_only_runtime_surfaces"] == []
+    assert operator["default_only_runtime_surface_details"] == []
     assert operator["no_default_only_runtime_status"] == "clean"
     assert operator["first_missing_source_action"]
+    assert operator["source_status_diagnostic_only"] is True
+    assert operator["source_status_apply_blocking"] is False
+    assert operator["source_backed_status"] in {
+        "SOURCE_BACKED_STRONG",
+        "SOURCE_BACKED_PARTIAL",
+    }
+    assert isinstance(operator["source_strong_ready"], bool)
+    assert isinstance(operator["source_missing_source_actions"], list)
+    assert isinstance(operator["source_status_reasons"], list)
     ledger_rows = operator.get("surface_status_ledger", [])
     assert ledger_rows
     assert all(row["status"] != "default_only" for row in ledger_rows)
@@ -479,6 +514,11 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
                 encoding="utf-8"
             )
         )
+        source_to_runtime = json.loads(
+            (
+                out / "04_package" / "reports" / "source_to_runtime_explainability.json"
+            ).read_text(encoding="utf-8")
+        )
         deck_dirs = [
             path for path in (out / "04_package" / "CustomConfig").iterdir() if path.is_dir()
         ]
@@ -498,6 +538,8 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         }
         assert operator["runtime_apply_contract"]["apply_authority"] == "reports/operator_summary.json"
         assert source_contract_audit["schema_version"] == 1
+        assert source_to_runtime["authority"] == "diagnostic_only"
+        assert source_to_runtime["apply_blocking"] is False
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True
 
 

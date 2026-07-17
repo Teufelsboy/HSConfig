@@ -299,6 +299,106 @@ def test_compile_source_search_records_does_not_keep_negative_mulligan_mentions(
     )
 
 
+def test_compile_source_search_records_splits_mixed_keep_and_dont_keep_mulligan_sentence():
+    acquired = [
+        {
+            "source_url": "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest",
+            "source_title": "Voidburn (Wild Aggro Shadow Priest) - Hearthstone Decks",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "publication_year": 2026,
+            "retrieved_at": "2026-07-17T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["TOY_381", "SW_444", "BAR_735"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": (
+                "Mulligan Tips: Keep papercraft angel, shadowcloth needle, "
+                "twilight deceptor, manafeeder panthera, shadowed spirit, "
+                "ethereal oracle Keep spirit of the kaldorei if the opponent is "
+                "playing demon hunter or hunter Don't keep - any of the 4 cost "
+                "or higher cards. Darkbishop Benedictus enables the Shadow hero power."
+            ),
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-17",
+    )
+
+    record = payload["records"][0]
+    assert record["mulligan"]["keep_card_ids"] == ["TOY_381", "SW_444"]
+    assert record["mulligan"]["discard_cost_min"] == 4
+    assert "TOY_381" not in record["mulligan"].get("discard_card_ids", [])
+    assert "SW_444" not in record["mulligan"].get("discard_card_ids", [])
+    assert {
+        "claim_kind": "mulligan_keep",
+        "claim_family": "mulligan",
+        "stance": "keep",
+        "scope": "card",
+        "evidence_text_short": (
+            "Mulligan Tips: Keep papercraft angel, shadowcloth needle, "
+            "twilight deceptor, manafeeder panthera, shadowed spirit, "
+            "ethereal oracle Keep spirit of the kaldorei if the opponent is "
+            "playing demon hunter or hunter"
+        ),
+        "source_confidence": "high",
+        "promotion_eligible": True,
+        "cards": ["TOY_381"],
+        "timing": "mulligan",
+    } in record["claims"]
+    assert not any(
+        claim["claim_kind"] == "mulligan_discard"
+        and set(claim.get("cards", [])) & {"TOY_381", "SW_444"}
+        for claim in record["claims"]
+    )
+
+
+def test_compile_source_search_records_splits_reverse_mixed_discard_and_keep_mulligan_sentence():
+    acquired = [
+        {
+            "source_url": "https://example.test/reverse-mixed-mulligan",
+            "source_title": "Reverse Mixed Mulligan",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "publication_year": 2026,
+            "retrieved_at": "2026-07-17T00:00:00Z",
+            "deck_match": {
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "matched_card_ids": ["TOY_381", "BAR_735"],
+            },
+            "deck_match_scope": "deck_or_archetype_matched",
+            "normalized_text": (
+                "Mulligan: Do not keep Darkbishop Benedictus, keep Papercraft Angel."
+            ),
+        }
+    ]
+
+    payload = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        acquired_records=acquired,
+        current_date="2026-07-17",
+    )
+
+    record = payload["records"][0]
+    assert record["mulligan"]["keep_card_ids"] == ["TOY_381"]
+    assert record["mulligan"]["discard_card_ids"] == ["BAR_735"]
+    assert not any(
+        claim["claim_kind"] == "mulligan_discard"
+        and claim.get("cards") == ["TOY_381"]
+        for claim in record["claims"]
+    )
+
+
 def test_compile_source_search_records_limits_hero_power_transform_to_enabler():
     acquired = [
         {
