@@ -92,6 +92,30 @@ def test_context_only_candidates_do_not_claim_none_missing_action():
                 assert candidate.expected_claim_kinds == (), candidate.url
 
 
+def test_live_source_refresh_supplemental_candidates_are_registered():
+    cta_candidates = {
+        candidate.url: candidate for candidate in source_candidates_for_deck("CtAPaladin")
+    }
+    cta_url = (
+        "https://www.reddit.com/r/wildhearthstone/comments/1qdrc06/"
+        "the_xl_cta_paladin_experience/"
+    )
+    assert cta_url in cta_candidates
+    assert cta_candidates[cta_url].strength_ceiling == "candidate_partial"
+    assert cta_candidates[cta_url].first_missing_source_action != "none"
+
+    treant_candidates = {
+        candidate.url: candidate for candidate in source_candidates_for_deck("TreantDruid")
+    }
+    treant_url = (
+        "https://www.reddit.com/r/CompetitiveHS/comments/1oty3l8/"
+        "treant_druid_wild_legend_deck/"
+    )
+    assert treant_url in treant_candidates
+    assert treant_candidates[treant_url].strength_ceiling == "runtime_claims_possible"
+    assert treant_candidates[treant_url].first_missing_source_action == "none"
+
+
 def test_source_candidate_proof_doc_matches_registry_expectations():
     proof = json.loads(
         Path("docs/operator/source-candidate-proof-decks.json").read_text(

@@ -26,7 +26,8 @@
         "https://www.reddit.com/r/wildhearthstone/comments/1jydz4q/i_dont_understand_how_cta_paladin_is_any_good/"
       ],
       "support_seed_urls": [
-        "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/"
+        "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+        "https://www.reddit.com/r/wildhearthstone/comments/1qdrc06/the_xl_cta_paladin_experience/"
       ]
     },
     {
@@ -74,7 +75,8 @@
       "expected_strong_promotion_status": "runtime_claims_possible_if_fetched_claims_close",
       "first_missing_source_action": "none",
       "candidate_urls": [
-        "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/"
+        "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+        "https://www.reddit.com/r/CompetitiveHS/comments/1oty3l8/treant_druid_wild_legend_deck/"
       ]
     },
     {

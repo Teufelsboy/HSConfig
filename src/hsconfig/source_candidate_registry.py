@@ -95,6 +95,22 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             expected_claim_kinds=("gameplan_posture", "card_role", "mechanic_usage"),
             first_missing_source_action="add_current_cta_paladin_mulligan_keep_source",
         ),
+        SourceCandidate(
+            url="https://www.reddit.com/r/wildhearthstone/comments/1qdrc06/the_xl_cta_paladin_experience/",
+            source_family="community_guide",
+            deck_name="CtAPaladin",
+            archetype="wild_cta_paladin",
+            reason=(
+                "current Wild CtA Paladin posture support without enough "
+                "card-specific mulligan closure to promote by itself"
+            ),
+            priority=7,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "card_role"),
+            first_missing_source_action="add_current_cta_paladin_mulligan_keep_source",
+        ),
     ),
     "piraterogue": (
         SourceCandidate(
@@ -172,6 +188,23 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             archetype="wild_treant_druid",
             reason="Wild Treant Druid legend writeup with mulligan, posture, and matchup notes",
             priority=10,
+            expected_strength="guide_current_deck_match",
+            publication_year=2026,
+            strength_ceiling="runtime_claims_possible",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "card_role",
+            ),
+            first_missing_source_action="none",
+        ),
+        SourceCandidate(
+            url="https://www.reddit.com/r/CompetitiveHS/comments/1oty3l8/treant_druid_wild_legend_deck/",
+            source_family="community_guide",
+            deck_name="TreantDruid",
+            archetype="wild_treant_druid",
+            reason="current Wild Treant Druid guide-style legend writeup with posture and mulligan support",
+            priority=9,
             expected_strength="guide_current_deck_match",
             publication_year=2026,
             strength_ceiling="runtime_claims_possible",
