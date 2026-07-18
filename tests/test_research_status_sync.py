@@ -78,6 +78,45 @@ def test_seed_only_research_snapshot_cannot_downgrade_strong_package(
     )
 
 
+def test_decklist_or_stats_research_snapshot_matches_partial_package_as_seed(
+    tmp_path: Path,
+) -> None:
+    package_dir = tmp_path / "04_package"
+    _write_json(
+        package_dir / "reports" / "operator_summary.json",
+        {
+            "deck": {"name": "CtAPaladin"},
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "source_backed_status": "SOURCE_BACKED_PARTIAL",
+            "source_strong_ready": False,
+            "first_missing_source_action": "add_explicit_mulligan_source",
+            "source_status_apply_blocking": False,
+            "source_status_diagnostic_only": True,
+            "default_only_runtime_surfaces": [],
+        },
+    )
+    decklist_result = _research_result(
+        tmp_path,
+        "CtAPaladin",
+        {
+            "deck_name": "CtAPaladin",
+            "deck_code": "AAEBAZ8FExample",
+            "source_strength": "decklist_or_stats_only",
+            "first_missing_source_action": "add_explicit_mulligan_source",
+            "lowerable_claim_kinds": [],
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [decklist_result])
+
+    row = report["research_snapshot_rows"][0]
+    assert row["research_source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert row["research_snapshot_kind"] == "seed_only"
+    assert row["snapshot_relation"] == "current_with_canonical"
+    assert row["canonical_promotion_allowed"] is False
+
+
 def test_matching_strong_research_snapshot_is_current_with_canonical(
     tmp_path: Path,
 ) -> None:
@@ -92,6 +131,7 @@ def test_matching_strong_research_snapshot_is_current_with_canonical(
             "source_strength": "SOURCE_BACKED_STRONG",
             "first_missing_source_action": "none",
             "source_visibility": "full_text",
+            "freshness_status": "current",
             "lowerable_claim_kinds": ["mulligan_keep"],
         },
     )
@@ -120,6 +160,7 @@ def test_mixed_results_only_treat_matching_deck_snapshot_as_current(
             "source_strength": "SOURCE_BACKED_STRONG",
             "first_missing_source_action": "none",
             "source_visibility": "full_text",
+            "freshness_status": "current",
             "lowerable_claim_kinds": ["mulligan_keep"],
         },
     )

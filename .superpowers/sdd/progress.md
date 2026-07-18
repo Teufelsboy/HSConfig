@@ -647,3 +647,18 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-research-snapshot-status-sync.
 - [x] Review fix: `--out <package>/reports/operator_summary.json` is rejected and preserves the original operator summary; re-review returned no Critical, Important, or Minor findings.
 - [x] Task 4: Current truth, operator docs, current-truth index, and repo-local skill document the diagnostic-only research snapshot boundary; docs tests passed and installed skill sync passed.
 - [x] Task 5: Final verification passed: focused suite `200 passed`, smoke suite `58 passed`, CLI suite `48 passed`, installed skill sync check passed, pure sync module side-effect scan had no matches, and output-authority re-review was clean.
+
+---
+
+# HSConfig Source Contract Partial Closure Execution SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-contract-partial-closure-execution.md`
+
+- [x] Task 1: Preflight refreshed on branch `codex/hsconfig-canonical-source-status-sync`; focused baseline source-contract suite passed (`56 passed`); strong controls and partial closure targets inventoried.
+- [x] Task 2: Current public source evidence acquired/classified without promotion authority; stale, seed-only, and decklist/stat sources remain non-promoting.
+- [x] Task 3: Exact mulligan evidence targets closed only where current full-text evidence exists; Boarlock, Kingslayer, PirateDH, CuteWarrior, and unresolved decks stay `SOURCE_BACKED_PARTIAL` with visible source actions.
+- [x] Task 4: Card-specific guide claim targets normalized through the source candidate registry and research snapshot contract; no default-only or policy/runtime fallback row is treated as Strong evidence.
+- [x] Task 5: Fresh no-apply 12-deck matrix generated with `--online-source --auto-source --current-date 2026-07-18`; every row was `VALID_PACKAGE`, `source_status_apply_blocking=false`, and `default_only_runtime_surfaces=[]`; only ShadowPriest was `SOURCE_BACKED_STRONG`.
+- [x] Task 6: Canonical closure docs synced to the current no-apply matrix and runtime/source status boundary.
+- [x] Task 7: Acceptance matrix and contract tests passed: focused source-contract suite `118 passed`, ShadowPriest and Boarlock package acceptance-matrix checks passed, docs/skill policy `104 passed`.
+- [x] Task 8: Full verification passed: full pytest suite `1567 passed, 11 skipped`; installed skill sync passed; `git diff --check` exited `0` with CRLF warnings only; matrix assertion passed; read-only final subagent review returned OK.

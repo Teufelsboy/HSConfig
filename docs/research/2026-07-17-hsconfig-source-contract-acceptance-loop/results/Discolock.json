@@ -6,18 +6,53 @@
     {
       "url": "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
       "source_family": "reddit",
-      "role": "candidate_only"
+      "role": "current_deck_full_text_guide"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/38959237",
+      "source_family": "hsguru",
+      "role": "decklist_or_stats_only"
     }
   ],
-  "guide_sources": [],
-  "source_strength": "unfetched_acquisition_seed",
-  "lowerable_claim_kinds": [],
-  "non_promoting_support": [
+  "guide_sources": [
     {
       "url": "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/",
       "source_family": "reddit",
-      "promotion_role": "context_only"
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_and_gameplan_guide",
+      "claim_kinds": [
+        "card_role",
+        "gameplan_posture",
+        "mulligan_discard",
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
     },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1nhpuu1/how_to_play_discolock/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_support",
+      "claim_kinds": [
+        "gameplan_posture",
+        "mulligan_discard"
+      ],
+      "promotes_strong": true
+    }
+  ],
+  "source_status": "SOURCE_BACKED_STRONG",
+  "source_visibility": "full_text",
+  "freshness_status": "current_or_evergreen",
+  "source_strength": "exact_full_text_guide",
+  "lowerable_claim_kinds": [
+    "card_role",
+    "gameplan_posture",
+    "mulligan_discard",
+    "mulligan_keep"
+  ],
+  "non_promoting_support": [
     {
       "url": "https://medium.com/@arend_40498/returning-to-wild-legend-with-discard-warlock-full-guide-a0dedbb12fcd",
       "source_family": "medium",
@@ -29,6 +64,7 @@
       "promotion_role": "context_only"
     }
   ],
-  "first_missing_source_action": "add_discolock_matchup_or_card_role_source",
-  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+  "default_only_runtime_surfaces": [],
+  "first_missing_source_action": "none",
+  "notes": "Fetched current full-text CompetitiveHS guide closes Discolock mulligan, discard, role, and gameplan claims. The secondary Reddit discussion supports discard-priority mulligan posture. No default-only runtime surface is used as promotion evidence."
 }

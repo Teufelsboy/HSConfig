@@ -74,7 +74,11 @@ def collect_public_source_records(
     retrieved_at = _iso_datetime(current_date)
 
     for url in deduped_urls:
-        validation_error, validated_addresses = _public_source_url_validation(url, resolver=resolve)
+        fetch_url = fetchable_source_url(url)
+        validation_error, validated_addresses = _public_source_url_validation(
+            fetch_url,
+            resolver=resolve,
+        )
         if validation_error:
             failures.append({"url": url, "error": validation_error})
             continue
@@ -82,12 +86,12 @@ def collect_public_source_records(
         try:
             if fetcher is None:
                 status, content_type, body = _default_fetcher(
-                    url,
+                    fetch_url,
                     timeout_seconds,
                     validated_addresses=validated_addresses,
                 )
             else:
-                status, content_type, body = fetcher(url, timeout_seconds)
+                status, content_type, body = fetcher(fetch_url, timeout_seconds)
         except Exception as exc:
             failures.append({"url": url, "error": type(exc).__name__})
             continue
@@ -142,6 +146,8 @@ def collect_public_source_records(
             "deck_match_scope": deck_match_scope,
             "normalized_text": parsed["text"],
         }
+        if fetch_url != url:
+            record["source_fetch_url"] = fetch_url
         policy = classify_source_evidence(
             record,
             deck_name=deck_name,
@@ -473,6 +479,22 @@ def _dedupe_urls(urls: Sequence[str]) -> list[str]:
             seen.add(value)
             result.append(value)
     return result
+
+
+def fetchable_source_url(url: str) -> str:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    if (
+        hostname in {"reddit.com", "www.reddit.com"}
+        and "/comments/" in parsed.path
+        and not parsed.path.endswith(".json")
+    ):
+        return parsed._replace(netloc="old.reddit.com").geturl()
+    return url
+
+
+def _fetchable_source_url(url: str) -> str:
+    return fetchable_source_url(url)
 
 
 def validate_public_source_url(url: str, *, resolver: HostResolver | None = None) -> str | None:

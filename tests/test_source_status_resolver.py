@@ -217,6 +217,25 @@ def test_semantic_blocker_prevents_strong_and_uses_source_action() -> None:
     assert resolution.reasons == ("semantic_blocker",)
 
 
+def test_runtime_warning_action_is_not_used_as_missing_source_action() -> None:
+    resolution = resolve_source_status(
+        technical_status="VALID_PACKAGE",
+        semantic_status="VALID_BUT_NOT_GUIDE_STRONG",
+        next_action="READY_TO_APPLY_WITH_WARNINGS",
+        semantic_blockers=[],
+        default_only_runtime_surfaces=[],
+        source_claim_gap_report=None,
+        closure_profile_closed=True,
+    )
+
+    assert resolution.source_backed_status == "SOURCE_BACKED_PARTIAL"
+    assert resolution.strong_ready is False
+    assert resolution.apply_blocking is False
+    assert resolution.first_missing_source_action == "close_first_missing_chain"
+    assert resolution.missing_source_actions == ("close_first_missing_chain",)
+    assert resolution.reasons == ("semantic_status_not_strong",)
+
+
 def test_invalid_technical_status_is_not_strong() -> None:
     resolution = resolve_source_status(
         technical_status="INVALID_PACKAGE",

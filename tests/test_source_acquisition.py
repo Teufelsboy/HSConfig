@@ -149,6 +149,65 @@ def test_collect_public_source_records_reports_candidate_registry_url_count():
     assert payload["source_acquisition_report"]["explicit_source_url_count"] == 0
 
 
+def test_reddit_thread_urls_fetch_through_old_reddit_but_preserve_source_url():
+    original_url = (
+        "https://www.reddit.com/r/wildhearthstone/comments/"
+        "1u0kd33/any_help_with_cta_paladin_mulligan/"
+    )
+    fetch_url = (
+        "https://old.reddit.com/r/wildhearthstone/comments/"
+        "1u0kd33/any_help_with_cta_paladin_mulligan/"
+    )
+    seen_fetch_urls: list[str] = []
+    deck_identity = {
+        "deck_name": "CtAPaladin",
+        "deck_slug": "ctapaladin",
+        "deck_code_hash": "sha256:cta",
+        "cards": [
+            {"card_id": "ETC_318", "name": "Boogie Down", "cost": 3, "count": 2},
+            {"card_id": "LOOT_093", "name": "Call to Arms", "cost": 4, "count": 2},
+        ],
+    }
+
+    def reddit_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
+        del timeout_seconds
+        seen_fetch_urls.append(url)
+        return (
+            200,
+            "text/html",
+            b"""
+            <html>
+              <head><title>Any help with CtA Paladin mulligan 2026</title></head>
+              <body>
+                <p>Published July 18, 2026.</p>
+                <p>Mulligan: Keep Boogie Down and Call to Arms for the current
+                Wild CtA Paladin opening.</p>
+                <p>This full public Reddit thread also discusses early pressure,
+                card roles, matchup posture, and current Wild ladder context.</p>
+              </body>
+            </html>
+            """,
+        )
+
+    payload = collect_public_source_records(
+        deck_name="CtAPaladin",
+        deck_identity=deck_identity,
+        source_urls=[original_url],
+        current_date="2026-07-18",
+        fetcher=reddit_fetcher,
+        resolver=_public_resolver,
+        timeout_seconds=2.0,
+    )
+
+    record = payload["source_records"][0]
+    assert seen_fetch_urls == [fetch_url]
+    assert record["source_url"] == original_url
+    assert record["source_fetch_url"] == fetch_url
+    assert record["source_record_strength"] == "candidate_strong"
+    assert record["strong_promotion_eligible"] is True
+    assert record["first_missing_source_action"] == "none"
+
+
 def test_decklist_and_stats_sources_are_non_promoting():
     deck_identity = {
         "deck_name": "ThinDeck",

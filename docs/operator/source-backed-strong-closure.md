@@ -213,19 +213,25 @@ Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` a
 
 ## Current Blocker Snapshot
 
-Fresh local prepare runs for the current matrix state show:
+Fresh no-apply runs with
+`hsconfig configure --online-source --auto-source --current-date 2026-07-18`
+for the 12 user-supplied Wild decks show every package as `VALID_PACKAGE`.
+Every row keeps `source_status_apply_blocking=false` and
+`default_only_runtime_surfaces=[]`. Source strength remains diagnostic-only:
+`READY_TO_APPLY_WITH_WARNINGS` stays the runtime readiness, while
+`first_missing_source_action` stays a source-closure action.
 
 | Deck | Strong contract status | First missing chain | Next action |
 |---|---|---|---|
 | ShadowPriest | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
-| CtAPaladin | `SOURCE_BACKED_PARTIAL` | explicit mulligan source needed before policy-backed rows can count as strong evidence | `add_explicit_mulligan_source` |
-| PirateRogue | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
-| BigShaman | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
-| Discolock | `SOURCE_BACKED_PARTIAL` | explicit mulligan source needed before policy-backed rows can count as strong evidence | `add_explicit_mulligan_source` |
-| TreantDruid | `SOURCE_BACKED_PARTIAL` | card-specific source claims needed for low-confidence or uncovered rows | `add_card_specific_source_claim` |
-| ImbueMage | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
-| MechPala | `SOURCE_BACKED_STRONG` | `none` | `READY_TO_APPLY_OR_HANDOFF` |
-| Kingslayer | `SOURCE_BACKED_PARTIAL` | `DEEP_014` `Quick Pick` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
-| Boarlock | `SOURCE_BACKED_PARTIAL` | `WW_092` `Fracking` -> `needs_mulligan_claim` | `add_mulligan_keep_or_discard_claim` |
+| CtAPaladin | `SOURCE_BACKED_PARTIAL` | card-specific or explicit mulligan/source claim still missing | `add_card_specific_source_claim` |
+| PirateRogue | `SOURCE_BACKED_PARTIAL` | card-specific mulligan or role source still missing | `add_card_specific_source_claim` |
+| BigShaman | `SOURCE_BACKED_PARTIAL` | exact combo sequence timing/details still missing | `add_exact_combo_sequence_claim` |
+| Discolock | `SOURCE_BACKED_PARTIAL` | card-specific discard/mulligan source still missing | `add_card_specific_source_claim` |
+| TreantDruid | `SOURCE_BACKED_PARTIAL` | card-specific Treant role/setup source still missing | `add_card_specific_source_claim` |
+| ImbueMage | `SOURCE_BACKED_PARTIAL` | explicit mulligan source still missing | `add_explicit_mulligan_source` |
+| MechPala | `SOURCE_BACKED_PARTIAL` | card-specific Mech Paladin source still missing | `add_card_specific_source_claim` |
+| Kingslayer | `SOURCE_BACKED_PARTIAL` | Quick Pick / weapon role or mulligan source still missing | `add_card_specific_source_claim` |
+| Boarlock | `SOURCE_BACKED_PARTIAL` | source-to-runtime chain still visible but not Strong-closed | `close_first_missing_chain` |
 | PirateDH | `SOURCE_BACKED_PARTIAL` | card-specific source claims needed for low-confidence or uncovered rows | `add_card_specific_source_claim` |
-| CuteWarrior | `SOURCE_BACKED_PARTIAL` | current full-text mulligan/gameplan source needed before partial warrior-specific rows can count as strong evidence | `add_current_full_text_mulligan_or_gameplan_source` |
+| CuteWarrior | `SOURCE_BACKED_PARTIAL` | current card-specific/full-text Warrior source still missing | `add_card_specific_source_claim` |

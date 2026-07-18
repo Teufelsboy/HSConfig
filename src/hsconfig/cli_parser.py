@@ -47,6 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     configure.add_argument("--source-url", action="append", default=[])
     configure.add_argument("--source-fixture-url-map-json")
     configure.add_argument("--source-fetch-timeout-seconds", type=float, default=6.0)
+    configure.add_argument("--current-date")
     configure.add_argument("--cards-json")
     configure.add_argument("--collectible-cards-json")
     configure.add_argument("--full-cards-json")

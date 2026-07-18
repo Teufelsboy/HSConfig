@@ -183,14 +183,40 @@ def test_user_wild_source_input_keeps_unfetched_candidates_non_authoritative():
             assert record["promotion_role"] == "context_only"
 
 
-def test_research_results_do_not_label_unfetched_sources_as_decklist_or_stats_only():
+def test_research_results_keep_source_strength_and_authority_separate():
     result_files = sorted(SOURCE_RESEARCH_RESULTS.glob("*.json"))
+    seed_or_non_promoting_strengths = {
+        "unfetched_acquisition_seed",
+        "decklist_or_stats_only",
+        "missing",
+    }
+    allowed_strengths = seed_or_non_promoting_strengths | {"exact_full_text_guide"}
+    current_or_evergreen = {"current", "current_or_evergreen", "evergreen"}
 
     assert len(result_files) == 12
     for result_file in result_files:
         payload = json.loads(result_file.read_text(encoding="utf-8"))
-        assert payload["source_strength"] == "unfetched_acquisition_seed"
-        assert "not runtime authority" in payload["notes"]
+        source_strength = payload["source_strength"]
+        first_missing = payload["first_missing_source_action"]
+
+        assert source_strength in allowed_strengths
+
+        if source_strength in seed_or_non_promoting_strengths:
+            assert first_missing != "none"
+            assert (
+                "not runtime authority" in payload["notes"]
+                or "SOURCE_BACKED_PARTIAL" in payload["notes"]
+            )
+
+        if (
+            source_strength == "exact_full_text_guide"
+            and payload.get("freshness_status") not in current_or_evergreen
+        ):
+            assert first_missing != "none"
+            assert any(
+                guide_source.get("promotes_strong") is False
+                for guide_source in payload.get("guide_sources", [])
+            )
 
 
 def test_active_source_status_contract_does_not_reintroduce_stale_terms():

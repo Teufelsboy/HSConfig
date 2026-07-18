@@ -15,7 +15,9 @@ STRONG_STATUS = "SOURCE_BACKED_STRONG"
 PARTIAL_STATUS = "SOURCE_BACKED_PARTIAL"
 SEED_STRENGTHS = {
     "candidate_url_only",
+    "decklist_or_stats_only",
     "decklist_only",
+    "missing",
     "snippet_only",
     "stats_only",
     "unfetched_acquisition_seed",

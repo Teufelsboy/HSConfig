@@ -44,6 +44,67 @@ def test_source_acquire_cli_writes_compiled_source_search_results(tmp_path):
     assert (out / "source_claim_compiler_report.json").exists()
 
 
+def test_source_acquire_fixture_map_accepts_original_reddit_url_key(tmp_path):
+    original_url = (
+        "https://www.reddit.com/r/wildhearthstone/comments/"
+        "1u0kd33/any_help_with_cta_paladin_mulligan/"
+    )
+    page = tmp_path / "cta_reddit.html"
+    page.write_text(
+        """
+        <html>
+          <head><title>Any help with CtA Paladin mulligan 2026</title></head>
+          <body>
+            <p>Mulligan: Keep Boogie Down and Call to Arms.</p>
+            <p>This Wild CtA Paladin guide discusses early pressure, board
+            flood posture, matchup plan, and card roles in enough public
+            full-text detail to be a guide rather than a decklist.</p>
+          </body>
+        </html>
+        """,
+        encoding="utf-8",
+    )
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(
+        json.dumps({original_url: str(page)}),
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+
+    status = main(
+        [
+            "source-acquire",
+            "--deck-name",
+            "CtAPaladin",
+            "--deck-code",
+            "AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=",
+            "--source-url",
+            original_url,
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--current-date",
+            "2026-07-18",
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+
+    assert status == 0
+    acquisition = json.loads(
+        (out / "source_acquisition_report.json").read_text(encoding="utf-8")
+    )
+    assert acquisition["source_record_count"] == 1
+    assert acquisition["failed_fetch_count"] == 0
+    source_search = json.loads(
+        (out / "source_search_results.json").read_text(encoding="utf-8")
+    )
+    record = source_search["records"][0]
+    assert record["source_url"] == original_url
+    assert source_search["source_claim_compiler_report"]["promotion_candidate_count"] == 1
+    assert record["mulligan"]["keep_card_ids"]
+
+
 def test_source_acquire_payload_embeds_report_objects(tmp_path):
     fixture_map = tmp_path / "fixture_map.json"
     page = Path(__file__).parent / "fixtures" / "source_pages" / "shadowpriest_voidburn.html"

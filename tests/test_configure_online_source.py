@@ -200,6 +200,8 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
             source_url,
             "--source-fixture-url-map-json",
             str(fixture_map),
+            "--current-date",
+            "2026-07-18",
             "--json",
         ]
     )
@@ -214,6 +216,7 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
     assert record["source_category"] == "public_guide"
     assert record["source_visibility"] == "full_text"
     assert record["source_record_strength"] == "candidate_strong"
+    assert record["retrieved_at"] == "2026-07-18"
     assert record["promotion_eligible"] is True
     assert record["strong_promotion_eligible"] is True
     assert record["first_missing_source_action"] == "none"

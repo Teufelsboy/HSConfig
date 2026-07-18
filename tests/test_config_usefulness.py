@@ -312,7 +312,7 @@ def test_config_usefulness_surfaces_match_expected_runtime_surface_registry():
     )
 
 
-def test_config_usefulness_marks_unchanged_and_baseline_normal_surfaces_default_only():
+def test_config_usefulness_marks_unchanged_and_baseline_runtime_surfaces_default_only():
     usefulness = build_config_usefulness(
         technical_status="VALID_PACKAGE",
         semantic_status="SOURCE_BACKED_STRONG",
@@ -334,7 +334,8 @@ def test_config_usefulness_marks_unchanged_and_baseline_normal_surfaces_default_
 
     assert usefulness["surfaces"]["globalvalues"]["default_only"] is True
     assert usefulness["surfaces"]["cardid_behavior"]["default_only"] is True
-    assert usefulness["surfaces"]["combo"]["default_only"] is True
+    assert usefulness["surfaces"]["combo"]["default_only"] is False
+    assert usefulness["first_usefulness_gap"] == "combo_gap"
 
 
 def test_report_only_combo_claim_without_combo_json_is_not_default_only_runtime():
@@ -375,7 +376,7 @@ def test_report_only_combo_claim_without_combo_json_is_not_default_only_runtime(
     assert combo["default_only"] is False
 
 
-def test_combo_readiness_gap_stays_default_only_when_suppressed_claims_exist():
+def test_combo_readiness_gap_stays_visible_without_default_only_runtime():
     usefulness = build_config_usefulness(
         technical_status="VALID_PACKAGE",
         semantic_status="SOURCE_BACKED_STRONG",
@@ -407,4 +408,5 @@ def test_combo_readiness_gap_stays_default_only_when_suppressed_claims_exist():
     combo = usefulness["surfaces"]["combo"]
     assert combo["status"] == "report_only"
     assert combo["combo_expected"] is True
-    assert combo["default_only"] is True
+    assert combo["default_only"] is False
+    assert usefulness["first_usefulness_gap"] == "combo_gap"

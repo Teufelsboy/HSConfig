@@ -32,31 +32,31 @@ DECKS = {
 
 EXPECTED_STRENGTH = {
     "ShadowPriest": "runtime_claims_possible",
-    "CtAPaladin": "candidate_partial",
+    "CtAPaladin": "runtime_claims_possible",
     "PirateRogue": "candidate_partial",
     "BigShaman": "runtime_claims_possible",
-    "Discolock": "candidate_partial",
-    "TreantDruid": "candidate_partial",
+    "Discolock": "runtime_claims_possible",
+    "TreantDruid": "runtime_claims_possible",
     "ImbueMage": "runtime_claims_possible",
     "MechPala": "context_only",
     "Kingslayer": "candidate_partial",
     "Boarlock": "candidate_partial",
-    "PirateDH": "candidate_partial",
+    "PirateDH": "runtime_claims_possible",
     "CuteWarrior": "candidate_partial",
 }
 
 EXPECTED_STRONG_PROMOTION_STATUS = {
     "ShadowPriest": "runtime_claims_possible_if_fetched_claims_close",
-    "CtAPaladin": "partial_until_missing_source_action_closes",
+    "CtAPaladin": "runtime_claims_possible_if_fetched_claims_close",
     "PirateRogue": "partial_until_missing_source_action_closes",
     "BigShaman": "runtime_claims_possible_if_fetched_claims_close",
-    "Discolock": "partial_until_missing_source_action_closes",
-    "TreantDruid": "partial_until_missing_source_action_closes",
+    "Discolock": "runtime_claims_possible_if_fetched_claims_close",
+    "TreantDruid": "runtime_claims_possible_if_fetched_claims_close",
     "ImbueMage": "runtime_claims_possible_if_fetched_claims_close",
     "MechPala": "context_only_not_strong",
     "Kingslayer": "partial_until_missing_source_action_closes",
     "Boarlock": "partial_until_missing_source_action_closes",
-    "PirateDH": "partial_until_missing_source_action_closes",
+    "PirateDH": "runtime_claims_possible_if_fetched_claims_close",
     "CuteWarrior": "partial_until_missing_source_action_closes",
 }
 
@@ -112,8 +112,10 @@ def test_source_candidate_proof_doc_matches_registry_expectations():
         assert rows[deck_name]["first_missing_source_action"] == (
             candidates[0].first_missing_source_action
         )
-        documented_urls = rows[deck_name]["candidate_urls"] + rows[deck_name].get(
-            "context_seed_urls", []
+        documented_urls = (
+            rows[deck_name]["candidate_urls"]
+            + rows[deck_name].get("support_seed_urls", [])
+            + rows[deck_name].get("context_seed_urls", [])
         )
         assert documented_urls == [candidate.url for candidate in candidates]
         assert rows[deck_name]["expected_strong_promotion_status"] == (
@@ -131,15 +133,21 @@ def test_source_candidate_proof_rows_match_registry_contract():
         candidates = source_candidates_for_deck(deck_name)
         urls = {candidate.url for candidate in candidates}
         expected_urls = set(row["candidate_urls"])
+        support_seed_urls = set(row.get("support_seed_urls", []))
         context_seed_urls = set(row.get("context_seed_urls", []))
 
         assert len(candidates) >= row["expected_candidate_count_min"], deck_name
         assert expected_urls <= urls, deck_name
+        assert support_seed_urls <= urls, deck_name
         assert context_seed_urls <= urls, deck_name
         assert {
             candidate.strength_ceiling for candidate in candidates
             if candidate.url in expected_urls
         } == {row["expected_strength_ceiling"]}, deck_name
+        assert {
+            candidate.strength_ceiling for candidate in candidates
+            if candidate.url in support_seed_urls
+        } <= {"candidate_partial", "context_only"}, deck_name
         assert {
             candidate.strength_ceiling for candidate in candidates
             if candidate.url in context_seed_urls

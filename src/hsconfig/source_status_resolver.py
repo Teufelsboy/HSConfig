@@ -10,9 +10,11 @@ STRONG_SOURCE_STATUS = "SOURCE_BACKED_STRONG"
 PARTIAL_SOURCE_STATUS = "SOURCE_BACKED_PARTIAL"
 INVALID_SOURCE_STATUS = "INVALID_PACKAGE"
 READY_ACTION = "READY_TO_APPLY_OR_HANDOFF"
+READY_WITH_WARNINGS_ACTION = "READY_TO_APPLY_WITH_WARNINGS"
 NO_MISSING_SOURCE_ACTION = "none"
 DEFAULT_ONLY_SOURCE_ACTION = "replace_default_only_runtime_surface_with_source_or_policy_claim"
 FALLBACK_SOURCE_ACTION = "close_first_missing_chain"
+RUNTIME_READY_ACTIONS = frozenset({READY_ACTION, READY_WITH_WARNINGS_ACTION})
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,10 @@ def resolve_source_status(
         )
 
     if technical_status != VALID_TECHNICAL_STATUS:
-        action = _first_nonempty(next_action, _action_from_status(semantic_status))
+        action = _first_nonempty(
+            _source_action_from_next_action(next_action),
+            _action_from_status(semantic_status),
+        )
         return _resolution(
             source_backed_status=_invalid_source_status(semantic_status),
             action=action,
@@ -78,8 +83,8 @@ def resolve_source_status(
 
     if first_missing_chain is not None:
         action = _first_nonempty(
-            _report_next_action(source_claim_gap_report),
-            _chain_next_action(first_missing_chain),
+            _source_action_from_next_action(_report_next_action(source_claim_gap_report)),
+            _source_action_from_next_action(_chain_next_action(first_missing_chain)),
             _source_action_for_missing_link(first_missing_chain),
         )
         return _resolution(
@@ -92,7 +97,7 @@ def resolve_source_status(
     if semantic_blockers:
         action = _first_nonempty(
             _action_from_semantic_blockers(semantic_blockers),
-            next_action,
+            _source_action_from_next_action(next_action),
             FALLBACK_SOURCE_ACTION,
         )
         return _resolution(
@@ -104,7 +109,7 @@ def resolve_source_status(
 
     if _has_unclosed_source_gap_summary(source_claim_gap_report):
         action = _first_nonempty(
-            _report_next_action(source_claim_gap_report),
+            _source_action_from_next_action(_report_next_action(source_claim_gap_report)),
             FALLBACK_SOURCE_ACTION,
         )
         return _resolution(
@@ -142,7 +147,11 @@ def resolve_source_status(
 
     return _resolution(
         source_backed_status=PARTIAL_SOURCE_STATUS,
-        action=_first_nonempty(next_action, _action_from_status(semantic_status)),
+        action=_first_nonempty(
+            _source_action_from_next_action(next_action),
+            _action_from_status(semantic_status),
+            FALLBACK_SOURCE_ACTION,
+        ),
         default_only_runtime_surfaces=default_only_surfaces,
         reasons=("semantic_status_not_strong",),
     )
@@ -306,7 +315,21 @@ def _invalid_source_status(semantic_status: str) -> str:
 def _action_from_status(status: str) -> str:
     if status == INVALID_SOURCE_STATUS:
         return "FIX_PACKAGE_BEFORE_APPLY"
+    if status in {
+        STRONG_SOURCE_STATUS,
+        PARTIAL_SOURCE_STATUS,
+        "VALID_BUT_NOT_GUIDE_STRONG",
+        "STATIC_SEMANTICS_USABLE",
+    }:
+        return ""
     return status or FALLBACK_SOURCE_ACTION
+
+
+def _source_action_from_next_action(action: str) -> str:
+    normalized = str(action or "")
+    if normalized in RUNTIME_READY_ACTIONS:
+        return ""
+    return normalized
 
 
 def _first_nonempty(*values: str) -> str:

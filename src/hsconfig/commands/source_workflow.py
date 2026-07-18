@@ -17,7 +17,7 @@ from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_status_sync import build_research_status_sync_report
-from hsconfig.source_acquisition import collect_public_source_records
+from hsconfig.source_acquisition import collect_public_source_records, fetchable_source_url
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_document_drafter import draft_source_documents
@@ -278,15 +278,25 @@ def _fixture_fetcher(path_value: str | None):
     mapping = read_json(path_value)
     if not isinstance(mapping, dict):
         raise ValueError("--source-fixture-url-map-json must contain a URL to file path object")
+    normalized_mapping = _fetchable_fixture_mapping(mapping)
 
     def fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
         del timeout_seconds
-        fixture_path = mapping.get(url)
+        fixture_path = normalized_mapping.get(url)
         if fixture_path is None:
             return 404, "text/plain", b"fixture url not mapped"
         return 200, "text/html", Path(str(fixture_path)).read_bytes()
 
     return fetcher
+
+
+def _fetchable_fixture_mapping(mapping: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for url, fixture_path in mapping.items():
+        original_url = str(url)
+        normalized[original_url] = fixture_path
+        normalized[fetchable_source_url(original_url)] = fixture_path
+    return normalized
 
 
 def _fixture_resolver(path_value: str | None):

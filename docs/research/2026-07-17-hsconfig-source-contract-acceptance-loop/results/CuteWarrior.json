@@ -10,9 +10,22 @@
     }
   ],
   "guide_sources": [],
-  "source_strength": "unfetched_acquisition_seed",
+  "source_visibility": "decklist_only",
+  "source_strength": "decklist_or_stats_only",
   "lowerable_claim_kinds": [],
-  "non_promoting_support": [],
+  "non_promoting_support": [
+    {
+      "url": "https://hearthstone-decks.net/wild-decks/warrior-wild-decks/other-warrior-decks-warrior-wild-decks/cute-warrior/",
+      "source_family": "hearthstone_decks",
+      "promotion_role": "current_decklist_context_only"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/40780437",
+      "source_family": "hsguru",
+      "promotion_role": "current_stats_context_only"
+    }
+  ],
   "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
-  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+  "stop_condition_if_any": "current_cute_warrior_full_text_mulligan_or_gameplan_source_unavailable",
+  "notes": "Current Cute Warrior public sources are decklist/stat pages or older guide context. No current full-text mulligan/gameplan source was found, so this remains SOURCE_BACKED_PARTIAL."
 }

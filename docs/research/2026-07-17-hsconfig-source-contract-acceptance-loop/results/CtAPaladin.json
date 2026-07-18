@@ -6,24 +6,57 @@
     {
       "url": "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
       "source_family": "reddit",
-      "role": "candidate_only"
+      "role": "current_deck_context_only"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/28505455",
+      "source_family": "hsguru",
+      "role": "decklist_or_stats_only"
     }
   ],
-  "guide_sources": [],
-  "source_strength": "unfetched_acquisition_seed",
-  "lowerable_claim_kinds": [],
+  "guide_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_guide",
+      "claim_kinds": [
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
+    },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1jydz4q/i_dont_understand_how_cta_paladin_is_any_good/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_and_card_role_support",
+      "claim_kinds": [
+        "card_role",
+        "gameplan_posture",
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
+    }
+  ],
+  "source_status": "SOURCE_BACKED_STRONG",
+  "source_visibility": "full_text",
+  "freshness_status": "current_or_evergreen",
+  "source_strength": "exact_full_text_guide",
+  "lowerable_claim_kinds": [
+    "card_role",
+    "gameplan_posture",
+    "mulligan_keep"
+  ],
   "non_promoting_support": [
     {
       "url": "https://www.reddit.com/r/wildhearthstone/comments/1t9rjyc/two_tier_lists_high_legend_and_the_climb/",
       "source_family": "reddit",
       "promotion_role": "context_only"
-    },
-    {
-      "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
-      "source_family": "reddit",
-      "promotion_role": "context_only"
     }
   ],
-  "first_missing_source_action": "add_current_cta_paladin_mulligan_keep_source",
-  "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
+  "default_only_runtime_surfaces": [],
+  "first_missing_source_action": "none",
+  "notes": "Fetched public full-text Reddit discussions provide exact CtA Paladin mulligan and supporting role/posture claims. Candidate URLs remain acquisition seeds until fetched and normalized; this snapshot records the fetched claim-level closure."
 }

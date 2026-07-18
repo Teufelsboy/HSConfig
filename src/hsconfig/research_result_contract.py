@@ -14,6 +14,8 @@ from hsconfig.source_document_model import (
 STRONG_MARKERS = frozenset(
     {
         "SOURCE_BACKED_STRONG",
+        "archetype_full_text_guide",
+        "exact_full_text_guide",
         "strong",
         "candidate_strong",
     }
@@ -21,7 +23,9 @@ STRONG_MARKERS = frozenset(
 SEED_STRENGTHS = frozenset(
     {
         "candidate_url_only",
+        "decklist_or_stats_only",
         "decklist_only",
+        "missing",
         "stats_only",
         "unfetched_acquisition_seed",
     }
@@ -71,11 +75,14 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
 
     strong = any(strength in STRONG_MARKERS for strength in strengths)
     has_full_text_evidence = _has_full_text_or_canonical_evidence(payload)
+    has_current_or_evergreen_evidence = _has_current_or_evergreen_evidence(payload)
     has_default_only_runtime_surfaces = _has_default_only_runtime_surfaces(payload)
     if strong and not lowerable_claim_kinds:
         warnings.append("no_lowerable_claim_kinds")
     if strong and not has_full_text_evidence:
         warnings.append("missing_full_text_or_canonical_evidence")
+    if strong and has_full_text_evidence and not has_current_or_evergreen_evidence:
+        warnings.append("missing_current_or_evergreen_source_metadata")
     if strong and str(payload.get("first_missing_source_action") or "") != "none":
         warnings.append("first_missing_source_action_not_none")
     if strong and has_default_only_runtime_surfaces:
@@ -86,6 +93,7 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
         and str(payload.get("first_missing_source_action") or "") == "none"
         and lowerable_claim_kinds
         and has_full_text_evidence
+        and has_current_or_evergreen_evidence
         and not has_default_only_runtime_surfaces
     )
     return _result(
@@ -182,4 +190,49 @@ def _has_full_text_or_canonical_evidence(payload: Mapping[str, Any]) -> bool:
             or record.get("canonical_evidence") is True
         )
         for record in records
+    )
+
+
+def _has_current_or_evergreen_evidence(payload: Mapping[str, Any]) -> bool:
+    if payload.get("canonical_evidence") is True:
+        return True
+    if _row_has_current_or_evergreen_marker(payload):
+        return True
+    for key in ("records", "guide_sources", "current_deck_sources"):
+        rows = payload.get(key)
+        if isinstance(rows, list) and any(
+            isinstance(row, Mapping) and _row_has_current_or_evergreen_marker(row)
+            for row in rows
+        ):
+            return True
+    return False
+
+
+def _row_has_current_or_evergreen_marker(row: Mapping[str, Any]) -> bool:
+    if row.get("evergreen_wild_archetype") is True:
+        return True
+    if row.get("current_or_evergreen") is True:
+        return True
+    marker_values = {
+        str(row.get(field) or "").strip().lower()
+        for field in (
+            "freshness_status",
+            "source_freshness",
+            "source_freshness_lane",
+            "currency_status",
+        )
+    }
+    marker_values.discard("")
+    return bool(
+        marker_values
+        & {
+            "current",
+            "current_deck",
+            "current_full_text",
+            "current_or_evergreen",
+            "evergreen",
+            "evergreen_wild",
+            "evergreen_wild_archetype",
+            "same_year",
+        }
     )

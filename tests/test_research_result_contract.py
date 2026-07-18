@@ -10,6 +10,7 @@ def _strong_payload() -> dict[str, object]:
         "source_backed_status": "SOURCE_BACKED_STRONG",
         "first_missing_source_action": "none",
         "source_visibility": "full_text",
+        "freshness_status": "current",
         "lowerable_claim_kinds": ["mulligan_keep", "gameplan_posture"],
     }
 
@@ -35,6 +36,24 @@ def test_seed_only_payload_stays_diagnostic_and_non_promoting() -> None:
         "warnings": [],
         "lowerable_claim_kinds": [],
     }
+
+
+def test_decklist_or_stats_only_payload_stays_diagnostic_and_non_promoting() -> None:
+    result = classify_research_result_contract(
+        {
+            "deck_name": "CtAPaladin",
+            "deck_code": "AAEBAZ8FExample",
+            "source_strength": "decklist_or_stats_only",
+            "first_missing_source_action": "add_explicit_mulligan_source",
+            "lowerable_claim_kinds": [],
+        }
+    )
+
+    assert result["contract_valid"] is True
+    assert result["snapshot_kind"] == "seed_only"
+    assert result["canonical_promotion_allowed"] is False
+    assert result["canonical_downgrade_allowed"] is False
+    assert result["source_status_apply_blocking"] is False
 
 
 def test_seed_only_payload_with_deck_name_only_stays_diagnostic() -> None:
@@ -78,6 +97,34 @@ def test_strong_payload_with_lowerable_claim_kinds_is_promotion_eligible() -> No
     assert result["canonical_downgrade_allowed"] is False
     assert result["source_status_apply_blocking"] is False
     assert result["lowerable_claim_kinds"] == ["gameplan_posture", "mulligan_keep"]
+
+
+def test_research_deep_full_text_strength_can_be_promotion_eligible() -> None:
+    payload = _strong_payload()
+    payload.pop("source_backed_status")
+    payload["source_strength"] = "exact_full_text_guide"
+    payload["source_visibility"] = "full_text"
+
+    result = classify_research_result_contract(payload)
+
+    assert result["contract_valid"] is True
+    assert result["snapshot_kind"] == "strong"
+    assert result["canonical_promotion_allowed"] is True
+
+
+def test_full_text_strength_without_current_or_evergreen_metadata_is_partial() -> None:
+    payload = _strong_payload()
+    payload.pop("source_backed_status")
+    payload.pop("freshness_status")
+    payload["source_strength"] = "exact_full_text_guide"
+    payload["source_visibility"] = "full_text"
+
+    result = classify_research_result_contract(payload)
+
+    assert result["contract_valid"] is True
+    assert result["snapshot_kind"] == "partial"
+    assert result["canonical_promotion_allowed"] is False
+    assert "missing_current_or_evergreen_source_metadata" in result["warnings"]
 
 
 def test_strong_source_strength_is_accepted_when_status_is_partial() -> None:
