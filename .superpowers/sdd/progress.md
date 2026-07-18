@@ -693,3 +693,19 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-intake-v2.md`
 - [x] Task 7: Generate Ignored 12-Deck Proof Packages (no-apply configure proof generated all 12 decks under ignored `outputs/2026-07-18-source-closure-intake-v2`; temporary guard exited `0`).
 - [x] Task 8: Full Verification And Clean Finish (focused plan suite `79 passed`; full suite `1638 passed, 11 skipped`; final sync, diff, status, and review checks recorded in handoff).
 - [x] Final review fix: `source-closure-optimizer` now reads canonical `deck.name`, `promotion_ready`, and `closure_profile_closed`; regression red was verified, optimizer slice passed (`18 passed`), expanded focused suite passed (`97 passed`), and full suite passed again (`1638 passed, 11 skipped`).
+
+---
+
+# HSConfig Live Source Refresh Optimal Config Closure SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-live-source-refresh-optimal-config-closure.md`
+
+- [x] Task 1: Baseline refreshed on `codex/hsconfig-canonical-source-status-sync`; worktree clean; branch ahead/behind origin/main `50 0`; candidate registry matrix passed (`9 passed`).
+- [x] Task 2: Read-only source candidate audit completed via subagent; registry/proof-set unchanged; focused registry/docs gate passed (`10 passed`).
+- [x] Task 3: Generated all 12 no-apply online-source packages under ignored `outputs/2026-07-18-live-source-refresh-r2`; configure summary written under ignored `tmp/2026-07-18-live-source-refresh-r2`.
+- [x] Task 4: Built live source status matrix under ignored `tmp/2026-07-18-live-source-refresh-r2`; 12/12 packages valid, 0 apply blockers, 0 default-only runtime surfaces, ShadowPriest `SOURCE_BACKED_STRONG`, other decks correctly `SOURCE_BACKED_PARTIAL` with explicit first source gaps.
+- [x] Task 5: ShadowPriest strong package assertion passed: `SOURCE_BACKED_STRONG_CONFIRMED`, `promotion_ready=true`, `closure_profile_closed=true`; `SW_448` absent from `Mulligan.json` and present only as effect/hero-power runtime support.
+- [x] Task 6: Ran `research-status-sync`, `strong-closure-dossier`, and `source-closure-optimizer` for all 12 generated packages; diagnostics stayed under ignored `tmp/2026-07-18-live-source-refresh-r2`.
+- [x] Task 7: Wrote deck classification under ignored `tmp/2026-07-18-live-source-refresh-r2`; 1 strong confirmed, 11 partial, 12 runtime usable, 0 status mismatches, 0 apply blockers, 0 default-only surfaces.
+- [x] Task 8: Verification passed: focused runtime/source slice `114 passed`; docs/skill policy slice `88 passed`; `git diff --check` exited `0` with LF/CRLF warning only. Read-only package matrix and ShadowPriest subagent QA found no hard failures.
+- [x] Task 9: Final review follow-up completed: supplemental ignored deck gap details written under `tmp/2026-07-18-live-source-refresh-r2`; generated proof artifacts remain ignored; no runtime apply/write performed; only this SDD ledger was tracked for the clean-worktree handoff.
