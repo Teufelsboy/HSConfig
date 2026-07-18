@@ -252,6 +252,22 @@ def build_parser() -> argparse.ArgumentParser:
     research_status_sync.add_argument("--out", help="Optional JSON output path.")
     research_status_sync.add_argument("--json", action="store_true")
 
+    strong_closure_dossier = subparsers.add_parser(
+        "strong-closure-dossier",
+        help="diagnostic source-backed strong closure dossier",
+        description=(
+            "Read a prepared package, optional source-autopilot report, and "
+            "optional research result JSON snapshots, then explain whether "
+            "SOURCE_BACKED_STRONG is confirmed or which source action remains. "
+            "This command is diagnostic only and never writes runtime files."
+        ),
+    )
+    strong_closure_dossier.add_argument("--package", required=True)
+    strong_closure_dossier.add_argument("--research-results-dir")
+    strong_closure_dossier.add_argument("--source-autopilot-report-json")
+    strong_closure_dossier.add_argument("--out", help="Optional JSON output path.")
+    strong_closure_dossier.add_argument("--json", action="store_true")
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")

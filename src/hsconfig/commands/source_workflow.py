@@ -23,6 +23,7 @@ from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
+from hsconfig.strong_closure_dossier import build_strong_closure_dossier
 
 
 def run_source_manifest_command(args: argparse.Namespace) -> int:
@@ -47,6 +48,10 @@ def run_research_deck_command(args: argparse.Namespace) -> int:
 
 def run_research_status_sync_command(args: argparse.Namespace) -> int:
     return run_payload_command(args, research_status_sync_payload)
+
+
+def run_strong_closure_dossier_command(args: argparse.Namespace) -> int:
+    return run_payload_command(args, strong_closure_dossier_payload)
 
 
 def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -375,6 +380,30 @@ def research_status_sync_payload(args: argparse.Namespace) -> tuple[dict[str, An
     return report, 0
 
 
+def strong_closure_dossier_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    research_results_dir = getattr(args, "research_results_dir", None)
+    report = build_strong_closure_dossier(
+        package_dir=args.package,
+        research_result_paths=(
+            _research_result_paths(Path(research_results_dir))
+            if research_results_dir
+            else []
+        ),
+        source_autopilot_report_path=getattr(
+            args, "source_autopilot_report_json", None
+        ),
+    )
+    if getattr(args, "out", None):
+        out = Path(args.out)
+        _assert_safe_diagnostic_json_output(
+            out,
+            package_dir=Path(args.package),
+            command_name="strong-closure-dossier",
+        )
+        write_json(out, report)
+    return report, 0
+
+
 def _research_result_paths(research_results_dir: Path) -> list[Path]:
     if not research_results_dir.exists():
         return []
@@ -384,6 +413,19 @@ def _research_result_paths(research_results_dir: Path) -> list[Path]:
 
 
 def _assert_safe_research_status_sync_output(path: Path, *, package_dir: Path) -> None:
+    _assert_safe_diagnostic_json_output(
+        path,
+        package_dir=package_dir,
+        command_name="research-status-sync",
+    )
+
+
+def _assert_safe_diagnostic_json_output(
+    path: Path,
+    *,
+    package_dir: Path,
+    command_name: str,
+) -> None:
     parts = {part.lower() for part in path.parts}
     runtime_file_names = {
         "combo.json",
@@ -395,15 +437,13 @@ def _assert_safe_research_status_sync_output(path: Path, *, package_dir: Path) -
     }
     name = path.name.lower()
     if path.suffix.lower() != ".json":
-        raise ValueError(
-            "research-status-sync --out must be a .json diagnostic report path"
-        )
+        raise ValueError(f"{command_name} --out must be a .json diagnostic report path")
     operator_summary_path = package_dir / "reports" / "operator_summary.json"
     if path.resolve() == operator_summary_path.resolve():
         raise ValueError(
-            "research-status-sync --out must not target package operator_summary.json"
+            f"{command_name} --out must not target package operator_summary.json"
         )
     if "customconfig" in parts or name in runtime_file_names:
         raise ValueError(
-            "research-status-sync --out must not target HearthRanger runtime files"
+            f"{command_name} --out must not target HearthRanger runtime files"
         )

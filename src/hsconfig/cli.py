@@ -19,6 +19,7 @@ from hsconfig.commands.source_workflow import (
     run_source_acquire_command,
     run_source_autopilot_command,
     run_source_manifest_command,
+    run_strong_closure_dossier_command,
 )
 from hsconfig.package_builder import research_contract_payload
 
@@ -55,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_contract_spine_sentinel_command(args)
     if args.command == "research-status-sync":
         return run_research_status_sync_command(args)
+    if args.command == "strong-closure-dossier":
+        return run_strong_closure_dossier_command(args)
     if args.command == "validate":
         return run_validate_command(args)
     return emit_result(
