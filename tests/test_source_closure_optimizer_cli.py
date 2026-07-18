@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.cli import main
 
 
@@ -78,3 +80,30 @@ def test_source_closure_optimizer_rejects_operator_summary_overwrite(
         assert "operator_summary.json" in str(exc)
     else:
         raise AssertionError("expected diagnostic overwrite guard")
+
+
+@pytest.mark.parametrize(
+    "unsafe_parts",
+    [
+        ("CustomConfig", "source_closure_optimizer.json"),
+        ("Presume.json",),
+        ("12345.json",),
+    ],
+)
+def test_source_closure_optimizer_rejects_runtime_output_paths(
+    tmp_path: Path,
+    unsafe_parts: tuple[str, ...],
+) -> None:
+    package = _write_package(tmp_path, "ShadowPriest")
+    unsafe = tmp_path.joinpath(*unsafe_parts)
+
+    with pytest.raises(ValueError, match="runtime|diagnostic"):
+        main(
+            [
+                "source-closure-optimizer",
+                "--package",
+                str(package),
+                "--out",
+                str(unsafe),
+            ]
+        )

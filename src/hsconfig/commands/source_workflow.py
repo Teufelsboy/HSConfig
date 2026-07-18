@@ -459,16 +459,6 @@ def _assert_safe_diagnostic_json_output(
     package_dir: Path,
     command_name: str,
 ) -> None:
-    parts = {part.lower() for part in path.parts}
-    runtime_file_names = {
-        "combo.json",
-        "concede.json",
-        "deck_config.ini",
-        "globalvalues.json",
-        "mulligan.json",
-        "presume.json",
-    }
-    name = path.name.lower()
     if path.suffix.lower() != ".json":
         raise ValueError(f"{command_name} --out must be a .json diagnostic report path")
     operator_summary_path = package_dir / "reports" / "operator_summary.json"
@@ -476,7 +466,7 @@ def _assert_safe_diagnostic_json_output(
         raise ValueError(
             f"{command_name} --out must not target package operator_summary.json"
         )
-    if "customconfig" in parts or name in runtime_file_names:
+    if _is_hs_runtime_output_path(path):
         raise ValueError(
             f"{command_name} --out must not target HearthRanger runtime files"
         )
@@ -489,8 +479,28 @@ def _assert_safe_closure_optimizer_output(path: Path) -> None:
         raise ValueError(
             "source-closure-optimizer must not overwrite operator_summary.json"
         )
-    if name in {"mulligan.json", "globalvalues.json", "combo.json"}:
-        raise ValueError("source-closure-optimizer output must be diagnostic only")
+    if _is_hs_runtime_output_path(path):
+        raise ValueError(
+            "source-closure-optimizer output must not target HearthRanger runtime files"
+        )
+
+
+def _is_hs_runtime_output_path(path: Path) -> bool:
+    parts = {part.lower() for part in path.parts}
+    name = path.name.lower()
+    runtime_file_names = {
+        "combo.json",
+        "concede.json",
+        "deck_config.ini",
+        "globalvalues.json",
+        "mulligan.json",
+        "presume.json",
+    }
+    return (
+        "customconfig" in parts
+        or name in runtime_file_names
+        or (path.suffix.lower() == ".json" and path.stem.isdigit())
+    )
 
 
 def _format_source_closure_optimizer_markdown(payload: Mapping[str, Any]) -> str:
