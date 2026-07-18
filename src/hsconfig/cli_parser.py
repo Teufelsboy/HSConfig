@@ -286,7 +286,10 @@ def build_parser() -> argparse.ArgumentParser:
     source_closure_optimizer.add_argument(
         "--out",
         required=True,
-        help="Diagnostic JSON output path. Must not be inside a package reports directory.",
+        help=(
+            "Diagnostic JSON output path. Must not target operator_summary.json, "
+            "CustomConfig, or HearthRanger runtime files."
+        ),
     )
     source_closure_optimizer.add_argument(
         "--markdown-out",

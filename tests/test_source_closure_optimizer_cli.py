@@ -64,7 +64,7 @@ def test_source_closure_optimizer_rejects_operator_summary_overwrite(
     tmp_path: Path,
 ) -> None:
     package = _write_package(tmp_path, "ShadowPriest")
-    unsafe = package / "reports" / "operator_summary.json"
+    unsafe = tmp_path / "operator_summary.json"
 
     try:
         main(
@@ -82,11 +82,34 @@ def test_source_closure_optimizer_rejects_operator_summary_overwrite(
         raise AssertionError("expected diagnostic overwrite guard")
 
 
+def test_source_closure_optimizer_rejects_package_operator_summary_overwrite(
+    tmp_path: Path,
+) -> None:
+    package = _write_package(tmp_path, "ShadowPriest")
+    unsafe = package / "reports" / "operator_summary.json"
+
+    with pytest.raises(ValueError, match="operator_summary.json"):
+        main(
+            [
+                "source-closure-optimizer",
+                "--package",
+                str(package),
+                "--out",
+                str(unsafe),
+            ]
+        )
+
+
 @pytest.mark.parametrize(
     "unsafe_parts",
     [
         ("CustomConfig", "source_closure_optimizer.json"),
+        ("Mulligan.json",),
+        ("GlobalValues.json",),
+        ("Combo.json",),
         ("Presume.json",),
+        ("Concede.json",),
+        ("deck_config.ini",),
         ("12345.json",),
     ],
 )

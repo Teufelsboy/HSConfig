@@ -475,7 +475,7 @@ def _assert_safe_diagnostic_json_output(
 def _assert_safe_closure_optimizer_output(path: Path) -> None:
     lowered_parts = {part.lower() for part in path.parts}
     name = path.name.lower()
-    if "reports" in lowered_parts and name == "operator_summary.json":
+    if name == "operator_summary.json":
         raise ValueError(
             "source-closure-optimizer must not overwrite operator_summary.json"
         )
