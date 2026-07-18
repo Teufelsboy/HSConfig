@@ -219,3 +219,34 @@ def test_dossier_does_not_count_same_name_different_deck_code_as_promoting(
     assert row["snapshot_kind"] == "strong"
     assert row["canonical_promotion_allowed"] is False
     assert report["summary"]["research_promoting_snapshot_count"] == 0
+
+
+def test_dossier_does_not_promote_strict_invalid_matching_strong_snapshot(
+    tmp_path: Path,
+) -> None:
+    package_dir = _package(tmp_path)
+    research_path = tmp_path / "matching_incomplete_strong.json"
+    write_json(
+        research_path,
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": SHADOW_DECK_CODE,
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+        },
+    )
+
+    report = build_strong_closure_dossier(package_dir, [research_path])
+    row = report["research_snapshot_rows"][0]
+
+    assert row["package_deck_match"] is True
+    assert row["strict_research_result_valid"] is False
+    assert row["snapshot_relation"] == "requires_research_result_repair"
+    assert row["canonical_promotion_allowed"] is False
+    assert row["source_status_apply_blocking"] is False
+    assert report["summary"]["research_promoting_snapshot_count"] == 0

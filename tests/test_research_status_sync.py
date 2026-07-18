@@ -54,6 +54,11 @@ def test_seed_only_research_snapshot_cannot_downgrade_strong_package(
             "source_strength": "unfetched_acquisition_seed",
             "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
             "lowerable_claim_kinds": [],
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "notes": "Complete seed snapshot.",
         },
     )
 
@@ -105,6 +110,11 @@ def test_decklist_or_stats_research_snapshot_matches_partial_package_as_seed(
             "source_strength": "decklist_or_stats_only",
             "first_missing_source_action": "add_explicit_mulligan_source",
             "lowerable_claim_kinds": [],
+            "archetype": "Wild CtA Paladin",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "notes": "Complete seed snapshot.",
         },
     )
 
@@ -133,6 +143,12 @@ def test_matching_strong_research_snapshot_is_current_with_canonical(
             "source_visibility": "full_text",
             "freshness_status": "current",
             "lowerable_claim_kinds": ["mulligan_keep"],
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "notes": "Complete strong snapshot.",
         },
     )
 
@@ -162,6 +178,12 @@ def test_mixed_results_only_treat_matching_deck_snapshot_as_current(
             "source_visibility": "full_text",
             "freshness_status": "current",
             "lowerable_claim_kinds": ["mulligan_keep"],
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "notes": "Complete strong snapshot.",
         },
     )
     other_deck_result = _research_result(
@@ -210,10 +232,10 @@ def test_strong_looking_contract_partial_snapshot_is_not_current_with_canonical(
 
     row = report["research_snapshot_rows"][0]
     assert row["research_snapshot_kind"] == "partial"
-    assert row["snapshot_relation"] == "stale_or_seed_only"
+    assert row["snapshot_relation"] == "requires_research_result_repair"
     assert (
         row["recommended_refresh_action"]
-        == "refresh_research_snapshot_from_canonical_package"
+        == "repair_research_result_payload"
     )
 
 
@@ -284,7 +306,17 @@ def test_research_snapshot_cannot_promote_partial_package(tmp_path: Path) -> Non
             "deck_name": "CtAPaladin",
             "source_backed_status": "SOURCE_BACKED_STRONG",
             "source_strength": "SOURCE_BACKED_STRONG",
+            "deck_code": "AAEBAZ8FExample",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "archetype": "Wild CtA Paladin",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
             "first_missing_source_action": "none",
+            "notes": "Complete strong snapshot.",
         },
     )
 
@@ -379,5 +411,35 @@ def test_research_status_sync_includes_strict_validation_without_blocking(
     assert row["strict_research_result_valid"] is False
     assert "missing_field:archetype" in row["strict_research_result_errors"]
     assert row["strict_research_result_field_count"] == 3
+    assert row["source_status_apply_blocking"] is False
+    assert report["summary"]["source_status_apply_blocking"] is False
+
+
+def test_strict_invalid_strong_snapshot_requires_repair_instead_of_current_status(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    research_path = _research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [research_path])
+    row = report["research_snapshot_rows"][0]
+
+    assert row["strict_research_result_valid"] is False
+    assert row["snapshot_relation"] == "requires_research_result_repair"
+    assert row["recommended_refresh_action"] == "repair_research_result_payload"
     assert row["source_status_apply_blocking"] is False
     assert report["summary"]["source_status_apply_blocking"] is False

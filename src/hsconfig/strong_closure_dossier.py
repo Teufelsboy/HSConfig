@@ -8,6 +8,7 @@ from typing import Any
 
 from hsconfig.io import read_json
 from hsconfig.research_result_contract import classify_research_result_contract
+from hsconfig.research_result_validator import validate_research_result_payload
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 
 NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
@@ -177,6 +178,7 @@ def _research_row(
 ) -> dict[str, Any]:
     data = _read_required_json(path)
     contract = classify_research_result_contract(data)
+    strict_validation = validate_research_result_payload(data)
     research_deck_identity = _research_deck_identity(data)
     deck_name = research_deck_identity["deck_name"]
     package_deck_name_match = _deck_names_match(
@@ -188,7 +190,10 @@ def _research_row(
         research_deck_identity,
     )
     canonical_promotion_allowed = bool(
-        package_deck_match and contract["canonical_promotion_allowed"]
+        package_deck_match
+        and strict_validation["valid"]
+        and contract["contract_valid"]
+        and contract["canonical_promotion_allowed"]
     )
     return {
         "path": str(path),
@@ -202,10 +207,14 @@ def _research_row(
         "snapshot_relation": _snapshot_relation(
             package_deck_match=package_deck_match,
             package_deck_name_match=package_deck_name_match,
+            strict_research_result_valid=bool(strict_validation["valid"]),
         ),
         "source_strength": str(data.get("source_strength") or ""),
         "snapshot_kind": contract["snapshot_kind"],
         "contract_valid": contract["contract_valid"],
+        "strict_research_result_valid": strict_validation["valid"],
+        "strict_research_result_errors": strict_validation["errors"],
+        "strict_research_result_warnings": strict_validation["warnings"],
         "canonical_promotion_allowed": canonical_promotion_allowed,
         "canonical_downgrade_allowed": False,
         "source_status_apply_blocking": False,
@@ -306,8 +315,11 @@ def _snapshot_relation(
     *,
     package_deck_match: bool,
     package_deck_name_match: bool,
+    strict_research_result_valid: bool,
 ) -> str:
     if package_deck_match:
+        if not strict_research_result_valid:
+            return "requires_research_result_repair"
         return "current_package_deck_snapshot"
     if package_deck_name_match:
         return "unverified_package_deck_snapshot"

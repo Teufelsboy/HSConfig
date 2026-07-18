@@ -45,9 +45,14 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
 
     errors.extend(_list_field_errors(payload))
 
+    raw_lowerable_claim_kinds = payload.get("lowerable_claim_kinds", [])
     lowerable_claim_kinds = [
         str(kind)
-        for kind in payload.get("lowerable_claim_kinds", [])
+        for kind in (
+            raw_lowerable_claim_kinds
+            if isinstance(raw_lowerable_claim_kinds, list)
+            else []
+        )
         if str(kind) in RUNTIME_LOWERABLE_CLAIM_KINDS
     ]
     if source_strength in STRONG_STRENGTHS and not lowerable_claim_kinds:
@@ -60,7 +65,12 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
         freshness = str(payload.get("freshness_status") or "")
         if freshness not in {"current", "evergreen"}:
             errors.append("strong_requires_current_or_evergreen_freshness")
-        if _has_default_only_runtime_surfaces(payload):
+        if "default_only_runtime_surfaces" not in payload:
+            errors.append("strong_requires_explicit_empty_default_only_runtime_surfaces")
+        elif (
+            payload["default_only_runtime_surfaces"] != []
+            or _has_default_only_runtime_surfaces(payload)
+        ):
             errors.append("strong_requires_no_default_only_runtime_surfaces")
     if (
         source_strength in {"decklist_or_stats_only", "unfetched_acquisition_seed"}
@@ -107,6 +117,7 @@ def _list_field_errors(payload: Mapping[str, Any]) -> list[str]:
         "guide_sources",
         "lowerable_claim_kinds",
         "non_promoting_support",
+        "default_only_runtime_surfaces",
     ):
         if field in payload and not isinstance(payload[field], list):
             errors.append(f"{field}_must_be_list")

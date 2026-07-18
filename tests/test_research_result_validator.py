@@ -126,6 +126,74 @@ def test_research_result_validator_rejects_strong_with_default_only_surfaces() -
     assert result["source_status_apply_blocking"] is False
 
 
+def test_research_result_validator_rejects_malformed_lowerable_claim_kinds() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "ShadowPriest",
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": None,
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "notes": "Malformed claim-kind collection.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "lowerable_claim_kinds_must_be_list" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_validator_rejects_strong_without_default_only_surfaces() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "ShadowPriest",
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "first_missing_source_action": "none",
+            "notes": "Strong snapshots must declare clean default-only surfaces.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "strong_requires_explicit_empty_default_only_runtime_surfaces" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_validator_rejects_strong_with_non_list_default_only_surfaces() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "ShadowPriest",
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": "mulligan",
+            "first_missing_source_action": "none",
+            "notes": "Default-only surfaces must be a clean list.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "default_only_runtime_surfaces_must_be_list" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
+
+
 def test_fields_yaml_validator_catches_empty_or_malformed_field_map() -> None:
     result = validate_fields_yaml_payload({"fields": []})
 

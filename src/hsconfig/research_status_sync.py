@@ -103,6 +103,8 @@ def _research_snapshot_row(
         canonical_status=str(canonical["source_backed_status"]),
         research_status=research_status,
         research_kind=research_kind,
+        strict_research_result_valid=bool(strict_validation["valid"]),
+        research_contract_valid=bool(contract["contract_valid"]),
     )
     return {
         "path": str(path),
@@ -112,9 +114,9 @@ def _research_snapshot_row(
         "research_source_strength": research_strength,
         "research_snapshot_kind": research_kind,
         "research_contract_valid": contract["contract_valid"],
-        "research_canonical_promotion_allowed": contract[
-            "canonical_promotion_allowed"
-        ],
+        "research_canonical_promotion_allowed": bool(
+            strict_validation["valid"] and contract["canonical_promotion_allowed"]
+        ),
         "research_canonical_downgrade_allowed": contract[
             "canonical_downgrade_allowed"
         ],
@@ -172,9 +174,15 @@ def _snapshot_relation(
     canonical_status: str,
     research_status: str,
     research_kind: str,
+    strict_research_result_valid: bool,
+    research_contract_valid: bool,
 ) -> str:
     if not deck_names_match:
         return "different_deck_snapshot"
+    if not strict_research_result_valid or not research_contract_valid:
+        if research_kind == "seed_only":
+            return "stale_or_seed_only"
+        return "requires_research_result_repair"
     if research_kind == "seed_only" and canonical_status == STRONG_STATUS:
         return "stale_or_seed_only"
     if (
@@ -193,6 +201,8 @@ def _snapshot_relation(
 
 
 def _recommended_refresh_action(relation: str) -> str:
+    if relation == "requires_research_result_repair":
+        return "repair_research_result_payload"
     if relation == "current_with_canonical":
         return "none"
     if relation == "stale_or_seed_only":

@@ -87,7 +87,11 @@ def test_strong_closure_dossier_cli_writes_diagnostic_report(
     assert output["strong_contract_closed"] is True
     assert output["source_status_apply_blocking"] is False
     assert "written_report" not in output
-    assert output["research_snapshot_rows"][0]["canonical_promotion_allowed"] is True
+    assert output["research_snapshot_rows"][0]["strict_research_result_valid"] is False
+    assert output["research_snapshot_rows"][0]["canonical_promotion_allowed"] is False
+    assert output["research_snapshot_rows"][0]["snapshot_relation"] == (
+        "requires_research_result_repair"
+    )
 
 
 def test_strong_closure_dossier_cli_allows_missing_research_dir(
