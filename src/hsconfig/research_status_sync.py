@@ -7,6 +7,7 @@ from typing import Any
 
 from hsconfig.io import read_json
 from hsconfig.research_result_contract import classify_research_result_contract
+from hsconfig.research_result_validator import validate_research_result_payload
 
 
 NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
@@ -92,6 +93,7 @@ def _research_snapshot_row(
 ) -> dict[str, Any]:
     data = _read_json(path)
     contract = classify_research_result_contract(data)
+    strict_validation = validate_research_result_payload(data)
     research_status = _research_status(data)
     research_strength = str(data.get("source_strength") or research_status or "")
     research_kind = str(contract["snapshot_kind"])
@@ -117,6 +119,10 @@ def _research_snapshot_row(
             "canonical_downgrade_allowed"
         ],
         "research_contract_errors": contract["errors"],
+        "strict_research_result_valid": strict_validation["valid"],
+        "strict_research_result_errors": strict_validation["errors"],
+        "strict_research_result_warnings": strict_validation["warnings"],
+        "strict_research_result_field_count": strict_validation["field_count"],
         "research_first_missing_source_action": str(
             data.get("first_missing_source_action") or ""
         ),

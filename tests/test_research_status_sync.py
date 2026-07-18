@@ -357,3 +357,27 @@ def test_invalid_research_payload_stays_diagnostic_and_non_blocking(tmp_path: Pa
     assert row["research_contract_errors"] == ["missing_deck_identity"]
     assert row["source_status_apply_blocking"] is False
     assert report["summary"]["source_status_apply_blocking"] is False
+
+
+def test_research_status_sync_includes_strict_validation_without_blocking(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    research_path = _research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "ShadowPriest",
+            "source_strength": "decklist_or_stats_only",
+            "first_missing_source_action": "add_explicit_mulligan_source",
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [research_path])
+    row = report["research_snapshot_rows"][0]
+
+    assert row["strict_research_result_valid"] is False
+    assert "missing_field:archetype" in row["strict_research_result_errors"]
+    assert row["strict_research_result_field_count"] == 3
+    assert row["source_status_apply_blocking"] is False
+    assert report["summary"]["source_status_apply_blocking"] is False
