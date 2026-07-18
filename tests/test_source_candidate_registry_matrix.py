@@ -92,18 +92,23 @@ def test_context_only_candidates_do_not_claim_none_missing_action():
                 assert candidate.expected_claim_kinds == (), candidate.url
 
 
-def test_live_source_refresh_supplemental_candidates_are_registered():
-    cta_candidates = {
-        candidate.url: candidate for candidate in source_candidates_for_deck("CtAPaladin")
+def test_source_closure_wave_cta_support_seed_is_registered():
+    candidates = {
+        candidate.url: candidate
+        for candidate in source_candidates_for_deck("CtAPaladin")
     }
-    cta_url = (
+    url = (
         "https://www.reddit.com/r/wildhearthstone/comments/1qdrc06/"
         "the_xl_cta_paladin_experience/"
     )
-    assert cta_url in cta_candidates
-    assert cta_candidates[cta_url].strength_ceiling == "candidate_partial"
-    assert cta_candidates[cta_url].first_missing_source_action != "none"
+    assert url in candidates
+    assert candidates[url].strength_ceiling == "candidate_partial"
+    assert candidates[url].first_missing_source_action == (
+        "add_current_cta_paladin_mulligan_keep_source"
+    )
 
+
+def test_live_source_refresh_treant_supplemental_candidate_is_partial():
     treant_candidates = {
         candidate.url: candidate for candidate in source_candidates_for_deck("TreantDruid")
     }
@@ -113,7 +118,9 @@ def test_live_source_refresh_supplemental_candidates_are_registered():
     )
     assert treant_url in treant_candidates
     assert treant_candidates[treant_url].strength_ceiling == "candidate_partial"
-    assert treant_candidates[treant_url].first_missing_source_action != "none"
+    assert treant_candidates[treant_url].first_missing_source_action == (
+        "add_current_treant_druid_mulligan_keep_source"
+    )
 
 
 def test_source_closure_wave_downgrades_overstated_support_sources():
