@@ -48,6 +48,13 @@ lowerable claim kinds, `first_missing_source_action=none`, and no default-only
 runtime surfaces. Otherwise the package must remain valid and load-safe but
 visibly partial until the missing source-to-runtime chain is closed.
 
+`reports/02_source_acquisition/source_closure_intake_receipt.json` is part of
+that diagnostic intake layer. It records candidate source rows and fetched
+source metadata with `authority=diagnostic_only` and
+`source_status_apply_blocking=false`. Its rows are candidate seeds only; they
+cannot promote runtime claims, cannot write runtime config, cannot block
+load-safe apply, and cannot replace `reports/operator_summary.json`.
+
 Acceptance-loop wording:
 
 - operator_summary.json remains the only normal apply authority.

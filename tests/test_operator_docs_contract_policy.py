@@ -40,6 +40,11 @@ SOURCE_CONTRACT_ACCEPTANCE_DOCS = [
     "docs/operator/universal-wild-no-block-contract.md",
     ".agents/skills/hsconfig/SKILL.md",
 ]
+SOURCE_CLOSURE_INTAKE_DOCS = [
+    "docs/operator/source-builder-workflow.md",
+    "docs/operator/universal-wild-no-block-contract.md",
+    ".agents/skills/hsconfig/SKILL.md",
+]
 REQUIRED_CONTRACT_PHRASES = [
     "operator_summary.json remains the only normal apply authority",
     "SOURCE_BACKED_STRONG is an evidence-quality label",
@@ -178,6 +183,27 @@ def test_active_docs_and_skill_state_source_contract_acceptance_loop_exact_phras
             assert phrase in text
         for stale_term in STALE_CONTRACT_TERMS:
             assert stale_term not in lowered
+
+
+def test_active_docs_and_skill_state_source_closure_intake_receipt_boundary():
+    combined = "\n".join(
+        (ROOT / relative_path).read_text(encoding="utf-8")
+        for relative_path in SOURCE_CLOSURE_INTAKE_DOCS
+    )
+    lowered = combined.lower()
+
+    for sentinel in (
+        "source_closure_intake_receipt.json",
+        "source_closure_intake",
+        "authority=diagnostic_only",
+        "source_status_apply_blocking=false",
+        "cannot promote",
+        "cannot block",
+        "cannot write runtime config",
+        "cannot replace `reports/operator_summary.json`",
+    ):
+        assert sentinel in combined
+    assert "source_closure_intake_receipt.json remains the normal apply authority" not in lowered
 
 
 def test_user_wild_source_input_keeps_unfetched_candidates_non_authoritative():

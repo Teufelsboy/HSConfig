@@ -47,6 +47,8 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 `source-acquire` fetches bounded public pages and writes compact source records. Fetch failures, thin pages, decklist-only records, and static metadata without explicit supported effect semantics remain visible diagnostics; they do not block a technically valid package and do not promote `SOURCE_BACKED_STRONG`.
 
+`reports/02_source_acquisition/source_closure_intake_receipt.json` is the bounded intake receipt for candidate source rows and fetched source metadata. It is diagnostic-only: it can explain source readiness, first missing source actions, and which URLs entered configure, but it cannot promote `SOURCE_BACKED_STRONG`, block load-safe generation, write runtime config, or replace `reports/operator_summary.json` as the apply authority.
+
 Every card should reach one visible lane: `guide_backed`, `source_backed_static_semantics`, `archetype_inferred`, `explicit_low_confidence`, `generic_low_confidence`, or `contract_gap`.
 Every expected runtime surface must be emitted, explicitly suppressed, or
 reported as a gap or source action. Thin or weak source is non-blocking, but it

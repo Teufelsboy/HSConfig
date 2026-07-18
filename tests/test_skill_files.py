@@ -154,6 +154,15 @@ def test_skill_names_configure_normal_workflow():
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
 
 
+def test_skill_names_source_closure_intake_receipt_without_new_authority():
+    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "source_closure_intake_receipt.json" in text
+    assert "source_closure_intake" in text
+    assert "acquisition input, not evidence authority" in text
+    assert "cannot promote, block, write runtime config, or replace `operator_summary.json`" in text
+
+
 def test_skill_docs_preserve_hsconfig_boundaries_without_verbatim_duplication():
     docs = [
         Path("README.md").read_text(encoding="utf-8"),
