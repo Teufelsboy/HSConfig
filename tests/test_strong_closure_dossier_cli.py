@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -7,12 +8,20 @@ from hsconfig.cli import main
 from hsconfig.io import write_json
 
 
+SHADOW_DECK_CODE = "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA="
+
+
 def _package(tmp_path: Path) -> Path:
     package_dir = tmp_path / "04_package"
     write_json(
         package_dir / "reports" / "operator_summary.json",
         {
-            "deck": {"name": "ShadowPriest"},
+            "deck": {
+                "name": "ShadowPriest",
+                "deck_code_hash": (
+                    f"sha256:{hashlib.sha256(SHADOW_DECK_CODE.encode('utf-8')).hexdigest()}"
+                ),
+            },
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "SOURCE_BACKED_STRONG",
             "source_backed_status": "SOURCE_BACKED_STRONG",
@@ -44,7 +53,7 @@ def test_strong_closure_dossier_cli_writes_diagnostic_report(
         research_dir / "shadowpriest.json",
         {
             "deck_name": "ShadowPriest",
-            "deck_code": "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
+            "deck_code": SHADOW_DECK_CODE,
             "source_strength": "exact_full_text_guide",
             "source_visibility": "full_text",
             "freshness_status": "current",

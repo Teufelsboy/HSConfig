@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import hashlib
 from pathlib import Path
 import re
 from typing import Any
@@ -20,19 +21,20 @@ def build_strong_closure_dossier(
 ) -> dict[str, Any]:
     package_path = Path(package_dir)
     operator_summary = _read_required_json(package_path / NORMAL_APPLY_AUTHORITY)
+    package_deck_identity = _package_deck_identity(package_path, operator_summary)
     source_claim_gap_report = _read_optional_json(
         package_path / "reports" / "source_claim_gap_report.json",
         default={"summary": {"blocked_cards": 0}, "cards": {}},
     )
+    deck_name = str(package_deck_identity["deck_name"])
     promotion_report = build_strong_promotion_report(
-        deck_name=_deck_name(operator_summary),
+        deck_name=deck_name,
         fixture_stage=_fixture_stage(operator_summary),
         operator_summary=operator_summary,
         source_claim_gap_report=source_claim_gap_report,
     )
-    deck_name = _deck_name(operator_summary)
     research_rows = [
-        _research_row(Path(path), package_deck_name=deck_name)
+        _research_row(Path(path), package_deck_identity=package_deck_identity)
         for path in sorted(research_result_paths, key=lambda item: str(item))
     ]
     autopilot_report = (
@@ -105,6 +107,35 @@ def _deck_name(operator_summary: dict[str, Any]) -> str:
     return ""
 
 
+def _package_deck_identity(
+    package_path: Path,
+    operator_summary: dict[str, Any],
+) -> dict[str, str]:
+    deck = operator_summary.get("deck", {})
+    if not isinstance(deck, dict):
+        deck = {}
+    deck_identity = _read_optional_json(
+        package_path / "reports" / "deck_identity.json",
+        default={},
+    )
+    deck_fingerprint = _read_optional_json(
+        package_path / "reports" / "deck_fingerprint.json",
+        default={},
+    )
+    return {
+        "deck_name": str(deck.get("name") or deck_identity.get("deck_name") or ""),
+        "deck_code_hash": _normalized_hash(
+            deck.get("deck_code_hash")
+            or deck_identity.get("deck_code_hash")
+            or deck_fingerprint.get("deck_code_hash")
+        ),
+        "deck_fingerprint": _normalized_hash(
+            deck_identity.get("deck_fingerprint")
+            or deck_fingerprint.get("deck_fingerprint")
+        ),
+    }
+
+
 def _fixture_stage(operator_summary: dict[str, Any]) -> str:
     return (
         "core_source_backed_fixture"
@@ -139,11 +170,23 @@ def _autopilot_summary(report: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _research_row(path: Path, *, package_deck_name: str) -> dict[str, Any]:
+def _research_row(
+    path: Path,
+    *,
+    package_deck_identity: dict[str, str],
+) -> dict[str, Any]:
     data = _read_required_json(path)
     contract = classify_research_result_contract(data)
-    deck_name = str(data.get("deck_name") or "")
-    package_deck_match = _deck_names_match(package_deck_name, deck_name)
+    research_deck_identity = _research_deck_identity(data)
+    deck_name = research_deck_identity["deck_name"]
+    package_deck_name_match = _deck_names_match(
+        package_deck_identity["deck_name"],
+        deck_name,
+    )
+    package_deck_match = _package_deck_identity_matches(
+        package_deck_identity,
+        research_deck_identity,
+    )
     canonical_promotion_allowed = bool(
         package_deck_match and contract["canonical_promotion_allowed"]
     )
@@ -151,10 +194,14 @@ def _research_row(path: Path, *, package_deck_name: str) -> dict[str, Any]:
         "path": str(path),
         "deck_name": deck_name,
         "package_deck_match": package_deck_match,
-        "snapshot_relation": (
-            "current_package_deck_snapshot"
-            if package_deck_match
-            else "different_deck_snapshot"
+        "package_deck_name_match": package_deck_name_match,
+        "deck_identity_match_basis": _deck_identity_match_basis(
+            package_deck_identity,
+            research_deck_identity,
+        ),
+        "snapshot_relation": _snapshot_relation(
+            package_deck_match=package_deck_match,
+            package_deck_name_match=package_deck_name_match,
         ),
         "source_strength": str(data.get("source_strength") or ""),
         "snapshot_kind": contract["snapshot_kind"],
@@ -189,7 +236,14 @@ def _summary(
             1 for row in research_rows if row["canonical_promotion_allowed"]
         ),
         "different_deck_research_snapshot_count": sum(
-            1 for row in research_rows if not row["package_deck_match"]
+            1
+            for row in research_rows
+            if row["snapshot_relation"] == "different_deck_snapshot"
+        ),
+        "unverified_deck_research_snapshot_count": sum(
+            1
+            for row in research_rows
+            if row["snapshot_relation"] == "unverified_package_deck_snapshot"
         ),
         "source_status_apply_blocking": False,
         "operator_action": (
@@ -208,3 +262,60 @@ def _deck_names_match(package_deck_name: object, research_deck_name: object) -> 
 
 def _normalized_deck_identity(deck_name: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(deck_name).casefold())
+
+
+def _research_deck_identity(data: dict[str, Any]) -> dict[str, str]:
+    deck_code_hash = _normalized_hash(data.get("deck_code_hash"))
+    deck_code = str(data.get("deck_code") or "").strip()
+    if not deck_code_hash and deck_code:
+        deck_code_hash = hashlib.sha256(deck_code.encode("utf-8")).hexdigest()
+    return {
+        "deck_name": str(data.get("deck_name") or ""),
+        "deck_code_hash": deck_code_hash,
+        "deck_fingerprint": _normalized_hash(data.get("deck_fingerprint")),
+    }
+
+
+def _package_deck_identity_matches(
+    package_deck_identity: dict[str, str],
+    research_deck_identity: dict[str, str],
+) -> bool:
+    comparisons: list[bool] = []
+    for field in ("deck_code_hash", "deck_fingerprint"):
+        package_value = package_deck_identity.get(field, "")
+        research_value = research_deck_identity.get(field, "")
+        if package_value and research_value:
+            comparisons.append(package_value == research_value)
+    return bool(comparisons and all(comparisons))
+
+
+def _deck_identity_match_basis(
+    package_deck_identity: dict[str, str],
+    research_deck_identity: dict[str, str],
+) -> str:
+    matches = [
+        field
+        for field in ("deck_code_hash", "deck_fingerprint")
+        if package_deck_identity.get(field)
+        and package_deck_identity.get(field) == research_deck_identity.get(field)
+    ]
+    return "+".join(matches) if matches else "none"
+
+
+def _snapshot_relation(
+    *,
+    package_deck_match: bool,
+    package_deck_name_match: bool,
+) -> str:
+    if package_deck_match:
+        return "current_package_deck_snapshot"
+    if package_deck_name_match:
+        return "unverified_package_deck_snapshot"
+    return "different_deck_snapshot"
+
+
+def _normalized_hash(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized.startswith("sha256:"):
+        normalized = normalized.removeprefix("sha256:")
+    return normalized
