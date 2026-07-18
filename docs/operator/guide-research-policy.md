@@ -174,6 +174,11 @@ remains the only normal apply authority.
 `source_evidence_closure.json` is also diagnostic-only: it is a compact package
 quality summary of source-to-runtime closure, default-only risk, next report,
 and first missing source actions.
+`hsconfig source-closure-optimizer` is a diagnostic-only closure view for
+freshly prepared packages. It does not apply runtime files, does not promote
+candidate URLs to `SOURCE_BACKED_STRONG`, does not replace
+`reports/operator_summary.json`, and keeps source-depth gaps non-blocking with
+`source_status_apply_blocking=false`.
 
 Closure freshness is diagnostic-only. `operator_summary.json remains the only normal apply authority`; `closure_schema_current`, `cards_missing_closure`, `closure_lane_counts`, and `default_only_runtime_surface_details` explain whether a freshly generated package exposes every card's source-to-runtime state. They must not become a second runtime-write gate.
 `operator_summary.json.source_backed_strong_closure` and `operator_summary.json.no_default_only_runtime_status` are compact diagnostic-only summaries. They summarize honest Strong closure and visible no-default-only runtime status for operators. They must not become apply gates, grant runtime-write permission, or replace `reports/operator_summary.json` authority.

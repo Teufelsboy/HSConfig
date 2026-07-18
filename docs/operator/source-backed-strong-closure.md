@@ -61,6 +61,32 @@ a prepared package. strong-closure-dossier is diagnostic-only: it may read
 or create a second readiness gate. operator_summary.json remains the only normal
 apply authority.
 
+## Source Closure Optimizer
+
+`hsconfig source-closure-optimizer` is a diagnostic-only batch report for
+freshly prepared packages. It reads `reports/operator_summary.json`, optional
+source-candidate proof context, and closure summaries. It does not write runtime
+files and does not replace `operator_summary.json`.
+
+The command may classify a package as:
+
+- `strong`: `SOURCE_BACKED_STRONG` is closed, no default-only runtime surfaces
+  are visible, and `first_missing_source_action=none`.
+- `partial_source_action_needed`: the package is load-safe, but at least one
+  source-to-runtime link remains open.
+- `preserved_partial_stop_condition`: the package is load-safe and the current
+  missing action is an intentional, documented stop condition such as
+  Kingslayer Quick Pick mulligan evidence or Boarlock Fracking mulligan
+  evidence.
+- `context_only_load_safe`: public candidate material is useful for navigation
+  or archetype context, but it cannot close runtime surfaces.
+- `invalid_package`: the package is technically invalid and must be fixed before
+  source closure matters.
+
+`default_only_runtime_surfaces` prevents `strong`, but it must not turn source
+depth into a runtime apply block. `source_status_apply_blocking` remains false
+for source-depth gaps.
+
 Operator invariants for source-backed strong closure:
 
 - Source-candidate registries are acquisition seeds only, not promotion authority.

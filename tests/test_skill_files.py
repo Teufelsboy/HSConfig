@@ -1080,6 +1080,18 @@ def test_hsconfig_skill_explains_start_effect_mulligan_split():
     assert "operator_summary.json remains the normal apply authority" in text
 
 
+def test_hsconfig_skill_documents_source_closure_optimizer_boundary() -> None:
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (skill, workflow):
+        assert "source-closure-optimizer" in text
+        assert "diagnostic" in text.lower()
+        assert "does not replace `reports/operator_summary.json`" in text
+
+
 def test_docs_and_skill_explain_contract_invariant_closure_without_new_gate():
     operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
     skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
