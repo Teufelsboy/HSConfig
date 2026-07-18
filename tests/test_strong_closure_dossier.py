@@ -122,3 +122,27 @@ def test_dossier_blocks_strong_when_default_only_surface_is_present(
     assert report["first_missing_source_action"] == (
         "replace_default_only_runtime_surface_with_source_or_policy_claim"
     )
+
+
+def test_dossier_keeps_seed_only_research_snapshot_diagnostic_only(
+    tmp_path: Path,
+) -> None:
+    package_dir = _package(tmp_path)
+    research_path = tmp_path / "shadowpriest_research_seed.json"
+    write_json(
+        research_path,
+        {
+            "deck_name": "ShadowPriest",
+            "source_strength": "decklist_or_stats_only",
+            "first_missing_source_action": "add_explicit_mulligan_source",
+        },
+    )
+
+    report = build_strong_closure_dossier(package_dir, [research_path])
+    row = report["research_snapshot_rows"][0]
+
+    assert row["snapshot_kind"] == "seed_only"
+    assert row["canonical_promotion_allowed"] is False
+    assert row["source_status_apply_blocking"] is False
+    assert report["summary"]["research_snapshot_count"] == 1
+    assert report["summary"]["research_promoting_snapshot_count"] == 0
