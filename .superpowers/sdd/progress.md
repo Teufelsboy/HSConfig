@@ -677,3 +677,18 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-optimizer.md`
 - [x] Task 5: Verify against current source candidate deck set (commit `910dbd3`; 12 proof decks configured into temporary packages, optimizer ran over generated `04_package` dirs, focused suite `122 passed`).
 - [x] Task 6: Full verification and review (final review fix `7dcd558`; re-review clean; full suite `1615 passed, 11 skipped`; skill sync and diff check passed).
 - [x] Task 7: Self-review and clean-worktree handoff (worktree clean on `codex/hsconfig-canonical-source-status-sync`; no generated outputs committed; no runtime apply/write performed).
+
+---
+
+# HSConfig Source Closure Intake v2 SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-intake-v2.md`
+
+- [x] Task 1: Baseline refreshed on `codex/hsconfig-canonical-source-status-sync`; worktree clean; branch ahead/behind origin/main `44 0`; focused baseline passed (`48 passed`).
+- [x] Task 2: Add Pure Source Closure Intake Receipt (commit `e8aaaa7`; receipt unit tests and source-candidate registry tests passed).
+- [x] Task 3: Wire Receipt Into Configure Online-Source Reports (commit `2f10cf4`; configure/source/report ownership slice passed, `29 passed`).
+- [x] Task 4: Add Compact Operator Summary Pointer Without Authority Drift (commit `2f10cf4`; operator summary pointer is diagnostic-only and ownership manifest marks the receipt non-apply-authority).
+- [x] Task 5: Extend 12-Deck No-Block Matrix For Intake Receipts (commit `2c1c179`; receipt matrix and ShadowPriest canary passed, `17 passed`).
+- [x] Task 6: Sync Operator Documentation And Repo-Local Skill (commit `9728445`; installed skill sync passed and docs/skill guardrails passed, `93 passed`).
+- [x] Task 7: Generate Ignored 12-Deck Proof Packages (no-apply configure proof generated all 12 decks under ignored `outputs/2026-07-18-source-closure-intake-v2`; temporary guard exited `0`).
+- [x] Task 8: Full Verification And Clean Finish (focused plan suite `79 passed`; full suite `1638 passed, 11 skipped`; final sync, diff, status, and review checks recorded in handoff).
