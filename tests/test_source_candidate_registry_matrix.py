@@ -34,7 +34,7 @@ EXPECTED_STRENGTH = {
     "ShadowPriest": "runtime_claims_possible",
     "CtAPaladin": "runtime_claims_possible",
     "PirateRogue": "candidate_partial",
-    "BigShaman": "candidate_partial",
+    "BigShaman": "runtime_claims_possible",
     "Discolock": "runtime_claims_possible",
     "TreantDruid": "runtime_claims_possible",
     "ImbueMage": "runtime_claims_possible",
@@ -49,7 +49,7 @@ EXPECTED_STRONG_PROMOTION_STATUS = {
     "ShadowPriest": "runtime_claims_possible_if_fetched_claims_close",
     "CtAPaladin": "runtime_claims_possible_if_fetched_claims_close",
     "PirateRogue": "partial_until_missing_source_action_closes",
-    "BigShaman": "partial_until_missing_source_action_closes",
+    "BigShaman": "runtime_claims_possible_if_fetched_claims_close",
     "Discolock": "runtime_claims_possible_if_fetched_claims_close",
     "TreantDruid": "runtime_claims_possible_if_fetched_claims_close",
     "ImbueMage": "runtime_claims_possible_if_fetched_claims_close",
@@ -151,15 +151,41 @@ def test_source_closure_wave_downgrades_overstated_support_sources():
         "add_current_discolock_full_text_mulligan_or_gameplan_source"
     )
 
-    big_shaman = source_candidates_for_deck("BigShaman")[0]
-    assert big_shaman.strength_ceiling == "candidate_partial"
-    assert big_shaman.first_missing_source_action == (
+    big_shaman_support = {
+        candidate.url: candidate
+        for candidate in source_candidates_for_deck("BigShaman")
+    }
+    stale_big_shaman_guide = big_shaman_support[
+        "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
+    ]
+    assert stale_big_shaman_guide.strength_ceiling == "candidate_partial"
+    assert stale_big_shaman_guide.first_missing_source_action == (
         "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
     )
 
     pirate_dh = source_candidates_for_deck("PirateDH")[0]
     assert pirate_dh.publication_year == 2024
     assert pirate_dh.expected_strength == "guide_historical_archetype_match"
+
+
+def test_live_source_priority_queue_registers_current_bigshaman_mulligan_source():
+    candidates = source_candidates_for_deck("BigShaman")
+
+    assert [candidate.url for candidate in candidates[:2]] == [
+        "https://hearthstone-decks.net/big-shaman-202-legend-abadon-score-98-64/",
+        "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide",
+    ]
+
+    current_source = candidates[0]
+    assert current_source.source_family == "decklist_with_strategy"
+    assert current_source.strength_ceiling == "runtime_claims_possible"
+    assert current_source.expected_strength == "current_legend_mulligan_source"
+    assert current_source.expected_claim_kinds == (
+        "archetype",
+        "gameplan_posture",
+        "mulligan_keep",
+    )
+    assert current_source.first_missing_source_action == "none"
 
 
 def test_source_candidate_proof_doc_matches_registry_expectations():

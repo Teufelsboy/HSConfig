@@ -44,11 +44,14 @@
     {
       "deck_name": "BigShaman",
       "expected_candidate_count_min": 1,
-      "expected_strength_ceiling": "candidate_partial",
+      "expected_strength_ceiling": "runtime_claims_possible",
       "expected_runtime_generation_status": "load_safe_no_default_only",
-      "expected_strong_promotion_status": "partial_until_missing_source_action_closes",
-      "first_missing_source_action": "add_current_big_shaman_full_text_mulligan_or_gameplan_source",
+      "expected_strong_promotion_status": "runtime_claims_possible_if_fetched_claims_close",
+      "first_missing_source_action": "none",
       "candidate_urls": [
+        "https://hearthstone-decks.net/big-shaman-202-legend-abadon-score-98-64/"
+      ],
+      "support_seed_urls": [
         "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
       ]
     },

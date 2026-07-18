@@ -709,3 +709,12 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-live-source-refresh-optimal-co
 - [x] Task 7: Wrote deck classification under ignored `tmp/2026-07-18-live-source-refresh-r2`; 1 strong confirmed, 11 partial, 12 runtime usable, 0 status mismatches, 0 apply blockers, 0 default-only surfaces.
 - [x] Task 8: Verification passed: focused runtime/source slice `114 passed`; docs/skill policy slice `88 passed`; `git diff --check` exited `0` with LF/CRLF warning only. Read-only package matrix and ShadowPriest subagent QA found no hard failures.
 - [x] Task 9: Final review follow-up completed: supplemental ignored deck gap details written under `tmp/2026-07-18-live-source-refresh-r2`; generated proof artifacts remain ignored; no runtime apply/write performed; only this SDD ledger was tracked for the clean-worktree handoff.
+
+---
+
+# HSConfig Live Source Closure Priority Queue v3 SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-live-source-closure-priority-queue-v3.md`
+
+- [x] Task 1: Baseline refreshed on `codex/hsconfig-canonical-source-status-sync`; branch ahead/behind origin/main `52 0`; focused baseline passed (`66 passed`); worktree was clean before edits.
+- [x] Task 2: BigShaman current Hearthstone-Decks source candidate added with registry/proof/test coverage; RED test failed for missing current candidate, then registry matrix passed (`10 passed`); read-only source audit confirmed the minimal field set and proof mirror.

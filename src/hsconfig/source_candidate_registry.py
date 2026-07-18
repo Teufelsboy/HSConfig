@@ -388,6 +388,26 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
     ),
     "bigshaman": (
         SourceCandidate(
+            url="https://hearthstone-decks.net/big-shaman-202-legend-abadon-score-98-64/",
+            source_family="decklist_with_strategy",
+            deck_name="BigShaman",
+            archetype="wild_big_shaman",
+            reason=(
+                "current Wild Big Shaman legend page with explicit initial "
+                "mulligan names and Y'Shaarj variant context"
+            ),
+            priority=10,
+            expected_strength="current_legend_mulligan_source",
+            publication_year=2025,
+            strength_ceiling="runtime_claims_possible",
+            expected_claim_kinds=(
+                "archetype",
+                "gameplan_posture",
+                "mulligan_keep",
+            ),
+            first_missing_source_action="none",
+        ),
+        SourceCandidate(
             url="https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide",
             source_family="guide",
             deck_name="BigShaman",
