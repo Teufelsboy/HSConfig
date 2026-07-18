@@ -20,13 +20,13 @@ def extract_text_claims(
     if not _is_full_text_guide(source_record):
         return []
 
-    text = _text(source_record.get("normalized_text") or source_record.get("text")).lower()
+    text = _matching_text(source_record.get("normalized_text") or source_record.get("text")).lower()
     if not text:
         return []
 
     cards = [card for card in deck_identity.get("cards", []) if isinstance(card, Mapping)]
     cards_by_name = {
-        _text(card.get("name")).lower(): card
+        _matching_text(card.get("name")).lower(): card
         for card in cards
         if _text(card.get("name"))
     }
@@ -149,7 +149,7 @@ def _hero_power_transform_claims(
 
 
 def _has_explicit_hero_power_association(card_name: str, text: str) -> bool:
-    card = re.escape(card_name.lower())
+    card = re.escape(_matching_text(card_name).lower())
     action = r"(?:change|changes|turn|turns|transform|transforms|upgrade|upgrades|replace|replaces)"
     enable = r"(?:enable|enables|unlock|unlocks)"
     modifier = r"(?:(?:your|the|their|a|an|this|that|new|current)\s+){0,3}"
@@ -244,10 +244,21 @@ def _positive_keep_segments(text: str) -> list[str]:
     segments: list[str] = []
     for sentence in _sentences(text):
         lowered = sentence.lower()
-        if "keep" not in lowered:
-            continue
-        segments.extend(_keep_clause_segments(sentence, polarity="positive"))
+        if "keep" in lowered:
+            segments.extend(_keep_clause_segments(sentence, polarity="positive"))
+        segments.extend(_initial_mulligan_list_segments(sentence))
     return segments
+
+
+def _initial_mulligan_list_segments(sentence: str) -> list[str]:
+    lowered = sentence.lower()
+    if "initial mulligan" not in lowered:
+        return []
+    if not re.search(r"\bends?\s+up\s+being\b", lowered):
+        return []
+    if any(marker in lowered for marker in NEGATIVE_KEEP_MARKERS):
+        return []
+    return [sentence.strip()]
 
 
 def _keep_clause_segments(sentence: str, *, polarity: str) -> list[str]:
@@ -353,3 +364,13 @@ def _int_or_none(value: Any) -> int | None:
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _matching_text(value: Any) -> str:
+    return (
+        _text(value)
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+        .replace("\u02bc", "'")
+        .replace("\u2032", "'")
+    )

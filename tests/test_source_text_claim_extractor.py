@@ -132,6 +132,50 @@ def test_extracts_full_text_shadowpriest_list_claims_without_negated_keeps():
     )
 
 
+def test_extracts_initial_mulligan_ends_up_being_list_with_smart_apostrophe():
+    source = {
+        "source_url": "https://hearthstone-decks.net/big-shaman-202-legend-abadon-score-98-64/",
+        "source_title": "Big Shaman #202 Legend - Abadon",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "publication_year": 2026,
+        "deck_match": {
+            "deck_name": "BigShaman",
+            "matched_card_ids": ["GVG_029", "TSC_637", "TOY_507", "SW_025"],
+        },
+        "normalized_text": (
+            "I love this version with Y'Shaarj; it gave me very good results. "
+            "For the initial mulligan, it always ends up being Ancestor’s Call, "
+            "Scalding Geyser, Fairy Tale Forest, and Auctionhouse Gavel."
+        ),
+        "source_record_strength": "candidate_strong",
+    }
+
+    claims = extract_text_claims(
+        deck_name="BigShaman",
+        deck_identity={
+            "cards": [
+                {"card_id": "GVG_029", "name": "Ancestor's Call", "cost": 4, "text": ""},
+                {"card_id": "TSC_637", "name": "Scalding Geyser", "cost": 1, "text": ""},
+                {"card_id": "TOY_507", "name": "Fairy Tale Forest", "cost": 3, "text": ""},
+                {"card_id": "SW_025", "name": "Auctionhouse Gavel", "cost": 2, "text": ""},
+            ]
+        },
+        source_record=source,
+        current_date="2026-07-18",
+    )
+
+    keep_cards = {
+        card_id
+        for claim in claims
+        if claim["claim_kind"] == "mulligan_keep"
+        for card_id in claim["cards"]
+    }
+    assert keep_cards == {"GVG_029", "TSC_637", "TOY_507", "SW_025"}
+
+
 @pytest.mark.parametrize(
     "negated_text",
     [
