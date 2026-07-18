@@ -268,6 +268,31 @@ def build_parser() -> argparse.ArgumentParser:
     strong_closure_dossier.add_argument("--out", help="Optional JSON output path.")
     strong_closure_dossier.add_argument("--json", action="store_true")
 
+    source_closure_optimizer = subparsers.add_parser(
+        "source-closure-optimizer",
+        help="Write diagnostic-only source closure decisions for prepared packages.",
+    )
+    source_closure_optimizer.add_argument(
+        "--package",
+        action="append",
+        required=True,
+        help="Path to a prepared 04_package directory. Can be passed more than once.",
+    )
+    source_closure_optimizer.add_argument(
+        "--candidate-proof-json",
+        default="docs/operator/source-candidate-proof-decks.json",
+        help="Source candidate proof manifest used for source-ceiling context.",
+    )
+    source_closure_optimizer.add_argument(
+        "--out",
+        required=True,
+        help="Diagnostic JSON output path. Must not be inside a package reports directory.",
+    )
+    source_closure_optimizer.add_argument(
+        "--markdown-out",
+        help="Optional diagnostic Markdown summary output path.",
+    )
+
     validate = subparsers.add_parser("validate")
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")

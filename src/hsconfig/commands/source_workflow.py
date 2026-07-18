@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.commands.common import run_payload_command
 from hsconfig.deck_identity import build_deck_identity
@@ -20,6 +20,7 @@ from hsconfig.research_status_sync import build_research_status_sync_report
 from hsconfig.source_acquisition import collect_public_source_records, fetchable_source_url
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
+from hsconfig.source_closure_optimizer import build_source_closure_optimizer_report
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
@@ -52,6 +53,38 @@ def run_research_status_sync_command(args: argparse.Namespace) -> int:
 
 def run_strong_closure_dossier_command(args: argparse.Namespace) -> int:
     return run_payload_command(args, strong_closure_dossier_payload)
+
+
+def run_source_closure_optimizer_command(args: argparse.Namespace) -> int:
+    reports = [
+        build_source_closure_optimizer_report(
+            package_dir=package,
+            candidate_proof_path=args.candidate_proof_json,
+        )
+        for package in args.package
+    ]
+    payload = {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "source_status_apply_blocking": False,
+        "package_count": len(reports),
+        "reports": reports,
+    }
+    out_path = Path(args.out)
+    _assert_safe_closure_optimizer_output(out_path)
+    write_json(out_path, payload)
+
+    if args.markdown_out:
+        md_path = Path(args.markdown_out)
+        _assert_safe_closure_optimizer_output(md_path)
+        md_path.parent.mkdir(parents=True, exist_ok=True)
+        md_path.write_text(
+            _format_source_closure_optimizer_markdown(payload),
+            encoding="utf-8",
+        )
+
+    print(f"Wrote source closure optimizer report: {out_path}")
+    return 0
 
 
 def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
@@ -447,3 +480,40 @@ def _assert_safe_diagnostic_json_output(
         raise ValueError(
             f"{command_name} --out must not target HearthRanger runtime files"
         )
+
+
+def _assert_safe_closure_optimizer_output(path: Path) -> None:
+    lowered_parts = {part.lower() for part in path.parts}
+    name = path.name.lower()
+    if "reports" in lowered_parts and name == "operator_summary.json":
+        raise ValueError(
+            "source-closure-optimizer must not overwrite operator_summary.json"
+        )
+    if name in {"mulligan.json", "globalvalues.json", "combo.json"}:
+        raise ValueError("source-closure-optimizer output must be diagnostic only")
+
+
+def _format_source_closure_optimizer_markdown(payload: Mapping[str, Any]) -> str:
+    lines = [
+        "# HSConfig Source Closure Optimizer",
+        "",
+        f"- Authority: `{payload['authority']}`",
+        f"- Source status apply blocking: `{payload['source_status_apply_blocking']}`",
+        f"- Package count: `{payload['package_count']}`",
+        "",
+        "| Deck | Decision | Runtime usable | First missing source action | Default-only surfaces |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for report in payload["reports"]:
+        default_only = ", ".join(report["default_only_runtime_surfaces"]) or "none"
+        lines.append(
+            "| {deck} | `{decision}` | `{usable}` | `{action}` | `{default_only}` |".format(
+                deck=report["deck_name"],
+                decision=report["decision"],
+                usable=report["runtime_package_usable"],
+                action=report["first_missing_source_action"],
+                default_only=default_only,
+            )
+        )
+    lines.append("")
+    return "\n".join(lines)
