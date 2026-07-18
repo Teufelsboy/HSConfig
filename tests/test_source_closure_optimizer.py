@@ -19,7 +19,7 @@ def _write_package(tmp_path: Path, operator: dict) -> Path:
 
 def _operator(**overrides: object) -> dict:
     payload = {
-        "deck_name": "ShadowPriest",
+        "deck": {"name": "ShadowPriest"},
         "technical_status": "VALID_PACKAGE",
         "runtime_load_safe": True,
         "source_status_apply_blocking": False,
@@ -29,8 +29,11 @@ def _operator(**overrides: object) -> dict:
         "default_only_runtime_surface_details": [],
         "no_default_only_runtime_status": "clean",
         "source_backed_strong_closure": {
-            "closed": True,
+            "status": "ready",
+            "promotion_ready": True,
             "first_missing_source_action": "none",
+            "diagnostic_only": True,
+            "closure_profile_closed": True,
         },
     }
     payload.update(overrides)
@@ -42,7 +45,9 @@ def test_shadowpriest_strong_when_operator_closure_is_clean(tmp_path: Path) -> N
 
     report = build_source_closure_optimizer_report(package)
 
+    assert report["deck_name"] == "ShadowPriest"
     assert report["decision"] == "strong"
+    assert report["source_backed_strong_closed"] is True
     assert report["source_status_apply_blocking"] is False
     assert report["runtime_package_usable"] is True
     assert report["default_only_blocks_strong"] is False

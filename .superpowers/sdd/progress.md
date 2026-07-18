@@ -692,3 +692,4 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-intake-v2.md`
 - [x] Task 6: Sync Operator Documentation And Repo-Local Skill (commit `9728445`; installed skill sync passed and docs/skill guardrails passed, `93 passed`).
 - [x] Task 7: Generate Ignored 12-Deck Proof Packages (no-apply configure proof generated all 12 decks under ignored `outputs/2026-07-18-source-closure-intake-v2`; temporary guard exited `0`).
 - [x] Task 8: Full Verification And Clean Finish (focused plan suite `79 passed`; full suite `1638 passed, 11 skipped`; final sync, diff, status, and review checks recorded in handoff).
+- [x] Final review fix: `source-closure-optimizer` now reads canonical `deck.name`, `promotion_ready`, and `closure_profile_closed`; regression red was verified, optimizer slice passed (`18 passed`), expanded focused suite passed (`97 passed`), and full suite passed again (`1638 passed, 11 skipped`).

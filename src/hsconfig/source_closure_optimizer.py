@@ -41,6 +41,10 @@ def build_source_closure_optimizer_report(
         and operator_summary.get("runtime_load_safe") is not False
     )
     closure = operator_summary.get("source_backed_strong_closure") or {}
+    first_missing_source_action = _first_missing_source_action(
+        operator_summary,
+        closure,
+    )
 
     return {
         "schema_version": 1,
@@ -58,8 +62,8 @@ def build_source_closure_optimizer_report(
         ),
         "source_backed_status": operator_summary.get("source_backed_status"),
         "semantic_status": operator_summary.get("semantic_status"),
-        "source_backed_strong_closed": bool(closure.get("closed", False)),
-        "first_missing_source_action": closure.get("first_missing_source_action", "unknown"),
+        "source_backed_strong_closed": _source_backed_strong_closed(closure),
+        "first_missing_source_action": first_missing_source_action,
         "default_only_runtime_surfaces": list(
             operator_summary.get("default_only_runtime_surfaces") or []
         ),
@@ -79,7 +83,7 @@ def _classify(
 ) -> dict[str, Any]:
     default_only_surfaces = list(operator_summary.get("default_only_runtime_surfaces") or [])
     closure = operator_summary.get("source_backed_strong_closure") or {}
-    first_action = str(closure.get("first_missing_source_action") or "unknown")
+    first_action = _first_missing_source_action(operator_summary, closure)
     candidate_ceiling = str(candidate_row.get("expected_strength_ceiling") or "")
 
     if operator_summary.get("technical_status") != "VALID_PACKAGE":
@@ -101,7 +105,7 @@ def _classify(
     if (
         operator_summary.get("source_backed_status") == "SOURCE_BACKED_STRONG"
         and operator_summary.get("semantic_status") == "SOURCE_BACKED_STRONG"
-        and closure.get("closed") is True
+        and _source_backed_strong_closed(closure)
         and first_action == "none"
         and not _dossier_reports_open_action(dossier)
     ):
@@ -158,7 +162,32 @@ def _deck_name(operator_summary: Mapping[str, Any], package_path: Path) -> str:
     value = operator_summary.get("deck_name") or operator_summary.get("deck")
     if isinstance(value, str) and value.strip():
         return value.strip()
+    if isinstance(value, Mapping):
+        nested_name = value.get("name")
+        if isinstance(nested_name, str) and nested_name.strip():
+            return nested_name.strip()
     return package_path.parent.name or package_path.name
+
+
+def _source_backed_strong_closed(closure: Mapping[str, Any]) -> bool:
+    if closure.get("closed") is True:
+        return True
+    if closure.get("promotion_ready") is True:
+        return True
+    return (
+        closure.get("closure_profile_closed") is True
+        and str(closure.get("status") or "") == "ready"
+    )
+
+
+def _first_missing_source_action(
+    operator_summary: Mapping[str, Any],
+    closure: Mapping[str, Any],
+) -> str:
+    action = closure.get("first_missing_source_action")
+    if action is None:
+        action = operator_summary.get("first_missing_source_action")
+    return str(action or "unknown")
 
 
 def _candidate_row(
