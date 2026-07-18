@@ -20,7 +20,7 @@ def test_source_candidate_registry_returns_shadowpriest_current_guide():
     assert "archetype" in first.expected_claim_kinds
 
 
-def test_source_candidate_registry_marks_bigshaman_as_evergreen_wild_archetype():
+def test_source_candidate_registry_marks_bigshaman_as_stale_partial_source():
     candidates = source_candidates_for_deck(
         "BigShaman",
         "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
@@ -28,8 +28,10 @@ def test_source_candidate_registry_marks_bigshaman_as_evergreen_wild_archetype()
 
     assert candidates
     assert candidates[0].url == "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
-    assert candidates[0].expected_strength == "guide_evergreen_wild_archetype"
-    assert candidates[0].evergreen_wild_archetype is True
+    assert candidates[0].expected_strength == "guide_stale_archetype_partial"
+    assert candidates[0].evergreen_wild_archetype is False
+    assert candidates[0].strength_ceiling == "candidate_partial"
+    assert candidates[0].first_missing_source_action == "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
 
 
 def test_source_candidate_registry_is_empty_for_unknown_decks():
