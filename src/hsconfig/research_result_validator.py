@@ -60,6 +60,8 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
         freshness = str(payload.get("freshness_status") or "")
         if freshness not in {"current", "evergreen"}:
             errors.append("strong_requires_current_or_evergreen_freshness")
+        if _has_default_only_runtime_surfaces(payload):
+            errors.append("strong_requires_no_default_only_runtime_surfaces")
     if (
         source_strength in {"decklist_or_stats_only", "unfetched_acquisition_seed"}
         and str(payload.get("first_missing_source_action") or "") == "none"
@@ -109,3 +111,17 @@ def _list_field_errors(payload: Mapping[str, Any]) -> list[str]:
         if field in payload and not isinstance(payload[field], list):
             errors.append(f"{field}_must_be_list")
     return errors
+
+
+def _has_default_only_runtime_surfaces(payload: Mapping[str, Any]) -> bool:
+    surfaces = payload.get("default_only_runtime_surfaces") or []
+    if isinstance(surfaces, list) and any(str(surface).strip() for surface in surfaces):
+        return True
+    records = payload.get("records")
+    if not isinstance(records, list):
+        return False
+    return any(
+        _has_default_only_runtime_surfaces(record)
+        for record in records
+        if isinstance(record, Mapping)
+    )

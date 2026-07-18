@@ -103,6 +103,29 @@ def test_research_result_validator_rejects_strong_without_full_text_visibility()
     assert result["source_status_apply_blocking"] is False
 
 
+def test_research_result_validator_rejects_strong_with_default_only_surfaces() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "ShadowPriest",
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": ["mulligan"],
+            "first_missing_source_action": "none",
+            "notes": "Default-only surfaces cannot be strong.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "strong_requires_no_default_only_runtime_surfaces" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
+
+
 def test_fields_yaml_validator_catches_empty_or_malformed_field_map() -> None:
     result = validate_fields_yaml_payload({"fields": []})
 
