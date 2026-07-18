@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from hsconfig.io import write_json
+from hsconfig.strong_closure_dossier import build_strong_closure_dossier
+
+
+def _package(
+    tmp_path: Path,
+    *,
+    deck_name: str = "ShadowPriest",
+    source_status: str = "SOURCE_BACKED_STRONG",
+    source_strong_ready: bool = True,
+    first_missing_source_action: str = "none",
+    default_only_runtime_surfaces: list[str] | None = None,
+) -> Path:
+    package_dir = tmp_path / "04_package"
+    write_json(
+        package_dir / "reports" / "operator_summary.json",
+        {
+            "deck": {"name": deck_name},
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": source_status,
+            "source_backed_status": source_status,
+            "source_strong_ready": source_strong_ready,
+            "first_missing_source_action": first_missing_source_action,
+            "source_status_apply_blocking": False,
+            "source_status_diagnostic_only": True,
+            "default_only_runtime_surfaces": default_only_runtime_surfaces or [],
+            "no_default_only_runtime_status": (
+                "blocked" if default_only_runtime_surfaces else "clean"
+            ),
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "next_action": (
+                "READY_TO_APPLY_OR_HANDOFF"
+                if source_status == "SOURCE_BACKED_STRONG"
+                else "READY_TO_APPLY_WITH_WARNINGS"
+            ),
+        },
+    )
+    write_json(
+        package_dir / "reports" / "source_claim_gap_report.json",
+        {
+            "summary": {
+                "blocked_cards": 0 if source_status == "SOURCE_BACKED_STRONG" else 1,
+                "first_missing_chain": (
+                    None
+                    if source_status == "SOURCE_BACKED_STRONG"
+                    else {
+                        "card_id": "CARD_A",
+                        "first_missing_link": "needs_guide_claim",
+                        "recommended_source_claim_kind": "card_role",
+                        "next_action": first_missing_source_action,
+                    }
+                ),
+            },
+            "cards": {},
+        },
+    )
+    return package_dir
+
+
+def test_dossier_confirms_strong_without_becoming_apply_authority(
+    tmp_path: Path,
+) -> None:
+    package_dir = _package(tmp_path)
+
+    report = build_strong_closure_dossier(package_dir)
+
+    assert report["authority"] == "diagnostic_only"
+    assert report["operator_gate_impact"] == "diagnostic_only"
+    assert report["normal_apply_authority"] == "reports/operator_summary.json"
+    assert report["deck_name"] == "ShadowPriest"
+    assert report["promotion_verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
+    assert report["strong_contract_closed"] is True
+    assert report["source_status_apply_blocking"] is False
+    assert report["first_missing_source_action"] == "none"
+    assert report["default_only_runtime_surfaces"] == []
+    assert report["runtime_apply_mode"] == "load_safe_apply"
+
+
+def test_dossier_keeps_partial_load_safe_and_actionable(tmp_path: Path) -> None:
+    package_dir = _package(
+        tmp_path,
+        deck_name="PirateDH",
+        source_status="SOURCE_BACKED_PARTIAL",
+        source_strong_ready=False,
+        first_missing_source_action="add_card_specific_source_claim",
+    )
+
+    report = build_strong_closure_dossier(package_dir)
+
+    assert report["deck_name"] == "PirateDH"
+    assert report["promotion_verdict"] == "PROMOTION_BLOCKED"
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_contract_closed"] is False
+    assert report["runtime_package_usable"] is True
+    assert report["source_status_apply_blocking"] is False
+    assert report["first_missing_source_action"] == "add_card_specific_source_claim"
+    assert report["first_missing_chain"]["card_id"] == "CARD_A"
+
+
+def test_dossier_blocks_strong_when_default_only_surface_is_present(
+    tmp_path: Path,
+) -> None:
+    package_dir = _package(
+        tmp_path,
+        source_status="SOURCE_BACKED_STRONG",
+        source_strong_ready=True,
+        default_only_runtime_surfaces=["mulligan"],
+    )
+
+    report = build_strong_closure_dossier(package_dir)
+
+    assert report["promotion_verdict"] == "PROMOTION_BLOCKED"
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_contract_closed"] is False
+    assert report["default_only_runtime_surfaces"] == ["mulligan"]
+    assert report["source_status_apply_blocking"] is False
+    assert report["first_missing_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
