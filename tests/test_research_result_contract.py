@@ -71,6 +71,25 @@ def test_seed_only_payload_with_deck_name_only_stays_diagnostic() -> None:
     assert result["errors"] == []
 
 
+def test_seed_only_payload_with_malformed_default_only_surfaces_is_invalid() -> None:
+    result = classify_research_result_contract(
+        {
+            "deck_name": "ShadowPriest",
+            "source_strength": "unfetched_acquisition_seed",
+            "first_missing_source_action": (
+                "fetch_and_normalize_candidate_full_text_claims"
+            ),
+            "default_only_runtime_surfaces": "mulligan",
+        }
+    )
+
+    assert result["contract_valid"] is False
+    assert result["snapshot_kind"] == "invalid"
+    assert result["canonical_promotion_allowed"] is False
+    assert "default_only_runtime_surfaces_must_be_list" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
+
+
 def test_snippet_only_evidence_is_partial_and_non_promoting() -> None:
     result = classify_research_result_contract(
         {
@@ -174,6 +193,20 @@ def test_strong_looking_payload_with_default_only_surfaces_is_partial() -> None:
     assert result["snapshot_kind"] == "partial"
     assert result["canonical_promotion_allowed"] is False
     assert "default_only_runtime_surfaces_present" in result["warnings"]
+
+
+def test_strong_looking_payload_with_nested_malformed_default_only_surfaces_is_invalid() -> None:
+    payload = _strong_payload()
+    payload["default_only_runtime_surfaces"] = []
+    payload["records"] = [{"default_only_runtime_surfaces": "mulligan"}]
+
+    result = classify_research_result_contract(payload)
+
+    assert result["contract_valid"] is False
+    assert result["snapshot_kind"] == "invalid"
+    assert result["canonical_promotion_allowed"] is False
+    assert "default_only_runtime_surfaces_must_be_list" in result["errors"]
+    assert result["source_status_apply_blocking"] is False
 
 
 def test_strong_looking_payload_with_missing_source_action_is_partial() -> None:

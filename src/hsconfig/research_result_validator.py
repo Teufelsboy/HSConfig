@@ -3,6 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from hsconfig.default_only_runtime_surfaces import (
+    default_only_runtime_surface_errors,
+    has_default_only_runtime_surfaces,
+)
 from hsconfig.research_result_contract import RUNTIME_LOWERABLE_CLAIM_KINDS
 
 REQUIRED_RESULT_FIELDS = {
@@ -44,6 +48,7 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
         errors.append("invalid_source_strength")
 
     errors.extend(_list_field_errors(payload))
+    errors.extend(default_only_runtime_surface_errors(payload))
 
     raw_lowerable_claim_kinds = payload.get("lowerable_claim_kinds", [])
     lowerable_claim_kinds = [
@@ -69,7 +74,7 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
             errors.append("strong_requires_explicit_empty_default_only_runtime_surfaces")
         elif (
             payload["default_only_runtime_surfaces"] != []
-            or _has_default_only_runtime_surfaces(payload)
+            or has_default_only_runtime_surfaces(payload)
         ):
             errors.append("strong_requires_no_default_only_runtime_surfaces")
     if (
@@ -117,22 +122,7 @@ def _list_field_errors(payload: Mapping[str, Any]) -> list[str]:
         "guide_sources",
         "lowerable_claim_kinds",
         "non_promoting_support",
-        "default_only_runtime_surfaces",
     ):
         if field in payload and not isinstance(payload[field], list):
             errors.append(f"{field}_must_be_list")
     return errors
-
-
-def _has_default_only_runtime_surfaces(payload: Mapping[str, Any]) -> bool:
-    surfaces = payload.get("default_only_runtime_surfaces") or []
-    if isinstance(surfaces, list) and any(str(surface).strip() for surface in surfaces):
-        return True
-    records = payload.get("records")
-    if not isinstance(records, list):
-        return False
-    return any(
-        _has_default_only_runtime_surfaces(record)
-        for record in records
-        if isinstance(record, Mapping)
-    )

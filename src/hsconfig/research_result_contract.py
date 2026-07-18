@@ -3,6 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from hsconfig.default_only_runtime_surfaces import (
+    default_only_runtime_surface_errors,
+    has_default_only_runtime_surfaces,
+)
 from hsconfig.source_document_model import (
     CARDID_SURFACE_CLAIM_KINDS,
     COMBO_SURFACE_CLAIM_KINDS,
@@ -53,6 +57,17 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
             lowerable_claim_kinds=lowerable_claim_kinds,
         )
 
+    default_only_surface_errors = default_only_runtime_surface_errors(payload)
+    if default_only_surface_errors:
+        errors.extend(default_only_surface_errors)
+        return _result(
+            contract_valid=False,
+            snapshot_kind="invalid",
+            errors=errors,
+            warnings=warnings,
+            lowerable_claim_kinds=lowerable_claim_kinds,
+        )
+
     strengths = _source_strengths(payload)
     if any(strength in SEED_STRENGTHS for strength in strengths):
         return _result(
@@ -76,7 +91,7 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
     strong = any(strength in STRONG_MARKERS for strength in strengths)
     has_full_text_evidence = _has_full_text_or_canonical_evidence(payload)
     has_current_or_evergreen_evidence = _has_current_or_evergreen_evidence(payload)
-    has_default_only_runtime_surfaces = _has_default_only_runtime_surfaces(payload)
+    default_only_runtime_surfaces_present = has_default_only_runtime_surfaces(payload)
     if strong and not lowerable_claim_kinds:
         warnings.append("no_lowerable_claim_kinds")
     if strong and not has_full_text_evidence:
@@ -85,7 +100,7 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
         warnings.append("missing_current_or_evergreen_source_metadata")
     if strong and str(payload.get("first_missing_source_action") or "") != "none":
         warnings.append("first_missing_source_action_not_none")
-    if strong and has_default_only_runtime_surfaces:
+    if strong and default_only_runtime_surfaces_present:
         warnings.append("default_only_runtime_surfaces_present")
 
     promotion_allowed = bool(
@@ -94,7 +109,7 @@ def classify_research_result_contract(payload: Mapping[str, Any]) -> dict[str, A
         and lowerable_claim_kinds
         and has_full_text_evidence
         and has_current_or_evergreen_evidence
-        and not has_default_only_runtime_surfaces
+        and not default_only_runtime_surfaces_present
     )
     return _result(
         contract_valid=True,
@@ -161,19 +176,6 @@ def _lowerable_claim_kinds(payload: Mapping[str, Any]) -> list[str]:
             if isinstance(value, str)
             and value.strip() in RUNTIME_LOWERABLE_CLAIM_KINDS
         }
-    )
-
-
-def _has_default_only_runtime_surfaces(payload: Mapping[str, Any]) -> bool:
-    surfaces = payload.get("default_only_runtime_surfaces") or []
-    if isinstance(surfaces, list) and any(str(value).strip() for value in surfaces):
-        return True
-
-    records = payload.get("records")
-    return isinstance(records, list) and any(
-        isinstance(record, Mapping)
-        and _has_default_only_runtime_surfaces(record)
-        for record in records
     )
 
 
