@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import json
 from pathlib import Path
 from typing import Any, Mapping
+
+from hsconfig.research_status_sync import build_research_status_sync_report
 
 
 OPERATOR_SUMMARY_RELATIVE_PATH = Path("reports") / "operator_summary.json"
@@ -24,11 +27,17 @@ def build_source_closure_optimizer_report(
     *,
     candidate_proof_path: str | Path | None = None,
     dossier: Mapping[str, Any] | None = None,
+    research_result_paths: Sequence[str | Path] | None = None,
 ) -> dict[str, Any]:
     package_path = Path(package_dir)
     operator_summary = _read_json(package_path / OPERATOR_SUMMARY_RELATIVE_PATH)
     deck_name = _deck_name(operator_summary, package_path)
     research_dossier = dict(dossier or {})
+    research_sync = _research_sync_payload(package_path, research_result_paths)
+    research_sync_summary = (
+        dict(research_sync.get("summary") or {}) if research_sync else {}
+    )
+    research_primary = _primary_research_sync_row(research_sync)
     candidate_row = _candidate_row(deck_name, candidate_proof_path)
     decision_payload = _classify(
         deck_name=deck_name,
@@ -71,10 +80,35 @@ def build_source_closure_optimizer_report(
         "blocking_reasons": decision_payload["blocking_reasons"],
         "candidate_strength_ceiling": candidate_row.get("expected_strength_ceiling"),
         "candidate_manifest_row_found": bool(candidate_row),
-        "research_result_found": bool(research_dossier),
-        "research_source_strength": research_dossier.get("source_strength"),
-        "research_first_missing_source_action": research_dossier.get(
-            "first_missing_source_action"
+        "research_result_found": bool(research_dossier) or bool(research_primary),
+        "research_snapshot_relation": _research_snapshot_relation(
+            research_sync_summary,
+            research_primary,
+            research_result_paths,
+        ),
+        "research_recommended_refresh_action": _research_refresh_action(
+            research_sync_summary,
+            research_primary,
+            research_result_paths,
+        ),
+        "research_contract_valid": (
+            research_primary.get("research_contract_valid") if research_primary else None
+        ),
+        "strict_research_result_valid": (
+            research_primary.get("strict_research_result_valid")
+            if research_primary
+            else None
+        ),
+        "research_canonical_promotion_allowed": False,
+        "research_canonical_downgrade_allowed": False,
+        "research_sync_summary": research_sync_summary,
+        "research_source_strength": (
+            research_dossier.get("source_strength")
+            or research_primary.get("research_source_strength")
+        ),
+        "research_first_missing_source_action": (
+            research_dossier.get("first_missing_source_action")
+            or research_primary.get("research_first_missing_source_action")
         ),
     }
 
@@ -85,11 +119,17 @@ def build_source_closure_priority_queue(
     candidate_proof_path: str | Path | None = None,
     research_results_dir: str | Path | None = None,
 ) -> dict[str, Any]:
+    research_result_paths = (
+        _research_result_paths(research_results_dir)
+        if research_results_dir is not None
+        else None
+    )
     records = [
         build_source_closure_optimizer_report(
             package_dir,
             candidate_proof_path=candidate_proof_path,
             dossier=_research_dossier_for_package(package_dir, research_results_dir),
+            research_result_paths=research_result_paths,
         )
         for package_dir in package_dirs
     ]
@@ -113,6 +153,25 @@ def build_source_closure_priority_queue(
             ),
             "default_only_count": sum(
                 1 for row in records if row["default_only_runtime_surfaces"]
+            ),
+            "research_missing_count": sum(
+                1 for row in records if row.get("research_snapshot_relation") == "missing"
+            ),
+            "research_stale_or_seed_count": sum(
+                1
+                for row in records
+                if row.get("research_snapshot_relation") == "stale_or_seed_only"
+            ),
+            "research_conflict_count": sum(
+                1
+                for row in records
+                if row.get("research_snapshot_relation") == "conflicts_with_canonical"
+            ),
+            "research_repair_count": sum(
+                1
+                for row in records
+                if row.get("research_snapshot_relation")
+                == "requires_research_result_repair"
             ),
         },
         "records": records,
@@ -247,6 +306,73 @@ def _candidate_row(
     return {}
 
 
+def _research_sync_payload(
+    package_path: Path,
+    research_result_paths: Sequence[str | Path] | None,
+) -> dict[str, Any]:
+    if research_result_paths is None:
+        return {}
+    return build_research_status_sync_report(package_path, research_result_paths)
+
+
+def _primary_research_sync_row(
+    research_sync: Mapping[str, Any],
+) -> dict[str, Any]:
+    rows = research_sync.get("research_snapshot_rows") if research_sync else []
+    if not isinstance(rows, list):
+        return {}
+    matching = [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and row.get("snapshot_relation") != "different_deck_snapshot"
+    ]
+    if not matching:
+        return {}
+    return dict(matching[0])
+
+
+def _research_snapshot_relation(
+    summary: Mapping[str, Any],
+    primary: Mapping[str, Any],
+    research_result_paths: Sequence[str | Path] | None,
+) -> str:
+    if research_result_paths is None:
+        return "not_evaluated"
+    if primary:
+        return str(primary.get("snapshot_relation") or "unknown")
+    if summary.get("missing_research_snapshot") is True:
+        return "missing"
+    return "missing"
+
+
+def _research_refresh_action(
+    summary: Mapping[str, Any],
+    primary: Mapping[str, Any],
+    research_result_paths: Sequence[str | Path] | None,
+) -> str:
+    if research_result_paths is None:
+        return "not_evaluated"
+    if primary:
+        return str(
+            primary.get("recommended_refresh_action") or "inspect_research_snapshot"
+        )
+    if summary.get("missing_research_snapshot") is True:
+        return "refresh_research_snapshot_from_canonical_package"
+    return "inspect_research_snapshot"
+
+
+def _research_result_paths(research_results_dir: str | Path | None) -> list[Path]:
+    if research_results_dir is None:
+        return []
+    root = Path(research_results_dir)
+    if not root.exists():
+        return []
+    if root.is_file():
+        return [root]
+    return sorted(root.rglob("*.json"), key=lambda path: str(path))
+
+
 def _priority_bucket(row: Mapping[str, Any]) -> int:
     if row.get("default_only_runtime_surfaces"):
         return 0
@@ -269,7 +395,8 @@ def _research_dossier_for_package(
     package_path = Path(package_dir)
     operator = _read_json(package_path / OPERATOR_SUMMARY_RELATIVE_PATH)
     deck = _deck_name(operator, package_path)
-    result_path = Path(research_results_dir) / f"{deck}.json"
-    if not result_path.exists():
-        return {}
-    return _read_json(result_path)
+    for result_path in _research_result_paths(research_results_dir):
+        payload = _read_json(result_path)
+        if str(payload.get("deck_name") or "") == deck:
+            return payload
+    return {}

@@ -17,6 +17,13 @@ def _write_package(tmp_path: Path, operator: dict) -> Path:
     return package
 
 
+def _write_research_result(tmp_path: Path, deck_name: str, payload: dict) -> Path:
+    result = tmp_path / "research" / f"{deck_name}.json"
+    result.parent.mkdir(parents=True, exist_ok=True)
+    result.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return result
+
+
 def _operator(**overrides: object) -> dict:
     payload = {
         "deck": {"name": "ShadowPriest"},
@@ -153,3 +160,59 @@ def test_invalid_package_is_invalid_even_if_source_fields_are_present(tmp_path: 
 
     assert report["decision"] == "invalid_package"
     assert report["runtime_package_usable"] is False
+
+
+def test_optimizer_exposes_stale_research_relation_without_changing_strong_decision(
+    tmp_path: Path,
+) -> None:
+    package = _write_package(tmp_path, _operator())
+    stale = _write_research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
+            "source_strength": "unfetched_acquisition_seed",
+            "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+            "lowerable_claim_kinds": [],
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "non_promoting_support": [],
+            "notes": "Complete seed snapshot.",
+        },
+    )
+
+    report = build_source_closure_optimizer_report(
+        package,
+        research_result_paths=[stale],
+    )
+
+    assert report["decision"] == "strong"
+    assert report["source_status_apply_blocking"] is False
+    assert report["research_result_found"] is True
+    assert report["research_snapshot_relation"] == "stale_or_seed_only"
+    assert report["research_recommended_refresh_action"] == (
+        "refresh_research_snapshot_from_canonical_package"
+    )
+    assert report["research_canonical_promotion_allowed"] is False
+    assert report["research_canonical_downgrade_allowed"] is False
+
+
+def test_optimizer_reports_missing_research_snapshot_without_apply_blocking(
+    tmp_path: Path,
+) -> None:
+    package = _write_package(tmp_path, _operator())
+
+    report = build_source_closure_optimizer_report(
+        package,
+        research_result_paths=[],
+    )
+
+    assert report["decision"] == "strong"
+    assert report["research_result_found"] is False
+    assert report["research_snapshot_relation"] == "missing"
+    assert report["research_recommended_refresh_action"] == (
+        "refresh_research_snapshot_from_canonical_package"
+    )
+    assert report["source_status_apply_blocking"] is False

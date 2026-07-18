@@ -723,3 +723,17 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-live-source-closure-priority-q
 - [x] Task 5: BigShaman regenerated as `r3`; current initial-mulligan cards now lower into `Mulligan.json` (`GVG_029`, `SW_025`, `TSC_637`, `TOY_507`) with no default-only or apply block. The deck honestly remains `SOURCE_BACKED_PARTIAL`; optimizer reports `runtime_package_usable=true` and next action `add_exact_combo_sequence_claim`.
 - [x] Task 6: Generated 12-deck no-apply online-source matrix under ignored `outputs/2026-07-18-live-source-closure-priority-v3/all-decks-r1`; all 12 packages were `VALID_PACKAGE`, all had `source_status_apply_blocking=false`, all had `default_only_runtime_surfaces=[]`, and ShadowPriest remained `SOURCE_BACKED_STRONG`.
 - [x] Task 7: Focused verification passed: runtime/source suite `127 passed`, docs/skill policy suite `88 passed`; generated artifacts stayed ignored and no runtime apply/write was performed.
+
+---
+
+# HSConfig Canonical Source Contract Strong Readiness Sync SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-canonical-source-contract-strong-readiness-sync.md`
+
+- [x] Task 1: Preflight refreshed on `codex/hsconfig-canonical-source-status-sync`; worktree clean before edits; branch ahead/behind origin/main `59 0`; baseline focused source-contract suite passed (`147 passed`).
+- [x] Task 2: Research result validator accepts and validates optional source-contract status fields; acceptance-loop `fields.yaml` coverage added; validator slice passed (`14 passed`).
+- [x] Task 3: Source closure optimizer now embeds research snapshot relation, refresh action, strict research validity, and diagnostic-only promotion/downgrade flags without adding apply authority; optimizer/CLI/queue/status slice passed (`36 passed`).
+- [x] Task 4: CLI accepts research results from a directory or single result file, emits research relation/action in markdown, and rejects unsafe JSON or markdown runtime output paths.
+- [x] Task 5: Darkbishop Benedictus canary tightened so start-of-game hero-power transform evidence remains `hero_power_transform` and cannot become a mulligan keep row.
+- [x] Task 6: Operator docs updated for diagnostic-only optimizer research fields; no runtime apply/write path was added.
+- [x] Task 7: Final verification passed: focused contract slice `184 passed`, extended focused slice `175 passed`, full suite `1660 passed, 11 skipped`, `git diff --check` exited `0` with CRLF warnings only, read-only ShadowPriest optimizer smoke reported `decision=strong`, `source_status_apply_blocking=false`, `research_snapshot_relation=stale_or_seed_only`, and no canonical research promotion or downgrade authority.

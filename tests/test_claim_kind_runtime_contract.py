@@ -457,6 +457,13 @@ def test_start_of_game_transform_claim_remains_effect_not_mulligan_hold():
         ]
     )
 
+    normalized_claim = source_claims["claims"][0]
+    assert normalized_claim["claim_kind"] == "hero_power_transform"
+    assert normalized_claim["claim_kind"] != "mulligan_keep"
+    mulligan_decision = surface_gate_decision(normalized_claim, "mulligan")
+    assert mulligan_decision.allowed is False
+    assert mulligan_decision.reason == "claim_kind_not_mulligan_surface"
+
     bundle = build_research_contract_bundle(deck_identity, card_metadata, source_claims)
     contract = build_gameplan_contract(
         deck_identity,

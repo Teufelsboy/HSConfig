@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import yaml
+
 from hsconfig.research_result_validator import (
     validate_fields_yaml_payload,
     validate_research_result_payload,
@@ -31,6 +35,50 @@ def test_research_result_validator_accepts_complete_partial_result() -> None:
 
     assert result["valid"] is True
     assert result["errors"] == []
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_validator_accepts_source_contract_status_fields() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "PirateDH",
+            "archetype": "Wild Pirate Demon Hunter",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "decklist_or_stats_only",
+            "lowerable_claim_kinds": [],
+            "non_promoting_support": [],
+            "first_missing_source_action": "add_card_specific_source_claim",
+            "source_status_apply_blocking_expected": False,
+            "default_only_runtime_surfaces_expected": "none",
+            "notes": "Source gaps are diagnostic only.",
+        }
+    )
+
+    assert result["valid"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_validator_rejects_malformed_source_contract_status_fields() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "PirateDH",
+            "archetype": "Wild Pirate Demon Hunter",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "decklist_or_stats_only",
+            "lowerable_claim_kinds": [],
+            "non_promoting_support": [],
+            "first_missing_source_action": "add_card_specific_source_claim",
+            "source_status_apply_blocking_expected": "false",
+            "default_only_runtime_surfaces_expected": "",
+            "notes": "Malformed source contract status fields.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "source_status_apply_blocking_expected_must_be_boolean" in result["errors"]
+    assert "default_only_runtime_surfaces_expected_must_name_status" in result["errors"]
     assert result["source_status_apply_blocking"] is False
 
 
@@ -225,6 +273,24 @@ def test_fields_yaml_validator_catches_empty_or_malformed_field_map() -> None:
     assert result["valid"] is False
     assert result["field_count"] == 0
     assert "fields_must_be_mapping" in result["errors"]
+
+
+def test_source_contract_acceptance_loop_fields_cover_status_sync_contract() -> None:
+    fields_path = Path(
+        "docs/research/2026-07-17-hsconfig-source-contract-acceptance-loop/fields.yaml"
+    )
+    payload = yaml.safe_load(fields_path.read_text(encoding="utf-8"))
+
+    result = validate_fields_yaml_payload(payload)
+
+    assert result["valid"] is True
+    assert result["source_status_apply_blocking"] is False
+    assert result["field_count"] >= len(result["required_fields"])
+    fields = payload["fields"]
+    assert "full_text_claim_sources" in fields
+    assert "promotion_boundary" in fields
+    assert "source_status_apply_blocking_expected" in fields
+    assert "default_only_runtime_surfaces_expected" in fields
 
 
 def test_fields_yaml_validator_accepts_hsconfig_field_contract() -> None:

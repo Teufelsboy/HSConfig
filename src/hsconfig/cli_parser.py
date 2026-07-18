@@ -284,6 +284,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Source candidate proof manifest used for source-ceiling context.",
     )
     source_closure_optimizer.add_argument(
+        "--research-results-dir",
+        help=(
+            "Optional directory or JSON file with research-deep result snapshots. "
+            "Used only for diagnostic freshness and refresh-action fields."
+        ),
+    )
+    source_closure_optimizer.add_argument(
         "--out",
         required=True,
         help=(

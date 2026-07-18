@@ -56,10 +56,16 @@ def run_strong_closure_dossier_command(args: argparse.Namespace) -> int:
 
 
 def run_source_closure_optimizer_command(args: argparse.Namespace) -> int:
+    research_result_paths = (
+        _research_result_paths(Path(args.research_results_dir))
+        if getattr(args, "research_results_dir", None)
+        else None
+    )
     reports = [
         build_source_closure_optimizer_report(
             package_dir=package,
             candidate_proof_path=args.candidate_proof_json,
+            research_result_paths=research_result_paths,
         )
         for package in args.package
     ]
@@ -511,18 +517,26 @@ def _format_source_closure_optimizer_markdown(payload: Mapping[str, Any]) -> str
         f"- Source status apply blocking: `{payload['source_status_apply_blocking']}`",
         f"- Package count: `{payload['package_count']}`",
         "",
-        "| Deck | Decision | Runtime usable | First missing source action | Default-only surfaces |",
-        "| --- | --- | --- | --- | --- |",
+        "| Deck | Decision | Runtime usable | First missing source action | Default-only surfaces | Research relation | Research refresh action |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for report in payload["reports"]:
         default_only = ", ".join(report["default_only_runtime_surfaces"]) or "none"
         lines.append(
-            "| {deck} | `{decision}` | `{usable}` | `{action}` | `{default_only}` |".format(
+            "| {deck} | `{decision}` | `{usable}` | `{action}` | `{default_only}` | `{research_relation}` | `{research_action}` |".format(
                 deck=report["deck_name"],
                 decision=report["decision"],
                 usable=report["runtime_package_usable"],
                 action=report["first_missing_source_action"],
                 default_only=default_only,
+                research_relation=report.get(
+                    "research_snapshot_relation",
+                    "not_evaluated",
+                ),
+                research_action=report.get(
+                    "research_recommended_refresh_action",
+                    "not_evaluated",
+                ),
             )
         )
     lines.append("")

@@ -49,6 +49,7 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
 
     errors.extend(_list_field_errors(payload))
     errors.extend(default_only_runtime_surface_errors(payload))
+    errors.extend(_source_contract_status_field_errors(payload))
 
     raw_lowerable_claim_kinds = payload.get("lowerable_claim_kinds", [])
     lowerable_claim_kinds = [
@@ -125,4 +126,18 @@ def _list_field_errors(payload: Mapping[str, Any]) -> list[str]:
     ):
         if field in payload and not isinstance(payload[field], list):
             errors.append(f"{field}_must_be_list")
+    return errors
+
+
+def _source_contract_status_field_errors(payload: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if (
+        "source_status_apply_blocking_expected" in payload
+        and not isinstance(payload["source_status_apply_blocking_expected"], bool)
+    ):
+        errors.append("source_status_apply_blocking_expected_must_be_boolean")
+    if "default_only_runtime_surfaces_expected" in payload:
+        value = payload["default_only_runtime_surfaces_expected"]
+        if not isinstance(value, str) or not value.strip():
+            errors.append("default_only_runtime_surfaces_expected_must_name_status")
     return errors

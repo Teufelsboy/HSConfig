@@ -302,6 +302,23 @@ failed, but they do not override `status` or `matrix_row_status`.
 
 Developer drift check: `hsconfig contract-spine-sentinel --json` verifies that source-contract diagnostics have not become a second apply path. Normal deck configuration still starts with `hsconfig configure`, and `reports/operator_summary.json` remains the apply authority.
 
+## Optional Source Closure Optimizer
+
+Use `hsconfig source-closure-optimizer` after packages have already been
+prepared when you want a compact source-depth and research freshness diagnostic.
+
+```powershell
+python -m hsconfig.cli source-closure-optimizer `
+  --package outputs\latest\ShadowPriest\04_package `
+  --research-results-dir docs\research\2026-07-17-hsconfig-source-contract-acceptance-loop\results `
+  --out outputs\diagnostics\source_closure_optimizer.json `
+  --markdown-out outputs\diagnostics\source_closure_optimizer.md
+```
+
+Use the research relation fields to refresh stale research snapshots; do not
+use them to override `operator_summary.json` or to block a valid load-safe
+package.
+
 ## Developer Guardrail
 
 Run this after changing source-contract, skill, apply, report ownership, or

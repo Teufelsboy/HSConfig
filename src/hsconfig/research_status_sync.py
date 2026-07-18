@@ -58,6 +58,8 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _canonical_status(operator_summary: Mapping[str, Any]) -> dict[str, Any]:
     deck = operator_summary.get("deck", {})
     deck_name = deck.get("name", "") if isinstance(deck, Mapping) else ""
+    if not deck_name:
+        deck_name = str(operator_summary.get("deck_name") or "")
     return {
         "deck_name": str(deck_name),
         "technical_status": str(operator_summary.get("technical_status") or ""),

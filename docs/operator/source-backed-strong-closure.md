@@ -68,6 +68,23 @@ freshly prepared packages. It reads `reports/operator_summary.json`, optional
 source-candidate proof context, and closure summaries. It does not write runtime
 files and does not replace `operator_summary.json`.
 
+### Optimizer Research Snapshot Fields
+
+`source-closure-optimizer --research-results-dir ...` embeds compact research
+freshness diagnostics for each package:
+
+- `research_snapshot_relation` explains whether the matching research result
+  is current, stale/seed-only, missing, conflicting, or requires repair.
+- `research_recommended_refresh_action` names the next diagnostic source sync
+  action.
+- `research_canonical_promotion_allowed=false` and
+  `research_canonical_downgrade_allowed=false` are intentional: research
+  snapshots never promote or downgrade the canonical package.
+
+These fields are diagnostic-only. They do not replace
+`reports/operator_summary.json`, do not create an apply gate, and do not write
+runtime files.
+
 The source closure priority queue is diagnostic-only. It combines package
 `operator_summary.json`, source candidate proof rows, and optional research-deep
 result rows to decide which source claim should be closed next. It must not

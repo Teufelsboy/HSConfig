@@ -109,6 +109,61 @@ def test_priority_queue_keeps_operator_strong_when_research_snapshot_is_stale(
     assert report["priority_rows"] == []
 
 
+def test_priority_queue_counts_research_refresh_actions_without_apply_blocking(
+    tmp_path: Path,
+) -> None:
+    package = _package(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "first_missing_source_action": "none",
+            "source_backed_strong_closure": {
+                "status": "ready",
+                "promotion_ready": True,
+                "first_missing_source_action": "none",
+                "diagnostic_only": True,
+                "closure_profile_closed": True,
+            },
+        },
+    )
+    research = tmp_path / "research-results"
+    research.mkdir()
+    (research / "ShadowPriest.json").write_text(
+        json.dumps(
+            {
+                "deck_name": "ShadowPriest",
+                "deck_code": "AAEBAa0GExample",
+                "archetype": "Wild Shadow Priest",
+                "current_deck_sources": [],
+                "guide_sources": [],
+                "source_strength": "unfetched_acquisition_seed",
+                "lowerable_claim_kinds": [],
+                "non_promoting_support": [],
+                "first_missing_source_action": (
+                    "fetch_and_normalize_candidate_full_text_claims"
+                ),
+                "notes": "Seed-only snapshot.",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_source_closure_priority_queue(
+        [package],
+        research_results_dir=research,
+    )
+
+    assert report["summary"]["strong_count"] == 1
+    assert report["summary"]["apply_blocker_count"] == 0
+    assert report["summary"]["research_stale_or_seed_count"] == 1
+    assert report["summary"]["research_conflict_count"] == 0
+    assert report["records"][0]["research_canonical_promotion_allowed"] is False
+    assert report["records"][0]["research_canonical_downgrade_allowed"] is False
+
+
 def test_priority_queue_surfaces_default_only_as_strong_blocker_not_apply_blocker(
     tmp_path: Path,
 ) -> None:
