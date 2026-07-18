@@ -91,11 +91,14 @@
     {
       "deck_name": "MechPala",
       "expected_candidate_count_min": 1,
-      "expected_strength_ceiling": "context_only",
+      "expected_strength_ceiling": "candidate_partial",
       "expected_runtime_generation_status": "load_safe_no_default_only",
-      "expected_strong_promotion_status": "context_only_not_strong",
-      "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
+      "expected_strong_promotion_status": "partial_until_missing_source_action_closes",
+      "first_missing_source_action": "add_current_mech_paladin_mulligan_source",
       "candidate_urls": [
+        "https://www.hearthpwn.com/decks/1463315-galvanizer-scrapyard-hand-dump"
+      ],
+      "context_seed_urls": [
         "https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/"
       ]
     },

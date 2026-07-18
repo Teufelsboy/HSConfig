@@ -205,6 +205,22 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
     ),
     "mechpala": (
         SourceCandidate(
+            url="https://www.hearthpwn.com/decks/1463315-galvanizer-scrapyard-hand-dump",
+            source_family="guide",
+            deck_name="MechPala",
+            archetype="wild_mech_paladin",
+            reason=(
+                "current Wild Mech Paladin guide supplement with gameplan, "
+                "card-role, and mech-synergy context but no exact mulligan closure"
+            ),
+            priority=7,
+            expected_strength="guide_current_archetype_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "card_role", "mechanic_usage"),
+            first_missing_source_action="add_current_mech_paladin_mulligan_source",
+        ),
+        SourceCandidate(
             url="https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
             source_family="decklist",
             deck_name="MechPala",
