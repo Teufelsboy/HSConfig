@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 from tests.helpers.fixture_prepare import load_archetype_matrix
 
 
@@ -60,6 +61,42 @@ def test_no_block_deck_matrix_matches_source_candidate_proof_manifest():
     assert {deck_name for deck_name, _ in DECKS} == {
         row["deck_name"] for row in proof["decks"]
     }
+
+
+@pytest.mark.parametrize(
+    ("deck_name", "deck_code", "first_missing_source_action"),
+    [
+        ("ShadowPriest", DECKS[0][1], "none"),
+        ("CtAPaladin", DECKS[1][1], "add_current_cta_paladin_mulligan_keep_source"),
+        ("PirateRogue", DECKS[2][1], "add_current_pirate_rogue_mulligan_or_role_source"),
+        ("BigShaman", DECKS[3][1], "add_current_big_shaman_full_text_mulligan_or_gameplan_source"),
+        ("Discolock", DECKS[4][1], "add_current_discolock_full_text_mulligan_or_gameplan_source"),
+        ("TreantDruid", DECKS[5][1], "add_current_treant_druid_mulligan_keep_source"),
+        ("ImbueMage", DECKS[6][1], "none"),
+        ("MechPala", DECKS[7][1], "add_current_mech_paladin_mulligan_source"),
+        ("Kingslayer", DECKS[8][1], "add_kingslayer_quick_pick_mulligan_source"),
+        ("Boarlock", DECKS[9][1], "add_boarlock_fracking_mulligan_source"),
+        ("PirateDH", DECKS[10][1], "add_pirate_dh_card_role_or_mulligan_source"),
+        ("CuteWarrior", DECKS[11][1], "add_current_full_text_mulligan_or_gameplan_source"),
+    ],
+)
+def test_source_closure_intake_receipt_never_blocks_user_wild_matrix(
+    deck_name: str, deck_code: str, first_missing_source_action: str
+):
+    receipt = build_source_closure_intake_receipt(deck_name, deck_code)
+
+    assert receipt["authority"] == "diagnostic_only"
+    assert receipt["source_status_apply_blocking"] is False
+    assert receipt["deck_name"] == deck_name
+    assert receipt["candidate_count"] >= 1
+    assert receipt["source_rows"]
+    assert receipt["first_missing_source_action"] == first_missing_source_action
+    assert all(row["authority"] == "candidate_seed_only" for row in receipt["source_rows"])
+    assert all(row["apply_blocking"] is False for row in receipt["source_rows"])
+    assert all(row["can_promote_runtime_claim"] is False for row in receipt["source_rows"])
+    assert all(row["can_write_runtime_config"] is False for row in receipt["source_rows"])
+    if first_missing_source_action == "none":
+        assert receipt["promotion_eligible_seed_count"] >= 1
 
 
 def _stub_empty_card_fetches(monkeypatch) -> None:

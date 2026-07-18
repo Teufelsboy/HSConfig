@@ -2,12 +2,27 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 
 
 SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+
+
+def test_shadowpriest_source_closure_intake_keeps_benedictus_effect_diagnostic_only():
+    receipt = build_source_closure_intake_receipt("ShadowPriest", SHADOWPRIEST_CODE)
+    rows_text = json.dumps(receipt["source_rows"], sort_keys=True)
+
+    assert receipt["authority"] == "diagnostic_only"
+    assert receipt["source_status_apply_blocking"] is False
+    assert receipt["first_missing_source_action"] == "none"
+    assert receipt["promotion_eligible_seed_count"] >= 1
+    assert "hero_power_transform" in rows_text
+    assert all(row["authority"] == "candidate_seed_only" for row in receipt["source_rows"])
+    assert all(row["can_promote_runtime_claim"] is False for row in receipt["source_rows"])
+    assert all(row["can_write_runtime_config"] is False for row in receipt["source_rows"])
 
 
 def test_shadowpriest_semantic_qualifiers_preserve_effect_without_mulligan_keep(tmp_path: Path):

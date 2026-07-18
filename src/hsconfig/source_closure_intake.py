@@ -24,12 +24,16 @@ class SourceClosureIntakeSourceRow:
     def to_json(self) -> dict[str, Any]:
         return {
             "url": self.url,
+            "authority": "candidate_seed_only",
             "source_family": self.source_family,
             "source_visibility": self.source_visibility,
             "strength_ceiling": self.strength_ceiling,
             "expected_claim_kinds": list(self.expected_claim_kinds),
             "first_missing_source_action": self.first_missing_source_action,
             "promotion_eligible_seed": self.promotion_eligible_seed,
+            "can_promote_runtime_claim": False,
+            "can_write_runtime_config": False,
+            "apply_blocking": False,
         }
 
 
