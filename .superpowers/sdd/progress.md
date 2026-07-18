@@ -674,6 +674,6 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-optimizer.md`
 - [x] Task 2: Add CLI command and CLI tests (commits `aa1fba2..4f0de8f`, initial review found unsafe output guard, fix committed, re-review clean; CLI tests passed `10 passed`).
 - [x] Task 3: Add representative matrix coverage (commit `1338d31`; review clean; matrix/no-block/skill slice `80 passed`, focused plan suite `115 passed`).
 - [x] Task 4: Update operator docs and repo-local skill contract (commit `1338d31`; review clean; installed skill synced after repo-local skill changes).
-- [ ] Task 5: Verify against current source candidate deck set.
-- [ ] Task 6: Full verification and review.
-- [ ] Task 7: Self-review and clean-worktree handoff.
+- [x] Task 5: Verify against current source candidate deck set (commit `910dbd3`; 12 proof decks configured into temporary packages, optimizer ran over generated `04_package` dirs, focused suite `122 passed`).
+- [x] Task 6: Full verification and review (final review fix `7dcd558`; re-review clean; full suite `1615 passed, 11 skipped`; skill sync and diff check passed).
+- [x] Task 7: Self-review and clean-worktree handoff (worktree clean on `codex/hsconfig-canonical-source-status-sync`; no generated outputs committed; no runtime apply/write performed).
