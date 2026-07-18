@@ -6,6 +6,11 @@ from typing import Any, Mapping, Sequence
 from hsconfig.source_candidate_registry import SourceCandidate, source_candidates_for_deck
 
 
+SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH = (
+    "reports/02_source_acquisition/source_closure_intake_receipt.json"
+)
+
+
 @dataclass(frozen=True)
 class SourceClosureIntakeSourceRow:
     url: str
@@ -80,6 +85,24 @@ def build_source_closure_intake_receipt(
     ).to_json()
 
 
+def summarize_source_closure_intake(receipt: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "authority": "diagnostic_only",
+        "candidate_count": _int_value(receipt.get("candidate_count", 0)),
+        "promotion_eligible_seed_count": _int_value(
+            receipt.get("promotion_eligible_seed_count", 0)
+        ),
+        "first_missing_source_action": str(
+            receipt.get(
+                "first_missing_source_action",
+                "add_current_deck_guide_or_mulligan_guide",
+            )
+        ),
+        "source_status_apply_blocking": False,
+        "receipt_path": SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH,
+    }
+
+
 def _candidate_to_receipt_row(candidate: SourceCandidate) -> SourceClosureIntakeSourceRow:
     expected_claim_kinds = tuple(candidate.expected_claim_kinds)
     if candidate.strength_ceiling == "context_only":
@@ -111,3 +134,10 @@ def _first_missing_source_action(
         if row.first_missing_source_action != "none":
             return row.first_missing_source_action
     return "none"
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0

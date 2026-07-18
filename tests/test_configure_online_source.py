@@ -115,6 +115,13 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     package = Path(result["package_path"])
     operator = _read_json(package / "reports" / "operator_summary.json")
     source_evidence_closure_path = Path(result["source_evidence_closure_path"])
+    receipt_path = (
+        package
+        / "reports"
+        / "02_source_acquisition"
+        / "source_closure_intake_receipt.json"
+    )
+    receipt = _read_json(receipt_path)
 
     assert bundle["schema_version"] == 1
     assert bundle["promotion"]["source_backed_status"] == operator[
@@ -134,17 +141,52 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     assert result["default_only_runtime_surfaces"] == operator[
         "default_only_runtime_surfaces"
     ]
+    assert result["source_closure_intake_receipt_path"] == str(receipt_path)
+    assert receipt["authority"] == "diagnostic_only"
+    assert receipt["source_status_apply_blocking"] is False
+    assert receipt["first_missing_source_action"] == "none"
+    assert receipt["promotion_eligible_seed_count"] >= 1
+    assert receipt["fetched_record_count"] >= 1
+    assert operator["source_closure_intake"] == {
+        "authority": "diagnostic_only",
+        "candidate_count": receipt["candidate_count"],
+        "promotion_eligible_seed_count": receipt["promotion_eligible_seed_count"],
+        "first_missing_source_action": receipt["first_missing_source_action"],
+        "source_status_apply_blocking": False,
+        "receipt_path": (
+            "reports/02_source_acquisition/source_closure_intake_receipt.json"
+        ),
+    }
+    assert operator["source_status_apply_blocking"] is False
+    assert operator["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
 
     ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
     ownership_rows = {row["file"]: row for row in ownership["files"]}
 
     assert "reports/source_bundle.json" in operator["generated_files"]
+    assert (
+        "reports/02_source_acquisition/source_closure_intake_receipt.json"
+        in operator["generated_files"]
+    )
     assert any(
         row["file"] == "reports/source_bundle.json"
         and row["classification"] == "diagnostic"
         for row in operator["report_ownership"]
     )
+    assert any(
+        row["file"]
+        == "reports/02_source_acquisition/source_closure_intake_receipt.json"
+        and row["classification"] == "diagnostic"
+        for row in operator["report_ownership"]
+    )
     assert ownership_rows["reports/source_bundle.json"]["diagnostic_only"] is True
+    receipt_ownership = ownership_rows[
+        "reports/02_source_acquisition/source_closure_intake_receipt.json"
+    ]
+    assert receipt_ownership["diagnostic_only"] is True
+    assert receipt_ownership["can_block_apply"] is False
 
 
 def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(

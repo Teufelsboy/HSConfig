@@ -21,6 +21,11 @@ from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
 from hsconfig.source_candidate_registry import candidate_urls, source_candidates_for_deck
+from hsconfig.source_closure_intake import (
+    SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH,
+    build_source_closure_intake_receipt,
+    summarize_source_closure_intake,
+)
 from hsconfig.source_evidence_closure import build_source_evidence_closure_report
 
 
@@ -79,6 +84,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     source_acquisition_path = None
     source_documents_json = None
     source_autopilot_path = None
+    source_closure_intake_receipt_path = None
     source_candidate_urls: list[str] = []
     source_urls: list[str] = []
     if bool(getattr(args, "online_source", False)):
@@ -232,6 +238,22 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     )
     source_claim_gap_report = read_json(reports_dir / "source_claim_gap_report.json")
     source_bundle_path = reports_dir / "source_bundle.json"
+    source_closure_intake_receipt = None
+    if bool(getattr(args, "online_source", False)) or bool(
+        getattr(args, "auto_source", False)
+    ):
+        source_closure_intake_receipt = build_source_closure_intake_receipt(
+            deck_name=args.deck_name,
+            deck_code=args.deck_code,
+            fetched_records=_source_search_records(
+                getattr(args, "source_search_results_json", None)
+            ),
+        )
+        source_closure_intake_receipt_path = (
+            package_dir / SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH
+        )
+        write_json(source_closure_intake_receipt_path, source_closure_intake_receipt)
+
     write_json(
         source_bundle_path,
         build_source_bundle(
@@ -244,7 +266,15 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         ),
     )
     generated_files = sorted(
-        {*(str(path) for path in operator_summary.get("generated_files", [])), "reports/source_bundle.json"}
+        {
+            *(str(path) for path in operator_summary.get("generated_files", [])),
+            "reports/source_bundle.json",
+            *(
+                [SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH]
+                if source_closure_intake_receipt is not None
+                else []
+            ),
+        }
     )
     output_ownership_manifest = build_output_ownership_manifest(generated_files)
     write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
@@ -253,6 +283,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
     )
+    if source_closure_intake_receipt is not None:
+        operator_summary["source_closure_intake"] = summarize_source_closure_intake(
+            source_closure_intake_receipt
+        )
     source_evidence_closure_path = reports_dir / "source_evidence_closure.json"
     write_json(
         source_evidence_closure_path,
@@ -316,6 +350,11 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "package_path": str(package_dir),
             "source_bundle_path": str(source_bundle_path),
             "source_evidence_closure_path": str(source_evidence_closure_path),
+            "source_closure_intake_receipt_path": (
+                str(source_closure_intake_receipt_path)
+                if source_closure_intake_receipt_path
+                else None
+            ),
             "source_backed_status": operator_summary.get("source_backed_status"),
             "source_status_reason": _first_source_status_reason(operator_summary),
             "source_status_reasons": list(
@@ -382,6 +421,16 @@ def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
     if isinstance(reasons, list) and reasons:
         return str(reasons[0])
     return ""
+
+
+def _source_search_records(path: str | Path | None) -> list[dict[str, Any]]:
+    if not path:
+        return []
+    payload = read_json(path)
+    records = payload.get("records", payload) if isinstance(payload, dict) else payload
+    if not isinstance(records, list):
+        return []
+    return [record for record in records if isinstance(record, dict)]
 
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:

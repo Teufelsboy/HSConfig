@@ -32,6 +32,18 @@ def build_report_ownership() -> list[dict[str, Any]]:
             "notes": "diagnostic only; does not replace operator_summary.json",
         },
         {
+            "file": "reports/02_source_acquisition/source_closure_intake_receipt.json",
+            "producer": "configure",
+            "authority": "diagnostic_source_closure_intake",
+            "classification": "diagnostic",
+            "answers": "which source-candidate rows and fetched records entered configure",
+            "open_order": "12.5",
+            "notes": (
+                "diagnostic only; cannot promote a deck; cannot block apply; "
+                "does not replace operator_summary.json"
+            ),
+        },
+        {
             "file": "reports/source_contract_audit.json",
             "authority": "diagnostic_source_to_runtime_explanation",
             "classification": "diagnostic",

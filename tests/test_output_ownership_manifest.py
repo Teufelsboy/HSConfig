@@ -37,6 +37,25 @@ def test_source_bundle_is_a_diagnostic_artifact_not_an_apply_authority():
     assert by_file["reports/source_bundle.json"]["can_block_apply"] is False
 
 
+def test_source_closure_intake_receipt_is_diagnostic_not_an_apply_authority():
+    manifest = build_output_ownership_manifest(
+        [
+            "reports/operator_summary.json",
+            "reports/02_source_acquisition/source_closure_intake_receipt.json",
+        ]
+    )
+
+    by_file = {row["file"]: row for row in manifest["files"]}
+    receipt = by_file[
+        "reports/02_source_acquisition/source_closure_intake_receipt.json"
+    ]
+
+    assert receipt["classification"] == "diagnostic"
+    assert receipt["authority"] == "diagnostic_source_closure_intake"
+    assert receipt["diagnostic_only"] is True
+    assert receipt["can_block_apply"] is False
+
+
 def test_source_evidence_closure_is_a_diagnostic_artifact_not_an_apply_authority():
     manifest = build_output_ownership_manifest(
         ["reports/operator_summary.json", "reports/source_evidence_closure.json"]

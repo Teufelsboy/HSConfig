@@ -24,6 +24,13 @@ def test_report_ownership_covers_operator_reports():
         "diagnostic_artifact_ownership"
     )
     assert by_file["reports/output_ownership_manifest.json"]["classification"] == "diagnostic"
+    intake = by_file[
+        "reports/02_source_acquisition/source_closure_intake_receipt.json"
+    ]
+    assert intake["authority"] == "diagnostic_source_closure_intake"
+    assert intake["classification"] == "diagnostic"
+    assert "cannot promote" in intake["notes"]
+    assert "cannot block apply" in intake["notes"]
 
 
 def test_report_ownership_has_single_open_first_report():
