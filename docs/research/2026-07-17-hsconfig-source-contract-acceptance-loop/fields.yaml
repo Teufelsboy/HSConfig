@@ -8,12 +8,21 @@ fields:
   current_deck_sources:
     type: array
     description: Current public pages that list the deck or close archetype, with URL and source family.
+  currentness_sources:
+    type: array
+    description: Current public decklist, category, stats, or meta pages that prove current archetype/deck presence but do not prove runtime claims by themselves.
   guide_sources:
     type: array
     description: Full-text guide or guide-like public sources that contain strategic, mulligan, combo, or usage claims.
+  full_text_claim_sources:
+    type: array
+    description: Public fetched full-text sources that contain mulligan, gameplan, combo, card-role, hero-power, or mechanic claims that can be normalized into claim kinds.
   source_strength:
     type: string
     description: One of exact_full_text_guide, archetype_full_text_guide, decklist_or_stats_only, static_semantics_only, missing.
+  promotion_boundary:
+    type: string
+    description: One of runtime_claims_possible_if_fetched_claims_close, partial_until_missing_source_action_closes, context_only_never_promotes.
   lowerable_claim_kinds:
     type: array
     description: Claim kinds supported by the available source text.
@@ -23,6 +32,12 @@ fields:
   first_missing_source_action:
     type: string
     description: Concrete next source action when strong closure is not proven.
+  source_status_apply_blocking_expected:
+    type: boolean
+    description: Must remain false for all valid packages; source-quality gaps are diagnostic.
+  default_only_runtime_surfaces_expected:
+    type: string
+    description: Must be none for generated runtime packages; any non-none value prevents SOURCE_BACKED_STRONG.
   notes:
     type: string
     description: Short implementation-relevant notes.

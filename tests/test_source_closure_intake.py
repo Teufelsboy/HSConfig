@@ -28,7 +28,7 @@ def test_shadowpriest_receipt_is_diagnostic_and_current_source_ready():
     assert receipt["promotion_eligible_seed_count"] >= 1
 
 
-def test_big_shaman_historical_seed_remains_partial_action():
+def test_big_shaman_current_seed_still_preserves_aggregate_partial_action():
     receipt = build_source_closure_intake_receipt("BigShaman", BIG_SHAMAN_CODE)
 
     assert receipt["authority"] == "diagnostic_only"
@@ -36,7 +36,14 @@ def test_big_shaman_historical_seed_remains_partial_action():
     assert receipt["first_missing_source_action"] == (
         "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
     )
-    assert receipt["promotion_eligible_seed_count"] == 0
+    assert receipt["promotion_eligible_seed_count"] == 1
+    assert receipt["source_rows"][0]["first_missing_source_action"] == "none"
+    assert receipt["source_rows"][0]["promotion_eligible_seed"] is True
+    assert any(
+        row["first_missing_source_action"]
+        == "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
+        for row in receipt["source_rows"][1:]
+    )
 
 
 def test_context_only_rows_do_not_become_runtime_claims():

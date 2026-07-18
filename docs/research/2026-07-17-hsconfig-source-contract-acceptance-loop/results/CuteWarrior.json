@@ -9,9 +9,17 @@
       "role": "candidate_only"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/13e0x4w/powersliding_with_cute_warrior_to_rank_278/",
+      "source_family": "reddit",
+      "role": "candidate_only"
+    }
+  ],
   "guide_sources": [],
-  "source_visibility": "decklist_only",
+  "full_text_claim_sources": [],
   "source_strength": "decklist_or_stats_only",
+  "promotion_boundary": "context_only_never_promotes",
   "lowerable_claim_kinds": [],
   "non_promoting_support": [
     {
@@ -26,6 +34,9 @@
     }
   ],
   "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
-  "stop_condition_if_any": "current_cute_warrior_full_text_mulligan_or_gameplan_source_unavailable",
-  "notes": "Current Cute Warrior public sources are decklist/stat pages or older guide context. No current full-text mulligan/gameplan source was found, so this remains SOURCE_BACKED_PARTIAL."
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
+  "notes": "Current Cute Warrior public sources are decklist/stat pages or older guide context. No current full-text mulligan/gameplan source was found, so this remains SOURCE_BACKED_PARTIAL.",
+  "source_visibility": "decklist_only",
+  "stop_condition_if_any": "current_cute_warrior_full_text_mulligan_or_gameplan_source_unavailable"
 }

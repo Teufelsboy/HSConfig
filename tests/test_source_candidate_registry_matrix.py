@@ -275,3 +275,33 @@ def test_context_only_candidates_cannot_declare_runtime_claim_kinds():
         assert context_candidates
         assert all(candidate.expected_claim_kinds == () for candidate in context_candidates)
         assert all(candidate.first_missing_source_action != "none" for candidate in context_candidates)
+
+
+def test_candidate_rows_do_not_promote_from_context_only_sources():
+    proof = json.loads(PROOF_PATH.read_text(encoding="utf-8"))
+
+    for row in proof["decks"]:
+        deck_name = row["deck_name"]
+        candidates = source_candidates_for_deck(deck_name)
+        for candidate in candidates:
+            if candidate.strength_ceiling == "context_only":
+                assert candidate.expected_claim_kinds == (), candidate.url
+                assert candidate.first_missing_source_action != "none", candidate.url
+                assert (
+                    "decklist" in candidate.source_family
+                    or "stats" in candidate.source_family
+                )
+
+
+def test_runtime_claims_possible_candidates_declare_claim_kinds():
+    for deck_name, deck_code in DECKS.items():
+        candidates = source_candidates_for_deck(deck_name, deck_code)
+        runtime_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.strength_ceiling == "runtime_claims_possible"
+        ]
+
+        if EXPECTED_STRENGTH[deck_name] == "runtime_claims_possible":
+            assert runtime_candidates, deck_name
+        assert all(candidate.expected_claim_kinds for candidate in runtime_candidates)

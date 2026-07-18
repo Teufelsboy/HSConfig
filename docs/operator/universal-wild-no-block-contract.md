@@ -48,6 +48,11 @@ lowerable claim kinds, `first_missing_source_action=none`, and no default-only
 runtime surfaces. Otherwise the package must remain valid and load-safe but
 visibly partial until the missing source-to-runtime chain is closed.
 
+Current decklist, category, and stats pages prove current public context only.
+They can help choose candidate URLs, but they do not prove runtime claims by
+themselves. `SOURCE_BACKED_STRONG` requires fetched full-text evidence that
+normalizes into supported claim kinds and passes runtime-surface gates.
+
 `reports/02_source_acquisition/source_closure_intake_receipt.json` is part of
 that diagnostic intake layer. It records candidate source rows and fetched
 source metadata with `authority=diagnostic_only` and

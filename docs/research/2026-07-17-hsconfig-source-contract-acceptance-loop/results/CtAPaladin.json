@@ -14,6 +14,18 @@
       "role": "decklist_or_stats_only"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
+      "source_family": "reddit",
+      "role": "current_deck_context_only"
+    },
+    {
+      "url": "https://www.hsguru.com/deck/28505455",
+      "source_family": "hsguru",
+      "role": "decklist_or_stats_only"
+    }
+  ],
   "guide_sources": [
     {
       "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
@@ -40,10 +52,34 @@
       "promotes_strong": true
     }
   ],
-  "source_status": "SOURCE_BACKED_STRONG",
-  "source_visibility": "full_text",
-  "freshness_status": "current_or_evergreen",
+  "full_text_claim_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1u0kd33/any_help_with_cta_paladin_mulligan/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_guide",
+      "claim_kinds": [
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
+    },
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1jydz4q/i_dont_understand_how_cta_paladin_is_any_good/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_and_card_role_support",
+      "claim_kinds": [
+        "card_role",
+        "gameplan_posture",
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
+    }
+  ],
   "source_strength": "exact_full_text_guide",
+  "promotion_boundary": "runtime_claims_possible_if_fetched_claims_close",
   "lowerable_claim_kinds": [
     "card_role",
     "gameplan_posture",
@@ -56,7 +92,12 @@
       "promotion_role": "context_only"
     }
   ],
-  "default_only_runtime_surfaces": [],
   "first_missing_source_action": "none",
-  "notes": "Fetched public full-text Reddit discussions provide exact CtA Paladin mulligan and supporting role/posture claims. Candidate URLs remain acquisition seeds until fetched and normalized; this snapshot records the fetched claim-level closure."
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
+  "notes": "Fetched public full-text Reddit discussions provide exact CtA Paladin mulligan and supporting role/posture claims. Candidate URLs remain acquisition seeds until fetched and normalized; this snapshot records the fetched claim-level closure.",
+  "source_status": "SOURCE_BACKED_STRONG",
+  "source_visibility": "full_text",
+  "freshness_status": "current_or_evergreen",
+  "default_only_runtime_surfaces": []
 }

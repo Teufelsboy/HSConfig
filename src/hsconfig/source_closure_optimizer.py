@@ -28,12 +28,12 @@ def build_source_closure_optimizer_report(
     package_path = Path(package_dir)
     operator_summary = _read_json(package_path / OPERATOR_SUMMARY_RELATIVE_PATH)
     deck_name = _deck_name(operator_summary, package_path)
+    research_dossier = dict(dossier or {})
     candidate_row = _candidate_row(deck_name, candidate_proof_path)
     decision_payload = _classify(
         deck_name=deck_name,
         operator_summary=operator_summary,
         candidate_row=candidate_row,
-        dossier=dict(dossier or {}),
     )
 
     runtime_package_usable = (
@@ -71,6 +71,52 @@ def build_source_closure_optimizer_report(
         "blocking_reasons": decision_payload["blocking_reasons"],
         "candidate_strength_ceiling": candidate_row.get("expected_strength_ceiling"),
         "candidate_manifest_row_found": bool(candidate_row),
+        "research_result_found": bool(research_dossier),
+        "research_source_strength": research_dossier.get("source_strength"),
+        "research_first_missing_source_action": research_dossier.get(
+            "first_missing_source_action"
+        ),
+    }
+
+
+def build_source_closure_priority_queue(
+    package_dirs: list[str | Path],
+    *,
+    candidate_proof_path: str | Path | None = None,
+    research_results_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    records = [
+        build_source_closure_optimizer_report(
+            package_dir,
+            candidate_proof_path=candidate_proof_path,
+            dossier=_research_dossier_for_package(package_dir, research_results_dir),
+        )
+        for package_dir in package_dirs
+    ]
+    priority_rows = [record for record in records if record["decision"] != "strong"]
+    priority_rows.sort(
+        key=lambda row: (
+            _priority_bucket(row),
+            str(row.get("deck_name") or ""),
+        )
+    )
+    return {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "normal_apply_authority": str(OPERATOR_SUMMARY_RELATIVE_PATH),
+        "summary": {
+            "deck_count": len(records),
+            "strong_count": sum(1 for row in records if row["decision"] == "strong"),
+            "partial_count": sum(1 for row in records if row["decision"] != "strong"),
+            "apply_blocker_count": sum(
+                1 for row in records if row["source_status_apply_blocking"] is True
+            ),
+            "default_only_count": sum(
+                1 for row in records if row["default_only_runtime_surfaces"]
+            ),
+        },
+        "records": records,
+        "priority_rows": priority_rows,
     }
 
 
@@ -79,7 +125,6 @@ def _classify(
     deck_name: str,
     operator_summary: Mapping[str, Any],
     candidate_row: Mapping[str, Any],
-    dossier: Mapping[str, Any],
 ) -> dict[str, Any]:
     default_only_surfaces = list(operator_summary.get("default_only_runtime_surfaces") or [])
     closure = operator_summary.get("source_backed_strong_closure") or {}
@@ -107,7 +152,6 @@ def _classify(
         and operator_summary.get("semantic_status") == "SOURCE_BACKED_STRONG"
         and _source_backed_strong_closed(closure)
         and first_action == "none"
-        and not _dossier_reports_open_action(dossier)
     ):
         return _decision(
             "strong",
@@ -203,8 +247,29 @@ def _candidate_row(
     return {}
 
 
-def _dossier_reports_open_action(dossier: Mapping[str, Any]) -> bool:
-    if not dossier:
-        return False
-    action = dossier.get("first_missing_source_action")
-    return bool(action and action != "none")
+def _priority_bucket(row: Mapping[str, Any]) -> int:
+    if row.get("default_only_runtime_surfaces"):
+        return 0
+    if row.get("decision") == "partial_source_action_needed":
+        return 1
+    if row.get("decision") == "preserved_partial_stop_condition":
+        return 2
+    if row.get("decision") == "context_only_load_safe":
+        return 3
+    return 4
+
+
+def _research_dossier_for_package(
+    package_dir: str | Path,
+    research_results_dir: str | Path | None,
+) -> dict[str, Any]:
+    if research_results_dir is None:
+        return {}
+
+    package_path = Path(package_dir)
+    operator = _read_json(package_path / OPERATOR_SUMMARY_RELATIVE_PATH)
+    deck = _deck_name(operator, package_path)
+    result_path = Path(research_results_dir) / f"{deck}.json"
+    if not result_path.exists():
+        return {}
+    return _read_json(result_path)

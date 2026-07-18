@@ -9,10 +9,21 @@
       "role": "candidate_only"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1441097-ww-pirate-rogue",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
   "guide_sources": [],
+  "full_text_claim_sources": [],
   "source_strength": "unfetched_acquisition_seed",
+  "promotion_boundary": "runtime_claims_possible_if_fetched_claims_close",
   "lowerable_claim_kinds": [],
   "non_promoting_support": [],
   "first_missing_source_action": "add_current_pirate_rogue_mulligan_or_role_source",
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
   "notes": "Manifest-derived source cross-check. Candidate URLs were not fetched here; they are acquisition seeds only and are not runtime authority. No claims are promoted from URL presence alone."
 }

@@ -9,9 +9,17 @@
       "role": "candidate_only"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
+      "source_family": "hearthpwn",
+      "role": "candidate_only"
+    }
+  ],
   "guide_sources": [],
-  "source_visibility": "decklist_only",
+  "full_text_claim_sources": [],
   "source_strength": "decklist_or_stats_only",
+  "promotion_boundary": "context_only_never_promotes",
   "lowerable_claim_kinds": [],
   "non_promoting_support": [
     {
@@ -36,6 +44,9 @@
     }
   ],
   "first_missing_source_action": "add_boarlock_fracking_mulligan_source",
-  "stop_condition_if_any": "exact_boarlock_fracking_mulligan_source_unavailable",
-  "notes": "Current public sources found Boarlock decklist, stats, combo, and general mulligan context, but no exact Fracking keep/discard claim. Preserve SOURCE_BACKED_PARTIAL and keep Fracking-specific lowering closed."
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
+  "notes": "Current public sources found Boarlock decklist, stats, combo, and general mulligan context, but no exact Fracking keep/discard claim. Preserve SOURCE_BACKED_PARTIAL and keep Fracking-specific lowering closed.",
+  "source_visibility": "decklist_only",
+  "stop_condition_if_any": "exact_boarlock_fracking_mulligan_source_unavailable"
 }

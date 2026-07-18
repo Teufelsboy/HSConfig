@@ -7,48 +7,48 @@ items:
   - name: ShadowPriest
     category: Wild Hearthstone deck
     deck_code: AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=
-    focus: Source-backed ShadowPriest guide, mulligan, Darkbishop Benedictus effect-only boundary.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: CtAPaladin
     category: Wild Hearthstone deck
     deck_code: AAEBAZ8FBowBwP0ChJYFzpwGprMGg8IHDIgO+NICg94DkeQDzusDyaAE4aQEwcQFhY4GmY4G9ZUGmvwHAAA=
-    focus: Call to Arms Paladin source strength, board-flood/recruit claims, mulligan and runtime surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: PirateRogue
     category: Wild Hearthstone deck
     deck_code: AAEBAaIHApG8AuXRAg6MAtQF+w/psAPz3QOvoASKyQSa2wTXowW/9wXWngb8pQb8qAatxQYAAA==
-    focus: Pirate Rogue and weapon-pressure source strength, mulligan and weapon/runtime surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: BigShaman
     category: Wild Hearthstone deck
     deck_code: AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==
-    focus: Big Shaman cheat/recruit source strength, mulligan and combo-like setup surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: Discolock
     category: Wild Hearthstone deck
     deck_code: AAEBAf0GBM4Hj4ID8aEG9qEGDbW5A9XRA9DhA5iSBauSBZXKBteXB4SZB6StB8ayB9a+B9m+B8+/BwAA
-    focus: Discolock discard-pressure source strength, discard claims and mulligan surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: TreantDruid
     category: Wild Hearthstone deck
     deck_code: AAEBAZICAt/7ApOyBw7NuwLB8wL8rQP/rQOV4APs9QOvgASuwASy3QTO5AWw+gXZ/wXJ0Aat4gYAAA==
-    focus: Treant Druid board-flood source strength, token setup claims and mulligan surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: ImbueMage
     category: Wild Hearthstone deck
     deck_code: AAEBAf0EBIUXm80DvO0Egb8GDcAB9KsD0+wD1uwDr8QForMG1voG3PoG9PwG94EHs4cHwIcH7o0HAAA=
-    focus: Imbue Mage hero-power source strength, imbue/hero-power claims and runtime surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: MechPala
     category: Wild Hearthstone deck
     deck_code: AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==
-    focus: Mech Paladin board-flood source strength, magnetize/mech pressure claims and mulligan surfaces.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: Kingslayer
     category: Wild Hearthstone deck
     deck_code: AAEBAaIHBpG8ApKDB4aoB4eoB4ioB4jZBwyMAtQF6bAD1bYEiskE16MF7p4G/KUG/KgGs8EG6sQGrcUGAAA=
-    focus: Kingslayer weapon-pressure source strength, weapon setup claims and partial-source handling.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: Boarlock
     category: Wild Hearthstone deck
     deck_code: AAEBAf0GBuAF054G7qEGxKIG0YIHqYgHDJDHAvLQAp2pA5vNA9P5A6bqBPTGBYSeBpWzBpTKBoSZB4adBwAA
-    focus: Boarlock combo source strength, Elwynn Boar setup claims and low-confidence Fracking boundary.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: PirateDH
     category: Wild Hearthstone deck
     deck_code: AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA==
-    focus: Pirate Demon Hunter weapon/aggro source strength, mulligan and weapon-pressure claims.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."
   - name: CuteWarrior
     category: Wild Hearthstone deck
     deck_code: AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA=
-    focus: Cute Warrior source strength, current decklist/stat support and missing full-text guide action.
+    focus: "Source closure for this Wild deck: identify current public decklist/context pages separately from fetched full-text mulligan/gameplan/combo/card-role claims, and report the first missing source action without treating source partial as apply-blocking."

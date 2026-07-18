@@ -9,6 +9,13 @@
       "role": "decklist_or_stats_only"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://hearthstone-decks.net/pirate-demon-hunter-223-legend-mangekou-score-49-32/",
+      "source_family": "hearthstone_decks",
+      "role": "decklist_or_stats_only"
+    }
+  ],
   "guide_sources": [
     {
       "url": "https://hs.cardsrealm.com/en-bz/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
@@ -27,10 +34,26 @@
       "promotes_strong": false
     }
   ],
-  "source_status": "SOURCE_BACKED_PARTIAL",
-  "source_visibility": "full_text",
-  "freshness_status": "stale_unproven_for_2026",
+  "full_text_claim_sources": [
+    {
+      "url": "https://hs.cardsrealm.com/en-bz/articles/hearthstone-wild-deck-guide-pirate-demon-hunter-become-a-legend",
+      "source_family": "cardsrealm",
+      "source_visibility": "full_text",
+      "publication_date": "2024-09-13",
+      "publication_year": 2024,
+      "freshness_status": "stale_unproven_for_2026",
+      "promotion_role": "exact_full_text_mulligan_gameplan_and_role_guide",
+      "claim_kinds": [
+        "card_role",
+        "gameplan_posture",
+        "mechanic_usage",
+        "mulligan_keep"
+      ],
+      "promotes_strong": false
+    }
+  ],
   "source_strength": "exact_full_text_guide",
+  "promotion_boundary": "partial_until_missing_source_action_closes",
   "lowerable_claim_kinds": [
     "card_role",
     "gameplan_posture",
@@ -44,7 +67,12 @@
       "promotion_role": "context_only"
     }
   ],
-  "default_only_runtime_surfaces": [],
   "first_missing_source_action": "prove_current_or_evergreen_and_package_source_closure",
-  "notes": "Fetched CardsRealm full-text guide is useful claim evidence, but its 2024 publication date is not current for 2026 and the no-apply package matrix still reports SOURCE_BACKED_PARTIAL for PirateDH. Keep it as non-promoting source evidence until current-or-evergreen metadata and operator_summary.json closure prove SOURCE_BACKED_STRONG."
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
+  "notes": "Fetched CardsRealm full-text guide is useful claim evidence, but its 2024 publication date is not current for 2026 and the no-apply package matrix still reports SOURCE_BACKED_PARTIAL for PirateDH. Keep it as non-promoting source evidence until current-or-evergreen metadata and operator_summary.json closure prove SOURCE_BACKED_STRONG.",
+  "source_status": "SOURCE_BACKED_PARTIAL",
+  "source_visibility": "full_text",
+  "freshness_status": "stale_unproven_for_2026",
+  "default_only_runtime_surfaces": []
 }

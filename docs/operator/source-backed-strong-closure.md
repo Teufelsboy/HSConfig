@@ -68,6 +68,11 @@ freshly prepared packages. It reads `reports/operator_summary.json`, optional
 source-candidate proof context, and closure summaries. It does not write runtime
 files and does not replace `operator_summary.json`.
 
+The source closure priority queue is diagnostic-only. It combines package
+`operator_summary.json`, source candidate proof rows, and optional research-deep
+result rows to decide which source claim should be closed next. It must not
+write runtime config and must not set `source_status_apply_blocking=true`.
+
 The command may classify a package as:
 
 - `strong`: `SOURCE_BACKED_STRONG` is closed, no default-only runtime surfaces

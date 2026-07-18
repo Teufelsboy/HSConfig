@@ -20,18 +20,30 @@ def test_source_candidate_registry_returns_shadowpriest_current_guide():
     assert "archetype" in first.expected_claim_kinds
 
 
-def test_source_candidate_registry_marks_bigshaman_as_stale_partial_source():
+def test_source_candidate_registry_marks_bigshaman_current_seed_before_stale_support():
     candidates = source_candidates_for_deck(
         "BigShaman",
         "AAEBAaoIBpQD5LcDv84E9qMGgbgGmvYGDM4P0hP2vQKPlAPW9QO8tgT08gXqmAbGpgakpwb44gas/QYAAA==",
     )
 
     assert candidates
-    assert candidates[0].url == "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
-    assert candidates[0].expected_strength == "guide_stale_archetype_partial"
-    assert candidates[0].evergreen_wild_archetype is False
-    assert candidates[0].strength_ceiling == "candidate_partial"
-    assert candidates[0].first_missing_source_action == "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
+    current = candidates[0]
+    assert current.url == (
+        "https://hearthstone-decks.net/big-shaman-202-legend-abadon-score-98-64/"
+    )
+    assert current.expected_strength == "current_legend_mulligan_source"
+    assert current.strength_ceiling == "runtime_claims_possible"
+    assert "mulligan_keep" in current.expected_claim_kinds
+    assert current.first_missing_source_action == "none"
+
+    stale_support = candidates[1]
+    assert stale_support.url == "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
+    assert stale_support.expected_strength == "guide_stale_archetype_partial"
+    assert stale_support.evergreen_wild_archetype is False
+    assert stale_support.strength_ceiling == "candidate_partial"
+    assert stale_support.first_missing_source_action == (
+        "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
+    )
 
 
 def test_source_candidate_registry_is_empty_for_unknown_decks():

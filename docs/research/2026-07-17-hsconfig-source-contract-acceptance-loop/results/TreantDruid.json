@@ -9,6 +9,13 @@
       "role": "current_deck_full_text_guide"
     }
   ],
+  "currentness_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+      "source_family": "reddit",
+      "role": "current_deck_full_text_guide"
+    }
+  ],
   "guide_sources": [
     {
       "url": "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
@@ -24,10 +31,23 @@
       "promotes_strong": true
     }
   ],
-  "source_status": "SOURCE_BACKED_STRONG",
-  "source_visibility": "full_text",
-  "freshness_status": "current_or_evergreen",
+  "full_text_claim_sources": [
+    {
+      "url": "https://www.reddit.com/r/wildhearthstone/comments/1mjge7n/treant_druid_to_early_legend/",
+      "source_family": "reddit",
+      "source_visibility": "full_text",
+      "freshness_status": "current_or_evergreen",
+      "promotion_role": "exact_full_text_mulligan_gameplan_and_role_guide",
+      "claim_kinds": [
+        "card_role",
+        "gameplan_posture",
+        "mulligan_keep"
+      ],
+      "promotes_strong": true
+    }
+  ],
   "source_strength": "exact_full_text_guide",
+  "promotion_boundary": "runtime_claims_possible_if_fetched_claims_close",
   "lowerable_claim_kinds": [
     "card_role",
     "gameplan_posture",
@@ -40,7 +60,12 @@
       "promotion_role": "context_only"
     }
   ],
-  "default_only_runtime_surfaces": [],
   "first_missing_source_action": "none",
-  "notes": "Fetched current full-text Reddit guide contains exact Treant Druid mulligan, early board-flood plan, and card-role guidance. Runtime-lowerable claims are restricted to supported claim kinds."
+  "source_status_apply_blocking_expected": false,
+  "default_only_runtime_surfaces_expected": "none",
+  "notes": "Fetched current full-text Reddit guide contains exact Treant Druid mulligan, early board-flood plan, and card-role guidance. Runtime-lowerable claims are restricted to supported claim kinds.",
+  "source_status": "SOURCE_BACKED_STRONG",
+  "source_visibility": "full_text",
+  "freshness_status": "current_or_evergreen",
+  "default_only_runtime_surfaces": []
 }
