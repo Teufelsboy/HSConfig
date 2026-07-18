@@ -146,3 +146,32 @@ def test_dossier_keeps_seed_only_research_snapshot_diagnostic_only(
     assert row["source_status_apply_blocking"] is False
     assert report["summary"]["research_snapshot_count"] == 1
     assert report["summary"]["research_promoting_snapshot_count"] == 0
+
+
+def test_dossier_does_not_count_other_deck_research_as_promoting(
+    tmp_path: Path,
+) -> None:
+    package_dir = _package(tmp_path, deck_name="ShadowPriest")
+    research_path = tmp_path / "other_deck_strong.json"
+    write_json(
+        research_path,
+        {
+            "deck_name": "CtAPaladin",
+            "deck_code": "AAEBAZ8FExample",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "full_text",
+            "freshness_status": "current",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "first_missing_source_action": "none",
+        },
+    )
+
+    report = build_strong_closure_dossier(package_dir, [research_path])
+    row = report["research_snapshot_rows"][0]
+
+    assert row["package_deck_match"] is False
+    assert row["snapshot_relation"] == "different_deck_snapshot"
+    assert row["canonical_promotion_allowed"] is False
+    assert report["summary"]["research_snapshot_count"] == 1
+    assert report["summary"]["research_promoting_snapshot_count"] == 0

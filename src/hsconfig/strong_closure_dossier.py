@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+import re
 from typing import Any
 
 from hsconfig.io import read_json
@@ -29,8 +30,9 @@ def build_strong_closure_dossier(
         operator_summary=operator_summary,
         source_claim_gap_report=source_claim_gap_report,
     )
+    deck_name = _deck_name(operator_summary)
     research_rows = [
-        _research_row(Path(path))
+        _research_row(Path(path), package_deck_name=deck_name)
         for path in sorted(research_result_paths, key=lambda item: str(item))
     ]
     autopilot_report = (
@@ -50,7 +52,7 @@ def build_strong_closure_dossier(
         "operator_gate_impact": DIAGNOSTIC_AUTHORITY,
         "normal_apply_authority": NORMAL_APPLY_AUTHORITY,
         "package": str(package_path),
-        "deck_name": _deck_name(operator_summary),
+        "deck_name": deck_name,
         "technical_status": operator_summary.get("technical_status"),
         "semantic_status": operator_summary.get("semantic_status"),
         "source_backed_status": source_backed_status,
@@ -137,16 +139,27 @@ def _autopilot_summary(report: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _research_row(path: Path) -> dict[str, Any]:
+def _research_row(path: Path, *, package_deck_name: str) -> dict[str, Any]:
     data = _read_required_json(path)
     contract = classify_research_result_contract(data)
+    deck_name = str(data.get("deck_name") or "")
+    package_deck_match = _deck_names_match(package_deck_name, deck_name)
+    canonical_promotion_allowed = bool(
+        package_deck_match and contract["canonical_promotion_allowed"]
+    )
     return {
         "path": str(path),
-        "deck_name": str(data.get("deck_name") or ""),
+        "deck_name": deck_name,
+        "package_deck_match": package_deck_match,
+        "snapshot_relation": (
+            "current_package_deck_snapshot"
+            if package_deck_match
+            else "different_deck_snapshot"
+        ),
         "source_strength": str(data.get("source_strength") or ""),
         "snapshot_kind": contract["snapshot_kind"],
         "contract_valid": contract["contract_valid"],
-        "canonical_promotion_allowed": contract["canonical_promotion_allowed"],
+        "canonical_promotion_allowed": canonical_promotion_allowed,
         "canonical_downgrade_allowed": False,
         "source_status_apply_blocking": False,
         "errors": contract["errors"],
@@ -175,6 +188,9 @@ def _summary(
         "research_promoting_snapshot_count": sum(
             1 for row in research_rows if row["canonical_promotion_allowed"]
         ),
+        "different_deck_research_snapshot_count": sum(
+            1 for row in research_rows if not row["package_deck_match"]
+        ),
         "source_status_apply_blocking": False,
         "operator_action": (
             "ready"
@@ -182,3 +198,13 @@ def _summary(
             else "use_package_and_close_first_missing_source_action"
         ),
     }
+
+
+def _deck_names_match(package_deck_name: object, research_deck_name: object) -> bool:
+    package_identity = _normalized_deck_identity(package_deck_name)
+    research_identity = _normalized_deck_identity(research_deck_name)
+    return bool(package_identity and research_identity and package_identity == research_identity)
+
+
+def _normalized_deck_identity(deck_name: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(deck_name).casefold())
