@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from hsconfig.mechanic_support import (
     support_for_roles,
@@ -359,6 +359,8 @@ def _lane_and_missing_link(
     if card_id in concrete_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
     if card_id in mulligan_cards:
+        if is_guide_backed and _has_source_claim_ids(card):
+            return "mulligan_only", "none"
         return "mulligan_only", "needs_runtime_surface"
     if card_id in globalvalue_cards:
         if is_guide_backed and roles and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
@@ -387,6 +389,13 @@ def _roles_need_mechanic_lowering(roles: set[str]) -> bool:
         if lowering.get("default_block") is not None:
             return True
     return False
+
+
+def _has_source_claim_ids(card: Mapping[str, Any]) -> bool:
+    value = card.get("source_claim_ids", [])
+    if isinstance(value, str):
+        return bool(value.strip())
+    return isinstance(value, list) and any(str(item).strip() for item in value)
 
 
 def _source_depth_lane(first_missing_link: str) -> str:

@@ -253,8 +253,9 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
     )
+    source_evidence_closure_path = reports_dir / "source_evidence_closure.json"
     write_json(
-        reports_dir / "source_evidence_closure.json",
+        source_evidence_closure_path,
         build_source_evidence_closure_report(
             deck_name=args.deck_name,
             deck_code=args.deck_code,
@@ -314,6 +315,21 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "research_path": str(research_dir),
             "package_path": str(package_dir),
             "source_bundle_path": str(source_bundle_path),
+            "source_evidence_closure_path": str(source_evidence_closure_path),
+            "source_backed_status": operator_summary.get("source_backed_status"),
+            "source_status_reason": _first_source_status_reason(operator_summary),
+            "source_status_reasons": list(
+                operator_summary.get("source_status_reasons") or []
+            ),
+            "source_status_apply_blocking": bool(
+                operator_summary.get("source_status_apply_blocking", False)
+            ),
+            "first_missing_source_action": operator_summary.get(
+                "first_missing_source_action"
+            ),
+            "default_only_runtime_surfaces": list(
+                operator_summary.get("default_only_runtime_surfaces") or []
+            ),
             "source_candidate_urls": source_candidate_urls,
             "source_urls": source_urls,
             "apply_performed": bool(getattr(args, "apply", False)),
@@ -359,6 +375,13 @@ def _finish_stage_exception_for_args(
 
 def _stage_exception_payload(stage: str, exc: Exception) -> dict[str, Any]:
     return {"stage": stage, "errors": [str(exc)]}
+
+
+def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
+    reasons = operator_summary.get("source_status_reasons") or []
+    if isinstance(reasons, list) and reasons:
+        return str(reasons[0])
+    return ""
 
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:

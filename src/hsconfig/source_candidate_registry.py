@@ -36,8 +36,9 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             priority=10,
             expected_strength="guide_current_deck_match",
             publication_year=2026,
-            strength_ceiling="candidate_strong",
+            strength_ceiling="runtime_claims_possible",
             expected_claim_kinds=(
+                "archetype",
                 "gameplan_posture",
                 "mulligan_keep",
                 "mulligan_discard",
@@ -100,6 +101,20 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
             first_missing_source_action="add_discolock_matchup_or_card_role_source",
         ),
+        SourceCandidate(
+            url="https://hearthstone-decks.net/wild-decks/warlock-wild-decks/",
+            source_family="decklist",
+            deck_name="Discolock",
+            archetype="wild_discard_warlock",
+            reason="current Wild Warlock index context only",
+            priority=3,
+            expected_strength="meta_context_only",
+            publication_year=2026,
+            source_visibility="decklist_only",
+            strength_ceiling="context_only",
+            expected_claim_kinds=(),
+            first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
+        ),
     ),
     "treantdruid": (
         SourceCandidate(
@@ -131,7 +146,7 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             priority=8,
             expected_strength="guide_current_deck_match",
             publication_year=2026,
-            strength_ceiling="candidate_strong",
+            strength_ceiling="runtime_claims_possible",
             expected_claim_kinds=(
                 "gameplan_posture",
                 "mulligan_keep",
@@ -186,6 +201,20 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             expected_claim_kinds=("combo_sequence", "mulligan_keep", "card_role"),
             first_missing_source_action="add_boarlock_fracking_mulligan_source",
         ),
+        SourceCandidate(
+            url="https://hearthstone-decks.net/wild-decks/warlock-wild-decks/",
+            source_family="decklist",
+            deck_name="Boarlock",
+            archetype="wild_boarlock",
+            reason="current Wild Warlock index context only",
+            priority=3,
+            expected_strength="meta_context_only",
+            publication_year=2026,
+            source_visibility="decklist_only",
+            strength_ceiling="context_only",
+            expected_claim_kinds=(),
+            first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
+        ),
     ),
     "piratedh": (
         SourceCandidate(
@@ -216,6 +245,20 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
             first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
         ),
+        SourceCandidate(
+            url="https://hearthstone-decks.net/wild-decks/warrior-wild-decks/",
+            source_family="decklist",
+            deck_name="CuteWarrior",
+            archetype="wild_cute_warrior",
+            reason="current Wild Warrior index context only",
+            priority=3,
+            expected_strength="meta_context_only",
+            publication_year=2026,
+            source_visibility="decklist_only",
+            strength_ceiling="context_only",
+            expected_claim_kinds=(),
+            first_missing_source_action="add_current_full_text_mulligan_or_gameplan_source",
+        ),
     ),
     "bigshaman": (
         SourceCandidate(
@@ -228,7 +271,7 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             expected_strength="guide_evergreen_wild_archetype",
             evergreen_wild_archetype=True,
             publication_year=2018,
-            strength_ceiling="candidate_strong",
+            strength_ceiling="runtime_claims_possible",
             expected_claim_kinds=(
                 "gameplan_posture",
                 "mulligan_keep",

@@ -146,6 +146,29 @@ def test_mulligan_only_card_gets_specific_lane():
     assert row["first_missing_link"] == "needs_runtime_surface"
 
 
+def test_source_backed_mulligan_only_card_closes_runtime_surface():
+    report = _report_for_card(
+        card_id="CARD_SOURCE_KEEP",
+        roles=["mulligan_anchor"],
+        coverage_status="source_backed",
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_SOURCE_KEEP",
+                    "action": "hold",
+                    "source_claim_ids": ["CARD_SOURCE_KEEP_claim"],
+                }
+            ]
+        },
+    )
+
+    row = report["cards"]["CARD_SOURCE_KEEP"]
+    assert row["runtime_surfaces"] == ["Mulligan.json"]
+    assert row["readiness_lane"] == "mulligan_only"
+    assert row["first_missing_link"] == "none"
+    assert report["summary"]["cards_needing_runtime_surface"] == 0
+
+
 def test_multi_card_mulligan_selectors_credit_every_selector_card():
     for selector_kind, selector in (
         ("plus_combo", "CARD_A + CARD_B"),

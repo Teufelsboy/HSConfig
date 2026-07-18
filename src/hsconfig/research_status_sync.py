@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from hsconfig.io import read_json
+from hsconfig.research_result_contract import classify_research_result_contract
 
 
 NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
@@ -88,9 +89,10 @@ def _research_snapshot_row(
     path: Path,
 ) -> dict[str, Any]:
     data = _read_json(path)
+    contract = classify_research_result_contract(data)
     research_status = _research_status(data)
     research_strength = str(data.get("source_strength") or research_status or "")
-    research_kind = _research_snapshot_kind(research_strength, research_status)
+    research_kind = str(contract["snapshot_kind"])
     research_deck_name = str(data.get("deck_name") or "")
     relation = _snapshot_relation(
         deck_names_match=_deck_names_match(canonical["deck_name"], research_deck_name),
@@ -105,6 +107,14 @@ def _research_snapshot_row(
         "research_source_backed_status": research_status,
         "research_source_strength": research_strength,
         "research_snapshot_kind": research_kind,
+        "research_contract_valid": contract["contract_valid"],
+        "research_canonical_promotion_allowed": contract[
+            "canonical_promotion_allowed"
+        ],
+        "research_canonical_downgrade_allowed": contract[
+            "canonical_downgrade_allowed"
+        ],
+        "research_contract_errors": contract["errors"],
         "research_first_missing_source_action": str(
             data.get("first_missing_source_action") or ""
         ),
@@ -158,6 +168,12 @@ def _snapshot_relation(
     if not deck_names_match:
         return "different_deck_snapshot"
     if research_kind == "seed_only" and canonical_status == STRONG_STATUS:
+        return "stale_or_seed_only"
+    if (
+        canonical_status == STRONG_STATUS
+        and research_status == STRONG_STATUS
+        and research_kind != "strong"
+    ):
         return "stale_or_seed_only"
     if canonical_status == research_status:
         return "current_with_canonical"

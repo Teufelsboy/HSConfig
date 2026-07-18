@@ -39,6 +39,15 @@ Source closure status is diagnostic and canonicalized through
 `SOURCE_BACKED_STRONG`, but `source_status_apply_blocking` must remain `false`
 for valid load-safe packages.
 
+Source candidate registry rows, context seed URLs, search results, and
+historical research result JSON are acquisition or diagnostic evidence only.
+They do not close runtime surfaces. A research snapshot can be treated as
+current for source-status sync only when the strict research-result contract
+classifies it as Strong: fetched full text or canonical evidence, runtime-
+lowerable claim kinds, `first_missing_source_action=none`, and no default-only
+runtime surfaces. Otherwise the package must remain valid and load-safe but
+visibly partial until the missing source-to-runtime chain is closed.
+
 Acceptance-loop wording:
 
 - operator_summary.json remains the only normal apply authority.

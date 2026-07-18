@@ -29,6 +29,15 @@ They can recommend a refresh action for docs/research hygiene only.
 They do not create apply authority. `operator_summary.json remains the only
 normal apply authority`.
 
+As of 2026-07-18, `hsconfig research-status-sync` also applies the strict
+research-result contract from `src/hsconfig/research_result_contract.py`.
+Historical result JSON is allowed to agree with canonical Strong status only
+when it has fetched full text or canonical evidence, at least one runtime-
+lowerable claim kind, `first_missing_source_action=none`, and no
+`default_only_runtime_surfaces`. Seed-only, context-only, partial, stale, or
+default-only snapshots remain refresh diagnostics; they must not downgrade a
+canonical `SOURCE_BACKED_STRONG` package and must not promote a partial package.
+
 ## Current Active Evidence
 
 - `2026-07-14-hsconfig-source-contract-logic-guardrail-audit`: Contract-spine Guardrail v2 evidence. Confirms the current two-lane model: technical load safety decides normal apply, while source-contract, source-to-runtime, and mechanic warnings stay diagnostic and non-blocking.

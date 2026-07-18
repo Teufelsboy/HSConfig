@@ -125,15 +125,27 @@ candidate URLs promotion authority.
 
 Candidate rows can be:
 
-- `candidate_strong`: acquisition may reach `SOURCE_BACKED_STRONG` if fetched
-  full-text claims close the runtime surfaces.
+- `runtime_claims_possible`: acquisition may reach `SOURCE_BACKED_STRONG`
+  only after fetched full-text claims close the runtime surfaces. The registry
+  label itself is not strong evidence.
 - `candidate_partial`: acquisition can improve source quality, but at least one
   first missing source action is expected.
 - `context_only`: the source can confirm archetype or meta presence, but must
   not promote `SOURCE_BACKED_STRONG`.
+- `context_seed_urls`: index or archetype-context pages for finding current
+  guide candidates. They are never runtime authority and never close a runtime
+  surface by themselves.
 
 Candidate URLs must not promote `SOURCE_BACKED_STRONG` without fetched,
 deck-matched, claim-kind-normalized, surface-gated full-text evidence.
+
+Historical `research-deep` result JSON is current only when
+`hsconfig research-status-sync` can classify it as a strict runtime-lowerable
+contract: full-text or canonical source evidence exists, at least one
+runtime-lowerable claim kind is present, `first_missing_source_action=none`, and
+`default_only_runtime_surfaces=[]`. Seed-only, context-only, partial, stale, or
+default-only snapshots are diagnostics only. They must not downgrade a canonical
+Strong package and must not promote a partial package.
 
 ## Promotion Rule
 

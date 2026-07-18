@@ -16,6 +16,8 @@ def test_source_candidate_registry_returns_shadowpriest_current_guide():
     assert first.priority == 10
     assert first.expected_strength == "guide_current_deck_match"
     assert first.format_scope == "wild"
+    assert first.strength_ceiling == "runtime_claims_possible"
+    assert "archetype" in first.expected_claim_kinds
 
 
 def test_source_candidate_registry_marks_bigshaman_as_evergreen_wild_archetype():
@@ -44,10 +46,31 @@ def test_source_candidate_metadata_is_seed_not_authority():
     first = candidates[0]
     assert first.source_visibility in {"full_text", "decklist_only", "snippet_only"}
     assert first.strength_ceiling in {
-        "candidate_strong",
+        "runtime_claims_possible",
         "candidate_partial",
         "context_only",
     }
     assert isinstance(first.expected_claim_kinds, tuple)
     assert "mulligan_keep" in first.expected_claim_kinds
     assert first.first_missing_source_action == "none"
+
+
+def test_context_index_pages_are_registry_seeds_not_runtime_authority():
+    warlock_context_urls = {
+        candidate.url
+        for deck_name in ("Discolock", "Boarlock")
+        for candidate in source_candidates_for_deck(deck_name)
+        if candidate.strength_ceiling == "context_only"
+    }
+    warrior_context_urls = {
+        candidate.url
+        for candidate in source_candidates_for_deck("CuteWarrior")
+        if candidate.strength_ceiling == "context_only"
+    }
+
+    assert warlock_context_urls == {
+        "https://hearthstone-decks.net/wild-decks/warlock-wild-decks/"
+    }
+    assert warrior_context_urls == {
+        "https://hearthstone-decks.net/wild-decks/warrior-wild-decks/"
+    }

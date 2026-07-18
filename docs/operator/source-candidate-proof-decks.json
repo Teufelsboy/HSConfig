@@ -6,9 +6,9 @@
     {
       "deck_name": "ShadowPriest",
       "expected_candidate_count_min": 1,
-      "expected_strength_ceiling": "candidate_strong",
+      "expected_strength_ceiling": "runtime_claims_possible",
       "expected_runtime_generation_status": "load_safe_no_default_only",
-      "expected_strong_promotion_status": "candidate_strong_if_fetched_claims_close",
+      "expected_strong_promotion_status": "runtime_claims_possible_if_fetched_claims_close",
       "first_missing_source_action": "none",
       "candidate_urls": [
         "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
@@ -39,9 +39,9 @@
     {
       "deck_name": "BigShaman",
       "expected_candidate_count_min": 1,
-      "expected_strength_ceiling": "candidate_strong",
+      "expected_strength_ceiling": "runtime_claims_possible",
       "expected_runtime_generation_status": "load_safe_no_default_only",
-      "expected_strong_promotion_status": "candidate_strong_if_fetched_claims_close",
+      "expected_strong_promotion_status": "runtime_claims_possible_if_fetched_claims_close",
       "first_missing_source_action": "none",
       "candidate_urls": [
         "https://www.hearthpwn.com/decks/1186371-big-shaman-in-depth-guide"
@@ -56,6 +56,9 @@
       "first_missing_source_action": "add_discolock_matchup_or_card_role_source",
       "candidate_urls": [
         "https://www.reddit.com/r/CompetitiveHS/comments/1s7nr67/easy_wild_legend_discolock/"
+      ],
+      "context_seed_urls": [
+        "https://hearthstone-decks.net/wild-decks/warlock-wild-decks/"
       ]
     },
     {
@@ -72,9 +75,9 @@
     {
       "deck_name": "ImbueMage",
       "expected_candidate_count_min": 1,
-      "expected_strength_ceiling": "candidate_strong",
+      "expected_strength_ceiling": "runtime_claims_possible",
       "expected_runtime_generation_status": "load_safe_no_default_only",
-      "expected_strong_promotion_status": "candidate_strong_if_fetched_claims_close",
+      "expected_strong_promotion_status": "runtime_claims_possible_if_fetched_claims_close",
       "first_missing_source_action": "none",
       "candidate_urls": [
         "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage"
@@ -111,6 +114,9 @@
       "first_missing_source_action": "add_boarlock_fracking_mulligan_source",
       "candidate_urls": [
         "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk"
+      ],
+      "context_seed_urls": [
+        "https://hearthstone-decks.net/wild-decks/warlock-wild-decks/"
       ]
     },
     {
@@ -133,6 +139,9 @@
       "first_missing_source_action": "add_current_full_text_mulligan_or_gameplan_source",
       "candidate_urls": [
         "https://www.reddit.com/r/wildhearthstone/comments/13e0x4w/powersliding_with_cute_warrior_to_rank_278/"
+      ],
+      "context_seed_urls": [
+        "https://hearthstone-decks.net/wild-decks/warrior-wild-decks/"
       ]
     }
   ]

@@ -50,8 +50,10 @@ def test_seed_only_research_snapshot_cannot_downgrade_strong_package(
         "ShadowPriest",
         {
             "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
             "source_strength": "unfetched_acquisition_seed",
             "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+            "lowerable_claim_kinds": [],
         },
     )
 
@@ -85,9 +87,12 @@ def test_matching_strong_research_snapshot_is_current_with_canonical(
         "ShadowPriest",
         {
             "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
             "source_backed_status": "SOURCE_BACKED_STRONG",
             "source_strength": "SOURCE_BACKED_STRONG",
             "first_missing_source_action": "none",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
         },
     )
 
@@ -96,7 +101,7 @@ def test_matching_strong_research_snapshot_is_current_with_canonical(
     assert report["summary"]["stale_or_seed_snapshot_count"] == 0
     assert report["summary"]["status_mismatch_count"] == 0
     row = report["research_snapshot_rows"][0]
-    assert row["research_snapshot_kind"] == "canonical_like"
+    assert row["research_snapshot_kind"] == "strong"
     assert row["snapshot_relation"] == "current_with_canonical"
     assert row["recommended_refresh_action"] == "none"
 
@@ -110,8 +115,12 @@ def test_mixed_results_only_treat_matching_deck_snapshot_as_current(
         "ShadowPriest",
         {
             "deck_name": "Shadow Priest",
+            "deck_code": "AAEBAa0GExample",
             "source_backed_status": "SOURCE_BACKED_STRONG",
             "source_strength": "SOURCE_BACKED_STRONG",
+            "first_missing_source_action": "none",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
         },
     )
     other_deck_result = _research_result(
@@ -136,6 +145,35 @@ def test_mixed_results_only_treat_matching_deck_snapshot_as_current(
     assert rows_by_deck["CtAPaladin"]["snapshot_relation"] == "different_deck_snapshot"
     assert report["summary"]["missing_research_snapshot"] is False
     assert report["summary"]["matching_research_snapshot_count"] == 1
+
+
+def test_strong_looking_contract_partial_snapshot_is_not_current_with_canonical(
+    tmp_path: Path,
+) -> None:
+    package_dir = _strong_package(tmp_path)
+    partial_strong_result = _research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strength": "SOURCE_BACKED_STRONG",
+            "source_visibility": "snippet_only",
+            "first_missing_source_action": "none",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [partial_strong_result])
+
+    row = report["research_snapshot_rows"][0]
+    assert row["research_snapshot_kind"] == "partial"
+    assert row["snapshot_relation"] == "stale_or_seed_only"
+    assert (
+        row["recommended_refresh_action"]
+        == "refresh_research_snapshot_from_canonical_package"
+    )
 
 
 def test_different_deck_strong_snapshot_is_not_current_with_canonical(
@@ -231,4 +269,50 @@ def test_missing_research_snapshot_is_visible_but_not_apply_blocking(
 
     assert report["research_snapshot_rows"] == []
     assert report["summary"]["missing_research_snapshot"] is True
+    assert report["summary"]["source_status_apply_blocking"] is False
+
+
+def test_sync_row_includes_research_result_contract_diagnostics(tmp_path: Path) -> None:
+    package_dir = _strong_package(tmp_path)
+    seed_result = _research_result(
+        tmp_path,
+        "ShadowPriest",
+        {
+            "deck_name": "ShadowPriest",
+            "deck_code": "AAEBAa0GExample",
+            "source_strength": "unfetched_acquisition_seed",
+            "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+            "lowerable_claim_kinds": [],
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [seed_result])
+
+    row = report["research_snapshot_rows"][0]
+    assert row["research_contract_valid"] is True
+    assert row["research_snapshot_kind"] == "seed_only"
+    assert row["research_canonical_promotion_allowed"] is False
+    assert row["research_canonical_downgrade_allowed"] is False
+    assert row["research_contract_errors"] == []
+    assert report["summary"]["canonical_source_backed_status"] == "SOURCE_BACKED_STRONG"
+
+
+def test_invalid_research_payload_stays_diagnostic_and_non_blocking(tmp_path: Path) -> None:
+    package_dir = _strong_package(tmp_path)
+    invalid_result = _research_result(
+        tmp_path,
+        "invalid",
+        {
+            "source_strength": "unfetched_acquisition_seed",
+            "lowerable_claim_kinds": [],
+        },
+    )
+
+    report = build_research_status_sync_report(package_dir, [invalid_result])
+
+    row = report["research_snapshot_rows"][0]
+    assert row["research_contract_valid"] is False
+    assert row["research_snapshot_kind"] == "invalid"
+    assert row["research_contract_errors"] == ["missing_deck_identity"]
+    assert row["source_status_apply_blocking"] is False
     assert report["summary"]["source_status_apply_blocking"] is False

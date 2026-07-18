@@ -1,81 +1,78 @@
-# Task 2 Report: Source Autopilot Evergreen Wild Lane
+# Task 2 Report: Strict Research Result Contract Classifier
 
-## Commit
+## Status
 
-- `465c659e0e1648b8d0f01d5792354252b22a5bee`
-- Message: `feat: support evergreen Wild guide autopilot lanes`
+DONE
 
-## RED Test Evidence
+## Scope
 
-Command:
+- Added `src/hsconfig/research_result_contract.py` with a pure-Python classifier.
+- Updated `src/hsconfig/research_status_sync.py` to append contract diagnostics to each research snapshot row.
+- Added and updated focused tests in `tests/test_research_result_contract.py` and `tests/test_research_status_sync.py`.
+- No runtime package, `reports/operator_summary.json`, or HearthRanger runtime file was written.
+- No `--apply` command was run.
 
-```powershell
-python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane tests/test_source_autopilot.py::test_source_autopilot_evergreen_wild_guide_can_close_strong_summary tests/test_source_autopilot.py::test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source -q
+## Contract Behavior Implemented
+
+- Missing deck identity returns `contract_valid=false` and `snapshot_kind="invalid"`.
+- Seed strengths, including `unfetched_acquisition_seed`, remain `seed_only` and non-promoting.
+- Snippet-only evidence is `partial` and non-promoting, never a URL-seed or strong proof surrogate.
+- Strong status or strength requires `first_missing_source_action="none"`, accepted lowerable claim kinds, and full-text or explicit canonical evidence before it becomes promotion-eligible.
+- Strong-looking but incomplete input is classified as `partial`.
+- Canonical downgrade and source-status apply blocking are always `false`.
+- The classifier recognizes a strong marker from any supported status/strength field, not merely the first populated one.
+- `research-status-sync` stays diagnostic-only and preserves `reports/operator_summary.json` as the normal apply authority.
+
+## TDD Evidence
+
+### RED
+
+1. Before the module existed:
+
+```text
+ModuleNotFoundError: No module named 'hsconfig.research_result_contract'
 ```
 
-Result before implementation:
+2. Before checking all source status/strength fields:
 
-- `3 failed`
-- Evergreen rank rows did not preserve `source_freshness_lane`.
-- Evergreen Wild full-text guide still ranked as `guide_card_overlap`.
-- Old non-Wild guide did not expose the required source-refresh action.
-
-## GREEN Test Evidence
-
-Targeted Task 2 tests:
-
-```powershell
-python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane tests/test_source_autopilot.py::test_source_autopilot_evergreen_wild_guide_can_close_strong_summary tests/test_source_autopilot.py::test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source -q
+```text
+AssertionError: assert 'partial' == 'strong'
 ```
 
-Result:
+Both failures were expected and directly exercised the missing behavior.
 
-- `3 passed in 0.15s`
+### GREEN
 
-Autopilot regression file:
-
-```powershell
-python -m pytest tests/test_source_autopilot.py -q
-```
-
-Result:
-
-- `27 passed in 0.14s`
-
-Required Task 2 verification:
+Focused Task 2 verification:
 
 ```powershell
-python -m pytest tests/test_source_autopilot.py tests/test_source_evidence_policy.py -q
+python -m pytest tests\test_research_result_contract.py tests\test_research_status_sync.py -q -p no:cacheprovider
 ```
 
-Result:
+Result: `16 passed`.
 
-- `38 passed in 0.25s`
+Final regression command:
 
-## Files Changed
+```powershell
+python -m pytest tests\test_research_result_contract.py tests\test_research_status_sync.py tests\test_source_status_resolver.py tests\test_source_acquisition.py tests\test_source_text_claim_extractor.py tests\test_universal_wild_no_block_matrix.py -q -p no:cacheprovider
+```
 
-- `src/hsconfig/source_autopilot.py`
-- `tests/test_source_autopilot.py`
+Result: `73 passed in 18.05s`.
 
-## Notes
+Additional syntax verification:
 
-- `rank_public_sources(...)` now preserves policy-derived `source_freshness_lane`.
-- Evergreen Wild full-text deck/archetype-matched guide rows can rank as `guide_evergreen_wild_archetype`.
-- `_is_strong_guide_lane(...)` accepts both `guide_current_deck_match` and `guide_evergreen_wild_archetype`, while still requiring full text, deck-matched public guide lane, and no policy blockers.
-- Stale non-evergreen full-text guide rows remain `SOURCE_BACKED_PARTIAL` and report `add_current_or_evergreen_wild_public_guide`.
-- Source preflight remains diagnostic and non-blocking.
+```powershell
+python -m compileall -q src\hsconfig\research_result_contract.py src\hsconfig\research_status_sync.py
+```
 
-## Residual Risks
+Result: passed.
 
-- Only the required Task 2 targeted suite was run, not the full repository test suite.
-- The report file is intentionally uncommitted per task instruction.
+## Diff Review
 
-## Review Fix
+- `git diff --check` passed; only Git's existing LF-to-CRLF informational warnings were emitted.
+- The existing untracked plan file `docs/superpowers/plans/2026-07-18-hsconfig-live-source-strong-config-closure.md` was preserved unchanged.
+- No commit was created.
 
-- Reviewer finding: stale non-evergreen full-text guide rows without structured claims lost the source-policy action because only extracted evidence rows were scanned.
-- Root cause: ranked source rows carried `source_not_current_or_evergreen_wild`, but empty `source_evidence_rows` caused the report to fall back to the closure-profile action.
-- RED command: `python -m pytest tests/test_source_autopilot.py::test_source_autopilot_stale_guide_without_claims_requests_current_or_evergreen_source -q`
-- RED result: exit 1; expected `add_current_or_evergreen_wild_public_guide`, got `add_current_card_specific_runtime_source`.
-- Fix: pass ranked source rows into `_build_strong_closure_summary(...)` and scan ranked source policy blockers before profile-gap fallbacks.
-- GREEN command: `python -m pytest tests/test_source_autopilot.py tests/test_source_evidence_policy.py -q`
-- GREEN result: exit 0; 39 passed in 0.22s.
+## Concerns
+
+- None. The classifier intentionally reports promotion eligibility only as a diagnostic input signal; it does not modify canonical package status resolution or apply gating.

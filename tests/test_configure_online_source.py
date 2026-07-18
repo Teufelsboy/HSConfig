@@ -114,6 +114,7 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     package = Path(result["package_path"])
     operator = _read_json(package / "reports" / "operator_summary.json")
+    source_evidence_closure_path = Path(result["source_evidence_closure_path"])
 
     assert bundle["schema_version"] == 1
     assert bundle["promotion"]["source_backed_status"] == operator[
@@ -122,6 +123,16 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     assert bundle["promotion"]["semantic_status"] == operator["source_backed_status"]
     assert bundle["promotion"]["first_missing_source_action"] == operator[
         "first_missing_source_action"
+    ]
+    assert source_evidence_closure_path == package / "reports" / "source_evidence_closure.json"
+    assert source_evidence_closure_path.is_file()
+    assert result["source_backed_status"] == operator["source_backed_status"]
+    assert result["source_status_reasons"] == operator["source_status_reasons"]
+    assert result["source_status_apply_blocking"] is False
+    assert result["source_status_apply_blocking"] == operator["source_status_apply_blocking"]
+    assert result["first_missing_source_action"] == operator["first_missing_source_action"]
+    assert result["default_only_runtime_surfaces"] == operator[
+        "default_only_runtime_surfaces"
     ]
 
     ownership = _read_json(package / "reports" / "output_ownership_manifest.json")
@@ -245,7 +256,10 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     }
     assert "cards_need_guide_claims" in blocker_reasons
     assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
-    assert explainability["operator_attention"][0]["first_missing_link"] == "needs_runtime_surface"
+    assert explainability["operator_attention"][0]["first_missing_link"] == "needs_guide_claim"
+    assert explainability["operator_attention"][0]["first_missing_source_action"] == (
+        "add_card_specific_source_claim"
+    )
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["source_contract_audit_summary"]["non_blocking"] is True
     assert operator["no_block_failure_mode_summary"]["hard_block"] is False

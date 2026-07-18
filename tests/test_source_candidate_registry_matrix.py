@@ -31,13 +31,13 @@ DECKS = {
 
 
 EXPECTED_STRENGTH = {
-    "ShadowPriest": "candidate_strong",
+    "ShadowPriest": "runtime_claims_possible",
     "CtAPaladin": "candidate_partial",
     "PirateRogue": "candidate_partial",
-    "BigShaman": "candidate_strong",
+    "BigShaman": "runtime_claims_possible",
     "Discolock": "candidate_partial",
     "TreantDruid": "candidate_partial",
-    "ImbueMage": "candidate_strong",
+    "ImbueMage": "runtime_claims_possible",
     "MechPala": "context_only",
     "Kingslayer": "candidate_partial",
     "Boarlock": "candidate_partial",
@@ -46,13 +46,13 @@ EXPECTED_STRENGTH = {
 }
 
 EXPECTED_STRONG_PROMOTION_STATUS = {
-    "ShadowPriest": "candidate_strong_if_fetched_claims_close",
+    "ShadowPriest": "runtime_claims_possible_if_fetched_claims_close",
     "CtAPaladin": "partial_until_missing_source_action_closes",
     "PirateRogue": "partial_until_missing_source_action_closes",
-    "BigShaman": "candidate_strong_if_fetched_claims_close",
+    "BigShaman": "runtime_claims_possible_if_fetched_claims_close",
     "Discolock": "partial_until_missing_source_action_closes",
     "TreantDruid": "partial_until_missing_source_action_closes",
-    "ImbueMage": "candidate_strong_if_fetched_claims_close",
+    "ImbueMage": "runtime_claims_possible_if_fetched_claims_close",
     "MechPala": "context_only_not_strong",
     "Kingslayer": "partial_until_missing_source_action_closes",
     "Boarlock": "partial_until_missing_source_action_closes",
@@ -77,7 +77,7 @@ def test_candidate_strength_ceiling_is_explicit_for_every_user_deck():
         assert candidates, deck_name
         assert candidates[0].strength_ceiling == EXPECTED_STRENGTH[deck_name]
         assert candidates[0].strength_ceiling in {
-            "candidate_strong",
+            "runtime_claims_possible",
             "candidate_partial",
             "context_only",
         }, deck_name
@@ -112,9 +112,10 @@ def test_source_candidate_proof_doc_matches_registry_expectations():
         assert rows[deck_name]["first_missing_source_action"] == (
             candidates[0].first_missing_source_action
         )
-        assert rows[deck_name]["candidate_urls"] == [
-            candidate.url for candidate in candidates
-        ]
+        documented_urls = rows[deck_name]["candidate_urls"] + rows[deck_name].get(
+            "context_seed_urls", []
+        )
+        assert documented_urls == [candidate.url for candidate in candidates]
         assert rows[deck_name]["expected_strong_promotion_status"] == (
             EXPECTED_STRONG_PROMOTION_STATUS[deck_name]
         )
@@ -130,13 +131,19 @@ def test_source_candidate_proof_rows_match_registry_contract():
         candidates = source_candidates_for_deck(deck_name)
         urls = {candidate.url for candidate in candidates}
         expected_urls = set(row["candidate_urls"])
+        context_seed_urls = set(row.get("context_seed_urls", []))
 
         assert len(candidates) >= row["expected_candidate_count_min"], deck_name
         assert expected_urls <= urls, deck_name
+        assert context_seed_urls <= urls, deck_name
         assert {
             candidate.strength_ceiling for candidate in candidates
             if candidate.url in expected_urls
         } == {row["expected_strength_ceiling"]}, deck_name
+        assert {
+            candidate.strength_ceiling for candidate in candidates
+            if candidate.url in context_seed_urls
+        } <= {"context_only"}, deck_name
 
         expected_action = row["first_missing_source_action"]
         matching_actions = {
@@ -145,10 +152,16 @@ def test_source_candidate_proof_rows_match_registry_contract():
             if candidate.url in expected_urls
         }
         assert matching_actions == {expected_action}, deck_name
+        context_actions = {
+            candidate.first_missing_source_action
+            for candidate in candidates
+            if candidate.url in context_seed_urls
+        }
+        assert "none" not in context_actions, deck_name
 
 
 def test_context_only_candidates_cannot_declare_runtime_claim_kinds():
-    for deck_name in ["MechPala"]:
+    for deck_name in ["MechPala", "Discolock", "Boarlock", "CuteWarrior"]:
         candidates = source_candidates_for_deck(deck_name)
         context_candidates = [
             candidate for candidate in candidates
@@ -157,8 +170,4 @@ def test_context_only_candidates_cannot_declare_runtime_claim_kinds():
 
         assert context_candidates
         assert all(candidate.expected_claim_kinds == () for candidate in context_candidates)
-        assert all(
-            candidate.first_missing_source_action
-            == "add_current_full_text_mulligan_or_gameplan_source"
-            for candidate in context_candidates
-        )
+        assert all(candidate.first_missing_source_action != "none" for candidate in context_candidates)
