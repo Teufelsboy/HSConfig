@@ -73,7 +73,7 @@ def test_no_block_deck_matrix_matches_source_candidate_proof_manifest():
         ("Discolock", DECKS[4][1], "add_current_discolock_full_text_mulligan_or_gameplan_source"),
         ("TreantDruid", DECKS[5][1], "add_current_treant_druid_mulligan_keep_source"),
         ("ImbueMage", DECKS[6][1], "none"),
-        ("MechPala", DECKS[7][1], "add_current_mech_paladin_mulligan_source"),
+        ("MechPala", DECKS[7][1], "add_card_specific_source_claim"),
         ("Kingslayer", DECKS[8][1], "add_kingslayer_quick_pick_mulligan_source"),
         ("Boarlock", DECKS[9][1], "add_boarlock_fracking_mulligan_source"),
         ("PirateDH", DECKS[10][1], "add_pirate_dh_card_role_or_mulligan_source"),

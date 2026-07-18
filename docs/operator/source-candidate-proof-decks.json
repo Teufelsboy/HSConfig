@@ -103,8 +103,9 @@
       "expected_strength_ceiling": "candidate_partial",
       "expected_runtime_generation_status": "load_safe_no_default_only",
       "expected_strong_promotion_status": "partial_until_missing_source_action_closes",
-      "first_missing_source_action": "add_current_mech_paladin_mulligan_source",
+      "first_missing_source_action": "add_card_specific_source_claim",
       "candidate_urls": [
+        "https://www.reddit.com/r/CompetitiveHS/comments/1rmjjhf/whats_working_and_what_isnt_friday_march_06_2026/",
         "https://www.hearthpwn.com/decks/1463315-galvanizer-scrapyard-hand-dump"
       ],
       "context_seed_urls": [

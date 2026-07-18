@@ -123,6 +123,27 @@ def test_live_source_refresh_treant_supplemental_candidate_is_partial():
     )
 
 
+def test_live_source_refresh_mechpala_current_mulligan_source_stays_partial():
+    mech_candidates = {
+        candidate.url: candidate for candidate in source_candidates_for_deck("MechPala")
+    }
+    mech_url = (
+        "https://www.reddit.com/r/CompetitiveHS/comments/1rmjjhf/"
+        "whats_working_and_what_isnt_friday_march_06_2026/"
+    )
+
+    assert mech_url in mech_candidates
+    current_source = mech_candidates[mech_url]
+    assert current_source.strength_ceiling == "candidate_partial"
+    assert current_source.first_missing_source_action == "add_card_specific_source_claim"
+    assert {
+        "gameplan_posture",
+        "mulligan_keep",
+        "card_role",
+        "combo_sequence",
+    } <= set(current_source.expected_claim_kinds)
+
+
 def test_source_closure_wave_downgrades_overstated_support_sources():
     cta_candidates = {
         candidate.url: candidate

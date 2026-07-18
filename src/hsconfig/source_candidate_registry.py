@@ -247,6 +247,32 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
     ),
     "mechpala": (
         SourceCandidate(
+            url=(
+                "https://www.reddit.com/r/CompetitiveHS/comments/1rmjjhf/"
+                "whats_working_and_what_isnt_friday_march_06_2026/"
+            ),
+            source_family="community_guide",
+            deck_name="MechPala",
+            archetype="wild_mech_paladin",
+            reason=(
+                "current Wild Mech Paladin discussion with explicit "
+                "Treasuregill/Radar Detector mulligan guidance and "
+                "Galvanizer combo-flood plan, but still missing full "
+                "card-specific source closure"
+            ),
+            priority=10,
+            expected_strength="guide_current_mulligan_and_combo_partial",
+            publication_year=2026,
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=(
+                "gameplan_posture",
+                "mulligan_keep",
+                "card_role",
+                "combo_sequence",
+            ),
+            first_missing_source_action="add_card_specific_source_claim",
+        ),
+        SourceCandidate(
             url="https://www.hearthpwn.com/decks/1463315-galvanizer-scrapyard-hand-dump",
             source_family="guide",
             deck_name="MechPala",
@@ -260,7 +286,7 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             publication_year=2026,
             strength_ceiling="candidate_partial",
             expected_claim_kinds=("gameplan_posture", "card_role", "mechanic_usage"),
-            first_missing_source_action="add_current_mech_paladin_mulligan_source",
+            first_missing_source_action="add_card_specific_source_claim",
         ),
         SourceCandidate(
             url="https://hearthstone-decks.net/wild-decks/paladin-wild-decks/wild-mech-paladin/",
