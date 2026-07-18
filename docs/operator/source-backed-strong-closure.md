@@ -54,6 +54,13 @@ package status in `reports/operator_summary.json`. A stale or seed-only
 snapshot must not downgrade `SOURCE_BACKED_STRONG`, must not promote a partial
 package, and does not create apply authority.
 
+`hsconfig strong-closure-dossier` writes an operator-facing closure dossier for
+a prepared package. strong-closure-dossier is diagnostic-only: it may read
+`reports/operator_summary.json`, research result snapshots, and
+`source_autopilot_report.json`, but it must not write HearthRanger runtime files
+or create a second readiness gate. operator_summary.json remains the only normal
+apply authority.
+
 Operator invariants for source-backed strong closure:
 
 - Source-candidate registries are acquisition seeds only, not promotion authority.

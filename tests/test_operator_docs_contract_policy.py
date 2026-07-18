@@ -151,6 +151,24 @@ def test_active_docs_and_skill_state_source_status_is_diagnostic_not_apply_gate(
         assert sentinel in combined
 
 
+def test_active_docs_and_skill_state_strong_closure_dossier_boundary():
+    combined = "\n".join(
+        [
+            (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
+                encoding="utf-8"
+            ),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    for sentinel in (
+        "hsconfig strong-closure-dossier",
+        "strong-closure-dossier is diagnostic-only",
+        "operator_summary.json remains the only normal apply authority",
+    ):
+        assert sentinel in combined
+
+
 def test_active_docs_and_skill_state_source_contract_acceptance_loop_exact_phrases():
     for relative_path in SOURCE_CONTRACT_ACCEPTANCE_DOCS:
         text = (ROOT / relative_path).read_text(encoding="utf-8")
