@@ -662,3 +662,18 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-contract-partial-closur
 - [x] Task 6: Canonical closure docs synced to the current no-apply matrix and runtime/source status boundary.
 - [x] Task 7: Acceptance matrix and contract tests passed: focused source-contract suite `118 passed`, ShadowPriest and Boarlock package acceptance-matrix checks passed, docs/skill policy `104 passed`.
 - [x] Task 8: Full verification passed: full pytest suite `1567 passed, 11 skipped`; installed skill sync passed; `git diff --check` exited `0` with CRLF warnings only; matrix assertion passed; read-only final subagent review returned OK.
+
+---
+
+# HSConfig Source Closure Optimizer SDD Progress
+
+Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-optimizer.md`
+
+- [x] Preflight: repository refreshed; branch `codex/hsconfig-canonical-source-status-sync` clean; baseline source-status tests passed (`25 passed`).
+- [ ] Task 1: Add pure source closure optimizer module and TDD tests.
+- [ ] Task 2: Add CLI command and CLI tests.
+- [ ] Task 3: Add representative matrix coverage.
+- [ ] Task 4: Update operator docs and repo-local skill contract.
+- [ ] Task 5: Verify against current source candidate deck set.
+- [ ] Task 6: Full verification and review.
+- [ ] Task 7: Self-review and clean-worktree handoff.
