@@ -670,7 +670,7 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-contract-partial-closur
 Plan: `docs/superpowers/plans/2026-07-18-hsconfig-source-closure-optimizer.md`
 
 - [x] Preflight: repository refreshed; branch `codex/hsconfig-canonical-source-status-sync` clean; baseline source-status tests passed (`25 passed`).
-- [ ] Task 1: Add pure source closure optimizer module and TDD tests.
+- [x] Task 1: Add pure source closure optimizer module and TDD tests (commits `fb7d046..3a4bb32`, review clean; unit test passed `5 passed`).
 - [ ] Task 2: Add CLI command and CLI tests.
 - [ ] Task 3: Add representative matrix coverage.
 - [ ] Task 4: Update operator docs and repo-local skill contract.
