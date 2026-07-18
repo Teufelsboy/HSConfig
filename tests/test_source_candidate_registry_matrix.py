@@ -34,7 +34,7 @@ EXPECTED_STRENGTH = {
     "ShadowPriest": "runtime_claims_possible",
     "CtAPaladin": "runtime_claims_possible",
     "PirateRogue": "candidate_partial",
-    "BigShaman": "runtime_claims_possible",
+    "BigShaman": "candidate_partial",
     "Discolock": "runtime_claims_possible",
     "TreantDruid": "runtime_claims_possible",
     "ImbueMage": "runtime_claims_possible",
@@ -49,7 +49,7 @@ EXPECTED_STRONG_PROMOTION_STATUS = {
     "ShadowPriest": "runtime_claims_possible_if_fetched_claims_close",
     "CtAPaladin": "runtime_claims_possible_if_fetched_claims_close",
     "PirateRogue": "partial_until_missing_source_action_closes",
-    "BigShaman": "runtime_claims_possible_if_fetched_claims_close",
+    "BigShaman": "partial_until_missing_source_action_closes",
     "Discolock": "runtime_claims_possible_if_fetched_claims_close",
     "TreantDruid": "runtime_claims_possible_if_fetched_claims_close",
     "ImbueMage": "runtime_claims_possible_if_fetched_claims_close",
@@ -112,8 +112,47 @@ def test_live_source_refresh_supplemental_candidates_are_registered():
         "treant_druid_wild_legend_deck/"
     )
     assert treant_url in treant_candidates
-    assert treant_candidates[treant_url].strength_ceiling == "runtime_claims_possible"
-    assert treant_candidates[treant_url].first_missing_source_action == "none"
+    assert treant_candidates[treant_url].strength_ceiling == "candidate_partial"
+    assert treant_candidates[treant_url].first_missing_source_action != "none"
+
+
+def test_source_closure_wave_downgrades_overstated_support_sources():
+    cta_candidates = {
+        candidate.url: candidate
+        for candidate in source_candidates_for_deck("CtAPaladin")
+    }
+    cta_old_discussion = cta_candidates[
+        "https://www.reddit.com/r/wildhearthstone/comments/1jydz4q/"
+        "i_dont_understand_how_cta_paladin_is_any_good/"
+    ]
+    assert cta_old_discussion.strength_ceiling == "candidate_partial"
+    assert cta_old_discussion.first_missing_source_action == (
+        "add_current_cta_paladin_mulligan_keep_source"
+    )
+    assert "mulligan_keep" not in cta_old_discussion.expected_claim_kinds
+
+    discolock_candidates = {
+        candidate.url: candidate
+        for candidate in source_candidates_for_deck("Discolock")
+    }
+    discolock_advice = discolock_candidates[
+        "https://www.reddit.com/r/wildhearthstone/comments/1nhpuu1/"
+        "how_to_play_discolock/"
+    ]
+    assert discolock_advice.strength_ceiling == "candidate_partial"
+    assert discolock_advice.first_missing_source_action == (
+        "add_current_discolock_full_text_mulligan_or_gameplan_source"
+    )
+
+    big_shaman = source_candidates_for_deck("BigShaman")[0]
+    assert big_shaman.strength_ceiling == "candidate_partial"
+    assert big_shaman.first_missing_source_action == (
+        "add_current_big_shaman_full_text_mulligan_or_gameplan_source"
+    )
+
+    pirate_dh = source_candidates_for_deck("PirateDH")[0]
+    assert pirate_dh.publication_year == 2024
+    assert pirate_dh.expected_strength == "guide_historical_archetype_match"
 
 
 def test_source_candidate_proof_doc_matches_registry_expectations():

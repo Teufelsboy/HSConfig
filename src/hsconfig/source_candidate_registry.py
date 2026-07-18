@@ -71,13 +71,17 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             source_family="community_guide",
             deck_name="CtAPaladin",
             archetype="wild_cta_paladin",
-            reason="Wild CtA Paladin discussion with aggro mulligan and Crab Rider role support",
+            reason=(
+                "older Wild CtA Paladin discussion with aggro posture and "
+                "Crab Rider role support, without current card-specific "
+                "mulligan closure"
+            ),
             priority=9,
-            expected_strength="guide_archetype_mulligan_support",
+            expected_strength="guide_archetype_partial",
             publication_year=2025,
-            strength_ceiling="runtime_claims_possible",
-            expected_claim_kinds=("gameplan_posture", "mulligan_keep", "card_role"),
-            first_missing_source_action="none",
+            strength_ceiling="candidate_partial",
+            expected_claim_kinds=("gameplan_posture", "card_role"),
+            first_missing_source_action="add_current_cta_paladin_mulligan_keep_source",
         ),
         SourceCandidate(
             url="https://www.reddit.com/r/wildhearthstone/comments/1rzz9b1/rank_1_legend_with_cta_and_qldh/",
@@ -157,13 +161,16 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             source_family="community_guide",
             deck_name="Discolock",
             archetype="wild_discard_warlock",
-            reason="Wild Discolock discussion with discard-priority mulligan and pressure posture",
+            reason=(
+                "Wild Discolock advice discussion with discard-priority "
+                "context, without current full-text closure by itself"
+            ),
             priority=8,
-            expected_strength="guide_current_mulligan_support",
+            expected_strength="guide_archetype_partial",
             publication_year=2025,
-            strength_ceiling="runtime_claims_possible",
+            strength_ceiling="candidate_partial",
             expected_claim_kinds=("gameplan_posture", "mulligan_discard"),
-            first_missing_source_action="none",
+            first_missing_source_action="add_current_discolock_full_text_mulligan_or_gameplan_source",
         ),
         SourceCandidate(
             url="https://hearthstone-decks.net/wild-decks/warlock-wild-decks/",
@@ -203,17 +210,19 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             source_family="community_guide",
             deck_name="TreantDruid",
             archetype="wild_treant_druid",
-            reason="current Wild Treant Druid guide-style legend writeup with posture and mulligan support",
+            reason=(
+                "current Wild Treant Druid guide-style legend writeup with "
+                "posture support, without card-specific mulligan closure by itself"
+            ),
             priority=9,
-            expected_strength="guide_current_deck_match",
+            expected_strength="guide_current_archetype_partial",
             publication_year=2026,
-            strength_ceiling="runtime_claims_possible",
+            strength_ceiling="candidate_partial",
             expected_claim_kinds=(
                 "gameplan_posture",
-                "mulligan_keep",
                 "card_role",
             ),
-            first_missing_source_action="none",
+            first_missing_source_action="add_current_treant_druid_mulligan_keep_source",
         ),
     ),
     "imbuemage": (
@@ -318,10 +327,13 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             source_family="guide",
             deck_name="PirateDH",
             archetype="wild_pirate_demon_hunter",
-            reason="full Pirate Demon Hunter guide with mulligan, pressure posture, card roles, and weapon/pirate usage",
+            reason=(
+                "historical full Pirate Demon Hunter guide with mulligan, "
+                "pressure posture, card roles, and weapon/pirate usage"
+            ),
             priority=10,
-            expected_strength="guide_current_archetype_match",
-            publication_year=2025,
+            expected_strength="guide_historical_archetype_match",
+            publication_year=2024,
             strength_ceiling="runtime_claims_possible",
             expected_claim_kinds=(
                 "gameplan_posture",
@@ -380,21 +392,21 @@ _KNOWN_CANDIDATES: dict[str, tuple[SourceCandidate, ...]] = {
             source_family="guide",
             deck_name="BigShaman",
             archetype="wild_big_shaman",
-            reason="evergreen Wild archetype guide with deck strategy and matchup context",
+            reason=(
+                "historical Wild Big Shaman archetype guide with strategy "
+                "context, too stale for current-list strong closure by itself"
+            ),
             priority=8,
-            expected_strength="guide_evergreen_wild_archetype",
-            evergreen_wild_archetype=True,
+            expected_strength="guide_stale_archetype_partial",
             publication_year=2018,
-            strength_ceiling="runtime_claims_possible",
+            strength_ceiling="candidate_partial",
             expected_claim_kinds=(
                 "gameplan_posture",
-                "mulligan_keep",
-                "mulligan_discard",
                 "mechanic_usage",
                 "combo_sequence",
                 "card_role",
             ),
-            first_missing_source_action="none",
+            first_missing_source_action="add_current_big_shaman_full_text_mulligan_or_gameplan_source",
         ),
     ),
 }
