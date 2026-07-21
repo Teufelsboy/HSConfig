@@ -28,6 +28,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_docs_active_path.py",
     "tests/test_skill_sync.py",
     "tests/test_skill_files.py",
+    "tests/test_skill_contract_entrypoint.py",
     "tests/test_claim_kind_runtime_contract.py",
     "tests/test_card_behavior_router.py",
     "tests/test_mechanic_support.py",
