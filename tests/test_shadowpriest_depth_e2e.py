@@ -374,13 +374,13 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert any(
         row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
         and row["condition"] == "*"
-        and row["value"] == "10"
+        and row["value"] == "6"
         for row in hero_power_values
     )
     sw448_behavior_rows = behavior_report["card_rows"]["SW_448"]
     assert any(
-        row.get("semantic_score", {}).get("reason") == "hero_power_transform"
-        and row["value"] == "10"
+        row.get("semantic_score", {}).get("reason") == "explicit_runtime_value"
+        and row["value"] == "6"
         for row in sw448_behavior_rows
     )
     assert len(darkbishop_attention) == 1

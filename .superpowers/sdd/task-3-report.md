@@ -66,3 +66,19 @@ Review-fix verification:
 
 Review-fix concerns:
 - `.superpowers/sdd/progress.md` remains pre-existing dirty state and was not edited or staged by this fix.
+
+## Re-review Fix: Preserve Explicit Darkbishop Runtime Value
+
+Status: done
+
+Re-review context:
+- Full-suite re-review found that `test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep` uses `tests/fixtures/shadowpriest_guide_sources.json`, which explicitly supplies `runtime_value: "6"` for `SW_448`.
+- Per Task 3 plan, explicit source `runtime_value`/`value` is authoritative and must win over semantic scoring.
+
+Expectation update:
+- Restored that guide-sources fixture test to expect runtime row value `6`.
+- Updated its report-layer assertion to expect `semantic_score.reason == "explicit_runtime_value"`.
+- Left the source-documents strong fixture test expecting semantic `10` with `hero_power_transform`, because that fixture does not provide the explicit override.
+
+Re-review concerns:
+- `.superpowers/sdd/progress.md` remains pre-existing dirty state and was not edited or staged by this fix.
