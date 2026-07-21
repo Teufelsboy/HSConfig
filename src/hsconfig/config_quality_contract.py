@@ -23,6 +23,22 @@ SPECIAL_RUNTIME_FILES = {
     "GlobalValues.json",
     "Mulligan.json",
 }
+SOURCE_TRACE_LANES = {
+    "runtime_lowered",
+    "runtime_lowerable",
+    "deck_matched_public_guide",
+    "archetype_matched_public_guide",
+    "evergreen_wild_archetype",
+    "official_static_semantics",
+    "source_backed_static_semantics",
+}
+SOURCE_TRACE_TYPES = {
+    "deck_matched_public_guide",
+    "archetype_matched_public_guide",
+    "evergreen_wild_archetype",
+    "official_static_semantics",
+    "static_semantics",
+}
 DARKBISHOP_CARD_ID = "SW_448"
 
 
@@ -65,6 +81,7 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "operator_summary": _operator_summary_check(operator),
         "card_behavior": _card_behavior_check(card_behavior),
         "source_to_runtime_explainability": _explainability_check(explainability),
+        "trace_completeness": _trace_completeness_check(card_behavior, explainability),
         "runtime_json": _runtime_json_check(package),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
@@ -120,11 +137,7 @@ def _card_behavior_check(card_behavior: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if not _is_meaningful_cardid_row(row):
             continue
-        compact = {
-            "card_id": str(row.get("card_id", "")),
-            "behavior_block": str(row.get("behavior_block", "")),
-            "value": str(row.get("value", "")),
-        }
+        compact = _compact_behavior_row(row)
         accepted_rows.append(compact)
         semantic_score = row.get("semantic_score")
         if not isinstance(semantic_score, Mapping):
@@ -179,6 +192,114 @@ def _explainability_check(explainability: Mapping[str, Any]) -> dict[str, Any]:
             explainability
         ),
     }
+
+
+def _trace_completeness_check(
+    card_behavior: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_rows = _meaningful_cardid_rows(card_behavior)
+    traced = _traced_card_ids(explainability)
+    missing = [
+        _compact_behavior_row(row)
+        for row in runtime_rows
+        if _row_card_id(row) not in traced
+    ]
+    return {
+        "runtime_rows_missing_trace": missing,
+        "traced_card_ids": sorted(traced),
+        "runtime_card_ids": sorted({_row_card_id(row) for row in runtime_rows}),
+    }
+
+
+def _meaningful_cardid_rows(card_behavior: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    rows = card_behavior.get("rows", [])
+    if not isinstance(rows, list):
+        return []
+    return [
+        row for row in rows if isinstance(row, Mapping) and _is_meaningful_cardid_row(row)
+    ]
+
+
+def _compact_behavior_row(row: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "card_id": _row_card_id(row),
+        "behavior_block": str(row.get("behavior_block", "")),
+        "value": str(row.get("value", "")),
+    }
+
+
+def _traced_card_ids(explainability: Mapping[str, Any]) -> set[str]:
+    traced: set[str] = set()
+
+    claim_rows = explainability.get("claim_rows", [])
+    if isinstance(claim_rows, list):
+        for row in claim_rows:
+            if not isinstance(row, Mapping):
+                continue
+            if str(row.get("builder_or_router_decision", "")) != "emitted":
+                continue
+            for emitted_file in _string_list(row.get("emitted_runtime_files")):
+                card_id = _file_card_id(emitted_file)
+                if card_id:
+                    traced.add(card_id)
+
+    card_rows = explainability.get("card_rows", [])
+    if isinstance(card_rows, list):
+        for row in card_rows:
+            if not isinstance(row, Mapping):
+                continue
+            if not _card_row_has_source_trace(row):
+                continue
+            card_id = _row_card_id(row)
+            if card_id:
+                traced.add(card_id)
+            for emitted_file in _string_list(row.get("emitted_runtime_files")):
+                file_card_id = _file_card_id(emitted_file)
+                if file_card_id:
+                    traced.add(file_card_id)
+
+    return traced
+
+
+def _card_row_has_source_trace(row: Mapping[str, Any]) -> bool:
+    if _source_trace_value(row.get("source_lane")):
+        return True
+    closure = row.get("closure")
+    if isinstance(closure, Mapping) and _source_trace_value(closure.get("lane")):
+        return True
+    evidence_chain = row.get("evidence_chain", [])
+    if not isinstance(evidence_chain, list):
+        return False
+    return any(
+        isinstance(item, Mapping)
+        and (
+            _source_trace_value(item.get("source_lane"))
+            or _source_trace_type(item.get("source_type"))
+            or str(item.get("resolution_reason", "")) == "emitted"
+        )
+        and _string_list(item.get("runtime_files"))
+        for item in evidence_chain
+    )
+
+
+def _source_trace_value(value: Any) -> bool:
+    return str(value or "") in SOURCE_TRACE_LANES
+
+
+def _source_trace_type(value: Any) -> bool:
+    return str(value or "") in SOURCE_TRACE_TYPES
+
+
+def _row_card_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("card_id", "") or row.get("card", "")).strip()
+
+
+def _file_card_id(value: Any) -> str:
+    name = Path(str(value or "")).name
+    if not name.endswith(".json") or name in SPECIAL_RUNTIME_FILES:
+        return ""
+    return name[:-5]
 
 
 def _runtime_json_check(package: Path) -> dict[str, Any]:
@@ -350,6 +471,15 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
+    trace = checks["trace_completeness"]
+    if trace["runtime_rows_missing_trace"]:
+        problems.append(
+            {
+                "check": "card_behavior_runtime_row_missing_trace",
+                "value": trace["runtime_rows_missing_trace"],
+            }
+        )
+
     card_behavior = checks["card_behavior"]
     if card_behavior["semantic_score_missing_rows"]:
         problems.append(
@@ -401,6 +531,14 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
         )
 
     return problems
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]
 
 
 def _read_json(path: Path) -> Any:
