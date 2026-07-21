@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 
 
@@ -91,17 +92,28 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
             encoding="utf-8"
         )
     )
-    scored_rows = [
+    quality = build_config_quality_report(out)
+    mind_sear_rows = [
         row
         for row in behavior_report["rows"]
-        if row.get("card_id") == "NX2_019" and row.get("semantic_score")
+        if row.get("card_id") == "NX2_019"
+        and row.get("surface_family") == "CARDID.json"
+        and row.get("behavior_block")
+        and row.get("meaningful_runtime_surface", True) is not False
     ]
 
     assert code == 0
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert scored_rows
-    assert all(row["value"] for row in scored_rows)
-    assert all(row["semantic_score"].get("reason") for row in scored_rows)
+    assert quality["authority"] == "diagnostic_only"
+    assert quality["apply_blocking"] is False
+    assert quality["runtime_write_performed"] is False
+    assert quality["checks"]["darkbishop_boundary"]["mulligan_keep_present"] is False
+    assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+    assert not quality["checks"]["operator_summary"]["source_status_apply_blocking"]
+    assert mind_sear_rows
+    assert all(row["value"] for row in mind_sear_rows)
+    assert all(row.get("semantic_score") for row in mind_sear_rows)
+    assert all(row["semantic_score"].get("reason") for row in mind_sear_rows)
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
     assert (
         "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)

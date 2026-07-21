@@ -341,6 +341,13 @@ gate -> builder/router -> runtime effect diagnostics. It does not write runtime
 files; `--out` only writes the requested Markdown diagnostic.
 operator_summary.json remains the only normal apply authority.
 
+`hsconfig contract-doctor --package <04_package> --json` includes a diagnostic-only
+`config_quality` section. It checks no-default-only visibility, CardID semantic
+score coverage, runtime JSON leanness, forbidden legacy surfaces, and the
+Darkbishop effect-not-mulligan boundary. It does not replace
+`reports/operator_summary.json`, does not apply runtime files, and does not block
+a technically valid package.
+
 ## Expert Paths
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.

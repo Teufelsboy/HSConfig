@@ -119,6 +119,51 @@ def test_contract_doctor_markdown_states_diagnostic_only(tmp_path: Path):
     assert "operator_summary.json remains the only normal apply authority" in markdown
 
 
+def test_contract_doctor_includes_config_quality_without_apply_authority(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_status_apply_blocking": False,
+            "default_only_runtime_surfaces": [],
+        },
+    )
+    write_json(package / "reports" / "card_behavior_plan_report.json", {"rows": []})
+    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
+    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {"Keep": []})
+
+    report = build_contract_doctor_report(package)
+
+    assert report["status"] == "ok"
+    assert report["config_quality"]["authority"] == "diagnostic_only"
+    assert report["config_quality"]["apply_blocking"] is False
+    assert report["config_quality"]["runtime_write_performed"] is False
+    serialized = json.dumps(report)
+    assert '"runtime_apply_allowed"' not in serialized
+    assert '"apply_policy"' not in serialized
+
+
+def test_contract_doctor_markdown_includes_config_quality_section(tmp_path: Path):
+    package = tmp_path / "package"
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_status_apply_blocking": False,
+            "default_only_runtime_surfaces": ["cardid_behavior"],
+        },
+    )
+
+    markdown = render_contract_doctor_markdown(build_contract_doctor_report(package))
+
+    assert "## Config Quality" in markdown
+    assert "- Status: attention" in markdown
+    assert "operator_summary.json remains the only normal apply authority" in markdown
+
+
 def test_contract_doctor_payload_can_write_markdown_report(tmp_path: Path):
     package = tmp_path / "package"
     out = tmp_path / "doctor.md"

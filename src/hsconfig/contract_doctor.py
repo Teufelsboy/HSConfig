@@ -5,6 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
+from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.source_contract_conformance import build_source_contract_conformance_snapshot
 
 
@@ -37,6 +38,7 @@ def build_contract_doctor_report(package: Path) -> dict[str, Any]:
             "authority": authority,
         }
 
+    config_quality = build_config_quality_report(package)
     audit_path = package / "reports" / "source_contract_audit.json"
     audit = _read_json(audit_path) if audit_path.is_file() else {}
     if not isinstance(audit, Mapping):
@@ -64,6 +66,7 @@ def build_contract_doctor_report(package: Path) -> dict[str, Any]:
         "errors": [],
         "package": str(package),
         "authority": authority,
+        "config_quality": config_quality,
         "operator": {
             "technical_status": operator.get("technical_status"),
             "semantic_status": operator.get("semantic_status"),
@@ -99,6 +102,7 @@ def build_contract_doctor_report(package: Path) -> dict[str, Any]:
 def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
     """Render the contract-doctor result as compact operator-readable Markdown."""
     authority = _mapping(report.get("authority"))
+    config_quality = _mapping(report.get("config_quality"))
     operator = _mapping(report.get("operator"))
     lifecycle = _mapping(report.get("claim_lifecycle"))
     card_diagnostics = _mapping(report.get("card_diagnostics"))
@@ -121,6 +125,13 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
         f"- Technical status: {operator.get('technical_status', '')}",
         f"- Semantic status: {operator.get('semantic_status', '')}",
         f"- Next action: {operator.get('next_action', '')}",
+        "",
+        "## Config Quality",
+        "",
+        f"- Status: {config_quality.get('status', '')}",
+        f"- Authority: {config_quality.get('authority', '')}",
+        f"- Apply blocking: {config_quality.get('apply_blocking', False)}",
+        f"- Problems: {config_quality.get('problems', [])}",
         "",
         "## Claim Lifecycle",
         "",

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 from tests.helpers.fixture_prepare import load_archetype_matrix
 
@@ -459,6 +460,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
             encoding="utf-8"
         )
     )
+    quality = build_config_quality_report(out)
     if deck_name == "Kingslayer":
         assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert operator["first_missing_source_action"] != "none"
@@ -510,6 +512,12 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert source_to_runtime["authority"] == "diagnostic_only"
     assert source_to_runtime["apply_blocking"] is False
     assert source_to_runtime["summary"]["cards_total"] == len(deck_card_ids)
+    assert quality["authority"] == "diagnostic_only"
+    assert quality["apply_blocking"] is False
+    assert quality["runtime_write_performed"] is False
+    assert quality["checks"]["legacy_surfaces"]["present"] == []
+    assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+    assert quality["checks"]["card_behavior"]["out_of_range_value_rows"] == []
     assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
     assert source_to_runtime["operator_attention"]
     assert all("closure" in row for row in source_to_runtime["card_rows"])
@@ -574,6 +582,7 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
                 out / "04_package" / "reports" / "card_behavior_plan_report.json"
             ).read_text(encoding="utf-8")
         )
+        quality = build_config_quality_report(out / "04_package")
         deck_dirs = [
             path for path in (out / "04_package" / "CustomConfig").iterdir() if path.is_dir()
         ]
@@ -595,6 +604,12 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert source_contract_audit["schema_version"] == 1
         assert source_to_runtime["authority"] == "diagnostic_only"
         assert source_to_runtime["apply_blocking"] is False
+        assert quality["authority"] == "diagnostic_only"
+        assert quality["apply_blocking"] is False
+        assert quality["runtime_write_performed"] is False
+        assert quality["checks"]["legacy_surfaces"]["present"] == []
+        assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+        assert quality["checks"]["card_behavior"]["out_of_range_value_rows"] == []
         assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True
 
