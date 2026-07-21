@@ -161,6 +161,10 @@ def test_contract_doctor_markdown_includes_config_quality_section(tmp_path: Path
 
     assert "## Config Quality" in markdown
     assert "- Status: attention" in markdown
+    assert "Trace rows missing source: " in markdown
+    assert "Closure current: " in markdown
+    assert "Stray CardID files: " in markdown
+    assert "Report-only mechanic runtime rows: " in markdown
     assert "operator_summary.json remains the only normal apply authority" in markdown
 
 

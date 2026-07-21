@@ -103,6 +103,13 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
     """Render the contract-doctor result as compact operator-readable Markdown."""
     authority = _mapping(report.get("authority"))
     config_quality = _mapping(report.get("config_quality"))
+    config_quality_checks = _mapping(config_quality.get("checks"))
+    trace_quality = _mapping(config_quality_checks.get("trace_completeness"))
+    closure_quality = _mapping(config_quality_checks.get("closure_freshness"))
+    runtime_quality = _mapping(config_quality_checks.get("runtime_json"))
+    mechanic_quality = _mapping(
+        config_quality_checks.get("mechanic_runtime_discipline")
+    )
     operator = _mapping(report.get("operator"))
     lifecycle = _mapping(report.get("claim_lifecycle"))
     card_diagnostics = _mapping(report.get("card_diagnostics"))
@@ -132,6 +139,11 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
         f"- Authority: {config_quality.get('authority', '')}",
         f"- Apply blocking: {config_quality.get('apply_blocking', False)}",
         f"- Problems: {config_quality.get('problems', [])}",
+        f"- Trace rows missing source: {_count(trace_quality.get('runtime_rows_missing_trace'))}",
+        f"- Closure current: {closure_quality.get('closure_schema_current', False)}",
+        f"- Closure rows missing: {closure_quality.get('cards_missing_closure', 0)}",
+        f"- Stray CardID files: {_count(runtime_quality.get('stray_cardid_files'))}",
+        f"- Report-only mechanic runtime rows: {_count(mechanic_quality.get('report_only_runtime_rows'))}",
         "",
         "## Claim Lifecycle",
         "",
@@ -266,6 +278,14 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _count(value: Any) -> int:
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, Mapping):
+        return len(value)
+    return 0
 
 
 def _read_json(path: Path) -> Any:
