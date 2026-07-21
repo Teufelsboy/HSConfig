@@ -301,6 +301,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         ),
     )
     write_json(reports_dir / "operator_summary.json", operator_summary)
+    config_quality_summary = _build_config_quality_summary(package_dir)
 
     try:
         validate_payload_result, validate_status = validate_payload(
@@ -373,6 +374,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             ),
             "source_candidate_urls": source_candidate_urls,
             "source_urls": source_urls,
+            "config_quality_summary": config_quality_summary,
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from hsconfig.cli import main
 from hsconfig.commands.configure import _compact_config_quality_summary
@@ -521,4 +524,94 @@ def test_compact_config_quality_summary_reports_attention_checks() -> None:
             "source_to_runtime_closure_rows_missing",
         ],
         "next_action": "run_contract_doctor_for_details",
+    }
+
+
+def test_configure_writes_diagnostic_config_quality_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_empty_card_fetches(monkeypatch)
+
+    def clean_report(_package_dir: Path) -> dict[str, Any]:
+        return {"status": "clean", "problems": []}
+
+    monkeypatch.setattr(
+        "hsconfig.commands.configure.build_config_quality_report",
+        clean_report,
+    )
+    out = tmp_path / "out"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    summary = _read_json(out / "configure_summary.json")
+    operator_summary = _read_json(
+        out / "04_package" / "reports" / "operator_summary.json"
+    )
+
+    assert summary["config_quality_summary"] == {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+    }
+    assert "config_quality_summary" not in operator_summary
+
+
+def test_configure_quality_summary_failure_stays_diagnostic_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_empty_card_fetches(monkeypatch)
+
+    def raise_report(_package_dir: Path) -> dict[str, Any]:
+        raise RuntimeError("quality unavailable")
+
+    monkeypatch.setattr(
+        "hsconfig.commands.configure.build_config_quality_report",
+        raise_report,
+    )
+    out = tmp_path / "out"
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    ) == 0
+
+    summary = _read_json(out / "configure_summary.json")
+
+    assert summary["config_quality_summary"] == {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 1,
+        "problem_checks": ["config_quality_summary_failed"],
+        "next_action": "run_contract_doctor_for_details",
+        "error": "RuntimeError: quality unavailable",
     }
