@@ -34,6 +34,11 @@ Required diff whitespace check passed:
 git diff --check -- tests/test_shadowpriest_e2e.py tests/test_universal_wild_no_block_matrix.py .superpowers/sdd/task-5-report.md
 ```
 
+Review fix:
+
+- Tightened the ShadowPriest assertion so every scored `NX2_019` row must have
+  a nonempty `semantic_score.reason`, not just a nonempty set of reasons.
+
 ## Changed Files
 
 - `tests/test_shadowpriest_e2e.py`

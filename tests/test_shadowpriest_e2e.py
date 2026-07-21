@@ -101,7 +101,7 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert scored_rows
     assert all(row["value"] for row in scored_rows)
-    assert {row["semantic_score"]["reason"] for row in scored_rows}
+    assert all(row["semantic_score"].get("reason") for row in scored_rows)
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
     assert (
         "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)
