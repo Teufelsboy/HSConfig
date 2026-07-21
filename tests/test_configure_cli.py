@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.commands.configure import _compact_config_quality_summary
 
 
 SHADOWPRIEST_CODE = (
@@ -475,3 +476,49 @@ def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, c
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "fake_apply_ready"
     assert payload["receipt"]["runtime_write_performed"] is False
+
+
+def test_compact_config_quality_summary_reports_clean_status() -> None:
+    report = {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [],
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+    }
+
+
+def test_compact_config_quality_summary_reports_attention_checks() -> None:
+    report = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [
+            {"check": "card_behavior_semantic_default_visible", "value": ["CS2_235"]},
+            {"check": "source_to_runtime_closure_rows_missing", "value": 1},
+            {"check": "card_behavior_semantic_default_visible", "value": ["CS2_235"]},
+        ],
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 3,
+        "problem_checks": [
+            "card_behavior_semantic_default_visible",
+            "source_to_runtime_closure_rows_missing",
+        ],
+        "next_action": "run_contract_doctor_for_details",
+    }
