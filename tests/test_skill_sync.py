@@ -95,6 +95,10 @@ def test_skill_sync_propagates_source_backed_closure_guidance(tmp_path: Path):
     )
 
     assert "For an optimal fresh deck config, prefer the source-backed path:" in skill_text
+    reference_line = next(
+        line for line in skill_text.splitlines() if line.startswith("## References:")
+    )
+    assert "references/contract-compiler-checklist.md" in reference_line
     assert (
         'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
         '--online-source --auto-source --apply'

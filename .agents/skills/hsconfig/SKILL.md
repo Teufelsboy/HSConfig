@@ -76,4 +76,4 @@ Operator rules:
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
 ## Expert Paths
 Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
-## References: `references/workflow.md`; `references/visionai-surfaces.md`; `references/guide-research-policy.md`; `references/globalvalues-policy.md`; `references/card-behavior-policy.md`
+## References: `references/workflow.md`; `references/visionai-surfaces.md`; `references/contract-compiler-checklist.md`; `references/guide-research-policy.md`; `references/globalvalues-policy.md`; `references/card-behavior-policy.md`

@@ -43,6 +43,10 @@ def test_skill_and_workflow_stay_compact_and_canonical():
         assert "load_safe_apply" in text
     assert "HSConfig is pre-run only" in combined
     assert "does not parse replays" in combined
+    reference_line = next(
+        line for line in skill.splitlines() if line.startswith("## References:")
+    )
+    assert "references/contract-compiler-checklist.md" in reference_line
     assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in skill
     assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in workflow
     assert "reports/operator_summary.json" in checklist

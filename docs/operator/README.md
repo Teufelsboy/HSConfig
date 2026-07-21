@@ -34,6 +34,10 @@ per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence
 exists. `Presume.json` and `Concede.json` are known VisionAI surfaces, but they
 are outside the normal output path.
 
+### Optional Contract Preflight
+
+Use `hsconfig contract-preflight --json` for a read-only repo and skill contract check before source refresh, package generation, or runtime-facing apply review. It checks currentness, skill reference routing, source-status non-blocking policy, no-default-only visibility, supported runtime surfaces, and negative-scope boundaries. It is diagnostic-only and does not replace `reports/operator_summary.json`.
+
 Use `hsconfig configure` for normal operation:
 
 ```powershell
