@@ -815,3 +815,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: contract entrypoint test registered in the focused guardrail runner, committed in 42c7d75; focused runner/skill slice passed (67 passed).
 - [x] Task 5: installed skill synced to C:\Users\darbo\.codex\skills\hsconfig; sync check passed; contract guardrail runner passed (526 passed).
 - [x] Task 6: final currentness clean (`behind_origin_main=0`, `dirty=false`, `clean_for_runtime_work=true`); branch pushed to origin/codex/hsconfig-semantic-intent-scoring.
+
+---
+
+# HSConfig Contract Preflight And Skill Router Slimming SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-contract-preflight-skill-router-slimming.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; baseline skill/currentness slice passed (66 passed).
+- [x] Task 1: Add Pure Contract Preflight Diagnostic (implemented in combined Task 1+2 commit range because the Task 1 brief includes a CLI JSON test; combined review approved)
+- [x] Task 2: Add CLI Command Without Runtime Integration (implemented in combined Task 1+2 commit range; combined review approved)
+- [x] Task 3: Surface The Router Contract In Skill And Operator Docs (commit a935317; review approved; focused tests 69 passed)
+- [x] Task 4: Final Sync, Verification, And Clean Push (skill sync passed; guardrails 526 passed; full suite 1711 passed, 11 skipped; final scope fix de868d1; ledger commit pending)
