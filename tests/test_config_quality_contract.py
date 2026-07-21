@@ -524,6 +524,141 @@ def test_config_quality_flags_cardid_runtime_rows_without_source_trace(
     assert report["apply_blocking"] is False
 
 
+def test_config_quality_flags_same_card_runtime_row_without_claim_trace(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "NX2_019",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforeBattlecryTargetBonus",
+                    "value": "10",
+                    "meaningful_runtime_surface": True,
+                    "claim_id": "claim_mind_sear_targeting",
+                    "source_claim_ids": ["claim_mind_sear_targeting"],
+                    "semantic_score": {
+                        "band": "high",
+                        "reason": "conditional_minion_death_burn",
+                        "profile": "semantic_intent",
+                    },
+                },
+                {
+                    "card_id": "NX2_019",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "value": "8",
+                    "meaningful_runtime_surface": True,
+                    "claim_id": "claim_mind_sear_play_bonus",
+                    "source_claim_ids": ["claim_mind_sear_play_bonus"],
+                    "semantic_score": {
+                        "band": "high",
+                        "reason": "source_backed_play_timing",
+                        "profile": "semantic_intent",
+                    },
+                },
+            ]
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "NX2_019.json",
+        {
+            "GameCardId": "NX2_019",
+            "ConfigComment": "ShadowPriest: generated behavior for NX2_019",
+            "BeforeBattlecryTargetBonus": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: NX2_019_prefer_enemy_minion",
+                        "condition": "*",
+                        "value": "10",
+                    }
+                ]
+            },
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: NX2_019_play_bonus",
+                        "condition": "*",
+                        "value": "8",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        {
+            "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [
+                {
+                    "claim_id": "claim_mind_sear_targeting",
+                    "claim_kind": "targeting_rule",
+                    "builder_or_router_decision": "emitted",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "first_missing_link": None,
+                }
+            ],
+            "card_rows": [
+                {
+                    "card_id": "NX2_019",
+                    "first_missing_link": None,
+                    "source_lane": "runtime_lowered",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "runtime_surfaces": ["cardid"],
+                    "closure": {
+                        "lane": "source_backed_runtime_lowered",
+                        "runtime_surfaces": ["NX2_019.json"],
+                        "default_only_risk": False,
+                    },
+                    "evidence_chain": [
+                        {
+                            "claim_id": "claim_mind_sear_targeting",
+                            "claim_kind": "targeting_rule",
+                            "source_lane": "runtime_lowered",
+                            "source_type": "deck_matched_public_guide",
+                            "runtime_files": ["NX2_019.json"],
+                            "resolution_reason": "emitted",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["trace_completeness"]["runtime_rows_missing_trace"] == [
+        {
+            "card_id": "NX2_019",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "8",
+        }
+    ]
+    assert report["checks"]["trace_completeness"]["traced_card_ids"] == ["NX2_019"]
+    assert report["checks"]["trace_completeness"]["runtime_card_ids"] == ["NX2_019"]
+    assert {
+        "check": "card_behavior_runtime_row_missing_trace",
+        "value": [
+            {
+                "card_id": "NX2_019",
+                "behavior_block": "BeforePlayCardBonus",
+                "value": "8",
+            }
+        ],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_accepts_official_static_semantics_runtime_trace(
     tmp_path: Path,
 ):

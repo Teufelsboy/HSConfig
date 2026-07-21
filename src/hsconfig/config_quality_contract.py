@@ -214,10 +214,11 @@ def _trace_completeness_check(
 ) -> dict[str, Any]:
     runtime_rows = _meaningful_cardid_rows(card_behavior)
     traced = _traced_card_ids(explainability)
+    traced_claims_by_card = _traced_claim_ids_by_card(explainability)
     missing = [
         _compact_behavior_row(row)
         for row in runtime_rows
-        if _row_card_id(row) not in traced
+        if not _runtime_row_has_trace(row, traced, traced_claims_by_card)
     ]
     return {
         "runtime_rows_missing_trace": missing,
@@ -293,6 +294,74 @@ def _traced_card_ids(explainability: Mapping[str, Any]) -> set[str]:
                     traced.add(file_card_id)
 
     return traced
+
+
+def _traced_claim_ids_by_card(explainability: Mapping[str, Any]) -> dict[str, set[str]]:
+    traced: dict[str, set[str]] = {}
+
+    claim_rows = explainability.get("claim_rows", [])
+    if isinstance(claim_rows, list):
+        for row in claim_rows:
+            if not isinstance(row, Mapping):
+                continue
+            if str(row.get("builder_or_router_decision", "")) != "emitted":
+                continue
+            claim_id = _claim_id(row)
+            if not claim_id:
+                continue
+            for emitted_file in _string_list(row.get("emitted_runtime_files")):
+                card_id = _file_card_id(emitted_file)
+                if card_id:
+                    traced.setdefault(card_id, set()).add(claim_id)
+
+    card_rows = explainability.get("card_rows", [])
+    if isinstance(card_rows, list):
+        for row in card_rows:
+            if not isinstance(row, Mapping):
+                continue
+            evidence_chain = row.get("evidence_chain", [])
+            if not isinstance(evidence_chain, list):
+                continue
+            for item in evidence_chain:
+                if not isinstance(item, Mapping):
+                    continue
+                claim_id = _claim_id(item)
+                if not claim_id:
+                    continue
+                for runtime_file in _string_list(item.get("runtime_files")):
+                    card_id = _file_card_id(runtime_file)
+                    if card_id:
+                        traced.setdefault(card_id, set()).add(claim_id)
+
+    return traced
+
+
+def _runtime_row_has_trace(
+    row: Mapping[str, Any],
+    traced_card_ids: set[str],
+    traced_claims_by_card: Mapping[str, set[str]],
+) -> bool:
+    card_id = _row_card_id(row)
+    row_claim_ids = _runtime_row_claim_ids(row)
+    if not row_claim_ids:
+        return card_id in traced_card_ids
+    return bool(row_claim_ids & traced_claims_by_card.get(card_id, set()))
+
+
+def _runtime_row_claim_ids(row: Mapping[str, Any]) -> set[str]:
+    claim_ids = set()
+    claim_id = _claim_id(row)
+    if claim_id:
+        claim_ids.add(claim_id)
+    for source_claim_id in _string_list(row.get("source_claim_ids")):
+        source_claim_id = source_claim_id.strip()
+        if source_claim_id:
+            claim_ids.add(source_claim_id)
+    return claim_ids
+
+
+def _claim_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("claim_id", "") or "").strip()
 
 
 def _card_row_has_source_trace(row: Mapping[str, Any]) -> bool:
