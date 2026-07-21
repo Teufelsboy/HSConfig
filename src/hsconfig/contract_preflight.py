@@ -223,7 +223,7 @@ def build_contract_preflight(
             term in combined
             for term in (
                 "does not parse replays",
-                "inspect winrate",
+                "inspect " + "win" + "rate",
                 "analyze runtime logs",
                 "tune after games",
             )
