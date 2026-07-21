@@ -6,7 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hsconfig.contract_preflight import GitPreflight, build_contract_preflight
+from hsconfig.contract_preflight import (
+    GitPreflight,
+    build_contract_preflight,
+    build_git_preflight,
+)
 
 
 def _clean_git() -> GitPreflight:
@@ -56,6 +60,72 @@ def test_contract_preflight_reports_attention_when_git_is_dirty() -> None:
     assert "repo_current" in payload["failures"]
     assert payload["source_status_apply_blocking"] is False
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_git_preflight_reports_attention_when_origin_main_is_unresolvable(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(
+        ["git", "init", "-b", "feature"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=tmp_path,
+        check=True,
+    )
+    (tmp_path / "README.md").write_text("test\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "test"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+
+    snapshot = build_git_preflight(tmp_path)
+    payload = build_contract_preflight(tmp_path, git=snapshot)
+
+    assert snapshot.ahead_origin_main == 0
+    assert snapshot.behind_origin_main == 0
+    assert snapshot.origin_main_error
+    assert snapshot.clean_for_runtime_work is False
+    assert payload["checks"]["repo_current"] is False
+    assert payload["status"] == "ATTENTION"
+
+
+def test_contract_preflight_cli_returns_json_attention_for_invalid_repo_root(
+    tmp_path: Path,
+) -> None:
+    invalid_repo_root = tmp_path / "missing-repo"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "hsconfig.cli",
+            "contract-preflight",
+            "--json",
+            "--repo-root",
+            str(invalid_repo_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "ATTENTION"
+    assert payload["error"]
+    assert payload["repo_root"] == str(invalid_repo_root.resolve())
+    assert "Traceback" not in result.stderr
 
 
 def test_contract_preflight_cli_emits_json_without_writing_files(tmp_path: Path) -> None:

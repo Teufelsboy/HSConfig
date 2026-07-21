@@ -25,6 +25,7 @@ class GitPreflight:
     clean_for_runtime_work: bool
     ahead_upstream: int | None = None
     behind_upstream: int | None = None
+    origin_main_error: str | None = None
 
 
 def _run_git(
@@ -78,7 +79,22 @@ def build_git_preflight(repo_root: str | Path) -> GitPreflight:
         "HEAD...origin/main",
         check=False,
     )
-    ahead_origin_main, behind_origin_main = _parse_counts(origin_main_result.stdout)
+    origin_main_error: str | None = None
+    if origin_main_result.returncode == 0:
+        try:
+            ahead_origin_main, behind_origin_main = _parse_counts(
+                origin_main_result.stdout
+            )
+        except ValueError as exc:
+            ahead_origin_main, behind_origin_main = 0, 0
+            origin_main_error = f"invalid origin/main count output: {exc}"
+    else:
+        ahead_origin_main, behind_origin_main = 0, 0
+        origin_main_error = (
+            origin_main_result.stderr.strip()
+            or origin_main_result.stdout.strip()
+            or f"git rev-list exited with status {origin_main_result.returncode}"
+        )
 
     ahead_upstream: int | None = None
     behind_upstream: int | None = None
@@ -99,9 +115,12 @@ def build_git_preflight(repo_root: str | Path) -> GitPreflight:
         dirty=dirty,
         ahead_origin_main=ahead_origin_main,
         behind_origin_main=behind_origin_main,
-        clean_for_runtime_work=(not dirty and behind_origin_main == 0),
+        clean_for_runtime_work=(
+            not dirty and origin_main_error is None and behind_origin_main == 0
+        ),
         ahead_upstream=ahead_upstream,
         behind_upstream=behind_upstream,
+        origin_main_error=origin_main_error,
     )
 
 
@@ -136,6 +155,7 @@ def build_contract_preflight(
     checks = {
         "repo_current": (
             git_snapshot.clean_for_runtime_work
+            and git_snapshot.origin_main_error is None
             and git_snapshot.behind_origin_main == 0
         ),
         "skill_root_present": skill_root.exists(),
