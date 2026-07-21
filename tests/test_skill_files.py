@@ -160,13 +160,19 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     )
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
-    assert "`reports/configure_summary.json` also contains `config_quality_summary`" in operator_docs
-    assert "quick operator visibility after `hsconfig configure`" in operator_docs
-    assert "If `status` is `attention`, run `hsconfig contract-doctor --package <package>`" in operator_docs
-    assert "The normal apply authority remains `reports/operator_summary.json`." in operator_docs
-    assert "`reports/configure_summary.json.config_quality_summary`" in skill
-    assert "It is diagnostic-only and non-blocking; use `contract-doctor` for details." in skill
-    assert "`reports/operator_summary.json` remains the normal apply authority." in skill
+    operator_fragment = operator_docs.split("## Optional Contract Doctor", 1)[1].split(
+        "## Expert Paths", 1
+    )[0]
+    skill_fragment = skill.split("- After `configure`,", 1)[1].split("\n-", 1)[0]
+
+    for text in (operator_fragment, skill_fragment):
+        assert "<out>/configure_summary.json.config_quality_summary" in text
+        assert "config_quality_summary" in text
+        assert "diagnostic-only" in text
+        assert "non-blocking" in text
+        assert "contract-doctor" in text
+        assert "operator_summary.json" in text
+        assert "normal apply authority" in text
 
 
 def test_skill_names_source_closure_intake_receipt_without_new_authority():

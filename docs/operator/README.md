@@ -349,7 +349,7 @@ freshness, stray CardID runtime files, and report-only mechanic runtime drift. I
 does not replace `reports/operator_summary.json`, does not apply runtime files,
 and does not block a technically valid package.
 
-`reports/configure_summary.json` also contains `config_quality_summary`, a compact diagnostic-only mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
+`<out>/configure_summary.json.config_quality_summary` is a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 
 ## Expert Paths
 
