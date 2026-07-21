@@ -145,26 +145,62 @@ def test_contract_doctor_includes_config_quality_without_apply_authority(tmp_pat
     assert '"apply_policy"' not in serialized
 
 
-def test_contract_doctor_markdown_includes_config_quality_section(tmp_path: Path):
-    package = tmp_path / "package"
-    write_json(
-        package / "reports" / "operator_summary.json",
-        {
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "SOURCE_BACKED_STRONG",
-            "source_status_apply_blocking": False,
-            "default_only_runtime_surfaces": ["cardid_behavior"],
+def test_contract_doctor_markdown_includes_config_quality_section():
+    report = {
+        "schema_version": 1,
+        "status": "ok",
+        "package": "package",
+        "authority": {
+            "apply_authority": "reports/operator_summary.json",
+            "runtime_write_performed": False,
         },
-    )
+        "config_quality": {
+            "status": "attention",
+            "authority": "diagnostic_only",
+            "apply_blocking": False,
+            "problems": [],
+            "checks": {
+                "trace_completeness": {
+                    "runtime_rows_missing_trace": [
+                        {"card_id": "TRACE_001"},
+                        {"card_id": "TRACE_002"},
+                    ],
+                },
+                "closure_freshness": {
+                    "closure_schema_current": True,
+                    "cards_missing_closure": 3,
+                },
+                "runtime_json": {
+                    "stray_cardid_files": [
+                        "CustomConfig/deck/STRAY_001.json",
+                        "CustomConfig/deck/STRAY_002.json",
+                        "CustomConfig/deck/STRAY_003.json",
+                        "CustomConfig/deck/STRAY_004.json",
+                    ],
+                },
+                "mechanic_runtime_discipline": {
+                    "report_only_runtime_rows": [
+                        {"card_id": "MECH_001"},
+                        {"card_id": "MECH_002"},
+                        {"card_id": "MECH_003"},
+                        {"card_id": "MECH_004"},
+                        {"card_id": "MECH_005"},
+                    ],
+                },
+            },
+        },
+    }
 
-    markdown = render_contract_doctor_markdown(build_contract_doctor_report(package))
+    markdown = render_contract_doctor_markdown(report)
+    lines = markdown.splitlines()
 
     assert "## Config Quality" in markdown
     assert "- Status: attention" in markdown
-    assert "Trace rows missing source: " in markdown
-    assert "Closure current: " in markdown
-    assert "Stray CardID files: " in markdown
-    assert "Report-only mechanic runtime rows: " in markdown
+    assert "- Trace rows missing source: 2" in lines
+    assert "- Closure current: True" in lines
+    assert "- Closure rows missing: 3" in lines
+    assert "- Stray CardID files: 4" in lines
+    assert "- Report-only mechanic runtime rows: 5" in lines
     assert "operator_summary.json remains the only normal apply authority" in markdown
 
 
