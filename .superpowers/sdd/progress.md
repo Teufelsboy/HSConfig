@@ -752,3 +752,18 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3 review (P2 merged_claim_ids audit edge found and fixed)
 - [x] Reviewer fix: source_contract_audit and package_builder now count merged_claim_ids; focused tests passed
 - [x] Task 4 verification: focused regression `93 passed`, prepare CLI slice `2 passed`, full suite `1665 passed, 11 skipped`; ShadowPriest prepare smoke confirmed unique Mulligan rows, `semantic_status=SOURCE_BACKED_STRONG`, `source_backed_status=SOURCE_BACKED_STRONG`, `source_status_apply_blocking=false`, no Darkbishop opening-hand hold; commit pending.
+
+---
+
+# HSConfig Semantic Intent Scoring SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-21-hsconfig-semantic-intent-scoring.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring from d24745e; focused baseline 88 passed; no runtime apply/write
+- [x] Task 1: semantic intent scorer RED unit tests committed in f53f49d; reviewer approved; expected collection failure is missing hsconfig.semantic_intent_score only.
+- [x] Task 2: pure semantic intent scorer committed in 91d6d4b with review fix b20672a; 7 scorer tests passed; reviewer approved.
+- [x] Task 3: accepted-row router scoring committed in e4477d8 with expectation fixes 7d48c5a and 87fefe8; final re-review approved after full suite 1675 passed, 11 skipped.
+- [x] Task 4: compiler cleanliness regression committed in 96a50cf; reviewer approved and compile slice passed 13 tests with no runtime metadata leakage.
+- [x] Task 5: ShadowPriest and Wild matrix semantic scoring coverage committed in a25f78d with review fix 26c49c4; re-review approved and focused slice passed 40 tests.
+- [x] Task 6: temporary ShadowPriest no-apply smoke passed; package was VALID_PACKAGE/SOURCE_BACKED_STRONG, source_status_apply_blocking=false, no default-only surfaces, Mind Sear scored, runtime rows stayed comment/condition/value only, and temp files were removed.
