@@ -767,3 +767,21 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: compiler cleanliness regression committed in 96a50cf; reviewer approved and compile slice passed 13 tests with no runtime metadata leakage.
 - [x] Task 5: ShadowPriest and Wild matrix semantic scoring coverage committed in a25f78d with review fix 26c49c4; re-review approved and focused slice passed 40 tests.
 - [x] Task 6: temporary ShadowPriest no-apply smoke passed; package was VALID_PACKAGE/SOURCE_BACKED_STRONG, source_status_apply_blocking=false, no default-only surfaces, Mind Sear scored, runtime rows stayed comment/condition/value only, and temp files were removed.
+
+---
+
+# HSConfig Config Quality Trace Completeness v2 SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-21-hsconfig-config-quality-trace-completeness-v2.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; baseline config-quality/doctor slice passed (19 passed); no runtime apply/write.
+- [x] Task 1: Add Config Quality Trace Completeness Tests (commits fbb3937..10b94f7, review clean)
+- [x] Task 2: Implement Trace Completeness In The Existing Sentinel (commits 10b94f7..05e48fe, review clean)
+- [x] Task 3: Add Closure Freshness Diagnostics (commits 05e48fe..46ba392, review clean)
+- [x] Task 4: Add Stray CardID Runtime File Detection (commits 46ba392..05054d8, review clean)
+- [x] Task 5: Add Report-Only Mechanic Runtime Discipline (commits 05054d8..6c75bcd, review clean; minor note: optional unknown-mechanic regression)
+- [x] Task 6: Compact Contract Doctor Rendering And Tests (commits 6c75bcd..72821b5, review clean after counter-value coverage fix)
+- [x] Task 7: Add ShadowPriest And Universal Wild Regression Assertions (commits 72821b5..a479237, review clean after stray filename/deck-identity fixes)
+- [x] Task 8: Update Operator And Skill Documentation (commits a479237..eea008c, review clean)
+- [ ] Task 9: Full Verification, Currentness, And Commit
