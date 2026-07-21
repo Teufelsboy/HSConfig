@@ -58,11 +58,43 @@ def minimal_clean_package(tmp_path: Path) -> Path:
         package / "reports" / "source_to_runtime_explainability.json",
         {
             "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [
+                {
+                    "claim_id": "claim_mind_sear_effect",
+                    "claim_kind": "targeting_rule",
+                    "builder_or_router_decision": "emitted",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "first_missing_link": None,
+                }
+            ],
             "card_rows": [
                 {
                     "card_id": "NX2_019",
-                    "first_missing_link": "none",
-                    "runtime_surfaces": ["NX2_019.json"],
+                    "first_missing_link": None,
+                    "source_lane": "runtime_lowered",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "runtime_surfaces": ["cardid"],
+                    "closure": {
+                        "lane": "source_backed_runtime_lowered",
+                        "runtime_surfaces": ["NX2_019.json"],
+                        "default_only_risk": False,
+                    },
+                    "evidence_chain": [
+                        {
+                            "claim_id": "claim_mind_sear_effect",
+                            "claim_kind": "targeting_rule",
+                            "source_lane": "runtime_lowered",
+                            "source_type": "deck_matched_public_guide",
+                            "runtime_files": ["NX2_019.json"],
+                            "resolution_reason": "emitted",
+                        }
+                    ],
                 }
             ],
         },
@@ -111,6 +143,122 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
     assert report["checks"]["card_behavior"]["out_of_range_value_rows"] == []
     assert report["checks"]["runtime_json"]["metadata_leaks"] == []
     assert report["checks"]["legacy_surfaces"]["present"] == []
+    assert report["checks"]["trace_completeness"] == {
+        "runtime_rows_missing_trace": [],
+        "traced_card_ids": ["NX2_019"],
+        "runtime_card_ids": ["NX2_019"],
+    }
+
+
+def test_config_quality_flags_cardid_runtime_rows_without_source_trace(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        {
+            "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 0,
+                "runtime_lowered_claims": 0,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [],
+            "card_rows": [
+                {
+                    "card_id": "NX2_019",
+                    "first_missing_link": None,
+                    "source_lane": "report_only",
+                    "emitted_runtime_files": [],
+                    "runtime_surfaces": [],
+                    "closure": {
+                        "lane": "baseline_only_visible",
+                        "runtime_surfaces": [],
+                        "default_only_risk": True,
+                    },
+                    "evidence_chain": [],
+                }
+            ],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["trace_completeness"]["runtime_rows_missing_trace"] == [
+        {
+            "card_id": "NX2_019",
+            "behavior_block": "BeforeBattlecryTargetBonus",
+            "value": "10",
+        }
+    ]
+    assert {
+        "check": "card_behavior_runtime_row_missing_trace",
+        "value": [
+            {
+                "card_id": "NX2_019",
+                "behavior_block": "BeforeBattlecryTargetBonus",
+                "value": "10",
+            }
+        ],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_accepts_official_static_semantics_runtime_trace(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        {
+            "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [
+                {
+                    "claim_id": "claim_static_mind_sear",
+                    "claim_kind": "targeting_rule",
+                    "builder_or_router_decision": "emitted",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "first_missing_link": None,
+                }
+            ],
+            "card_rows": [
+                {
+                    "card_id": "NX2_019",
+                    "first_missing_link": None,
+                    "source_lane": "official_static_semantics",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "closure": {
+                        "lane": "source_backed_runtime_lowered",
+                        "runtime_surfaces": ["NX2_019.json"],
+                        "default_only_risk": False,
+                    },
+                    "evidence_chain": [
+                        {
+                            "claim_id": "claim_static_mind_sear",
+                            "claim_kind": "targeting_rule",
+                            "source_lane": "official_static_semantics",
+                            "source_type": "official_static_semantics",
+                            "runtime_files": ["NX2_019.json"],
+                            "resolution_reason": "emitted",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["trace_completeness"]["runtime_rows_missing_trace"] == []
+    assert report["status"] == "clean"
 
 
 def test_config_quality_flags_default_only_runtime_surfaces(tmp_path: Path):
