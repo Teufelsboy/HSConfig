@@ -516,7 +516,11 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert quality["apply_blocking"] is False
     assert quality["runtime_write_performed"] is False
     assert quality["checks"]["legacy_surfaces"]["present"] == []
+    assert quality["checks"]["runtime_json"]["stray_cardid_files"] == []
     assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+    assert quality["checks"]["mechanic_runtime_discipline"][
+        "report_only_runtime_rows"
+    ] == []
     assert quality["checks"]["card_behavior"]["out_of_range_value_rows"] == []
     assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
     assert source_to_runtime["operator_attention"]
@@ -608,7 +612,11 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert quality["apply_blocking"] is False
         assert quality["runtime_write_performed"] is False
         assert quality["checks"]["legacy_surfaces"]["present"] == []
+        assert quality["checks"]["runtime_json"]["stray_cardid_files"] == []
         assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+        assert quality["checks"]["mechanic_runtime_discipline"][
+            "report_only_runtime_rows"
+        ] == []
         assert quality["checks"]["card_behavior"]["out_of_range_value_rows"] == []
         assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True

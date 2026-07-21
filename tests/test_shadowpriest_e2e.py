@@ -107,8 +107,15 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     assert quality["authority"] == "diagnostic_only"
     assert quality["apply_blocking"] is False
     assert quality["runtime_write_performed"] is False
+    assert quality["checks"]["trace_completeness"]["runtime_rows_missing_trace"] == []
+    assert quality["checks"]["closure_freshness"]["closure_schema_current"] is True
+    assert quality["checks"]["closure_freshness"]["cards_missing_closure"] == 0
     assert quality["checks"]["darkbishop_boundary"]["mulligan_keep_present"] is False
+    assert quality["checks"]["runtime_json"]["stray_cardid_files"] == []
     assert quality["checks"]["runtime_json"]["metadata_leaks"] == []
+    assert quality["checks"]["mechanic_runtime_discipline"][
+        "report_only_runtime_rows"
+    ] == []
     assert not quality["checks"]["operator_summary"]["source_status_apply_blocking"]
     assert mind_sear_rows
     assert all(row["value"] for row in mind_sear_rows)
