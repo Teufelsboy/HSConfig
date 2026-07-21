@@ -142,3 +142,30 @@ Result: `44 passed in 7.88s`.
 ### Commit
 
 Commit SHA: `e8dd846d780fe4759de9dcf66877b4c340647e77` (`test: align shadowpriest source fixture with strong evidence policy`).
+
+---
+
+## Semantic Intent Scoring SDD Task 4: Runtime JSON Cleanliness
+
+Status: DONE
+
+### Scope completed
+
+- Added a compiler regression in `tests/test_compile_cardid.py`.
+- The fixture behavior row includes diagnostic-only `semantic_score` metadata with:
+  - `band: high`
+  - `reason: conditional_minion_death_burn`
+  - `profile: source_claim`
+  - `matched_signals: [enemy_hero_damage, death_condition]`
+- Verified `compile_cardid_behaviors(..., rows=[...])` emits `NX2_019.json` runtime rows with only `comment`, `condition`, and `value`.
+
+### Test evidence
+
+```text
+python -m pytest tests\test_compile_cardid.py -q -p no:cacheprovider
+13 passed in 0.15s
+```
+
+### Compiler boundary
+
+`src/hsconfig/compile_cardid.py` was not changed. The existing compiler path already renders explicit behavior rows through the lean runtime row shape and does not leak `semantic_score`.

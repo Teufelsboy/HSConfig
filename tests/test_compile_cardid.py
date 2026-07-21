@@ -164,6 +164,50 @@ def test_compile_cardid_uses_explicit_behavior_block_rows():
     ]
 
 
+def test_compile_cardid_strips_diagnostic_semantic_score_from_runtime_rows():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "NX2_019": {
+                "roles": ["prefer_enemy_minion"],
+                "source_claim_ids": ["mind_sear_source"],
+                "confidence": "guide_backed",
+            }
+        },
+    }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "NX2_019",
+            "behavior_block": "BeforeBattlecryTargetBonus",
+            "rule_id_suffix": "prefer_enemy_minion",
+            "condition": "*",
+            "value": "10",
+            "roles": ["prefer_enemy_minion"],
+            "source_claim_ids": ["mind_sear_source"],
+            "confidence": "guide_backed",
+            "meaningful_runtime_surface": True,
+            "semantic_score": {
+                "band": "high",
+                "reason": "conditional_minion_death_burn",
+                "profile": "source_claim",
+                "matched_signals": ["enemy_hero_damage", "death_condition"],
+            },
+        }
+    ]
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    value_row = files["NX2_019.json"]["BeforeBattlecryTargetBonus"]["values"][0]
+    assert value_row == {
+        "comment": "Fixture: NX2_019_prefer_enemy_minion",
+        "condition": "*",
+        "value": "10",
+    }
+    assert "semantic_score" not in value_row
+
+
 def test_compile_cardid_does_not_duplicate_role_fallback_for_explicit_block():
     contract = {
         "deck_name": "Fixture",
