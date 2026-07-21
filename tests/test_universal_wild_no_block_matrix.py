@@ -347,6 +347,13 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
     assert isinstance(mulligan_policy.get("policy_reasons", []), list)
 
 
+def assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan: dict) -> None:
+    for row in behavior_plan["rows"]:
+        if row.get("surface_family") == "CARDID.json" and row.get("behavior_block"):
+            assert str(row["value"]).isdigit()
+            assert 4 <= int(row["value"]) <= 12
+
+
 def assert_runtime_surface_shape(deck_dir: Path, deck_card_ids: set[str]) -> None:
     special_files = {"Combo.json", "GlobalValues.json", "Mulligan.json"}
     card_files = {
@@ -447,6 +454,11 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
             out / "reports" / "source_to_runtime_explainability.json"
         ).read_text(encoding="utf-8")
     )
+    behavior_plan = json.loads(
+        (out / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
     if deck_name == "Kingslayer":
         assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert operator["first_missing_source_action"] != "none"
@@ -498,6 +510,7 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert source_to_runtime["authority"] == "diagnostic_only"
     assert source_to_runtime["apply_blocking"] is False
     assert source_to_runtime["summary"]["cards_total"] == len(deck_card_ids)
+    assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
     assert source_to_runtime["operator_attention"]
     assert all("closure" in row for row in source_to_runtime["card_rows"])
     assert all(
@@ -556,6 +569,11 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
                 out / "04_package" / "reports" / "source_to_runtime_explainability.json"
             ).read_text(encoding="utf-8")
         )
+        behavior_plan = json.loads(
+            (
+                out / "04_package" / "reports" / "card_behavior_plan_report.json"
+            ).read_text(encoding="utf-8")
+        )
         deck_dirs = [
             path for path in (out / "04_package" / "CustomConfig").iterdir() if path.is_dir()
         ]
@@ -577,6 +595,7 @@ def test_configure_path_preserves_no_block_contract_for_matrix(tmp_path, monkeyp
         assert source_contract_audit["schema_version"] == 1
         assert source_to_runtime["authority"] == "diagnostic_only"
         assert source_to_runtime["apply_blocking"] is False
+        assert_accepted_cardid_behavior_rows_have_bounded_values(behavior_plan)
         assert operator["mechanic_visibility_summary"]["non_blocking"] is True
 
 

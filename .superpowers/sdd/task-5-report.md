@@ -1,66 +1,57 @@
-# Task 5 Report: Make Closure Reports Actionable By Card And Surface
+# Task 5 Report: ShadowPriest And Wild Matrix Semantic Scoring Coverage
 
 ## Status
 
 DONE
 
-## Red Evidence
-
-Added `test_partial_deck_reports_specific_missing_card_and_surface_actions` in
-`tests/test_source_autopilot.py` before the production change. The required
-precision run then failed because the evidence-free `DEEP_014` card received the
-generic action instead of the Kingslayer-specific action:
-
-```text
-python -m pytest -p no:cacheprovider tests\test_source_autopilot.py::test_partial_deck_reports_specific_missing_card_and_surface_actions -q
-1 failed
-AssertionError: assert 'add_current_card_specific_runtime_source' == 'add_kingslayer_quick_pick_mulligan_source'
-```
-
 ## Implementation
 
-- Added a minimal profile-aware fallback for cards with no evidence rows.
-- Preserved existing claim-kind actions when a card has partial evidence.
-- Added exact Kingslayer `DEEP_014` and Boarlock `WW_092` missing-source actions.
-- Added the generic profile-gap and Quick Pick Mulligan fallbacks from the task brief.
-- Added the no-block matrix visibility assertion for non-strong source closure.
-- Kept closure reporting diagnostic-only; `SOURCE_BACKED_STRONG` remains an apply-independent status.
+- Extended the source-backed strong ShadowPriest prepare-flow regression to read
+  `reports/card_behavior_plan_report.json` and assert accepted Mind Sear
+  (`NX2_019`) CardID behavior rows carry `semantic_score` metadata.
+- Asserted the scored ShadowPriest rows are present, have nonempty runtime
+  values, and include score reasons.
+- Preserved the existing Darkbishop Benedictus boundary: `SW_448` remains absent
+  from Mulligan keep output while its hero-power-transform behavior remains
+  represented through `SW_448.json`.
+- Added a Wild matrix helper asserting every accepted generated CardID behavior
+  row with a `behavior_block` has a numeric `value` between 4 and 12.
+- Kept the existing no-block, no-default-only, and
+  `source_status_apply_blocking=false` assertions unchanged.
 
 ## Green Evidence
 
-The precision test passed after implementation:
+Required focused regression suite passed:
 
 ```text
-1 passed in 0.31s
+python -m pytest tests\test_shadowpriest_e2e.py tests\test_universal_wild_no_block_matrix.py -q -p no:cacheprovider
+40 passed in 33.55s
 ```
 
-The required focused suite passed:
+Required diff whitespace check passed:
 
 ```text
-python -m pytest -p no:cacheprovider tests\test_source_autopilot.py tests\test_universal_wild_no_block_matrix.py -q
-51 passed in 24.08s
+git diff --check -- tests/test_shadowpriest_e2e.py tests/test_universal_wild_no_block_matrix.py .superpowers/sdd/task-5-report.md
 ```
-
-`git diff --check` also passed.
 
 ## Changed Files
 
-- `src/hsconfig/source_autopilot.py`
-- `tests/test_source_autopilot.py`
+- `tests/test_shadowpriest_e2e.py`
 - `tests/test_universal_wild_no_block_matrix.py`
 - `.superpowers/sdd/task-5-report.md`
 
 ## Commit
 
-Implementation and test commit:
+Pending at report-write time. Intended commit message:
 
-`fix: expose precise source closure actions`
+```text
+test: cover semantic scoring in shadowpriest and wild matrix
+```
 
-Commit SHA is recorded after the implementation commit and before this report's documentation commit.
+## Notes
 
-`ea937e110e95defbba6127dfa7e131470f7addf9`
-
-## Concerns
-
-- The task brief's original set-membership assertion allowed the old generic action and therefore passed before implementation. The test was strengthened to assert the requested precise Kingslayer action so the mandated red phase was meaningful.
-- No runtime writers, source text extraction, fixtures, docs outside this report, or apply gates were changed.
+- No production code changed.
+- No HSTuner, runtime apply/write, replay/log parsing, or source-status/apply
+  authority logic was used or changed.
+- `.superpowers/sdd/progress.md` had pre-existing local changes and was not
+  edited.

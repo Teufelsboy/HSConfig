@@ -86,9 +86,22 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     summary = json.loads(
         (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
+    behavior_report = json.loads(
+        (out / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    scored_rows = [
+        row
+        for row in behavior_report["rows"]
+        if row.get("card_id") == "NX2_019" and row.get("semantic_score")
+    ]
 
     assert code == 0
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert scored_rows
+    assert all(row["value"] for row in scored_rows)
+    assert {row["semantic_score"]["reason"] for row in scored_rows}
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
     assert (
         "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)
