@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -14,6 +15,7 @@ from hsconfig.commands.source_workflow import (
     source_autopilot_payload,
     source_manifest_payload,
 )
+from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
 from hsconfig.operator_summary import refresh_generated_file_accounting
@@ -414,6 +416,47 @@ def _finish_stage_exception_for_args(
 
 def _stage_exception_payload(stage: str, exc: Exception) -> dict[str, Any]:
     return {"stage": stage, "errors": [str(exc)]}
+
+
+def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]:
+    problems_raw = report.get("problems", [])
+    problems = problems_raw if isinstance(problems_raw, list) else []
+
+    problem_checks: list[str] = []
+    for problem in problems:
+        if not isinstance(problem, Mapping):
+            continue
+        check = str(problem.get("check", "")).strip()
+        if check and check not in problem_checks:
+            problem_checks.append(check)
+
+    summary: dict[str, Any] = {
+        "status": str(report.get("status") or "attention"),
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": len(problems),
+        "problem_checks": problem_checks,
+    }
+    if problem_checks:
+        summary["next_action"] = "run_contract_doctor_for_details"
+    return summary
+
+
+def _build_config_quality_summary(package_dir: Path) -> dict[str, Any]:
+    try:
+        return _compact_config_quality_summary(build_config_quality_report(package_dir))
+    except Exception as exc:
+        return {
+            "status": "attention",
+            "authority": "diagnostic_only",
+            "apply_blocking": False,
+            "runtime_write_performed": False,
+            "problem_count": 1,
+            "problem_checks": ["config_quality_summary_failed"],
+            "next_action": "run_contract_doctor_for_details",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
