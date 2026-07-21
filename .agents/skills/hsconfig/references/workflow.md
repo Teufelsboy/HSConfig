@@ -6,6 +6,7 @@ Manual-only fallback path: source-manifest -> draft-source-documents -> research
 For the normal operator entry point, start at `docs/operator/README.md`.
 
 Normal workflow: prefer `hsconfig configure ...`; use lower-level commands only when inspecting a stage (`source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`); open `reports/operator_summary.json` first.
+Contract compiler checklist: `references/contract-compiler-checklist.md`.
 Recommended fresh deck command: `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.
 
 If public sources are thin, the command still writes a valid package and reports the first missing source action. Do not manually relabel `SOURCE_BACKED_PARTIAL` as `SOURCE_BACKED_STRONG`.

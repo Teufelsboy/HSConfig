@@ -10,7 +10,7 @@ Normal workflow:
 1. Prefer `hsconfig configure ...` for normal operation.
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
-3. Open `reports/operator_summary.json` first.
+3. Open `reports/operator_summary.json` first. Contract compiler checklist: `references/contract-compiler-checklist.md`.
 - Before source refresh, deck package generation, or runtime-facing apply work, run `git fetch --all --prune --tags`, then `python scripts/check_hsconfig_currentness.py --cwd . --json`; feature branches may be ahead of `origin/main`, but must not be behind, and runtime-facing verification starts from a clean worktree.
 For fresh public-guide-backed configs, prefer `hsconfig configure ... --online-source --auto-source --source-url "<public-guide-url>" --json`; `--online-source` also uses the compact source candidate registry when known URLs exist for the target deck. If no registry or URL is known, use Codex/web research and repeated `--source-url`; weak or missing coverage is non-blocking and must stay visible in acquisition/operator reports.
 For an optimal fresh deck config, prefer the source-backed path: `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --online-source --auto-source --apply`.

@@ -13,6 +13,7 @@ def test_skill_has_required_files():
         "SKILL.md",
         "references/workflow.md",
         "references/visionai-surfaces.md",
+        "references/contract-compiler-checklist.md",
         "references/guide-research-policy.md",
         "references/globalvalues-policy.md",
         "references/card-behavior-policy.md",
@@ -27,6 +28,9 @@ def test_skill_has_required_files():
 def test_skill_and_workflow_stay_compact_and_canonical():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    checklist = (SKILL_ROOT / "references" / "contract-compiler-checklist.md").read_text(
+        encoding="utf-8"
+    )
     combined = f"{skill}\n{workflow}"
 
     assert skill.count("\n") < 80
@@ -39,6 +43,12 @@ def test_skill_and_workflow_stay_compact_and_canonical():
         assert "load_safe_apply" in text
     assert "HSConfig is pre-run only" in combined
     assert "does not parse replays" in combined
+    assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in skill
+    assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in workflow
+    assert "reports/operator_summary.json" in checklist
+    assert "SOURCE_BACKED_STRONG" in checklist
+    assert "default_only_runtime_surfaces=[]" in checklist
+    assert "Darkbishop gate" in checklist
     assert "`GlobalValues.json`" in combined
     assert "`Mulligan.json`" in combined
     assert "`per-card <CARDID>.json`" in combined
