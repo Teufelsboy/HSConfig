@@ -28,6 +28,29 @@ def test_explicit_runtime_value_is_authoritative():
     assert score.profile == "source_claim"
 
 
+def test_blank_runtime_value_falls_back_to_explicit_value():
+    claim = {
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "runtime_value": "",
+        "value": "8",
+        "stance": "prefer_enemy_minion",
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforeBattlecryTargetBonus",
+        intent="prefer_enemy_minion",
+        roles=["prefer_enemy_minion"],
+        value_default="6",
+    )
+
+    assert score.value == "8"
+    assert score.band == "explicit"
+    assert score.reason == "explicit_runtime_value"
+    assert score.profile == "source_claim"
+
+
 def test_conditional_minion_death_burn_scores_above_generic_default():
     claim = {
         "claim_kind": "targeting_rule",
@@ -120,3 +143,34 @@ def test_unrecognized_claim_keeps_default_value_with_report_reason():
     assert score.value == "6"
     assert score.band == "default"
     assert score.reason == "semantic_default"
+
+
+def test_unrecognized_claim_bounds_default_value():
+    claim = {
+        "claim_kind": "card_role",
+        "cards": ["GENERIC_CARD"],
+        "semantic_families": ["tradeable"],
+        "evidence_text_short": "The card has Tradeable.",
+    }
+
+    low_score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforePlayCardBonus",
+        intent="tradeable",
+        roles=["tradeable"],
+        value_default="2",
+    )
+    high_score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforePlayCardBonus",
+        intent="tradeable",
+        roles=["tradeable"],
+        value_default="99",
+    )
+
+    assert low_score.value == "4"
+    assert low_score.band == "default"
+    assert low_score.reason == "semantic_default"
+    assert high_score.value == "12"
+    assert high_score.band == "default"
+    assert high_score.reason == "semantic_default"

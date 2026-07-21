@@ -21,7 +21,7 @@ def score_card_behavior_claim(
     roles: Sequence[str],
     value_default: str = "6",
 ) -> SemanticIntentScore:
-    explicit = claim.get("runtime_value", claim.get("value"))
+    explicit = _explicit_value(claim)
     if explicit is not None and str(explicit).strip():
         return SemanticIntentScore(
             value=str(explicit),
@@ -153,11 +153,27 @@ def score_card_behavior_claim(
         )
 
     return SemanticIntentScore(
-        value=str(value_default),
+        value=_bounded_default(value_default),
         band="default",
         reason="semantic_default",
         profile="semantic_intent",
     )
+
+
+def _explicit_value(claim: Mapping[str, Any]) -> Any:
+    for key in ("runtime_value", "value"):
+        explicit = claim.get(key)
+        if explicit is not None and str(explicit).strip():
+            return explicit
+    return None
+
+
+def _bounded_default(value_default: str) -> str:
+    try:
+        value = int(str(value_default).strip())
+    except ValueError:
+        value = 6
+    return str(min(12, max(4, value)))
 
 
 def _normalized_claim_text(
