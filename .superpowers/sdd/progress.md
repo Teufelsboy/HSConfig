@@ -800,3 +800,18 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: Update Operator Docs And Skill Text (commits cf1ae6b..55d510f, initial review caught wrong configure_summary path; rework review clean; skill sync passed)
 - [x] Task 5: Final Apply-Path Regression And Plan Correction (commit dab054f, diagnostic failure remains non-blocking for configure --apply; plan path references fixed)
 - [x] Task 6: Verification And Final Review (focused contract/configure 99 passed; source/shadow/wild 52 passed; guardrails 523 passed; full suite 1702 passed, 11 skipped; final review approved)
+
+---
+
+# HSConfig Contract Compiler Skill Hardening SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-21-hsconfig-contract-compiler-skill-hardening.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; baseline skill/guardrail/sync slice passed (68 passed).
+- [x] Task 1: contract entrypoint RED tests committed in 5ba9c1c; expected red confirmed (3 failed) because the checklist file did not exist; review clean.
+- [x] Task 2: canonical contract compiler checklist committed in 7aa36cb; targeted test state progressed to 2 passed / 1 expected link failure; review clean.
+- [x] Task 3: checklist wired into skill and workflow, with skill-file guardrails, committed in 7170b88; focused slice passed (62 passed). Skill link was kept on the existing workflow line to preserve the `<80` newline compactness contract.
+- [x] Task 4: contract entrypoint test registered in the focused guardrail runner, committed in 42c7d75; focused runner/skill slice passed (67 passed).
+- [x] Task 5: installed skill synced to C:\Users\darbo\.codex\skills\hsconfig; sync check passed; contract guardrail runner passed (526 passed).
+- [x] Task 6: final currentness clean (`behind_origin_main=0`, `dirty=false`, `clean_for_runtime_work=true`); branch pushed to origin/codex/hsconfig-semantic-intent-scoring.
