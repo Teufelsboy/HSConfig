@@ -168,6 +168,114 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
     }
 
 
+def test_config_quality_flags_report_only_mechanic_runtime_emission(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "TRADEABLE_001",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "value": "6",
+                    "meaningful_runtime_surface": True,
+                    "mechanic": "tradeable",
+                    "semantic_score": {
+                        "band": "default",
+                        "reason": "semantic_default",
+                        "profile": "semantic_intent",
+                    },
+                }
+            ]
+        },
+    )
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        {
+            "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [
+                {
+                    "claim_id": "claim_tradeable",
+                    "claim_kind": "mechanic_usage",
+                    "builder_or_router_decision": "emitted",
+                    "emitted_runtime_files": ["TRADEABLE_001.json"],
+                    "first_missing_link": None,
+                }
+            ],
+            "card_rows": [
+                {
+                    "card_id": "TRADEABLE_001",
+                    "source_lane": "runtime_lowered",
+                    "emitted_runtime_files": ["TRADEABLE_001.json"],
+                    "closure": {
+                        "lane": "source_backed_runtime_lowered",
+                        "runtime_surfaces": ["TRADEABLE_001.json"],
+                    },
+                    "evidence_chain": [
+                        {
+                            "claim_id": "claim_tradeable",
+                            "claim_kind": "mechanic_usage",
+                            "source_lane": "runtime_lowered",
+                            "runtime_files": ["TRADEABLE_001.json"],
+                            "resolution_reason": "emitted",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "TRADEABLE_001.json",
+        {
+            "GameCardId": "TRADEABLE_001",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "should not lower tradeable generically",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["mechanic_runtime_discipline"][
+        "report_only_runtime_rows"
+    ] == [
+        {
+            "card_id": "TRADEABLE_001",
+            "mechanic": "tradeable",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "6",
+        }
+    ]
+    assert {
+        "check": "report_only_mechanic_emitted_runtime",
+        "value": [
+            {
+                "card_id": "TRADEABLE_001",
+                "mechanic": "tradeable",
+                "behavior_block": "BeforePlayCardBonus",
+                "value": "6",
+            }
+        ],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_flags_stray_cardid_runtime_file_without_report_trace(
     tmp_path: Path,
 ):

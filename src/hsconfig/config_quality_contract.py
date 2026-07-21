@@ -9,6 +9,7 @@ from hsconfig.default_only_runtime_surfaces import (
     default_only_runtime_surface_errors,
     has_default_only_runtime_surfaces,
 )
+from hsconfig.mechanic_support import mechanic_lowering_policy
 
 
 FORBIDDEN_LEGACY_RUNTIME_SURFACES = {
@@ -83,6 +84,9 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "source_to_runtime_explainability": _explainability_check(explainability),
         "trace_completeness": _trace_completeness_check(card_behavior, explainability),
         "closure_freshness": _closure_freshness_check(operator),
+        "mechanic_runtime_discipline": _mechanic_runtime_discipline_check(
+            card_behavior
+        ),
         "runtime_json": _runtime_json_check(package, card_behavior, explainability),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
@@ -329,6 +333,37 @@ def _expected_cardid_runtime_files(
     expected = {_row_card_id(row) for row in _meaningful_cardid_rows(card_behavior)}
     expected.update(_traced_card_ids(explainability))
     return {card_id for card_id in expected if card_id}
+
+
+def _mechanic_runtime_discipline_check(
+    card_behavior: Mapping[str, Any],
+) -> dict[str, Any]:
+    rows = _meaningful_cardid_rows(card_behavior)
+    report_only_rows: list[dict[str, str]] = []
+    unregistered: set[str] = set()
+
+    for row in rows:
+        mechanic = str(row.get("mechanic", "") or "").strip()
+        if not mechanic:
+            continue
+        policy = mechanic_lowering_policy(mechanic)
+        if policy.get("suppression_reason") == "unregistered_mechanic_runtime_surface":
+            unregistered.add(mechanic)
+        if policy.get("policy") != "report_only":
+            continue
+        report_only_rows.append(
+            {
+                "card_id": _row_card_id(row),
+                "mechanic": mechanic,
+                "behavior_block": str(row.get("behavior_block", "")),
+                "value": str(row.get("value", "")),
+            }
+        )
+
+    return {
+        "report_only_runtime_rows": report_only_rows,
+        "unregistered_mechanics": sorted(unregistered),
+    }
 
 
 def _runtime_json_check(
@@ -578,6 +613,15 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "check": "stray_cardid_runtime_files",
                 "value": runtime_json["stray_cardid_files"],
+            }
+        )
+
+    mechanic = checks["mechanic_runtime_discipline"]
+    if mechanic["report_only_runtime_rows"]:
+        problems.append(
+            {
+                "check": "report_only_mechanic_emitted_runtime",
+                "value": mechanic["report_only_runtime_rows"],
             }
         )
 
