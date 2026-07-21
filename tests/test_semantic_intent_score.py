@@ -1,0 +1,122 @@
+from hsconfig.semantic_intent_score import SemanticIntentScore, score_card_behavior_claim
+
+
+def test_explicit_runtime_value_is_authoritative():
+    claim = {
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "runtime_value": "8",
+        "stance": "prefer_enemy_minion",
+        "evidence_text_short": (
+            "Mind Sear deals 2 damage to a minion and deals 3 damage "
+            "to the enemy hero if it dies."
+        ),
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforeBattlecryTargetBonus",
+        intent="prefer_enemy_minion",
+        roles=["prefer_enemy_minion"],
+        value_default="6",
+    )
+
+    assert isinstance(score, SemanticIntentScore)
+    assert score.value == "8"
+    assert score.band == "explicit"
+    assert score.reason == "explicit_runtime_value"
+    assert score.profile == "source_claim"
+
+
+def test_conditional_minion_death_burn_scores_above_generic_default():
+    claim = {
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "stance": "prefer_enemy_minion",
+        "evidence_text_short": (
+            "Mind Sear deals 2 damage to a minion and deals 3 damage "
+            "to the enemy hero if it dies."
+        ),
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforeBattlecryTargetBonus",
+        intent="prefer_enemy_minion",
+        roles=["prefer_enemy_minion"],
+        value_default="6",
+    )
+
+    assert score.value == "10"
+    assert score.band == "high"
+    assert score.reason == "conditional_minion_death_burn"
+    assert "enemy_hero_damage" in score.matched_signals
+    assert "death_condition" in score.matched_signals
+
+
+def test_hero_power_transform_scores_as_critical_engine_effect():
+    claim = {
+        "claim_kind": "hero_power_transform",
+        "cards": ["SW_448"],
+        "stance": "shadowform_engine",
+        "evidence_text_short": (
+            "Darkbishop Benedictus changes the starting hero power to Mind Spike."
+        ),
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforeUseHeroPowerBonus",
+        intent="hero_power_transform",
+        roles=["hero_power", "shadowform_engine"],
+        value_default="6",
+    )
+
+    assert score.value == "10"
+    assert score.band == "critical"
+    assert score.reason == "hero_power_transform"
+    assert "hero_power" in score.matched_signals
+
+
+def test_location_claim_scores_as_tempo_not_as_blocker():
+    claim = {
+        "claim_kind": "card_role",
+        "cards": ["REV_248"],
+        "mechanic": "location",
+        "semantic_families": ["location"],
+        "evidence_text_short": "Cathedral of Atonement is a Location that gives tempo.",
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforePlayCardBonus",
+        intent="location_tempo",
+        roles=["location"],
+        value_default="6",
+    )
+
+    assert score.value == "8"
+    assert score.band == "medium"
+    assert score.reason == "location_tempo"
+    assert "location" in score.matched_signals
+
+
+def test_unrecognized_claim_keeps_default_value_with_report_reason():
+    claim = {
+        "claim_kind": "card_role",
+        "cards": ["GENERIC_CARD"],
+        "semantic_families": ["tradeable"],
+        "evidence_text_short": "The card has Tradeable.",
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforePlayCardBonus",
+        intent="tradeable",
+        roles=["tradeable"],
+        value_default="6",
+    )
+
+    assert score.value == "6"
+    assert score.band == "default"
+    assert score.reason == "semantic_default"
