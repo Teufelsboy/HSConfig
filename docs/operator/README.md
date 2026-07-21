@@ -343,10 +343,11 @@ operator_summary.json remains the only normal apply authority.
 
 `hsconfig contract-doctor --package <04_package> --json` includes a diagnostic-only
 `config_quality` section. It checks no-default-only visibility, CardID semantic
-score coverage, runtime JSON leanness, forbidden legacy surfaces, and the
-Darkbishop effect-not-mulligan boundary. It does not replace
-`reports/operator_summary.json`, does not apply runtime files, and does not block
-a technically valid package.
+score coverage, runtime JSON leanness, forbidden legacy surfaces, the Darkbishop
+effect-not-mulligan boundary, source-to-runtime trace completeness, closure
+freshness, stray CardID runtime files, and report-only mechanic runtime drift. It
+does not replace `reports/operator_summary.json`, does not apply runtime files,
+and does not block a technically valid package.
 
 ## Expert Paths
 
