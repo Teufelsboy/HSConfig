@@ -85,8 +85,9 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
                 "claim_325924175cfb": {
                     "runtime_block": "BeforePlayCardBonus",
                     "condition": "*",
-                    "value": "6",
+                    "value": "8",
                     "comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text",
+                    "semantic_reason": "location_tempo",
                 }
             }
         },
@@ -238,12 +239,23 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                 and row["final_runtime_effect"] == "emitted_runtime_row"
                 for row in lifecycle_rows
             )
+            behavior_rows = gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
             assert any(
                 row.get("claim_id") == claim_id
                 and claim_id in row.get("source_claim_ids", [])
-                for row in gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
+                for row in behavior_rows
             )
             expected_runtime = fixture["runtime_expectations"][card_id][claim_id]
+            if expected_runtime.get("semantic_reason"):
+                matching_behavior_rows = [
+                    row for row in behavior_rows if row.get("claim_id") == claim_id
+                ]
+                assert matching_behavior_rows
+                assert {
+                    row["semantic_score"]["reason"]
+                    for row in matching_behavior_rows
+                    if row.get("semantic_score")
+                } == {expected_runtime["semantic_reason"]}
             runtime_block = expected_runtime["runtime_block"]
             assert runtime_block in runtime_cards[card_id]
             runtime_values = runtime_cards[card_id][runtime_block]["values"]

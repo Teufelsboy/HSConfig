@@ -353,6 +353,9 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     explainability = json.loads(
         (reports / "source_to_runtime_explainability.json").read_text(encoding="utf-8")
     )
+    behavior_report = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
 
     concrete_keeps = [
         row["mulligan"]
@@ -371,8 +374,14 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert any(
         row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
         and row["condition"] == "*"
-        and row["value"] == "6"
+        and row["value"] == "10"
         for row in hero_power_values
+    )
+    sw448_behavior_rows = behavior_report["card_rows"]["SW_448"]
+    assert any(
+        row.get("semantic_score", {}).get("reason") == "hero_power_transform"
+        and row["value"] == "10"
+        for row in sw448_behavior_rows
     )
     assert len(darkbishop_attention) == 1
     assert darkbishop_attention[0]["status"] == "runtime_backed"
@@ -391,6 +400,7 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     mulligan = read_json(package / "CustomConfig" / "shadowpriest" / "Mulligan.json")
     darkbishop = read_json(package / "CustomConfig" / "shadowpriest" / "SW_448.json")
     explainability = read_json(package / "reports" / "source_to_runtime_explainability.json")
+    behavior_report = read_json(package / "reports" / "card_behavior_plan_report.json")
     closure = read_json(package / "reports" / "source_evidence_closure.json")
 
     assert operator["technical_status"] == "VALID_PACKAGE"
@@ -408,8 +418,14 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     assert any(
         row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
         and row["condition"] == "*"
-        and row["value"] == "6"
+        and row["value"] == "10"
         for row in hero_power_values
+    )
+    sw448_behavior_rows = behavior_report["card_rows"]["SW_448"]
+    assert any(
+        row.get("semantic_score", {}).get("reason") == "hero_power_transform"
+        and row["value"] == "10"
+        for row in sw448_behavior_rows
     )
     sw448 = next(row for row in explainability["card_rows"] if row["card_id"] == "SW_448")
     assert sw448["strongest_claim_kind"] == "hero_power_transform"

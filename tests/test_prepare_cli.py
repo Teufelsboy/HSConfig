@@ -1533,6 +1533,9 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     discover_claim = next(
         claim for claim in guide_bundle["claims"] if claim["claim_kind"] == "discover_choice"
     )
+    discover_row = next(
+        row for row in card_behavior["rows"] if row["claim_id"] == discover_claim["claim_id"]
+    )
     discover_config = json.loads(
         (package / "CustomConfig" / "discover_deck" / "DISCOVER_CARD.json").read_text(
             encoding="utf-8"
@@ -1542,6 +1545,8 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     assert code == 1
     assert payload["status"] == "failed"
     assert [row["claim_id"] for row in card_behavior["rows"]] == [discover_claim["claim_id"]]
+    assert discover_row["semantic_score"]["reason"] == "draw_cycle"
+    assert discover_row["value"] == "8"
     assert card_behavior["suppressed"] == [
         {
             "claim_id": card_behavior["suppressed"][0]["claim_id"],
@@ -1562,7 +1567,7 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
         {
             "comment": "Discover Deck: DISCOVER_CARD_pick_option_alpha",
             "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
-            "value": "6",
+            "value": "8",
         }
     ]
 
@@ -1697,6 +1702,11 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     generic_discover_claim_id = next(
         row["claim_id"] for row in card_behavior["rows"] if row["card_id"] == "CARD_UNRESOLVED"
     )
+    discover_rows = {
+        row["card_id"]: row
+        for row in card_behavior["rows"]
+        if row["card_id"] in {"CARD_RESOLVED", "CARD_UNRESOLVED"}
+    }
 
     assert code == 1
     assert payload["status"] == "failed"
@@ -1712,6 +1722,10 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
         ),
         (generic_discover_claim_id, "CARD_UNRESOLVED", "*"),
     ]
+    assert discover_rows["CARD_RESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
+    assert discover_rows["CARD_RESOLVED"]["value"] == "8"
+    assert discover_rows["CARD_UNRESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
+    assert discover_rows["CARD_UNRESOLVED"]["value"] == "8"
     assert suppressions[0] == {
         "claim_id": resolved_choice_claim_id,
         "claim_kind": "discover_choice",
@@ -1725,14 +1739,14 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
         {
             "comment": "Discover Split Deck: CARD_RESOLVED_pick_option_alpha",
             "condition": "my_discover(count(),cardid=OPTION_ALPHA) > 0",
-            "value": "6",
+            "value": "8",
         }
     ]
     assert unresolved_config["OnDiscoverCardBonus"]["values"] == [
         {
             "comment": "Discover Split Deck: CARD_UNRESOLVED_use_discover_according_to_card_text",
             "condition": "*",
-            "value": "6",
+            "value": "8",
         }
     ]
 

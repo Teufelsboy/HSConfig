@@ -33,3 +33,36 @@ Commit:
 
 Concerns:
 - The branch started dirty because `.superpowers/sdd/progress.md` was already modified. It was not edited or staged by this task.
+
+## Review Fix: Align Semantic Scoring Expectations
+
+Status: done
+
+Review context:
+- Task 3 review returned NEEDS_CHANGES because broader regression tests still expected pre-scorer default values in accepted CardID behavior rows.
+- No source bug was found for this review pass; the intended scorer integration now emits semantic values for accepted rows.
+
+Files changed:
+- `tests/test_no_default_only_semantic_archetype_matrix.py`
+- `tests/test_prepare_cli.py`
+- `tests/test_shadowpriest_depth_e2e.py`
+- `.superpowers/sdd/task-3-report.md`
+
+Expectation updates:
+- SyntheticLocationDruid location runtime expectation changed from `6` to `8`, with report-layer `semantic_score.reason == "location_tempo"`.
+- Resolved Discover and generic Discover accepted rows changed from `6` to `8`, with report-layer `semantic_score.reason == "draw_cycle"`.
+- Darkbishop `SW_448` hero-power effect row changed from `6` to `10`, with report-layer `semantic_score.reason == "hero_power_transform"`.
+- The core Darkbishop boundary remains asserted: `SW_448` is absent from concrete Mulligan keeps.
+
+Review-fix verification:
+- `python -m pytest tests\test_no_default_only_semantic_archetype_matrix.py::test_semantic_archetype_fixture_remains_load_safe_and_not_default_only[SyntheticLocationDruid] -q -p no:cacheprovider`
+  - Result: `1 passed in 1.66s`.
+- `python -m pytest tests\test_prepare_cli.py::test_prepare_routes_option_claim_with_identity_links tests\test_prepare_cli.py::test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic_fallback -q -p no:cacheprovider`
+  - Result: `2 passed in 0.61s`.
+- `python -m pytest tests\test_shadowpriest_depth_e2e.py::test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep -q -p no:cacheprovider`
+  - Result: `1 passed in 9.29s`.
+- `python -m pytest tests\test_semantic_intent_score.py tests\test_card_behavior_router.py -q -p no:cacheprovider`
+  - Result: `46 passed in 0.17s`.
+
+Review-fix concerns:
+- `.superpowers/sdd/progress.md` remains pre-existing dirty state and was not edited or staged by this fix.
