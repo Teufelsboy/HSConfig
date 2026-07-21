@@ -178,6 +178,90 @@ def test_mulligan_plan_preserves_multiple_conditions_for_same_card():
     assert plan["suppressed_rules"] == []
 
 
+def test_mulligan_plan_merges_runtime_duplicate_source_keeps_preserving_provenance():
+    claims = [
+        {
+            "claim_kind": "mulligan_keep",
+            "cards": ["SW_444"],
+            "conditions": "*",
+            "claim_id": "keep_twilight_guide_a",
+            "source_claim_ids": ["raw_keep_twilight_a"],
+            "evidence_text_short": "Keep Twilight Deceptor",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "cards": ["SW_444"],
+            "conditions": "*",
+            "claim_id": "keep_twilight_guide_b",
+            "source_claim_ids": ["raw_keep_twilight_b"],
+            "evidence_text_short": "Twilight Deceptor is a keep",
+        },
+    ]
+
+    plan = build_mulligan_plan(deck_name="ShadowPriest", claims=claims, card_roles={})
+
+    sw444_rules = [
+        row
+        for row in plan["rules"]
+        if row["card"] == "SW_444" and row["action"] == "hold"
+    ]
+    assert len(sw444_rules) == 1
+    assert sw444_rules[0]["condition"] == "*"
+    assert sw444_rules[0]["source_claim_ids"] == [
+        "raw_keep_twilight_a",
+        "raw_keep_twilight_b",
+    ]
+    assert sw444_rules[0]["merged_claim_ids"] == [
+        "keep_twilight_guide_a",
+        "keep_twilight_guide_b",
+    ]
+    assert sw444_rules[0]["merged_reasons"] == [
+        "Keep Twilight Deceptor",
+        "Twilight Deceptor is a keep",
+    ]
+    assert plan["quality"]["source_backed_keep_rule_count"] == 1
+    assert plan["quality"]["merged_duplicate_rule_count"] == 1
+    assert plan["quality"]["default_only"] is False
+
+
+def test_mulligan_plan_does_not_merge_same_card_with_different_condition_or_action():
+    claims = [
+        {
+            "claim_kind": "mulligan_keep",
+            "cards": ["SW_444"],
+            "conditions": {"coin": True},
+            "claim_id": "keep_coin",
+        },
+        {
+            "claim_kind": "mulligan_keep",
+            "cards": ["SW_444"],
+            "conditions": {"nocoin": True},
+            "claim_id": "keep_no_coin",
+        },
+        {
+            "claim_kind": "mulligan_discard",
+            "cards": ["SW_444"],
+            "conditions": {"coin": True},
+            "claim_id": "discard_coin",
+        },
+    ]
+
+    plan = build_mulligan_plan(deck_name="ShadowPriest", claims=claims, card_roles={})
+
+    sw444_rules = [
+        (row["action"], row["condition"])
+        for row in plan["rules"]
+        if row["card"] == "SW_444"
+    ]
+    assert sw444_rules == [
+        ("discard", "coin"),
+        ("hold", "coin"),
+        ("hold", "nocoin"),
+    ]
+    assert plan["quality"]["source_backed_keep_rule_count"] == 2
+    assert plan["quality"]["merged_duplicate_rule_count"] == 0
+
+
 def test_mulligan_plan_suppresses_unsupported_conditions_instead_of_broadening_to_wildcard():
     claims = [
         {

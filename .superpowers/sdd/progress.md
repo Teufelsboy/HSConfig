@@ -737,3 +737,18 @@ Plan: `docs/superpowers/plans/2026-07-18-hsconfig-canonical-source-contract-stro
 - [x] Task 5: Darkbishop Benedictus canary tightened so start-of-game hero-power transform evidence remains `hero_power_transform` and cannot become a mulligan keep row.
 - [x] Task 6: Operator docs updated for diagnostic-only optimizer research fields; no runtime apply/write path was added.
 - [x] Task 7: Final verification passed: focused contract slice `184 passed`, extended focused slice `175 passed`, full suite `1660 passed, 11 skipped`, `git diff --check` exited `0` with CRLF warnings only, read-only ShadowPriest optimizer smoke reported `decision=strong`, `source_status_apply_blocking=false`, `research_snapshot_relation=stale_or_seed_only`, and no canonical research promotion or downgrade authority.
+
+## 2026-07-21 HSConfig Mulligan Semantic Dedupe
+
+Plan: docs/superpowers/plans/2026-07-21-hsconfig-mulligan-semantic-dedupe.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: dirty=false, behind_origin_main=0, ahead_origin_main=1 (plan commit only)
+- [x] Task 1 tests (worker added tests; expected red confirmed: 2 failed before implementation)
+- [x] Task 1 review (review clean)
+- [x] Task 2 implementation (worker implemented semantic dedupe; focused 4-test slice and full mulligan plan suite passed)
+- [x] Task 2 review (review clean for implementation; ledger EOF hygiene fixed)
+- [x] Task 3 package guard (worker guard corrected to current source-backed ShadowPriest fixture; focused test passed)
+- [x] Task 3 review (P2 merged_claim_ids audit edge found and fixed)
+- [x] Reviewer fix: source_contract_audit and package_builder now count merged_claim_ids; focused tests passed
+- [x] Task 4 verification: focused regression `93 passed`, prepare CLI slice `2 passed`, full suite `1665 passed, 11 skipped`; ShadowPriest prepare smoke confirmed unique Mulligan rows, `semantic_status=SOURCE_BACKED_STRONG`, `source_backed_status=SOURCE_BACKED_STRONG`, `source_status_apply_blocking=false`, no Darkbishop opening-hand hold; commit pending.

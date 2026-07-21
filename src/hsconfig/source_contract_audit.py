@@ -846,7 +846,7 @@ def _row_claim_ids(row: Mapping[str, Any]) -> set[str]:
         value = row.get(key)
         if value:
             ids.add(str(value))
-    for key in ("claim_ids", "source_claim_ids"):
+    for key in ("claim_ids", "source_claim_ids", "merged_claim_ids"):
         value = row.get(key, [])
         if isinstance(value, str):
             value = [value]

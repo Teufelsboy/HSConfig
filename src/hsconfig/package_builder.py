@@ -765,7 +765,7 @@ def _row_claim_ids(row: dict[str, Any]) -> set[str]:
         value = row.get(key)
         if value:
             claim_ids.add(str(value))
-    for key in ("claim_ids", "source_claim_ids", "claim_refs"):
+    for key in ("claim_ids", "source_claim_ids", "claim_refs", "merged_claim_ids"):
         value = row.get(key, [])
         if isinstance(value, str):
             value = [value]

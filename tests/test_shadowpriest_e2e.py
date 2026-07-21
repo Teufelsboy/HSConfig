@@ -96,6 +96,55 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     )
 
 
+def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_unique(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    out = tmp_path / "pkg"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+        ]
+    )
+
+    deck_dir = out / "CustomConfig" / "shadowpriest"
+    reports = out / "reports"
+    mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
+    plan_report = json.loads(
+        (reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
+    runtime_rows = mulligan["Mulligan"]["values"]
+    runtime_keys = [
+        (row.get("mulligan"), row.get("condition", "*"), row.get("value"))
+        for row in runtime_rows
+    ]
+
+    assert code == 0
+    assert runtime_keys == [
+        ("SW_446", "*", "hold"),
+        ("GVG_009", "*", "hold"),
+        ("*", "*", "discard"),
+    ]
+    assert len(runtime_keys) == len(set(runtime_keys))
+    assert not any(
+        row.get("mulligan") == "SW_448" and row.get("value") == "hold"
+        for row in runtime_rows
+    )
+    assert plan_report["quality"]["merged_duplicate_rule_count"] == 0
+    assert plan_report["quality"]["source_backed_keep_rule_count"] == 2
+    assert plan_report["quality"]["default_only"] is False
+
+
 def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_lifecycle(
     tmp_path: Path,
 ):

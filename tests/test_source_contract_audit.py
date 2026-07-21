@@ -458,6 +458,61 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
     assert report["summary"]["runtime_lowered_claims"] == 2
 
 
+def test_source_contract_audit_counts_merged_mulligan_claim_ids_as_emitted():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "keep_claim_a",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_KEEP"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Keep CARD_KEEP.",
+                },
+                {
+                    "claim_id": "keep_claim_b",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_KEEP"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "CARD_KEEP is also a keep.",
+                },
+            ]
+        },
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_KEEP",
+                    "action": "hold",
+                    "claim_id": "keep_claim_a",
+                    "source_claim_ids": ["raw_keep_a", "raw_keep_b"],
+                    "merged_claim_ids": ["keep_claim_a", "keep_claim_b"],
+                }
+            ],
+            "suppressed_rules": [],
+        },
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+    )
+
+    rows_by_claim_id = {row["claim_id"]: row for row in report["claim_lifecycle_rows"]}
+
+    assert report["claim_rows"]["keep_claim_a"]["lowered_surfaces"] == ["mulligan"]
+    assert report["claim_rows"]["keep_claim_b"]["lowered_surfaces"] == ["mulligan"]
+    assert rows_by_claim_id["keep_claim_a"]["builder_or_router_decision"] == "emitted"
+    assert rows_by_claim_id["keep_claim_b"]["builder_or_router_decision"] == "emitted"
+    assert rows_by_claim_id["keep_claim_b"]["runtime_surface"] == "Mulligan.json"
+    assert report["summary"]["runtime_lowered_claims"] == 2
+
+
 def test_source_contract_audit_preserves_start_of_game_effect_without_mulligan_keep():
     report = build_source_contract_audit(
         deck_name="ShadowPriest",

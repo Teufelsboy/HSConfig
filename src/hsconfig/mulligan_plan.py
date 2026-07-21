@@ -24,7 +24,8 @@ def build_mulligan_plan(
 ) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     suppressed_rules: list[dict[str, Any]] = []
-    seen_rule_keys: set[tuple[Any, ...]] = set()
+    rules_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    merged_duplicate_rule_count = 0
 
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
@@ -130,11 +131,8 @@ def build_mulligan_plan(
             _with_claim_id(rule, claim)
             if selector_cards:
                 rule["selector_cards"] = selector_cards
-            key = mulligan_rule_key(rule)
-            if key in seen_rule_keys:
-                continue
-            seen_rule_keys.add(key)
-            rules.append(rule)
+            if _add_or_merge_mulligan_rule(rules, rules_by_key, rule):
+                merged_duplicate_rule_count += 1
 
     rules = _apply_mulligan_precedence(rules)
     policy_result = {
@@ -171,11 +169,8 @@ def build_mulligan_plan(
             ),
         )
         for row in policy_result["rules"]:
-            key = mulligan_rule_key(row)
-            if key in seen_rule_keys:
-                continue
-            seen_rule_keys.add(key)
-            rules.append(row)
+            if _add_or_merge_mulligan_rule(rules, rules_by_key, row):
+                merged_duplicate_rule_count += 1
         for row in policy_result["suppressed"]:
             suppressed_rules.append(row)
         rules = _apply_mulligan_precedence(rules)
@@ -260,6 +255,7 @@ def build_mulligan_plan(
         "default_only": runtime_rule_count == 0,
         "suppressed_rule_count": len(suppressed_rules),
         "suppressed_reasons": suppressed_reasons,
+        "merged_duplicate_rule_count": merged_duplicate_rule_count,
     }
     if has_concrete_keeps:
         wildcard_reason = (
@@ -296,8 +292,61 @@ def mulligan_rule_key(rule: dict[str, Any]) -> tuple[Any, ...]:
         tuple(str(item) for item in rule.get("selector_cards", [])),
         rule.get("action"),
         rule.get("condition", "*"),
-        tuple(sorted(str(item) for item in rule.get("source_claim_ids", []))),
+        rule.get("source_type", ""),
     )
+
+
+def _add_or_merge_mulligan_rule(
+    rules: list[dict[str, Any]],
+    rules_by_key: dict[tuple[Any, ...], dict[str, Any]],
+    rule: dict[str, Any],
+) -> bool:
+    key = mulligan_rule_key(rule)
+    existing = rules_by_key.get(key)
+    if existing is None:
+        rules_by_key[key] = rule
+        rules.append(rule)
+        return False
+
+    _merge_unique_list(existing, "source_claim_ids", rule.get("source_claim_ids", []))
+    _merge_unique_list(
+        existing,
+        "merged_claim_ids",
+        [
+            existing.get("claim_id"),
+            *existing.get("merged_claim_ids", []),
+            rule.get("claim_id"),
+            *rule.get("merged_claim_ids", []),
+        ],
+    )
+    _merge_unique_list(
+        existing,
+        "merged_reasons",
+        [
+            existing.get("reason"),
+            *existing.get("merged_reasons", []),
+            rule.get("reason"),
+            *rule.get("merged_reasons", []),
+        ],
+    )
+    return True
+
+
+def _merge_unique_list(
+    target: dict[str, Any],
+    key: str,
+    values: list[Any],
+) -> None:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for value in [*target.get(key, []), *values]:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        merged.append(text)
+    if merged:
+        target[key] = merged
 
 
 def _apply_mulligan_precedence(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
