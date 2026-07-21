@@ -309,6 +309,39 @@ def test_config_quality_flags_stray_cardid_runtime_file_without_report_trace(
     assert report["apply_blocking"] is False
 
 
+def test_config_quality_flags_stray_cardid_runtime_file_by_filename(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "STRAY_001.json",
+        {
+            "GameCardId": "NX2_019",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "stale filename with valid payload card id",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["runtime_json"]["stray_cardid_files"] == [
+        "CustomConfig/shadowpriest/STRAY_001.json"
+    ]
+    assert {
+        "check": "stray_cardid_runtime_files",
+        "value": ["CustomConfig/shadowpriest/STRAY_001.json"],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_allows_deck_identity_card_runtime_file_without_emitted_trace(
     tmp_path: Path,
 ):

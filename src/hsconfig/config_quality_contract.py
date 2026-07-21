@@ -425,12 +425,12 @@ def _runtime_json_check(
                 continue
             if path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
                 continue
+            file_card_id = _file_card_id(path.name)
+            if file_card_id and file_card_id not in expected_card_ids:
+                stray_cardid_files.append(_relative(path, package))
             payload = _read_json(path)
             if not isinstance(payload, Mapping):
                 continue
-            runtime_card_id = str(payload.get("GameCardId") or path.stem).strip()
-            if runtime_card_id and runtime_card_id not in expected_card_ids:
-                stray_cardid_files.append(_relative(path, package))
             for block, block_payload in payload.items():
                 if block in {"GameCardId", "ConfigComment"}:
                     continue
