@@ -784,4 +784,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 6: Compact Contract Doctor Rendering And Tests (commits 6c75bcd..72821b5, review clean after counter-value coverage fix)
 - [x] Task 7: Add ShadowPriest And Universal Wild Regression Assertions (commits 72821b5..a479237, review clean after stray filename/deck-identity fixes)
 - [x] Task 8: Update Operator And Skill Documentation (commits a479237..eea008c, review clean)
-- [ ] Task 9: Full Verification, Currentness, And Commit
+- [x] Task 9: Full Verification, Currentness, And Commit (focused 85 passed; no-second-gate/source contracts 84 passed; guardrails 522 passed; full suite 1697 passed, 11 skipped; final review fix baa4862 re-reviewed clean)
