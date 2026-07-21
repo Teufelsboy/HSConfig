@@ -168,6 +168,39 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
     }
 
 
+def test_config_quality_flags_stray_cardid_runtime_file_without_report_trace(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "STRAY_001.json",
+        {
+            "GameCardId": "STRAY_001",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "unexpected stale card runtime",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["runtime_json"]["stray_cardid_files"] == [
+        "CustomConfig/shadowpriest/STRAY_001.json"
+    ]
+    assert {
+        "check": "stray_cardid_runtime_files",
+        "value": ["CustomConfig/shadowpriest/STRAY_001.json"],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_flags_stale_source_to_runtime_closure_summary(
     tmp_path: Path,
 ):
@@ -691,6 +724,68 @@ def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
                 ]
             },
         },
+    )
+    card_behavior = json.loads(
+        (package / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    card_behavior["rows"].append(
+        {
+            "card_id": "SW_448",
+            "surface_family": "CARDID.json",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+            "value": "10",
+            "meaningful_runtime_surface": True,
+            "semantic_score": {
+                "band": "high",
+                "reason": "source_backed_darkbishop_effect",
+                "profile": "semantic_intent",
+            },
+        }
+    )
+    write_json(package / "reports" / "card_behavior_plan_report.json", card_behavior)
+    explainability = json.loads(
+        (package / "reports" / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    explainability["claim_rows"].append(
+        {
+            "claim_id": "claim_darkbishop_effect",
+            "claim_kind": "effect_runtime",
+            "builder_or_router_decision": "emitted",
+            "emitted_runtime_files": ["SW_448.json"],
+            "first_missing_link": None,
+        }
+    )
+    explainability["card_rows"].append(
+        {
+            "card_id": "SW_448",
+            "first_missing_link": None,
+            "source_lane": "official_static_semantics",
+            "emitted_runtime_files": ["SW_448.json"],
+            "runtime_surfaces": ["cardid"],
+            "closure": {
+                "lane": "source_backed_runtime_lowered",
+                "runtime_surfaces": ["SW_448.json"],
+                "default_only_risk": False,
+            },
+            "evidence_chain": [
+                {
+                    "claim_id": "claim_darkbishop_effect",
+                    "claim_kind": "effect_runtime",
+                    "source_lane": "official_static_semantics",
+                    "source_type": "official_static_semantics",
+                    "runtime_files": ["SW_448.json"],
+                    "resolution_reason": "emitted",
+                }
+            ],
+        }
+    )
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        explainability,
     )
 
     report = build_config_quality_report(package)

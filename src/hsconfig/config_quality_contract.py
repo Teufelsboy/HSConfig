@@ -83,7 +83,7 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "source_to_runtime_explainability": _explainability_check(explainability),
         "trace_completeness": _trace_completeness_check(card_behavior, explainability),
         "closure_freshness": _closure_freshness_check(operator),
-        "runtime_json": _runtime_json_check(package),
+        "runtime_json": _runtime_json_check(package, card_behavior, explainability),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
     }
@@ -322,9 +322,24 @@ def _file_card_id(value: Any) -> str:
     return name[:-5]
 
 
-def _runtime_json_check(package: Path) -> dict[str, Any]:
+def _expected_cardid_runtime_files(
+    card_behavior: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+) -> set[str]:
+    expected = {_row_card_id(row) for row in _meaningful_cardid_rows(card_behavior)}
+    expected.update(_traced_card_ids(explainability))
+    return {card_id for card_id in expected if card_id}
+
+
+def _runtime_json_check(
+    package: Path,
+    card_behavior: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+) -> dict[str, Any]:
     deck_dirs = _custom_config_deck_dirs(package)
+    expected_card_ids = _expected_cardid_runtime_files(card_behavior, explainability)
     metadata_leaks: list[dict[str, Any]] = []
+    stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:
         for path in sorted(deck_dir.glob("*.json")):
             if path.name in SPECIAL_RUNTIME_FILES:
@@ -334,6 +349,9 @@ def _runtime_json_check(package: Path) -> dict[str, Any]:
             payload = _read_json(path)
             if not isinstance(payload, Mapping):
                 continue
+            runtime_card_id = str(payload.get("GameCardId") or path.stem).strip()
+            if runtime_card_id and runtime_card_id not in expected_card_ids:
+                stray_cardid_files.append(_relative(path, package))
             for block, block_payload in payload.items():
                 if block in {"GameCardId", "ConfigComment"}:
                     continue
@@ -358,6 +376,7 @@ def _runtime_json_check(package: Path) -> dict[str, Any]:
     return {
         "deck_dir_present": bool(deck_dirs),
         "metadata_leaks": metadata_leaks,
+        "stray_cardid_files": sorted(stray_cardid_files),
     }
 
 
@@ -552,6 +571,13 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "check": "runtime_json_metadata_leaks",
                 "value": runtime_json["metadata_leaks"],
+            }
+        )
+    if runtime_json["stray_cardid_files"]:
+        problems.append(
+            {
+                "check": "stray_cardid_runtime_files",
+                "value": runtime_json["stray_cardid_files"],
             }
         )
 
