@@ -1,42 +1,35 @@
-# Task 3 Report: Full-Text Source Claim Extraction
+# Task 3 Report: Semantic Scoring In Card Behavior Routing
 
-## Red Evidence
+Status: done
 
-Ran:
-
-```powershell
-python -m pytest -p no:cacheprovider tests\test_source_text_claim_extractor.py -q
-```
-
-The test collection failed as expected with:
-
-```text
-ModuleNotFoundError: No module named 'hsconfig.source_text_claim_extractor'
-```
-
-## Green Evidence
-
-After implementation, the same command passed:
-
-```text
-...                                                                      [100%]
-3 passed in 0.09s
-```
-
-Coverage includes explicit Papercraft Angel mulligan retention, 4-cost-or-higher mulligan discards including `SW_448`, `SW_448` hero-power transformation, suppression of Darkbishop Benedictus as an opening-hand keep, and empty results for decklist-only, stats-only, and snippet-only records.
-
-## Commit
-
-Feature implementation commit: `d816a61f64dc85fbe710c040388fcdaec735eae7`
-
-## Changed Files
-
-- `src/hsconfig/source_text_claim_extractor.py`
-- `tests/test_source_text_claim_extractor.py`
+Files changed:
+- `src/hsconfig/card_behavior_surface_router.py`
+- `tests/test_card_behavior_router.py`
+- `src/hsconfig/semantic_intent_score.py` (minimal integration blocker fix)
 - `.superpowers/sdd/task-3-report.md`
 
-## Concerns
+RED summary:
+- Ran `python -m pytest tests\test_card_behavior_router.py -q -p no:cacheprovider` after adding integration tests and before router implementation.
+- Expected failures observed:
+  - Mind Sear semantic value still returned `6` instead of `10`.
+  - Explicit runtime value row kept value `8` but had no `semantic_score` metadata.
 
-- Extraction is intentionally narrow and deterministic. It only trusts full-text guide records with the designated strong source and rank lanes.
-- The implementation emits only the claim kinds required by this task and does not integrate with `source_autopilot.py`; later tasks own that integration.
-- Phrase matching is conservative and limited to the explicit text patterns in the task brief.
+GREEN summary:
+- Ran `python -m pytest tests\test_semantic_intent_score.py tests\test_card_behavior_router.py -q -p no:cacheprovider`.
+- Result: `46 passed in 0.20s`.
+
+Implementation summary:
+- Imported `score_card_behavior_claim` into `card_behavior_surface_router.py`.
+- `_attach_behavior_fields()` now scores accepted CardID behavior rows after behavior block, intent, roles, rule suffix, and condition are selected.
+- Accepted rows receive `value` from the scorer and diagnostic `semantic_score` metadata with `band`, `reason`, `profile`, and `matched_signals`.
+- Explicit source `runtime_value`/`value` still wins through the scorer and reports `reason == "explicit_runtime_value"`.
+- Suppressed rows are not scored.
+
+Scope note:
+- `src/hsconfig/semantic_intent_score.py` required a minimal fix because its board-tempo rule matched `mech` inside `mechanic_usage`, causing unrelated generic mechanic rows to score as `8`. The fix now treats `mech` as a standalone token.
+
+Commit:
+- Created with message `feat: score accepted card behavior rows`; exact final HEAD hash is in the worker final answer.
+
+Concerns:
+- The branch started dirty because `.superpowers/sdd/progress.md` was already modified. It was not edited or staged by this task.

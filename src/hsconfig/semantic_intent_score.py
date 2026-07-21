@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Mapping, Sequence
 
 
@@ -137,7 +138,9 @@ def score_card_behavior_claim(
             ),
         )
 
-    if _has_any(text, ("summon", "pirate", "treant", "mech", "board", "on_board")):
+    if _has_any(text, ("summon", "pirate", "treant", "board", "on_board")) or _has_token(
+        text, "mech"
+    ):
         return SemanticIntentScore(
             value="8",
             band="medium",
@@ -147,7 +150,7 @@ def score_card_behavior_claim(
                 ("summon", "summon" in text),
                 ("pirate", "pirate" in text),
                 ("treant", "treant" in text),
-                ("mech", "mech" in text),
+                ("mech", _has_token(text, "mech")),
                 ("board", _has_any(text, ("board", "on_board"))),
             ),
         )
@@ -234,6 +237,10 @@ def _has_damage_wording(text: str) -> bool:
 
 def _has_any(text: str, needles: Sequence[str]) -> bool:
     return any(needle in text for needle in needles)
+
+
+def _has_token(text: str, token: str) -> bool:
+    return re.search(rf"(?<![a-z0-9_]){re.escape(token)}(?![a-z0-9_])", text) is not None
 
 
 def _signals(*candidates: tuple[str, bool]) -> tuple[str, ...]:

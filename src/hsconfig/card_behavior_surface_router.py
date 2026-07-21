@@ -10,6 +10,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
+from hsconfig.semantic_intent_score import score_card_behavior_claim
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
@@ -460,7 +461,20 @@ def _attach_behavior_fields(
     row["intent"] = intent
     row["roles"] = roles
     row["rule_id_suffix"] = str(claim.get("rule_id_suffix", intent))
-    row["value"] = _runtime_value(claim, default=value_default)
+    semantic_score = score_card_behavior_claim(
+        claim,
+        behavior_block=str(row["behavior_block"]),
+        intent=str(row.get("intent", "")),
+        roles=[str(role) for role in row.get("roles", [])],
+        value_default=value_default,
+    )
+    row["value"] = semantic_score.value
+    row["semantic_score"] = {
+        "band": semantic_score.band,
+        "reason": semantic_score.reason,
+        "profile": semantic_score.profile,
+        "matched_signals": list(semantic_score.matched_signals),
+    }
     row["meaningful_runtime_surface"] = True
     return row
 

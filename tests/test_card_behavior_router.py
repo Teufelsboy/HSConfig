@@ -34,6 +34,76 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
     assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
 
 
+def test_targeting_behavior_row_receives_semantic_score_value():
+    mind_sear_claim = {
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "stance": "prefer_enemy_minion",
+        "evidence_text_short": (
+            "Mind Sear deals 2 damage to a minion and deals 3 damage "
+            "to the enemy hero if it dies."
+        ),
+        "source_claim_ids": ["mind_sear_source"],
+    }
+
+    plan = route_card_behavior_surfaces([mind_sear_claim])
+
+    assert plan["suppressed"] == []
+    row = plan["rows"][0]
+    assert row["behavior_block"] == "BeforeBattlecryTargetBonus"
+    assert row["value"] == "10"
+    assert row["semantic_score"]["reason"] == "conditional_minion_death_burn"
+    assert row["semantic_score"]["band"] == "high"
+    assert row["semantic_score"]["profile"] == "semantic_intent"
+    assert "enemy_hero_damage" in row["semantic_score"]["matched_signals"]
+    assert "death_condition" in row["semantic_score"]["matched_signals"]
+
+
+def test_explicit_runtime_value_wins_over_semantic_score():
+    mind_sear_claim = {
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "stance": "prefer_enemy_minion",
+        "runtime_value": "8",
+        "evidence_text_short": (
+            "Mind Sear deals 2 damage to a minion and deals 3 damage "
+            "to the enemy hero if it dies."
+        ),
+        "source_claim_ids": ["mind_sear_source"],
+    }
+
+    plan = route_card_behavior_surfaces([mind_sear_claim])
+
+    assert plan["suppressed"] == []
+    explicit_row = plan["rows"][0]
+    assert explicit_row["value"] == "8"
+    assert explicit_row["semantic_score"]["reason"] == "explicit_runtime_value"
+    assert explicit_row["semantic_score"]["band"] == "explicit"
+    assert explicit_row["semantic_score"]["profile"] == "source_claim"
+    assert explicit_row["semantic_score"]["matched_signals"] == ["explicit_value"]
+
+
+def test_suppressed_behavior_row_is_not_semantically_scored():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_kind": "targeting_rule",
+                "cards": ["NX2_019"],
+                "stance": "prefer_enemy_minion",
+                "runtime_block": "NotARealVisionAIBlock",
+                "evidence_text_short": (
+                    "Mind Sear deals 2 damage to a minion and deals 3 damage "
+                    "to the enemy hero if it dies."
+                ),
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "unsupported_card_behavior_block"
+    assert "semantic_score" not in plan["suppressed"][0]
+
+
 def test_standalone_discover_mechanic_claim_routes_to_discover_surface():
     plan = route_card_behavior_surfaces(
         [
