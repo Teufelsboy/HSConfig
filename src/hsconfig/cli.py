@@ -10,6 +10,7 @@ from hsconfig.commands.contract_doctor import run_contract_doctor_command
 from hsconfig.commands.contract_spine_sentinel import (
     run_contract_spine_sentinel_command,
 )
+from hsconfig.commands.contract_preflight import run_contract_preflight_command
 from hsconfig.commands.configure import run_configure_command
 from hsconfig.commands.prepare import run_prepare_command
 from hsconfig.commands.source_workflow import (
@@ -55,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_contract_doctor_command(args)
     if args.command == "contract-spine-sentinel":
         return run_contract_spine_sentinel_command(args)
+    if args.command == "contract-preflight":
+        return run_contract_preflight_command(args)
     if args.command == "research-status-sync":
         return run_research_status_sync_command(args)
     if args.command == "strong-closure-dossier":

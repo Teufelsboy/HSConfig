@@ -237,6 +237,19 @@ def build_parser() -> argparse.ArgumentParser:
     contract_spine_sentinel.add_argument("--out", help="Optional JSON output path.")
     contract_spine_sentinel.add_argument("--json", action="store_true")
 
+    contract_preflight = subparsers.add_parser(
+        "contract-preflight",
+        help="read-only repo and skill contract preflight",
+        description=(
+            "Read-only repo and skill contract preflight. Checks currentness, "
+            "skill/reference routing, source-status non-blocking policy, no-default-only "
+            "visibility, runtime surface boundary, and negative scope wording. "
+            "This command does not grant apply permission and never writes runtime files."
+        ),
+    )
+    contract_preflight.add_argument("--repo-root", default=".")
+    contract_preflight.add_argument("--json", action="store_true")
+
     research_status_sync = subparsers.add_parser(
         "research-status-sync",
         help="diagnostic research snapshot status sync",
