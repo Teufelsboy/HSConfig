@@ -154,6 +154,21 @@ def test_skill_names_configure_normal_workflow():
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
 
 
+def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
+    operator_docs = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "`reports/configure_summary.json` also contains `config_quality_summary`" in operator_docs
+    assert "quick operator visibility after `hsconfig configure`" in operator_docs
+    assert "If `status` is `attention`, run `hsconfig contract-doctor --package <package>`" in operator_docs
+    assert "The normal apply authority remains `reports/operator_summary.json`." in operator_docs
+    assert "`reports/configure_summary.json.config_quality_summary`" in skill
+    assert "It is diagnostic-only and non-blocking; use `contract-doctor` for details." in skill
+    assert "`reports/operator_summary.json` remains the normal apply authority." in skill
+
+
 def test_skill_names_source_closure_intake_receipt_without_new_authority():
     text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
 
