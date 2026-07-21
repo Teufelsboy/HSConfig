@@ -4,7 +4,7 @@
 
 **Goal:** Surface the existing diagnostic `config_quality` contract directly in `configure_summary.json` as a compact, non-blocking `config_quality_summary`, so normal `hsconfig configure` output immediately shows whether the generated package is clean or needs diagnostic attention.
 
-**Architecture:** Reuse `build_config_quality_report(package_dir)` from `src/hsconfig/config_quality_contract.py`. Add a tiny summarizer in `src/hsconfig/commands/configure.py`, call it after package/operator-summary generation, and include the result only in `reports/configure_summary.json`. Keep detailed diagnostics in `contract-doctor`. Keep `operator_summary.json` as the only normal apply authority.
+**Architecture:** Reuse `build_config_quality_report(package_dir)` from `src/hsconfig/config_quality_contract.py`. Add a tiny summarizer in `src/hsconfig/commands/configure.py`, call it after package/operator-summary generation, and include the result only in the top-level configure output `<out>/configure_summary.json`. Keep detailed diagnostics in `contract-doctor`. Keep `operator_summary.json` as the only normal apply authority.
 
 **Tech Stack:** Python 3, pytest, existing HSConfig CLI modules, existing JSON/report helpers, no new runtime dependency.
 
@@ -18,7 +18,7 @@
 - Do not use HSTuner.
 - Do not read or tune from runtime logs for this change.
 - Do not add gameplay ordering logic, card-effect logic, HearthRanger action sequencing, or mulligan strategy changes.
-- Do not create a new report file. The only new normal output is one field in `reports/configure_summary.json`.
+- Do not create a new report file. The only new normal output is one field in the top-level configure output `<out>/configure_summary.json`.
 - Do not write `config_quality` or `config_quality_summary` into `reports/operator_summary.json`.
 - Do not make `SOURCE_BACKED_STRONG` an apply gate.
 - Do not make config quality apply-blocking. It is diagnostic-only:
@@ -255,7 +255,7 @@ python -m pytest tests\test_configure_cli.py::test_compact_config_quality_summar
 Core assertion:
 
 ```python
-summary = json.loads((out_dir / "reports" / "configure_summary.json").read_text(encoding="utf-8"))
+summary = json.loads((out_dir / "configure_summary.json").read_text(encoding="utf-8"))
 
 assert summary["config_quality_summary"]["authority"] == "diagnostic_only"
 assert summary["config_quality_summary"]["apply_blocking"] is False
@@ -278,6 +278,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         "hsconfig.commands.configure.build_config_quality_report",
         raise_report,
     )
+    out_dir = tmp_path / "out"
 
     result = runner.invoke(
         app,
@@ -288,7 +289,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
             "--deck-code",
             "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=",
             "--out",
-            str(tmp_path / "out"),
+            str(out_dir),
             "--source-mode",
             "skip",
         ],
@@ -296,7 +297,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
 
     assert result.exit_code == 0
     summary = json.loads(
-        (tmp_path / "out" / "reports" / "configure_summary.json").read_text(encoding="utf-8")
+        (out_dir / "configure_summary.json").read_text(encoding="utf-8")
     )
     assert summary["config_quality_summary"]["authority"] == "diagnostic_only"
     assert summary["config_quality_summary"]["apply_blocking"] is False
@@ -318,7 +319,7 @@ python -m pytest tests\test_configure_cli.py -q -p no:cacheprovider
 config_quality_summary = _build_config_quality_summary(package_dir)
 ```
 
-- [ ] Add this field to the `configure_summary` payload written to `reports/configure_summary.json`:
+- [ ] Add this field to the `configure_summary` payload written to the top-level configure output `out_dir / "configure_summary.json"`:
 
 ```python
 "config_quality_summary": config_quality_summary,
@@ -353,13 +354,13 @@ passed
 - [ ] In `docs/operator/README.md`, update the contract-doctor/operator-summary section to state:
 
 ```markdown
-`reports/configure_summary.json` also contains `config_quality_summary`, a compact diagnostic-only mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
+`<out>/configure_summary.json` also contains `config_quality_summary`, a compact diagnostic-only mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 ```
 
 - [ ] In `.agents/skills/hsconfig/SKILL.md`, add one compact bullet near the existing contract-doctor guidance:
 
 ```markdown
-- After `configure`, read `reports/configure_summary.json.config_quality_summary` for quick diagnostic quality status. It is diagnostic-only and non-blocking; use `contract-doctor` for details. `reports/operator_summary.json` remains the normal apply authority.
+- After `configure`, read `<out>/configure_summary.json.config_quality_summary` for quick diagnostic quality status. It is diagnostic-only and non-blocking; use `contract-doctor` for details. `reports/operator_summary.json` remains the normal apply authority.
 ```
 
 - [ ] Run the existing skill sync command so the installed skill stays current:
@@ -517,7 +518,7 @@ No additional tracked or untracked files should appear.
 
 ## Acceptance Criteria
 
-- `hsconfig configure` writes `reports/configure_summary.json.config_quality_summary`.
+- `hsconfig configure` writes `<out>/configure_summary.json.config_quality_summary`.
 - The new summary is compact and deterministic:
   - `status`
   - `authority`

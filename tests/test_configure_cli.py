@@ -578,14 +578,20 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _stub_empty_card_fetches(monkeypatch)
+    apply_calls = []
 
     def raise_report(_package_dir: Path) -> dict[str, Any]:
         raise RuntimeError("quality unavailable")
+
+    def fake_apply_payload(args):
+        apply_calls.append(args)
+        return {"status": "applied"}, 0
 
     monkeypatch.setattr(
         "hsconfig.commands.configure.build_config_quality_report",
         raise_report,
     )
+    monkeypatch.setattr("hsconfig.commands.configure.apply_payload", fake_apply_payload)
     out = tmp_path / "out"
 
     assert main(
@@ -599,6 +605,7 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
             str(tmp_path / "runtime"),
             "--out",
             str(out),
+            "--apply",
             "--json",
         ]
     ) == 0
@@ -615,3 +622,5 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         "next_action": "run_contract_doctor_for_details",
         "error": "RuntimeError: quality unavailable",
     }
+    assert len(apply_calls) == 1
+    assert apply_calls[0].package == str(out / "04_package")
