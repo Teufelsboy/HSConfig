@@ -82,6 +82,7 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "card_behavior": _card_behavior_check(card_behavior),
         "source_to_runtime_explainability": _explainability_check(explainability),
         "trace_completeness": _trace_completeness_check(card_behavior, explainability),
+        "closure_freshness": _closure_freshness_check(operator),
         "runtime_json": _runtime_json_check(package),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
@@ -209,6 +210,25 @@ def _trace_completeness_check(
         "runtime_rows_missing_trace": missing,
         "traced_card_ids": sorted(traced),
         "runtime_card_ids": sorted({_row_card_id(row) for row in runtime_rows}),
+    }
+
+
+def _closure_freshness_check(operator: Mapping[str, Any]) -> dict[str, Any]:
+    summary = operator.get("source_to_runtime_explainability_summary")
+    if not isinstance(summary, Mapping):
+        return {
+            "present": False,
+            "closure_schema_current": False,
+            "cards_missing_closure": 0,
+            "cards_total": 0,
+            "cards_with_closure": 0,
+        }
+    return {
+        "present": True,
+        "closure_schema_current": bool(summary.get("closure_schema_current", False)),
+        "cards_missing_closure": _int_value(summary.get("cards_missing_closure", 0)),
+        "cards_total": _int_value(summary.get("cards_total", 0)),
+        "cards_with_closure": _int_value(summary.get("cards_with_closure", 0)),
     }
 
 
@@ -455,6 +475,29 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
+    closure = checks["closure_freshness"]
+    if not closure["present"]:
+        problems.append(
+            {
+                "check": "source_to_runtime_closure_summary_missing",
+                "value": "operator_summary.json",
+            }
+        )
+    elif not closure["closure_schema_current"]:
+        problems.append(
+            {
+                "check": "source_to_runtime_closure_not_current",
+                "value": False,
+            }
+        )
+    if closure["cards_missing_closure"]:
+        problems.append(
+            {
+                "check": "source_to_runtime_closure_rows_missing",
+                "value": closure["cards_missing_closure"],
+            }
+        )
+
     explainability = checks["source_to_runtime_explainability"]
     if explainability["has_default_only_runtime_surfaces"]:
         problems.append(
@@ -539,6 +582,13 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _read_json(path: Path) -> Any:

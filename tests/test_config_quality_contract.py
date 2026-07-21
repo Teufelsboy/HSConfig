@@ -26,6 +26,17 @@ def minimal_clean_package(tmp_path: Path) -> Path:
                 "status": "clean",
                 "default_only_runtime_surfaces": [],
             },
+            "source_to_runtime_explainability_summary": {
+                "non_blocking": True,
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "closure_lane_counts": {"source_backed_runtime_lowered": 1},
+                "cards_with_closure": 1,
+                "cards_missing_closure": 0,
+                "closure_schema_current": True,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
             "surface_status_ledger": [
                 {"surface": "cardid_behavior", "status": "emitted"},
                 {"surface": "globalvalues", "status": "emitted"},
@@ -148,6 +159,78 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "traced_card_ids": ["NX2_019"],
         "runtime_card_ids": ["NX2_019"],
     }
+    assert report["checks"]["closure_freshness"] == {
+        "present": True,
+        "closure_schema_current": True,
+        "cards_missing_closure": 0,
+        "cards_total": 1,
+        "cards_with_closure": 1,
+    }
+
+
+def test_config_quality_flags_stale_source_to_runtime_closure_summary(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["source_to_runtime_explainability_summary"] = {
+        "non_blocking": True,
+        "cards_total": 2,
+        "cards_with_closure": 1,
+        "cards_missing_closure": 1,
+        "closure_schema_current": False,
+        "next_report_to_open": "reports/source_to_runtime_explainability.json",
+    }
+    write_json(package / "reports" / "operator_summary.json", operator)
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["closure_freshness"] == {
+        "present": True,
+        "closure_schema_current": False,
+        "cards_missing_closure": 1,
+        "cards_total": 2,
+        "cards_with_closure": 1,
+    }
+    assert {
+        "check": "source_to_runtime_closure_not_current",
+        "value": False,
+    } in report["problems"]
+    assert {
+        "check": "source_to_runtime_closure_rows_missing",
+        "value": 1,
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_flags_missing_source_to_runtime_closure_summary(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator.pop("source_to_runtime_explainability_summary")
+    write_json(package / "reports" / "operator_summary.json", operator)
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["closure_freshness"] == {
+        "present": False,
+        "closure_schema_current": False,
+        "cards_missing_closure": 0,
+        "cards_total": 0,
+        "cards_with_closure": 0,
+    }
+    assert {
+        "check": "source_to_runtime_closure_summary_missing",
+        "value": "operator_summary.json",
+    } in report["problems"]
+    assert report["apply_blocking"] is False
 
 
 def test_config_quality_flags_cardid_runtime_rows_without_source_trace(
