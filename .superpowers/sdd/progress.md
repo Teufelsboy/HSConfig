@@ -785,3 +785,18 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 7: Add ShadowPriest And Universal Wild Regression Assertions (commits 72821b5..a479237, review clean after stray filename/deck-identity fixes)
 - [x] Task 8: Update Operator And Skill Documentation (commits a479237..eea008c, review clean)
 - [x] Task 9: Full Verification, Currentness, And Commit (focused 85 passed; no-second-gate/source contracts 84 passed; guardrails 522 passed; full suite 1697 passed, 11 skipped; final review fix baa4862 re-reviewed clean)
+
+---
+
+# HSConfig Configure Quality Summary SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-21-hsconfig-config-quality-configure-summary.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; ahead_origin_main=28; no runtime apply/write.
+- [x] Task 1: Add Config Quality Summary RED Tests (commits c564f12..27d205a, review clean; expected import RED confirmed)
+- [x] Task 2: Implement Compact Summary Helper (commits 27d205a..8589037, review clean; focused helper tests passed)
+- [x] Task 3: Add Configure-Summary Integration (commits 8589037..cf1ae6b, review clean; configure CLI tests passed)
+- [x] Task 4: Update Operator Docs And Skill Text (commits cf1ae6b..55d510f, initial review caught wrong configure_summary path; rework review clean; skill sync passed)
+- [x] Task 5: Final Apply-Path Regression And Plan Correction (commit dab054f, diagnostic failure remains non-blocking for configure --apply; plan path references fixed)
+- [x] Task 6: Verification And Final Review (focused contract/configure 99 passed; source/shadow/wild 52 passed; guardrails 523 passed; full suite 1702 passed, 11 skipped; final review approved)
