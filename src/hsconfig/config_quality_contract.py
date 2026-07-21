@@ -78,6 +78,10 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     if not isinstance(explainability, Mapping):
         explainability = {}
 
+    deck_identity = _read_json(package / "reports" / "deck_identity.json")
+    if not isinstance(deck_identity, Mapping):
+        deck_identity = {}
+
     checks = {
         "operator_summary": _operator_summary_check(operator),
         "card_behavior": _card_behavior_check(card_behavior),
@@ -87,7 +91,12 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "mechanic_runtime_discipline": _mechanic_runtime_discipline_check(
             card_behavior
         ),
-        "runtime_json": _runtime_json_check(package, card_behavior, explainability),
+        "runtime_json": _runtime_json_check(
+            package,
+            deck_identity,
+            card_behavior,
+            explainability,
+        ),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
     }
@@ -327,12 +336,42 @@ def _file_card_id(value: Any) -> str:
 
 
 def _expected_cardid_runtime_files(
+    deck_identity: Mapping[str, Any],
     card_behavior: Mapping[str, Any],
     explainability: Mapping[str, Any],
 ) -> set[str]:
-    expected = {_row_card_id(row) for row in _meaningful_cardid_rows(card_behavior)}
+    expected = _deck_identity_card_ids(deck_identity)
+    expected.update(_row_card_id(row) for row in _meaningful_cardid_rows(card_behavior))
     expected.update(_traced_card_ids(explainability))
     return {card_id for card_id in expected if card_id}
+
+
+def _deck_identity_card_ids(deck_identity: Mapping[str, Any]) -> set[str]:
+    card_ids: set[str] = set()
+    for key in ("cards", "main_deck"):
+        card_ids.update(_card_ids_from_rows(deck_identity.get(key, [])))
+
+    sideboards = deck_identity.get("sideboards", [])
+    if isinstance(sideboards, list):
+        for sideboard in sideboards:
+            if isinstance(sideboard, Mapping):
+                card_ids.update(_card_ids_from_rows(sideboard.get("cards", [])))
+
+    return card_ids
+
+
+def _card_ids_from_rows(rows: Any) -> set[str]:
+    if not isinstance(rows, list):
+        return set()
+    card_ids: set[str] = set()
+    for row in rows:
+        if isinstance(row, Mapping):
+            card_id = _row_card_id(row)
+        else:
+            card_id = str(row or "").strip()
+        if card_id:
+            card_ids.add(card_id)
+    return card_ids
 
 
 def _mechanic_runtime_discipline_check(
@@ -368,11 +407,16 @@ def _mechanic_runtime_discipline_check(
 
 def _runtime_json_check(
     package: Path,
+    deck_identity: Mapping[str, Any],
     card_behavior: Mapping[str, Any],
     explainability: Mapping[str, Any],
 ) -> dict[str, Any]:
     deck_dirs = _custom_config_deck_dirs(package)
-    expected_card_ids = _expected_cardid_runtime_files(card_behavior, explainability)
+    expected_card_ids = _expected_cardid_runtime_files(
+        deck_identity,
+        card_behavior,
+        explainability,
+    )
     metadata_leaks: list[dict[str, Any]] = []
     stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:

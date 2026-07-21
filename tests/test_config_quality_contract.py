@@ -309,6 +309,67 @@ def test_config_quality_flags_stray_cardid_runtime_file_without_report_trace(
     assert report["apply_blocking"] is False
 
 
+def test_config_quality_allows_deck_identity_card_runtime_file_without_emitted_trace(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "deck_identity.json",
+        {
+            "deck_name": "ShadowPriest",
+            "cards": [{"card_id": "NX2_019"}, {"card_id": "TOY_381"}],
+        },
+    )
+    explainability = json.loads(
+        (package / "reports" / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    explainability["card_rows"].append(
+        {
+            "card_id": "TOY_381",
+            "first_missing_link": "claim_kind_runtime_surface",
+            "source_lane": "report_only",
+            "emitted_runtime_files": [],
+            "runtime_surfaces": [],
+            "closure": {
+                "lane": "report_only",
+                "runtime_surfaces": [],
+                "default_only_risk": False,
+            },
+            "evidence_chain": [],
+        }
+    )
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        explainability,
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "TOY_381.json",
+        {
+            "GameCardId": "TOY_381",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "deck card runtime row emitted by rich output",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["runtime_json"]["stray_cardid_files"] == []
+    assert report["status"] == "clean"
+    assert not any(
+        problem["check"] == "stray_cardid_runtime_files"
+        for problem in report["problems"]
+    )
+
+
 def test_config_quality_flags_stale_source_to_runtime_closure_summary(
     tmp_path: Path,
 ):
