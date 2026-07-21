@@ -1,10 +1,31 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from dataclasses import asdict
 from pathlib import Path
 
 from hsconfig.commands.common import emit_result
-from hsconfig.contract_preflight import build_contract_preflight
+from hsconfig.contract_preflight import (
+    EXPECTED_CHECK_KEYS,
+    GitPreflight,
+    build_contract_preflight,
+)
+
+
+def _unavailable_git_payload() -> dict[str, object]:
+    return asdict(
+        GitPreflight(
+            branch="unknown",
+            upstream=None,
+            dirty=False,
+            ahead_origin_main=0,
+            behind_origin_main=0,
+            clean_for_runtime_work=False,
+            ahead_upstream=None,
+            behind_upstream=None,
+            origin_main_error="git preflight unavailable",
+        )
+    )
 
 
 def run_contract_preflight_command(args: Namespace) -> int:
@@ -19,8 +40,9 @@ def run_contract_preflight_command(args: Namespace) -> int:
                 "type": type(exc).__name__,
                 "message": str(exc) or type(exc).__name__,
             },
-            "checks": {},
-            "failures": ["repo_root"],
+            "git": _unavailable_git_payload(),
+            "checks": {key: False for key in EXPECTED_CHECK_KEYS},
+            "failures": list(EXPECTED_CHECK_KEYS),
             "runtime_apply_authority": "reports/operator_summary.json",
             "source_status_apply_blocking": False,
             "diagnostic_only": True,

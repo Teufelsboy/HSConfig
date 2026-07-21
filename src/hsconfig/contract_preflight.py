@@ -14,6 +14,21 @@ REQUIRED_REFERENCE_FILES = (
     "references/contract-compiler-checklist.md",
 )
 
+EXPECTED_CHECK_KEYS = (
+    "repo_current",
+    "skill_root_present",
+    "reference_files_present",
+    "checklist_referenced_by_normal_workflow",
+    "checklist_listed_in_references",
+    "operator_summary_single_authority_visible",
+    "source_status_nonblocking_visible",
+    "no_default_only_visible",
+    "runtime_surface_boundary_visible",
+    "darkbishop_effect_not_mulligan_visible",
+    "negative_scope_visible",
+    "diagnostic_only_visible",
+)
+
 
 @dataclass(frozen=True)
 class GitPreflight:

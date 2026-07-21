@@ -122,9 +122,16 @@ def test_contract_preflight_cli_returns_json_attention_for_invalid_repo_root(
 
     assert result.returncode == 1
     payload = json.loads(result.stdout)
+    normal_payload = build_contract_preflight(Path("."), git=_clean_git())
+
     assert payload["status"] == "ATTENTION"
     assert payload["error"]
     assert payload["repo_root"] == str(invalid_repo_root.resolve())
+    assert set(payload) - {"error"} == set(normal_payload)
+    assert isinstance(payload["git"], dict)
+    assert set(payload["git"]) == set(normal_payload["git"])
+    assert isinstance(payload["checks"], dict)
+    assert set(payload["checks"]) == set(normal_payload["checks"])
     assert "Traceback" not in result.stderr
 
 
