@@ -178,3 +178,47 @@ def test_research_payload_provenance_keeps_source_freshness_and_currency_compati
     assert result["freshness_status"] == freshness_status
     assert result["current_or_evergreen"] is True
     assert result["source_status_apply_blocking"] is False
+
+
+@pytest.mark.parametrize(
+    ("lane_key", "lane"),
+    [
+        ("source_freshness_lane", "guide_current_deck_match"),
+        ("source_freshness_lane", "current"),
+        ("source_rank_lane", "guide_current_deck_match"),
+    ],
+)
+def test_research_payload_provenance_accepts_top_level_current_lane(
+    lane_key: str,
+    lane: str,
+) -> None:
+    result = research_payload_provenance({lane_key: lane})
+
+    assert result["freshness_status"] == "current"
+    assert result["current_or_evergreen"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+@pytest.mark.parametrize(
+    "lane",
+    ["guide_evergreen_wild_archetype", "evergreen_wild_archetype"],
+)
+def test_research_payload_provenance_accepts_top_level_evergreen_lane(
+    lane: str,
+) -> None:
+    result = research_payload_provenance({"source_freshness_lane": lane})
+
+    assert result["freshness_status"] == "evergreen"
+    assert result["current_or_evergreen"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_payload_provenance_reports_explicit_stale_top_level_lane() -> None:
+    result = research_payload_provenance(
+        {"source_freshness_lane": "stale_unproven_for_2026"}
+    )
+
+    assert result["freshness_status"] == "stale"
+    assert result["current_or_evergreen"] is False
+    assert result["current_or_evergreen_reason"] != "missing_current_or_evergreen_marker"
+    assert result["source_status_apply_blocking"] is False

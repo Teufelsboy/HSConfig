@@ -86,16 +86,31 @@ def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _provenance_result("current", _reason(payload, "top_level_current"))
     if top_level_status in EVERGREEN_MARKERS:
         return _provenance_result("evergreen", _reason(payload, "top_level_evergreen"))
+    if _is_stale_marker(top_level_status):
+        return _provenance_result("stale", _reason(payload, "top_level_stale_marker"))
+    top_level_lane = _normalized_marker(
+        payload.get("source_freshness_lane") or payload.get("source_rank_lane")
+    )
+    if top_level_lane in CURRENT_MARKERS or top_level_lane == "guide_current_deck_match":
+        return _provenance_result("current", _reason(payload, "top_level_current_lane"))
+    if top_level_lane in EVERGREEN_MARKERS:
+        return _provenance_result("evergreen", _reason(payload, "top_level_evergreen_lane"))
+    if _is_stale_marker(top_level_lane):
+        return _provenance_result("stale", _reason(payload, "top_level_stale_lane"))
     source_freshness = _normalized_marker(payload.get("source_freshness"))
     if source_freshness in CURRENT_MARKERS:
         return _provenance_result("current", _reason(payload, "top_level_source_freshness"))
     if source_freshness in EVERGREEN_MARKERS:
         return _provenance_result("evergreen", _reason(payload, "top_level_source_freshness"))
+    if _is_stale_marker(source_freshness):
+        return _provenance_result("stale", _reason(payload, "top_level_stale_source_freshness"))
     currency_status = _normalized_marker(payload.get("currency_status"))
     if currency_status in CURRENT_MARKERS:
         return _provenance_result("current", _reason(payload, "top_level_currency_status"))
     if currency_status in EVERGREEN_MARKERS:
         return _provenance_result("evergreen", _reason(payload, "top_level_currency_status"))
+    if _is_stale_marker(currency_status):
+        return _provenance_result("stale", _reason(payload, "top_level_stale_currency_status"))
     if _truthy(payload.get("current_or_evergreen")):
         return _provenance_result("current", _reason(payload, "top_level_current_or_evergreen"))
     if _truthy(payload.get("evergreen_wild_archetype")):
@@ -108,16 +123,22 @@ def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
             return _provenance_result("current", _reason(row, "nested_current_marker"))
         if marker in EVERGREEN_MARKERS or lane in EVERGREEN_MARKERS:
             return _provenance_result("evergreen", _reason(row, "nested_evergreen_marker"))
+        if _is_stale_marker(marker) or _is_stale_marker(lane):
+            return _provenance_result("stale", _reason(row, "nested_stale_marker"))
         source_freshness = _normalized_marker(row.get("source_freshness"))
         if source_freshness in CURRENT_MARKERS:
             return _provenance_result("current", _reason(row, "nested_source_freshness"))
         if source_freshness in EVERGREEN_MARKERS:
             return _provenance_result("evergreen", _reason(row, "nested_source_freshness"))
+        if _is_stale_marker(source_freshness):
+            return _provenance_result("stale", _reason(row, "nested_stale_source_freshness"))
         currency_status = _normalized_marker(row.get("currency_status"))
         if currency_status in CURRENT_MARKERS:
             return _provenance_result("current", _reason(row, "nested_currency_status"))
         if currency_status in EVERGREEN_MARKERS:
             return _provenance_result("evergreen", _reason(row, "nested_currency_status"))
+        if _is_stale_marker(currency_status):
+            return _provenance_result("stale", _reason(row, "nested_stale_currency_status"))
         if _truthy(row.get("current_or_evergreen")):
             return _provenance_result("current", _reason(row, "nested_current_or_evergreen"))
         if _truthy(row.get("evergreen_wild_archetype")):
@@ -309,6 +330,10 @@ def _truthy(value: Any) -> bool:
 
 def _normalized_marker(value: Any) -> str:
     return _text(value).lower()
+
+
+def _is_stale_marker(marker: str) -> bool:
+    return marker == "stale" or marker.startswith("stale_")
 
 
 def _norm(value: Any) -> str:
