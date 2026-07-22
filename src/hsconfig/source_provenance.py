@@ -43,10 +43,6 @@ EVERGREEN_MARKERS = {
     "evergreen_wild_archetype",
     "guide_evergreen_wild_archetype",
 }
-CURRENT_OR_EVERGREEN_RANK_LANES = {
-    "guide_current_deck_match",
-    "guide_evergreen_wild_archetype",
-}
 EVERGREEN_WILD_MAX_AGE_YEARS = 10
 EVERGREEN_WILD_MIN_MATCHED_CARDS = 2
 
@@ -62,7 +58,7 @@ def normalize_source_provenance(
     visibility = _source_visibility(record, family)
     publication_year = _publication_year(record)
     current_year = _current_year(current_date)
-    deck_match = _deck_identity_match(record, deck_name)
+    deck_match = _deck_identity_match(record, deck_name, deck_identity)
     freshness_status, reason = _freshness_status(
         record,
         family=family,
@@ -150,7 +146,11 @@ def _source_visibility(record: Mapping[str, Any], family: str) -> str:
     return "unknown"
 
 
-def _deck_identity_match(record: Mapping[str, Any], deck_name: str) -> dict[str, Any]:
+def _deck_identity_match(
+    record: Mapping[str, Any],
+    deck_name: str,
+    deck_identity: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     explicit = _text(record.get("deck_match_scope")).lower()
     if explicit in {"deck_matched", "deck_or_archetype_matched"}:
         return {"matched": True, "basis": explicit}
@@ -159,7 +159,13 @@ def _deck_identity_match(record: Mapping[str, Any], deck_name: str) -> dict[str,
         return {"matched": False, "basis": "missing_deck_match"}
     declared = _norm(match.get("deck_name"))
     matched_ids = match.get("matched_card_ids", [])
-    has_card_overlap = isinstance(matched_ids, list) and any(_text(card_id) for card_id in matched_ids)
+    canonical_ids = _canonical_card_ids(deck_identity)
+    if canonical_ids:
+        has_card_overlap = isinstance(matched_ids, list) and bool(
+            canonical_ids.intersection({_text(card_id) for card_id in matched_ids if _text(card_id)})
+        )
+    else:
+        has_card_overlap = isinstance(matched_ids, list) and any(_text(card_id) for card_id in matched_ids)
     if declared == _norm(deck_name) and has_card_overlap:
         return {"matched": True, "basis": "deck_name_and_card_overlap"}
     if declared == _norm(deck_name):
@@ -167,6 +173,19 @@ def _deck_identity_match(record: Mapping[str, Any], deck_name: str) -> dict[str,
     if has_card_overlap:
         return {"matched": True, "basis": "card_overlap"}
     return {"matched": False, "basis": "no_identity_match"}
+
+
+def _canonical_card_ids(deck_identity: Mapping[str, Any] | None) -> set[str]:
+    if not isinstance(deck_identity, Mapping):
+        return set()
+    cards = deck_identity.get("cards", [])
+    if not isinstance(cards, list):
+        return set()
+    return {
+        _text(card.get("card_id"))
+        for card in cards
+        if isinstance(card, Mapping) and _text(card.get("card_id"))
+    }
 
 
 def _freshness_status(

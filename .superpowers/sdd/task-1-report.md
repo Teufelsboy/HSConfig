@@ -87,3 +87,22 @@ Review fix
 - The implementation is pure and has no new dependencies or runtime side effects.
 - The brief-defined tests do not exhaustively cover every fallback branch; later consumer tasks should add contract-level coverage when integrating this helper.
 - Final commit scope contains only `src/hsconfig/source_provenance.py`, `tests/test_source_provenance.py`, and this required Task-1 report.
+
+## Task 1 Review Fix
+
+### Finding and regression test
+
+- Review finding: `_deck_identity_match` ignored `deck_identity["cards"]`, so unrelated non-empty `matched_card_ids` could falsely establish card overlap.
+- Added `test_unrelated_matched_cards_do_not_establish_deck_identity_match` to prove that unrelated IDs do not match a known canonical deck.
+- RED command: `python -m pytest tests/test_source_provenance.py::test_unrelated_matched_cards_do_not_establish_deck_identity_match -q`
+- RED result: exit 1; the pre-fix implementation returned `deck_identity_match=True` instead of `False`.
+
+### Fix and verification
+
+- Passed `deck_identity` through to `_deck_identity_match`.
+- Added canonical CardID extraction from `deck_identity["cards"]`; when canonical IDs exist, matched IDs count only when their sets intersect.
+- Preserved deck-name-only matching and `source_status_apply_blocking=False`.
+- Removed the unused `CURRENT_OR_EVERGREEN_RANK_LANES` constant.
+- GREEN command: `python -m pytest tests/test_source_provenance.py -q`
+- GREEN result: exit 0, `5 passed in 0.10s`.
+- No downstream consumers, runtime apply/output, or dependencies were changed.

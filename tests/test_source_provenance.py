@@ -92,6 +92,25 @@ def test_decklist_only_is_visible_but_never_current_guide_provenance() -> None:
     assert result["source_status_apply_blocking"] is False
 
 
+def test_unrelated_matched_cards_do_not_establish_deck_identity_match() -> None:
+    result = normalize_source_provenance(
+        {
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "deck_match": {
+                "deck_name": "OtherDeck",
+                "matched_card_ids": ["OTHER_001", "OTHER_002"],
+            },
+        },
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        current_date="2026-07-22",
+    )
+
+    assert result["deck_identity_match"] is False
+    assert result["deck_identity_match_basis"] == "no_identity_match"
+
+
 def test_research_payload_provenance_accepts_nested_current_marker() -> None:
     result = research_payload_provenance(
         {
