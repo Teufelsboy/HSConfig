@@ -933,4 +933,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Add Configure-Local Config Proof Summary (commits 2a26ede..3ccf016, review clean)
 - [x] Task 3: Make Proof Summary Visible In Contract Preflight (commits f40e2ac..8e06587, review clean)
 - [x] Task 4: Update Operator Docs And Skill Wording (commits f40e2ac..8e06587, review clean)
-- [ ] Task 5: Final Verification And Clean Worktree
+- [x] Task 5: Final Verification And Clean Worktree (final review fix 40fd4c6 re-reviewed clean; currentness clean; targeted 96 passed; contract-preflight PASS; contract-spine-sentinel clean)
