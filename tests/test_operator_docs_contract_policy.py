@@ -671,3 +671,16 @@ def test_docs_and_skill_route_configure_source_closure_receipt_without_second_ga
     assert "source_status_apply_blocking=false" in active_text
     assert "default-only runtime surfaces remain visible quality debt" in active_text
     assert "source_closure_receipt remains the normal apply authority" not in active_text.lower()
+
+
+def test_skill_workflow_routes_configure_source_closure_receipt_with_out_prefix():
+    text = (
+        ROOT
+        / ".agents"
+        / "skills"
+        / "hsconfig"
+        / "references"
+        / "workflow.md"
+    ).read_text(encoding="utf-8")
+
+    assert "`<out>/configure_summary.json.source_closure_receipt`" in text
