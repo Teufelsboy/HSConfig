@@ -754,6 +754,32 @@ def test_dredge_static_mechanic_stays_report_only():
     ]
 
 
+def test_generic_spell_target_uses_report_only_policy_reason_before_explicit_block_requirement():
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_generic_spell_target",
+                "claim_kind": "mechanic_usage",
+                "cards": ["SPELL_TARGET_001"],
+                "mechanic": "generic_spell_target",
+                "claim_readiness": "source_backed_static_semantics",
+            }
+        ]
+    )
+
+    assert result["rows"] == []
+    assert result["suppressed"] == [
+        {
+            "claim_id": "claim_generic_spell_target",
+            "claim_kind": "mechanic_usage",
+            "cards": ["SPELL_TARGET_001"],
+            "reason": "generic_spell_target_has_no_documented_runtime_block",
+            "mechanic": "generic_spell_target",
+            "lowering_policy": "report_only",
+        }
+    ]
+
+
 def test_choose_one_mechanic_usage_requires_resolved_option_identity():
     routed = route_card_behavior_claims(
         [

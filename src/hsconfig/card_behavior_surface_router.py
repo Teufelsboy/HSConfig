@@ -140,20 +140,6 @@ def route_card_behavior_surfaces(
             mechanic = _claim_mechanic(claim)
             policy = mechanic_lowering_policy(mechanic)
             policy_name = str(policy["policy"])
-            if mechanic in MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK and explicit_block is None:
-                suppressed.append(
-                    {
-                        **_suppressed_row(
-                            claim,
-                            claim_kind,
-                            cards,
-                            f"{mechanic}_requires_explicit_runtime_block",
-                        ),
-                        "mechanic": mechanic,
-                        "lowering_policy": policy_name,
-                    }
-                )
-                continue
             if policy_name == "report_only":
                 reason = (
                     "requires_supported_cardid_surface"
@@ -167,6 +153,20 @@ def route_card_behavior_surfaces(
                             claim_kind,
                             cards,
                             reason,
+                        ),
+                        "mechanic": mechanic,
+                        "lowering_policy": policy_name,
+                    }
+                )
+                continue
+            if mechanic in MECHANIC_USAGE_REQUIRES_EXPLICIT_RUNTIME_BLOCK and explicit_block is None:
+                suppressed.append(
+                    {
+                        **_suppressed_row(
+                            claim,
+                            claim_kind,
+                            cards,
+                            f"{mechanic}_requires_explicit_runtime_block",
                         ),
                         "mechanic": mechanic,
                         "lowering_policy": policy_name,
