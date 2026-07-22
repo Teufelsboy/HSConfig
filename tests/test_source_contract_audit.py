@@ -94,6 +94,10 @@ def test_source_contract_audit_explains_surface_gate_lanes():
     )
 
     assert report["schema_version"] == 1
+    assert report["authority"] == "diagnostic_only"
+    assert report["operator_gate_impact"] == "diagnostic_only"
+    assert report["apply_blocking"] is False
+    assert report["normal_apply_authority"] == "reports/operator_summary.json"
     assert report["summary"]["claims_total"] == 2
     assert report["summary"]["runtime_lowered_claims"] == 1
     assert report["summary"]["runtime_evidence_required_claims"] == 1

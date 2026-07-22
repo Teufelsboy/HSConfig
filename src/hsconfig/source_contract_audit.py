@@ -152,6 +152,10 @@ def build_source_contract_audit(
     )
     return {
         "schema_version": 1,
+        "authority": _DIAGNOSTIC_OPERATOR_IMPACT,
+        "operator_gate_impact": _DIAGNOSTIC_OPERATOR_IMPACT,
+        "apply_blocking": False,
+        "normal_apply_authority": "reports/operator_summary.json",
         "deck_name": deck_name,
         "summary": summary,
         "claim_rows": claim_rows,
