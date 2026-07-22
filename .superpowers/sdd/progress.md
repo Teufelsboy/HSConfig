@@ -946,3 +946,18 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Project Installed Skill Sync Through Contract Preflight (commits 44b9144..d82ad2d, review clean after fallback semantics fixes)
 - [x] Task 3: Update Operator Docs And Skill Routing (commits 86ea840..68edab7, re-review approved after expert-path fix)
 - [x] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree (final review fixes 0e93fe4, fd688ab, and 452415c; re-review approved with no Critical/Important findings; focused suites 76 passed; installed skill sync --check in sync; branch diff whitespace clean; currentness clean)
+
+---
+
+# HSConfig Handoff Contract And Research Sentinel SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-handoff-contract-research-sentinel.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before edits; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Task 1: configure handoff_contract committed in 56efb9f; focused configure tests passed; reviewer clean after integration assertion.
+- [x] Task 2: research result contract sentinel committed in 0a1f7df; strict-valid/contract-invalid regression fixed; focused sentinel/validator/contract tests 35 passed; re-review clean.
+- [x] Task 3: contract-preflight surfaces latest research result contract diagnostics in a1790f7; lazy sentinel import and deterministic latest-batch attention semantics verified; preflight tests 22 passed; re-review clean.
+- [x] Task 4: operator docs and skill routing committed in 9adb09f; docs/skill slice 137 passed; installed skill sync --check in sync; reviewer clean.
+- [x] Task 5: guardrail runner includes handoff and research sentinel tests in 8216ca5; guardrail membership tests passed; reviewer clean.
+- [x] Task 6: final verification passed before ledger commit: full suite 1777 passed, 11 skipped; contract guardrails 547 passed; contract-preflight PASS; installed skill sync in sync; currentness dirty=false, behind_origin_main=0, clean_for_runtime_work=true.
