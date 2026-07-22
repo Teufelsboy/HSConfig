@@ -10,7 +10,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 
 - Run `hsconfig configure` for normal operation.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
-- Open `reports/operator_summary.json` first.
+- After `configure`, read `<out>/configure_summary.json.acceptance_summary` first; it is an operator projection. Use `reports/operator_summary.json` as the apply authority.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
 - Warnings are follow-up work, not a second apply path.
 - HSTuner owns post-run evaluation and tuning.
@@ -22,8 +22,9 @@ Preferred normal path: `hsconfig configure`.
 ## Normal Operator Path
 
 1. Run `hsconfig configure`.
-2. Open `outputs/<DeckName>/04_package/reports/operator_summary.json`.
-3. Apply only through `hsconfig apply` or `hsconfig configure --apply`.
+2. Read `outputs/<DeckName>/configure_summary.json.acceptance_summary`.
+3. Use `outputs/<DeckName>/04_package/reports/operator_summary.json` as the apply authority.
+4. Apply only through `hsconfig apply` or `hsconfig configure --apply`.
 
 reports/operator_summary.json remains the only normal apply authority.
 Other reports are diagnostic. They explain source quality, mechanic coverage,
@@ -79,7 +80,7 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
-2. Open `reports/operator_summary.json` first.
+2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not a second apply gate.
 3. Treat `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` as the load-safe apply signal.
 4. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
 5. `default_only_runtime_surfaces` must be inspected when non-empty.
@@ -355,7 +356,9 @@ and does not block a technically valid package.
 
 `config_quality.checks.semantic_intent_coverage` is a diagnostic-only rollup: it shows traced per-card intent, missing semantic scores, semantic-default rows, report-only mechanic runtime leaks, and warning-only mechanics, but it does not change `reports/operator_summary.json` apply authority.
 
-`<out>/configure_summary.json.config_quality_summary` is a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
+`<out>/configure_summary.json.acceptance_summary` is the first post-`configure` read. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
+
+`<out>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 
 ## Expert Paths
 

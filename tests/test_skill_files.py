@@ -163,7 +163,11 @@ def test_skill_names_configure_normal_workflow():
         "   `source-manifest -> source-autopilot or draft-source-documents -> "
         "research-deck -> prepare -> validate -> apply`."
     ) in text
-    assert "3. Open `reports/operator_summary.json` first." in text
+    assert (
+        "3. After `configure`, read "
+        "`<out>/configure_summary.json.acceptance_summary` first; use "
+        "`reports/operator_summary.json` as the apply authority."
+    ) in text
     assert "`hsconfig configure --auto-source --source-search-results-json ...`" in text
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
 
@@ -180,6 +184,10 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     skill_fragment = skill.split("- After `configure`,", 1)[1].split("\n-", 1)[0]
 
     for text in (operator_fragment, skill_fragment):
+        assert "<out>/configure_summary.json.acceptance_summary" in text
+        assert "acceptance_summary" in text
+        assert "use_config_now" in text
+        assert "next_report_to_open" in text
         assert "<out>/configure_summary.json.config_quality_summary" in text
         assert "config_quality_summary" in text
         assert "diagnostic-only" in text
@@ -187,6 +195,24 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
         assert "contract-doctor" in text
         assert "operator_summary.json" in text
         assert "normal apply authority" in text
+
+
+def test_docs_skill_and_workflow_route_configure_acceptance_summary_first() -> None:
+    operator_docs = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(
+        encoding="utf-8"
+    )
+
+    for text in (operator_docs, skill, workflow):
+        assert "<out>/configure_summary.json.acceptance_summary" in text
+        assert "use_config_now" in text
+        assert "next_report_to_open" in text
+        assert "operator projection" in text
+        assert "operator_summary.json" in text
+        assert "apply authority" in text
 
 
 def test_skill_names_source_closure_intake_receipt_without_new_authority():
