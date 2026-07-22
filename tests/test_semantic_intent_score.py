@@ -174,3 +174,26 @@ def test_unrecognized_claim_bounds_default_value():
     assert high_score.value == "12"
     assert high_score.band == "default"
     assert high_score.reason == "semantic_default"
+
+
+def test_semantic_score_reuses_taxonomy_reason_for_board_tempo():
+    claim = {
+        "claim_kind": "card_role",
+        "cards": ["BOARD_001"],
+        "stance": "pressure",
+        "evidence_text_short": "Summon pirates to build a board.",
+    }
+
+    score = score_card_behavior_claim(
+        claim,
+        behavior_block="BeforePlayCardBonus",
+        intent="board_tempo",
+        roles=["pirate", "pressure"],
+        value_default="6",
+    )
+
+    assert score.value == "8"
+    assert score.band == "medium"
+    assert score.reason == "board_tempo"
+    assert score.profile == "semantic_intent"
+    assert "pirate" in score.matched_signals
