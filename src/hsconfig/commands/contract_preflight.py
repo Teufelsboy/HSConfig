@@ -80,6 +80,11 @@ def _unavailable_research_context_payload(repo_root: str) -> dict[str, object]:
             "historical_outline_count": 0,
             "historical_outline_paths": [],
             "historical_outlines_apply_authority": False,
+            "latest_research_result_contract_status": "attention",
+            "latest_research_result_contract_path": "",
+            "latest_research_result_contract_result_count": 0,
+            "latest_research_result_contract_invalid_count": 0,
+            "latest_research_result_contract_no_op_validation_risk": True,
             "source_status_apply_blocking": False,
             "notes": [
                 f"research context preflight unavailable for {root}: {type(exc).__name__}"

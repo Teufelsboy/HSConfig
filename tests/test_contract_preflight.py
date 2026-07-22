@@ -230,6 +230,8 @@ def test_contract_preflight_cli_returns_json_attention_for_invalid_repo_root(
     assert set(payload["git"]) == set(normal_payload["git"])
     assert isinstance(payload["checks"], dict)
     assert set(payload["checks"]) == set(normal_payload["checks"])
+    assert isinstance(payload["research_context"], dict)
+    assert set(payload["research_context"]) == set(normal_payload["research_context"])
     assert "Traceback" not in result.stderr
 
 
@@ -268,6 +270,7 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
         "repo_root",
     } <= set(payload)
     assert set(payload) - {"error"} == set(normal_payload)
+    assert set(payload["research_context"]) == set(normal_payload["research_context"])
     assert payload["error"]["type"] == "RuntimeError"
     assert payload["error"]["message"] == "forced preflight failure"
 
