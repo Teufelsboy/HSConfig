@@ -38,6 +38,14 @@ def _synced_install_root(tmp_path: Path) -> Path:
     return install_root
 
 
+def test_contract_preflight_import_path_does_not_require_research_sentinel() -> None:
+    source = Path("src/hsconfig/contract_preflight.py").read_text(encoding="utf-8")
+    top_level = source.split("def _latest_research_result_contract", 1)[0]
+
+    assert "from hsconfig.research_result_contract_sentinel import" not in top_level
+    assert "import yaml" not in top_level
+
+
 def test_contract_preflight_reports_installed_skill_sync_when_clean(
     tmp_path: Path,
 ) -> None:
@@ -549,3 +557,137 @@ def test_contract_preflight_cli_includes_research_context_without_writing_files(
     assert payload["research_context"]["historical_outlines_apply_authority"] is False
     assert payload["diagnostic_only"] is True
     assert before == after
+
+
+def test_contract_preflight_exposes_research_result_contract_sentinel() -> None:
+    payload = build_contract_preflight(Path("."), git=_clean_git())
+    research_context = payload["research_context"]
+
+    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
+    assert research_context["latest_research_result_contract_status"] in {
+        "clean",
+        "attention",
+        "not_found",
+    }
+    assert research_context["latest_research_result_contract_path"].startswith(
+        "docs/research/"
+    )
+    assert isinstance(
+        research_context["latest_research_result_contract_result_count"],
+        int,
+    )
+    assert isinstance(
+        research_context["latest_research_result_contract_invalid_count"],
+        int,
+    )
+    assert research_context["source_status_apply_blocking"] is False
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_research_result_attention_is_not_apply_blocking(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    latest = target_docs / "research" / "9999-invalid-research"
+    (latest / "results").mkdir(parents=True)
+    (latest / "fields.yaml").write_text("fields: []\n", encoding="utf-8")
+    (latest / "results" / "ShadowPriest.json").write_text(
+        json.dumps(
+            {
+                "deck_name": "ShadowPriest",
+                "source_strength": "SOURCE_BACKED_STRONG",
+                "first_missing_source_action": "none",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    research_context = payload["research_context"]
+    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
+    assert research_context["latest_research_result_contract_status"] == "attention"
+    assert (
+        research_context["latest_research_result_contract_no_op_validation_risk"]
+        is True
+    )
+    assert research_context["source_status_apply_blocking"] is False
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_latest_research_batch_is_deterministic_and_incomplete(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    latest = target_docs / "research" / "9999-incomplete-research"
+    latest.mkdir(parents=True)
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    research_context = payload["research_context"]
+    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
+    assert (
+        research_context["latest_research_result_contract_path"]
+        == "docs/research/9999-incomplete-research"
+    )
+    assert research_context["latest_research_result_contract_status"] == "attention"
+    assert (
+        research_context["latest_research_result_contract_no_op_validation_risk"]
+        is True
+    )
+    assert research_context["source_status_apply_blocking"] is False
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_malformed_research_result_is_attention_not_crash(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    latest = target_docs / "research" / "9999-malformed-research"
+    (latest / "results").mkdir(parents=True)
+    (latest / "fields.yaml").write_text("fields: []\n", encoding="utf-8")
+    (latest / "results" / "ShadowPriest.json").write_text(
+        "{not json",
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    research_context = payload["research_context"]
+    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
+    assert research_context["latest_research_result_contract_status"] == "attention"
+    assert (
+        research_context["latest_research_result_contract_no_op_validation_risk"]
+        is True
+    )
+    assert research_context["source_status_apply_blocking"] is False
+    assert payload["source_status_apply_blocking"] is False

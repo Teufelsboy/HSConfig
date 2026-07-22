@@ -36,6 +36,7 @@ EXPECTED_CHECK_KEYS = (
     "negative_scope_visible",
     "diagnostic_only_visible",
     "research_current_truth_index_visible",
+    "research_result_contract_sentinel_visible",
     "historical_research_outlines_diagnostic_only",
 )
 
@@ -67,6 +68,11 @@ class ResearchContextPreflight:
     historical_outline_count: int
     historical_outline_paths: tuple[str, ...]
     historical_outlines_apply_authority: bool
+    latest_research_result_contract_status: str
+    latest_research_result_contract_path: str
+    latest_research_result_contract_result_count: int
+    latest_research_result_contract_invalid_count: int
+    latest_research_result_contract_no_op_validation_risk: bool
     source_status_apply_blocking: bool
     notes: tuple[str, ...]
 
@@ -288,6 +294,64 @@ def _config_proof_summary_visible(combined: str) -> bool:
     )
 
 
+def _latest_research_result_contract(root: Path) -> dict[str, object]:
+    research_root = root / "docs" / "research"
+    if not research_root.is_dir():
+        return {
+            "status": "not_found",
+            "path": "",
+            "result_count": 0,
+            "invalid_count": 0,
+            "no_op_validation_risk": False,
+        }
+
+    candidates = sorted(path for path in research_root.iterdir() if path.is_dir())
+    if not candidates:
+        return {
+            "status": "not_found",
+            "path": "",
+            "result_count": 0,
+            "invalid_count": 0,
+            "no_op_validation_risk": False,
+        }
+
+    latest = candidates[-1]
+    fields_path = latest / "fields.yaml"
+    results_dir = latest / "results"
+    if not fields_path.is_file() or not results_dir.is_dir():
+        return {
+            "status": "attention",
+            "path": _relative_posix(root, latest),
+            "result_count": 0,
+            "invalid_count": 0,
+            "no_op_validation_risk": True,
+        }
+
+    try:
+        from hsconfig.research_result_contract_sentinel import (
+            build_research_result_contract_sentinel,
+        )
+
+        sentinel = build_research_result_contract_sentinel(fields_path, results_dir)
+        summary = sentinel["summary"]
+    except Exception:
+        return {
+            "status": "attention",
+            "path": _relative_posix(root, latest),
+            "result_count": 0,
+            "invalid_count": 0,
+            "no_op_validation_risk": True,
+        }
+    return {
+        "status": str(summary["status"]),
+        "path": _relative_posix(root, latest),
+        "result_count": int(summary["result_count"]),
+        "invalid_count": int(summary.get("strict_invalid_count") or 0)
+        + int(summary.get("contract_invalid_count") or 0),
+        "no_op_validation_risk": bool(summary["no_op_validation_risk"]),
+    }
+
+
 def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPreflight:
     root = Path(repo_root).resolve()
     current_truth_path = root / "docs" / "research" / "current-truth.md"
@@ -334,6 +398,7 @@ def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPr
         if isinstance(sync_policy, dict)
         else False
     )
+    latest_research_contract = _latest_research_result_contract(root)
     status = (
         "current"
         if active_evidence_index_present
@@ -359,6 +424,19 @@ def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPr
         historical_outline_count=len(historical_outline_paths),
         historical_outline_paths=historical_outline_paths,
         historical_outlines_apply_authority=historical_outlines_apply_authority,
+        latest_research_result_contract_status=str(
+            latest_research_contract["status"]
+        ),
+        latest_research_result_contract_path=str(latest_research_contract["path"]),
+        latest_research_result_contract_result_count=int(
+            latest_research_contract["result_count"]
+        ),
+        latest_research_result_contract_invalid_count=int(
+            latest_research_contract["invalid_count"]
+        ),
+        latest_research_result_contract_no_op_validation_risk=bool(
+            latest_research_contract["no_op_validation_risk"]
+        ),
         source_status_apply_blocking=source_status_apply_blocking,
         notes=(
             "Historical research outline files are evidence only.",
@@ -476,6 +554,11 @@ def build_contract_preflight(
             and research_context.authority == "evidence_index_only"
             and research_context.operator_gate_impact == "diagnostic_only"
             and research_context.normal_apply_authority == "reports/operator_summary.json"
+            and research_context.source_status_apply_blocking is False
+        ),
+        "research_result_contract_sentinel_visible": (
+            research_context.latest_research_result_contract_status
+            in {"clean", "attention", "not_found"}
             and research_context.source_status_apply_blocking is False
         ),
         "historical_research_outlines_diagnostic_only": (
