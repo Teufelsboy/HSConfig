@@ -172,6 +172,26 @@ def test_skill_names_configure_normal_workflow():
     assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
 
 
+def test_skill_and_workflow_show_complete_fresh_configure_command() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(
+        encoding="utf-8"
+    )
+    expected_command = (
+        'hsconfig configure --deck-name "<DeckName>" '
+        '--deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" '
+        '--out "outputs/<DeckName>" --online-source --auto-source --apply --json'
+    )
+    incomplete_command = (
+        'hsconfig configure --deck-name "<DeckName>" '
+        '--deck-code "<DeckCode>" --online-source --auto-source --apply'
+    )
+
+    for text in (skill, workflow):
+        assert expected_command in text
+        assert incomplete_command not in text
+
+
 def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     operator_docs = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
         encoding="utf-8"
