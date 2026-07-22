@@ -974,3 +974,13 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: configure summary projection committed in 7d4a7b5; reviewer approved compact summary, proof summary, handoff projection, and no-second-gate boundary.
 - [x] Task 3: contract-doctor, operator docs, repo skill, workflow reference, and sync test committed in b3b4ba4; reviewer approved diagnostic-only wording and installed skill sync coverage.
 - [x] Task 4: final verification passed before ledger commit: focused regression 76 passed; boundary regression 107 passed; no-second-gate slice 3 passed; contract-preflight PASS; installed skill sync in sync; currentness dirty=false, behind_origin_main=0, clean_for_runtime_work=true; forbidden tracked runtime/log scan clean.
+
+---
+
+# HSConfig Source Freshness Provenance Normalizer SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-source-freshness-provenance-normalizer.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; upstream in sync before implementation; origin/main not ahead; plan anchor c1e1d9c.
+- [x] Task 1: Pure source provenance normalizer committed in 2320087 with fixes 279ff61 and 19726b0; final re-review approved; focused provenance tests passed locally (6 passed).
