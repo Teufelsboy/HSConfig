@@ -461,6 +461,88 @@ def _build_config_quality_summary(package_dir: Path) -> dict[str, Any]:
         }
 
 
+def _build_acceptance_summary(
+    *,
+    operator_summary: Mapping[str, Any],
+    validate_status: int,
+    apply_requested: bool,
+    apply_status: int | None,
+    config_quality_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_contract = operator_summary.get("runtime_apply_contract", {})
+    if not isinstance(runtime_contract, Mapping):
+        runtime_contract = {}
+
+    normal_apply_authority = str(
+        runtime_contract.get("apply_authority") or "reports/operator_summary.json"
+    )
+    runtime_apply_allowed = bool(operator_summary.get("runtime_apply_allowed", False))
+    runtime_apply_mode = str(operator_summary.get("runtime_apply_mode", ""))
+    technical_status = str(operator_summary.get("technical_status", ""))
+    source_status_apply_blocking = bool(
+        operator_summary.get("source_status_apply_blocking", False)
+    )
+    default_only_runtime_surfaces = [
+        str(surface)
+        for surface in operator_summary.get("default_only_runtime_surfaces", [])
+        if str(surface)
+    ]
+    problem_checks = [
+        str(check)
+        for check in config_quality_summary.get("problem_checks", [])
+        if str(check)
+    ]
+
+    validation_passed = validate_status == 0
+    apply_passed = (not apply_requested) or apply_status == 0
+    use_config_now = (
+        technical_status == "VALID_PACKAGE"
+        and runtime_apply_allowed
+        and runtime_apply_mode == "load_safe_apply"
+        and validation_passed
+        and apply_passed
+    )
+
+    if not use_config_now:
+        next_report_to_open = "reports/operator_summary.json"
+        interpretation = (
+            "Package is not usable now; inspect reports/operator_summary.json first."
+        )
+    elif problem_checks or default_only_runtime_surfaces:
+        next_report_to_open = "reports/contract_doctor.json"
+        interpretation = (
+            "Package is usable now according to reports/operator_summary.json; "
+            "source and config-quality details remain diagnostic."
+        )
+    else:
+        next_report_to_open = normal_apply_authority
+        interpretation = (
+            "Package is usable now according to reports/operator_summary.json; "
+            "source and config-quality details remain diagnostic."
+        )
+
+    return {
+        "schema_version": 1,
+        "use_config_now": use_config_now,
+        "normal_apply_authority": normal_apply_authority,
+        "runtime_apply_allowed": runtime_apply_allowed,
+        "runtime_apply_mode": runtime_apply_mode,
+        "technical_status": technical_status,
+        "validation_status": "passed" if validation_passed else "failed",
+        "apply_requested": apply_requested,
+        "apply_status": apply_status,
+        "source_strength": str(operator_summary.get("source_backed_status", "")),
+        "source_gaps_apply_blocking": source_status_apply_blocking,
+        "default_only_clean": not default_only_runtime_surfaces,
+        "default_only_runtime_surfaces": default_only_runtime_surfaces,
+        "config_quality_status": str(config_quality_summary.get("status", "")),
+        "config_quality_problem_checks": problem_checks,
+        "first_missing_source_action": operator_summary.get("first_missing_source_action"),
+        "next_report_to_open": next_report_to_open,
+        "interpretation": interpretation,
+    }
+
+
 def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
     reasons = operator_summary.get("source_status_reasons") or []
     if isinstance(reasons, list) and reasons:

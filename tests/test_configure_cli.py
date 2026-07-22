@@ -7,7 +7,10 @@ from typing import Any
 import pytest
 
 from hsconfig.cli import main
-from hsconfig.commands.configure import _compact_config_quality_summary
+from hsconfig.commands.configure import (
+    _build_acceptance_summary,
+    _compact_config_quality_summary,
+)
 
 
 SHADOWPRIEST_CODE = (
@@ -479,6 +482,145 @@ def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, c
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "fake_apply_ready"
     assert payload["receipt"]["runtime_write_performed"] is False
+
+
+def test_build_acceptance_summary_marks_load_safe_package_usable() -> None:
+    operator_summary = {
+        "technical_status": "VALID_PACKAGE",
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
+        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": "prove_current_or_evergreen_and_package_source_closure",
+        "default_only_runtime_surfaces": [],
+    }
+    config_quality_summary = {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+    }
+
+    assert _build_acceptance_summary(
+        operator_summary=operator_summary,
+        validate_status=0,
+        apply_requested=False,
+        apply_status=None,
+        config_quality_summary=config_quality_summary,
+    ) == {
+        "schema_version": 1,
+        "use_config_now": True,
+        "normal_apply_authority": "reports/operator_summary.json",
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "technical_status": "VALID_PACKAGE",
+        "validation_status": "passed",
+        "apply_requested": False,
+        "apply_status": None,
+        "source_strength": "SOURCE_BACKED_PARTIAL",
+        "source_gaps_apply_blocking": False,
+        "default_only_clean": True,
+        "default_only_runtime_surfaces": [],
+        "config_quality_status": "clean",
+        "config_quality_problem_checks": [],
+        "first_missing_source_action": "prove_current_or_evergreen_and_package_source_closure",
+        "next_report_to_open": "reports/operator_summary.json",
+        "interpretation": (
+            "Package is usable now according to reports/operator_summary.json; "
+            "source and config-quality details remain diagnostic."
+        ),
+    }
+
+
+def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> None:
+    operator_summary = {
+        "technical_status": "VALID_PACKAGE",
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
+        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": "add_source_claim_for_mulligan_keep",
+        "default_only_runtime_surfaces": ["Mulligan.json"],
+    }
+    config_quality_summary = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 2,
+        "problem_checks": [
+            "operator_default_only_runtime_surfaces",
+            "source_to_runtime_closure_rows_missing",
+        ],
+        "next_action": "run_contract_doctor_for_details",
+    }
+
+    summary = _build_acceptance_summary(
+        operator_summary=operator_summary,
+        validate_status=0,
+        apply_requested=True,
+        apply_status=0,
+        config_quality_summary=config_quality_summary,
+    )
+
+    assert summary["use_config_now"] is True
+    assert summary["source_gaps_apply_blocking"] is False
+    assert summary["default_only_clean"] is False
+    assert summary["default_only_runtime_surfaces"] == ["Mulligan.json"]
+    assert summary["config_quality_problem_checks"] == [
+        "operator_default_only_runtime_surfaces",
+        "source_to_runtime_closure_rows_missing",
+    ]
+    assert summary["next_report_to_open"] == "reports/contract_doctor.json"
+    assert summary["interpretation"] == (
+        "Package is usable now according to reports/operator_summary.json; "
+        "source and config-quality details remain diagnostic."
+    )
+
+
+def test_build_acceptance_summary_marks_non_load_safe_package_unusable() -> None:
+    operator_summary = {
+        "technical_status": "INVALID_PACKAGE",
+        "runtime_apply_allowed": False,
+        "runtime_apply_mode": "blocked",
+        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_status_apply_blocking": False,
+        "default_only_runtime_surfaces": [],
+    }
+    config_quality_summary = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 1,
+        "problem_checks": ["operator_summary_missing_or_invalid"],
+    }
+
+    summary = _build_acceptance_summary(
+        operator_summary=operator_summary,
+        validate_status=1,
+        apply_requested=False,
+        apply_status=None,
+        config_quality_summary=config_quality_summary,
+    )
+
+    assert summary["use_config_now"] is False
+    assert summary["normal_apply_authority"] == "reports/operator_summary.json"
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_mode"] == "blocked"
+    assert summary["validation_status"] == "failed"
+    assert summary["next_report_to_open"] == "reports/operator_summary.json"
+    assert summary["interpretation"] == (
+        "Package is not usable now; inspect reports/operator_summary.json first."
+    )
 
 
 def test_compact_config_quality_summary_reports_clean_status() -> None:
