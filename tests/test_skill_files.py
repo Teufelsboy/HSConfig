@@ -1311,3 +1311,28 @@ def test_skill_and_operator_docs_name_pre_run_config_contract_receipt() -> None:
         text = path.read_text(encoding="utf-8")
         for phrase in required:
             assert phrase in text, f"{path}: {phrase}"
+
+
+def test_skill_and_operator_docs_explain_research_deep_contract_bridge() -> None:
+    paths = [
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
+        REPO_ROOT
+        / ".agents"
+        / "skills"
+        / "hsconfig"
+        / "references"
+        / "workflow.md",
+        REPO_ROOT / "docs" / "operator" / "README.md",
+    ]
+    required = [
+        "latest_research_result_contract_first_non_promoting_*",
+        "first source action needed for Strong closure",
+        "diagnostic-only",
+        "cannot block or promote a package",
+        "operator_summary.json remains the only normal apply authority",
+    ]
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        for phrase in required:
+            assert phrase in text, f"{path}: {phrase}"
