@@ -55,3 +55,35 @@ Review fix
 - `git diff --check -- tests/test_semantic_intent_score.py` completed with exit 0; the new file contains no whitespace errors.
 - Reviewed the test assertions against the Task 1 brief and kept the implementation scope test-only.
 - No HSTuner, runtime, replay, log, or web-research workflows were used.
+
+## Task 1: Pure Source Provenance Normalizer
+
+### Scope
+
+- Created `src/hsconfig/source_provenance.py` with the two brief-defined pure interfaces:
+  `normalize_source_provenance` and `research_payload_provenance`.
+- Created `tests/test_source_provenance.py` with the four brief-defined unit tests.
+- No downstream consumers, runtime packages, Mulligan logic, apply authority, or source policy modules were changed.
+- No HSTuner, HearthRanger logs, game logs, or online deck research were used.
+
+### TDD evidence
+
+- RED command: `python -m pytest tests/test_source_provenance.py -q`
+- RED result: exit 1 during collection with `ModuleNotFoundError: No module named 'hsconfig.source_provenance'`.
+- GREEN command: `python -m pytest tests/test_source_provenance.py -q`
+- GREEN result: exit 0, `4 passed in 0.10s`.
+
+### Implemented behavior
+
+- Normalizes source family and visibility, including guide, decklist-only, and static-semantic families.
+- Reports deck identity match and the match basis from deck name and/or card overlap.
+- Classifies current, evergreen Wild, stale, not-strategy-guide, and unknown freshness states.
+- Accepts nested research freshness markers and returns non-blocking source diagnostics.
+- Keeps `source_status_apply_blocking` hard-coded to `False`; this helper is diagnostic provenance only.
+
+### Verification and concerns
+
+- The focused Task-1 test suite passed.
+- The implementation is pure and has no new dependencies or runtime side effects.
+- The brief-defined tests do not exhaustively cover every fallback branch; later consumer tasks should add contract-level coverage when integrating this helper.
+- Final commit scope contains only `src/hsconfig/source_provenance.py`, `tests/test_source_provenance.py`, and this required Task-1 report.
