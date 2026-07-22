@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from hsconfig.commands.configure import _compact_config_quality_summary
 from hsconfig.config_quality_contract import build_config_quality_report
 
 
@@ -156,6 +157,10 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
     assert report["checks"]["card_behavior"]["out_of_range_value_rows"] == []
     assert report["checks"]["runtime_json"]["metadata_leaks"] == []
     assert report["checks"]["legacy_surfaces"]["present"] == []
+    assert report["checks"]["mechanic_runtime_discipline"]["status"] == "clean"
+    assert _compact_config_quality_summary(report)[
+        "mechanic_runtime_discipline_status"
+    ] == "clean"
     assert report["checks"]["trace_completeness"] == {
         "runtime_rows_missing_trace": [],
         "traced_card_ids": ["NX2_019"],
@@ -306,6 +311,10 @@ def test_config_quality_flags_report_only_mechanic_runtime_emission(
     report = build_config_quality_report(package)
 
     assert report["status"] == "attention"
+    assert report["checks"]["mechanic_runtime_discipline"]["status"] == "attention"
+    assert _compact_config_quality_summary(report)[
+        "mechanic_runtime_discipline_status"
+    ] == "attention"
     assert report["checks"]["mechanic_runtime_discipline"][
         "report_only_runtime_rows"
     ] == [
@@ -1243,16 +1252,31 @@ def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evi
                 {
                     "claim_id": "claim_keep_darkbishop",
                     "claim_kind": "mulligan_keep",
-                    "claim": "Keep Darkbishop Benedictus in every opener.",
+                    "claim": "Always keep Darkbishop Benedictus in your opening hand.",
                     "evidence_text_short": (
-                        "Keep Darkbishop Benedictus in every opener."
+                        "Always keep Darkbishop Benedictus in your opening hand."
                     ),
                     "cards": ["SW_448"],
                     "runtime_lowerable": True,
                     "support_status": "source_backed",
                     "claim_readiness": "guide_backed",
+                    "source_family": "guide",
+                    "source_lane": "deck_matched_public_guide",
+                    "source_type": "public_guide",
+                    "source_visibility": "full_text",
+                    "source_refs": ["source:1"],
                 }
-            ]
+            ],
+            "source_evidence_index": [
+                {
+                    "source_ref": "source:1",
+                    "source_url": "https://example.invalid/darkbishop-guide",
+                    "source_title": "Darkbishop mulligan guide",
+                    "source_family": "guide",
+                    "retrieved_at": "2026-07-22",
+                    "missing_source_keys": [],
+                }
+            ],
         },
     )
     write_json(
@@ -1302,6 +1326,140 @@ def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evi
         problem["check"] == "darkbishop_mulligan_keep_without_explicit_evidence"
         for problem in report["problems"]
     )
+
+
+@pytest.mark.parametrize(
+    ("claim_fields", "plan_key"),
+    [
+        (
+            {
+                "source_type": "policy_backed_autonomous_mulligan",
+                "source_lane": "policy_fallback",
+                "claim_readiness": "guide_backed",
+                "evidence_text_short": "Always keep Darkbishop in the opening hand.",
+            },
+            "rules",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_lane": "policy_fallback",
+                "claim_readiness": "guide_backed",
+                "evidence_text_short": "Always keep Darkbishop in the opening hand.",
+            },
+            "rules",
+        ),
+        (
+            {
+                "source_type": "default_runtime",
+                "source_lane": "default_runtime",
+                "claim_readiness": "generic_low_confidence",
+                "evidence_text_short": "Default-only generated keep for SW_448.",
+            },
+            "rules",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_lane": "deck_matched_public_guide",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "report_only",
+                "evidence_text_short": (
+                    "Start of Game: transform the hero power when SW_448 is in the deck."
+                ),
+            },
+            "suppressed_rules",
+        ),
+    ],
+    ids=[
+        "policy-backed-autonomous-mulligan",
+        "policy-fallback",
+        "default-runtime",
+        "effect-only-suppressed",
+    ],
+)
+def test_config_quality_rejects_non_source_darkbishop_keep_exceptions(
+    tmp_path: Path,
+    claim_fields: dict,
+    plan_key: str,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "invalid Darkbishop keep exception",
+                        "condition": "*",
+                        "mulligan": "SW_448",
+                        "value": "hold",
+                    }
+                ]
+            },
+        },
+    )
+    claim = {
+        "claim_id": "claim_keep_darkbishop",
+        "claim_kind": "mulligan_keep",
+        "cards": ["SW_448"],
+        "source_claim_ids": ["claim_keep_darkbishop"],
+        "source_refs": ["source:1"],
+        **claim_fields,
+    }
+    write_json(
+        package / "reports" / "guide_claim_bundle.json",
+        {
+            "claims": [claim],
+            "source_evidence_index": [
+                {
+                    "source_ref": "source:1",
+                    "source_url": "https://example.invalid/not-a-guide-keep",
+                    "source_title": "Non-guide Darkbishop evidence",
+                    "source_family": "guide",
+                    "retrieved_at": "2026-07-22",
+                    "missing_source_keys": [],
+                }
+            ],
+        },
+    )
+    plan_row = {
+        "action": "hold",
+        "card": "SW_448",
+        "selector": "SW_448",
+        "source_claim_ids": ["claim_keep_darkbishop"],
+    }
+    write_json(
+        package / "reports" / "mulligan_plan_report.json",
+        {
+            "rules": [plan_row] if plan_key == "rules" else [],
+            "suppressed_rules": [plan_row] if plan_key == "suppressed_rules" else [],
+        },
+    )
+    write_json(
+        package / "reports" / "source_contract_audit.json",
+        {
+            "claim_rows": [
+                {
+                    **claim,
+                    "builder_or_router_decision": "emitted",
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "emitted_runtime_files": ["Mulligan.json"],
+                }
+            ]
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["darkbishop_boundary"][
+        "explicit_mulligan_keep_evidence_present"
+    ] is False
+    assert {
+        "check": "darkbishop_mulligan_keep_without_explicit_evidence",
+        "value": {"card_id": "SW_448"},
+    } in report["problems"]
 
 
 def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(

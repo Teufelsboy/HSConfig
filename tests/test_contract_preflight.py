@@ -33,7 +33,7 @@ def _clean_git() -> GitPreflight:
 
 
 def _synced_install_root(tmp_path: Path) -> Path:
-    install_root = tmp_path / "codex" / "skills"
+    install_root = tmp_path / "custom skill root"
     sync_skill(install_root)
     return install_root
 
@@ -82,7 +82,8 @@ def test_contract_preflight_reports_attention_when_installed_skill_drifts(
     assert "installed_skill_sync_current" in payload["failures"]
     assert payload["installed_skill_sync"]["status"] == "attention"
     assert payload["installed_skill_sync"]["recommended_action"] == (
-        "python scripts\\sync_installed_skill.py"
+        'python scripts\\sync_installed_skill.py --install-root '
+        f'"{install_root.resolve()}"'
     )
     assert payload["diagnostic_only"] is True
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
@@ -358,6 +359,10 @@ def test_unavailable_installed_skill_payload_expands_tilde_install_root_override
     assert payload["installed_skill_path"] == str(
         Path(install_root).expanduser() / "hsconfig"
     )
+    assert payload["recommended_action"] == (
+        'python scripts\\sync_installed_skill.py --install-root '
+        f'"{Path(install_root).expanduser().resolve()}"'
+    )
 
 
 def test_unavailable_installed_skill_payload_uses_default_root_for_empty_override(
@@ -380,6 +385,7 @@ def test_unavailable_installed_skill_payload_uses_default_root_for_empty_overrid
     assert payload["installed_skill_path"] == str(
         contract_preflight_command.DEFAULT_INSTALL_ROOT / "hsconfig"
     )
+    assert payload["recommended_action"] == "python scripts\\sync_installed_skill.py"
 
 
 def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> None:

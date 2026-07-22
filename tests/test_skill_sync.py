@@ -183,7 +183,7 @@ def test_shared_skill_sync_status_reports_in_sync_after_script_sync(tmp_path: Pa
 
 
 def test_shared_skill_sync_status_reports_attention_on_drift(tmp_path: Path):
-    install_root = tmp_path / "codex" / "skills"
+    install_root = tmp_path / "custom skill root"
     subprocess.run(
         [
             sys.executable,
@@ -207,7 +207,10 @@ def test_shared_skill_sync_status_reports_attention_on_drift(tmp_path: Path):
     assert status["installed_skill_present"] is True
     assert status["matches_repo_skill"] is False
     assert status["reason"] == "diffs_found"
-    assert status["recommended_action"] == "python scripts\\sync_installed_skill.py"
+    assert status["recommended_action"] == (
+        'python scripts\\sync_installed_skill.py --install-root '
+        f'"{install_root.resolve()}"'
+    )
     assert status["diagnostic_only"] is True
     assert any(item["path"] == "SKILL.md" for item in status["diffs"])
 
@@ -215,7 +218,7 @@ def test_shared_skill_sync_status_reports_attention_on_drift(tmp_path: Path):
 def test_shared_skill_sync_status_reports_missing_install_folder_without_writes(
     tmp_path: Path,
 ):
-    install_root = tmp_path / "codex" / "skills"
+    install_root = tmp_path / "missing skill root"
 
     status = build_installed_skill_sync_status(Path("."), install_root)
 
@@ -223,7 +226,10 @@ def test_shared_skill_sync_status_reports_missing_install_folder_without_writes(
     assert status["installed_skill_present"] is False
     assert status["matches_repo_skill"] is False
     assert status["reason"] == "missing_folder"
-    assert status["recommended_action"] == "python scripts\\sync_installed_skill.py"
+    assert status["recommended_action"] == (
+        'python scripts\\sync_installed_skill.py --install-root '
+        f'"{install_root.resolve()}"'
+    )
     assert status["diagnostic_only"] is True
     assert status["runtime_apply_authority"] == "reports/operator_summary.json"
     assert not install_root.exists()

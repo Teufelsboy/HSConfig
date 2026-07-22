@@ -5,6 +5,7 @@ from pathlib import Path
 
 DEFAULT_INSTALL_ROOT = Path.home() / ".codex" / "skills"
 TEXT_LIKE_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".toml"}
+SYNC_COMMAND = "python scripts\\sync_installed_skill.py"
 
 
 def _iter_files(root: Path) -> list[Path]:
@@ -65,7 +66,7 @@ def build_installed_skill_sync_status(
     source_skill = root / ".agents" / "skills" / "hsconfig"
     resolved_install_root = (
         Path(install_root).expanduser() if install_root else DEFAULT_INSTALL_ROOT
-    )
+    ).resolve()
     installed_skill = resolved_install_root / "hsconfig"
     diff = folder_diff(source_skill, installed_skill)
     matches = bool(diff.get("matches"))
@@ -78,9 +79,18 @@ def build_installed_skill_sync_status(
         "matches_repo_skill": matches,
         "reason": str(diff.get("reason") or "unknown"),
         "diffs": list(diff.get("diffs", [])),
-        "recommended_action": "none"
-        if matches
-        else "python scripts\\sync_installed_skill.py",
+        "recommended_action": (
+            "none"
+            if matches
+            else installed_skill_sync_recommended_action(resolved_install_root)
+        ),
         "diagnostic_only": True,
         "runtime_apply_authority": "reports/operator_summary.json",
     }
+
+
+def installed_skill_sync_recommended_action(install_root: str | Path) -> str:
+    resolved_install_root = Path(install_root).expanduser().resolve()
+    if resolved_install_root == DEFAULT_INSTALL_ROOT.resolve():
+        return SYNC_COMMAND
+    return f'{SYNC_COMMAND} --install-root "{resolved_install_root}"'

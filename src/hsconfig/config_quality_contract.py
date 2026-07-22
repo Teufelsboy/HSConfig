@@ -10,6 +10,8 @@ from hsconfig.default_only_runtime_surfaces import (
     has_default_only_runtime_surfaces,
 )
 from hsconfig.mechanic_support import mechanic_lowering_policy
+from hsconfig.role_tokens import has_explicit_opening_hand_mulligan_intent
+from hsconfig.source_document_model import claim_can_lower_to_runtime
 
 
 FORBIDDEN_LEGACY_RUNTIME_SURFACES = {
@@ -39,6 +41,24 @@ SOURCE_TRACE_TYPES = {
     "evergreen_wild_archetype",
     "official_static_semantics",
     "static_semantics",
+}
+PUBLIC_GUIDE_SOURCE_FAMILIES = {
+    "guide",
+    "guide_fixture",
+    "matchup_guide",
+    "mulligan_guide",
+}
+PUBLIC_GUIDE_SOURCE_LANES = {
+    "archetype_matched_public_guide",
+    "deck_matched_public_guide",
+    "evergreen_wild_archetype",
+}
+PUBLIC_GUIDE_SOURCE_TYPES = {
+    "archetype_matched_public_guide",
+    "community_guide",
+    "deck_matched_public_guide",
+    "evergreen_wild_archetype",
+    "public_guide",
 }
 DARKBISHOP_CARD_ID = "SW_448"
 
@@ -487,6 +507,7 @@ def _mechanic_runtime_discipline_check(
         )
 
     return {
+        "status": "attention" if report_only_rows or unregistered else "clean",
         "report_only_runtime_rows": report_only_rows,
         "unregistered_mechanics": sorted(unregistered),
     }
@@ -770,17 +791,16 @@ def _has_explicit_mulligan_keep_evidence(package: Path, card_id: str) -> bool:
 
 def _explicit_mulligan_keep_claim_ids(package: Path, card_id: str) -> set[str]:
     claims: set[str] = set()
-    reports = package / "reports"
-    for report_name, row_keys in (
-        ("guide_claim_bundle.json", ("claims", "claim_rows")),
-        ("source_contract_audit.json", ("claim_rows", "claim_lifecycle_rows")),
-        ("source_to_runtime_explainability.json", ("claim_rows",)),
-    ):
-        payload = _read_json(reports / report_name)
-        for row in _report_rows(payload, row_keys):
-            if _is_explicit_mulligan_keep_claim(row, card_id):
-                claim_id = _claim_id(row)
-                claims.add(claim_id or "__explicit_unidentified_claim__")
+    bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
+    source_refs = _eligible_public_guide_source_refs(bundle)
+    for row in _report_rows(bundle, ("claims", "claim_rows")):
+        if not _is_explicit_mulligan_keep_claim(row, card_id):
+            continue
+        if not _is_source_backed_opening_hand_claim(row, source_refs):
+            continue
+        claim_id = _claim_id(row)
+        if claim_id:
+            claims.add(claim_id)
     return claims
 
 
@@ -788,6 +808,47 @@ def _is_explicit_mulligan_keep_claim(row: Mapping[str, Any], card_id: str) -> bo
     if str(row.get("claim_kind", "") or row.get("claim_type", "")) != "mulligan_keep":
         return False
     return _json_mentions(row.get("cards"), card_id) or _json_mentions(row, card_id)
+
+
+def _eligible_public_guide_source_refs(bundle: Any) -> set[str]:
+    refs: set[str] = set()
+    for row in _report_rows(bundle, ("source_evidence_index",)):
+        if _string_list(row.get("missing_source_keys")):
+            continue
+        if str(row.get("source_family", "")).strip() not in PUBLIC_GUIDE_SOURCE_FAMILIES:
+            continue
+        if not all(
+            str(row.get(key, "")).strip()
+            for key in ("source_url", "source_title", "retrieved_at")
+        ):
+            continue
+        source_ref = str(row.get("source_ref", "")).strip()
+        if source_ref:
+            refs.add(source_ref)
+    return refs
+
+
+def _is_source_backed_opening_hand_claim(
+    row: Mapping[str, Any],
+    eligible_source_refs: set[str],
+) -> bool:
+    if not claim_can_lower_to_runtime(dict(row)):
+        return False
+    if not has_explicit_opening_hand_mulligan_intent(row):
+        return False
+
+    source_lane = str(row.get("source_lane", "")).strip()
+    source_type = str(row.get("source_type", "")).strip()
+    if source_lane and source_lane not in PUBLIC_GUIDE_SOURCE_LANES:
+        return False
+    if not source_lane and source_type not in PUBLIC_GUIDE_SOURCE_TYPES:
+        return False
+
+    claim_source_refs = set(_string_list(row.get("source_refs")))
+    source_ref = str(row.get("source_ref", "")).strip()
+    if source_ref:
+        claim_source_refs.add(source_ref)
+    return bool(claim_source_refs & eligible_source_refs)
 
 
 def _mulligan_plan_accepts_claim(

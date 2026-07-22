@@ -14,6 +14,7 @@ from hsconfig.contract_preflight import (
 from hsconfig.skill_sync_status import (
     DEFAULT_INSTALL_ROOT,
     build_installed_skill_sync_status,
+    installed_skill_sync_recommended_action,
 )
 
 
@@ -53,7 +54,9 @@ def _unavailable_installed_skill_payload(
             "matches_repo_skill": False,
             "reason": type(exc).__name__,
             "diffs": [],
-            "recommended_action": "python scripts\\sync_installed_skill.py",
+            "recommended_action": installed_skill_sync_recommended_action(
+                resolved_install_root
+            ),
             "diagnostic_only": True,
             "runtime_apply_authority": "reports/operator_summary.json",
         }
