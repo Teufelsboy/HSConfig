@@ -714,10 +714,9 @@ def test_skill_normal_workflow_routes_generated_receipts_in_order():
         / ".agents"
         / "skills"
         / "hsconfig"
-        / "references"
-        / "workflow.md"
+        / "SKILL.md"
     ).read_text(encoding="utf-8")
-    normal_workflow = _line_starting(text, "Normal workflow:")
+    normal_workflow = _line_starting(text, "3. After `configure`,")
     routes = [
         "`<out>/configure_summary.json.acceptance_summary`",
         "`<out>/configure_summary.json.handoff_contract`",
@@ -739,13 +738,15 @@ def test_skill_normal_workflow_routes_generated_receipts_in_order():
 def test_real_deck_loop_routes_source_receipt_without_new_gate():
     text = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
     loop = _section(text, "## Real-Deck Usage Loop")
+    acceptance = "`<out>/configure_summary.json.acceptance_summary`"
+    handoff = "`<out>/configure_summary.json.handoff_contract`"
     source_receipt = "`<out>/configure_summary.json.source_closure_receipt`"
 
-    assert "`<out>/configure_summary.json.acceptance_summary`" in loop
+    assert acceptance in loop
+    assert handoff in loop
     assert source_receipt in loop
-    assert loop.index("`<out>/configure_summary.json.acceptance_summary`") < loop.index(
-        source_receipt
-    )
+    assert loop.index(acceptance) < loop.index(handoff)
+    assert loop.index(handoff) < loop.index(source_receipt)
     assert "source-contract and no-default-only diagnostics" in loop
     assert "without treating them as extra gates" in loop
     assert "source_closure_receipt remains the normal apply authority" not in _compact(
