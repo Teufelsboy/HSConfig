@@ -504,7 +504,7 @@ def test_source_contract_spine_reference_is_active_but_not_an_apply_gate():
 
     assert "Diagnostic reference only" in text
     assert "`reports/operator_summary.json` remains the only normal apply authority." in text
-    assert "does not create a second apply gate" in text
+    assert "not an apply authority" in text
     assert "Mulligan.json" in text
     assert "GlobalValues.json" in text
     assert "Combo.json" in text

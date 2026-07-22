@@ -80,7 +80,7 @@ Runtime writes happen only through `hsconfig apply` or `hsconfig configure --app
 Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
-2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not a second apply gate.
+2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not an apply authority.
 3. Treat `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` as the load-safe apply signal.
 4. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
 5. `default_only_runtime_surfaces` must be inspected when non-empty.

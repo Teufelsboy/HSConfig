@@ -25,7 +25,11 @@ def test_operator_readme_has_compact_quick_start_before_details():
     quick_start = text[quick_start_index:preferred_path_index]
 
     assert "Run `hsconfig configure` for normal operation." in quick_start
-    assert "Open `reports/operator_summary.json` first." in quick_start
+    assert (
+        "After `configure`, read `<out>/configure_summary.json.acceptance_summary` first; "
+        "it is an operator projection. Use `reports/operator_summary.json` as the "
+        "apply authority."
+    ) in quick_start
     assert "`technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed." in quick_start
     assert "Warnings are follow-up work, not a second apply path." in quick_start
     assert "HSTuner owns post-run evaluation and tuning." in quick_start

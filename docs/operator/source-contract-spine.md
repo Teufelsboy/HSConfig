@@ -4,7 +4,7 @@ Diagnostic reference only.
 
 `reports/operator_summary.json` remains the only normal apply authority.
 
-This page explains why a source claim did or did not lower to runtime config. It does not create a second apply gate.
+This page explains why a source claim did or did not lower to runtime config. It is diagnostic context, not an apply authority.
 
 ## Normal Runtime Surfaces
 
