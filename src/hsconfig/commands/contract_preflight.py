@@ -40,9 +40,7 @@ def _unavailable_installed_skill_payload(
         return build_installed_skill_sync_status(repo_root, install_root)
     except Exception as exc:
         resolved_install_root = (
-            Path(install_root).expanduser()
-            if install_root is not None
-            else DEFAULT_INSTALL_ROOT
+            Path(install_root).expanduser() if install_root else DEFAULT_INSTALL_ROOT
         )
         return {
             "status": "attention",

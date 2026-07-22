@@ -320,6 +320,28 @@ def test_unavailable_installed_skill_payload_expands_tilde_install_root_override
     )
 
 
+def test_unavailable_installed_skill_payload_uses_default_root_for_empty_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
+        raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
+
+    monkeypatch.setattr(
+        contract_preflight_command,
+        "build_installed_skill_sync_status",
+        _raise_sync_error,
+    )
+
+    payload = contract_preflight_command._unavailable_installed_skill_payload(
+        ".",
+        "",
+    )
+
+    assert payload["installed_skill_path"] == str(
+        contract_preflight_command.DEFAULT_INSTALL_ROOT / "hsconfig"
+    )
+
+
 def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> None:
     parser_help = subprocess.run(
         [sys.executable, "-m", "hsconfig.cli", "--help"],

@@ -242,3 +242,85 @@ Final git status --short --branch:
 ```text
 ## codex/hsconfig-semantic-intent-scoring...origin/codex/hsconfig-semantic-intent-scoring [ahead 5]
 ```
+
+---
+
+## Task 2 fallback install-root semantics fix (2026-07-22)
+
+Summary:
+- Added a focused regression for the exception fallback when `install_root=""`.
+- Aligned `_unavailable_installed_skill_payload()` with `build_installed_skill_sync_status()` truthiness semantics for install-root resolution.
+- Kept the change scoped to the owned command file, its test file, and this report.
+
+Files changed:
+- `src/hsconfig/commands/contract_preflight.py`
+- `tests/test_contract_preflight.py`
+- `.superpowers/sdd/installed-skill-drift-task-2-report.md`
+
+RED result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py -q -k "empty_override"`
+- Result:
+```text
+F                                                                        [100%]
+================================== FAILURES ===================================
+_ test_unavailable_installed_skill_payload_uses_default_root_for_empty_override _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024E9A6D2E50>
+
+    def test_unavailable_installed_skill_payload_uses_default_root_for_empty_override(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
+            raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
+
+        monkeypatch.setattr(
+            contract_preflight_command,
+            "build_installed_skill_sync_status",
+            _raise_sync_error,
+        )
+
+        payload = contract_preflight_command._unavailable_installed_skill_payload(
+            ".",
+            "",
+        )
+
+>       assert payload["installed_skill_path"] == str(
+            contract_preflight_command.DEFAULT_INSTALL_ROOT / "hsconfig"
+        )
+E       AssertionError: assert 'hsconfig' == 'C:\\Users\\darbo\\.codex\\skills\\hsconfig'
+E
+E         - C:\Users\darbo\.codex\skills\hsconfig
+E         + hsconfig
+
+tests\test_contract_preflight.py:340: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_contract_preflight.py::test_unavailable_installed_skill_payload_uses_default_root_for_empty_override
+1 failed, 15 deselected in 0.27s
+```
+
+Focused GREEN result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py -q -k "unavailable_installed_skill_payload"`
+- Result:
+```text
+..                                                                       [100%]
+2 passed, 14 deselected in 0.10s
+```
+
+Requested suite result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py tests/test_skill_sync.py -q`
+- Result:
+```text
+......................                                                   [100%]
+22 passed in 5.66s
+```
+
+Commit message:
+- `fix: align preflight fallback install root semantics`
+
+Final git status --short --branch:
+```text
+## codex/hsconfig-semantic-intent-scoring...origin/codex/hsconfig-semantic-intent-scoring [ahead 6]
+```
