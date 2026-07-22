@@ -694,6 +694,33 @@ def test_compact_config_quality_summary_reports_attention_checks() -> None:
     }
 
 
+def test_compact_config_quality_summary_includes_semantic_intent_when_present() -> None:
+    report = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [],
+        "checks": {
+            "semantic_intent_coverage": {
+                "status": "attention",
+                "first_attention": "card_behavior_runtime_row_missing_trace",
+            }
+        },
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+        "semantic_intent_status": "attention",
+        "semantic_intent_first_attention": "card_behavior_runtime_row_missing_trace",
+    }
+
+
 def test_configure_writes_diagnostic_config_quality_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -187,6 +187,10 @@ def test_contract_doctor_markdown_includes_config_quality_section():
                         {"card_id": "MECH_005"},
                     ],
                 },
+                "semantic_intent_coverage": {
+                    "status": "attention",
+                    "first_attention": "card_behavior_runtime_row_missing_trace",
+                },
             },
         },
     }
@@ -201,6 +205,11 @@ def test_contract_doctor_markdown_includes_config_quality_section():
     assert "- Closure rows missing: 3" in lines
     assert "- Stray CardID files: 4" in lines
     assert "- Report-only mechanic runtime rows: 5" in lines
+    assert "- Semantic intent status: attention" in lines
+    assert (
+        "- Semantic intent first attention: card_behavior_runtime_row_missing_trace"
+        in lines
+    )
     assert "operator_summary.json remains the only normal apply authority" in markdown
 
 

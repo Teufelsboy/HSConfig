@@ -110,6 +110,9 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
     mechanic_quality = _mapping(
         config_quality_checks.get("mechanic_runtime_discipline")
     )
+    semantic_intent_quality = _mapping(
+        config_quality_checks.get("semantic_intent_coverage")
+    )
     operator = _mapping(report.get("operator"))
     lifecycle = _mapping(report.get("claim_lifecycle"))
     card_diagnostics = _mapping(report.get("card_diagnostics"))
@@ -144,6 +147,8 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
         f"- Closure rows missing: {closure_quality.get('cards_missing_closure', 0)}",
         f"- Stray CardID files: {_count(runtime_quality.get('stray_cardid_files'))}",
         f"- Report-only mechanic runtime rows: {_count(mechanic_quality.get('report_only_runtime_rows'))}",
+        f"- Semantic intent status: {semantic_intent_quality.get('status', 'unknown')}",
+        f"- Semantic intent first attention: {semantic_intent_quality.get('first_attention') or 'none'}",
         "",
         "## Claim Lifecycle",
         "",

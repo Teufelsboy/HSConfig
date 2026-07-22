@@ -447,6 +447,16 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
         "problem_count": len(problems),
         "problem_checks": problem_checks,
     }
+    checks = report.get("checks", {})
+    if isinstance(checks, Mapping):
+        semantic_intent = checks.get("semantic_intent_coverage")
+        if isinstance(semantic_intent, Mapping):
+            summary["semantic_intent_status"] = str(
+                semantic_intent.get("status") or ""
+            )
+            first_attention = semantic_intent.get("first_attention")
+            if first_attention is not None:
+                summary["semantic_intent_first_attention"] = str(first_attention)
     if problem_checks:
         summary["next_action"] = "run_contract_doctor_for_details"
     return summary
