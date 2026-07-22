@@ -545,7 +545,7 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
         "runtime_apply_contract": {
             "apply_authority": "reports/operator_summary.json",
         },
-        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_backed_status": "SOURCE_BACKED_STRONG",
         "source_status_apply_blocking": False,
         "first_missing_source_action": "add_source_claim_for_mulligan_keep",
         "default_only_runtime_surfaces": ["Mulligan.json"],
@@ -572,6 +572,10 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
     )
 
     assert summary["use_config_now"] is True
+    assert summary["normal_apply_authority"] == "reports/operator_summary.json"
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["runtime_apply_mode"] == "load_safe_apply"
+    assert summary["source_strength"] == "SOURCE_BACKED_STRONG"
     assert summary["source_gaps_apply_blocking"] is False
     assert summary["default_only_clean"] is False
     assert summary["default_only_runtime_surfaces"] == ["Mulligan.json"]
@@ -584,6 +588,27 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
         "Package is usable now according to reports/operator_summary.json; "
         "source and config-quality details remain diagnostic."
     )
+
+
+def test_acceptance_summary_helper_stays_configure_local_projection() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    configure_source = (
+        repo_root / "src" / "hsconfig" / "commands" / "configure.py"
+    ).read_text(encoding="utf-8")
+    apply_source = (
+        repo_root / "src" / "hsconfig" / "commands" / "apply.py"
+    ).read_text(encoding="utf-8")
+    apply_gate_source = (
+        repo_root / "src" / "hsconfig" / "apply_gate.py"
+    ).read_text(encoding="utf-8")
+    acceptance_matrix_source = (
+        repo_root / "src" / "hsconfig" / "acceptance_matrix.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _build_acceptance_summary(" in configure_source
+    assert "_build_acceptance_summary" not in apply_source
+    assert "_build_acceptance_summary" not in apply_gate_source
+    assert "_build_acceptance_summary" not in acceptance_matrix_source
 
 
 def test_build_acceptance_summary_marks_non_load_safe_package_unusable() -> None:
@@ -735,6 +760,12 @@ def test_configure_writes_diagnostic_config_quality_summary(
             "source and config-quality details remain diagnostic."
         ),
     }
+    assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert summary["acceptance_summary"]["normal_apply_authority"] == (
+        operator_summary["runtime_apply_contract"]["apply_authority"]
+    )
     assert "config_quality_summary" not in operator_summary
     assert "acceptance_summary" not in operator_summary
 
