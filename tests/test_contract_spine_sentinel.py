@@ -4,6 +4,7 @@ import pytest
 
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.source_document_model import SUPPORTED_ATOMIC_CLAIM_KINDS
+from hsconfig.source_contract_audit import build_source_contract_audit
 
 
 def test_contract_spine_sentinel_report_is_clean_for_current_repo():
@@ -14,6 +15,64 @@ def test_contract_spine_sentinel_report_is_clean_for_current_repo():
     assert report["operator_gate_impact"] == "diagnostic_only"
     assert report["apply_blocking"] is False
     assert report["problems"] == []
+
+
+def test_source_contract_audit_report_declares_diagnostic_only_authority():
+    report = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 1}],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "keep_claim",
+                    "claim_kind": "mulligan_keep",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "cards": ["CARD_KEEP"],
+                    "source_title": "Fixture Guide",
+                    "evidence_text_short": "Keep CARD_KEEP.",
+                }
+            ]
+        },
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_KEEP",
+                    "action": "hold",
+                    "source_claim_ids": ["keep_claim"],
+                }
+            ],
+            "suppressed_rules": [],
+        },
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [],
+            "blocked_until_runtime_evidence": [],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_KEEP": {
+                    "name": "Keep Card",
+                    "roles": ["mulligan_anchor"],
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "readiness_lane": "mulligan_only",
+                    "first_missing_link": "none",
+                }
+            }
+        },
+    )
+
+    assert report["authority"] == "diagnostic_only"
+    assert report["operator_gate_impact"] == "diagnostic_only"
+    assert report["apply_blocking"] is False
+    assert report["normal_apply_authority"] == "reports/operator_summary.json"
+    assert "runtime_apply_allowed" not in report
+    assert "runtime_apply_mode" not in report
+    assert "apply_policy" not in report
 
 
 def test_contract_spine_sentinel_exposes_clean_contract_invariants():
