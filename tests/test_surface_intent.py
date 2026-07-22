@@ -76,3 +76,38 @@ def test_surface_intent_separates_minimum_load_safe_and_rich_optional_surfaces()
     assert "CARD_001.json" in report["rich_optional_runtime_surfaces"]
     assert "Presume.json" not in report["minimum_required_runtime_surfaces"]
     assert "Concede.json" not in report["minimum_required_runtime_surfaces"]
+
+
+def test_surface_intent_projects_specific_card_intent_when_known():
+    report = build_surface_intent(
+        {
+            "cards": {
+                "LOC_001": {
+                    "roles": ["location"],
+                    "source_claim_ids": ["claim_location"],
+                    "confidence": "source_backed",
+                    "semantic_families": ["location"],
+                },
+                "DRAW_001": {
+                    "roles": ["cycle"],
+                    "source_claim_ids": ["claim_draw"],
+                    "confidence": "source_backed",
+                },
+                "GENERIC_001": {
+                    "roles": ["tradeable"],
+                    "source_claim_ids": [],
+                    "confidence": "generic_low_confidence",
+                    "semantic_families": ["tradeable"],
+                },
+            }
+        }
+    )
+
+    rows = {row["card_id"]: row for row in report["rows"] if row.get("card_id")}
+
+    assert rows["LOC_001"]["intent"] == "location_tempo"
+    assert rows["LOC_001"]["intent_source"] == "card_intent_taxonomy"
+    assert rows["DRAW_001"]["intent"] == "draw_cycle"
+    assert rows["DRAW_001"]["intent_source"] == "card_intent_taxonomy"
+    assert rows["GENERIC_001"]["intent"] == "aggressive_card_behavior"
+    assert rows["GENERIC_001"]["intent_source"] == "fallback"

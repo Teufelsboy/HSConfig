@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.card_intent_taxonomy import classify_card_intent
+
 
 def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
     rows = [
@@ -19,13 +21,15 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
     for card_id, card in _cards(contract).items():
         surface = f"{card_id}.json"
         required_surfaces.add(surface)
+        diagnostic_intent = _diagnostic_card_intent(card)
         rows.append(
             {
                 "rule_id": f"{card_id}_card_behavior",
                 "card_id": card_id,
                 "surface": surface,
                 "surface_family": "CARDID.json",
-                "intent": "aggressive_card_behavior",
+                "intent": diagnostic_intent["intent"],
+                "intent_source": diagnostic_intent["source"],
                 "roles": list(card.get("roles", [])),
                 "confidence": card.get("confidence", card.get("coverage_status", "generic_low_confidence")),
                 "source_claim_ids": list(card.get("source_claim_ids", [])),
@@ -102,3 +106,25 @@ def _combo_claim_ids(contract: dict[str, Any]) -> list[str]:
             for claim_id in combo.get("source_claim_ids", [])
         }
     )
+
+
+def _diagnostic_card_intent(card: dict[str, Any]) -> dict[str, str]:
+    text = _card_intent_text(card)
+    classification = classify_card_intent(text)
+    if classification.reason == "semantic_default":
+        return {"intent": "aggressive_card_behavior", "source": "fallback"}
+    return {"intent": classification.reason, "source": "card_intent_taxonomy"}
+
+
+def _card_intent_text(card: dict[str, Any]) -> str:
+    parts = [
+        card.get("claim_kind"),
+        card.get("stance"),
+        card.get("intent"),
+        card.get("mechanic"),
+        card.get("evidence_text_short"),
+        card.get("source_title"),
+        " ".join(str(role) for role in card.get("roles", [])),
+        " ".join(str(family) for family in card.get("semantic_families", [])),
+    ]
+    return " ".join(str(part).lower() for part in parts if part is not None)
