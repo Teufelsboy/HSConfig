@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Mapping
 
+from hsconfig.source_provenance import normalize_source_provenance
+
 
 GUIDE_FAMILIES = {"guide", "public_guide", "community_guide", "mulligan_guide", "matchup_guide", "guide_fixture"}
 DECKLIST_FAMILIES = {"decklist", "decklist_only", "deck_aggregator", "deck_snapshot", "deck_code"}
@@ -52,6 +54,7 @@ def classify_source_evidence(
     *,
     deck_name: str,
     current_date: str | date | None,
+    deck_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Classify one source record without deciding package/apply authority."""
     result = dict(record)
@@ -76,6 +79,12 @@ def classify_source_evidence(
         source_freshness_lane,
     )
     source_lane = _source_lane(source_rank_lane, deck_scope)
+    provenance = normalize_source_provenance(
+        record,
+        deck_name=deck_name,
+        deck_identity=deck_identity,
+        current_date=current_date,
+    )
     blockers = _promotion_blockers(
         record,
         family=family,
@@ -96,6 +105,12 @@ def classify_source_evidence(
             "source_freshness_lane": source_freshness_lane,
             "source_rank_lane": source_rank_lane,
             "source_lane": source_lane,
+            "freshness_status": provenance["freshness_status"],
+            "current_or_evergreen": provenance["current_or_evergreen"],
+            "current_or_evergreen_reason": provenance["current_or_evergreen_reason"],
+            "deck_identity_match": provenance["deck_identity_match"],
+            "deck_identity_match_basis": provenance["deck_identity_match_basis"],
+            "source_status_apply_blocking": False,
             "deck_match_scope": deck_scope,
             "publication_year": publication_year,
             "promotion_eligible": promotion_eligible,

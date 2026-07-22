@@ -44,3 +44,37 @@ Verification:
   - Result: `7 passed in 0.09s`.
 - Compile check: `python -m py_compile src\hsconfig\semantic_intent_score.py`
   - Result: exit 0.
+
+## Task 2: Source Freshness Provenance Normalizer
+
+Status: complete
+
+Files changed:
+- `src/hsconfig/source_evidence_policy.py`
+- `src/hsconfig/source_autopilot.py`
+- `tests/test_source_autopilot.py`
+- `.superpowers/sdd/task-2-report.md`
+
+TDD evidence:
+- RED after adding the required provenance tests:
+  `python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_exposes_current_or_evergreen_provenance tests/test_source_autopilot.py::test_source_evidence_rows_preserve_provenance_projection -q`
+  - Result: `2 failed`; both failures were expected `KeyError: 'freshness_status'` from the missing ranked/evidence-row projections.
+- GREEN after wiring `normalize_source_provenance` through policy and autopilot:
+  `python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_exposes_current_or_evergreen_provenance tests/test_source_autopilot.py::test_source_evidence_rows_preserve_provenance_projection -q`
+  - Result: `2 passed in 0.32s`.
+- Focused regression suite:
+  `python -m pytest tests/test_source_autopilot.py -q`
+  - Result: `35 passed in 7.57s`.
+- Compile and whitespace checks:
+  `python -m py_compile src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py` and `git diff --check -- src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py tests/test_source_autopilot.py .superpowers/sdd/task-2-report.md`
+  - Result: exit 0. Git emitted only existing line-ending conversion warnings.
+
+Self-review:
+- `source_freshness_lane`, source rank lanes, promotion blockers, and source lane semantics remain owned by existing policy code and are unchanged.
+- Provenance is an additive diagnostic projection; `source_status_apply_blocking` is explicitly `False` and is not used as an apply gate.
+- Both ranking and evidence-row construction receive the same deck identity, preserving deck-identity provenance in derived rows.
+- No runtime, gameplay, Mulligan, default-only surface, dependency, or research changes were made.
+
+Commit info:
+- Commit message: `feat: expose source provenance in autopilot`.
+- The resulting commit hash is supplied in the task response because a commit cannot stably record its own final hash.

@@ -1222,3 +1222,79 @@ def test_autopilot_extracts_full_text_claims_before_closure_evaluation():
     assert ("hero_power_transform", ("SW_448",)) in claim_pairs
     assert ("mulligan_keep", ("SW_448",)) not in claim_pairs
     assert bundle["source_autopilot_report"]["default_only_runtime_surfaces"] == []
+
+
+def test_rank_public_sources_exposes_current_or_evergreen_provenance() -> None:
+    ranked = rank_public_sources(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=[
+            {
+                "source_url": "https://example.test/shadow-current",
+                "source_title": "ShadowPriest Guide 2026",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2026,
+                "normalized_text": "x" * 220,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446"],
+                },
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_446"],
+                        "evidence_text_short": "Keep Voidtouched Attendant.",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-22",
+    )
+
+    assert ranked[0]["freshness_status"] == "current"
+    assert ranked[0]["current_or_evergreen"] is True
+    assert ranked[0]["current_or_evergreen_reason"] == "publication_year_matches_current_year"
+    assert ranked[0]["deck_identity_match"] is True
+    assert ranked[0]["source_status_apply_blocking"] is False
+
+
+def test_source_evidence_rows_preserve_provenance_projection() -> None:
+    ranked = rank_public_sources(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=[
+            {
+                "source_url": "https://example.test/shadow-current",
+                "source_title": "ShadowPriest Guide 2026",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "publication_year": 2026,
+                "normalized_text": "x" * 220,
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "SW_446"],
+                },
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["SW_446"],
+                        "evidence_text_short": "Keep Voidtouched Attendant.",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-22",
+    )
+    rows = extract_source_evidence_rows(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        ranked_sources=ranked,
+        current_date="2026-07-22",
+    )
+
+    assert rows
+    assert rows[0]["freshness_status"] == "current"
+    assert rows[0]["current_or_evergreen"] is True
+    assert rows[0]["current_or_evergreen_reason"] == "publication_year_matches_current_year"
+    assert rows[0]["source_status_apply_blocking"] is False

@@ -89,6 +89,7 @@ def rank_public_sources(
         policy = classify_source_evidence(
             row,
             deck_name=deck_name,
+            deck_identity=deck_identity,
             current_date=current_date,
         )
         row.update(_policy_fields(policy, include_rank_lane=False))
@@ -109,7 +110,7 @@ def extract_source_evidence_rows(
     rows: list[dict[str, Any]] = []
     seen: set[tuple[Any, ...]] = set()
     for source in ranked_sources:
-        base = _source_base(deck_name, source, current_date)
+        base = _source_base(deck_name, deck_identity, source, current_date)
         for row in _mulligan_rows(deck_identity, source, base):
             _append_unique(rows, seen, row)
         for row in extract_text_claims(
@@ -1015,6 +1016,7 @@ def _is_apply_surface_candidate(row: Mapping[str, Any]) -> bool:
 
 def _source_base(
     deck_name: str,
+    deck_identity: Mapping[str, Any],
     source: Mapping[str, Any],
     current_date: str | date | None,
 ) -> dict[str, Any]:
@@ -1028,6 +1030,7 @@ def _source_base(
     policy = classify_source_evidence(
         source_for_policy,
         deck_name=deck_name,
+        deck_identity=deck_identity,
         current_date=current_date,
     )
     base: dict[str, Any] = {
@@ -1069,6 +1072,12 @@ def _policy_fields(
     keys = [
         "source_lane",
         "source_freshness_lane",
+        "freshness_status",
+        "current_or_evergreen",
+        "current_or_evergreen_reason",
+        "deck_identity_match",
+        "deck_identity_match_basis",
+        "source_status_apply_blocking",
         "deck_match_scope",
         "promotion_eligible",
         "strong_promotion_eligible",
