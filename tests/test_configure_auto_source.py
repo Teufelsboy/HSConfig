@@ -110,6 +110,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
     package = out / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
+    source_closure_receipt = summary["source_closure_receipt"]
     source_evidence_closure = _read_json(
         package / "reports" / "source_evidence_closure.json"
     )
@@ -128,6 +129,21 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert source_closure_receipt["authority"] == "diagnostic_only"
+    assert source_closure_receipt["operator_gate"] == "reports/operator_summary.json"
+    assert source_closure_receipt["normal_apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert source_closure_receipt["apply_blocking"] is False
+    assert source_closure_receipt["runtime_write_performed"] is False
+    assert source_closure_receipt["source_backed_status"] == operator["source_backed_status"]
+    assert source_closure_receipt["source_status_apply_blocking"] is False
+    assert source_closure_receipt["first_missing_source_action"] == "none"
+    assert source_closure_receipt["default_only_clean"] is True
+    assert source_closure_receipt["default_only_runtime_surfaces"] == []
+    assert source_closure_receipt["source_closure_lane"] == "strong"
+    assert source_closure_receipt["compiled_claim_count"] >= 1
+    assert source_closure_receipt["runtime_lowerable_claim_count"] >= 1
     for key in (
         "generic_low_confidence_cards",
         "uncovered_cards",
@@ -189,12 +205,28 @@ def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
 
     autopilot_report = _read_json(out / "02_source_autopilot" / "source_autopilot_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+    source_closure_receipt = _read_json(out / "configure_summary.json")[
+        "source_closure_receipt"
+    ]
 
     assert code == 0
     assert autopilot_report["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert source_closure_receipt["authority"] == "diagnostic_only"
+    assert source_closure_receipt["apply_blocking"] is False
+    assert source_closure_receipt["source_status_apply_blocking"] is False
+    assert source_closure_receipt["source_backed_status"] == operator["source_backed_status"]
+    assert source_closure_receipt["source_strong_ready"] is False
+    assert source_closure_receipt["source_closure_lane"] in {
+        "mulligan_claim_needed",
+        "runtime_lowerable_claim_needed",
+        "source_action_needed",
+    }
+    assert source_closure_receipt["next_report_to_open"] == (
+        "reports/source_to_runtime_explainability.json"
+    )
 
 
 def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_safe(

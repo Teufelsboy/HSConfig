@@ -16,6 +16,9 @@ from hsconfig.commands.source_workflow import (
     source_manifest_payload,
 )
 from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.configure_source_closure_receipt import (
+    build_configure_source_closure_receipt,
+)
 from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
 from hsconfig.operator_summary import refresh_generated_file_accounting
@@ -355,6 +358,15 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         config_proof_summary=config_proof_summary,
         config_quality_summary=config_quality_summary,
     )
+    source_closure_receipt = build_configure_source_closure_receipt(
+        operator_summary=operator_summary,
+        acceptance_summary=acceptance_summary,
+        guide_claim_bundle=guide_claim_bundle,
+        source_documents_payload=_read_optional_json(source_documents_json),
+        source_candidate_urls=source_candidate_urls,
+        source_urls=source_urls,
+        source_closure_intake_receipt=source_closure_intake_receipt,
+    )
 
     return _finish(
         out,
@@ -399,6 +411,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "acceptance_summary": acceptance_summary,
             "config_proof_summary": config_proof_summary,
             "handoff_contract": handoff_contract,
+            "source_closure_receipt": source_closure_receipt,
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },
@@ -1032,6 +1045,16 @@ def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
     if isinstance(reasons, list) and reasons:
         return str(reasons[0])
     return ""
+
+
+def _read_optional_json(path: str | Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        payload = read_json(Path(path))
+    except FileNotFoundError:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _source_search_records(path: str | Path | None) -> list[dict[str, Any]]:

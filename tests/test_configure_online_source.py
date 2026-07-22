@@ -122,6 +122,7 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
         / "source_closure_intake_receipt.json"
     )
     receipt = _read_json(receipt_path)
+    source_closure_receipt = result["source_closure_receipt"]
 
     assert bundle["schema_version"] == 1
     assert bundle["promotion"]["source_backed_status"] == operator[
@@ -147,6 +148,21 @@ def test_configure_writes_source_bundle_for_online_source(tmp_path: Path, monkey
     assert receipt["first_missing_source_action"] == "none"
     assert receipt["promotion_eligible_seed_count"] >= 1
     assert receipt["fetched_record_count"] >= 1
+    assert source_closure_receipt["authority"] == "diagnostic_only"
+    assert source_closure_receipt["source_candidate_url_count"] == len(
+        result["source_candidate_urls"]
+    )
+    assert source_closure_receipt["source_url_count"] == len(result["source_urls"])
+    assert source_closure_receipt["source_intake_candidate_count"] == receipt[
+        "candidate_count"
+    ]
+    assert source_closure_receipt["fetched_record_count"] == receipt[
+        "fetched_record_count"
+    ]
+    assert source_closure_receipt["source_status_apply_blocking"] is False
+    assert source_closure_receipt["normal_apply_authority"] == (
+        "reports/operator_summary.json"
+    )
     assert operator["source_closure_intake"] == {
         "authority": "diagnostic_only",
         "candidate_count": receipt["candidate_count"],
