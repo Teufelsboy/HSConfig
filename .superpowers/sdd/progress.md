@@ -987,3 +987,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Source evidence policy and autopilot provenance projection committed in 8da7fa8; task review approved; source-autopilot tests passed locally (35 passed).
 - [x] Task 3: Research result validator and contract provenance checks committed in 54c1a74 with compatibility fix 2dd726f; re-review approved; focused provenance/validator/contract tests passed locally (45 passed).
 - [x] Task 4: Research-result sentinel and contract-preflight provenance gap projection committed in 3932dbe; task review approved; sentinel/preflight tests passed locally (28 passed).
+- [x] Task 5: Operator docs and repo/installed hsconfig skill provenance diagnostic wording committed in 6ce03b2; task review approved; docs/skill/preflight tests passed locally (126 passed); installed skill sync --check in sync.
