@@ -78,6 +78,13 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 
 This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims are still required. `reports/operator_summary.json` remains the only normal apply authority.
 
+Source freshness/provenance fields are diagnostic-only. `freshness_status`,
+`current_or_evergreen`, `current_or_evergreen_reason`, `deck_identity_match`,
+and `deck_identity_match_basis` explain why a fetched source can or cannot
+support `SOURCE_BACKED_STRONG`. Missing or stale provenance prevents Strong
+promotion, but it does not block a technically valid load-safe package and it
+does not replace `reports/operator_summary.json`.
+
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
 Choice surface lowering follows the card behavior policy: `discover_choice` and `choose_one_choice` only lower when option identity is source-backed, and unresolved identities stay in `card_behavior_suppression_report.json`.

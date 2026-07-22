@@ -39,6 +39,11 @@ Source closure status is diagnostic and canonicalized through
 `SOURCE_BACKED_STRONG`, but `source_status_apply_blocking` must remain `false`
 for valid load-safe packages.
 
+- Missing freshness/provenance metadata is visible source-quality debt. It can
+  keep `SOURCE_BACKED_STRONG` at partial or attention status, but
+  `source_status_apply_blocking` remains `false` and a valid deck still builds
+  a load-safe package.
+
 Source candidate registry rows, context seed URLs, search results, and
 historical research result JSON are acquisition or diagnostic evidence only.
 They do not close runtime surfaces. A research snapshot can be treated as
