@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,14 @@ def test_operator_summary_has_single_string_list_helper() -> None:
         / "operator_summary.py"
     ).read_text(encoding="utf-8")
 
-    assert source.count("def _string_list(") == 1
+    module = ast.parse(source)
+    string_list_helpers = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_string_list"
+    ]
+
+    assert len(string_list_helpers) == 1
 
 
 def _source_backed_mulligan_plan_report():

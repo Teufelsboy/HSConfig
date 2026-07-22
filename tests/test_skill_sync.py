@@ -101,7 +101,8 @@ def test_skill_sync_propagates_source_backed_closure_guidance(tmp_path: Path):
     assert "references/contract-compiler-checklist.md" in reference_line
     assert (
         'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
-        '--online-source --auto-source --apply'
+        '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" '
+        '--online-source --auto-source --apply --json'
     ) in skill_text
     assert "first_missing_source_action" in skill_text
     assert "source_backed_strong_closure" in policy_text

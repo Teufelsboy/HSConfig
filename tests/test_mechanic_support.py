@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import hsconfig.mechanic_support as mechanic_support
 from hsconfig.mechanic_support import (
     MECHANIC_SUPPORT,
@@ -47,15 +49,22 @@ def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
 
 def test_support_for_roles_returns_defensive_copies_for_registered_specs():
     first = support_for_roles(["battlecry"])
+    original_battlecry_row = deepcopy(first[0])
+    original_battlecry_lowering = deepcopy(MECHANIC_SUPPORT["battlecry"]["lowering"])
+
     first[0]["normal_path_surfaces"].append("MUTATED_SURFACE")
     first[0]["lowering"]["policy"] = "mutated_policy"
 
     second = support_for_roles(["battlecry"])
 
-    assert "MUTATED_SURFACE" not in second[0]["normal_path_surfaces"]
-    assert second[0]["lowering"]["policy"] == MECHANIC_SUPPORT["battlecry"][
-        "lowering"
-    ]["policy"]
+    assert MECHANIC_SUPPORT["battlecry"]["lowering"] == original_battlecry_lowering
+    assert second[0] == original_battlecry_row
+
+    unknown_first = support_for_roles(["future_keyword"])
+    original_unknown_row = deepcopy(unknown_first[0])
+    unknown_first[0]["lowering"]["policy"] = "mutated_unknown_policy"
+
+    assert support_for_roles(["future_keyword"])[0] == original_unknown_row
 
 
 def test_summarize_mechanic_support_counts_warning_only_cards():
