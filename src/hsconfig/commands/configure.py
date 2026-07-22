@@ -375,6 +375,13 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "source_candidate_urls": source_candidate_urls,
             "source_urls": source_urls,
             "config_quality_summary": config_quality_summary,
+            "acceptance_summary": _build_acceptance_summary(
+                operator_summary=operator_summary,
+                validate_status=validate_status,
+                apply_requested=bool(getattr(args, "apply", False)),
+                apply_status=apply_status,
+                config_quality_summary=config_quality_summary,
+            ),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },

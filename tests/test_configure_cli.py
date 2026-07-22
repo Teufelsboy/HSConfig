@@ -712,7 +712,31 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "problem_count": 0,
         "problem_checks": [],
     }
+    assert summary["acceptance_summary"] == {
+        "schema_version": 1,
+        "use_config_now": True,
+        "normal_apply_authority": "reports/operator_summary.json",
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "technical_status": "VALID_PACKAGE",
+        "validation_status": "passed",
+        "apply_requested": False,
+        "apply_status": None,
+        "source_strength": operator_summary["source_backed_status"],
+        "source_gaps_apply_blocking": False,
+        "default_only_clean": True,
+        "default_only_runtime_surfaces": [],
+        "config_quality_status": "clean",
+        "config_quality_problem_checks": [],
+        "first_missing_source_action": operator_summary["first_missing_source_action"],
+        "next_report_to_open": "reports/operator_summary.json",
+        "interpretation": (
+            "Package is usable now according to reports/operator_summary.json; "
+            "source and config-quality details remain diagnostic."
+        ),
+    }
     assert "config_quality_summary" not in operator_summary
+    assert "acceptance_summary" not in operator_summary
 
 
 def test_configure_quality_summary_failure_stays_diagnostic_only(
@@ -764,5 +788,18 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         "next_action": "run_contract_doctor_for_details",
         "error": "RuntimeError: quality unavailable",
     }
+    assert summary["acceptance_summary"]["use_config_now"] is True
+    assert summary["acceptance_summary"]["source_gaps_apply_blocking"] is False
+    assert summary["acceptance_summary"]["config_quality_status"] == "attention"
+    assert summary["acceptance_summary"]["config_quality_problem_checks"] == [
+        "config_quality_summary_failed"
+    ]
+    assert summary["acceptance_summary"]["next_report_to_open"] == (
+        "reports/contract_doctor.json"
+    )
+    assert summary["acceptance_summary"]["interpretation"] == (
+        "Package is usable now according to reports/operator_summary.json; "
+        "source and config-quality details remain diagnostic."
+    )
     assert len(apply_calls) == 1
     assert apply_calls[0].package == str(out / "04_package")
