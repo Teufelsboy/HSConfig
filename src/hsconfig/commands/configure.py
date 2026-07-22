@@ -457,6 +457,54 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
             first_attention = semantic_intent.get("first_attention")
             if first_attention is not None:
                 summary["semantic_intent_first_attention"] = str(first_attention)
+        legacy_surfaces = checks.get("legacy_surfaces")
+        if isinstance(legacy_surfaces, Mapping):
+            legacy_present = [
+                str(surface)
+                for surface in legacy_surfaces.get("present", [])
+                if str(surface)
+            ]
+            summary["legacy_surfaces_present"] = legacy_present
+            summary["forbidden_normal_surfaces_absent"] = not legacy_present
+
+        darkbishop = checks.get("darkbishop_boundary")
+        if isinstance(darkbishop, Mapping):
+            mulligan_keep_present = bool(darkbishop.get("mulligan_keep_present"))
+            effect_runtime_present = bool(darkbishop.get("effect_runtime_present"))
+            if mulligan_keep_present:
+                status = "mulligan_keep_present"
+            elif effect_runtime_present:
+                status = "effect_without_mulligan_keep"
+            else:
+                status = "not_seen"
+            summary["darkbishop_boundary_status"] = status
+
+        runtime_json = checks.get("runtime_json")
+        if isinstance(runtime_json, Mapping):
+            metadata_leaks = runtime_json.get("metadata_leaks", [])
+            stray_cardid_files = runtime_json.get("stray_cardid_files", [])
+            summary["runtime_json_status"] = (
+                "clean" if not metadata_leaks and not stray_cardid_files else "attention"
+            )
+
+        explainability = checks.get("source_to_runtime_explainability")
+        if isinstance(explainability, Mapping):
+            if bool(explainability.get("present")):
+                authority = str(explainability.get("authority") or "diagnostic_only")
+                apply_blocking = bool(explainability.get("apply_blocking", False))
+                summary["source_to_runtime_status"] = (
+                    "diagnostic_only"
+                    if authority == "diagnostic_only" and not apply_blocking
+                    else "attention"
+                )
+            else:
+                summary["source_to_runtime_status"] = "missing"
+
+        mechanic = checks.get("mechanic_runtime_discipline")
+        if isinstance(mechanic, Mapping):
+            summary["mechanic_runtime_discipline_status"] = str(
+                mechanic.get("status") or ""
+            )
     if problem_checks:
         summary["next_action"] = "run_contract_doctor_for_details"
     return summary

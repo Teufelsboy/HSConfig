@@ -727,6 +727,58 @@ def test_compact_config_quality_summary_includes_semantic_intent_when_present() 
     }
 
 
+def test_compact_config_quality_summary_includes_proof_fields() -> None:
+    report = {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [],
+        "checks": {
+            "legacy_surfaces": {"present": []},
+            "darkbishop_boundary": {
+                "seen": True,
+                "mulligan_keep_present": False,
+                "effect_runtime_present": True,
+            },
+            "runtime_json": {
+                "deck_dir_present": True,
+                "metadata_leaks": [],
+                "stray_cardid_files": [],
+            },
+            "source_to_runtime_explainability": {
+                "present": True,
+                "authority": "diagnostic_only",
+                "apply_blocking": False,
+            },
+            "mechanic_runtime_discipline": {
+                "status": "clean",
+                "report_only_runtime_rows": [],
+            },
+            "semantic_intent_coverage": {
+                "status": "clean",
+                "first_attention": None,
+            },
+        },
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+        "legacy_surfaces_present": [],
+        "forbidden_normal_surfaces_absent": True,
+        "darkbishop_boundary_status": "effect_without_mulligan_keep",
+        "runtime_json_status": "clean",
+        "source_to_runtime_status": "diagnostic_only",
+        "mechanic_runtime_discipline_status": "clean",
+        "semantic_intent_status": "clean",
+    }
+
+
 def test_configure_writes_diagnostic_config_quality_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
