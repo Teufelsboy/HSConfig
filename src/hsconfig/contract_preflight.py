@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import subprocess
 
+from hsconfig.skill_sync_status import build_installed_skill_sync_status
+
 
 REQUIRED_REFERENCE_FILES = (
     "references/workflow.md",
@@ -18,6 +20,7 @@ REQUIRED_REFERENCE_FILES = (
 EXPECTED_CHECK_KEYS = (
     "repo_current",
     "skill_root_present",
+    "installed_skill_sync_current",
     "reference_files_present",
     "checklist_referenced_by_normal_workflow",
     "checklist_listed_in_references",
@@ -369,6 +372,7 @@ def build_contract_preflight(
     repo_root: str | Path = ".",
     *,
     git: GitPreflight | None = None,
+    skill_install_root: str | Path | None = None,
 ) -> dict[str, object]:
     root = Path(repo_root).resolve()
     repo_root_exists = root.exists()
@@ -381,6 +385,7 @@ def build_contract_preflight(
     references_line = _references_line(skill_text)
     git_snapshot = git or build_git_preflight(root)
     research_context = build_research_context_preflight(root)
+    installed_skill_sync = build_installed_skill_sync_status(root, skill_install_root)
 
     checks = {
         "repo_current": (
@@ -389,6 +394,12 @@ def build_contract_preflight(
             and git_snapshot.behind_origin_main == 0
         ),
         "skill_root_present": skill_root.exists(),
+        "installed_skill_sync_current": (
+            installed_skill_sync.get("matches_repo_skill") is True
+            and installed_skill_sync.get("diagnostic_only") is True
+            and installed_skill_sync.get("runtime_apply_authority")
+            == "reports/operator_summary.json"
+        ),
         "reference_files_present": all(
             (skill_root / relative_path).exists()
             for relative_path in REQUIRED_REFERENCE_FILES
@@ -479,6 +490,7 @@ def build_contract_preflight(
         "checks": checks,
         "failures": failures,
         "research_context": asdict(research_context),
+        "installed_skill_sync": installed_skill_sync,
         "runtime_apply_authority": "reports/operator_summary.json",
         "source_status_apply_blocking": False,
         "diagnostic_only": True,

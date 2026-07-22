@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.sync_installed_skill import sync_skill
 from hsconfig.contract_preflight import (
     GitPreflight,
     build_contract_preflight,
@@ -27,8 +28,71 @@ def _clean_git() -> GitPreflight:
     )
 
 
-def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot() -> None:
-    payload = build_contract_preflight(Path("."), git=_clean_git())
+def _synced_install_root(tmp_path: Path) -> Path:
+    install_root = tmp_path / "codex" / "skills"
+    sync_skill(install_root)
+    return install_root
+
+
+def test_contract_preflight_reports_installed_skill_sync_when_clean(
+    tmp_path: Path,
+) -> None:
+    install_root = _synced_install_root(tmp_path)
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=install_root,
+    )
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["installed_skill_sync_current"] is True
+    assert "installed_skill_sync_current" not in payload["failures"]
+    assert payload["installed_skill_sync"]["status"] == "in_sync"
+    assert payload["installed_skill_sync"]["matches_repo_skill"] is True
+    assert payload["installed_skill_sync"]["diagnostic_only"] is True
+    assert (
+        payload["installed_skill_sync"]["runtime_apply_authority"]
+        == "reports/operator_summary.json"
+    )
+
+
+def test_contract_preflight_reports_attention_when_installed_skill_drifts(
+    tmp_path: Path,
+) -> None:
+    install_root = _synced_install_root(tmp_path)
+    installed_skill = install_root / "hsconfig" / "SKILL.md"
+    installed_skill.write_text(
+        installed_skill.read_text(encoding="utf-8") + "\n# drift\n",
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=install_root,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["installed_skill_sync_current"] is False
+    assert "installed_skill_sync_current" in payload["failures"]
+    assert payload["installed_skill_sync"]["status"] == "attention"
+    assert payload["installed_skill_sync"]["recommended_action"] == (
+        "python scripts\\sync_installed_skill.py"
+    )
+    assert payload["diagnostic_only"] is True
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert payload["source_status_apply_blocking"] is False
+
+
+def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
 
     assert payload["status"] == "PASS"
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
@@ -43,8 +107,14 @@ def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot() -
     assert payload["checks"]["negative_scope_visible"] is True
 
 
-def test_contract_preflight_checks_configure_acceptance_route_contract() -> None:
-    payload = build_contract_preflight(Path("."), git=_clean_git())
+def test_contract_preflight_checks_configure_acceptance_route_contract(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
 
     assert payload["status"] == "PASS"
     assert payload["checks"]["configure_acceptance_route_visible"] is True
@@ -176,6 +246,50 @@ def test_contract_preflight_cli_emits_json_without_writing_files(tmp_path: Path)
     payload = json.loads(result.stdout)
     assert payload["diagnostic_only"] is True
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert before == after
+
+
+def test_contract_preflight_cli_reports_installed_skill_sync_without_writes(
+    tmp_path: Path,
+) -> None:
+    install_root = _synced_install_root(tmp_path)
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    before = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "hsconfig.cli",
+            "contract-preflight",
+            "--repo-root",
+            ".",
+            "--skill-install-root",
+            str(install_root),
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    after = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    payload = json.loads(result.stdout)
+
+    assert result.returncode == 0
+    assert payload["checks"]["installed_skill_sync_current"] is True
+    assert payload["installed_skill_sync"]["matches_repo_skill"] is True
+    assert payload["installed_skill_sync"]["diagnostic_only"] is True
     assert before == after
 
 
