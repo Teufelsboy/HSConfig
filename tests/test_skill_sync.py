@@ -107,8 +107,12 @@ def test_skill_sync_propagates_source_backed_closure_guidance(tmp_path: Path):
         '--online-source --auto-source --apply --json'
     ) in skill_text
     assert "first_missing_source_action" in skill_text
+    assert "config_intent_self_audit" in skill_text
     assert "source_backed_strong_closure" in policy_text
     assert "no_default_only_runtime_status" in policy_text
+    assert "runtime-file intent" in (
+        installed_root / "references" / "workflow.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_skill_sync_check_explains_newline_only_drift(tmp_path: Path):

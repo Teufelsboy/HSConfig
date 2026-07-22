@@ -191,6 +191,16 @@ def test_contract_doctor_markdown_includes_config_quality_section():
                     "status": "attention",
                     "first_attention": "card_behavior_runtime_row_missing_trace",
                 },
+                "config_intent_self_audit": {
+                    "status": "attention",
+                    "first_attention": "runtime_file_without_intent",
+                    "runtime_files_total": 4,
+                    "runtime_files_without_intent": [
+                        "CustomConfig/shadowpriest/UNTRACED_001.json"
+                    ],
+                    "unsupported_runtime_files": [],
+                    "default_only_runtime_surfaces": [],
+                },
             },
         },
     }
@@ -210,6 +220,9 @@ def test_contract_doctor_markdown_includes_config_quality_section():
         "- Semantic intent first attention: card_behavior_runtime_row_missing_trace"
         in lines
     )
+    assert "- Config intent self-audit: attention" in lines
+    assert "- Config intent first attention: runtime_file_without_intent" in lines
+    assert "- Config intent runtime files without intent: 1" in lines
     assert "operator_summary.json remains the only normal apply authority" in markdown
 
 

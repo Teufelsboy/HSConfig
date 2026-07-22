@@ -377,6 +377,8 @@ Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnost
 
 `<out>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 
+`config_intent_self_audit` is a diagnostic-only proof that generated runtime files are intentionally explained by `operator_summary.json`, source-to-runtime explainability, deck identity, or explicit non-blocking default/suppression visibility. If its status is `attention`, the package can still be technically usable through `reports/operator_summary.json`, but inspect `reports/contract_doctor.json` or run `hsconfig contract-doctor --package <04_package> --json` before calling the config qualitatively complete.
+
 ## Expert Paths
 
 Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.

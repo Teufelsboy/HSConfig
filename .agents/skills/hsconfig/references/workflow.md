@@ -42,6 +42,8 @@ Unexpected contract drift is a defect in the source-contract spine. A builder pr
 
 After `configure`, `<out>/configure_summary.json.acceptance_summary` is the first-read operator projection: `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open` summarize the package. Read `configure_summary.json.handoff_contract` next for compact diagnostic-only proof, then `reports/operator_summary.json` as the single normal apply authority. The handoff contract is an operator projection only; it does not write runtime files and does not create another gate. `<out>/configure_summary.json.config_quality_summary` remains diagnostic-only and non-blocking, and `contract-doctor` provides details when attention is needed. `technical_status=VALID_PACKAGE` means HearthRanger JSON structure is valid. `SOURCE_BACKED_STRONG` means source depth supports a strong initial config. `STATIC_SEMANTICS_USABLE` means static semantics produced a safe baseline. `VALID_BUT_NOT_GUIDE_STRONG` means open `guide_strength_summary` and `semantic_blockers`.
 
+`config_intent_self_audit` is part of the config-quality diagnostic path and verifies runtime-file intent without creating a gameplay sequencing engine or a second runtime apply authority.
+
 `runtime_apply_mode` is the human-readable write mode. `hsconfig apply` and `apply_package()` still re-evaluate the operator gate before writing. `technical_status=VALID_PACKAGE` plus `runtime_load_safe=true` and `runtime_apply_mode=load_safe_apply` is the normal initial write boundary. `SOURCE_BACKED_STRONG` is the confidence label, not the runtime-write gate.
 
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.

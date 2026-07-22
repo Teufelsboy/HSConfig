@@ -113,11 +113,36 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
     semantic_intent_quality = _mapping(
         config_quality_checks.get("semantic_intent_coverage")
     )
+    config_intent_quality = config_quality_checks.get(
+        "config_intent_self_audit", {}
+    )
     operator = _mapping(report.get("operator"))
     lifecycle = _mapping(report.get("claim_lifecycle"))
     card_diagnostics = _mapping(report.get("card_diagnostics"))
     contract_spine = _mapping(report.get("contract_spine"))
     conformance = _mapping(report.get("conformance"))
+    config_intent_lines: list[str] = []
+    if isinstance(config_intent_quality, Mapping):
+        config_intent_lines.append(
+            f"- Config intent self-audit: {config_intent_quality.get('status', '')}"
+        )
+        first_attention = config_intent_quality.get("first_attention")
+        if first_attention is not None:
+            config_intent_lines.append(
+                f"- Config intent first attention: {first_attention}"
+            )
+        runtime_files_without_intent = config_intent_quality.get(
+            "runtime_files_without_intent", []
+        )
+        runtime_files_without_intent_count = (
+            len(runtime_files_without_intent)
+            if isinstance(runtime_files_without_intent, list)
+            else 0
+        )
+        config_intent_lines.append(
+            "- Config intent runtime files without intent: "
+            f"{runtime_files_without_intent_count}"
+        )
     lines = [
         "# Contract Doctor",
         "",
@@ -149,6 +174,7 @@ def render_contract_doctor_markdown(report: Mapping[str, Any]) -> str:
         f"- Report-only mechanic runtime rows: {_count(mechanic_quality.get('report_only_runtime_rows'))}",
         f"- Semantic intent status: {semantic_intent_quality.get('status', 'unknown')}",
         f"- Semantic intent first attention: {semantic_intent_quality.get('first_attention') or 'none'}",
+        *config_intent_lines,
         "",
         "## Claim Lifecycle",
         "",
