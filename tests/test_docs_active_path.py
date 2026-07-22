@@ -547,3 +547,13 @@ def test_operator_readme_starts_with_short_configure_path():
     assert "hsconfig configure" in first_120_lines
     assert "reports/operator_summary.json" in first_120_lines
     assert "contract-spine-sentinel" not in first_120_lines
+
+
+def test_operator_readme_documents_contract_preflight_research_context_lock():
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "contract-preflight" in text
+    assert "docs/research/current-truth.md" in text
+    assert "historical research outline" in text
+    assert "diagnostic-only" in text
+    assert "operator_summary.json" in text
