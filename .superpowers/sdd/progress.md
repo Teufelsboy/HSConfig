@@ -853,3 +853,13 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3: configure_summary acceptance_summary wired in eedf842; RED KeyError confirmed first; focused configure integration passed; reviewer approved.
 - [x] Task 4: configure-local boundary sentinel committed in 968c0fe; focused configure tests passed; reviewer approved.
 - [x] Task 5 verification: configure CLI 16 passed; apply/authority boundary 38 passed; universal wild no-block 34 passed; contract preflight 6 passed; full suite 1716 passed, 11 skipped.
+
+---
+
+# HSConfig Research Context Preflight Lock SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-research-context-preflight-lock.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true; baseline preflight/docs/skill slice passed (108 passed).
+- [x] Task 1: RED contract-preflight tests committed in fcc6803; focused RED confirmed 3 expected missing-key failures; reviewer accepted the test diff after report-file hygiene was resolved.
