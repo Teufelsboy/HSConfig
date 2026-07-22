@@ -1212,3 +1212,18 @@ def test_skill_and_workflow_describe_card_intent_taxonomy_as_diagnostic_only():
 
     assert expected in skill
     assert expected in workflow
+
+
+def test_hsconfig_skill_keeps_explicit_no_hstuner_after_game_boundary():
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+    assert (
+        "Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning."
+        in skill
+    )
+    assert (
+        "Card-intent taxonomy is diagnostic-only; it explains per-card config "
+        "signals but does not encode HearthRanger gameplay sequencing or create "
+        "another apply gate."
+        in skill
+    )
