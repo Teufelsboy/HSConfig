@@ -47,10 +47,10 @@ After `configure`, `<out>/configure_summary.json.acceptance_summary` is the firs
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
 Minimal load-safe runtime apply requires `GlobalValues.json` and `Mulligan.json`. `per-card <CARDID>.json` files, `Combo.json`, and source-backed choice lowering make the package richer, but they are HSConfig rich-output repo policy rather than the minimal runtime-write gate.
-
 `config_usefulness`, `load_safe_but_thin`, `usable_with_targeted_gaps`, `source_contract_audit_summary`, `source_to_runtime_explainability_summary`, `source_evidence_closure_summary`, `no_block_failure_mode_summary`, `mechanic_visibility_summary`, `mechanic_drift_summary`, `reports/source_contract_audit.json`, `reports/source_to_runtime_explainability.json`, `reports/source_evidence_closure.json`, `reports/mechanic_drift_report.json`, and `reports/semantic_enrichment_report.json` explain source, mechanic, and richness gaps. `technical_hard_block` stops apply; warning categories such as `source_depth_warning`, `warning_only_mechanic`, `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and `runtime_evidence_only_tuning` do not create a second apply path. This does not create a second apply path when `technical_status=VALID_PACKAGE`.
 
 Effect semantics are preserved on supported effect/CardID surfaces, but only exact runtime-surface claims lower into matching runtime JSON; `source_contract_audit.json` is diagnostic and `operator_summary.json` remains the normal apply authority. Semantic qualifiers refine existing claims with timing, zone, target, option, or state context. They do not bypass `claim_kind` or surface gates, and they do not create a second apply path. An effect without explicit opening-hand or mulligan wording remains effect semantics, not a `Mulligan.json` keep.
+Card-intent taxonomy is diagnostic-only; it explains per-card config signals but does not encode HearthRanger gameplay sequencing or create another apply gate.
 
 `operator_summary.json` remains the only normal apply authority.
 `source_contract_audit.json` explains why each claim did or did not lower.
