@@ -1,3 +1,4 @@
+from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.static_semantics import (
     build_static_semantics_source_records,
     infer_static_semantics,
@@ -221,6 +222,29 @@ def test_static_semantics_records_do_not_lower_unsatisfied_highlander_payoff():
     )
 
     assert records == []
+
+
+def test_static_semantics_records_do_not_lower_unsatisfied_highlander_transform():
+    records = build_static_semantics_source_records(
+        {
+            "deck_name": "NonHighlanderDeck",
+            "cards": [{"card_id": "TEST_HIGHLANDER_SHADOWFORM", "count": 2}],
+        },
+        {
+            "TEST_HIGHLANDER_SHADOWFORM": {
+                "id": "TEST_HIGHLANDER_SHADOWFORM",
+                "name": "Highlander Shadowform Payoff",
+                "type": "MINION",
+                "text": "Start of Game: If your deck has no duplicates, enter Shadowform.",
+            },
+        },
+        build_id="hsjson-20260715",
+    )
+
+    claims = [claim for record in records for claim in record["claims"]]
+
+    assert not any(claim["claim_kind"] == "hero_power_transform" for claim in claims)
+    assert route_card_behavior_claims(claims)["card_rows"] == {}
 
 
 def test_static_semantics_records_do_not_fallback_to_full_card_map_without_deck_cards():

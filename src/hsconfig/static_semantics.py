@@ -443,7 +443,7 @@ def _static_claims_for_card(
     )
     claims: list[dict[str, Any]] = []
 
-    if "hero_power_transform" in families:
+    if "hero_power_transform" in families and not unsatisfied_highlander:
         claims.append(
             _static_source_claim(
                 card_id,
