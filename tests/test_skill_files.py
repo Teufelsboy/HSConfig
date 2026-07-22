@@ -1207,12 +1207,43 @@ def test_docs_and_skill_route_installed_skill_sync_through_contract_preflight():
     operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
     skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
     combined = f"{operator}\n{skill}"
+    skill_lines = skill.splitlines()
+    expert_headings = [
+        line for line in skill_lines if line.startswith("## Expert Paths")
+    ]
+    drift_bullet = (
+        "- Drift check: `hsconfig contract-preflight --json` verifies repo "
+        "currentness, installed-skill sync, and source/runtime contract wording "
+        "as diagnostic-only; use `--skill-install-root` only for non-default "
+        "skill roots."
+    )
+
+    assert expert_headings == ["## Expert Paths"]
+    expert_index = skill_lines.index("## Expert Paths")
+    assert skill_lines[expert_index + 1] == drift_bullet
+
+    pre_expert_skill = "\n".join(skill_lines[:expert_index])
+    expert_skill = "\n".join(skill_lines[expert_index:])
+    preflight_marker = "Use `hsconfig contract-preflight --json`"
+    operator_preflight = (
+        preflight_marker + operator.split(preflight_marker, 1)[1].split("\n\n", 1)[0]
+    )
+    operator_preflight_flat = " ".join(operator_preflight.split())
 
     assert "installed-skill sync" in operator
     assert "hsconfig contract-preflight --json" in combined
     assert "--skill-install-root" in operator
     assert "diagnostic-only" in combined
     assert "does not replace `reports/operator_summary.json`" in combined
+    assert drift_bullet in expert_skill
+    assert "installed-skill sync" not in pre_expert_skill
+    assert "--skill-install-root" not in pre_expert_skill
+    assert "`hsconfig contract-preflight --json`" in operator_preflight
+    assert "--skill-install-root" in operator_preflight
+    assert "diagnostic-only" in operator_preflight
+    assert "preflight is diagnostic-only" in operator_preflight_flat
+    assert "default-only success" not in operator_preflight_flat.lower()
+    assert "default-only success" not in drift_bullet.lower()
 
 
 def test_skill_and_workflow_describe_card_intent_taxonomy_as_diagnostic_only():
