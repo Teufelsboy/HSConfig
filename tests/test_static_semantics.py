@@ -172,3 +172,8 @@ def test_static_semantics_uses_drift_text_registry_for_modern_mechanics():
         "kindred",
     } <= families
     assert {"rewind", "prepare", "kindred"} <= set(result["warning_only"])
+
+
+def test_plain_card_types_do_not_become_warning_only_mechanics():
+    assert infer_static_semantics({"id": "SPELL_ONLY", "type": "SPELL"})["warning_only"] == []
+    assert infer_static_semantics({"id": "MINION_ONLY", "type": "MINION"})["warning_only"] == []

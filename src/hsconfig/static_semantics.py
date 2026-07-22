@@ -7,6 +7,7 @@ from typing import Any
 
 from hsconfig.mechanic_drift import TEXT_MECHANIC_PATTERNS as DRIFT_TEXT_MECHANIC_PATTERNS
 from hsconfig.mechanic_support import (
+    MECHANIC_SUPPORT,
     mechanic_default_runtime_block,
     mechanic_report_only_reason,
     mechanic_static_claim_allowed,
@@ -185,7 +186,13 @@ def _has_start_in_deck_requirement(lowered: str) -> bool:
 
 
 def _is_warning_only_family(family: str) -> bool:
-    return family in WARNING_ONLY_MECHANICS or bool(mechanic_report_only_reason(family))
+    return family in WARNING_ONLY_MECHANICS or (
+        family in MECHANIC_SUPPORT and bool(mechanic_report_only_reason(family))
+    )
+
+
+def _static_claim_allowed_for_family(family: str) -> bool:
+    return mechanic_static_claim_allowed(family) or _is_warning_only_family(family)
 
 
 def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
@@ -371,7 +378,7 @@ def _static_claims_for_card(card_id: str, card: Mapping[str, Any]) -> list[dict[
             continue
         if family == "hero_power" and "hero_power_transform" in families:
             continue
-        if not mechanic_static_claim_allowed(family) and family not in WARNING_ONLY_MECHANICS:
+        if not _static_claim_allowed_for_family(family):
             continue
         key = ("mechanic_usage", family)
         if key in emitted:

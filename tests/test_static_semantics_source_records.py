@@ -124,6 +124,34 @@ def test_static_semantics_records_emit_mechanic_usage_for_supported_families():
     assert dredge_claim["runtime_suppression_reason"]
 
 
+def test_static_semantics_records_emit_report_only_claims_from_drift_registry():
+    records = build_static_semantics_source_records(
+        {
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "TEST_PREPARE", "count": 1}],
+        },
+        {
+            "TEST_PREPARE": {
+                "id": "TEST_PREPARE",
+                "name": "Prepare Fixture",
+                "type": "SPELL",
+                "text": "Prepare.",
+            },
+        },
+        build_id="hsjson-20260715",
+    )
+
+    claims = records[0]["claims"]
+    prepare_claim = next(claim for claim in claims if claim["mechanic"] == "prepare")
+
+    assert prepare_claim["claim_kind"] == "mechanic_usage"
+    assert prepare_claim["trust_ceiling"] == "report_only"
+    assert prepare_claim["runtime_block"] == ""
+    assert prepare_claim["runtime_suppression_reason"] == (
+        "prepare_has_no_documented_runtime_block"
+    )
+
+
 def test_static_semantics_records_do_not_fallback_to_full_card_map_without_deck_cards():
     records = build_static_semantics_source_records(
         {"deck_name": "FixtureDeck"},
