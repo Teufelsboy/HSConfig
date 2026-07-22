@@ -474,6 +474,34 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
             first_attention = semantic_intent.get("first_attention")
             if first_attention is not None:
                 summary["semantic_intent_first_attention"] = str(first_attention)
+        config_intent = checks.get("config_intent_self_audit")
+        if isinstance(config_intent, Mapping):
+            summary["config_intent_self_audit_status"] = str(
+                config_intent.get("status") or ""
+            )
+            first_attention = config_intent.get("first_attention")
+            if first_attention is not None:
+                summary["config_intent_first_attention"] = str(first_attention)
+            summary["config_intent_runtime_files_total"] = int(
+                config_intent.get("runtime_files_total") or 0
+            )
+            summary["config_intent_runtime_files_without_intent"] = len(
+                [
+                    item
+                    for item in config_intent.get("runtime_files_without_intent", [])
+                    if str(item)
+                ]
+            )
+            summary["config_intent_unsupported_runtime_files"] = [
+                str(item)
+                for item in config_intent.get("unsupported_runtime_files", [])
+                if str(item)
+            ]
+            summary["config_intent_default_only_runtime_surfaces"] = [
+                str(item)
+                for item in config_intent.get("default_only_runtime_surfaces", [])
+                if str(item)
+            ]
         legacy_surfaces = checks.get("legacy_surfaces")
         if isinstance(legacy_surfaces, Mapping):
             legacy_present = [
@@ -734,6 +762,8 @@ def _build_config_proof_summary(
         or default_only_runtime_surfaces
         or forbidden_surfaces
         or str(config_quality_summary.get("status", "")) == "attention"
+        or str(config_quality_summary.get("config_intent_self_audit_status", ""))
+        == "attention"
     )
 
     return {
@@ -811,6 +841,18 @@ def _build_config_proof_summary(
         "semantic_intent_status": str(
             config_quality_summary.get("semantic_intent_status", "")
         ),
+        "config_intent_self_audit_status": str(
+            config_quality_summary.get("config_intent_self_audit_status", "")
+        ),
+        "config_intent_first_attention": (
+            str(config_quality_summary.get("config_intent_first_attention"))
+            if config_quality_summary.get("config_intent_first_attention") is not None
+            else None
+        ),
+        "config_intent_runtime_files_without_intent": int(
+            config_quality_summary.get("config_intent_runtime_files_without_intent")
+            or 0
+        ),
         "config_quality_status": str(config_quality_summary.get("status", "")),
         "config_quality_problem_checks": problem_checks,
         "next_report_to_open": (
@@ -883,6 +925,13 @@ def _build_handoff_contract(
             and str(config_proof_summary.get("runtime_json_status") or "") == "clean"
             and str(config_proof_summary.get("source_to_runtime_status") or "")
             == "clean"
+            and str(config_proof_summary.get("config_intent_self_audit_status") or "")
+            in {"", "clean"}
+            and int(
+                config_proof_summary.get("config_intent_runtime_files_without_intent")
+                or 0
+            )
+            == 0
             and str(config_quality_summary.get("status") or "") == "clean"
             and not problem_checks
         )
@@ -943,6 +992,27 @@ def _build_handoff_contract(
         ),
         "semantic_intent_status": str(
             config_proof_summary.get("semantic_intent_status") or ""
+        ),
+        **(
+            {
+                "config_intent_self_audit_status": str(
+                    config_proof_summary.get("config_intent_self_audit_status") or ""
+                ),
+                "config_intent_first_attention": (
+                    str(config_proof_summary.get("config_intent_first_attention"))
+                    if config_proof_summary.get("config_intent_first_attention")
+                    is not None
+                    else None
+                ),
+                "config_intent_runtime_files_without_intent": int(
+                    config_proof_summary.get(
+                        "config_intent_runtime_files_without_intent"
+                    )
+                    or 0
+                ),
+            }
+            if "config_intent_self_audit_status" in config_proof_summary
+            else {}
         ),
         "mechanic_runtime_discipline_status": str(
             config_quality_summary.get("mechanic_runtime_discipline_status") or ""

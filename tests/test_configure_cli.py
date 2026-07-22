@@ -635,6 +635,10 @@ def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
         "cards_with_closure": 18,
         "mechanic_runtime_discipline_status": "clean",
         "semantic_intent_status": "clean",
+        "config_intent_self_audit_status": "clean",
+        "config_intent_first_attention": None,
+        "config_intent_runtime_files_total": 3,
+        "config_intent_runtime_files_without_intent": 0,
     }
 
     assert _build_config_proof_summary(
@@ -689,6 +693,9 @@ def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
         "cards_total": 18,
         "cards_with_closure": 18,
         "semantic_intent_status": "clean",
+        "config_intent_self_audit_status": "clean",
+        "config_intent_first_attention": None,
+        "config_intent_runtime_files_without_intent": 0,
         "config_quality_status": "clean",
         "config_quality_problem_checks": [],
         "next_report_to_open": "reports/operator_summary.json",
@@ -739,6 +746,10 @@ def test_build_config_proof_summary_surfaces_attention_without_blocking() -> Non
         "cards_with_closure": 16,
         "mechanic_runtime_discipline_status": "attention",
         "semantic_intent_status": "attention",
+        "config_intent_self_audit_status": "attention",
+        "config_intent_first_attention": "runtime_file_without_intent",
+        "config_intent_runtime_files_total": 4,
+        "config_intent_runtime_files_without_intent": 1,
     }
 
     summary = _build_config_proof_summary(
@@ -758,6 +769,9 @@ def test_build_config_proof_summary_surfaces_attention_without_blocking() -> Non
     ]
     assert summary["source_to_runtime_status"] == "attention"
     assert summary["currentness_status"] == "attention"
+    assert summary["config_intent_self_audit_status"] == "attention"
+    assert summary["config_intent_first_attention"] == "runtime_file_without_intent"
+    assert summary["config_intent_runtime_files_without_intent"] == 1
     assert summary["first_warning_boundary"] == {
         "mechanic": "location_activation",
         "boundary": "warning_only",
@@ -917,6 +931,43 @@ def test_compact_config_quality_summary_includes_semantic_intent_when_present() 
     }
 
 
+def test_compact_config_quality_summary_includes_config_intent_self_audit() -> None:
+    report = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [],
+        "checks": {
+            "config_intent_self_audit": {
+                "status": "attention",
+                "first_attention": "runtime_file_without_intent",
+                "runtime_files_total": 4,
+                "runtime_files_without_intent": [
+                    "CustomConfig/shadowpriest/UNTRACED_001.json"
+                ],
+                "unsupported_runtime_files": [],
+                "default_only_runtime_surfaces": [],
+            }
+        },
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+        "config_intent_self_audit_status": "attention",
+        "config_intent_first_attention": "runtime_file_without_intent",
+        "config_intent_runtime_files_total": 4,
+        "config_intent_runtime_files_without_intent": 1,
+        "config_intent_unsupported_runtime_files": [],
+        "config_intent_default_only_runtime_surfaces": [],
+    }
+
+
 def test_compact_config_quality_summary_includes_proof_fields() -> None:
     report = {
         "status": "clean",
@@ -1056,7 +1107,20 @@ def test_configure_writes_diagnostic_config_quality_summary(
     _stub_empty_card_fetches(monkeypatch)
 
     def clean_report(_package_dir: Path) -> dict[str, Any]:
-        return {"status": "clean", "problems": []}
+        return {
+            "status": "clean",
+            "problems": [],
+            "checks": {
+                "config_intent_self_audit": {
+                    "status": "clean",
+                    "first_attention": None,
+                    "runtime_files_total": 3,
+                    "runtime_files_without_intent": [],
+                    "unsupported_runtime_files": [],
+                    "default_only_runtime_surfaces": [],
+                }
+            },
+        }
 
     monkeypatch.setattr(
         "hsconfig.commands.configure.build_config_quality_report",
@@ -1091,6 +1155,11 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "config_intent_self_audit_status": "clean",
+        "config_intent_runtime_files_total": 3,
+        "config_intent_runtime_files_without_intent": 0,
+        "config_intent_unsupported_runtime_files": [],
+        "config_intent_default_only_runtime_surfaces": [],
     }
     assert summary["acceptance_summary"] == {
         "schema_version": 1,
@@ -1130,6 +1199,8 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert proof["no_default_only_clean"] is True
     assert proof["forbidden_normal_surfaces_status"] == "unknown"
     assert proof["forbidden_normal_surfaces_absent"] is None
+    assert proof["config_intent_self_audit_status"] == "clean"
+    assert proof["config_intent_runtime_files_without_intent"] == 0
     assert proof["runtime_surface_boundary"] == [
         "GlobalValues.json",
         "Mulligan.json",
@@ -1147,6 +1218,8 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert handoff["source_gaps_apply_blocking"] is False
     assert handoff["default_only_clean"] is True
     assert handoff["default_only_runtime_surfaces"] == []
+    assert handoff["config_intent_self_audit_status"] == "clean"
+    assert handoff["config_intent_runtime_files_without_intent"] == 0
     assert handoff["runtime_surface_boundary"] == [
         "GlobalValues.json",
         "Mulligan.json",
