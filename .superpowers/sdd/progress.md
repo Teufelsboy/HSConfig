@@ -828,3 +828,15 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Add CLI Command Without Runtime Integration (implemented in combined Task 1+2 commit range; combined review approved)
 - [x] Task 3: Surface The Router Contract In Skill And Operator Docs (commit a935317; review approved; focused tests 69 passed)
 - [x] Task 4: Final Sync, Verification, And Clean Push (skill sync passed; guardrails 526 passed; full suite 1711 passed, 11 skipped; final scope fix de868d1; ledger commit pending)
+
+---
+
+# HSConfig Source Contract Audit Authority Metadata SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-source-contract-audit-authority-metadata.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Task 1: source contract audit top-level diagnostic metadata committed in cd67054; RED KeyError confirmed first; focused source-contract audit file passed 15 tests; reviewer approved.
+- [x] Task 2: contract-spine sentinel diagnostic metadata guard committed in 87c62ba; focused guard passed and full sentinel file passed 27 tests; reviewer approved.
+- [x] Task 3: no-second-gate/default-only verification passed: apply/report boundary 16 passed; source/default-only slice 38 passed; contract-preflight PASS; installed skill sync passed; full suite 1712 passed, 11 skipped.
