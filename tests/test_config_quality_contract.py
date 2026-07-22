@@ -846,6 +846,21 @@ def test_config_quality_flags_meaningful_cardid_rows_without_semantic_score(
             }
         ],
     } in report["problems"]
+    semantic_intent = report["checks"]["semantic_intent_coverage"]
+
+    assert semantic_intent["status"] == "attention"
+    assert semantic_intent["first_attention"] == "card_behavior_semantic_score_missing"
+    assert {
+        "check": "card_behavior_semantic_score_missing",
+        "count": 1,
+    } in semantic_intent["attention"]
+    assert semantic_intent["semantic_score_missing_rows"] == [
+        {
+            "card_id": "NX2_019",
+            "behavior_block": "BeforeBattlecryTargetBonus",
+            "value": "10",
+        }
+    ]
 
 
 def test_config_quality_flags_semantic_default_rows(tmp_path: Path):
@@ -916,18 +931,22 @@ def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
     write_json(
         package / "reports" / "semantic_enrichment_report.json",
         {
-            "cards": {
-                "BAR_880": {
+            "cards": [
+                {
                     "card_id": "BAR_880",
                     "name": "Tradeable Test Card",
-                    "warning_only_mechanics": ["tradeable"],
+                    "warning_only_mechanics": [
+                        "tradeable",
+                        "location_activation",
+                        "tradeable",
+                    ],
                 },
-                "LOC_001": {
+                {
                     "card_id": "LOC_001",
                     "name": "Location Test Card",
                     "warning_only_mechanics": ["location_activation"],
                 },
-            }
+            ]
         },
     )
 
@@ -939,6 +958,7 @@ def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
         "location_activation",
         "tradeable",
     ]
+    assert report["checks"]["semantic_intent_coverage"]["first_attention"] is None
     assert report["checks"]["semantic_intent_coverage"]["attention"] == []
 
 
