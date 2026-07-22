@@ -737,12 +737,6 @@ def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
     ]
 
 
-def _string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value if str(item)]
-
-
 def _technical_status(report: dict[str, Any]) -> str:
     status = str(report.get("status", "")).lower()
     return "VALID_PACKAGE" if status in VALID_STATUSES else "INVALID_PACKAGE"

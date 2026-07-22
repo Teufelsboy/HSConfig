@@ -1,9 +1,22 @@
+from pathlib import Path
+
 import pytest
 
 from hsconfig.operator_summary import _closure_matches_surface, build_operator_summary
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
+
+
+def test_operator_summary_has_single_string_list_helper() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "hsconfig"
+        / "operator_summary.py"
+    ).read_text(encoding="utf-8")
+
+    assert source.count("def _string_list(") == 1
 
 
 def _source_backed_mulligan_plan_report():
