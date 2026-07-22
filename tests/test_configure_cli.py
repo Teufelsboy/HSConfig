@@ -560,6 +560,8 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
             "operator_default_only_runtime_surfaces",
             "source_to_runtime_closure_rows_missing",
         ],
+        "semantic_intent_status": "attention",
+        "semantic_intent_first_attention": "card_behavior_runtime_row_missing_trace",
         "next_action": "run_contract_doctor_for_details",
     }
 
@@ -583,6 +585,10 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
         "operator_default_only_runtime_surfaces",
         "source_to_runtime_closure_rows_missing",
     ]
+    assert summary["semantic_intent_status"] == "attention"
+    assert summary["semantic_intent_first_attention"] == (
+        "card_behavior_runtime_row_missing_trace"
+    )
     assert summary["next_report_to_open"] == "reports/contract_doctor.json"
     assert summary["interpretation"] == (
         "Package is usable now according to reports/operator_summary.json; "

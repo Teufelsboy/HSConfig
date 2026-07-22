@@ -509,6 +509,12 @@ def _build_acceptance_summary(
         for check in config_quality_summary.get("problem_checks", [])
         if str(check)
     ]
+    semantic_intent_status = str(
+        config_quality_summary.get("semantic_intent_status") or ""
+    )
+    semantic_intent_first_attention = config_quality_summary.get(
+        "semantic_intent_first_attention"
+    )
 
     validation_passed = validate_status == 0
     apply_passed = (not apply_requested) or apply_status == 0
@@ -538,7 +544,7 @@ def _build_acceptance_summary(
             "source and config-quality details remain diagnostic."
         )
 
-    return {
+    summary = {
         "schema_version": 1,
         "use_config_now": use_config_now,
         "normal_apply_authority": normal_apply_authority,
@@ -558,6 +564,13 @@ def _build_acceptance_summary(
         "next_report_to_open": next_report_to_open,
         "interpretation": interpretation,
     }
+    if semantic_intent_status:
+        summary["semantic_intent_status"] = semantic_intent_status
+    if semantic_intent_first_attention is not None:
+        summary["semantic_intent_first_attention"] = str(
+            semantic_intent_first_attention
+        )
+    return summary
 
 
 def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
