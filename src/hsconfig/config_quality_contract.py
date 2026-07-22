@@ -32,6 +32,7 @@ NORMAL_RUNTIME_SURFACE_BOUNDARY = [
     "per-card <CARDID>.json",
     "Combo.json",
 ]
+NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
 STANDARD_SURFACE_ALIASES = {
     "globalvalues": "GlobalValues.json",
     "global_values": "GlobalValues.json",
@@ -43,6 +44,38 @@ STANDARD_SURFACE_ALIASES = {
     "cardid": "per-card <CARDID>.json",
     "cardid_behavior": "per-card <CARDID>.json",
     "CARDID.json": "per-card <CARDID>.json",
+}
+INTENTIONAL_OPERATOR_LEDGER_STATUSES = {
+    "emitted",
+    "source_backed",
+    "policy_backed",
+    "static_semantics",
+    "static_semantics_backed",
+}
+RUNTIME_INTENT_DECISIONS = {
+    "emitted",
+    "runtime_emitted",
+    "runtime_lowered",
+}
+RUNTIME_INTENT_LOWERING_STATUSES = {
+    "emitted",
+    "runtime_emitted",
+    "runtime_lowered",
+    "source_backed_runtime",
+    "policy_backed_runtime",
+}
+RUNTIME_INTENT_RESOLUTION_REASONS = {
+    "emitted",
+    "source_backed_runtime",
+    "policy_backed_runtime",
+}
+NON_EMITTED_RUNTIME_INTENT_MARKERS = {
+    "missing_timing",
+    "not_emitted",
+    "not_seen_by_builder",
+    "report_only",
+    "suppressed",
+    "suppressed_with_reason",
 }
 SOURCE_TRACE_LANES = {
     "runtime_lowered",
@@ -981,6 +1014,7 @@ def _config_intent_self_audit_check(
         card_behavior=card_behavior,
         explainability=explainability,
     )
+    normal_apply_authority_drift = _normal_apply_authority_drift(operator)
     deck_card_ids = _deck_identity_card_ids(deck_identity)
     default_only_runtime_surfaces = [
         str(surface)
@@ -1008,6 +1042,13 @@ def _config_intent_self_audit_check(
         runtime_files_without_intent.append(runtime_file)
 
     attention: list[dict[str, Any]] = []
+    if normal_apply_authority_drift:
+        attention.append(
+            {
+                "check": "normal_apply_authority_drift",
+                "count": 1,
+            }
+        )
     if runtime_files_without_intent:
         attention.append(
             {
@@ -1044,6 +1085,7 @@ def _config_intent_self_audit_check(
         "runtime_write_performed": False,
         "status": "clean" if not attention else "attention",
         "normal_apply_authority": _normal_apply_authority(operator),
+        "normal_apply_authority_drift": normal_apply_authority_drift,
         "runtime_surface_boundary": NORMAL_RUNTIME_SURFACE_BOUNDARY,
         "runtime_files_total": len(runtime_files),
         "runtime_files_without_intent": runtime_files_without_intent,
@@ -1058,12 +1100,19 @@ def _config_intent_self_audit_check(
 
 
 def _normal_apply_authority(operator: Mapping[str, Any]) -> str:
+    return NORMAL_APPLY_AUTHORITY
+
+
+def _normal_apply_authority_drift(operator: Mapping[str, Any]) -> dict[str, str] | None:
     contract = operator.get("runtime_apply_contract", {})
     if isinstance(contract, Mapping):
         authority = str(contract.get("apply_authority", "")).strip()
-        if authority:
-            return authority
-    return "reports/operator_summary.json"
+        if authority and authority != NORMAL_APPLY_AUTHORITY:
+            return {
+                "expected": NORMAL_APPLY_AUTHORITY,
+                "reported": authority,
+            }
+    return None
 
 
 def _runtime_files_from_custom_config(package: Path) -> list[str]:
@@ -1085,22 +1134,26 @@ def _explained_runtime_files_from_reports(
     explained: set[str] = set()
 
     for row in _report_rows(explainability, ("claim_rows", "card_rows")):
-        explained.update(
-            Path(item).name for item in _string_list(row.get("emitted_runtime_files"))
-        )
-        explained.update(
-            Path(item).name for item in _string_list(row.get("runtime_surfaces"))
-        )
-        closure = row.get("closure")
-        if isinstance(closure, Mapping):
+        if _has_emitted_runtime_intent(row):
             explained.update(
                 Path(item).name
-                for item in _string_list(closure.get("runtime_surfaces"))
+                for item in _string_list(row.get("emitted_runtime_files"))
             )
+            explained.update(
+                Path(item).name for item in _string_list(row.get("runtime_surfaces"))
+            )
+            closure = row.get("closure")
+            if isinstance(closure, Mapping):
+                explained.update(
+                    Path(item).name
+                    for item in _string_list(closure.get("runtime_surfaces"))
+                )
         evidence_chain = row.get("evidence_chain", [])
         if isinstance(evidence_chain, list):
             for item in evidence_chain:
                 if not isinstance(item, Mapping):
+                    continue
+                if not _has_emitted_runtime_intent(item):
                     continue
                 explained.update(
                     Path(value).name
@@ -1118,12 +1171,7 @@ def _explained_runtime_files_from_reports(
             if not isinstance(row, Mapping):
                 continue
             status = str(row.get("status", "")).strip()
-            if status not in {
-                "emitted",
-                "source_backed",
-                "policy_backed",
-                "static_semantics",
-            }:
+            if status not in INTENTIONAL_OPERATOR_LEDGER_STATUSES:
                 continue
             surface = _standard_surface_name(row.get("surface"))
             if surface == "per-card <CARDID>.json":
@@ -1132,6 +1180,45 @@ def _explained_runtime_files_from_reports(
                 explained.add(surface)
 
     return explained
+
+
+def _has_emitted_runtime_intent(row: Mapping[str, Any]) -> bool:
+    if _has_non_emitted_runtime_marker(row):
+        return False
+    if (
+        str(row.get("builder_or_router_decision", "")).strip()
+        in RUNTIME_INTENT_DECISIONS
+    ):
+        return True
+    if (
+        str(row.get("runtime_lowering_status", "")).strip()
+        in RUNTIME_INTENT_LOWERING_STATUSES
+    ):
+        return True
+    return (
+        str(row.get("resolution_reason", "")).strip()
+        in RUNTIME_INTENT_RESOLUTION_REASONS
+    )
+
+
+def _has_non_emitted_runtime_marker(row: Mapping[str, Any]) -> bool:
+    if str(row.get("first_missing_link", "")).strip():
+        return True
+    if str(row.get("suppressed_reason", "")).strip():
+        return True
+    for key in (
+        "builder_or_router_decision",
+        "claim_lane",
+        "lane",
+        "readiness_lane",
+        "resolution_reason",
+        "runtime_lowering_status",
+        "source_lane",
+        "surface_gate_decision",
+    ):
+        if str(row.get(key, "")).strip() in NON_EMITTED_RUNTIME_INTENT_MARKERS:
+            return True
+    return False
 
 
 def _standard_surface_name(value: Any) -> str:
@@ -1266,6 +1353,13 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
         )
 
     config_intent = checks["config_intent_self_audit"]
+    if config_intent["normal_apply_authority_drift"]:
+        problems.append(
+            {
+                "check": "config_intent_normal_apply_authority_drift",
+                "value": config_intent["normal_apply_authority_drift"],
+            }
+        )
     if config_intent["runtime_files_without_intent"]:
         problems.append(
             {

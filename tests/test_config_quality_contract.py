@@ -1637,3 +1637,131 @@ def test_config_quality_flags_runtime_file_without_intent_in_self_audit(
         "value": ["CustomConfig/shadowpriest/UNTRACED_001.json"],
     } in report["problems"]
     assert report["apply_blocking"] is False
+
+
+def test_config_quality_reports_authority_drift_without_changing_normal_apply_authority(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["runtime_apply_contract"] = {
+        "apply_authority": "reports/drifted_runtime_apply_contract.json"
+    }
+    write_json(package / "reports" / "operator_summary.json", operator)
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["normal_apply_authority"] == "reports/operator_summary.json"
+    assert audit["authority"] == "diagnostic_only"
+    assert audit["apply_blocking"] is False
+    assert audit["runtime_write_performed"] is False
+    assert audit["normal_apply_authority_drift"] == {
+        "expected": "reports/operator_summary.json",
+        "reported": "reports/drifted_runtime_apply_contract.json",
+    }
+    assert audit["first_attention"] == "normal_apply_authority_drift"
+    assert {
+        "check": "normal_apply_authority_drift",
+        "count": 1,
+    } in audit["attention"]
+    assert {
+        "check": "config_intent_normal_apply_authority_drift",
+        "value": {
+            "expected": "reports/operator_summary.json",
+            "reported": "reports/drifted_runtime_apply_contract.json",
+        },
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_does_not_explain_combo_with_suppressed_evidence_chain(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Combo.json",
+        {"GameCardId": "Combo", "Combos": []},
+    )
+    explainability = json.loads(
+        (package / "reports" / "source_to_runtime_explainability.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    explainability["claim_rows"].append(
+        {
+            "claim_id": "claim_combo_without_timing",
+            "claim_kind": "combo_sequence",
+            "builder_or_router_decision": "suppressed",
+            "runtime_surfaces": ["Combo.json"],
+            "emitted_runtime_files": [],
+            "first_missing_link": "combo_timing",
+            "suppressed_reason": "missing_timing",
+        }
+    )
+    explainability["card_rows"].append(
+        {
+            "card_id": "NX2_019",
+            "first_missing_link": "combo_timing",
+            "source_lane": "report_only",
+            "runtime_surfaces": ["Combo.json"],
+            "closure": {
+                "lane": "suppressed_with_reason",
+                "runtime_surfaces": ["Combo.json"],
+                "default_only_risk": False,
+            },
+            "evidence_chain": [
+                {
+                    "claim_id": "claim_combo_without_timing",
+                    "claim_kind": "combo_sequence",
+                    "builder_or_router_decision": "suppressed",
+                    "runtime_files": ["Combo.json"],
+                    "resolution_reason": "missing_timing",
+                    "suppressed_reason": "missing_timing",
+                }
+            ],
+        }
+    )
+    write_json(
+        package / "reports" / "source_to_runtime_explainability.json",
+        explainability,
+    )
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["runtime_files_without_intent"] == [
+        "CustomConfig/shadowpriest/Combo.json"
+    ]
+    assert audit["first_attention"] == "runtime_file_without_intent"
+    assert {
+        "check": "config_intent_runtime_file_without_intent",
+        "value": ["CustomConfig/shadowpriest/Combo.json"],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_accepts_static_semantics_backed_operator_ledger_status(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["surface_status_ledger"] = [
+        {"surface": "cardid_behavior", "status": "emitted"},
+        {"surface": "globalvalues", "status": "static_semantics_backed"},
+        {"surface": "mulligan", "status": "static_semantics_backed"},
+        {"surface": "combo", "status": "not_applicable"},
+    ]
+    write_json(package / "reports" / "operator_summary.json", operator)
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["status"] == "clean"
+    assert audit["runtime_files_without_intent"] == []
+    assert audit["attention"] == []
+    assert report["problems"] == []
