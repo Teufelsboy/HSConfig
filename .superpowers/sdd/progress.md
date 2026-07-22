@@ -930,7 +930,7 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 - [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true.
 - [x] Task 1: Add Compact Quality Fields For Proof Projection (commits 965f156..ba1802f, review clean)
-- [ ] Task 2: Add Configure-Local Config Proof Summary
+- [x] Task 2: Add Configure-Local Config Proof Summary (commits 2a26ede..3ccf016, review clean)
 - [ ] Task 3: Make Proof Summary Visible In Contract Preflight
 - [ ] Task 4: Update Operator Docs And Skill Wording
 - [ ] Task 5: Final Verification And Clean Worktree
