@@ -876,6 +876,6 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 - [x] Task 0: Preflight/currentness clean before edits (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`).
 - [x] Task 1/2: Config quality semantic intent coverage tests and implementation (commit 357388f; RED confirmed 5 failed / 15 passed; GREEN focused suite 20 passed; task review approved for code and flagged only open ledger state).
-- [ ] Task 3: Configure summary and contract-doctor operator surface.
+- [x] Task 3: Configure summary and contract-doctor operator surface (commit 5b18546; focused configure/contract-doctor tests 26 passed; task review approved).
 - [ ] Task 4: Operator docs and optional skill sync.
 - [ ] Task 5: Verification, final review, commit, push, and clean-worktree proof.
