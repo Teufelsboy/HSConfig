@@ -945,4 +945,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 1: Extract Reusable Installed Skill Sync Status (commits 6679622..e81edcb, review approved; controller ledger committed separately)
 - [x] Task 2: Project Installed Skill Sync Through Contract Preflight (commits 44b9144..d82ad2d, review clean after fallback semantics fixes)
 - [x] Task 3: Update Operator Docs And Skill Routing (commits 86ea840..68edab7, re-review approved after expert-path fix)
-- [ ] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree
+- [x] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree (final review fixes 0e93fe4, fd688ab, and 452415c; re-review approved with no Critical/Important findings; focused suites 76 passed; installed skill sync --check in sync; branch diff whitespace clean; currentness clean)
