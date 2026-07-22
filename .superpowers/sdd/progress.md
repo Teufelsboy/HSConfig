@@ -865,3 +865,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 1: RED contract-preflight tests committed in fcc6803; focused RED confirmed 3 expected missing-key failures; reviewer accepted the test diff after report-file hygiene was resolved.
 - [x] Task 2: research-context preflight lock implemented in 22e68d2; contract preflight 9 passed; CLI preflight PASS with diagnostic-only research_context; reviewer approved.
 - [x] Task 3: operator docs and docs-active-path test committed in 2cb3bee; docs/skill focused slice passed 64 tests; reviewer approved.
+- [x] Task 4 verification: focused preflight/docs/skill slice 112 passed; contract guardrails 528 passed; CLI preflight PASS; full suite 1720 passed, 11 skipped; currentness clean (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`).
