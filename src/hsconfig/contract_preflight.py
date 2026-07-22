@@ -24,6 +24,7 @@ EXPECTED_CHECK_KEYS = (
     "configure_acceptance_route_visible",
     "configure_acceptance_projection_not_gate_visible",
     "config_quality_summary_diagnostic_only_visible",
+    "config_proof_summary_visible",
     "operator_summary_single_authority_visible",
     "source_status_nonblocking_visible",
     "no_default_only_visible",
@@ -276,6 +277,14 @@ def _config_quality_summary_diagnostic_only_visible(combined: str) -> bool:
     )
 
 
+def _config_proof_summary_visible(combined: str) -> bool:
+    return (
+        "config_proof_summary" in combined
+        and "diagnostic-only config proof" in combined
+        and "not another apply gate" in combined
+    )
+
+
 def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPreflight:
     root = Path(repo_root).resolve()
     current_truth_path = root / "docs" / "research" / "current-truth.md"
@@ -402,6 +411,7 @@ def build_contract_preflight(
         "config_quality_summary_diagnostic_only_visible": (
             _config_quality_summary_diagnostic_only_visible(combined)
         ),
+        "config_proof_summary_visible": _config_proof_summary_visible(combined),
         "operator_summary_single_authority_visible": (
             "operator_summary.json remains the only normal apply authority" in combined
             or "operator_summary.json` remains the only normal apply authority"

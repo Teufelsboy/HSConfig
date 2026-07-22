@@ -210,6 +210,10 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
         assert "next_report_to_open" in text
         assert "<out>/configure_summary.json.config_quality_summary" in text
         assert "config_quality_summary" in text
+        assert "<out>/configure_summary.json.config_proof_summary" in text
+        assert "diagnostic-only config proof" in text
+        assert "not another apply gate" in text
+        assert "does not replace `reports/operator_summary.json`" in text
         assert "diagnostic-only" in text
         assert "non-blocking" in text
         assert "contract-doctor" in text

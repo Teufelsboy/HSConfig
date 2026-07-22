@@ -358,6 +358,8 @@ and does not block a technically valid package.
 
 `<out>/configure_summary.json.acceptance_summary` is the first post-`configure` read. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
 
+Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof: it compacts currentness, no-default-only visibility, source-to-runtime trace health, runtime-surface boundaries, warning-only mechanic visibility, and effect-not-mulligan canaries; it is not another apply gate and does not replace `reports/operator_summary.json`.
+
 `<out>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 
 ## Expert Paths

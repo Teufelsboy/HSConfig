@@ -50,9 +50,11 @@ def test_contract_preflight_checks_configure_acceptance_route_contract() -> None
     assert payload["checks"]["configure_acceptance_route_visible"] is True
     assert payload["checks"]["configure_acceptance_projection_not_gate_visible"] is True
     assert payload["checks"]["config_quality_summary_diagnostic_only_visible"] is True
+    assert payload["checks"]["config_proof_summary_visible"] is True
     assert "configure_acceptance_route_visible" not in payload["failures"]
     assert "configure_acceptance_projection_not_gate_visible" not in payload["failures"]
     assert "config_quality_summary_diagnostic_only_visible" not in payload["failures"]
+    assert "config_proof_summary_visible" not in payload["failures"]
 
 
 def test_contract_preflight_reports_attention_when_git_is_dirty() -> None:
@@ -289,9 +291,11 @@ def test_contract_preflight_reports_attention_when_configure_acceptance_route_dr
     assert payload["checks"]["configure_acceptance_route_visible"] is False
     assert payload["checks"]["configure_acceptance_projection_not_gate_visible"] is False
     assert payload["checks"]["config_quality_summary_diagnostic_only_visible"] is False
+    assert payload["checks"]["config_proof_summary_visible"] is False
     assert "configure_acceptance_route_visible" in payload["failures"]
     assert "configure_acceptance_projection_not_gate_visible" in payload["failures"]
     assert "config_quality_summary_diagnostic_only_visible" in payload["failures"]
+    assert "config_proof_summary_visible" in payload["failures"]
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert payload["source_status_apply_blocking"] is False
     assert payload["diagnostic_only"] is True
