@@ -26,6 +26,24 @@ SPECIAL_RUNTIME_FILES = {
     "GlobalValues.json",
     "Mulligan.json",
 }
+NORMAL_RUNTIME_SURFACE_BOUNDARY = [
+    "GlobalValues.json",
+    "Mulligan.json",
+    "per-card <CARDID>.json",
+    "Combo.json",
+]
+STANDARD_SURFACE_ALIASES = {
+    "globalvalues": "GlobalValues.json",
+    "global_values": "GlobalValues.json",
+    "GlobalValues.json": "GlobalValues.json",
+    "mulligan": "Mulligan.json",
+    "Mulligan.json": "Mulligan.json",
+    "combo": "Combo.json",
+    "Combo.json": "Combo.json",
+    "cardid": "per-card <CARDID>.json",
+    "cardid_behavior": "per-card <CARDID>.json",
+    "CARDID.json": "per-card <CARDID>.json",
+}
 SOURCE_TRACE_LANES = {
     "runtime_lowered",
     "runtime_lowerable",
@@ -125,6 +143,13 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         ),
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
+        "config_intent_self_audit": _config_intent_self_audit_check(
+            package=package,
+            operator=operator,
+            deck_identity=deck_identity,
+            card_behavior=card_behavior,
+            explainability=explainability,
+        ),
     }
     checks["semantic_intent_coverage"] = _semantic_intent_coverage_check(
         card_behavior_check=checks["card_behavior"],
@@ -942,6 +967,180 @@ def _json_mentions(value: Any, needle: str) -> bool:
     return False
 
 
+def _config_intent_self_audit_check(
+    *,
+    package: Path,
+    operator: Mapping[str, Any],
+    deck_identity: Mapping[str, Any],
+    card_behavior: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_files = _runtime_files_from_custom_config(package)
+    explained_files = _explained_runtime_files_from_reports(
+        operator=operator,
+        card_behavior=card_behavior,
+        explainability=explainability,
+    )
+    deck_card_ids = _deck_identity_card_ids(deck_identity)
+    default_only_runtime_surfaces = [
+        str(surface)
+        for surface in operator.get("default_only_runtime_surfaces", [])
+        if str(surface)
+    ]
+    unsupported_runtime_files = [
+        item
+        for item in runtime_files
+        if Path(item).name in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+    ]
+
+    runtime_files_without_intent: list[str] = []
+    for runtime_file in runtime_files:
+        basename = Path(runtime_file).name
+        card_id = _file_card_id(basename)
+        if basename in {"GlobalValues.json", "Mulligan.json"}:
+            if basename in explained_files:
+                continue
+        elif basename == "Combo.json":
+            if basename in explained_files:
+                continue
+        elif card_id and (basename in explained_files or card_id in deck_card_ids):
+            continue
+        runtime_files_without_intent.append(runtime_file)
+
+    attention: list[dict[str, Any]] = []
+    if runtime_files_without_intent:
+        attention.append(
+            {
+                "check": "runtime_file_without_intent",
+                "count": len(runtime_files_without_intent),
+            }
+        )
+    if unsupported_runtime_files:
+        attention.append(
+            {
+                "check": "unsupported_runtime_file",
+                "count": len(unsupported_runtime_files),
+            }
+        )
+    if default_only_runtime_surfaces:
+        attention.append(
+            {
+                "check": "default_only_runtime_surface",
+                "count": len(default_only_runtime_surfaces),
+            }
+        )
+    if bool(operator.get("source_status_apply_blocking", False)):
+        attention.append(
+            {
+                "check": "source_status_apply_blocking",
+                "count": 1,
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "status": "clean" if not attention else "attention",
+        "normal_apply_authority": _normal_apply_authority(operator),
+        "runtime_surface_boundary": NORMAL_RUNTIME_SURFACE_BOUNDARY,
+        "runtime_files_total": len(runtime_files),
+        "runtime_files_without_intent": runtime_files_without_intent,
+        "unsupported_runtime_files": unsupported_runtime_files,
+        "default_only_runtime_surfaces": default_only_runtime_surfaces,
+        "source_status_apply_blocking": bool(
+            operator.get("source_status_apply_blocking", False)
+        ),
+        "attention": attention,
+        "first_attention": attention[0]["check"] if attention else None,
+    }
+
+
+def _normal_apply_authority(operator: Mapping[str, Any]) -> str:
+    contract = operator.get("runtime_apply_contract", {})
+    if isinstance(contract, Mapping):
+        authority = str(contract.get("apply_authority", "")).strip()
+        if authority:
+            return authority
+    return "reports/operator_summary.json"
+
+
+def _runtime_files_from_custom_config(package: Path) -> list[str]:
+    files: list[str] = []
+    custom_config = package / "CustomConfig"
+    if not custom_config.is_dir():
+        return files
+    for path in sorted(custom_config.rglob("*.json")):
+        files.append(_relative(path, package))
+    return files
+
+
+def _explained_runtime_files_from_reports(
+    *,
+    operator: Mapping[str, Any],
+    card_behavior: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+) -> set[str]:
+    explained: set[str] = set()
+
+    for row in _report_rows(explainability, ("claim_rows", "card_rows")):
+        explained.update(
+            Path(item).name for item in _string_list(row.get("emitted_runtime_files"))
+        )
+        explained.update(
+            Path(item).name for item in _string_list(row.get("runtime_surfaces"))
+        )
+        closure = row.get("closure")
+        if isinstance(closure, Mapping):
+            explained.update(
+                Path(item).name
+                for item in _string_list(closure.get("runtime_surfaces"))
+            )
+        evidence_chain = row.get("evidence_chain", [])
+        if isinstance(evidence_chain, list):
+            for item in evidence_chain:
+                if not isinstance(item, Mapping):
+                    continue
+                explained.update(
+                    Path(value).name
+                    for value in _string_list(item.get("runtime_files"))
+                )
+
+    for row in _meaningful_cardid_rows(card_behavior):
+        card_id = _row_card_id(row)
+        if card_id:
+            explained.add(f"{card_id}.json")
+
+    surface_rows = operator.get("surface_status_ledger", [])
+    if isinstance(surface_rows, list):
+        for row in surface_rows:
+            if not isinstance(row, Mapping):
+                continue
+            status = str(row.get("status", "")).strip()
+            if status not in {
+                "emitted",
+                "source_backed",
+                "policy_backed",
+                "static_semantics",
+            }:
+                continue
+            surface = _standard_surface_name(row.get("surface"))
+            if surface == "per-card <CARDID>.json":
+                explained.add(surface)
+            elif surface:
+                explained.add(surface)
+
+    return explained
+
+
+def _standard_surface_name(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return STANDARD_SURFACE_ALIASES.get(text, text)
+
+
 def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
     problems: list[dict[str, Any]] = []
 
@@ -1063,6 +1262,22 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "check": "forbidden_legacy_runtime_surfaces",
                 "value": legacy["present"],
+            }
+        )
+
+    config_intent = checks["config_intent_self_audit"]
+    if config_intent["runtime_files_without_intent"]:
+        problems.append(
+            {
+                "check": "config_intent_runtime_file_without_intent",
+                "value": config_intent["runtime_files_without_intent"],
+            }
+        )
+    if config_intent["unsupported_runtime_files"]:
+        problems.append(
+            {
+                "check": "config_intent_unsupported_runtime_files",
+                "value": config_intent["unsupported_runtime_files"],
             }
         )
 

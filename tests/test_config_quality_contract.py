@@ -1569,3 +1569,71 @@ def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
         "explicit_mulligan_keep_evidence_present": False,
     }
     assert report["problems"] == []
+
+
+def test_config_quality_exposes_clean_config_intent_self_audit(tmp_path: Path):
+    package = minimal_clean_package(tmp_path)
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["schema_version"] == 1
+    assert audit["authority"] == "diagnostic_only"
+    assert audit["apply_blocking"] is False
+    assert audit["runtime_write_performed"] is False
+    assert audit["status"] == "clean"
+    assert audit["normal_apply_authority"] == "reports/operator_summary.json"
+    assert audit["runtime_surface_boundary"] == [
+        "GlobalValues.json",
+        "Mulligan.json",
+        "per-card <CARDID>.json",
+        "Combo.json",
+    ]
+    assert audit["runtime_files_total"] == 3
+    assert audit["runtime_files_without_intent"] == []
+    assert audit["unsupported_runtime_files"] == []
+    assert audit["default_only_runtime_surfaces"] == []
+    assert audit["source_status_apply_blocking"] is False
+    assert audit["attention"] == []
+    assert audit["first_attention"] is None
+
+
+def test_config_quality_flags_runtime_file_without_intent_in_self_audit(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "UNTRACED_001.json",
+        {
+            "GameCardId": "UNTRACED_001",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "unexpected untraced runtime file",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["status"] == "attention"
+    assert audit["runtime_files_total"] == 4
+    assert audit["runtime_files_without_intent"] == [
+        "CustomConfig/shadowpriest/UNTRACED_001.json"
+    ]
+    assert audit["unsupported_runtime_files"] == []
+    assert audit["first_attention"] == "runtime_file_without_intent"
+    assert {
+        "check": "runtime_file_without_intent",
+        "count": 1,
+    } in audit["attention"]
+    assert {
+        "check": "config_intent_runtime_file_without_intent",
+        "value": ["CustomConfig/shadowpriest/UNTRACED_001.json"],
+    } in report["problems"]
+    assert report["apply_blocking"] is False
