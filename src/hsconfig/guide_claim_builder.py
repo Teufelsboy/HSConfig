@@ -8,7 +8,10 @@ from typing import Any
 from hsconfig.mechanic_support import mechanic_static_claim_allowed
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
-from hsconfig.static_semantics import infer_static_semantics
+from hsconfig.static_semantics import (
+    infer_static_semantics,
+    static_semantic_runtime_claim_allowed,
+)
 
 
 SUPPORTED_CLAIM_KINDS = {
@@ -76,7 +79,11 @@ def build_guide_claim_bundle(
         for card in claim.get("cards", [])
     }
 
-    static_claims = _static_semantic_claims(cards, existing_claims=claims)
+    static_claims = _static_semantic_claims(
+        cards,
+        deck_identity=deck_identity,
+        existing_claims=claims,
+    )
     claims.extend(static_claims)
     claims = _dedupe_claims(claims)
     static_semantic_cards = {
@@ -249,6 +256,7 @@ def _unsupported(
 def _static_semantic_claims(
     cards: dict[str, dict[str, Any]],
     *,
+    deck_identity: dict[str, Any],
     existing_claims: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     existing_pairs = {
@@ -262,12 +270,19 @@ def _static_semantic_claims(
         for card in claim.get("cards", [])
     }
     emitted_keys = set(existing_pairs)
+    deck_card_counts = _deck_card_counts(deck_identity)
     claims = []
     for card_id, card in sorted(cards.items()):
         text = _card_text(card).lower()
+        semantics = infer_static_semantics(card)
+        unsatisfied_highlander = _has_unsatisfied_highlander_condition(
+            semantics,
+            deck_card_counts,
+        )
         if (
             ("hero power becomes" in text or "enter shadowform" in text)
             and ("hero_power_transform", card_id) not in existing_kind_cards
+            and not unsatisfied_highlander
         ):
             claims.append(
                 _static_claim(
@@ -287,6 +302,8 @@ def _static_semantic_claims(
                 and ("hero power becomes" in text or "enter shadowform" in text)
             ):
                 continue
+            if unsatisfied_highlander and mechanic_static_claim_allowed(mechanic_family):
+                continue
             key = (claim_kind, card_id, mechanic_family)
             if key in emitted_keys:
                 continue
@@ -302,7 +319,12 @@ def _static_semantic_claims(
                 )
             )
             emitted_keys.add(key)
-        for mechanic in _static_mechanic_usage_families(card, text=text):
+        for mechanic in _static_mechanic_usage_families(
+            card,
+            text=text,
+            semantics=semantics,
+            suppress_lowerable=unsatisfied_highlander,
+        ):
             key = ("mechanic_usage", card_id, mechanic)
             if key in emitted_keys:
                 continue
@@ -319,27 +341,88 @@ def _static_semantic_claims(
     return claims
 
 
-def _static_mechanic_usage_families(card: dict[str, Any], *, text: str) -> list[str]:
-    families = infer_static_semantics(card).get("families", [])
+def _static_mechanic_usage_families(
+    card: dict[str, Any],
+    *,
+    text: str,
+    semantics: dict[str, Any] | None = None,
+    suppress_lowerable: bool = False,
+) -> list[str]:
+    if semantics is None:
+        semantics = infer_static_semantics(card)
+    families = semantics.get("families", [])
     mechanics: list[str] = []
     for family in families:
         mechanic = _clean_text(family).lower()
         if not mechanic or mechanic in mechanics:
             continue
-        if not _static_mechanic_usage_allowed(mechanic, text=text):
+        if not _static_mechanic_usage_allowed(
+            mechanic,
+            text=text,
+            semantics=semantics,
+            suppress_lowerable=suppress_lowerable,
+        ):
             continue
         mechanics.append(mechanic)
     return mechanics
 
 
-def _static_mechanic_usage_allowed(mechanic: str, *, text: str) -> bool:
+def _static_mechanic_usage_allowed(
+    mechanic: str,
+    *,
+    text: str,
+    semantics: dict[str, Any] | None = None,
+    suppress_lowerable: bool = False,
+) -> bool:
     if mechanic == "hero_power_transform":
         return False
     if mechanic == "transform" and ("hero power becomes" in text or "enter shadowform" in text):
         return False
     if mechanic == "hero_power" and ("hero power becomes" in text or "shadowform" in text):
         return False
-    return mechanic_static_claim_allowed(mechanic)
+    if suppress_lowerable and mechanic_static_claim_allowed(mechanic):
+        return False
+    return mechanic_static_claim_allowed(mechanic) and static_semantic_runtime_claim_allowed(
+        mechanic,
+        semantics,
+    )
+
+
+def _deck_card_counts(deck_identity: dict[str, Any]) -> dict[str, int]:
+    cards = deck_identity.get("cards")
+    counts: dict[str, int] = {}
+    if not isinstance(cards, list):
+        return counts
+    for row in cards:
+        if not isinstance(row, dict):
+            continue
+        card_id = row.get("card_id") or row.get("id") or row.get("cardId")
+        if not card_id:
+            continue
+        key = str(card_id)
+        counts[key] = counts.get(key, 0) + _card_count(row.get("count", 1))
+    return counts
+
+
+def _card_count(value: object) -> int:
+    try:
+        count = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 1
+    return max(count, 0)
+
+
+def _is_highlander_deck(deck_card_counts: dict[str, int]) -> bool:
+    return bool(deck_card_counts) and all(count <= 1 for count in deck_card_counts.values())
+
+
+def _has_unsatisfied_highlander_condition(
+    semantics: dict[str, Any],
+    deck_card_counts: dict[str, int],
+) -> bool:
+    return "highlander" in set(semantics.get("families", [])) and not _is_highlander_deck(
+        deck_card_counts
+    )
 
 
 def _static_claim(

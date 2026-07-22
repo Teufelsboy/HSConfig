@@ -52,6 +52,10 @@ TEXT_PATTERNS: dict[str, tuple[str, ...]] = {
     "starship": ("starship", "launch your starship"),
 }
 
+DRIFT_TEXT_ONLY_RUNTIME_GUARDED_FAMILIES = frozenset(DRIFT_TEXT_MECHANIC_PATTERNS) - frozenset(
+    TEXT_PATTERNS
+)
+
 MODERN_WARNING_ONLY_KEYWORDS = {
     "titan": "titan",
     "tourist": "tourist",
@@ -191,8 +195,37 @@ def _is_warning_only_family(family: str) -> bool:
     )
 
 
-def _static_claim_allowed_for_family(family: str) -> bool:
+def static_semantic_runtime_claim_allowed(
+    family: str,
+    semantics: Mapping[str, Any] | None = None,
+) -> bool:
+    if family in DRIFT_TEXT_ONLY_RUNTIME_GUARDED_FAMILIES and not _has_non_text_evidence(
+        family,
+        semantics,
+    ):
+        return _is_warning_only_family(family)
     return mechanic_static_claim_allowed(family) or _is_warning_only_family(family)
+
+
+def _static_claim_allowed_for_family(
+    family: str,
+    semantics: Mapping[str, Any] | None = None,
+) -> bool:
+    return static_semantic_runtime_claim_allowed(family, semantics)
+
+
+def _has_non_text_evidence(
+    family: str,
+    semantics: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(semantics, Mapping):
+        return False
+    for row in semantics.get("evidence", []) or []:
+        if not isinstance(row, Mapping):
+            continue
+        if row.get("family") == family and row.get("source") != "text":
+            return True
+    return False
 
 
 def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
@@ -302,13 +335,18 @@ def build_static_semantics_source_records(
     deck_name = str(deck_identity.get("deck_name") or deck_identity.get("name") or "Deck")
 
     source_cards = {str(card_id): dict(card) for card_id, card in cards_by_id.items()}
+    deck_card_counts = _deck_card_counts(deck_identity)
     for target_card_id in _deck_card_ids(deck_identity, source_cards):
         raw_card = source_cards.get(target_card_id)
         if not isinstance(raw_card, Mapping):
             continue
         card = dict(raw_card)
         card_id = str(card.get("card_id") or card.get("id") or target_card_id)
-        claims = _static_claims_for_card(card_id, card)
+        claims = _static_claims_for_card(
+            card_id,
+            card,
+            deck_card_counts=deck_card_counts,
+        )
         if not claims:
             continue
         records.append(
@@ -353,9 +391,55 @@ def _deck_card_ids(
     return sorted(dict.fromkeys(ids))
 
 
-def _static_claims_for_card(card_id: str, card: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _deck_card_counts(deck_identity: Mapping[str, Any]) -> dict[str, int]:
+    deck_cards = deck_identity.get("cards")
+    counts: dict[str, int] = {}
+    if not isinstance(deck_cards, list):
+        return counts
+    for row in deck_cards:
+        if not isinstance(row, Mapping):
+            continue
+        card_id = row.get("card_id") or row.get("id") or row.get("cardId")
+        if not card_id:
+            continue
+        key = str(card_id)
+        counts[key] = counts.get(key, 0) + _card_count(row.get("count", 1))
+    return counts
+
+
+def _card_count(value: object) -> int:
+    try:
+        count = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 1
+    return max(count, 0)
+
+
+def _is_highlander_deck(deck_card_counts: Mapping[str, int]) -> bool:
+    return bool(deck_card_counts) and all(count <= 1 for count in deck_card_counts.values())
+
+
+def _has_unsatisfied_highlander_condition(
+    semantics: Mapping[str, Any],
+    deck_card_counts: Mapping[str, int],
+) -> bool:
+    return "highlander" in set(semantics.get("families", [])) and not _is_highlander_deck(
+        deck_card_counts
+    )
+
+
+def _static_claims_for_card(
+    card_id: str,
+    card: Mapping[str, Any],
+    *,
+    deck_card_counts: Mapping[str, int] | None = None,
+) -> list[dict[str, Any]]:
     semantics = infer_static_semantics(card)
     families = set(semantics["families"])
+    unsatisfied_highlander = _has_unsatisfied_highlander_condition(
+        semantics,
+        deck_card_counts or {},
+    )
     claims: list[dict[str, Any]] = []
 
     if "hero_power_transform" in families:
@@ -378,7 +462,9 @@ def _static_claims_for_card(card_id: str, card: Mapping[str, Any]) -> list[dict[
             continue
         if family == "hero_power" and "hero_power_transform" in families:
             continue
-        if not _static_claim_allowed_for_family(family):
+        if unsatisfied_highlander and mechanic_static_claim_allowed(family):
+            continue
+        if not _static_claim_allowed_for_family(family, semantics):
             continue
         key = ("mechanic_usage", family)
         if key in emitted:

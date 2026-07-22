@@ -1,4 +1,7 @@
-from hsconfig.static_semantics import build_static_semantics_source_records
+from hsconfig.static_semantics import (
+    build_static_semantics_source_records,
+    infer_static_semantics,
+)
 
 
 def test_static_semantics_records_preserve_darkbishop_effect_without_mulligan_keep():
@@ -150,6 +153,74 @@ def test_static_semantics_records_emit_report_only_claims_from_drift_registry():
     assert prepare_claim["runtime_suppression_reason"] == (
         "prepare_has_no_documented_runtime_block"
     )
+
+
+def test_static_semantics_records_keep_registry_only_partial_text_visibility_only():
+    card = {
+        "id": "TEST_DRIFT_PARTIAL",
+        "name": "Drift Partial Fixture",
+        "type": "MINION",
+        "text": (
+            "Battlecry: If your deck has no duplicates, Invoke Galakrond. "
+            "Dormant for 2 turns. Miniaturize. Honorable Kill. Elusive. "
+            "Poisonous. Summon a Jade Golem. Add C'Thun. This is an Arcane spell."
+        ),
+    }
+    registry_only_partials = {
+        "cthun_package",
+        "dormant",
+        "elusive",
+        "highlander",
+        "honorable_kill",
+        "invoke",
+        "jade",
+        "miniaturize",
+        "poisonous",
+        "spell_school",
+    }
+
+    semantics = infer_static_semantics(card)
+    assert registry_only_partials <= set(semantics["families"])
+
+    records = build_static_semantics_source_records(
+        {
+            "deck_name": "FixtureDeck",
+            "cards": [{"card_id": "TEST_DRIFT_PARTIAL", "count": 1}],
+        },
+        {"TEST_DRIFT_PARTIAL": card},
+        build_id="hsjson-20260715",
+    )
+
+    claims = records[0]["claims"]
+    claimed_mechanics = {claim["mechanic"] for claim in claims}
+
+    assert registry_only_partials.isdisjoint(claimed_mechanics)
+    assert "battlecry" in claimed_mechanics
+    assert not any(
+        claim.get("runtime_block") == "BeforePlayCardBonus"
+        and claim.get("mechanic") in registry_only_partials
+        for claim in claims
+    )
+
+
+def test_static_semantics_records_do_not_lower_unsatisfied_highlander_payoff():
+    records = build_static_semantics_source_records(
+        {
+            "deck_name": "NonHighlanderDeck",
+            "cards": [{"card_id": "TEST_HIGHLANDER_PAYOFF", "count": 2}],
+        },
+        {
+            "TEST_HIGHLANDER_PAYOFF": {
+                "id": "TEST_HIGHLANDER_PAYOFF",
+                "name": "Highlander Payoff",
+                "type": "MINION",
+                "text": "Battlecry: If your deck has no duplicates, deal 10 damage.",
+            },
+        },
+        build_id="hsjson-20260715",
+    )
+
+    assert records == []
 
 
 def test_static_semantics_records_do_not_fallback_to_full_card_map_without_deck_cards():

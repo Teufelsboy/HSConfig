@@ -273,6 +273,61 @@ def test_static_semantics_emit_spellburst_quickdraw_finale_manathirst_infuse_cor
     } <= mechanics
 
 
+def test_static_semantics_keep_registry_only_partial_text_mechanics_visibility_only():
+    bundle = build_guide_claim_bundle(
+        deck_identity={
+            "deck_name": "RegistryPartialDeck",
+            "cards": [{"card_id": "CARD_DRIFT_PARTIAL", "count": 1}],
+        },
+        card_metadata={
+            "CARD_DRIFT_PARTIAL": {
+                "name": "Drift Partial Card",
+                "text": (
+                    "Battlecry: If your deck has no duplicates, Invoke Galakrond. "
+                    "Dormant for 2 turns. Miniaturize. Honorable Kill. Elusive. "
+                    "Poisonous. Summon a Jade Golem. Add C'Thun. This is an Arcane spell."
+                ),
+            }
+        },
+        source_documents=[],
+    )
+
+    mechanics = _mechanics(bundle)
+
+    assert not {
+        "cthun_package",
+        "dormant",
+        "elusive",
+        "highlander",
+        "honorable_kill",
+        "invoke",
+        "jade",
+        "miniaturize",
+        "poisonous",
+        "spell_school",
+    } & mechanics
+    assert "battlecry" in mechanics
+
+
+def test_static_semantics_do_not_lower_unsatisfied_highlander_payoff():
+    bundle = build_guide_claim_bundle(
+        deck_identity={
+            "deck_name": "NonHighlanderDeck",
+            "cards": [{"card_id": "CARD_HIGHLANDER_PAYOFF", "count": 2}],
+        },
+        card_metadata={
+            "CARD_HIGHLANDER_PAYOFF": {
+                "name": "Highlander Payoff",
+                "text": "Battlecry: If your deck has no duplicates, deal 10 damage.",
+            }
+        },
+        source_documents=[],
+    )
+
+    assert _mechanics(bundle) == set()
+    assert route_card_behavior_claims(bundle["claims"])["card_rows"] == {}
+
+
 def test_static_semantics_do_not_emit_runtime_lowering_claim_for_tradeable():
     bundle = build_guide_claim_bundle(
         deck_identity={"deck_name": "TradeableDeck"},
