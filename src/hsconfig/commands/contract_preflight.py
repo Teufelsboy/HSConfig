@@ -36,14 +36,17 @@ def _unavailable_installed_skill_payload(
     try:
         return build_installed_skill_sync_status(repo_root, install_root)
     except Exception as exc:
+        resolved_install_root = (
+            Path(install_root).resolve()
+            if install_root is not None
+            else Path.home() / ".codex" / "skills"
+        )
         return {
             "status": "attention",
             "source_skill_path": str(
                 Path(repo_root).resolve() / ".agents" / "skills" / "hsconfig"
             ),
-            "installed_skill_path": str(
-                Path.home() / ".codex" / "skills" / "hsconfig"
-            ),
+            "installed_skill_path": str(resolved_install_root / "hsconfig"),
             "installed_skill_present": False,
             "matches_repo_skill": False,
             "reason": type(exc).__name__,

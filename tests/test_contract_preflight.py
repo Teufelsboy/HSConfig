@@ -7,12 +7,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.sync_installed_skill import sync_skill
 from hsconfig.contract_preflight import (
     GitPreflight,
     build_contract_preflight,
     build_git_preflight,
 )
+from hsconfig.commands import contract_preflight as contract_preflight_command
 
 
 def _clean_git() -> GitPreflight:
@@ -291,6 +294,29 @@ def test_contract_preflight_cli_reports_installed_skill_sync_without_writes(
     assert payload["installed_skill_sync"]["matches_repo_skill"] is True
     assert payload["installed_skill_sync"]["diagnostic_only"] is True
     assert before == after
+
+
+def test_unavailable_installed_skill_payload_preserves_install_root_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_root = tmp_path / "custom-skills"
+
+    def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
+        raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
+
+    monkeypatch.setattr(
+        contract_preflight_command,
+        "build_installed_skill_sync_status",
+        _raise_sync_error,
+    )
+
+    payload = contract_preflight_command._unavailable_installed_skill_payload(
+        ".",
+        install_root,
+    )
+
+    assert payload["installed_skill_path"] == str(install_root / "hsconfig")
 
 
 def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> None:
