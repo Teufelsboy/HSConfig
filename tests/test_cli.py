@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.commands.common import emit_result, run_payload_command
+from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.cli import main
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 
@@ -432,6 +433,54 @@ def test_legacy_claims_synthesize_legacy_retrieved_at_when_unstamped():
     )
 
     assert documents[0]["retrieved_at"] == "1970-01-01T00:00:00Z"
+
+
+def test_legacy_claims_do_not_match_face_inside_surface_word():
+    documents = guide_documents_from_legacy_claims(
+        [
+            {
+                "source": "guide",
+                "url": "https://example.invalid/deck-guide",
+                "claim": "Card behavior surface damage row without targeting guidance.",
+                "cards": ["EX1_001"],
+            }
+        ]
+    )
+
+    claim = documents[0]["claims"][0]
+
+    assert claim["claim_kind"] == "card_role"
+    assert claim["stance"] == "deck_card"
+    routed = route_card_behavior_surfaces([claim])
+    assert all(row.get("intent") != "prefer_enemy_hero" for row in routed["rows"])
+    assert all(row.get("meaningful_runtime_surface") is False for row in routed["rows"])
+
+
+def test_legacy_claims_still_match_real_face_targeting_phrases():
+    documents = guide_documents_from_legacy_claims(
+        [
+            {
+                "source": "guide",
+                "url": "https://example.invalid/deck-guide",
+                "claim": "Send face damage now.",
+                "cards": ["EX1_001"],
+            },
+            {
+                "source": "guide",
+                "url": "https://example.invalid/deck-guide",
+                "claim": "Target the enemy hero with burst.",
+                "cards": ["EX1_002"],
+            },
+        ]
+    )
+
+    claims = [document_claim for document in documents for document_claim in document["claims"]]
+
+    assert [claim["claim_kind"] for claim in claims] == ["targeting_rule", "targeting_rule"]
+    assert [claim["stance"] for claim in claims] == [
+        "prefer_enemy_hero",
+        "prefer_enemy_hero",
+    ]
 
 
 def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsys):

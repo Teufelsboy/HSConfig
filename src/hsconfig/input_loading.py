@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ from hsconfig.io import read_json
 from hsconfig.source_document_model import runtime_claim_kind
 
 LEGACY_CLAIMS_RETRIEVED_AT = "1970-01-01T00:00:00Z"
+LEGACY_TARGETING_MARKERS = ("face", "target", "enemy hero")
+LEGACY_ENEMY_HERO_TARGETING_MARKERS = ("face", "enemy hero")
 
 
 def load_cards(
@@ -171,7 +174,7 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     lowered = text.lower()
     claim_kind = runtime_claim_kind(claim)
     if not claim_kind:
-        if any(marker in lowered for marker in ("face", "target", "enemy hero")):
+        if any(_has_legacy_phrase_or_token(lowered, marker) for marker in LEGACY_TARGETING_MARKERS):
             claim_kind = "targeting_rule"
         elif any(marker in lowered for marker in ("pressure", "aggressive", "aggro", "burn")):
             claim_kind = "gameplan_posture"
@@ -211,13 +214,22 @@ def _legacy_stance(claim_kind: str, text: str) -> str:
         return "keep"
     if claim_kind == "combo_sequence":
         return "ordered_combo"
-    if claim_kind == "targeting_rule" and ("face" in lowered or "enemy hero" in lowered):
+    if claim_kind == "targeting_rule" and any(
+        _has_legacy_phrase_or_token(lowered, marker)
+        for marker in LEGACY_ENEMY_HERO_TARGETING_MARKERS
+    ):
         return "prefer_enemy_hero"
     if claim_kind == "gameplan_posture":
         return "aggressive"
     if "pressure" in lowered:
         return "pressure"
     return "deck_card"
+
+
+def _has_legacy_phrase_or_token(text: str, marker: str) -> bool:
+    if " " in marker or "_" in marker:
+        return marker in text
+    return re.search(rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])", text) is not None
 
 
 def _placeholder_cards(*, deck_name: str, deck_code: str) -> list[dict[str, Any]]:
