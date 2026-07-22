@@ -863,3 +863,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 - [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true; baseline preflight/docs/skill slice passed (108 passed).
 - [x] Task 1: RED contract-preflight tests committed in fcc6803; focused RED confirmed 3 expected missing-key failures; reviewer accepted the test diff after report-file hygiene was resolved.
+- [x] Task 2: research-context preflight lock implemented in 22e68d2; contract preflight 9 passed; CLI preflight PASS with diagnostic-only research_context; reviewer approved.
