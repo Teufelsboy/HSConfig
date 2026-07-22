@@ -20,7 +20,13 @@ FORBIDDEN_LEGACY_RUNTIME_SURFACES = {
     "Presume.json",
 }
 
-RUNTIME_VALUE_ROW_KEYS = {"comment", "condition", "value"}
+CARDID_RUNTIME_VALUE_ROW_KEYS = {"comment", "condition", "value"}
+SPECIAL_RUNTIME_VALUE_ROW_KEYS = {
+    "GlobalValues.json": {"comment", "condition", "value"},
+    "Mulligan.json": {"comment", "condition", "mulligan", "value"},
+    "Combo.json": {"comment", "condition", "combo", "value"},
+}
+RUNTIME_VALUE_ROW_KEYS = CARDID_RUNTIME_VALUE_ROW_KEYS
 SPECIAL_RUNTIME_FILES = {
     "Combo.json",
     "GlobalValues.json",
@@ -500,6 +506,12 @@ def _file_card_id(value: Any) -> str:
     return name[:-5]
 
 
+def _runtime_value_row_keys(file_name: str) -> set[str]:
+    return set(
+        SPECIAL_RUNTIME_VALUE_ROW_KEYS.get(file_name, CARDID_RUNTIME_VALUE_ROW_KEYS)
+    )
+
+
 def _expected_cardid_runtime_files(
     deck_identity: Mapping[str, Any],
     card_behavior: Mapping[str, Any],
@@ -707,28 +719,32 @@ def _runtime_json_check(
     stray_cardid_files: list[str] = []
     for deck_dir in deck_dirs:
         for path in sorted(deck_dir.glob("*.json")):
-            if path.name in SPECIAL_RUNTIME_FILES:
-                continue
             if path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
                 continue
-            file_card_id = _file_card_id(path.name)
-            if file_card_id and file_card_id not in expected_card_ids:
-                stray_cardid_files.append(_relative(path, package))
+            if path.name not in SPECIAL_RUNTIME_FILES:
+                file_card_id = _file_card_id(path.name)
+                if file_card_id and file_card_id not in expected_card_ids:
+                    stray_cardid_files.append(_relative(path, package))
             payload = _read_json(path)
             if not isinstance(payload, Mapping):
                 continue
             for block, block_payload in payload.items():
                 if block in {"GameCardId", "ConfigComment"}:
                     continue
-                if not isinstance(block_payload, Mapping):
+                if isinstance(block_payload, Mapping):
+                    values = block_payload.get("values", [])
+                elif isinstance(block_payload, list):
+                    values = block_payload
+                else:
                     continue
-                values = block_payload.get("values", [])
                 if not isinstance(values, list):
                     continue
                 for index, value_row in enumerate(values):
                     if not isinstance(value_row, Mapping):
                         continue
-                    extra_keys = sorted(set(value_row) - RUNTIME_VALUE_ROW_KEYS)
+                    extra_keys = sorted(
+                        set(value_row) - _runtime_value_row_keys(path.name)
+                    )
                     if extra_keys:
                         metadata_leaks.append(
                             {

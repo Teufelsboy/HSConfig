@@ -1137,6 +1137,117 @@ def test_config_quality_flags_diagnostic_metadata_leaking_into_runtime_json(
     ]
 
 
+def test_config_quality_allows_lean_special_runtime_surfaces(tmp_path: Path):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "DeckStrategy": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: pressure posture",
+                        "condition": "*",
+                        "value": "9",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: keep one-drop pressure",
+                        "condition": "*",
+                        "mulligan": "CORE_CS2_235",
+                        "value": "hold",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Combo.json",
+        {
+            "GameCardId": "Combo",
+            "Combos": [
+                {
+                    "comment": "ShadowPriest: source-backed sequence",
+                    "condition": "*",
+                    "combo": ["CARD_A", "CARD_B"],
+                    "value": "10",
+                }
+            ],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["runtime_json"]["metadata_leaks"] == []
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_flags_special_runtime_surface_metadata_leaks(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "bad metadata row",
+                        "condition": "*",
+                        "mulligan": "CARD_A",
+                        "value": "hold",
+                        "source_claim_ids": ["claim_a"],
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Combo.json",
+        {
+            "GameCardId": "Combo",
+            "Combos": [
+                {
+                    "comment": "bad combo metadata row",
+                    "condition": "*",
+                    "combo": ["CARD_A", "CARD_B"],
+                    "value": "10",
+                    "claim_id": "claim_combo",
+                }
+            ],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "attention"
+    assert report["checks"]["runtime_json"]["metadata_leaks"] == [
+        {
+            "file": "CustomConfig/shadowpriest/Combo.json",
+            "block": "Combos",
+            "row_index": 0,
+            "extra_keys": ["claim_id"],
+        },
+        {
+            "file": "CustomConfig/shadowpriest/Mulligan.json",
+            "block": "Mulligan",
+            "row_index": 0,
+            "extra_keys": ["source_claim_ids"],
+        },
+    ]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_flags_forbidden_legacy_runtime_surfaces(tmp_path: Path):
     package = minimal_clean_package(tmp_path)
     write_json(package / "CustomConfig" / DECK_SLUG / "Presume.json", {})
