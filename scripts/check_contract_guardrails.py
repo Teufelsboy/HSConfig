@@ -20,6 +20,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_no_second_gate_contract.py",
     "tests/test_config_usefulness.py",
     "tests/test_operator_summary.py",
+    "tests/test_configure_handoff_contract.py",
     "tests/test_no_default_only_semantic_archetype_matrix.py",
     "tests/test_shadowpriest_fresh_closure_proof.py",
     "tests/test_semantic_runtime_negative_boundaries.py",
@@ -35,6 +36,7 @@ FOCUSED_CONTRACT_TESTS = (
     "tests/test_source_contract_conformance.py",
     "tests/test_source_to_runtime_explainability.py",
     "tests/test_source_contract_closure_wave.py",
+    "tests/test_research_result_contract_sentinel.py",
     "tests/test_research_current_truth_index.py",
 )
 
