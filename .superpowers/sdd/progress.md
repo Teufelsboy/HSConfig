@@ -946,4 +946,3 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Project Installed Skill Sync Through Contract Preflight (commits 44b9144..d82ad2d, review clean after fallback semantics fixes)
 - [x] Task 3: Update Operator Docs And Skill Routing (commits 86ea840..68edab7, re-review approved after expert-path fix)
 - [ ] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree
-

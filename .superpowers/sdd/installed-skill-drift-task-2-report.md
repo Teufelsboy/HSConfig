@@ -70,24 +70,24 @@ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019C61CE10D0>
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         install_root = tmp_path / "custom-skills"
-    
+
         def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
             raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
-    
+
         monkeypatch.setattr(
             contract_preflight_command,
             "build_installed_skill_sync_status",
             _raise_sync_error,
         )
-    
+
         payload = contract_preflight_command._unavailable_installed_skill_payload(
             ".",
             install_root,
         )
-    
+
 >       assert payload["installed_skill_path"] == str(install_root / "hsconfig")
 E       AssertionError: assert 'C:\\Users\\d...lls\\hsconfig' == 'C:\\Users\\d...lls\\hsconfig'
-E         
+E
 E         - C:\Users\darbo\AppData\Local\Temp\pytest-of-darbo\pytest-5396\test_unavailable_installed_ski0\custom-skills\hsconfig
 E         + C:\Users\darbo\.codex\skills\hsconfig
 
