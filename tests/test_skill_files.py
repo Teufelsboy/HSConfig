@@ -1283,3 +1283,31 @@ def test_hsconfig_skill_mentions_handoff_contract_and_research_sentinel() -> Non
     assert "research-result sentinel" in text
     assert "diagnostic-only" in text
     assert "operator_summary.json remains the only normal apply authority" in text
+
+
+def test_skill_and_operator_docs_name_pre_run_config_contract_receipt() -> None:
+    active_paths = [
+        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
+        REPO_ROOT
+        / ".agents"
+        / "skills"
+        / "hsconfig"
+        / "references"
+        / "workflow.md",
+        REPO_ROOT / "docs" / "operator" / "README.md",
+    ]
+
+    required = [
+        "pre-run config contract receipt",
+        "configure_summary.json.handoff_contract",
+        "diagnostic-only handoff proof",
+        "single authority",
+        "no-default-only status",
+        "Darkbishop boundary",
+        "does not replace `reports/operator_summary.json`",
+    ]
+
+    for path in active_paths:
+        text = path.read_text(encoding="utf-8")
+        for phrase in required:
+            assert phrase in text, f"{path}: {phrase}"

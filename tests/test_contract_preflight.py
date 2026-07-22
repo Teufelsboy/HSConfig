@@ -140,6 +140,20 @@ def test_contract_preflight_checks_configure_acceptance_route_contract(
     assert "config_proof_summary_visible" not in payload["failures"]
 
 
+def test_contract_preflight_checks_pre_run_config_contract_receipt_visibility(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["pre_run_config_contract_receipt_visible"] is True
+    assert "pre_run_config_contract_receipt_visible" not in payload["failures"]
+
+
 def test_contract_preflight_reports_attention_when_git_is_dirty() -> None:
     dirty_git = GitPreflight(
         branch="codex/test",

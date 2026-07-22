@@ -22,7 +22,7 @@ Preferred normal path: `hsconfig configure`.
 ## Normal Operator Path
 
 1. Run `hsconfig configure`.
-2. Read `outputs/<DeckName>/configure_summary.json.acceptance_summary`.
+2. Read `outputs/<DeckName>/configure_summary.json.acceptance_summary`, then `<out>/configure_summary.json.handoff_contract` as the pre-run config contract receipt: compact diagnostic-only handoff proof for use_config_now, single authority, no-default-only status, forbidden-surface status, source-to-runtime trace status, Darkbishop boundary, mechanic discipline, and the next report; it does not replace `reports/operator_summary.json`, cannot apply runtime files, cannot turn source gaps into blockers, and operator_summary.json remains the only normal apply authority.
 3. Use `outputs/<DeckName>/04_package/reports/operator_summary.json` as the apply authority.
 4. Apply only through `hsconfig apply` or `hsconfig configure --apply`.
 

@@ -25,6 +25,7 @@ EXPECTED_CHECK_KEYS = (
     "checklist_referenced_by_normal_workflow",
     "checklist_listed_in_references",
     "configure_acceptance_route_visible",
+    "pre_run_config_contract_receipt_visible",
     "configure_acceptance_projection_not_gate_visible",
     "config_quality_summary_diagnostic_only_visible",
     "config_proof_summary_visible",
@@ -242,6 +243,24 @@ def _configure_acceptance_route_visible(combined: str) -> bool:
             "<out>/configure_summary.json.config_quality_summary",
             "config_quality_summary",
             "reports/operator_summary.json",
+        )
+    )
+
+
+def _pre_run_config_contract_receipt_visible(combined: str) -> bool:
+    return all(
+        term in combined
+        for term in (
+            "pre-run config contract receipt",
+            "configure_summary.json.handoff_contract",
+            "diagnostic-only handoff proof",
+            "single authority",
+            "no-default-only status",
+            "forbidden-surface status",
+            "source-to-runtime trace status",
+            "Darkbishop boundary",
+            "does not replace `reports/operator_summary.json`",
+            "operator_summary.json remains the only normal apply authority",
         )
     )
 
@@ -502,6 +521,9 @@ def build_contract_preflight(
         ),
         "configure_acceptance_route_visible": _configure_acceptance_route_visible(
             combined
+        ),
+        "pre_run_config_contract_receipt_visible": (
+            _pre_run_config_contract_receipt_visible(combined)
         ),
         "configure_acceptance_projection_not_gate_visible": (
             _configure_acceptance_projection_not_gate_visible(combined)
