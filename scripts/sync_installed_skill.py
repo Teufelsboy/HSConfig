@@ -7,55 +7,14 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from hsconfig.skill_sync_status import DEFAULT_INSTALL_ROOT, folder_diff
+
+
 SOURCE_SKILL = REPO_ROOT / ".agents" / "skills" / "hsconfig"
-DEFAULT_INSTALL_ROOT = Path.home() / ".codex" / "skills"
-
-
-def _iter_files(root: Path) -> list[Path]:
-    return sorted(path.relative_to(root) for path in root.rglob("*") if path.is_file())
-
-
-TEXT_LIKE_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".toml"}
-
-
-def _normalized_text_equal(left_bytes: bytes, right_bytes: bytes) -> bool:
-    return left_bytes.replace(b"\r\n", b"\n") == right_bytes.replace(b"\r\n", b"\n")
-
-
-def folder_diff(left: Path, right: Path) -> dict[str, object]:
-    if not left.exists() or not right.exists():
-        return {
-            "matches": False,
-            "reason": "missing_folder",
-            "left_exists": left.exists(),
-            "right_exists": right.exists(),
-            "diffs": [],
-        }
-
-    left_files = _iter_files(left)
-    right_files = _iter_files(right)
-    diffs: list[dict[str, object]] = []
-    if left_files != right_files:
-        left_set = set(left_files)
-        right_set = set(right_files)
-        for rel in sorted(left_set - right_set):
-            diffs.append({"path": rel.as_posix(), "kind": "missing_installed_file"})
-        for rel in sorted(right_set - left_set):
-            diffs.append({"path": rel.as_posix(), "kind": "unexpected_installed_file"})
-
-    for rel in left_files:
-        if rel not in right_files:
-            continue
-        left_bytes = (left / rel).read_bytes()
-        right_bytes = (right / rel).read_bytes()
-        if left_bytes == right_bytes:
-            continue
-        entry: dict[str, object] = {"path": rel.as_posix(), "kind": "bytes_differ"}
-        if rel.suffix.lower() in TEXT_LIKE_SUFFIXES:
-            entry["normalized_text_equal"] = _normalized_text_equal(left_bytes, right_bytes)
-        diffs.append(entry)
-
-    return {"matches": not diffs, "reason": "diffs_found" if diffs else "in_sync", "diffs": diffs}
 
 
 def folders_match(left: Path, right: Path) -> bool:

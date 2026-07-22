@@ -2,6 +2,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hsconfig.skill_sync_status import build_installed_skill_sync_status
+
 
 SCRIPT = Path("scripts/sync_installed_skill.py")
 
@@ -151,3 +153,60 @@ def test_skill_sync_check_explains_newline_only_drift(tmp_path: Path):
     assert "SKILL.md" in output
     assert "normalized text matches" in output
     assert "run without --check to re-sync" in output
+
+
+def test_shared_skill_sync_status_reports_in_sync_after_script_sync(tmp_path: Path):
+    install_root = tmp_path / "codex" / "skills"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    status = build_installed_skill_sync_status(Path("."), install_root)
+
+    assert status["status"] == "in_sync"
+    assert status["installed_skill_present"] is True
+    assert status["matches_repo_skill"] is True
+    assert status["reason"] == "in_sync"
+    assert status["diffs"] == []
+    assert status["recommended_action"] == "none"
+    assert status["diagnostic_only"] is True
+    assert status["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_shared_skill_sync_status_reports_attention_on_drift(tmp_path: Path):
+    install_root = tmp_path / "codex" / "skills"
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    installed_skill = install_root / "hsconfig" / "SKILL.md"
+    installed_skill.write_text(
+        installed_skill.read_text(encoding="utf-8") + "\n# drift\n",
+        encoding="utf-8",
+    )
+
+    status = build_installed_skill_sync_status(Path("."), install_root)
+
+    assert status["status"] == "attention"
+    assert status["installed_skill_present"] is True
+    assert status["matches_repo_skill"] is False
+    assert status["reason"] == "diffs_found"
+    assert status["recommended_action"] == "python scripts\\sync_installed_skill.py"
+    assert status["diagnostic_only"] is True
+    assert any(item["path"] == "SKILL.md" for item in status["diffs"])
