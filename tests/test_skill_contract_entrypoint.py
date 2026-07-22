@@ -43,6 +43,29 @@ def test_skill_and_workflow_link_contract_compiler_checklist():
     assert workflow.count(ENTRYPOINT_LINK) == 1
 
 
+def test_skill_entrypoint_routes_to_references_without_owning_bulk_policy() -> None:
+    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    references = "\n".join(
+        (SKILL_ROOT / "references" / name).read_text(encoding="utf-8")
+        for name in [
+            "workflow.md",
+            "visionai-surfaces.md",
+            "contract-compiler-checklist.md",
+            "guide-research-policy.md",
+            "globalvalues-policy.md",
+            "card-behavior-policy.md",
+        ]
+    )
+
+    assert "## References:" in skill
+    assert ENTRYPOINT_LINK in skill
+    assert "operator_summary.json" in skill
+    assert "SOURCE_BACKED_STRONG" in skill
+    assert "source_closure_intake_receipt.json" in references
+    assert "source claim -> normalized `claim_kind` -> semantic qualifiers" in references
+    assert "mechanic lowering registry" in references
+
+
 def test_contract_compiler_checklist_owns_canonical_runtime_boundaries():
     text = CHECKLIST.read_text(encoding="utf-8")
 

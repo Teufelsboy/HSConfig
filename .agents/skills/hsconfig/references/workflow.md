@@ -74,6 +74,43 @@ Every card should land in a visible source-depth lane before preparation: guide-
 
 Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link, and operators should close existing matrix gaps before adding more representative decks. `core_source_backed_fixture` rows are strict controls; `source_informed_valid_fixture` rows are valid packages with visible gaps. After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH. `contract-preflight.research_context.latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and operator_summary.json remains the only normal apply authority.
 
+## Canonical Source-Status Guardrails
+
+Source-candidate registries are acquisition seeds only, not promotion authority.
+Candidate URLs must never promote `SOURCE_BACKED_STRONG` without fetched full-text, deck-matched, claim-kind-normalized, surface-gated evidence.
+No default-only runtime success: every emitted/expected runtime surface must be visible in `operator_summary.json.surface_status_ledger` or source-to-runtime diagnostics.
+`source_autopilot_report.json` is source-strength preflight only; `operator_summary.json` remains the normal apply authority.
+SOURCE_BACKED_STRONG is an evidence-quality label, not a generation/apply gate.
+`SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation/apply gate.
+`SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate.
+Darkbishop boundary: preserve start-of-game and hero-power-transform semantics, but do not infer opening-hand keep without explicit keep text.
+Darkbishop Benedictus effect semantics remain effect semantics; they do not become a mulligan keep without explicit opening-hand source text.
+Profile-aware closure and first-missing maps by card/surface are diagnostics.
+No conservative blocking: any valid deck still builds load-safe even with partial evidence; visible source actions replace blocking.
+`source_status_apply_blocking` must remain `false`.
+source_status_apply_blocking must remain false.
+`default_only` is visible quality debt, not an apply blocker.
+source-preflight diagnostic, not runtime-package proof.
+candidate URLs promotion authority remains forbidden.
+default-only runtime surfaces prevent SOURCE_BACKED_STRONG.
+Canonical source status is resolved in `src/hsconfig/source_status_resolver.py` through `source_backed_status`, `source_strong_ready`, `first_missing_source_action`, `source_missing_source_actions`, `source_status_reasons`, `source_status_diagnostic_only`, and `source_status_apply_blocking`.
+Use the canonical claim lifecycle for source-to-runtime explanations: conflict quarantine means quarantined claims suppress unsafe runtime rows and do not block load-safe valid packages.
+`Presume.json` and `Concede.json` are outside the normal HSConfig path.
+warning-only mechanics do not block load-safe apply.
+`reports/source_evidence_closure.json` is the compact diagnostic package-quality closure summary.
+decklists, HSReplay/HSGuru aggregate stats, static card databases, `policy_fallback`, `default_runtime`, and runtime examples are support/diagnostic only.
+Source-search intake does not bypass URL validation.
+
+## Detailed Source Contract Pointers
+
+- Use the canonical claim lifecycle for source-to-runtime explanations: source claim -> normalized `claim_kind` -> semantic qualifiers -> conflict quarantine -> surface gate -> builder/router outcome -> emitted runtime row or suppression reason.
+- `source_closure_intake_receipt.json` is acquisition input only; it cannot promote, block, write runtime config, or replace `operator_summary.json`.
+- `latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and `operator_summary.json` remains the only normal apply authority.
+- The mechanic lowering registry is the executable authority behind `needs_mechanic_lowering`; warning-only mechanics remain visible diagnostics and must not block load-safe apply.
+- Use `warning_boundaries` and `first_warning_boundary` to inspect report-only mechanics without widening runtime output.
+- `globalvalue_numeric_tuning` is report-visible and runtime-evidence-required; use `gameplan_posture` for Step1 GlobalValues posture that may lower to `GlobalValues.json`.
+- `per_card_config_readiness_report.json`, `source_to_runtime_explainability.json`, and `source_evidence_closure.json` explain source depth and CardID coverage; they do not replace `operator_summary.json`.
+
 Use `hsconfig research-contract` only when the research bundle should be inspected before compiling config files. Use `hsconfig build` as a lower-level command when a caller already controls explicit `--cards-json`, legacy `--claims-json`, structured `--guide-sources-json`, or inspected `--plan-reports-dir` inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 
 Guarded apply copies the deck folder and updates `CustomConfig/deck_config.ini` so the visible deck name maps to the generated config folder. Use fake apply for receipt-bound previews before any requested runtime write.

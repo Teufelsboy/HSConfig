@@ -1012,3 +1012,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Research-result contract sentinel exposes first non-promoting result/action/reason (commits c445942..d69f28c, review clean).
 - [x] Task 3: Contract-preflight projects the latest research-result contract diagnostics without changing apply authority (commits d69f28c..55d56b0, review clean).
 - [x] Task 4: Operator docs and installed hsconfig skill describe the diagnostic-only bridge boundary (commits 55d56b0..ff64b30, review clean).
+
+---
+
+# HSConfig Skill Thin Router Contract Hardening SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-skill-thin-router-contract-hardening.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Task 1: Added thin-router contract tests for SKILL length, active references, hard boundaries, and forbidden scope.
+- [x] Task 2: Slimmed `.agents/skills/hsconfig/SKILL.md` to the normal route and hard boundaries; moved detailed policy into `references/workflow.md`.
+- [x] Task 3: Refactored SKILL/contract guardrails to pin active reference docs instead of default-only SKILL entrypoint wording.
+- [x] Task 4: Added diagnostic-only `skill_thin_router_visible` contract-preflight coverage for all six active references.
+- [x] Task 5: Synced installed skill and verified focused suite (109 passed), contract guardrails (559 passed), and full test suite (1851 passed, 11 skipped).

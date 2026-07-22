@@ -11,13 +11,11 @@ def _read(relative_path: str) -> str:
 
 
 def test_contract_spine_sentinel_is_documented_as_diagnostic_only():
-    skill = _read(".agents/skills/hsconfig/SKILL.md")
     operator = _read("docs/operator/README.md")
 
-    for content in (skill, operator):
-        assert "contract-spine-sentinel" in content
-        assert "diagnostic" in content.lower()
-        assert "operator_summary.json" in content
+    assert "contract-spine-sentinel" in operator
+    assert "diagnostic" in operator.lower()
+    assert "operator_summary.json" in operator
 
 
 def test_docs_do_not_make_sentinel_the_normal_operator_path():

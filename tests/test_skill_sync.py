@@ -92,27 +92,26 @@ def test_skill_sync_propagates_source_backed_closure_guidance(tmp_path: Path):
 
     installed_root = install_root / "hsconfig"
     skill_text = (installed_root / "SKILL.md").read_text(encoding="utf-8")
+    workflow_text = (installed_root / "references" / "workflow.md").read_text(
+        encoding="utf-8"
+    )
     policy_text = (installed_root / "references" / "guide-research-policy.md").read_text(
         encoding="utf-8"
     )
 
-    assert "For an optimal fresh deck config, prefer the source-backed path:" in skill_text
-    reference_line = next(
-        line for line in skill_text.splitlines() if line.startswith("## References:")
-    )
-    assert "references/contract-compiler-checklist.md" in reference_line
+    assert "For an optimal fresh deck config, prefer:" in skill_text
+    references_block = skill_text.split("## References:", 1)[1]
+    assert "references/contract-compiler-checklist.md" in references_block
     assert (
         'hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" '
         '--runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" '
         '--online-source --auto-source --apply --json'
     ) in skill_text
     assert "first_missing_source_action" in skill_text
-    assert "config_intent_self_audit" in skill_text
+    assert "config_intent_self_audit" in workflow_text
     assert "source_backed_strong_closure" in policy_text
     assert "no_default_only_runtime_status" in policy_text
-    assert "runtime-file intent" in (
-        installed_root / "references" / "workflow.md"
-    ).read_text(encoding="utf-8")
+    assert "runtime-file intent" in workflow_text
 
 
 def test_skill_sync_check_explains_newline_only_drift(tmp_path: Path):

@@ -8,6 +8,20 @@ OLD_LOWER_LEVEL_SENTENCE = (
 OLD_RUNTIME_WRITE_SENTENCE = (
     "Runtime writes remain only when requested through `hsconfig " + "apply`."
 )
+SKILL_ROOT = Path(".agents/skills/hsconfig")
+SKILL_REFERENCE_PATHS = [
+    SKILL_ROOT / "references/workflow.md",
+    SKILL_ROOT / "references/visionai-surfaces.md",
+    SKILL_ROOT / "references/contract-compiler-checklist.md",
+    SKILL_ROOT / "references/guide-research-policy.md",
+    SKILL_ROOT / "references/globalvalues-policy.md",
+    SKILL_ROOT / "references/card-behavior-policy.md",
+]
+
+
+def _active_skill_docs_text() -> str:
+    paths = [SKILL_ROOT / "SKILL.md"] + SKILL_REFERENCE_PATHS
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
 
 def test_research_docs_are_marked_as_evidence_not_operator_path():
@@ -178,7 +192,7 @@ def test_operator_docs_name_research_status_sync_as_diagnostic_only():
             Path("docs/operator/source-backed-strong-closure.md").read_text(
                 encoding="utf-8"
             ),
-            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _active_skill_docs_text(),
         ]
     )
 
@@ -237,7 +251,7 @@ def test_operator_docs_name_load_safe_apply_as_hsconfig_policy():
 
 def test_operator_docs_describe_no_block_static_semantics():
     operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
-    skill_text = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill_text = _active_skill_docs_text()
 
     for text in (operator_docs, skill_text):
         assert "semantic_enrichment_report.json" in text

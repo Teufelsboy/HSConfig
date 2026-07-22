@@ -3,7 +3,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTALLED_HSCONFIG_SKILL = Path.home() / ".codex" / "skills" / "hsconfig" / "SKILL.md"
+SKILL_ROOT = ROOT / ".agents" / "skills" / "hsconfig"
+SKILL_ENTRYPOINT = SKILL_ROOT / "SKILL.md"
+SKILL_REFERENCE_RELATIVE_PATHS = [
+    Path("references/workflow.md"),
+    Path("references/visionai-surfaces.md"),
+    Path("references/contract-compiler-checklist.md"),
+    Path("references/guide-research-policy.md"),
+    Path("references/globalvalues-policy.md"),
+    Path("references/card-behavior-policy.md"),
+]
+INSTALLED_HSCONFIG_ROOT = Path.home() / ".codex" / "skills" / "hsconfig"
+INSTALLED_HSCONFIG_SKILL = INSTALLED_HSCONFIG_ROOT / "SKILL.md"
 TASK7_OPERATOR_DOCS = [
     "docs/operator/source-backed-strong-closure.md",
     "docs/operator/guide-research-policy.md",
@@ -89,6 +100,32 @@ def _compact(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _repo_skill_docs_text() -> str:
+    paths = [SKILL_ENTRYPOINT] + [
+        SKILL_ROOT / relative_path for relative_path in SKILL_REFERENCE_RELATIVE_PATHS
+    ]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
+def _installed_skill_docs_text() -> str:
+    if not INSTALLED_HSCONFIG_SKILL.exists():
+        return ""
+
+    paths = [INSTALLED_HSCONFIG_SKILL] + [
+        INSTALLED_HSCONFIG_ROOT / relative_path
+        for relative_path in SKILL_REFERENCE_RELATIVE_PATHS
+    ]
+    return "\n".join(
+        path.read_text(encoding="utf-8") for path in paths if path.exists()
+    )
+
+
+def _source_contract_doc_text(relative_path: str) -> str:
+    if relative_path == ".agents/skills/hsconfig/SKILL.md":
+        return _repo_skill_docs_text()
+    return (ROOT / relative_path).read_text(encoding="utf-8")
+
+
 def _line_starting(text: str, prefix: str) -> str:
     for line in text.splitlines():
         if line.startswith(prefix):
@@ -128,7 +165,7 @@ def test_source_backed_strong_operator_docs_state_task7_contracts():
 
 
 def test_repo_hsconfig_skill_states_task7_contracts():
-    text = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    text = _repo_skill_docs_text()
 
     _assert_task7_sentinels(text)
 
@@ -137,7 +174,7 @@ def test_installed_hsconfig_skill_states_task7_contracts_when_present():
     if not INSTALLED_HSCONFIG_SKILL.exists():
         return
 
-    text = INSTALLED_HSCONFIG_SKILL.read_text(encoding="utf-8")
+    text = _installed_skill_docs_text()
 
     _assert_task7_sentinels(text)
 
@@ -151,7 +188,7 @@ def test_active_docs_and_skill_name_canonical_source_status_resolver():
             (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
                 encoding="utf-8"
             ),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -168,7 +205,7 @@ def test_active_docs_and_skill_state_source_status_is_diagnostic_not_apply_gate(
             (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
                 encoding="utf-8"
             ),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -184,7 +221,7 @@ def test_active_docs_and_skill_state_strong_closure_dossier_boundary():
             (ROOT / "docs/operator/source-backed-strong-closure.md").read_text(
                 encoding="utf-8"
             ),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -198,7 +235,7 @@ def test_active_docs_and_skill_state_strong_closure_dossier_boundary():
 
 def test_active_docs_and_skill_state_source_contract_acceptance_loop_exact_phrases():
     for relative_path in SOURCE_CONTRACT_ACCEPTANCE_DOCS:
-        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        text = _source_contract_doc_text(relative_path)
         lowered = text.lower()
 
         for phrase in REQUIRED_CONTRACT_PHRASES:
@@ -294,7 +331,7 @@ def test_active_source_status_contract_does_not_reintroduce_stale_terms():
             (ROOT / "docs/operator/universal-wild-no-block-contract.md").read_text(
                 encoding="utf-8"
             ),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -306,7 +343,7 @@ def test_installed_hsconfig_skill_does_not_reintroduce_stale_source_status_terms
     if not INSTALLED_HSCONFIG_SKILL.exists():
         return
 
-    text = INSTALLED_HSCONFIG_SKILL.read_text(encoding="utf-8")
+    text = _installed_skill_docs_text()
 
     for sentinel in CANONICAL_SOURCE_STATUS_SENTINELS:
         assert sentinel in text
@@ -409,9 +446,7 @@ def test_operator_docs_name_canonical_lifecycle_without_second_gate():
 
 
 def test_skill_mentions_claim_lifecycle_and_no_block_contract():
-    text = (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    text = _repo_skill_docs_text()
 
     assert "canonical claim lifecycle" in text.lower()
     assert "quarantined claims suppress unsafe runtime rows" in text
@@ -438,9 +473,7 @@ def test_skill_reference_mentions_claim_lifecycle_and_no_block_contract():
 
 
 def test_skill_text_names_source_contract_spine_without_runtime_surface_expansion():
-    skill = (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill = _repo_skill_docs_text()
     reference = (
         ROOT
         / ".agents"
@@ -487,9 +520,7 @@ def test_operator_docs_and_skill_name_mulligan_policy_status_without_strong_prom
             (
                 ROOT / "docs" / "operator" / "universal-wild-no-block-contract.md"
             ).read_text(encoding="utf-8"),
-            (ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md").read_text(
-                encoding="utf-8"
-            ),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -554,7 +585,7 @@ def test_operator_docs_name_source_autopilot_without_new_apply_gate():
     policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
-    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill = _repo_skill_docs_text()
     combined = f"{readme}\n{policy}\n{skill}"
 
     assert "--auto-source" in combined
@@ -582,7 +613,7 @@ def test_operator_docs_keep_single_apply_authority_and_no_default_only_visibilit
     guide = (ROOT / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
-    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill = _repo_skill_docs_text()
     combined = f"{guide}\n{skill}"
 
     assert "reports/operator_summary.json remains the only normal apply authority" in combined
@@ -600,9 +631,7 @@ def test_active_docs_describe_per_card_closure_without_second_gate():
             (ROOT / "docs/operator/guide-research-policy.md").read_text(
                 encoding="utf-8"
             ),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(
-                encoding="utf-8"
-            ),
+            _repo_skill_docs_text(),
         ]
     )
 
@@ -618,9 +647,7 @@ def test_active_docs_describe_fresh_closure_proof_without_new_apply_gate():
     policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
-    skill = (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill = _repo_skill_docs_text()
     active_docs = "\n".join([operator, policy, skill])
 
     assert "closure_schema_current" in active_docs
@@ -657,9 +684,7 @@ def test_docs_keep_source_claim_gap_report_secondary_to_explainability():
     policy_text = (root / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
-    skill_text = (root / ".agents/skills/hsconfig/SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill_text = _repo_skill_docs_text()
     skill_policy_text = (
         root / ".agents/skills/hsconfig/references/guide-research-policy.md"
     ).read_text(encoding="utf-8")
@@ -679,7 +704,7 @@ def test_docs_and_skill_route_configure_source_closure_receipt_without_second_ga
     active_text = "\n".join(
         [
             (ROOT / "docs/operator/README.md").read_text(encoding="utf-8"),
-            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            _repo_skill_docs_text(),
             (
                 ROOT / ".agents/skills/hsconfig/references/workflow.md"
             ).read_text(encoding="utf-8"),
@@ -709,14 +734,10 @@ def test_skill_workflow_routes_configure_source_closure_receipt_with_out_prefix(
 
 
 def test_skill_normal_workflow_routes_generated_receipts_in_order():
-    text = (
-        ROOT
-        / ".agents"
-        / "skills"
-        / "hsconfig"
-        / "SKILL.md"
+    workflow = (
+        ROOT / ".agents" / "skills" / "hsconfig" / "references" / "workflow.md"
     ).read_text(encoding="utf-8")
-    normal_workflow = _line_starting(text, "3. After `configure`,")
+    normal_workflow = _line_containing(workflow, "Normal workflow:")
     routes = [
         "`<out>/configure_summary.json.acceptance_summary`",
         "`<out>/configure_summary.json.handoff_contract`",

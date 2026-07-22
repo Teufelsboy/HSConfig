@@ -24,6 +24,7 @@ EXPECTED_CHECK_KEYS = (
     "reference_files_present",
     "checklist_referenced_by_normal_workflow",
     "checklist_listed_in_references",
+    "skill_thin_router_visible",
     "configure_acceptance_route_visible",
     "pre_run_config_contract_receipt_visible",
     "configure_acceptance_projection_not_gate_visible",
@@ -227,10 +228,34 @@ def _relative_posix(root: Path, path: Path) -> str:
 
 
 def _references_line(skill_text: str) -> str:
-    for line in skill_text.splitlines():
+    lines = skill_text.splitlines()
+    for index, line in enumerate(lines):
         if line.startswith("## References:"):
-            return line
+            block = [line]
+            for following in lines[index + 1 :]:
+                if following.startswith("## "):
+                    break
+                if following.strip():
+                    block.append(following)
+            return "\n".join(block)
     return ""
+
+
+def _skill_thin_router_visible(skill_text: str) -> bool:
+    lines = [line.rstrip() for line in skill_text.splitlines() if line.strip()]
+    return (
+        len(lines) <= 70
+        and all(len(line) <= 220 for line in lines)
+        and skill_text.count("## References:") == 1
+        and "docs/operator/README.md" in skill_text
+        and all(
+            relative_path in skill_text
+            for relative_path in REQUIRED_REFERENCE_FILES
+        )
+        and "`reports/operator_summary.json` remains the only normal apply authority."
+        in skill_text
+        and "`source_status_apply_blocking` must remain `false`" in skill_text
+    )
 
 
 def _has_any(text: str, phrases: tuple[str, ...]) -> bool:
@@ -611,6 +636,7 @@ def build_contract_preflight(
         "checklist_listed_in_references": (
             "references/contract-compiler-checklist.md" in references_line
         ),
+        "skill_thin_router_visible": _skill_thin_router_visible(skill_text),
         "configure_acceptance_route_visible": _configure_acceptance_route_visible(
             combined
         ),
@@ -632,7 +658,10 @@ def build_contract_preflight(
         "source_status_nonblocking_visible": (
             "source_status_apply_blocking" in combined
             and "must remain `false`" in combined
-            and "SOURCE_BACKED_STRONG is an evidence-quality label" in combined
+            and (
+                "SOURCE_BACKED_STRONG is an evidence-quality label" in combined
+                or "`SOURCE_BACKED_STRONG` is an evidence-quality label" in combined
+            )
         ),
         "no_default_only_visible": (
             "No hidden default-only runtime" in combined

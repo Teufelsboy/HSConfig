@@ -120,6 +120,22 @@ def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot(
     assert payload["checks"]["negative_scope_visible"] is True
 
 
+def test_contract_preflight_exposes_skill_thin_router_contract(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    assert payload["checks"]["skill_thin_router_visible"] is True
+    assert "skill_thin_router_visible" not in payload["failures"]
+    assert payload["diagnostic_only"] is True
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert payload["source_status_apply_blocking"] is False
+
+
 def test_contract_preflight_checks_configure_acceptance_route_contract(
     tmp_path: Path,
 ) -> None:

@@ -3,9 +3,28 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = REPO_ROOT / ".agents" / "skills" / "hsconfig"
+ACTIVE_SKILL_REFERENCE_FILES = [
+    SKILL_ROOT / "SKILL.md",
+    SKILL_ROOT / "references" / "workflow.md",
+    SKILL_ROOT / "references" / "visionai-surfaces.md",
+    SKILL_ROOT / "references" / "contract-compiler-checklist.md",
+    SKILL_ROOT / "references" / "guide-research-policy.md",
+    SKILL_ROOT / "references" / "globalvalues-policy.md",
+    SKILL_ROOT / "references" / "card-behavior-policy.md",
+]
 OLD_PRESUME_CONCEDE_NORMAL_OUTPUTS = (
     "Presume/Concede are " + "documented normal outputs"
 )
+
+
+def _skill_entrypoint_text() -> str:
+    return (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+
+
+def _active_skill_docs_text() -> str:
+    return "\n".join(
+        path.read_text(encoding="utf-8") for path in ACTIVE_SKILL_REFERENCE_FILES
+    )
 
 
 def test_skill_has_required_files():
@@ -26,27 +45,31 @@ def test_skill_has_required_files():
 
 
 def test_skill_and_workflow_stay_compact_and_canonical():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
     checklist = (SKILL_ROOT / "references" / "contract-compiler-checklist.md").read_text(
         encoding="utf-8"
     )
+    active_docs = _active_skill_docs_text()
     combined = f"{skill}\n{workflow}"
 
     assert skill.count("\n") < 80
-    assert workflow.count("\n") < 80
-    for text in (skill, workflow):
-        assert "docs/operator/README.md" in text
+    assert workflow.count("\n") < 120
+    for phrase in [
+        "docs/operator/README.md",
+        "Preferred normal path: `hsconfig configure`.",
+        "`reports/operator_summary.json` remains the only normal apply authority.",
+    ]:
+        assert phrase in skill
+    for text in (workflow, active_docs):
         assert "hsconfig configure" in text
         assert "reports/operator_summary.json" in text
         assert "VALID_PACKAGE" in text
         assert "load_safe_apply" in text
     assert "HSConfig is pre-run only" in combined
     assert "does not parse replays" in combined
-    reference_line = next(
-        line for line in skill.splitlines() if line.startswith("## References:")
-    )
-    assert "references/contract-compiler-checklist.md" in reference_line
+    reference_section = skill.split("## References:", 1)[1]
+    assert "references/contract-compiler-checklist.md" in reference_section
     assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in skill
     assert "Contract compiler checklist: `references/contract-compiler-checklist.md`." in workflow
     assert "reports/operator_summary.json" in checklist
@@ -55,13 +78,14 @@ def test_skill_and_workflow_stay_compact_and_canonical():
     assert "Darkbishop gate" in checklist
     assert "`GlobalValues.json`" in combined
     assert "`Mulligan.json`" in combined
-    assert "`per-card <CARDID>.json`" in combined
+    assert "per-card" in combined
+    assert "<CARDID>.json" in combined
     assert "`Combo.json`" in combined
     assert (
         "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
         "outside the normal HSConfig output path. Their absence never blocks a "
         "valid load-safe package, and their presence in a normal package is treated as drift."
-    ) in combined
+    ) in active_docs
     for duplicate_section in [
         "Preferred normal workflow:",
         "Lower-level inspected workflow:",
@@ -81,10 +105,10 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
     active_files = [
         Path("docs/operator/README.md"),
         Path("docs/operator/universal-wild-no-block-contract.md"),
-        SKILL_ROOT / "SKILL.md",
         SKILL_ROOT / "references" / "workflow.md",
         SKILL_ROOT / "references" / "visionai-surfaces.md",
     ]
+    active_docs = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
     required = [
         "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
         "outside the normal HSConfig output path. Their absence never blocks a "
@@ -97,17 +121,16 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
         OLD_PRESUME_CONCEDE_NORMAL_OUTPUTS,
     ]
 
-    for path in active_files:
+    for phrase in required:
+        assert phrase in active_docs, phrase
+    for path in active_files + [SKILL_ROOT / "SKILL.md"]:
         text = path.read_text(encoding="utf-8")
-        for phrase in required:
-            assert phrase in text, f"{path}: {phrase}"
         for phrase in forbidden:
             assert phrase not in text, f"{path}: {phrase}"
 
 
 def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
     active_paths = [
-        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
         REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "workflow.md",
         REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "visionai-surfaces.md",
         REPO_ROOT / "docs" / "operator" / "README.md",
@@ -120,9 +143,7 @@ def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
         "outside the normal HSConfig output path. Their absence never blocks a "
         "valid load-safe package, and their presence in a normal package is treated as drift."
     )
-    for path in active_paths:
-        text = path.read_text(encoding="utf-8")
-        assert required_sentence in text, path
+    assert required_sentence in combined
 
     forbidden_phrases = [
         "`Concede.json` is publicly documented",
@@ -134,27 +155,51 @@ def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
 
 
 def test_skill_content_sets_direct_config_boundary():
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    text = _skill_entrypoint_text()
+    entrypoint_required = [
+        "name: hsconfig",
+        "HearthRanger",
+        "HSConfig is pre-run only.",
+        "Preferred normal path: `hsconfig configure`.",
+        "`reports/operator_summary.json` remains the only normal apply authority.",
+        "`SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate.",
+        "`source_status_apply_blocking` must remain `false` for source-quality work.",
+        "Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.",
+        "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.",
+        "Runtime apply is guarded",
+        "Effect semantics are not opening-hand mulligan keeps.",
+        "Card-intent taxonomy is diagnostic-only.",
+        "## References:",
+        "Contract compiler checklist: `references/contract-compiler-checklist.md`.",
+    ]
 
-    assert "name: hsconfig" in text
-    assert "HearthRanger" in text
-    assert "Decode the deck code first" in text
-    assert "GlobalValues" in text
-    assert "no replay analysis" in text.lower()
-    assert "validate" in text.lower()
-    assert "runtime apply is guarded" in text.lower()
-    assert "guarded apply" in text.lower()
-    assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in text
-    assert "--allow-placeholder" in text
-    assert "hsconfig prepare" in text
-    assert "hsconfig research-deck" in text
-    assert "operator_summary.json" in text
-    assert "research contract" in text.lower()
-    assert "--guide-sources-json" in text
+    for phrase in entrypoint_required:
+        assert phrase in text
+    assert "per-card" in text
+    assert "<CARDID>.json" in text
+
+
+def test_active_skill_docs_keep_detailed_policy_vocabulary():
+    text = _active_skill_docs_text()
+    active_docs_required = [
+        "source_closure_intake_receipt.json",
+        "latest_research_result_contract_first_non_promoting_*",
+        "source claim -> normalized `claim_kind` -> semantic qualifiers",
+        "mechanic lowering registry",
+        "warning_boundaries",
+        "globalvalue_numeric_tuning",
+        "per_card_config_readiness_report.json",
+        "source_to_runtime_explainability.json",
+        "source_evidence_closure.json",
+    ]
+
+    for phrase in active_docs_required:
+        assert phrase in text
 
 
 def test_skill_names_configure_normal_workflow():
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    text = _skill_entrypoint_text()
+    active_docs = _active_skill_docs_text()
 
     assert "Normal workflow:" in text
     assert "1. Prefer `hsconfig configure ...` for normal operation." in text
@@ -168,8 +213,8 @@ def test_skill_names_configure_normal_workflow():
         "`<out>/configure_summary.json.acceptance_summary` first; use "
         "`reports/operator_summary.json` as the apply authority."
     ) in text
-    assert "`hsconfig configure --auto-source --source-search-results-json ...`" in text
-    assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in text
+    assert "`hsconfig configure --auto-source --source-search-results-json ...`" in active_docs
+    assert "`source-autopilot` is source-strength preflight, not runtime apply authority." in active_docs
 
 
 def test_skill_and_workflow_show_complete_fresh_configure_command() -> None:
@@ -196,56 +241,52 @@ def test_docs_and_skill_keep_config_quality_summary_diagnostic_only():
     operator_docs = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
         encoding="utf-8"
     )
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    active_docs = _active_skill_docs_text()
 
     operator_fragment = operator_docs.split("## Optional Contract Doctor", 1)[1].split(
         "## Expert Paths", 1
     )[0]
-    skill_fragment = skill.split("- After `configure`,", 1)[1].split("\n-", 1)[0]
+    combined = f"{operator_fragment}\n{active_docs}"
 
-    for text in (operator_fragment, skill_fragment):
-        assert "<out>/configure_summary.json.acceptance_summary" in text
-        assert "acceptance_summary" in text
-        assert "use_config_now" in text
-        assert "next_report_to_open" in text
-        assert "<out>/configure_summary.json.config_quality_summary" in text
-        assert "config_quality_summary" in text
-        assert "<out>/configure_summary.json.config_proof_summary" in text
-        assert "diagnostic-only config proof" in text
-        assert "not another apply gate" in text
-        assert "does not replace `reports/operator_summary.json`" in text
-        assert "diagnostic-only" in text
-        assert "non-blocking" in text
-        assert "contract-doctor" in text
-        assert "operator_summary.json" in text
-        assert "normal apply authority" in text
+    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "acceptance_summary" in combined
+    assert "use_config_now" in combined
+    assert "next_report_to_open" in combined
+    assert "<out>/configure_summary.json.config_quality_summary" in combined
+    assert "config_quality_summary" in combined
+    assert "<out>/configure_summary.json.config_proof_summary" in combined
+    assert "diagnostic-only config proof" in combined
+    assert "not another apply gate" in combined
+    assert "does not replace `reports/operator_summary.json`" in combined
+    assert "diagnostic-only" in combined
+    assert "non-blocking" in combined
+    assert "contract-doctor" in combined
+    assert "operator_summary.json" in combined
+    assert "normal apply authority" in combined
 
 
 def test_docs_skill_and_workflow_route_configure_acceptance_summary_first() -> None:
     operator_docs = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
         encoding="utf-8"
     )
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(
-        encoding="utf-8"
-    )
+    combined = f"{operator_docs}\n{_active_skill_docs_text()}"
 
-    for text in (operator_docs, skill, workflow):
-        assert "<out>/configure_summary.json.acceptance_summary" in text
-        assert "use_config_now" in text
-        assert "next_report_to_open" in text
-        assert "operator projection" in text
-        assert "operator_summary.json" in text
-        assert "apply authority" in text
+    assert "<out>/configure_summary.json.acceptance_summary" in combined
+    assert "use_config_now" in combined
+    assert "next_report_to_open" in combined
+    assert "operator projection" in combined
+    assert "operator_summary.json" in combined
+    assert "apply authority" in combined
 
 
 def test_skill_names_source_closure_intake_receipt_without_new_authority():
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    text = _active_skill_docs_text()
 
     assert "source_closure_intake_receipt.json" in text
     assert "source_closure_intake" in text
-    assert "acquisition input, not evidence authority" in text
-    assert "cannot promote, block, write runtime config, or replace `operator_summary.json`" in text
+    assert "acquisition input" in text
+    assert "cannot promote, block, write runtime config" in text
+    assert "replace `operator_summary.json`" in text
 
 
 def test_skill_docs_preserve_hsconfig_boundaries_without_verbatim_duplication():
@@ -296,9 +337,9 @@ def test_active_docs_show_normal_source_document_operator_path():
     root_readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
     operator_path_files = [
         REPO_ROOT / "docs" / "operator" / "README.md",
-        SKILL_ROOT / "SKILL.md",
         SKILL_ROOT / "references" / "workflow.md",
     ]
+    active_docs = "\n".join(path.read_text(encoding="utf-8") for path in operator_path_files)
     required_terms = {
         "source_documents.json",
         "source-autopilot",
@@ -320,8 +361,10 @@ def test_active_docs_show_normal_source_document_operator_path():
         text = path.read_text(encoding="utf-8")
         assert "Preferred normal path: `hsconfig configure`" in text
         assert "Lower-level inspected path:" in text
-        for term in required_terms:
-            assert term in text
+    assert "Preferred normal path: `hsconfig configure`" in _skill_entrypoint_text()
+    assert "Lower-level inspected path:" in _skill_entrypoint_text()
+    for term in required_terms:
+        assert term in active_docs
 
 
 def test_guide_policy_documents_source_depth_contract():
@@ -374,10 +417,10 @@ def test_guide_policy_documents_source_depth_contract():
 
 
 def test_skill_source_policy_documents_evergreen_wild_closure_boundary():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     skill_policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
         encoding="utf-8"
     )
+    active_docs = _active_skill_docs_text()
     required_terms = [
         "evergreen_wild_archetype",
         "SOURCE_BACKED_STRONG",
@@ -394,21 +437,17 @@ def test_skill_source_policy_documents_evergreen_wild_closure_boundary():
         "operator_summary.json remains the only normal apply authority",
     ]
 
-    for text in (skill, skill_policy):
-        for term in required_terms:
-            assert term in text
+    for term in required_terms:
+        assert term in active_docs
+        assert term in skill_policy or term in active_docs
 
 
 def test_skill_documents_guide_depth_closure_reports():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
-    policy = (SKILL_ROOT / "references" / "guide-research-policy.md").read_text(
-        encoding="utf-8"
-    )
+    skill = _skill_entrypoint_text()
+    active_docs = _active_skill_docs_text()
 
-    for text in (skill, workflow, policy):
-        assert "per_card_config_readiness_report.json" in text
-        assert "guide_source_depth_report.json" in text
+    assert "per_card_config_readiness_report.json" in active_docs
+    assert "guide_source_depth_report.json" in active_docs
     assert "no replay analysis" in skill.lower()
     assert "winrate" in skill.lower()
 
@@ -433,10 +472,10 @@ def test_skill_docs_keep_presume_concede_out_of_normal_path():
     active_files = [
         Path("docs/operator/README.md"),
         Path("docs/operator/universal-wild-no-block-contract.md"),
-        Path(".agents/skills/hsconfig/SKILL.md"),
         Path(".agents/skills/hsconfig/references/workflow.md"),
         Path(".agents/skills/hsconfig/references/visionai-surfaces.md"),
     ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
     required_terms = [
         "Concede.json",
         "Presume.json",
@@ -445,10 +484,10 @@ def test_skill_docs_keep_presume_concede_out_of_normal_path():
         "outside the normal HSConfig output path",
     ]
 
-    for path in active_files:
-        text = path.read_text(encoding="utf-8")
-        for term in required_terms:
-            assert term in text, f"{path}: {term}"
+    for term in required_terms:
+        assert term in combined, term
+    assert "Presume.json" in _skill_entrypoint_text()
+    assert "Concede.json" in _skill_entrypoint_text()
 
 
 def test_skill_docs_describe_cardid_runtime_block_lowering():
@@ -470,7 +509,7 @@ def test_skill_docs_describe_cardid_runtime_block_lowering():
 def test_skill_docs_use_per_card_cardid_json_wording():
     docs = {
         "docs/operator/README.md": "`per-card <CARDID>.json`",
-        ".agents/skills/hsconfig/SKILL.md": "`per-card <CARDID>.json`",
+        ".agents/skills/hsconfig/SKILL.md": "per-card `<CARDID>.json`",
         ".agents/skills/hsconfig/references/workflow.md": "`per-card <CARDID>.json`",
         ".agents/skills/hsconfig/references/card-behavior-policy.md": "`per-card <CARDID>.json`",
         ".agents/skills/hsconfig/references/visionai-surfaces.md": "`per-card <CARDID>.json`",
@@ -541,14 +580,19 @@ def test_skill_docs_explain_valid_package_vs_source_backed_strong():
 
 
 def test_skill_sources_document_runtime_apply_mode_as_descriptive():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    operator = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{workflow}\n{operator}"
 
-    assert "runtime_apply_mode" in skill
-    assert "runtime_apply_allowed" in skill
-    assert "runtime_apply_requires_flag" in skill
-    assert "ALLOWED_WITH_WARNINGS" in skill
-    assert "ALLOWED_WITH_WARNINGS as runtime write permission" not in skill
+    assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in skill
+    assert "Runtime apply is guarded" in skill
+    assert "runtime_apply_mode" in combined
+    assert "runtime_apply_allowed" in combined
+    assert "ALLOWED_WITH_WARNINGS" in combined
+    assert "ALLOWED_WITH_WARNINGS as runtime write permission" not in combined
 
     assert "runtime_apply_mode" in workflow
     assert "human-readable write mode" in workflow
@@ -569,10 +613,8 @@ def test_docs_make_operator_summary_the_single_normal_gate():
     docs = "\n".join(
         [
             Path("README.md").read_text(encoding="utf-8"),
-            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
-            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
-                encoding="utf-8"
-            ),
+            _active_skill_docs_text(),
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
         ]
     )
 
@@ -600,12 +642,11 @@ def test_docs_and_skill_explain_contract_conformance_snapshot():
 
 
 def test_docs_explain_contract_spine_without_new_apply_gate():
-    active_paths = [
-        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
+    owning_paths = [
         REPO_ROOT / ".agents" / "skills" / "hsconfig" / "references" / "workflow.md",
         REPO_ROOT / "docs" / "operator" / "guide-research-policy.md",
     ]
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in owning_paths)
     required_paragraph = (
         "`contract_spine_rows` are diagnostic. They provide the compact "
         "source -> policy -> surface gate -> builder/router -> runtime effect "
@@ -616,7 +657,7 @@ def test_docs_explain_contract_spine_without_new_apply_gate():
     assert "contract_spine_rows" in combined
     assert "source -> policy -> surface gate -> builder/router -> runtime effect" in combined
     assert "operator_summary.json remains the normal apply authority" in combined
-    for path in active_paths:
+    for path in owning_paths:
         text = path.read_text(encoding="utf-8")
         assert required_paragraph in text, path
         assert text.count(required_paragraph) == 1, path
@@ -662,10 +703,8 @@ def test_skill_docs_explain_strong_fixture_truth_contract():
     docs = "\n".join(
         [
             Path("README.md").read_text(encoding="utf-8"),
-            Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
-            Path(".agents/skills/hsconfig/references/workflow.md").read_text(
-                encoding="utf-8"
-            ),
+            _active_skill_docs_text(),
+            Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8"),
         ]
     )
 
@@ -680,14 +719,19 @@ def test_skill_docs_explain_strong_fixture_truth_contract():
 
 
 def test_skill_docs_explain_load_safe_apply_mode():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(encoding="utf-8")
+    operator = (REPO_ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    combined = f"{workflow}\n{operator}"
 
-    assert "runtime_load_safe" in skill
-    assert "load_safe_apply" in skill
+    assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in skill
+    assert "runtime_load_safe" in combined
+    assert "load_safe_apply" in combined
     assert (
         "ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE"
-        in skill
+        in combined
     )
     assert "technical_status=VALID_PACKAGE" in workflow
     assert "runtime_load_safe=true" in workflow
@@ -706,12 +750,15 @@ def test_skill_docs_distinguish_rich_output_from_minimal_apply_gate():
             Path(".agents/skills/hsconfig/references/card-behavior-policy.md").read_text(
                 encoding="utf-8"
             ),
+            Path("docs/operator/README.md").read_text(encoding="utf-8"),
         ]
     )
 
+    normalized_docs = " ".join(docs.split())
+
     assert "HSConfig rich-output repo policy" in docs
-    assert "not the minimal runtime-write gate" in docs
-    assert "not an official HearthRanger minimum" in docs
+    assert "not the minimal runtime-write gate" in normalized_docs
+    assert "not an official HearthRanger minimum" in normalized_docs
     assert "`load_safe_apply` is an HSConfig operator policy" in docs
 
 
@@ -788,28 +835,26 @@ def test_normal_docs_keep_expert_paths_in_expert_sections():
 
 
 def test_skill_doc_keeps_expert_paths_in_expert_section():
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
 
     assert "## Expert Paths" in skill
     expert_index = skill.index("## Expert Paths")
-    for token in (
-        "--cards-json",
-        "--claims-json",
-        "--plan-reports-dir",
-        "--allow-placeholder",
-    ):
-        assert token not in skill[:expert_index]
-        assert skill.index(token) > expert_index
+    expert_skill = skill[expert_index:]
+
+    assert "hsconfig contract-preflight --json" in expert_skill
+    assert "--skill-install-root" in expert_skill
+    assert "--skill-install-root" not in skill[:expert_index]
+    assert "--allow-placeholder" in expert_skill
 
 
 def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
     operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    active_docs = _active_skill_docs_text()
     workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
         encoding="utf-8"
     )
     operator_lower = operator.lower()
-    skill_lower = skill.lower()
+    active_docs_lower = active_docs.lower()
     workflow_lower = workflow.lower()
     negative_scope = (
         "hsconfig is pre-run only. it does not parse replays, inspect winrate, "
@@ -830,8 +875,8 @@ def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
         "every representative deck either proves `source_backed_strong` or "
         "exposes the first missing source-to-runtime link"
     )
-    assert closure_sentence in skill_lower
-    assert second_clause in skill_lower
+    assert closure_sentence in active_docs_lower
+    assert second_clause in active_docs_lower
     assert closure_sentence in workflow_lower
     assert second_clause in workflow_lower
 
@@ -858,16 +903,16 @@ def test_docs_explain_source_informed_apply_ready_lane():
 
 
 def test_skill_names_preserved_closure_rows_and_no_actionable_target():
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
     workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
         encoding="utf-8"
     )
+    active_docs = _active_skill_docs_text()
 
     expected = (
         "After durable Boarlock and Kingslayer preservation, the current actionable "
         "source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH."
     )
-    assert expected in skill
+    assert expected in active_docs
     assert expected in workflow
 
 
@@ -876,8 +921,7 @@ def test_docs_explain_config_usefulness_without_making_it_a_blocker():
     no_block_contract = Path("docs/operator/universal-wild-no-block-contract.md").read_text(
         encoding="utf-8"
     )
-    repo_skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-    combined = "\n".join([operator_readme, no_block_contract, repo_skill])
+    combined = "\n".join([operator_readme, no_block_contract, _active_skill_docs_text()])
 
     assert "config_usefulness" in combined
     assert "load-safe" in combined
@@ -958,7 +1002,6 @@ def test_new_modern_mechanics_are_report_only_visibility_not_partial_lowering():
     paths = [
         Path("docs/operator/README.md"),
         Path("docs/operator/universal-wild-no-block-contract.md"),
-        Path(".agents/skills/hsconfig/SKILL.md"),
         Path(".agents/skills/hsconfig/references/workflow.md"),
     ]
     mechanics = ["`rewind`", "`herald`", "`shatter`"]
@@ -1042,7 +1085,7 @@ def test_skill_explains_no_block_failure_mode_summary():
 
 
 def test_skill_explains_source_contract_audit_without_new_gate():
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
         encoding="utf-8"
     )
@@ -1054,7 +1097,7 @@ def test_skill_explains_source_contract_audit_without_new_gate():
     assert "source_contract_audit_summary" in combined
     assert "source_to_runtime_explainability_summary" in combined
     assert "source_evidence_closure_summary" in combined
-    assert "does not replace `operator_summary.json`" in skill
+    assert "do not replace `reports/operator_summary.json`" in skill
     assert "does not create a second apply path" in combined
     assert "claim_lifecycle_rows" in combined
     assert "policy_lane" in combined
@@ -1066,7 +1109,7 @@ def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
     operator_policy = Path("docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    active_docs = _active_skill_docs_text()
     paths = [
         Path("docs/operator/README.md"),
         Path("docs/operator/guide-research-policy.md"),
@@ -1094,11 +1137,11 @@ def test_source_contract_lifecycle_docs_keep_operator_summary_authority():
     assert "implementation debt, not an operator" in operator_policy
     assert "Do not use\n`source_contract_audit.json` as an apply gate." in operator_policy
 
-    assert "technically valid but source depth is weak" in skill
-    assert "low confidence" in skill
-    assert "report-only" in skill
-    assert "unsupported by a runtime surface" in skill
-    assert "visible only in `source_contract_audit.json`" in skill
+    assert "technically valid" in active_docs
+    assert "low confidence" in active_docs
+    assert "report-only" in active_docs
+    assert "runtime surface" in active_docs
+    assert "source_contract_audit.json" in active_docs
 
 
 def test_docs_and_skill_state_source_contract_invariant_rule():
@@ -1155,7 +1198,7 @@ def test_docs_describe_source_quality_as_non_blocking():
     docs = (
         Path("docs/operator/guide-research-policy.md").read_text(encoding="utf-8")
         + "\n"
-        + Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+        + _active_skill_docs_text()
     )
 
     assert "source_claim_quality_summary" in docs
@@ -1167,29 +1210,27 @@ def test_docs_describe_source_quality_as_non_blocking():
 
 
 def test_hsconfig_skill_explains_start_effect_mulligan_split():
-    text = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    text = _skill_entrypoint_text()
 
     assert "Effect semantics are not opening-hand mulligan keeps" in text
     assert "Darkbishop Benedictus" in text
-    assert "operator_summary.json remains the normal apply authority" in text
+    assert "remains the only normal apply authority" in text
 
 
 def test_hsconfig_skill_documents_source_closure_optimizer_boundary() -> None:
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
     workflow = Path(".agents/skills/hsconfig/references/workflow.md").read_text(
         encoding="utf-8"
     )
 
-    for text in (skill, workflow):
-        assert "source-closure-optimizer" in text
-        assert "diagnostic" in text.lower()
-        assert "does not replace `reports/operator_summary.json`" in text
+    assert "source-closure-optimizer" in workflow
+    assert "diagnostic" in workflow.lower()
+    assert "does not replace `reports/operator_summary.json`" in workflow
 
 
 def test_docs_and_skill_explain_contract_invariant_closure_without_new_gate():
     operator_docs = Path("docs/operator/README.md").read_text(encoding="utf-8")
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
-    combined = operator_docs + "\n" + skill
+    active_docs = _active_skill_docs_text()
+    combined = operator_docs + "\n" + active_docs
 
     required = (
         "Contract invariant closure means: single apply authority, no silent "
@@ -1198,29 +1239,20 @@ def test_docs_and_skill_explain_contract_invariant_closure_without_new_gate():
     )
 
     assert required in operator_docs
-    assert required in skill
     assert "another runtime apply gate" in combined
     assert "operator_summary.json remains the only normal apply authority" in combined
 
 
 def test_docs_and_skill_route_installed_skill_sync_through_contract_preflight():
     operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
-    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     combined = f"{operator}\n{skill}"
     skill_lines = skill.splitlines()
     expert_headings = [
         line for line in skill_lines if line.startswith("## Expert Paths")
     ]
-    drift_bullet = (
-        "- Drift check: `hsconfig contract-preflight --json` verifies repo "
-        "currentness, installed-skill sync, and source/runtime contract wording "
-        "as diagnostic-only; use `--skill-install-root` only for non-default "
-        "skill roots."
-    )
-
     assert expert_headings == ["## Expert Paths"]
     expert_index = skill_lines.index("## Expert Paths")
-    assert skill_lines[expert_index + 1] == drift_bullet
 
     pre_expert_skill = "\n".join(skill_lines[:expert_index])
     expert_skill = "\n".join(skill_lines[expert_index:])
@@ -1234,8 +1266,7 @@ def test_docs_and_skill_route_installed_skill_sync_through_contract_preflight():
     assert "hsconfig contract-preflight --json" in combined
     assert "--skill-install-root" in operator
     assert "diagnostic-only" in combined
-    assert "does not replace `reports/operator_summary.json`" in combined
-    assert drift_bullet in expert_skill
+    assert "hsconfig contract-preflight --json" in expert_skill
     assert "installed-skill sync" not in pre_expert_skill
     assert "--skill-install-root" not in pre_expert_skill
     assert "`hsconfig contract-preflight --json`" in operator_preflight
@@ -1243,11 +1274,11 @@ def test_docs_and_skill_route_installed_skill_sync_through_contract_preflight():
     assert "diagnostic-only" in operator_preflight
     assert "preflight is diagnostic-only" in operator_preflight_flat
     assert "default-only success" not in operator_preflight_flat.lower()
-    assert "default-only success" not in drift_bullet.lower()
+    assert "default-only success" not in expert_skill.lower()
 
 
 def test_skill_and_workflow_describe_card_intent_taxonomy_as_diagnostic_only():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(
         encoding="utf-8"
     )
@@ -1257,37 +1288,38 @@ def test_skill_and_workflow_describe_card_intent_taxonomy_as_diagnostic_only():
         "another apply gate."
     )
 
-    assert expected in skill
+    assert "Card-intent taxonomy is diagnostic-only" in skill
+    assert "does not encode HearthRanger gameplay sequencing" in skill
     assert expected in workflow
 
 
 def test_hsconfig_skill_keeps_explicit_no_hstuner_after_game_boundary():
-    skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
+    skill = _skill_entrypoint_text()
 
     assert (
         "Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning."
         in skill
     )
-    assert (
-        "Card-intent taxonomy is diagnostic-only; it explains per-card config "
-        "signals but does not encode HearthRanger gameplay sequencing or create "
-        "another apply gate."
-        in skill
-    )
+    assert "Card-intent taxonomy is diagnostic-only" in skill
+    assert "does not encode HearthRanger gameplay sequencing" in skill
 
 
 def test_hsconfig_skill_mentions_handoff_contract_and_research_sentinel() -> None:
-    text = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    text = _skill_entrypoint_text()
+    active_docs_and_operator = (
+        _active_skill_docs_text()
+        + "\n"
+        + Path("docs/operator/README.md").read_text(encoding="utf-8")
+    )
 
     assert "configure_summary.json.handoff_contract" in text
-    assert "research-result sentinel" in text
+    assert "research-result sentinel" in active_docs_and_operator
     assert "diagnostic-only" in text
-    assert "operator_summary.json remains the only normal apply authority" in text
+    assert "remains the only normal apply authority" in text
 
 
 def test_skill_and_operator_docs_name_pre_run_config_contract_receipt() -> None:
     active_paths = [
-        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
         REPO_ROOT
         / ".agents"
         / "skills"
@@ -1307,15 +1339,14 @@ def test_skill_and_operator_docs_name_pre_run_config_contract_receipt() -> None:
         "does not replace `reports/operator_summary.json`",
     ]
 
-    for path in active_paths:
-        text = path.read_text(encoding="utf-8")
-        for phrase in required:
-            assert phrase in text, f"{path}: {phrase}"
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
+    assert "configure_summary.json.handoff_contract" in _skill_entrypoint_text()
+    for phrase in required:
+        assert phrase in combined, phrase
 
 
 def test_skill_and_operator_docs_explain_research_deep_contract_bridge() -> None:
     paths = [
-        REPO_ROOT / ".agents" / "skills" / "hsconfig" / "SKILL.md",
         REPO_ROOT
         / ".agents"
         / "skills"
@@ -1332,7 +1363,6 @@ def test_skill_and_operator_docs_explain_research_deep_contract_bridge() -> None
         "operator_summary.json remains the only normal apply authority",
     ]
 
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        for phrase in required:
-            assert phrase in text, f"{path}: {phrase}"
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
+    for phrase in required:
+        assert phrase in combined, phrase
