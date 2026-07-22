@@ -279,6 +279,7 @@ def test_contract_preflight_reports_attention_when_configure_acceptance_route_dr
         )
         text = text.replace("use_config_now", "use_now")
         text = text.replace("next_report_to_open", "next_report")
+        text = text.replace("operator projection", "operator overview")
         text = text.replace("diagnostic-only", "diagnostic")
         path.write_text(text, encoding="utf-8")
 
@@ -286,8 +287,10 @@ def test_contract_preflight_reports_attention_when_configure_acceptance_route_dr
 
     assert payload["status"] == "ATTENTION"
     assert payload["checks"]["configure_acceptance_route_visible"] is False
+    assert payload["checks"]["configure_acceptance_projection_not_gate_visible"] is False
     assert payload["checks"]["config_quality_summary_diagnostic_only_visible"] is False
     assert "configure_acceptance_route_visible" in payload["failures"]
+    assert "configure_acceptance_projection_not_gate_visible" in payload["failures"]
     assert "config_quality_summary_diagnostic_only_visible" in payload["failures"]
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert payload["source_status_apply_blocking"] is False
