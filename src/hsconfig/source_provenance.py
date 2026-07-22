@@ -81,70 +81,67 @@ def normalize_source_provenance(
 def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
     if payload.get("canonical_evidence") is True:
         return _provenance_result("current", _reason(payload, "canonical_evidence"))
-    top_level_status = _normalized_marker(payload.get("freshness_status"))
-    if top_level_status in CURRENT_MARKERS:
-        return _provenance_result("current", _reason(payload, "top_level_current"))
-    if top_level_status in EVERGREEN_MARKERS:
-        return _provenance_result("evergreen", _reason(payload, "top_level_evergreen"))
-    if _is_stale_marker(top_level_status):
-        return _provenance_result("stale", _reason(payload, "top_level_stale_marker"))
-    top_level_lane = _normalized_marker(
-        payload.get("source_freshness_lane") or payload.get("source_rank_lane")
-    )
-    if top_level_lane in CURRENT_MARKERS or top_level_lane == "guide_current_deck_match":
-        return _provenance_result("current", _reason(payload, "top_level_current_lane"))
-    if top_level_lane in EVERGREEN_MARKERS:
-        return _provenance_result("evergreen", _reason(payload, "top_level_evergreen_lane"))
-    if _is_stale_marker(top_level_lane):
-        return _provenance_result("stale", _reason(payload, "top_level_stale_lane"))
-    source_freshness = _normalized_marker(payload.get("source_freshness"))
-    if source_freshness in CURRENT_MARKERS:
-        return _provenance_result("current", _reason(payload, "top_level_source_freshness"))
-    if source_freshness in EVERGREEN_MARKERS:
-        return _provenance_result("evergreen", _reason(payload, "top_level_source_freshness"))
-    if _is_stale_marker(source_freshness):
-        return _provenance_result("stale", _reason(payload, "top_level_stale_source_freshness"))
-    currency_status = _normalized_marker(payload.get("currency_status"))
-    if currency_status in CURRENT_MARKERS:
-        return _provenance_result("current", _reason(payload, "top_level_currency_status"))
-    if currency_status in EVERGREEN_MARKERS:
-        return _provenance_result("evergreen", _reason(payload, "top_level_currency_status"))
-    if _is_stale_marker(currency_status):
-        return _provenance_result("stale", _reason(payload, "top_level_stale_currency_status"))
-    if _truthy(payload.get("current_or_evergreen")):
-        return _provenance_result("current", _reason(payload, "top_level_current_or_evergreen"))
-    if _truthy(payload.get("evergreen_wild_archetype")):
-        return _provenance_result("evergreen", _reason(payload, "top_level_evergreen_wild_archetype"))
+    stale_reason: str | None = None
+    rows = [(payload, "top_level"), *[(row, "nested") for row in _nested_rows(payload)]]
+    for row, scope in rows:
+        provenance, stale_reason = _row_research_provenance(
+            row,
+            scope=scope,
+            stale_reason=stale_reason,
+        )
+        if provenance is not None:
+            return _provenance_result(*provenance)
 
-    for row in _nested_rows(payload):
-        marker = _normalized_marker(row.get("freshness_status"))
-        lane = _normalized_marker(row.get("source_freshness_lane") or row.get("source_rank_lane"))
-        if marker in CURRENT_MARKERS or lane in CURRENT_MARKERS or lane == "guide_current_deck_match":
-            return _provenance_result("current", _reason(row, "nested_current_marker"))
-        if marker in EVERGREEN_MARKERS or lane in EVERGREEN_MARKERS:
-            return _provenance_result("evergreen", _reason(row, "nested_evergreen_marker"))
-        if _is_stale_marker(marker) or _is_stale_marker(lane):
-            return _provenance_result("stale", _reason(row, "nested_stale_marker"))
-        source_freshness = _normalized_marker(row.get("source_freshness"))
-        if source_freshness in CURRENT_MARKERS:
-            return _provenance_result("current", _reason(row, "nested_source_freshness"))
-        if source_freshness in EVERGREEN_MARKERS:
-            return _provenance_result("evergreen", _reason(row, "nested_source_freshness"))
-        if _is_stale_marker(source_freshness):
-            return _provenance_result("stale", _reason(row, "nested_stale_source_freshness"))
-        currency_status = _normalized_marker(row.get("currency_status"))
-        if currency_status in CURRENT_MARKERS:
-            return _provenance_result("current", _reason(row, "nested_currency_status"))
-        if currency_status in EVERGREEN_MARKERS:
-            return _provenance_result("evergreen", _reason(row, "nested_currency_status"))
-        if _is_stale_marker(currency_status):
-            return _provenance_result("stale", _reason(row, "nested_stale_currency_status"))
-        if _truthy(row.get("current_or_evergreen")):
-            return _provenance_result("current", _reason(row, "nested_current_or_evergreen"))
-        if _truthy(row.get("evergreen_wild_archetype")):
-            return _provenance_result("evergreen", _reason(row, "nested_evergreen_wild_archetype"))
+    if stale_reason is not None:
+        return _provenance_result("stale", stale_reason)
 
     return _provenance_result("unknown", "missing_current_or_evergreen_marker")
+
+
+def _row_research_provenance(
+    row: Mapping[str, Any],
+    *,
+    scope: str,
+    stale_reason: str | None,
+) -> tuple[tuple[str, str] | None, str | None]:
+    marker = _normalized_marker(row.get("freshness_status"))
+    lane = _normalized_marker(row.get("source_freshness_lane") or row.get("source_rank_lane"))
+    source_freshness = _normalized_marker(row.get("source_freshness"))
+    currency_status = _normalized_marker(row.get("currency_status"))
+    marker_current_reason = f"{scope}_current" if scope == "top_level" else f"{scope}_current_marker"
+    marker_evergreen_reason = (
+        f"{scope}_evergreen" if scope == "top_level" else f"{scope}_evergreen_marker"
+    )
+    checks = (
+        (marker, "current", marker_current_reason, marker_evergreen_reason, f"{scope}_stale_marker"),
+        (lane, "lane", f"{scope}_current_lane", f"{scope}_evergreen_lane", f"{scope}_stale_lane"),
+        (
+            source_freshness,
+            "source_freshness",
+            f"{scope}_source_freshness",
+            f"{scope}_source_freshness",
+            f"{scope}_stale_source_freshness",
+        ),
+        (
+            currency_status,
+            "currency_status",
+            f"{scope}_currency_status",
+            f"{scope}_currency_status",
+            f"{scope}_stale_currency_status",
+        ),
+    )
+    for value, kind, current_reason, evergreen_reason, stale_marker_reason in checks:
+        if value in CURRENT_MARKERS or (kind == "lane" and value == "guide_current_deck_match"):
+            return ("current", _reason(row, current_reason)), stale_reason
+        if value in EVERGREEN_MARKERS:
+            return ("evergreen", _reason(row, evergreen_reason)), stale_reason
+        if stale_reason is None and _is_stale_marker(value):
+            stale_reason = _reason(row, stale_marker_reason)
+    if _truthy(row.get("current_or_evergreen")):
+        return ("current", _reason(row, f"{scope}_current_or_evergreen")), stale_reason
+    if _truthy(row.get("evergreen_wild_archetype")):
+        return ("evergreen", _reason(row, f"{scope}_evergreen_wild_archetype")), stale_reason
+    return None, stale_reason
 
 
 def _provenance_result(status: str, reason: str) -> dict[str, Any]:

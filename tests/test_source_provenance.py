@@ -222,3 +222,51 @@ def test_research_payload_provenance_reports_explicit_stale_top_level_lane() -> 
     assert result["current_or_evergreen"] is False
     assert result["current_or_evergreen_reason"] != "missing_current_or_evergreen_marker"
     assert result["source_status_apply_blocking"] is False
+
+
+@pytest.mark.parametrize(
+    "guide_sources",
+    [
+        [{"freshness_status": "stale"}, {"freshness_status": "current"}],
+        [{"freshness_status": "current"}, {"freshness_status": "stale"}],
+    ],
+)
+def test_research_payload_provenance_prefers_nested_current_over_stale_rows(
+    guide_sources: list[dict[str, str]],
+) -> None:
+    result = research_payload_provenance({"guide_sources": guide_sources})
+
+    assert result["freshness_status"] == "current"
+    assert result["current_or_evergreen"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_payload_provenance_prefers_nested_current_over_top_level_stale() -> None:
+    result = research_payload_provenance(
+        {
+            "freshness_status": "stale",
+            "guide_sources": [{"source_freshness": "current"}],
+        }
+    )
+
+    assert result["freshness_status"] == "current"
+    assert result["current_or_evergreen"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_payload_provenance_prefers_current_flag_over_stale_metadata() -> None:
+    result = research_payload_provenance(
+        {"source_freshness_lane": "stale_unproven_for_2026", "current_or_evergreen": True}
+    )
+
+    assert result["freshness_status"] == "current"
+    assert result["current_or_evergreen"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_payload_provenance_preserves_stale_only_payload() -> None:
+    result = research_payload_provenance({"freshness_status": "stale"})
+
+    assert result["freshness_status"] == "stale"
+    assert result["current_or_evergreen"] is False
+    assert result["source_status_apply_blocking"] is False
