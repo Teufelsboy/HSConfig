@@ -82,6 +82,12 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     if not isinstance(deck_identity, Mapping):
         deck_identity = {}
 
+    semantic_enrichment = _read_json(
+        package / "reports" / "semantic_enrichment_report.json"
+    )
+    if not isinstance(semantic_enrichment, Mapping):
+        semantic_enrichment = {}
+
     checks = {
         "operator_summary": _operator_summary_check(operator),
         "card_behavior": _card_behavior_check(card_behavior),
@@ -100,6 +106,12 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "legacy_surfaces": _legacy_surface_check(package),
         "darkbishop_boundary": _darkbishop_boundary_check(package),
     }
+    checks["semantic_intent_coverage"] = _semantic_intent_coverage_check(
+        card_behavior_check=checks["card_behavior"],
+        trace_check=checks["trace_completeness"],
+        mechanic_check=checks["mechanic_runtime_discipline"],
+        semantic_enrichment=semantic_enrichment,
+    )
     problems = _problems(checks)
     return {
         "schema_version": 1,
@@ -472,6 +484,114 @@ def _mechanic_runtime_discipline_check(
         "report_only_runtime_rows": report_only_rows,
         "unregistered_mechanics": sorted(unregistered),
     }
+
+
+def _semantic_intent_coverage_check(
+    *,
+    card_behavior_check: Mapping[str, Any],
+    trace_check: Mapping[str, Any],
+    mechanic_check: Mapping[str, Any],
+    semantic_enrichment: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_rows_missing_trace = _list_of_mappings(
+        trace_check.get("runtime_rows_missing_trace")
+    )
+    semantic_score_missing_rows = _list_of_mappings(
+        card_behavior_check.get("semantic_score_missing_rows")
+    )
+    semantic_default_rows = _list_of_mappings(
+        card_behavior_check.get("semantic_default_rows")
+    )
+    report_only_runtime_rows = _list_of_mappings(
+        mechanic_check.get("report_only_runtime_rows")
+    )
+    warning_only = _semantic_warning_only_summary(semantic_enrichment)
+
+    attention: list[dict[str, Any]] = []
+    if runtime_rows_missing_trace:
+        attention.append(
+            {
+                "check": "card_behavior_runtime_row_missing_trace",
+                "count": len(runtime_rows_missing_trace),
+            }
+        )
+    if semantic_score_missing_rows:
+        attention.append(
+            {
+                "check": "card_behavior_semantic_score_missing",
+                "count": len(semantic_score_missing_rows),
+            }
+        )
+    if semantic_default_rows:
+        attention.append(
+            {
+                "check": "card_behavior_semantic_default_visible",
+                "count": len(semantic_default_rows),
+            }
+        )
+    if report_only_runtime_rows:
+        attention.append(
+            {
+                "check": "report_only_mechanic_emitted_runtime",
+                "count": len(report_only_runtime_rows),
+            }
+        )
+
+    return {
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "status": "clean" if not attention else "attention",
+        "meaningful_cardid_runtime_rows": _int_value(
+            card_behavior_check.get("accepted_cardid_runtime_rows", 0)
+        ),
+        "runtime_rows_missing_trace": runtime_rows_missing_trace,
+        "semantic_score_missing_rows": semantic_score_missing_rows,
+        "semantic_default_rows": semantic_default_rows,
+        "report_only_runtime_rows": report_only_runtime_rows,
+        "warning_only_card_count": warning_only["card_count"],
+        "warning_only_mechanics": warning_only["mechanics"],
+        "attention": attention,
+        "first_attention": attention[0]["check"] if attention else None,
+    }
+
+
+def _semantic_warning_only_summary(
+    semantic_enrichment: Mapping[str, Any],
+) -> dict[str, Any]:
+    cards = semantic_enrichment.get("cards", {})
+    if isinstance(cards, Mapping):
+        rows = list(cards.values())
+    elif isinstance(cards, list):
+        rows = cards
+    else:
+        rows = []
+
+    card_count = 0
+    mechanics: set[str] = set()
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        row_mechanics = _string_list(row.get("warning_only_mechanics"))
+        row_mechanics.extend(_string_list(row.get("warning_only")))
+        normalized = sorted(
+            {mechanic.strip() for mechanic in row_mechanics if mechanic.strip()}
+        )
+        if not normalized:
+            continue
+        card_count += 1
+        mechanics.update(normalized)
+
+    return {
+        "card_count": card_count,
+        "mechanics": sorted(mechanics),
+    }
+
+
+def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, Mapping)]
 
 
 def _runtime_json_check(

@@ -159,6 +159,21 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "traced_card_ids": ["NX2_019"],
         "runtime_card_ids": ["NX2_019"],
     }
+    assert report["checks"]["semantic_intent_coverage"] == {
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "status": "clean",
+        "meaningful_cardid_runtime_rows": 1,
+        "runtime_rows_missing_trace": [],
+        "semantic_score_missing_rows": [],
+        "semantic_default_rows": [],
+        "report_only_runtime_rows": [],
+        "warning_only_card_count": 0,
+        "warning_only_mechanics": [],
+        "attention": [],
+        "first_attention": None,
+    }
     assert report["checks"]["closure_freshness"] == {
         "present": True,
         "closure_schema_current": True,
@@ -273,6 +288,21 @@ def test_config_quality_flags_report_only_mechanic_runtime_emission(
             }
         ],
     } in report["problems"]
+    semantic_intent = report["checks"]["semantic_intent_coverage"]
+
+    assert semantic_intent["status"] == "attention"
+    assert {
+        "check": "report_only_mechanic_emitted_runtime",
+        "count": 1,
+    } in semantic_intent["attention"]
+    assert semantic_intent["report_only_runtime_rows"] == [
+        {
+            "card_id": "TRADEABLE_001",
+            "mechanic": "tradeable",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "6",
+        }
+    ]
     assert report["apply_blocking"] is False
 
 
@@ -521,6 +551,17 @@ def test_config_quality_flags_cardid_runtime_rows_without_source_trace(
             }
         ],
     } in report["problems"]
+    semantic_intent = report["checks"]["semantic_intent_coverage"]
+
+    assert semantic_intent["status"] == "attention"
+    assert semantic_intent["authority"] == "diagnostic_only"
+    assert semantic_intent["apply_blocking"] is False
+    assert semantic_intent["runtime_write_performed"] is False
+    assert semantic_intent["first_attention"] == "card_behavior_runtime_row_missing_trace"
+    assert {
+        "check": "card_behavior_runtime_row_missing_trace",
+        "count": 1,
+    } in semantic_intent["attention"]
     assert report["apply_blocking"] is False
 
 
@@ -851,6 +892,54 @@ def test_config_quality_flags_semantic_default_rows(tmp_path: Path):
             }
         ],
     } in report["problems"]
+    semantic_intent = report["checks"]["semantic_intent_coverage"]
+
+    assert semantic_intent["status"] == "attention"
+    assert {
+        "check": "card_behavior_semantic_default_visible",
+        "count": 1,
+    } in semantic_intent["attention"]
+    assert semantic_intent["semantic_default_rows"] == [
+        {
+            "card_id": "CARD_DEFAULT",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "6",
+            "reason": "semantic_default",
+        }
+    ]
+
+
+def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "semantic_enrichment_report.json",
+        {
+            "cards": {
+                "BAR_880": {
+                    "card_id": "BAR_880",
+                    "name": "Tradeable Test Card",
+                    "warning_only_mechanics": ["tradeable"],
+                },
+                "LOC_001": {
+                    "card_id": "LOC_001",
+                    "name": "Location Test Card",
+                    "warning_only_mechanics": ["location_activation"],
+                },
+            }
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["status"] == "clean"
+    assert report["checks"]["semantic_intent_coverage"]["warning_only_card_count"] == 2
+    assert report["checks"]["semantic_intent_coverage"]["warning_only_mechanics"] == [
+        "location_activation",
+        "tradeable",
+    ]
+    assert report["checks"]["semantic_intent_coverage"]["attention"] == []
 
 
 def test_config_quality_flags_numeric_cardid_values_outside_runtime_range(
