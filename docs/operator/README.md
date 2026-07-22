@@ -37,7 +37,14 @@ are outside the normal output path.
 
 ### Optional Contract Preflight
 
-Use `hsconfig contract-preflight --json` for a read-only repo and skill contract check before source refresh, package generation, or runtime-facing apply review. It checks currentness, skill reference routing, source-status non-blocking policy, no-default-only visibility, supported runtime surfaces, negative-scope boundaries, and the research-context lock around `docs/research/current-truth.md`. The historical research outline files remain diagnostic-only evidence and do not replace `reports/operator_summary.json`.
+Use `hsconfig contract-preflight --json` for a read-only repo and skill contract
+check before source refresh, package generation, or runtime-facing apply review.
+It checks currentness, installed-skill sync, skill reference routing,
+source-status non-blocking policy, no-default-only visibility, supported runtime
+surfaces, negative-scope boundaries, and the research-context lock around
+`docs/research/current-truth.md`. Use `--skill-install-root <path>` only when
+testing or checking a non-default Codex skill root. This preflight is
+diagnostic-only and does not replace `reports/operator_summary.json`.
 
 Use `hsconfig configure` for normal operation:
 
@@ -337,6 +344,8 @@ The command checks installed-skill sync, `hsconfig contract-spine-sentinel
 --json`, and the focused boundary tests. It is diagnostic only. Normal deck
 configuration still starts with `hsconfig configure`, and
 `reports/operator_summary.json` remains the only normal apply authority.
+The lower-level `hsconfig contract-preflight --json` exposes the same
+installed-skill sync class in its JSON payload for quick operator checks.
 
 ## Optional Contract Doctor
 

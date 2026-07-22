@@ -74,6 +74,6 @@ Operator rules:
 - Source-depth closure means every representative deck either proves `SOURCE_BACKED_STRONG` or exposes the first missing source-to-runtime link; `core_source_backed_fixture` rows are strict controls, `source_informed_valid_fixture` rows are valid with visible gaps, and operators should close existing matrix gaps before adding more representative decks. After durable Boarlock and Kingslayer preservation, the current actionable source-informed closure targets are CtAPaladin, Discolock, TreantDruid, and PirateDH.
 - Keep exact CardID identity, full `GlobalValues` coverage, the profile report, the pre-run boundary, and no replay analysis.
 - Tell the user whether the package is guide-backed, static-semantics-backed, or still needs more research.
-## Expert Paths
+## Expert Paths - Drift check: `hsconfig contract-preflight --json` verifies repo currentness, installed-skill sync, and source/runtime contract wording as diagnostic-only; use `--skill-install-root` only for non-default skill roots.
 Use optional expert `--cards-json`, legacy `--claims-json`, or inspected `--plan-reports-dir` only for fixtures, diagnostics, or inspected expert inputs. Use `--allow-placeholder` only for deterministic fixture or preview tests.
 ## References: `references/workflow.md`; `references/visionai-surfaces.md`; `references/contract-compiler-checklist.md`; `references/guide-research-policy.md`; `references/globalvalues-policy.md`; `references/card-behavior-policy.md`

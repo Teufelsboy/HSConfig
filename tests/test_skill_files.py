@@ -1203,6 +1203,18 @@ def test_docs_and_skill_explain_contract_invariant_closure_without_new_gate():
     assert "operator_summary.json remains the only normal apply authority" in combined
 
 
+def test_docs_and_skill_route_installed_skill_sync_through_contract_preflight():
+    operator = Path("docs/operator/README.md").read_text(encoding="utf-8")
+    skill = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+    combined = f"{operator}\n{skill}"
+
+    assert "installed-skill sync" in operator
+    assert "hsconfig contract-preflight --json" in combined
+    assert "--skill-install-root" in operator
+    assert "diagnostic-only" in combined
+    assert "does not replace `reports/operator_summary.json`" in combined
+
+
 def test_skill_and_workflow_describe_card_intent_taxonomy_as_diagnostic_only():
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     workflow = (SKILL_ROOT / "references" / "workflow.md").read_text(
