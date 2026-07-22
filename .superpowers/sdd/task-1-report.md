@@ -106,3 +106,21 @@ Review fix
 - GREEN command: `python -m pytest tests/test_source_provenance.py -q`
 - GREEN result: exit 0, `5 passed in 0.10s`.
 - No downstream consumers, runtime apply/output, or dependencies were changed.
+
+## Task 1 Review Fix 2
+
+### Finding and regression test
+
+- Review finding: Evergreen Wild classification still counted arbitrary `record["deck_match"]["matched_card_ids"]` without validating them against the canonical deck.
+- Added `test_unrelated_wild_cards_do_not_establish_evergreen_provenance` with unrelated Wild IDs and a known deck identity.
+- RED command: `python -m pytest tests/test_source_provenance.py::test_unrelated_wild_cards_do_not_establish_evergreen_provenance -q`
+- RED result: exit 1; the pre-fix implementation returned `freshness_status="evergreen"` instead of `"stale"`.
+
+### Fix and verification
+
+- Threaded `deck_identity` through `_freshness_status` and `_is_evergreen_wild_source`.
+- Extracted shared validated matched-card-ID logic; canonical overlap is required whenever canonical IDs are known, while absent/empty canonical identities retain the prior fallback.
+- Preserved `current_or_evergreen=False` for the unrelated source and `source_status_apply_blocking=False`.
+- GREEN command: `python -m pytest tests/test_source_provenance.py -q`
+- GREEN result: exit 0, `6 passed in 0.10s`.
+- No downstream consumers, runtime apply/output, or dependencies were changed.

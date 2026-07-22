@@ -65,6 +65,7 @@ def normalize_source_provenance(
         publication_year=publication_year,
         current_year=current_year,
         visibility=visibility,
+        deck_identity=deck_identity,
     )
     return {
         "source_visibility": visibility,
@@ -159,13 +160,7 @@ def _deck_identity_match(
         return {"matched": False, "basis": "missing_deck_match"}
     declared = _norm(match.get("deck_name"))
     matched_ids = match.get("matched_card_ids", [])
-    canonical_ids = _canonical_card_ids(deck_identity)
-    if canonical_ids:
-        has_card_overlap = isinstance(matched_ids, list) and bool(
-            canonical_ids.intersection({_text(card_id) for card_id in matched_ids if _text(card_id)})
-        )
-    else:
-        has_card_overlap = isinstance(matched_ids, list) and any(_text(card_id) for card_id in matched_ids)
+    has_card_overlap = bool(_validated_matched_card_ids(matched_ids, deck_identity))
     if declared == _norm(deck_name) and has_card_overlap:
         return {"matched": True, "basis": "deck_name_and_card_overlap"}
     if declared == _norm(deck_name):
@@ -188,6 +183,17 @@ def _canonical_card_ids(deck_identity: Mapping[str, Any] | None) -> set[str]:
     }
 
 
+def _validated_matched_card_ids(
+    matched_ids: Any,
+    deck_identity: Mapping[str, Any] | None,
+) -> set[str]:
+    if not isinstance(matched_ids, list):
+        return set()
+    normalized = {_text(card_id) for card_id in matched_ids if _text(card_id)}
+    canonical_ids = _canonical_card_ids(deck_identity)
+    return normalized.intersection(canonical_ids) if canonical_ids else normalized
+
+
 def _freshness_status(
     record: Mapping[str, Any],
     *,
@@ -195,6 +201,7 @@ def _freshness_status(
     publication_year: int | None,
     current_year: int | None,
     visibility: str,
+    deck_identity: Mapping[str, Any] | None,
 ) -> tuple[str, str]:
     explicit = _normalized_marker(record.get("freshness_status"))
     if explicit in CURRENT_MARKERS:
@@ -215,7 +222,12 @@ def _freshness_status(
         return "unknown", "missing_publication_year"
     if publication_year == current_year:
         return "current", "publication_year_matches_current_year"
-    if _is_evergreen_wild_source(record, publication_year=publication_year, current_year=current_year):
+    if _is_evergreen_wild_source(
+        record,
+        publication_year=publication_year,
+        current_year=current_year,
+        deck_identity=deck_identity,
+    ):
         return "evergreen", "wild_guide_with_card_overlap"
     return "stale", "publication_year_not_current_or_evergreen"
 
@@ -225,6 +237,7 @@ def _is_evergreen_wild_source(
     *,
     publication_year: int,
     current_year: int,
+    deck_identity: Mapping[str, Any] | None,
 ) -> bool:
     age = current_year - publication_year
     if age < 1 or age > EVERGREEN_WILD_MAX_AGE_YEARS:
@@ -236,9 +249,7 @@ def _is_evergreen_wild_source(
     if not isinstance(match, Mapping):
         return False
     matched = match.get("matched_card_ids", [])
-    if not isinstance(matched, list):
-        return False
-    return len({_text(card_id) for card_id in matched if _text(card_id)}) >= EVERGREEN_WILD_MIN_MATCHED_CARDS
+    return len(_validated_matched_card_ids(matched, deck_identity)) >= EVERGREEN_WILD_MIN_MATCHED_CARDS
 
 
 def _reason(row: Mapping[str, Any], fallback: str) -> str:

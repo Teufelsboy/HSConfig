@@ -111,6 +111,28 @@ def test_unrelated_matched_cards_do_not_establish_deck_identity_match() -> None:
     assert result["deck_identity_match_basis"] == "no_identity_match"
 
 
+def test_unrelated_wild_cards_do_not_establish_evergreen_provenance() -> None:
+    result = normalize_source_provenance(
+        {
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "publication_year": 2023,
+            "format_scope": "wild",
+            "deck_match": {
+                "deck_name": "OtherDeck",
+                "matched_card_ids": ["OTHER_001", "OTHER_002"],
+            },
+        },
+        deck_name="ShadowPriest",
+        deck_identity=DECK_IDENTITY,
+        current_date="2026-07-22",
+    )
+
+    assert result["freshness_status"] == "stale"
+    assert result["current_or_evergreen"] is False
+    assert result["source_status_apply_blocking"] is False
+
+
 def test_research_payload_provenance_accepts_nested_current_marker() -> None:
     result = research_payload_provenance(
         {
