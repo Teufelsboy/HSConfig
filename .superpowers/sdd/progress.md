@@ -905,3 +905,13 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: operator summary duplicate helper removed in 509388c; RED source-shape test confirmed `assert 2 == 1`; operator-summary module 116 passed; task review approved; controller verified remaining helper accepts strings and list-like containers.
 - [x] Final review: whole-range reviewer found one Important sync-test contract gap and two Minor test-hardening gaps; fix commit 008e4a5 addressed all; fix re-review approved.
 - [x] Full-suite doc contract fix: stale operator quick-start assertion and forbidden active-doc wording aligned in 3eac48c; subagent repeated full suite with 1730 passed, 11 skipped.
+
+---
+
+# HSConfig Card Intent Taxonomy Consolidation SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-card-intent-taxonomy-consolidation.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; baseline focused slice passed (108 passed).
+- [x] Task 1: Add pure card intent taxonomy helper (commit 0bb6864; RED import failure confirmed; focused taxonomy tests 4 passed; review clean after tracked report cleanup).
