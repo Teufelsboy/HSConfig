@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -184,3 +185,97 @@ def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> No
 
     assert configure_help.returncode == 0
     assert "contract-preflight" not in configure_help.stdout
+
+
+def test_contract_preflight_reports_research_context_as_diagnostic_only() -> None:
+    payload = build_contract_preflight(Path("."), git=_clean_git())
+
+    research_context = payload["research_context"]
+
+    assert payload["checks"]["research_current_truth_index_visible"] is True
+    assert payload["checks"]["historical_research_outlines_diagnostic_only"] is True
+    assert research_context["status"] == "current"
+    assert research_context["active_evidence_index_present"] is True
+    assert research_context["active_evidence_index_path"] == "docs/research/current-truth.md"
+    assert research_context["machine_evidence_index_path"] == "docs/research/current-truth-index.json"
+    assert research_context["authority"] == "evidence_index_only"
+    assert research_context["operator_gate_impact"] == "diagnostic_only"
+    assert research_context["normal_apply_authority"] == "reports/operator_summary.json"
+    assert research_context["historical_outlines_apply_authority"] is False
+    assert research_context["recommended_research_entrypoint"] == "docs/research/current-truth.md"
+    assert research_context["historical_outline_count"] > 0
+    assert "docs/research/current-truth.md" not in research_context["historical_outline_paths"]
+
+
+def test_contract_preflight_research_context_attention_when_current_truth_missing(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+    shutil.rmtree(target_docs / "research")
+    (target_docs / "research").mkdir(parents=True)
+    (target_docs / "research" / "historical-audit").mkdir()
+    (target_docs / "research" / "historical-audit" / "outline.yaml").write_text(
+        "items: []\n",
+        encoding="utf-8",
+    )
+
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    payload = build_contract_preflight(tmp_path, git=_clean_git())
+    research_context = payload["research_context"]
+
+    assert payload["status"] == "ATTENTION"
+    assert "research_current_truth_index_visible" in payload["failures"]
+    assert payload["checks"]["research_current_truth_index_visible"] is False
+    assert payload["checks"]["historical_research_outlines_diagnostic_only"] is True
+    assert research_context["status"] == "attention"
+    assert research_context["active_evidence_index_present"] is False
+    assert research_context["historical_outline_count"] == 1
+    assert research_context["historical_outlines_apply_authority"] is False
+    assert payload["diagnostic_only"] is True
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert payload["source_status_apply_blocking"] is False
+
+
+def test_contract_preflight_cli_includes_research_context_without_writing_files() -> None:
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    before = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "hsconfig.cli",
+            "contract-preflight",
+            "--repo-root",
+            ".",
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+    after = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+
+    payload = json.loads(result.stdout)
+
+    assert result.returncode in (0, 1)
+    assert "research_context" in payload
+    assert payload["research_context"]["operator_gate_impact"] == "diagnostic_only"
+    assert payload["research_context"]["normal_apply_authority"] == "reports/operator_summary.json"
+    assert payload["research_context"]["historical_outlines_apply_authority"] is False
+    assert payload["diagnostic_only"] is True
+    assert before == after
