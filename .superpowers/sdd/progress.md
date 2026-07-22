@@ -888,5 +888,5 @@ Plan: docs/superpowers/plans/2026-07-22-hsconfig-acceptance-route-coherence-pref
 Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 - [x] Tasks 1-2: Add and implement configure acceptance route preflight checks (commits 7c52845..61ddfde, re-review approved after projection-drift negative assertion fix)
-- [ ] Task 3: Verify existing contract preflight behavior remains stable
-- [ ] Task 4: Final cleanliness, skill sync, commit, push, and final review
+- [x] Task 3: Verify existing contract preflight behavior remains stable (focused contract preflight tests 11 passed; focused skill-file route tests 3 passed; contract-preflight PASS after ledger currentness commit).
+- [x] Task 4: Final cleanliness, skill sync, commit, push, and final review (skill sync in sync; currentness clean; final read-only review found no Critical/Important issues and only this stale ledger state, now resolved before final push).
