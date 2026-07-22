@@ -72,6 +72,7 @@ class ResearchContextPreflight:
     latest_research_result_contract_path: str
     latest_research_result_contract_result_count: int
     latest_research_result_contract_invalid_count: int
+    latest_research_result_contract_freshness_missing_count: int
     latest_research_result_contract_no_op_validation_risk: bool
     source_status_apply_blocking: bool
     notes: tuple[str, ...]
@@ -302,6 +303,7 @@ def _latest_research_result_contract(root: Path) -> dict[str, object]:
             "path": "",
             "result_count": 0,
             "invalid_count": 0,
+            "freshness_missing_count": 0,
             "no_op_validation_risk": False,
         }
 
@@ -312,6 +314,7 @@ def _latest_research_result_contract(root: Path) -> dict[str, object]:
             "path": "",
             "result_count": 0,
             "invalid_count": 0,
+            "freshness_missing_count": 0,
             "no_op_validation_risk": False,
         }
 
@@ -324,6 +327,7 @@ def _latest_research_result_contract(root: Path) -> dict[str, object]:
             "path": _relative_posix(root, latest),
             "result_count": 0,
             "invalid_count": 0,
+            "freshness_missing_count": 0,
             "no_op_validation_risk": True,
         }
 
@@ -340,6 +344,7 @@ def _latest_research_result_contract(root: Path) -> dict[str, object]:
             "path": _relative_posix(root, latest),
             "result_count": 0,
             "invalid_count": 0,
+            "freshness_missing_count": 0,
             "no_op_validation_risk": True,
         }
     return {
@@ -348,6 +353,7 @@ def _latest_research_result_contract(root: Path) -> dict[str, object]:
         "result_count": int(summary["result_count"]),
         "invalid_count": int(summary.get("strict_invalid_count") or 0)
         + int(summary.get("contract_invalid_count") or 0),
+        "freshness_missing_count": int(summary.get("freshness_missing_count") or 0),
         "no_op_validation_risk": bool(summary["no_op_validation_risk"]),
     }
 
@@ -433,6 +439,9 @@ def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPr
         ),
         latest_research_result_contract_invalid_count=int(
             latest_research_contract["invalid_count"]
+        ),
+        latest_research_result_contract_freshness_missing_count=int(
+            latest_research_contract["freshness_missing_count"]
         ),
         latest_research_result_contract_no_op_validation_risk=bool(
             latest_research_contract["no_op_validation_risk"]

@@ -84,6 +84,7 @@ def _unavailable_research_context_payload(repo_root: str) -> dict[str, object]:
             "latest_research_result_contract_path": "",
             "latest_research_result_contract_result_count": 0,
             "latest_research_result_contract_invalid_count": 0,
+            "latest_research_result_contract_freshness_missing_count": 0,
             "latest_research_result_contract_no_op_validation_risk": True,
             "source_status_apply_blocking": False,
             "notes": [

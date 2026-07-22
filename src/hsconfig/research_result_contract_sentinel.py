@@ -33,6 +33,15 @@ def build_research_result_contract_sentinel(
     strong_promoting_count = sum(
         1 for row in rows if row["canonical_promotion_allowed"] is True
     )
+    freshness_missing_count = sum(
+        1
+        for row in rows
+        if "strong_requires_current_or_evergreen_freshness"
+        in row["strict_research_result_errors"]
+    )
+    current_or_evergreen_count = sum(
+        1 for row in rows if row["current_or_evergreen"] is True
+    )
     no_op_validation_risk = (
         fields_contract["valid"] is False
         or int(fields_contract.get("field_count") or 0) == 0
@@ -66,6 +75,8 @@ def build_research_result_contract_sentinel(
             "contract_invalid_count": contract_invalid_count,
             "seed_only_count": seed_only_count,
             "strong_promoting_count": strong_promoting_count,
+            "freshness_missing_count": freshness_missing_count,
+            "current_or_evergreen_count": current_or_evergreen_count,
             "no_op_validation_risk": no_op_validation_risk,
             "source_status_apply_blocking": False,
         },
@@ -104,5 +115,10 @@ def _result_row(path: Path) -> dict[str, Any]:
         "strict_research_result_warnings": list(strict["warnings"]),
         "strict_research_result_field_count": int(strict["field_count"]),
         "lowerable_claim_kinds": list(strict["lowerable_claim_kinds"]),
+        "freshness_status": str(strict.get("freshness_status") or ""),
+        "current_or_evergreen": bool(strict.get("current_or_evergreen", False)),
+        "current_or_evergreen_reason": str(
+            strict.get("current_or_evergreen_reason") or ""
+        ),
         "source_status_apply_blocking": False,
     }

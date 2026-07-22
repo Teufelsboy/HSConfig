@@ -587,6 +587,18 @@ def test_contract_preflight_exposes_research_result_contract_sentinel() -> None:
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
 
 
+def test_contract_preflight_exposes_research_freshness_missing_count() -> None:
+    payload = build_contract_preflight(".")
+    context = payload["research_context"]
+
+    assert "latest_research_result_contract_freshness_missing_count" in context
+    assert isinstance(
+        context["latest_research_result_contract_freshness_missing_count"], int
+    )
+    assert context["source_status_apply_blocking"] is False
+    assert payload["source_status_apply_blocking"] is False
+
+
 def test_contract_preflight_research_result_attention_is_not_apply_blocking(
     tmp_path: Path,
 ) -> None:

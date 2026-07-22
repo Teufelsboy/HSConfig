@@ -70,6 +70,8 @@ def test_sentinel_reports_valid_partial_results_without_apply_blocking(
         "contract_invalid_count": 0,
         "seed_only_count": 1,
         "strong_promoting_count": 0,
+        "freshness_missing_count": 0,
+        "current_or_evergreen_count": 0,
         "no_op_validation_risk": False,
         "source_status_apply_blocking": False,
     }
@@ -111,6 +113,43 @@ def test_sentinel_surfaces_invalid_strong_result_without_blocking(
         "strong_requires_current_or_evergreen_freshness"
         in report["result_rows"][0]["strict_research_result_errors"]
     )
+
+
+def test_sentinel_counts_missing_freshness_without_apply_blocking(
+    tmp_path: Path,
+) -> None:
+    fields_path = tmp_path / "fields.yaml"
+    fields_path.write_text(yaml.safe_dump(FIELDS), encoding="utf-8")
+    results_dir = tmp_path / "results"
+    _write_json(
+        results_dir / "CtAPaladin.json",
+        {
+            "deck_name": "CtAPaladin",
+            "archetype": "Wild Call to Arms Paladin",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "exact_full_text_guide",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "notes": "Missing current or evergreen marker.",
+        },
+    )
+
+    report = build_research_result_contract_sentinel(fields_path, results_dir)
+
+    assert report["summary"]["status"] == "attention"
+    assert report["summary"]["freshness_missing_count"] == 1
+    assert report["summary"]["current_or_evergreen_count"] == 0
+    assert report["result_rows"][0]["freshness_status"] == "unknown"
+    assert report["result_rows"][0]["current_or_evergreen"] is False
+    assert (
+        report["result_rows"][0]["current_or_evergreen_reason"]
+        == "missing_current_or_evergreen_marker"
+    )
+    assert report["source_status_apply_blocking"] is False
 
 
 def test_sentinel_detects_no_op_validation_risk_when_fields_are_malformed(
