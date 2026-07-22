@@ -961,3 +961,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: operator docs and skill routing committed in 9adb09f; docs/skill slice 137 passed; installed skill sync --check in sync; reviewer clean.
 - [x] Task 5: guardrail runner includes handoff and research sentinel tests in 8216ca5; guardrail membership tests passed; reviewer clean.
 - [x] Task 6: final verification passed before ledger commit: full suite 1777 passed, 11 skipped; contract guardrails 547 passed; contract-preflight PASS; installed skill sync in sync; currentness dirty=false, behind_origin_main=0, clean_for_runtime_work=true.
+
+---
+
+# HSConfig Config Intent Self Audit SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-config-intent-self-audit.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before runtime-facing edits; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Task 1: config intent self-audit committed in fe7ff87 and hardened in b1e1e4f; re-review approved after fixed normal apply authority, suppressed Combo evidence filtering, and static_semantics_backed coverage.
+- [x] Task 2: configure summary projection committed in 7d4a7b5; reviewer approved compact summary, proof summary, handoff projection, and no-second-gate boundary.
+- [x] Task 3: contract-doctor, operator docs, repo skill, workflow reference, and sync test committed in b3b4ba4; reviewer approved diagnostic-only wording and installed skill sync coverage.
+- [x] Task 4: final verification passed before ledger commit: focused regression 76 passed; boundary regression 107 passed; no-second-gate slice 3 passed; contract-preflight PASS; installed skill sync in sync; currentness dirty=false, behind_origin_main=0, clean_for_runtime_work=true; forbidden tracked runtime/log scan clean.
