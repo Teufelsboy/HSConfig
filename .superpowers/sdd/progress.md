@@ -919,3 +919,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3: Project card intent in surface diagnostics (commit 7df8f36; RED surface-intent regression confirmed; surface-intent tests 4 passed; review clean).
 - [x] Task 4: Summarize taxonomy reasons in config quality (commit b8e72ea; RED missing taxonomy_reason_counts confirmed; config-quality tests 23 passed; review clean).
 - [x] Task 5: Document diagnostic-only intent boundary (commits e7bb0cb and 856c686; skill-file tests 63 passed; re-review clean after no-HSTuner boundary restoration).
+- [x] Task 6: Final verification (full suite 1739 passed / 11 skipped after canonical pre-run boundary fix 12a81d0; guardrail runner 534 passed; installed skill sync clean; contract preflight PASS; spine sentinel clean).
