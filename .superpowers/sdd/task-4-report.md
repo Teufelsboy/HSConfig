@@ -169,3 +169,38 @@ python -m pytest tests\test_compile_cardid.py -q -p no:cacheprovider
 ### Compiler boundary
 
 `src/hsconfig/compile_cardid.py` was not changed. The existing compiler path already renders explicit behavior rows through the lean runtime row shape and does not leak `semantic_score`.
+
+---
+
+## Configure Acceptance Summary Boundary Sentinel
+
+Status: DONE
+
+### Changed files
+
+- `tests/test_configure_cli.py`
+
+### RED / Sentinel result
+
+- Command: `pytest tests\test_configure_cli.py::test_acceptance_summary_helper_stays_configure_local_projection -q`
+- Result before final alignment: `1 failed`
+- Expected sentinel failure: the temporary assertion expected `_build_acceptance_summary` in `src/hsconfig/commands/apply.py`; the failure confirmed the new boundary test detects whether the helper crosses into apply code.
+
+### GREEN / Verification
+
+- Command: `pytest tests\test_configure_cli.py::test_build_acceptance_summary_surfaces_diagnostics_without_blocking tests\test_configure_cli.py::test_acceptance_summary_helper_stays_configure_local_projection tests\test_configure_cli.py::test_configure_writes_diagnostic_config_quality_summary tests\test_configure_cli.py::test_configure_quality_summary_failure_stays_diagnostic_only -q`
+- Result: `4 passed in 6.87s`
+- Post-commit command: `pytest tests\test_configure_cli.py -q`
+- Result: `16 passed in 7.46s`
+
+### Commit
+
+- `968c0fe692a46f62da94b79fbe059a07aefaac6c` (`test: guard configure acceptance summary boundary`)
+
+### Notes / risks
+
+- `acceptance_summary` remains top-level in `configure_summary.json` and absent from `reports/operator_summary.json`.
+- `reports/operator_summary.json` remains the normal apply authority.
+- `SOURCE_BACKED_STRONG`, `source_status_apply_blocking=false`, `default_only_runtime_surfaces`, and `config_quality_summary` are covered as diagnostic-only for load-safe usability in the helper regression.
+- No product logic, operator-summary schema, new reports, HSTuner path, runtime artifacts, or runtime behavior were changed.
+- Pre-existing dirty files `.superpowers/sdd/progress.md` and `.superpowers/sdd/task-3-report.md` were not touched or staged.

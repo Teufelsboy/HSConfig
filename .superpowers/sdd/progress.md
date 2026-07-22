@@ -840,3 +840,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 1: source contract audit top-level diagnostic metadata committed in cd67054; RED KeyError confirmed first; focused source-contract audit file passed 15 tests; reviewer approved.
 - [x] Task 2: contract-spine sentinel diagnostic metadata guard committed in 87c62ba; focused guard passed and full sentinel file passed 27 tests; reviewer approved.
 - [x] Task 3: no-second-gate/default-only verification passed: apply/report boundary 16 passed; source/default-only slice 38 passed; contract-preflight PASS; installed skill sync passed; full suite 1712 passed, 11 skipped.
+
+---
+
+# HSConfig Configure Acceptance Summary SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-configure-acceptance-summary.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Tasks 1-2: complete (commits 92ecc3b..10d5e0b, review clean)
+- [x] Task 3: configure_summary acceptance_summary wired in eedf842; RED KeyError confirmed first; focused configure integration passed; reviewer approved.
+- [x] Task 4: configure-local boundary sentinel committed in 968c0fe; focused configure tests passed; reviewer approved.
+- [x] Task 5 verification: configure CLI 16 passed; apply/authority boundary 38 passed; universal wild no-block 34 passed; contract preflight 6 passed; full suite 1716 passed, 11 skipped.
