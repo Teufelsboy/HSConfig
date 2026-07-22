@@ -1,9 +1,7 @@
 # Workflow
 
-Preferred normal path: `hsconfig configure`.
-Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply.
-Manual-only fallback path: source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
-For the normal operator entry point, start at `docs/operator/README.md`.
+Preferred normal path: `hsconfig configure`; normal operator entry point: `docs/operator/README.md`.
+Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply. Manual-only fallback uses source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply.
 
 Normal workflow: prefer `hsconfig configure ...`; read `<out>/configure_summary.json.acceptance_summary` first after configure, then `configure_summary.json.handoff_contract` for compact diagnostic-only handoff proof; use lower-level commands only when inspecting a stage (`source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`); use `reports/operator_summary.json` as the apply authority.
 Contract compiler checklist: `references/contract-compiler-checklist.md`.
