@@ -10,7 +10,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 
 - Run `hsconfig configure` for normal operation.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
-- After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
+- After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
 - Warnings are follow-up work, not a second apply path.
 - HSTuner owns post-run evaluation and tuning.

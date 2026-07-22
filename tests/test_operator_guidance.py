@@ -25,11 +25,20 @@ def test_operator_readme_has_compact_quick_start_before_details():
     quick_start = text[quick_start_index:preferred_path_index]
 
     assert "Run `hsconfig configure` for normal operation." in quick_start
-    assert (
-        "After `configure`, read `<out>/configure_summary.json.acceptance_summary` first; "
-        "it is an operator projection. Use `reports/operator_summary.json` as the "
-        "apply authority."
-    ) in quick_start
+    acceptance = "`<out>/configure_summary.json.acceptance_summary`"
+    handoff = "`<out>/configure_summary.json.handoff_contract`"
+    source_receipt = "`<out>/configure_summary.json.source_closure_receipt`"
+
+    assert acceptance in quick_start
+    assert handoff in quick_start
+    assert source_receipt in quick_start
+    assert quick_start.index(acceptance) < quick_start.index(handoff)
+    assert quick_start.index(handoff) < quick_start.index(source_receipt)
+    assert "when source depth is the question" in quick_start
+    assert "Use `reports/operator_summary.json` as the apply authority." in quick_start
+    assert "compact diagnostic-only source-closure receipt" in quick_start
+    assert "cannot promote, block, apply, or write runtime files" in quick_start
+    assert "source_status_apply_blocking=false" in quick_start
     assert "`technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed." in quick_start
     assert "Warnings are follow-up work, not a second apply path." in quick_start
     assert "HSTuner owns post-run evaluation and tuning." in quick_start
