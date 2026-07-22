@@ -210,3 +210,21 @@ def test_shared_skill_sync_status_reports_attention_on_drift(tmp_path: Path):
     assert status["recommended_action"] == "python scripts\\sync_installed_skill.py"
     assert status["diagnostic_only"] is True
     assert any(item["path"] == "SKILL.md" for item in status["diffs"])
+
+
+def test_shared_skill_sync_status_reports_missing_install_folder_without_writes(
+    tmp_path: Path,
+):
+    install_root = tmp_path / "codex" / "skills"
+
+    status = build_installed_skill_sync_status(Path("."), install_root)
+
+    assert status["status"] == "attention"
+    assert status["installed_skill_present"] is False
+    assert status["matches_repo_skill"] is False
+    assert status["reason"] == "missing_folder"
+    assert status["recommended_action"] == "python scripts\\sync_installed_skill.py"
+    assert status["diagnostic_only"] is True
+    assert status["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert not install_root.exists()
+    assert list(tmp_path.rglob("*")) == []

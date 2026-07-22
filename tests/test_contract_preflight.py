@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from argparse import Namespace
 import json
 import os
 import shutil
@@ -221,6 +222,45 @@ def test_contract_preflight_cli_returns_json_attention_for_invalid_repo_root(
     assert isinstance(payload["checks"], dict)
     assert set(payload["checks"]) == set(normal_payload["checks"])
     assert "Traceback" not in result.stderr
+
+
+def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    normal_payload = build_contract_preflight(Path("."), git=_clean_git())
+
+    def _raise_preflight(*args: object, **kwargs: object) -> dict[str, object]:
+        raise RuntimeError("forced preflight failure")
+
+    monkeypatch.setattr(
+        contract_preflight_command,
+        "build_contract_preflight",
+        _raise_preflight,
+    )
+
+    code = contract_preflight_command.run_contract_preflight_command(
+        Namespace(repo_root=".", skill_install_root=None, json=True)
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert code == 1
+    assert {
+        "research_context",
+        "installed_skill_sync",
+        "runtime_apply_authority",
+        "source_status_apply_blocking",
+        "diagnostic_only",
+        "checks",
+        "failures",
+        "status",
+        "git",
+        "repo_root",
+    } <= set(payload)
+    assert set(payload) - {"error"} == set(normal_payload)
+    assert payload["error"]["type"] == "RuntimeError"
+    assert payload["error"]["message"] == "forced preflight failure"
 
 
 def test_contract_preflight_cli_emits_json_without_writing_files(tmp_path: Path) -> None:

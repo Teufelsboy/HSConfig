@@ -33,6 +33,17 @@ def test_taxonomy_classifies_shadowpriest_core_effects_in_priority_order():
     assert "death_condition" in mind_sear.matched_signals
 
 
+def test_taxonomy_does_not_treat_attendant_title_alone_as_damage_aura():
+    classification = classify_card_intent(
+        "Defensive source note from Attendant deck guide with unrelated tech choices."
+    )
+
+    assert classification.reason == "semantic_default"
+    assert classification.value == "6"
+    assert classification.band == "default"
+    assert classification.matched_signals == ()
+
+
 def test_taxonomy_classifies_direct_burn_location_draw_and_board_tempo():
     direct = classify_card_intent("Prefer enemy hero face damage burn.")
     location = classify_card_intent("Cathedral of Atonement is a location tempo card.")

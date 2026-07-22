@@ -680,6 +680,9 @@ def _legacy_surface_check(package: Path) -> dict[str, Any]:
 def _darkbishop_boundary_check(package: Path) -> dict[str, Any]:
     mulligan_keep_present = False
     effect_runtime_present = False
+    explicit_mulligan_keep_evidence_present = (
+        _has_explicit_mulligan_keep_evidence(package, DARKBISHOP_CARD_ID)
+    )
 
     for deck_dir in _custom_config_deck_dirs(package):
         mulligan = _read_json(deck_dir / "Mulligan.json")
@@ -698,6 +701,9 @@ def _darkbishop_boundary_check(package: Path) -> dict[str, Any]:
         "seen": mulligan_keep_present or effect_runtime_present,
         "mulligan_keep_present": mulligan_keep_present,
         "effect_runtime_present": effect_runtime_present,
+        "explicit_mulligan_keep_evidence_present": (
+            explicit_mulligan_keep_evidence_present
+        ),
     }
 
 
@@ -749,6 +755,120 @@ def _has_runtime_effect_rows(payload: Mapping[str, Any]) -> bool:
         if isinstance(values, list) and values:
             return True
     return False
+
+
+def _has_explicit_mulligan_keep_evidence(package: Path, card_id: str) -> bool:
+    explicit_claim_ids = _explicit_mulligan_keep_claim_ids(package, card_id)
+    if not explicit_claim_ids:
+        return False
+    return _mulligan_plan_accepts_claim(
+        package,
+        card_id,
+        explicit_claim_ids,
+    ) or _source_contract_accepts_claim(package, card_id, explicit_claim_ids)
+
+
+def _explicit_mulligan_keep_claim_ids(package: Path, card_id: str) -> set[str]:
+    claims: set[str] = set()
+    reports = package / "reports"
+    for report_name, row_keys in (
+        ("guide_claim_bundle.json", ("claims", "claim_rows")),
+        ("source_contract_audit.json", ("claim_rows", "claim_lifecycle_rows")),
+        ("source_to_runtime_explainability.json", ("claim_rows",)),
+    ):
+        payload = _read_json(reports / report_name)
+        for row in _report_rows(payload, row_keys):
+            if _is_explicit_mulligan_keep_claim(row, card_id):
+                claim_id = _claim_id(row)
+                claims.add(claim_id or "__explicit_unidentified_claim__")
+    return claims
+
+
+def _is_explicit_mulligan_keep_claim(row: Mapping[str, Any], card_id: str) -> bool:
+    if str(row.get("claim_kind", "") or row.get("claim_type", "")) != "mulligan_keep":
+        return False
+    return _json_mentions(row.get("cards"), card_id) or _json_mentions(row, card_id)
+
+
+def _mulligan_plan_accepts_claim(
+    package: Path,
+    card_id: str,
+    claim_ids: set[str],
+) -> bool:
+    plan = _read_json(package / "reports" / "mulligan_plan_report.json")
+    if not isinstance(plan, Mapping):
+        return False
+    for rule in _report_rows(plan, ("rules",)):
+        action = str(rule.get("action", "") or rule.get("value", "")).strip().lower()
+        if action not in {"hold", "keep"}:
+            continue
+        if not _json_mentions(rule, card_id):
+            continue
+        if _row_claim_ids(rule) & claim_ids:
+            return True
+    return False
+
+
+def _source_contract_accepts_claim(
+    package: Path,
+    card_id: str,
+    claim_ids: set[str],
+) -> bool:
+    reports = package / "reports"
+    for report_name, row_keys in (
+        ("source_contract_audit.json", ("claim_rows", "claim_lifecycle_rows")),
+        ("source_to_runtime_explainability.json", ("claim_rows",)),
+    ):
+        payload = _read_json(reports / report_name)
+        for row in _report_rows(payload, row_keys):
+            if not _row_claim_ids(row) & claim_ids:
+                continue
+            if not _is_explicit_mulligan_keep_claim(row, card_id):
+                continue
+            if _source_contract_row_is_accepted_for_mulligan(row):
+                return True
+    return False
+
+
+def _source_contract_row_is_accepted_for_mulligan(row: Mapping[str, Any]) -> bool:
+    decisions = {
+        str(row.get(key, "")).strip()
+        for key in (
+            "builder_or_router_decision",
+            "runtime_lowering_status",
+            "claim_lane",
+            "source_lane",
+            "readiness_lane",
+        )
+    }
+    if decisions & {"emitted", "runtime_lowered", "runtime_emitted"}:
+        return True
+    return _json_mentions(row.get("emitted_runtime_files"), "Mulligan.json") or (
+        _json_mentions(row.get("runtime_surfaces"), "Mulligan.json")
+    )
+
+
+def _report_rows(payload: Any, row_keys: tuple[str, ...]) -> list[Mapping[str, Any]]:
+    if not isinstance(payload, Mapping):
+        return []
+    rows: list[Mapping[str, Any]] = []
+    for key in row_keys:
+        value = payload.get(key)
+        if isinstance(value, list):
+            rows.extend(item for item in value if isinstance(item, Mapping))
+        elif isinstance(value, Mapping):
+            rows.extend(item for item in value.values() if isinstance(item, Mapping))
+    return rows
+
+
+def _row_claim_ids(row: Mapping[str, Any]) -> set[str]:
+    ids = set()
+    claim_id = _claim_id(row)
+    if claim_id:
+        ids.add(claim_id)
+    ids.update(item.strip() for item in _string_list(row.get("source_claim_ids")))
+    ids.update(item.strip() for item in _string_list(row.get("claim_ids")))
+    return {item for item in ids if item}
 
 
 def _json_mentions(value: Any, needle: str) -> bool:
@@ -886,7 +1006,10 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
         )
 
     darkbishop = checks["darkbishop_boundary"]
-    if darkbishop["mulligan_keep_present"]:
+    if (
+        darkbishop["mulligan_keep_present"]
+        and not darkbishop["explicit_mulligan_keep_evidence_present"]
+    ):
         problems.append(
             {
                 "check": "darkbishop_mulligan_keep_without_explicit_evidence",

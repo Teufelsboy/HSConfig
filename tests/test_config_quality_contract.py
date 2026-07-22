@@ -1193,11 +1193,115 @@ def test_config_quality_flags_darkbishop_mulligan_keep_drift(tmp_path: Path):
         "seen": True,
         "mulligan_keep_present": True,
         "effect_runtime_present": True,
+        "explicit_mulligan_keep_evidence_present": False,
     }
     assert {
         "check": "darkbishop_mulligan_keep_without_explicit_evidence",
         "value": {"card_id": "SW_448"},
     } in report["problems"]
+
+
+def test_config_quality_allows_darkbishop_mulligan_keep_with_explicit_source_evidence(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "Mulligan": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: explicit source keeps SW_448",
+                        "condition": "*",
+                        "mulligan": "SW_448",
+                        "value": "hold",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "SW_448.json",
+        {
+            "GameCardId": "SW_448",
+            "BeforeUseHeroPowerBonus": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: SW_448_hero_power_transform",
+                        "condition": "*",
+                        "value": "10",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "reports" / "guide_claim_bundle.json",
+        {
+            "claims": [
+                {
+                    "claim_id": "claim_keep_darkbishop",
+                    "claim_kind": "mulligan_keep",
+                    "claim": "Keep Darkbishop Benedictus in every opener.",
+                    "evidence_text_short": (
+                        "Keep Darkbishop Benedictus in every opener."
+                    ),
+                    "cards": ["SW_448"],
+                    "runtime_lowerable": True,
+                    "support_status": "source_backed",
+                    "claim_readiness": "guide_backed",
+                }
+            ]
+        },
+    )
+    write_json(
+        package / "reports" / "mulligan_plan_report.json",
+        {
+            "rules": [
+                {
+                    "action": "hold",
+                    "card": "SW_448",
+                    "selector": "SW_448",
+                    "selector_cards": ["SW_448"],
+                    "claim_id": "claim_keep_darkbishop",
+                    "source_claim_ids": ["claim_keep_darkbishop"],
+                    "source_type": "source_claim",
+                }
+            ],
+            "suppressed_rules": [],
+        },
+    )
+    write_json(
+        package / "reports" / "source_contract_audit.json",
+        {
+            "claim_rows": [
+                {
+                    "claim_id": "claim_keep_darkbishop",
+                    "claim_kind": "mulligan_keep",
+                    "cards": ["SW_448"],
+                    "surface_gate_decision": "allowed",
+                    "builder_or_router_decision": "emitted",
+                    "runtime_surfaces": ["Mulligan.json"],
+                    "emitted_runtime_files": ["Mulligan.json"],
+                }
+            ],
+            "claim_lifecycle_rows": [],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["darkbishop_boundary"] == {
+        "seen": True,
+        "mulligan_keep_present": True,
+        "effect_runtime_present": True,
+        "explicit_mulligan_keep_evidence_present": True,
+    }
+    assert not any(
+        problem["check"] == "darkbishop_mulligan_keep_without_explicit_evidence"
+        for problem in report["problems"]
+    )
 
 
 def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
@@ -1304,5 +1408,6 @@ def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
         "seen": True,
         "mulligan_keep_present": False,
         "effect_runtime_present": True,
+        "explicit_mulligan_keep_evidence_present": False,
     }
     assert report["problems"] == []

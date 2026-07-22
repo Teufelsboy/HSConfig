@@ -9,6 +9,7 @@ from hsconfig.contract_preflight import (
     EXPECTED_CHECK_KEYS,
     GitPreflight,
     build_contract_preflight,
+    build_research_context_preflight,
 )
 from hsconfig.skill_sync_status import (
     DEFAULT_INSTALL_ROOT,
@@ -58,6 +59,31 @@ def _unavailable_installed_skill_payload(
         }
 
 
+def _unavailable_research_context_payload(repo_root: str) -> dict[str, object]:
+    try:
+        return asdict(build_research_context_preflight(repo_root))
+    except Exception as exc:
+        root = Path(repo_root).resolve()
+        return {
+            "status": "attention",
+            "active_evidence_index_present": False,
+            "active_evidence_index_path": "docs/research/current-truth.md",
+            "machine_evidence_index_present": False,
+            "machine_evidence_index_path": "docs/research/current-truth-index.json",
+            "authority": "unavailable",
+            "operator_gate_impact": "diagnostic_only",
+            "normal_apply_authority": "reports/operator_summary.json",
+            "recommended_research_entrypoint": "docs/research/current-truth.md",
+            "historical_outline_count": 0,
+            "historical_outline_paths": [],
+            "historical_outlines_apply_authority": False,
+            "source_status_apply_blocking": False,
+            "notes": [
+                f"research context preflight unavailable for {root}: {type(exc).__name__}"
+            ],
+        }
+
+
 def run_contract_preflight_command(args: Namespace) -> int:
     repo_root = getattr(args, "repo_root", ".")
     try:
@@ -76,6 +102,7 @@ def run_contract_preflight_command(args: Namespace) -> int:
             "git": _unavailable_git_payload(),
             "checks": {key: False for key in EXPECTED_CHECK_KEYS},
             "failures": list(EXPECTED_CHECK_KEYS),
+            "research_context": _unavailable_research_context_payload(repo_root),
             "installed_skill_sync": _unavailable_installed_skill_payload(
                 repo_root,
                 getattr(args, "skill_install_root", None),

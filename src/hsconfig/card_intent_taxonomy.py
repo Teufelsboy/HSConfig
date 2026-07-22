@@ -39,16 +39,7 @@ def classify_card_intent(
             ),
         )
 
-    if _has_any(
-        normalized,
-        (
-            "extra damage",
-            "all sources",
-            "both heroes take",
-            "voidtouched",
-            "attendant",
-        ),
-    ):
+    if _has_damage_aura_amplifier(normalized):
         return CardIntentClassification(
             reason="damage_aura_amplifier",
             value="10",
@@ -59,7 +50,7 @@ def classify_card_intent(
                 ("both_heroes_take", "both heroes take" in normalized),
                 (
                     "voidtouched_attendant",
-                    _has_any(normalized, ("voidtouched", "attendant")),
+                    _has_voidtouched_attendant_identity(normalized),
                 ),
             ),
         )
@@ -164,6 +155,27 @@ def _has_hero_power_transform(text: str) -> bool:
         text,
         ("transform", "start", "starting", "change", "changes", "changed"),
     )
+
+
+def _has_damage_aura_amplifier(text: str) -> bool:
+    if _has_voidtouched_attendant_identity(text):
+        return True
+    return _has_damage_wording(text) and _has_any(
+        text,
+        (
+            "extra damage",
+            "all sources",
+            "both heroes take",
+            "amplifier",
+            "amplify",
+            "increased",
+            "increase",
+        ),
+    )
+
+
+def _has_voidtouched_attendant_identity(text: str) -> bool:
+    return "voidtouched attendant" in text or _has_token(text, "voidtouched")
 
 
 def _has_conditional_minion_death_burn(text: str) -> bool:
