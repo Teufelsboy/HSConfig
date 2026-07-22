@@ -23,10 +23,7 @@ def build_configure_source_closure_receipt(
 ) -> dict[str, Any]:
     """Return a compact diagnostic-only source closure receipt for configure."""
 
-    normal_apply_authority = _normal_apply_authority(
-        operator_summary,
-        acceptance_summary,
-    )
+    normal_apply_authority = OPERATOR_GATE
     default_only_runtime_surfaces = _string_list(
         operator_summary.get("default_only_runtime_surfaces")
     )
@@ -40,9 +37,7 @@ def build_configure_source_closure_receipt(
         or acceptance_summary.get("source_strength")
         or ""
     )
-    source_status_apply_blocking = bool(
-        operator_summary.get("source_status_apply_blocking", False)
-    )
+    source_status_apply_blocking = False
     source_status_reasons = _string_list(operator_summary.get("source_status_reasons"))
     source_intake = source_closure_intake_receipt or {}
     claims = _claim_rows(guide_claim_bundle, source_documents_payload)
@@ -68,7 +63,6 @@ def build_configure_source_closure_receipt(
     fetched_record_count = _int_value(source_intake.get("fetched_record_count"))
     source_strong_ready = (
         bool(operator_summary.get("source_strong_ready", False))
-        and not source_status_apply_blocking
         and not default_only_runtime_surfaces
         and first_missing_source_action == NO_MISSING_SOURCE_ACTION
     )
@@ -125,19 +119,6 @@ def build_configure_source_closure_receipt(
         "runtime_lowerable_claim_kind_count": lowerable_claim_kind_count,
         "next_report_to_open": next_report_to_open,
     }
-
-
-def _normal_apply_authority(
-    operator_summary: Mapping[str, Any],
-    acceptance_summary: Mapping[str, Any],
-) -> str:
-    runtime_contract = operator_summary.get("runtime_apply_contract")
-    if isinstance(runtime_contract, Mapping):
-        authority = str(runtime_contract.get("apply_authority") or "")
-        if authority:
-            return authority
-    authority = str(acceptance_summary.get("normal_apply_authority") or "")
-    return authority or OPERATOR_GATE
 
 
 def _claim_rows(

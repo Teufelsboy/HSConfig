@@ -182,3 +182,50 @@ def test_configure_source_closure_receipt_default_only_overrides_strong_claim():
     assert receipt["default_only_runtime_surfaces"] == ["Mulligan.json"]
     assert receipt["source_closure_lane"] == "default_only_runtime_surface"
     assert receipt["next_report_to_open"] == "reports/contract_doctor.json"
+
+
+def test_configure_source_closure_receipt_pins_normal_apply_authority_to_operator_summary():
+    receipt = build_configure_source_closure_receipt(
+        operator_summary={
+            "runtime_apply_contract": {
+                "apply_authority": "reports/conflicting-runtime-contract.json",
+            },
+            "source_strong_ready": True,
+            "first_missing_source_action": "none",
+        },
+        acceptance_summary={
+            "normal_apply_authority": "reports/conflicting-acceptance.json",
+        },
+        guide_claim_bundle=None,
+        source_documents_payload=None,
+        source_candidate_urls=[],
+        source_urls=[],
+        source_closure_intake_receipt=None,
+    )
+
+    assert receipt["operator_gate"] == "reports/operator_summary.json"
+    assert receipt["normal_apply_authority"] == "reports/operator_summary.json"
+
+
+def test_configure_source_closure_receipt_keeps_source_status_apply_non_blocking():
+    receipt = build_configure_source_closure_receipt(
+        operator_summary={
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "source_strong_ready": True,
+            "source_status_apply_blocking": True,
+            "source_status_diagnostic_only": True,
+            "source_status_reasons": ["source_backed_strong_ready"],
+            "first_missing_source_action": "none",
+            "default_only_runtime_surfaces": [],
+        },
+        acceptance_summary={},
+        guide_claim_bundle=None,
+        source_documents_payload=None,
+        source_candidate_urls=[],
+        source_urls=[],
+        source_closure_intake_receipt=None,
+    )
+
+    assert receipt["source_status_apply_blocking"] is False
+    assert receipt["source_strong_ready"] is True
+    assert receipt["source_closure_lane"] == "strong"
