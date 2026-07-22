@@ -989,3 +989,14 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: Research-result sentinel and contract-preflight provenance gap projection committed in 3932dbe; task review approved; sentinel/preflight tests passed locally (28 passed).
 - [x] Task 5: Operator docs and repo/installed hsconfig skill provenance diagnostic wording committed in 6ce03b2; task review approved; docs/skill/preflight tests passed locally (126 passed); installed skill sync --check in sync.
 - [x] Task 6: Final verification and review complete after fix commits 5873fba and 0c17415; focused suite 84 passed; guardrails 549 passed; full suite 1829 passed, 11 skipped; contract-preflight PASS; contract-spine-sentinel clean; installed skill in sync; dirty=false, behind_origin_main=0, clean_for_runtime_work=true; final reviewer approved with no Critical/Important/Minor findings.
+
+---
+
+# HSConfig Pre-Run Config Contract Receipt SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-pre-run-config-contract-receipt.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Task 1: Preflight/currentness clean before edits (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`); baseline skill/preflight slice passed (88 passed).
+- [x] Tasks 2-6: Receipt visibility tests, compact docs/skill wording, contract-preflight check, and installed skill sync committed in 85e55e1; RED failures confirmed first; task review approved.
+- [x] Tasks 7-8: Final review found no implementation defects and only the open ledger as cleanup item; focused suite 90 passed; guardrails 550 passed; full suite 1831 passed, 11 skipped; installed skill sync in sync; final clean/currentness verification follows the ledger commit.
