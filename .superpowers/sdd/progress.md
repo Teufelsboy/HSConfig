@@ -943,7 +943,7 @@ Plan: docs/superpowers/plans/2026-07-22-hsconfig-installed-skill-contract-drift-
 Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 - [x] Task 1: Extract Reusable Installed Skill Sync Status (commits 6679622..e81edcb, review approved; controller ledger committed separately)
-- [ ] Task 2: Project Installed Skill Sync Through Contract Preflight
+- [x] Task 2: Project Installed Skill Sync Through Contract Preflight (commits 44b9144..d82ad2d, review clean after fallback semantics fixes)
 - [ ] Task 3: Update Operator Docs And Skill Routing
 - [ ] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree
 
