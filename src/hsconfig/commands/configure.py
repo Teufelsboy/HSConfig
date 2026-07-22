@@ -335,6 +335,27 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if apply_status != 0:
             return _finish(out, "failed", {"stage": "apply", **apply_payload_result}, apply_status)
 
+    acceptance_summary = _build_acceptance_summary(
+        operator_summary=operator_summary,
+        validate_status=validate_status,
+        apply_requested=bool(getattr(args, "apply", False)),
+        apply_status=apply_status,
+        config_quality_summary=config_quality_summary,
+    )
+    config_proof_summary = _build_config_proof_summary(
+        operator_summary=operator_summary,
+        validate_status=validate_status,
+        apply_requested=bool(getattr(args, "apply", False)),
+        apply_status=apply_status,
+        config_quality_summary=config_quality_summary,
+    )
+    handoff_contract = _build_handoff_contract(
+        operator_summary=operator_summary,
+        acceptance_summary=acceptance_summary,
+        config_proof_summary=config_proof_summary,
+        config_quality_summary=config_quality_summary,
+    )
+
     return _finish(
         out,
         "OK",
@@ -375,20 +396,9 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "source_candidate_urls": source_candidate_urls,
             "source_urls": source_urls,
             "config_quality_summary": config_quality_summary,
-            "acceptance_summary": _build_acceptance_summary(
-                operator_summary=operator_summary,
-                validate_status=validate_status,
-                apply_requested=bool(getattr(args, "apply", False)),
-                apply_status=apply_status,
-                config_quality_summary=config_quality_summary,
-            ),
-            "config_proof_summary": _build_config_proof_summary(
-                operator_summary=operator_summary,
-                validate_status=validate_status,
-                apply_requested=bool(getattr(args, "apply", False)),
-                apply_status=apply_status,
-                config_quality_summary=config_quality_summary,
-            ),
+            "acceptance_summary": acceptance_summary,
+            "config_proof_summary": config_proof_summary,
+            "handoff_contract": handoff_contract,
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },
@@ -810,6 +820,139 @@ def _build_config_proof_summary(
                 runtime_contract.get("apply_authority")
                 or "reports/operator_summary.json"
             )
+        ),
+    }
+
+
+def _build_handoff_contract(
+    *,
+    operator_summary: Mapping[str, Any],
+    acceptance_summary: Mapping[str, Any],
+    config_proof_summary: Mapping[str, Any],
+    config_quality_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_contract = operator_summary.get("runtime_apply_contract", {})
+    if not isinstance(runtime_contract, Mapping):
+        runtime_contract = {}
+
+    normal_apply_authority = str(
+        acceptance_summary.get("normal_apply_authority")
+        or config_proof_summary.get("normal_apply_authority")
+        or runtime_contract.get("apply_authority")
+        or "reports/operator_summary.json"
+    )
+    default_only_runtime_surfaces = [
+        str(surface)
+        for surface in (
+            acceptance_summary.get("default_only_runtime_surfaces")
+            or config_proof_summary.get("default_only_runtime_surfaces")
+            or []
+        )
+        if str(surface)
+    ]
+    problem_checks = [
+        str(check)
+        for check in config_quality_summary.get("problem_checks", [])
+        if str(check)
+    ]
+    source_status_apply_blocking = bool(
+        operator_summary.get(
+            "source_status_apply_blocking",
+            acceptance_summary.get("source_gaps_apply_blocking", False),
+        )
+    )
+    source_gaps_apply_blocking = bool(
+        acceptance_summary.get(
+            "source_gaps_apply_blocking",
+            source_status_apply_blocking,
+        )
+    )
+    forbidden_normal_surfaces_absent = config_proof_summary.get(
+        "forbidden_normal_surfaces_absent"
+    )
+    status = (
+        "clean"
+        if (
+            bool(acceptance_summary.get("use_config_now"))
+            and normal_apply_authority == "reports/operator_summary.json"
+            and not source_status_apply_blocking
+            and not source_gaps_apply_blocking
+            and bool(acceptance_summary.get("default_only_clean"))
+            and not default_only_runtime_surfaces
+            and forbidden_normal_surfaces_absent is True
+            and str(config_proof_summary.get("runtime_json_status") or "") == "clean"
+            and str(config_proof_summary.get("source_to_runtime_status") or "")
+            == "clean"
+            and str(config_quality_summary.get("status") or "") == "clean"
+            and not problem_checks
+        )
+        else "attention"
+    )
+
+    return {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "status": status,
+        "normal_apply_authority": normal_apply_authority,
+        "single_apply_authority_confirmed": (
+            normal_apply_authority == "reports/operator_summary.json"
+        ),
+        "use_config_now": bool(acceptance_summary.get("use_config_now")),
+        "runtime_apply_allowed": bool(
+            acceptance_summary.get("runtime_apply_allowed", False)
+        ),
+        "runtime_apply_mode": str(acceptance_summary.get("runtime_apply_mode", "")),
+        "technical_status": str(acceptance_summary.get("technical_status", "")),
+        "source_strength": str(acceptance_summary.get("source_strength", "")),
+        "source_status_apply_blocking": source_status_apply_blocking,
+        "source_gaps_apply_blocking": source_gaps_apply_blocking,
+        "first_missing_source_action": (
+            acceptance_summary.get("first_missing_source_action")
+            or operator_summary.get("first_missing_source_action")
+        ),
+        "default_only_clean": bool(acceptance_summary.get("default_only_clean")),
+        "default_only_runtime_surfaces": default_only_runtime_surfaces,
+        "forbidden_normal_surfaces_absent": forbidden_normal_surfaces_absent,
+        "forbidden_normal_surfaces_status": str(
+            config_proof_summary.get("forbidden_normal_surfaces_status") or ""
+        ),
+        "runtime_surface_boundary": [
+            str(surface)
+            for surface in config_proof_summary.get("runtime_surface_boundary", [])
+            if str(surface)
+        ],
+        "darkbishop_boundary_status": str(
+            config_proof_summary.get("darkbishop_boundary_status") or ""
+        ),
+        "runtime_json_status": str(
+            config_proof_summary.get("runtime_json_status") or ""
+        ),
+        "source_to_runtime_status": str(
+            config_proof_summary.get("source_to_runtime_status") or ""
+        ),
+        "currentness_status": str(
+            config_proof_summary.get("currentness_status") or ""
+        ),
+        "closure_schema_current": bool(
+            config_proof_summary.get("closure_schema_current", False)
+        ),
+        "cards_missing_closure": int(
+            config_proof_summary.get("cards_missing_closure") or 0
+        ),
+        "semantic_intent_status": str(
+            config_proof_summary.get("semantic_intent_status") or ""
+        ),
+        "mechanic_runtime_discipline_status": str(
+            config_quality_summary.get("mechanic_runtime_discipline_status") or ""
+        ),
+        "config_quality_status": str(config_quality_summary.get("status") or ""),
+        "config_quality_problem_checks": problem_checks,
+        "next_report_to_open": str(
+            acceptance_summary.get("next_report_to_open")
+            or config_proof_summary.get("next_report_to_open")
+            or "reports/operator_summary.json"
         ),
     }
 

@@ -1136,9 +1136,28 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "per-card <CARDID>.json",
         "Combo.json",
     ]
+    handoff = summary["handoff_contract"]
+    assert handoff["authority"] == "diagnostic_only"
+    assert handoff["apply_blocking"] is False
+    assert handoff["runtime_write_performed"] is False
+    assert handoff["normal_apply_authority"] == "reports/operator_summary.json"
+    assert handoff["single_apply_authority_confirmed"] is True
+    assert handoff["use_config_now"] is True
+    assert handoff["source_status_apply_blocking"] is False
+    assert handoff["source_gaps_apply_blocking"] is False
+    assert handoff["default_only_clean"] is True
+    assert handoff["default_only_runtime_surfaces"] == []
+    assert handoff["runtime_surface_boundary"] == [
+        "GlobalValues.json",
+        "Mulligan.json",
+        "per-card <CARDID>.json",
+        "Combo.json",
+    ]
+    assert handoff["next_report_to_open"] == "reports/operator_summary.json"
     assert "config_quality_summary" not in operator_summary
     assert "acceptance_summary" not in operator_summary
     assert "config_proof_summary" not in operator_summary
+    assert "handoff_contract" not in operator_summary
 
 
 def test_configure_quality_summary_failure_stays_diagnostic_only(
