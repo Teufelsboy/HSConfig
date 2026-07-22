@@ -45,6 +45,19 @@ def test_support_for_roles_classifies_direct_partial_warning_only_and_unknown():
     ]
 
 
+def test_support_for_roles_returns_defensive_copies_for_registered_specs():
+    first = support_for_roles(["battlecry"])
+    first[0]["normal_path_surfaces"].append("MUTATED_SURFACE")
+    first[0]["lowering"]["policy"] = "mutated_policy"
+
+    second = support_for_roles(["battlecry"])
+
+    assert "MUTATED_SURFACE" not in second[0]["normal_path_surfaces"]
+    assert second[0]["lowering"]["policy"] == MECHANIC_SUPPORT["battlecry"][
+        "lowering"
+    ]["policy"]
+
+
 def test_summarize_mechanic_support_counts_warning_only_cards():
     summary = summarize_mechanic_support(
         [

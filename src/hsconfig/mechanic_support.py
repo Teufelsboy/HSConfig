@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 from typing import Any, Iterable
 
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
@@ -651,20 +652,22 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
         seen.add(mechanic)
         if spec is None:
             rows.append(
-                {
-                    "mechanic": mechanic,
-                    "support_level": "warning_only",
-                    "normal_path_surfaces": ["report-only"],
-                    "warning_boundary": (
-                        "No registered VisionAI normal-path surface exists for role "
-                        f"'{mechanic}'; keep it visible as warning-only until mapped."
-                    ),
-                    "lowering": mechanic_lowering_policy(mechanic),
-                    "registered": False,
-                }
+                deepcopy(
+                    {
+                        "mechanic": mechanic,
+                        "support_level": "warning_only",
+                        "normal_path_surfaces": ["report-only"],
+                        "warning_boundary": (
+                            "No registered VisionAI normal-path surface exists for role "
+                            f"'{mechanic}'; keep it visible as warning-only until mapped."
+                        ),
+                        "lowering": mechanic_lowering_policy(mechanic),
+                        "registered": False,
+                    }
+                )
             )
             continue
-        rows.append({"mechanic": mechanic, **spec})
+        rows.append({"mechanic": mechanic, **deepcopy(spec)})
     return sorted(rows, key=lambda row: row["mechanic"])
 
 
