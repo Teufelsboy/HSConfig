@@ -10,6 +10,8 @@ from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 from hsconfig.static_semantics import (
     infer_static_semantics,
+    static_semantic_deck_card_counts,
+    static_semantic_has_unsatisfied_highlander_condition,
     static_semantic_runtime_claim_allowed,
 )
 
@@ -270,12 +272,12 @@ def _static_semantic_claims(
         for card in claim.get("cards", [])
     }
     emitted_keys = set(existing_pairs)
-    deck_card_counts = _deck_card_counts(deck_identity)
+    deck_card_counts = static_semantic_deck_card_counts(deck_identity)
     claims = []
     for card_id, card in sorted(cards.items()):
         text = _card_text(card).lower()
         semantics = infer_static_semantics(card)
-        unsatisfied_highlander = _has_unsatisfied_highlander_condition(
+        unsatisfied_highlander = static_semantic_has_unsatisfied_highlander_condition(
             semantics,
             deck_card_counts,
         )
@@ -385,43 +387,6 @@ def _static_mechanic_usage_allowed(
     return mechanic_static_claim_allowed(mechanic) and static_semantic_runtime_claim_allowed(
         mechanic,
         semantics,
-    )
-
-
-def _deck_card_counts(deck_identity: dict[str, Any]) -> dict[str, int]:
-    cards = deck_identity.get("cards")
-    counts: dict[str, int] = {}
-    if not isinstance(cards, list):
-        return counts
-    for row in cards:
-        if not isinstance(row, dict):
-            continue
-        card_id = row.get("card_id") or row.get("id") or row.get("cardId")
-        if not card_id:
-            continue
-        key = str(card_id)
-        counts[key] = counts.get(key, 0) + _card_count(row.get("count", 1))
-    return counts
-
-
-def _card_count(value: object) -> int:
-    try:
-        count = int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return 1
-    return max(count, 0)
-
-
-def _is_highlander_deck(deck_card_counts: dict[str, int]) -> bool:
-    return bool(deck_card_counts) and all(count <= 1 for count in deck_card_counts.values())
-
-
-def _has_unsatisfied_highlander_condition(
-    semantics: dict[str, Any],
-    deck_card_counts: dict[str, int],
-) -> bool:
-    return "highlander" in set(semantics.get("families", [])) and not _is_highlander_deck(
-        deck_card_counts
     )
 
 

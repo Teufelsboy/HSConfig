@@ -335,7 +335,7 @@ def build_static_semantics_source_records(
     deck_name = str(deck_identity.get("deck_name") or deck_identity.get("name") or "Deck")
 
     source_cards = {str(card_id): dict(card) for card_id, card in cards_by_id.items()}
-    deck_card_counts = _deck_card_counts(deck_identity)
+    deck_card_counts = static_semantic_deck_card_counts(deck_identity)
     for target_card_id in _deck_card_ids(deck_identity, source_cards):
         raw_card = source_cards.get(target_card_id)
         if not isinstance(raw_card, Mapping):
@@ -391,7 +391,8 @@ def _deck_card_ids(
     return sorted(dict.fromkeys(ids))
 
 
-def _deck_card_counts(deck_identity: Mapping[str, Any]) -> dict[str, int]:
+def static_semantic_deck_card_counts(deck_identity: Mapping[str, Any]) -> dict[str, int]:
+    """Return deck card counts used by static condition guards."""
     deck_cards = deck_identity.get("cards")
     counts: dict[str, int] = {}
     if not isinstance(deck_cards, list):
@@ -415,17 +416,17 @@ def _card_count(value: object) -> int:
     return max(count, 0)
 
 
-def _is_highlander_deck(deck_card_counts: Mapping[str, int]) -> bool:
+def _static_semantic_is_highlander_deck(deck_card_counts: Mapping[str, int]) -> bool:
     return bool(deck_card_counts) and all(count <= 1 for count in deck_card_counts.values())
 
 
-def _has_unsatisfied_highlander_condition(
+def static_semantic_has_unsatisfied_highlander_condition(
     semantics: Mapping[str, Any],
     deck_card_counts: Mapping[str, int],
 ) -> bool:
-    return "highlander" in set(semantics.get("families", [])) and not _is_highlander_deck(
-        deck_card_counts
-    )
+    return "highlander" in set(
+        semantics.get("families", [])
+    ) and not _static_semantic_is_highlander_deck(deck_card_counts)
 
 
 def _static_claims_for_card(
@@ -436,7 +437,7 @@ def _static_claims_for_card(
 ) -> list[dict[str, Any]]:
     semantics = infer_static_semantics(card)
     families = set(semantics["families"])
-    unsatisfied_highlander = _has_unsatisfied_highlander_condition(
+    unsatisfied_highlander = static_semantic_has_unsatisfied_highlander_condition(
         semantics,
         deck_card_counts or {},
     )
