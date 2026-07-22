@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.config_quality_contract import build_config_quality_report
 
 
@@ -960,6 +962,31 @@ def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
     ]
     assert report["checks"]["semantic_intent_coverage"]["first_attention"] is None
     assert report["checks"]["semantic_intent_coverage"]["attention"] == []
+
+
+@pytest.mark.parametrize("semantic_enrichment_text", ["{ invalid json", "[]"])
+def test_config_quality_ignores_malformed_semantic_enrichment(
+    tmp_path: Path, semantic_enrichment_text: str
+):
+    package = minimal_clean_package(tmp_path)
+    semantic_enrichment_path = (
+        package / "reports" / "semantic_enrichment_report.json"
+    )
+    semantic_enrichment_path.write_text(semantic_enrichment_text, encoding="utf-8")
+
+    report = build_config_quality_report(package)
+    semantic_intent = report["checks"]["semantic_intent_coverage"]
+
+    assert report["status"] == "clean"
+    assert report["authority"] == "diagnostic_only"
+    assert report["apply_blocking"] is False
+    assert report["runtime_write_performed"] is False
+    assert semantic_intent["authority"] == "diagnostic_only"
+    assert semantic_intent["apply_blocking"] is False
+    assert semantic_intent["runtime_write_performed"] is False
+    assert semantic_intent["warning_only_card_count"] == 0
+    assert semantic_intent["warning_only_mechanics"] == []
+    assert report["apply_blocking"] is False
 
 
 def test_config_quality_flags_numeric_cardid_values_outside_runtime_range(
