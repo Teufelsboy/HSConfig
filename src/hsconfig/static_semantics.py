@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 from typing import Any
 
+from hsconfig.mechanic_drift import TEXT_MECHANIC_PATTERNS as DRIFT_TEXT_MECHANIC_PATTERNS
 from hsconfig.mechanic_support import (
     mechanic_default_runtime_block,
     mechanic_report_only_reason,
@@ -123,6 +124,16 @@ SOURCE_FAMILY = "hearthstonejson_static_semantics"
 SOURCE_TYPE = "official_card_data"
 
 
+def _text_patterns() -> dict[str, tuple[str, ...]]:
+    merged = {
+        family: tuple(patterns)
+        for family, patterns in DRIFT_TEXT_MECHANIC_PATTERNS.items()
+    }
+    for family, patterns in TEXT_PATTERNS.items():
+        merged[family] = tuple(dict.fromkeys((*merged.get(family, ()), *patterns)))
+    return merged
+
+
 def _has_deck_condition(lowered: str) -> bool:
     return any(
         phrase in lowered
@@ -173,6 +184,10 @@ def _has_start_in_deck_requirement(lowered: str) -> bool:
     )
 
 
+def _is_warning_only_family(family: str) -> bool:
+    return family in WARNING_ONLY_MECHANICS or bool(mechanic_report_only_reason(family))
+
+
 def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
     families: set[str] = set()
     evidence: list[dict[str, str]] = []
@@ -195,7 +210,7 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
         f"{card.get('name', '')} {card.get('text', '')} {card.get('targeting_arrow_text', '')}"
     )
     lowered = text.lower()
-    for family, patterns in TEXT_PATTERNS.items():
+    for family, patterns in _text_patterns().items():
         match = next((pattern for pattern in patterns if _contains(lowered, pattern)), None)
         if match:
             _add(families, evidence, family, "text", match)
@@ -258,7 +273,9 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "families": sorted(families),
         "evidence": _dedupe_evidence(evidence),
-        "warning_only": sorted(families & WARNING_ONLY_MECHANICS),
+        "warning_only": sorted(
+            family for family in families if _is_warning_only_family(family)
+        ),
     }
 
 

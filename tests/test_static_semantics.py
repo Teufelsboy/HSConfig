@@ -147,3 +147,28 @@ def test_infers_start_in_deck_requirement_without_mulligan_semantics():
     }
 
     assert {"start_of_game", "start_in_deck_requirement", "deckbuilding_modifier"} <= _families(card)
+
+
+def test_static_semantics_uses_drift_text_registry_for_modern_mechanics():
+    result = infer_static_semantics(
+        {
+            "id": "MODERN_001",
+            "type": "SPELL",
+            "text": (
+                "Rewind. Prepare. Miniaturize. Honorable Kill. "
+                "Elusive. Poisonous. Kindred."
+            ),
+        }
+    )
+
+    families = set(result["families"])
+    assert {
+        "rewind",
+        "prepare",
+        "miniaturize",
+        "honorable_kill",
+        "elusive",
+        "poisonous",
+        "kindred",
+    } <= families
+    assert {"rewind", "prepare", "kindred"} <= set(result["warning_only"])
