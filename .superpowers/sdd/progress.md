@@ -866,3 +866,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: research-context preflight lock implemented in 22e68d2; contract preflight 9 passed; CLI preflight PASS with diagnostic-only research_context; reviewer approved.
 - [x] Task 3: operator docs and docs-active-path test committed in 2cb3bee; docs/skill focused slice passed 64 tests; reviewer approved.
 - [x] Task 4 verification: focused preflight/docs/skill slice 112 passed; contract guardrails 528 passed; CLI preflight PASS; full suite 1720 passed, 11 skipped; currentness clean (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`).
+
+---
+
+# HSConfig Semantic Intent Coverage Diagnostic SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-semantic-intent-coverage-diagnostic.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Task 0: Preflight/currentness clean before edits (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`).
+- [x] Task 1/2: Config quality semantic intent coverage tests and implementation (commit 357388f; RED confirmed 5 failed / 15 passed; GREEN focused suite 20 passed; task review approved for code and flagged only open ledger state).
+- [ ] Task 3: Configure summary and contract-doctor operator surface.
+- [ ] Task 4: Operator docs and optional skill sync.
+- [ ] Task 5: Verification, final review, commit, push, and clean-worktree proof.
