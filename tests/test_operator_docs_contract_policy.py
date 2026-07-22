@@ -651,3 +651,23 @@ def test_docs_keep_source_claim_gap_report_secondary_to_explainability():
     assert "source_claim_gap_report.json is secondary diagnostic evidence" in combined
     assert "Use `source_claim_gap_report.json` to inspect the first missing source" not in combined
     assert "operator_summary.json remains the only normal apply authority" in combined
+
+
+def test_docs_and_skill_route_configure_source_closure_receipt_without_second_gate():
+    active_text = "\n".join(
+        [
+            (ROOT / "docs/operator/README.md").read_text(encoding="utf-8"),
+            (ROOT / ".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8"),
+            (
+                ROOT / ".agents/skills/hsconfig/references/workflow.md"
+            ).read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "configure_summary.json.source_closure_receipt" in active_text
+    assert "compact diagnostic-only source-closure receipt" in active_text
+    assert "does not replace `reports/operator_summary.json`" in active_text
+    assert "cannot promote, block, apply, or write runtime files" in active_text
+    assert "source_status_apply_blocking=false" in active_text
+    assert "default-only runtime surfaces remain visible quality debt" in active_text
+    assert "source_closure_receipt remains the normal apply authority" not in active_text.lower()
