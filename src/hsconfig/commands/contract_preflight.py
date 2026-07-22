@@ -10,7 +10,10 @@ from hsconfig.contract_preflight import (
     GitPreflight,
     build_contract_preflight,
 )
-from hsconfig.skill_sync_status import build_installed_skill_sync_status
+from hsconfig.skill_sync_status import (
+    DEFAULT_INSTALL_ROOT,
+    build_installed_skill_sync_status,
+)
 
 
 def _unavailable_git_payload() -> dict[str, object]:
@@ -37,9 +40,9 @@ def _unavailable_installed_skill_payload(
         return build_installed_skill_sync_status(repo_root, install_root)
     except Exception as exc:
         resolved_install_root = (
-            Path(install_root).resolve()
+            Path(install_root).expanduser()
             if install_root is not None
-            else Path.home() / ".codex" / "skills"
+            else DEFAULT_INSTALL_ROOT
         )
         return {
             "status": "attention",

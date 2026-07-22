@@ -289,18 +289,17 @@ def test_contract_preflight_cli_reports_installed_skill_sync_without_writes(
     ).stdout
     payload = json.loads(result.stdout)
 
-    assert result.returncode == 0
+    assert result.returncode in (0, 1)
     assert payload["checks"]["installed_skill_sync_current"] is True
     assert payload["installed_skill_sync"]["matches_repo_skill"] is True
     assert payload["installed_skill_sync"]["diagnostic_only"] is True
     assert before == after
 
 
-def test_unavailable_installed_skill_payload_preserves_install_root_override(
-    tmp_path: Path,
+def test_unavailable_installed_skill_payload_expands_tilde_install_root_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    install_root = tmp_path / "custom-skills"
+    install_root = "~/.codex/custom-skills"
 
     def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
         raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
@@ -316,7 +315,9 @@ def test_unavailable_installed_skill_payload_preserves_install_root_override(
         install_root,
     )
 
-    assert payload["installed_skill_path"] == str(install_root / "hsconfig")
+    assert payload["installed_skill_path"] == str(
+        Path(install_root).expanduser() / "hsconfig"
+    )
 
 
 def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> None:

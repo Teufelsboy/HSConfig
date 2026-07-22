@@ -155,3 +155,90 @@ Final git status --short --branch:
 ```text
 ## codex/hsconfig-semantic-intent-scoring...origin/codex/hsconfig-semantic-intent-scoring [ahead 4]
 ```
+
+---
+
+Status: FIXED
+
+Date: 2026-07-22
+
+Summary:
+- Narrowed the Task 2 re-review fix to the owned contract-preflight wrapper and its tests.
+- Brought the exception-path installed-skill fallback into line with `hsconfig.skill_sync_status` by reusing `DEFAULT_INSTALL_ROOT` and `Path(install_root).expanduser()` semantics.
+- Relaxed the live CLI test so it still verifies installed-skill sync and no-write behavior even when unrelated repo-currentness checks return `ATTENTION`.
+
+Files changed:
+- `src/hsconfig/commands/contract_preflight.py`
+- `tests/test_contract_preflight.py`
+- `.superpowers/sdd/installed-skill-drift-task-2-report.md`
+
+RED result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py -q -k "tilde_install_root_override or installed_skill_sync_without_writes"`
+- Result:
+```text
+.F                                                                       [100%]
+================================== FAILURES ===================================
+_ test_unavailable_installed_skill_payload_expands_tilde_install_root_override _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000292BDAF5A10>
+
+    def test_unavailable_installed_skill_payload_expands_tilde_install_root_override(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        install_root = "~/.codex/custom-skills"
+
+        def _raise_sync_error(repo_root: str, passed_install_root: object) -> dict[str, object]:
+            raise RuntimeError(f"boom: {repo_root} / {passed_install_root}")
+
+        monkeypatch.setattr(
+            contract_preflight_command,
+            "build_installed_skill_sync_status",
+            _raise_sync_error,
+        )
+
+        payload = contract_preflight_command._unavailable_installed_skill_payload(
+            ".",
+            install_root,
+        )
+
+>       assert payload["installed_skill_path"] == str(
+            Path(install_root).expanduser() / "hsconfig"
+        )
+E       AssertionError: assert 'C:\\Users\\d...lls\\hsconfig' == 'C:\\Users\\d...lls\\hsconfig'
+E
+E         - C:\Users\darbo\.codex\custom-skills\hsconfig
+E         + C:\Users\darbo\Documents\HSConfig\~\.codex\custom-skills\hsconfig
+E         ?               +++++++++++++++++++++
+
+tests\test_contract_preflight.py:318: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_contract_preflight.py::test_unavailable_installed_skill_payload_expands_tilde_install_root_override
+1 failed, 1 passed, 13 deselected in 1.05s
+```
+
+Focused GREEN result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py -q -k "tilde_install_root_override or installed_skill_sync_without_writes"`
+- Result:
+```text
+..                                                                       [100%]
+2 passed, 13 deselected in 1.20s
+```
+
+Requested suite result:
+- Command run:
+  - `python -m pytest tests/test_contract_preflight.py tests/test_skill_sync.py -q`
+- Result:
+```text
+.....................                                                    [100%]
+21 passed in 5.48s
+```
+
+Commit message:
+- `fix: harden installed skill preflight fallback`
+
+Final git status --short --branch:
+```text
+## codex/hsconfig-semantic-intent-scoring...origin/codex/hsconfig-semantic-intent-scoring [ahead 5]
+```
