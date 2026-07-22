@@ -917,3 +917,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 1: Add pure card intent taxonomy helper (commit 0bb6864; RED import failure confirmed; focused taxonomy tests 4 passed; review clean after tracked report cleanup).
 - [x] Task 2: Route semantic scoring through taxonomy (commit f5763e1; semantic/taxonomy slice 12 passed; review clean).
 - [x] Task 3: Project card intent in surface diagnostics (commit 7df8f36; RED surface-intent regression confirmed; surface-intent tests 4 passed; review clean).
+- [x] Task 4: Summarize taxonomy reasons in config quality (commit b8e72ea; RED missing taxonomy_reason_counts confirmed; config-quality tests 23 passed; review clean).
