@@ -353,6 +353,8 @@ freshness, stray CardID runtime files, and report-only mechanic runtime drift. I
 does not replace `reports/operator_summary.json`, does not apply runtime files,
 and does not block a technically valid package.
 
+`config_quality.checks.semantic_intent_coverage` is a diagnostic-only rollup: it shows traced per-card intent, missing semantic scores, semantic-default rows, report-only mechanic runtime leaks, and warning-only mechanics, but it does not change `reports/operator_summary.json` apply authority.
+
 `<out>/configure_summary.json.config_quality_summary` is a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick operator visibility after `hsconfig configure`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 
 ## Expert Paths
