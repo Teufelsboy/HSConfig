@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ def build_research_result_contract_sentinel(
     current_or_evergreen_count = sum(
         1 for row in rows if row["current_or_evergreen"] is True
     )
+    first_non_promoting = _first_non_promoting_row(rows)
     no_op_validation_risk = (
         fields_contract["valid"] is False
         or int(fields_contract.get("field_count") or 0) == 0
@@ -75,6 +77,11 @@ def build_research_result_contract_sentinel(
             "contract_invalid_count": contract_invalid_count,
             "seed_only_count": seed_only_count,
             "strong_promoting_count": strong_promoting_count,
+            "promotion_ready_deck_count": strong_promoting_count,
+            "non_promoting_count": len(rows) - strong_promoting_count,
+            "first_non_promoting_result": _row_identity(first_non_promoting),
+            "first_non_promoting_action": _row_action(first_non_promoting),
+            "first_non_promoting_reason": _row_reason(first_non_promoting),
             "freshness_missing_count": freshness_missing_count,
             "current_or_evergreen_count": current_or_evergreen_count,
             "no_op_validation_risk": no_op_validation_risk,
@@ -89,6 +96,50 @@ def _read_yaml_mapping(path: Path) -> dict[str, Any]:
         return {}
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
+
+
+def _first_non_promoting_row(
+    rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    for row in rows:
+        if row["canonical_promotion_allowed"] is False:
+            return row
+    return None
+
+
+def _row_identity(row: Mapping[str, Any] | None) -> str:
+    if row is None:
+        return ""
+    deck_name = str(row.get("deck_name") or "").strip()
+    if deck_name:
+        return deck_name
+    path = str(row.get("path") or "").strip()
+    return Path(path).stem if path else ""
+
+
+def _row_action(row: Mapping[str, Any] | None) -> str:
+    if row is None:
+        return "none"
+    action = str(row.get("first_missing_source_action") or "").strip()
+    if action:
+        return action
+    errors = row.get("strict_research_result_errors")
+    if isinstance(errors, list) and errors:
+        return str(errors[0])
+    if row.get("contract_valid") is False:
+        return "close_research_result_contract"
+    return "none"
+
+
+def _row_reason(row: Mapping[str, Any] | None) -> str:
+    if row is None:
+        return "none"
+    errors = row.get("strict_research_result_errors")
+    if isinstance(errors, list) and errors:
+        return str(errors[0])
+    if row.get("contract_valid") is False:
+        return "contract_invalid"
+    return str(row.get("snapshot_kind") or "not_source_backed_strong")
 
 
 def _result_row(path: Path) -> dict[str, Any]:

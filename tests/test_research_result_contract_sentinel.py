@@ -70,6 +70,13 @@ def test_sentinel_reports_valid_partial_results_without_apply_blocking(
         "contract_invalid_count": 0,
         "seed_only_count": 1,
         "strong_promoting_count": 0,
+        "promotion_ready_deck_count": 0,
+        "non_promoting_count": 1,
+        "first_non_promoting_result": "ShadowPriest",
+        "first_non_promoting_action": (
+            "fetch_and_normalize_candidate_full_text_claims"
+        ),
+        "first_non_promoting_reason": "seed_only",
         "freshness_missing_count": 0,
         "current_or_evergreen_count": 0,
         "no_op_validation_risk": False,
@@ -204,3 +211,66 @@ def test_sentinel_surfaces_strict_valid_but_contract_invalid_rows(
     assert report["result_rows"][0]["strict_research_result_valid"] is True
     assert report["result_rows"][0]["contract_valid"] is False
     assert report["source_status_apply_blocking"] is False
+
+
+def test_sentinel_summary_names_first_non_promoting_result_and_action(
+    tmp_path: Path,
+) -> None:
+    fields_path = tmp_path / "fields.yaml"
+    fields_path.write_text(yaml.safe_dump(FIELDS), encoding="utf-8")
+    results_dir = tmp_path / "results"
+    _write_json(
+        results_dir / "01StrongPriest.json",
+        {
+            "deck_name": "StrongPriest",
+            "deck_code": "AAEBAa0GAAAA",
+            "archetype": "Wild Shadow Priest",
+            "current_deck_sources": [],
+            "guide_sources": [
+                {
+                    "url": "https://example.test/strong-priest-guide",
+                    "source_visibility": "full_text",
+                    "freshness_status": "current",
+                }
+            ],
+            "source_strength": "exact_full_text_guide",
+            "source_visibility": "full_text",
+            "current_or_evergreen": True,
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "notes": "Strong control row.",
+        },
+    )
+    _write_json(
+        results_dir / "02PirateDH.json",
+        {
+            "deck_name": "PirateDH",
+            "archetype": "Wild Pirate Demon Hunter",
+            "current_deck_sources": [],
+            "guide_sources": [],
+            "source_strength": "unfetched_acquisition_seed",
+            "lowerable_claim_kinds": [],
+            "non_promoting_support": [],
+            "first_missing_source_action": (
+                "fetch_and_normalize_candidate_full_text_claims"
+            ),
+            "notes": "Seed row still needs full-text claims.",
+        },
+    )
+
+    report = build_research_result_contract_sentinel(fields_path, results_dir)
+    summary = report["summary"]
+
+    assert summary["status"] == "clean"
+    assert summary["strong_promoting_count"] == 1
+    assert summary["promotion_ready_deck_count"] == 1
+    assert summary["non_promoting_count"] == 1
+    assert summary["first_non_promoting_result"] == "PirateDH"
+    assert (
+        summary["first_non_promoting_action"]
+        == "fetch_and_normalize_candidate_full_text_claims"
+    )
+    assert summary["first_non_promoting_reason"] == "seed_only"
+    assert summary["source_status_apply_blocking"] is False
