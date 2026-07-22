@@ -89,6 +89,28 @@ def _compact(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _line_starting(text: str, prefix: str) -> str:
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line
+    raise AssertionError(f"Missing line starting with {prefix!r}")
+
+
+def _line_containing(text: str, needle: str) -> str:
+    for line in text.splitlines():
+        if needle in line:
+            return line
+    raise AssertionError(f"Missing line containing {needle!r}")
+
+
+def _section(text: str, heading: str) -> str:
+    start = text.index(heading)
+    next_heading = text.find("\n## ", start + len(heading))
+    if next_heading == -1:
+        return text[start:]
+    return text[start:next_heading]
+
+
 def _assert_task7_sentinels(text: str) -> None:
     for sentinel in SOURCE_BACKED_STRONG_TASK7_SENTINELS:
         assert sentinel in text
@@ -684,3 +706,62 @@ def test_skill_workflow_routes_configure_source_closure_receipt_with_out_prefix(
     ).read_text(encoding="utf-8")
 
     assert "`<out>/configure_summary.json.source_closure_receipt`" in text
+
+
+def test_skill_normal_workflow_routes_generated_receipts_in_order():
+    text = (
+        ROOT
+        / ".agents"
+        / "skills"
+        / "hsconfig"
+        / "references"
+        / "workflow.md"
+    ).read_text(encoding="utf-8")
+    normal_workflow = _line_starting(text, "Normal workflow:")
+    routes = [
+        "`<out>/configure_summary.json.acceptance_summary`",
+        "`<out>/configure_summary.json.handoff_contract`",
+        "`<out>/configure_summary.json.source_closure_receipt`",
+    ]
+
+    for route in routes:
+        assert route in normal_workflow
+    assert normal_workflow.index(routes[0]) < normal_workflow.index(routes[1])
+    assert normal_workflow.index(routes[1]) < normal_workflow.index(routes[2])
+    assert "when source depth is the question" in normal_workflow
+    assert "diagnostic-only" in normal_workflow
+    assert "use `reports/operator_summary.json` as the apply authority" in normal_workflow
+    assert "source_closure_receipt remains the normal apply authority" not in _compact(
+        normal_workflow
+    )
+
+
+def test_real_deck_loop_routes_source_receipt_without_new_gate():
+    text = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
+    loop = _section(text, "## Real-Deck Usage Loop")
+    source_receipt = "`<out>/configure_summary.json.source_closure_receipt`"
+
+    assert "`<out>/configure_summary.json.acceptance_summary`" in loop
+    assert source_receipt in loop
+    assert loop.index("`<out>/configure_summary.json.acceptance_summary`") < loop.index(
+        source_receipt
+    )
+    assert "source-contract and no-default-only diagnostics" in loop
+    assert "without treating them as extra gates" in loop
+    assert "source_closure_receipt remains the normal apply authority" not in _compact(
+        loop
+    )
+    assert "source_closure_receipt gate" not in _compact(loop)
+    assert f"{source_receipt} as the apply authority" not in loop
+
+
+def test_source_closure_receipt_explanatory_paragraph_uses_out_prefix():
+    text = (ROOT / "docs/operator/README.md").read_text(encoding="utf-8")
+    paragraph = _line_containing(
+        text,
+        "configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt",
+    )
+
+    assert paragraph.startswith(
+        "`<out>/configure_summary.json.source_closure_receipt`"
+    )

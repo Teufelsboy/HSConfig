@@ -97,14 +97,16 @@ Use this loop to run `hsconfig configure`, then inspect source-contract and no-d
 
 1. Run `hsconfig configure` with the deck name, deck code, runtime root, and output directory.
 2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not an apply authority.
-3. Treat `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` as the load-safe apply signal.
-4. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
-5. `default_only_runtime_surfaces` must be inspected when non-empty.
-6. `source_to_runtime_explainability.json` is diagnostic.
-7. `source_evidence_closure.json` is diagnostic.
-8. `source_contract_audit.json` is diagnostic.
-9. Do not add another runtime-write authority for real-deck usage.
-10. Concrete defects get targeted fixes; warnings do not become blockers.
+3. Read `<out>/configure_summary.json.handoff_contract` next for the pre-run config contract receipt; it is diagnostic-only and not an apply authority.
+4. When source-contract or no-default-only diagnostics are the question, read `<out>/configure_summary.json.source_closure_receipt` after acceptance and handoff; it is diagnostic-only and not an apply gate.
+5. Treat `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` as the load-safe apply signal.
+6. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
+7. `default_only_runtime_surfaces` must be inspected when non-empty.
+8. `source_to_runtime_explainability.json` is diagnostic.
+9. `source_evidence_closure.json` is diagnostic.
+10. `source_contract_audit.json` is diagnostic.
+11. Do not add another runtime-write authority for real-deck usage.
+12. Concrete defects get targeted fixes; warnings do not become blockers.
 
 The loop is intentionally narrow. It proves that a real deck can move through the existing normal path without turning source-depth warnings, closure freshness, default-only diagnostics, or mechanic visibility into runtime-write permission.
 
@@ -376,7 +378,7 @@ and does not block a technically valid package.
 
 `<out>/configure_summary.json.acceptance_summary` is the first post-`configure` read. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
 
-`configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
+`<out>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
 
 `configure_summary.json.handoff_contract` is a diagnostic-only handoff proof for normal generated packages. It compresses the already-generated acceptance, config-proof, and config-quality facts into one small object: single authority, no-default-only status, forbidden normal surfaces, source-to-runtime trace status, Darkbishop boundary status, mechanic discipline, and the next report to open. It does not replace reports/operator_summary.json and it cannot grant or deny runtime writes.
 
