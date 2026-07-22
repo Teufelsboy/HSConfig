@@ -86,6 +86,16 @@ def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
         return _provenance_result("current", _reason(payload, "top_level_current"))
     if top_level_status in EVERGREEN_MARKERS:
         return _provenance_result("evergreen", _reason(payload, "top_level_evergreen"))
+    source_freshness = _normalized_marker(payload.get("source_freshness"))
+    if source_freshness in CURRENT_MARKERS:
+        return _provenance_result("current", _reason(payload, "top_level_source_freshness"))
+    if source_freshness in EVERGREEN_MARKERS:
+        return _provenance_result("evergreen", _reason(payload, "top_level_source_freshness"))
+    currency_status = _normalized_marker(payload.get("currency_status"))
+    if currency_status in CURRENT_MARKERS:
+        return _provenance_result("current", _reason(payload, "top_level_currency_status"))
+    if currency_status in EVERGREEN_MARKERS:
+        return _provenance_result("evergreen", _reason(payload, "top_level_currency_status"))
     if _truthy(payload.get("current_or_evergreen")):
         return _provenance_result("current", _reason(payload, "top_level_current_or_evergreen"))
     if _truthy(payload.get("evergreen_wild_archetype")):
@@ -98,6 +108,16 @@ def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
             return _provenance_result("current", _reason(row, "nested_current_marker"))
         if marker in EVERGREEN_MARKERS or lane in EVERGREEN_MARKERS:
             return _provenance_result("evergreen", _reason(row, "nested_evergreen_marker"))
+        source_freshness = _normalized_marker(row.get("source_freshness"))
+        if source_freshness in CURRENT_MARKERS:
+            return _provenance_result("current", _reason(row, "nested_source_freshness"))
+        if source_freshness in EVERGREEN_MARKERS:
+            return _provenance_result("evergreen", _reason(row, "nested_source_freshness"))
+        currency_status = _normalized_marker(row.get("currency_status"))
+        if currency_status in CURRENT_MARKERS:
+            return _provenance_result("current", _reason(row, "nested_currency_status"))
+        if currency_status in EVERGREEN_MARKERS:
+            return _provenance_result("evergreen", _reason(row, "nested_currency_status"))
         if _truthy(row.get("current_or_evergreen")):
             return _provenance_result("current", _reason(row, "nested_current_or_evergreen"))
         if _truthy(row.get("evergreen_wild_archetype")):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from hsconfig.source_provenance import (
     normalize_source_provenance,
     research_payload_provenance,
@@ -150,4 +152,29 @@ def test_research_payload_provenance_accepts_nested_current_marker() -> None:
     assert result["freshness_status"] == "current"
     assert result["current_or_evergreen"] is True
     assert result["current_or_evergreen_reason"] == "publication_year_matches_current_year"
+    assert result["source_status_apply_blocking"] is False
+
+
+@pytest.mark.parametrize(
+    ("payload", "freshness_status"),
+    [
+        ({"source_freshness": "current"}, "current"),
+        ({"currency_status": "evergreen"}, "evergreen"),
+        (
+            {"guide_sources": [{"source_freshness": "current"}]},
+            "current",
+        ),
+        (
+            {"guide_sources": [{"currency_status": "evergreen"}]},
+            "evergreen",
+        ),
+    ],
+)
+def test_research_payload_provenance_keeps_source_freshness_and_currency_compatibility(
+    payload: dict[str, object], freshness_status: str
+) -> None:
+    result = research_payload_provenance(payload)
+
+    assert result["freshness_status"] == freshness_status
+    assert result["current_or_evergreen"] is True
     assert result["source_status_apply_blocking"] is False

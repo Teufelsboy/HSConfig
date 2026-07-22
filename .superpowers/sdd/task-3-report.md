@@ -73,3 +73,42 @@ Result: `41 passed in 0.25s`.
 ## Commit
 
 Commit message: `fix: validate research freshness provenance`
+
+## Compatibility Fix: source_freshness and currency_status
+
+### Review Finding
+
+Delegating contract freshness to `research_payload_provenance` unintentionally
+dropped historical current/evergreen recognition for top-level and nested
+`source_freshness` and `currency_status` markers.
+
+### RED
+
+Command:
+
+```powershell
+python -m pytest tests/test_source_provenance.py::test_research_payload_provenance_keeps_source_freshness_and_currency_compatibility -q
+```
+
+Result: expected failure, `4 failed in 0.20s`. The new parameterized regression
+test covered top-level and nested `source_freshness="current"` plus
+`currency_status="evergreen"`.
+
+### Fix and GREEN
+
+`research_payload_provenance` now normalizes those two compatibility fields at
+both levels, after the established `freshness_status` handling. Existing
+`canonical_evidence=True` precedence is unchanged and every provenance result
+continues to return `source_status_apply_blocking=False`.
+
+Command:
+
+```powershell
+python -m pytest tests/test_source_provenance.py tests/test_research_result_validator.py tests/test_research_result_contract.py -q
+```
+
+Result: `45 passed in 0.27s`.
+
+Scope: only `source_provenance.py`, its regression test, and this report changed;
+no runtime/apply, default-only surface, operator-authority, or gameplay behavior
+was touched.
