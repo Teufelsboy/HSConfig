@@ -3,7 +3,7 @@ name: hsconfig
 description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages from a Hearthstone deck name and deck code. Use when Codex must build or validate direct Mulligan, GlobalValues, `per-card <CARDID>.json`, or Combo runtime config before games are played.
 ---
 # HSConfig
-Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
+Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner. Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`; Lower-level inspected path: source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply.
 Inputs: deck name, deck code, runtime root for `prepare`, `build`, and `apply`, short source evidence rows from current guide research, optional researched `source_documents.json`, and normalized guide sources from `hsconfig research-deck`.
 Normal workflow:
