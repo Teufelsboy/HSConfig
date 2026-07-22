@@ -436,12 +436,37 @@ def test_legacy_claims_synthesize_legacy_retrieved_at_when_unstamped():
 
 
 def test_legacy_claims_do_not_match_face_inside_surface_word():
+    for text in (
+        "Card behavior surface damage row without targeting guidance.",
+        "Card behavior surface damage row without target guidance.",
+    ):
+        documents = guide_documents_from_legacy_claims(
+            [
+                {
+                    "source": "guide",
+                    "url": "https://example.invalid/deck-guide",
+                    "claim": text,
+                    "cards": ["EX1_001"],
+                }
+            ]
+        )
+
+        claim = documents[0]["claims"][0]
+
+        assert claim["claim_kind"] == "card_role"
+        assert claim["stance"] == "deck_card"
+        routed = route_card_behavior_surfaces([claim])
+        assert all(row.get("intent") != "prefer_enemy_hero" for row in routed["rows"])
+        assert all(row.get("meaningful_runtime_surface") is False for row in routed["rows"])
+
+
+def test_legacy_claims_still_match_minion_targeting_scope():
     documents = guide_documents_from_legacy_claims(
         [
             {
                 "source": "guide",
                 "url": "https://example.invalid/deck-guide",
-                "claim": "Card behavior surface damage row without targeting guidance.",
+                "claim": "Target an enemy minion with this removal effect.",
                 "cards": ["EX1_001"],
             }
         ]
@@ -449,11 +474,8 @@ def test_legacy_claims_do_not_match_face_inside_surface_word():
 
     claim = documents[0]["claims"][0]
 
-    assert claim["claim_kind"] == "card_role"
+    assert claim["claim_kind"] == "targeting_rule"
     assert claim["stance"] == "deck_card"
-    routed = route_card_behavior_surfaces([claim])
-    assert all(row.get("intent") != "prefer_enemy_hero" for row in routed["rows"])
-    assert all(row.get("meaningful_runtime_surface") is False for row in routed["rows"])
 
 
 def test_legacy_claims_still_match_real_face_targeting_phrases():

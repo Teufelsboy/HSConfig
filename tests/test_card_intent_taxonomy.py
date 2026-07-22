@@ -99,6 +99,18 @@ def test_direct_burn_does_not_match_face_inside_surface_word():
     assert classification.band == "default"
 
 
+def test_direct_burn_does_not_match_embedded_phrase_prefixes():
+    for text in (
+        "enemy heroic damage plan",
+        "prefer_enemy_heroic damage plan",
+        "hero damageable effect",
+    ):
+        classification = classify_card_intent(text)
+        assert classification.reason == "semantic_default"
+        assert classification.value == "6"
+        assert classification.band == "default"
+
+
 def test_direct_burn_still_matches_real_enemy_hero_and_face_phrases():
     for text in (
         "Prefer enemy hero face damage burn.",

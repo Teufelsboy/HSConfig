@@ -202,9 +202,10 @@ def _has_any(text: str, needles: Sequence[str]) -> bool:
 
 
 def _has_phrase_or_token(text: str, needle: str) -> bool:
-    if "_" in needle or " " in needle:
-        return needle in text
-    return _has_token(text, needle)
+    return re.search(
+        rf"(?<![a-z0-9_]){re.escape(needle)}(?![a-z0-9_])",
+        text,
+    ) is not None
 
 
 def _has_token(text: str, token: str) -> bool:
