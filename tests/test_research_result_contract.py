@@ -256,3 +256,46 @@ def test_no_payload_can_request_canonical_downgrade() -> None:
     result = classify_research_result_contract(payload)
 
     assert result["canonical_downgrade_allowed"] is False
+
+
+def test_research_result_contract_accepts_nested_evergreen_marker_for_strong_promotion() -> None:
+    result = classify_research_result_contract(
+        {
+            "deck_name": "TreantDruid",
+            "deck_code": "AAEBAZICFixture",
+            "source_strength": "exact_full_text_guide",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "guide_sources": [
+                {
+                    "source_freshness_lane": "guide_evergreen_wild_archetype",
+                    "current_or_evergreen_reason": "wild_guide_with_card_overlap",
+                }
+            ],
+        }
+    )
+
+    assert result["contract_valid"] is True
+    assert result["snapshot_kind"] == "strong"
+    assert result["canonical_promotion_allowed"] is True
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_contract_keeps_canonical_evidence_current_for_strong_promotion() -> None:
+    result = classify_research_result_contract(
+        {
+            "deck_name": "TreantDruid",
+            "deck_code": "AAEBAZICFixture",
+            "source_strength": "exact_full_text_guide",
+            "canonical_evidence": True,
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+        }
+    )
+
+    assert result["snapshot_kind"] == "strong"
+    assert result["canonical_promotion_allowed"] is True
+    assert result["source_status_apply_blocking"] is False

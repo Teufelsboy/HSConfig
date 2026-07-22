@@ -8,6 +8,7 @@ from hsconfig.default_only_runtime_surfaces import (
     has_default_only_runtime_surfaces,
 )
 from hsconfig.research_result_contract import RUNTIME_LOWERABLE_CLAIM_KINDS
+from hsconfig.source_provenance import research_payload_provenance
 
 REQUIRED_RESULT_FIELDS = {
     "deck_name",
@@ -61,6 +62,7 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
         )
         if str(kind) in RUNTIME_LOWERABLE_CLAIM_KINDS
     ]
+    provenance = research_payload_provenance(payload)
     if source_strength in STRONG_STRENGTHS and not lowerable_claim_kinds:
         errors.append("strong_requires_lowerable_claim_kinds")
     if source_strength in STRONG_STRENGTHS:
@@ -68,8 +70,7 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
             errors.append("strong_requires_full_text_visibility")
         if str(payload.get("first_missing_source_action") or "") != "none":
             errors.append("strong_requires_first_missing_source_action_none")
-        freshness = str(payload.get("freshness_status") or "")
-        if freshness not in {"current", "evergreen"}:
+        if not provenance["current_or_evergreen"]:
             errors.append("strong_requires_current_or_evergreen_freshness")
         if "default_only_runtime_surfaces" not in payload:
             errors.append("strong_requires_explicit_empty_default_only_runtime_surfaces")
@@ -90,6 +91,9 @@ def validate_research_result_payload(payload: Mapping[str, Any]) -> dict[str, An
         "errors": errors,
         "warnings": warnings,
         "source_status_apply_blocking": False,
+        "freshness_status": provenance["freshness_status"],
+        "current_or_evergreen": provenance["current_or_evergreen"],
+        "current_or_evergreen_reason": provenance["current_or_evergreen_reason"],
         "field_count": len(
             [field for field in REQUIRED_RESULT_FIELDS if field in payload]
         ),

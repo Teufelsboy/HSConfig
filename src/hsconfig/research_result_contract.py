@@ -7,6 +7,7 @@ from hsconfig.default_only_runtime_surfaces import (
     default_only_runtime_surface_errors,
     has_default_only_runtime_surfaces,
 )
+from hsconfig.source_provenance import research_payload_provenance
 from hsconfig.source_document_model import (
     CARDID_SURFACE_CLAIM_KINDS,
     COMBO_SURFACE_CLAIM_KINDS,
@@ -196,45 +197,4 @@ def _has_full_text_or_canonical_evidence(payload: Mapping[str, Any]) -> bool:
 
 
 def _has_current_or_evergreen_evidence(payload: Mapping[str, Any]) -> bool:
-    if payload.get("canonical_evidence") is True:
-        return True
-    if _row_has_current_or_evergreen_marker(payload):
-        return True
-    for key in ("records", "guide_sources", "current_deck_sources"):
-        rows = payload.get(key)
-        if isinstance(rows, list) and any(
-            isinstance(row, Mapping) and _row_has_current_or_evergreen_marker(row)
-            for row in rows
-        ):
-            return True
-    return False
-
-
-def _row_has_current_or_evergreen_marker(row: Mapping[str, Any]) -> bool:
-    if row.get("evergreen_wild_archetype") is True:
-        return True
-    if row.get("current_or_evergreen") is True:
-        return True
-    marker_values = {
-        str(row.get(field) or "").strip().lower()
-        for field in (
-            "freshness_status",
-            "source_freshness",
-            "source_freshness_lane",
-            "currency_status",
-        )
-    }
-    marker_values.discard("")
-    return bool(
-        marker_values
-        & {
-            "current",
-            "current_deck",
-            "current_full_text",
-            "current_or_evergreen",
-            "evergreen",
-            "evergreen_wild",
-            "evergreen_wild_archetype",
-            "same_year",
-        }
-    )
+    return bool(research_payload_provenance(payload)["current_or_evergreen"])

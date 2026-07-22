@@ -313,3 +313,61 @@ def test_fields_yaml_validator_accepts_hsconfig_field_contract() -> None:
     assert result["valid"] is True
     assert result["field_count"] == 9
     assert result["errors"] == []
+
+
+def test_research_result_validator_accepts_strong_with_nested_current_source_metadata() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "CtAPaladin",
+            "archetype": "Wild Call to Arms Paladin",
+            "current_deck_sources": [],
+            "guide_sources": [
+                {
+                    "url": "https://example.test/cta-paladin-guide",
+                    "source_visibility": "full_text",
+                    "source_freshness_lane": "guide_current_deck_match",
+                    "current_or_evergreen_reason": "publication_year_matches_current_year",
+                }
+            ],
+            "source_strength": "exact_full_text_guide",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "notes": "Nested guide source proves current freshness.",
+        }
+    )
+
+    assert result["valid"] is True
+    assert result["errors"] == []
+    assert result["current_or_evergreen"] is True
+    assert result["freshness_status"] == "current"
+    assert result["source_status_apply_blocking"] is False
+
+
+def test_research_result_validator_still_rejects_strong_without_any_current_marker() -> None:
+    result = validate_research_result_payload(
+        {
+            "deck_name": "CtAPaladin",
+            "archetype": "Wild Call to Arms Paladin",
+            "current_deck_sources": [],
+            "guide_sources": [
+                {
+                    "url": "https://example.test/cta-paladin-guide",
+                    "source_visibility": "full_text",
+                }
+            ],
+            "source_strength": "exact_full_text_guide",
+            "source_visibility": "full_text",
+            "lowerable_claim_kinds": ["mulligan_keep"],
+            "non_promoting_support": [],
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+            "notes": "No freshness marker exists.",
+        }
+    )
+
+    assert result["valid"] is False
+    assert "strong_requires_current_or_evergreen_freshness" in result["errors"]
+    assert result["source_status_apply_blocking"] is False

@@ -79,6 +79,8 @@ def normalize_source_provenance(
 
 
 def research_payload_provenance(payload: Mapping[str, Any]) -> dict[str, Any]:
+    if payload.get("canonical_evidence") is True:
+        return _provenance_result("current", _reason(payload, "canonical_evidence"))
     top_level_status = _normalized_marker(payload.get("freshness_status"))
     if top_level_status in CURRENT_MARKERS:
         return _provenance_result("current", _reason(payload, "top_level_current"))
