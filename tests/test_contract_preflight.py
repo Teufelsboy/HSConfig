@@ -613,6 +613,86 @@ def test_contract_preflight_exposes_research_freshness_missing_count() -> None:
     assert payload["source_status_apply_blocking"] is False
 
 
+def test_contract_preflight_projects_research_contract_first_non_promoting_result(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    latest = target_docs / "research" / "9999-bridge-research"
+    (latest / "results").mkdir(parents=True)
+    shutil.copy2(
+        Path("docs")
+        / "research"
+        / "2026-07-17-hsconfig-source-contract-acceptance-loop"
+        / "fields.yaml",
+        latest / "fields.yaml",
+    )
+    (latest / "results" / "PirateDH.json").write_text(
+        json.dumps(
+            {
+                "deck_name": "PirateDH",
+                "archetype": "Wild Pirate Demon Hunter",
+                "current_deck_sources": [],
+                "guide_sources": [],
+                "source_strength": "unfetched_acquisition_seed",
+                "lowerable_claim_kinds": [],
+                "non_promoting_support": [],
+                "first_missing_source_action": (
+                    "fetch_and_normalize_candidate_full_text_claims"
+                ),
+                "notes": "Seed row still needs full-text claims.",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+    research_context = payload["research_context"]
+
+    assert payload["checks"]["research_result_contract_sentinel_visible"] is True
+    assert research_context["latest_research_result_contract_status"] == "clean"
+    assert research_context["latest_research_result_contract_result_count"] == 1
+    assert research_context["latest_research_result_contract_invalid_count"] == 0
+    assert research_context["latest_research_result_contract_strict_invalid_count"] == 0
+    assert research_context["latest_research_result_contract_contract_invalid_count"] == 0
+    assert research_context["latest_research_result_contract_seed_only_count"] == 1
+    assert research_context["latest_research_result_contract_strong_promoting_count"] == 0
+    assert (
+        research_context[
+            "latest_research_result_contract_promotion_ready_deck_count"
+        ]
+        == 0
+    )
+    assert research_context["latest_research_result_contract_non_promoting_count"] == 1
+    assert (
+        research_context[
+            "latest_research_result_contract_first_non_promoting_result"
+        ]
+        == "PirateDH"
+    )
+    assert (
+        research_context[
+            "latest_research_result_contract_first_non_promoting_action"
+        ]
+        == "fetch_and_normalize_candidate_full_text_claims"
+    )
+    assert (
+        research_context[
+            "latest_research_result_contract_first_non_promoting_reason"
+        ]
+        == "seed_only"
+    )
+    assert research_context["source_status_apply_blocking"] is False
+
+
 def test_contract_preflight_research_result_attention_is_not_apply_blocking(
     tmp_path: Path,
 ) -> None:
