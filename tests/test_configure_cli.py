@@ -9,6 +9,7 @@ import pytest
 from hsconfig.cli import main
 from hsconfig.commands.configure import (
     _build_acceptance_summary,
+    _build_config_proof_summary,
     _compact_config_quality_summary,
 )
 
@@ -596,6 +597,144 @@ def test_build_acceptance_summary_surfaces_diagnostics_without_blocking() -> Non
     )
 
 
+def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
+    operator_summary = {
+        "technical_status": "VALID_PACKAGE",
+        "runtime_load_safe": True,
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
+        "source_backed_status": "SOURCE_BACKED_STRONG",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": "none",
+        "default_only_runtime_surfaces": [],
+        "mechanic_visibility_summary": {
+            "non_blocking": True,
+            "first_warning_boundary": None,
+        },
+    }
+    config_quality_summary = {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+        "forbidden_normal_surfaces_absent": True,
+        "legacy_surfaces_present": [],
+        "darkbishop_boundary_status": "effect_without_mulligan_keep",
+        "runtime_json_status": "clean",
+        "source_to_runtime_status": "diagnostic_only",
+        "mechanic_runtime_discipline_status": "clean",
+        "semantic_intent_status": "clean",
+    }
+
+    assert _build_config_proof_summary(
+        operator_summary=operator_summary,
+        validate_status=0,
+        apply_requested=False,
+        apply_status=None,
+        config_quality_summary=config_quality_summary,
+    ) == {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "normal_apply_authority": "reports/operator_summary.json",
+        "technical_load_safe": True,
+        "technical_status": "VALID_PACKAGE",
+        "validation_status": "passed",
+        "apply_requested": False,
+        "apply_status": None,
+        "source_strength": "SOURCE_BACKED_STRONG",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": "none",
+        "no_default_only_clean": True,
+        "default_only_runtime_surfaces": [],
+        "forbidden_normal_surfaces_absent": True,
+        "forbidden_normal_surfaces_present": [],
+        "runtime_surface_boundary": [
+            "GlobalValues.json",
+            "Mulligan.json",
+            "per-card <CARDID>.json",
+            "Combo.json",
+        ],
+        "darkbishop_boundary_status": "effect_without_mulligan_keep",
+        "mechanic_visibility_non_blocking": True,
+        "first_warning_boundary": None,
+        "runtime_json_status": "clean",
+        "source_to_runtime_status": "diagnostic_only",
+        "semantic_intent_status": "clean",
+        "config_quality_status": "clean",
+        "config_quality_problem_checks": [],
+        "next_report_to_open": "reports/operator_summary.json",
+    }
+
+
+def test_build_config_proof_summary_surfaces_attention_without_blocking() -> None:
+    operator_summary = {
+        "technical_status": "VALID_PACKAGE",
+        "runtime_load_safe": True,
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
+        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": "fetch_and_normalize_candidate_full_text_claims",
+        "default_only_runtime_surfaces": ["Mulligan.json"],
+        "mechanic_visibility_summary": {
+            "non_blocking": True,
+            "first_warning_boundary": {
+                "mechanic": "location_activation",
+                "boundary": "warning_only",
+            },
+        },
+    }
+    config_quality_summary = {
+        "status": "attention",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 2,
+        "problem_checks": [
+            "operator_default_only_runtime_surfaces",
+            "source_to_runtime_closure_rows_missing",
+        ],
+        "forbidden_normal_surfaces_absent": False,
+        "legacy_surfaces_present": ["CustomConfig/deck/Presume.json"],
+        "darkbishop_boundary_status": "mulligan_keep_present",
+        "runtime_json_status": "attention",
+        "source_to_runtime_status": "diagnostic_only",
+        "mechanic_runtime_discipline_status": "attention",
+        "semantic_intent_status": "attention",
+    }
+
+    summary = _build_config_proof_summary(
+        operator_summary=operator_summary,
+        validate_status=0,
+        apply_requested=True,
+        apply_status=0,
+        config_quality_summary=config_quality_summary,
+    )
+
+    assert summary["apply_blocking"] is False
+    assert summary["source_status_apply_blocking"] is False
+    assert summary["no_default_only_clean"] is False
+    assert summary["forbidden_normal_surfaces_absent"] is False
+    assert summary["forbidden_normal_surfaces_present"] == [
+        "CustomConfig/deck/Presume.json"
+    ]
+    assert summary["first_warning_boundary"] == {
+        "mechanic": "location_activation",
+        "boundary": "warning_only",
+    }
+    assert summary["next_report_to_open"] == "reports/contract_doctor.json"
+
+
 def test_acceptance_summary_helper_stays_configure_local_projection() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     configure_source = (
@@ -615,6 +754,23 @@ def test_acceptance_summary_helper_stays_configure_local_projection() -> None:
     assert "_build_acceptance_summary" not in apply_source
     assert "_build_acceptance_summary" not in apply_gate_source
     assert "_build_acceptance_summary" not in acceptance_matrix_source
+
+
+def test_config_proof_summary_helper_stays_configure_local_projection() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    configure_source = (
+        repo_root / "src" / "hsconfig" / "commands" / "configure.py"
+    ).read_text(encoding="utf-8")
+    apply_source = (
+        repo_root / "src" / "hsconfig" / "commands" / "apply.py"
+    ).read_text(encoding="utf-8")
+    apply_gate_source = (
+        repo_root / "src" / "hsconfig" / "apply_gate.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def _build_config_proof_summary(" in configure_source
+    assert "_build_config_proof_summary" not in apply_source
+    assert "_build_config_proof_summary" not in apply_gate_source
 
 
 def test_build_acceptance_summary_marks_non_load_safe_package_unusable() -> None:
@@ -851,8 +1007,23 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert summary["acceptance_summary"]["normal_apply_authority"] == (
         operator_summary["runtime_apply_contract"]["apply_authority"]
     )
+    proof = summary["config_proof_summary"]
+    assert proof["authority"] == "diagnostic_only"
+    assert proof["apply_blocking"] is False
+    assert proof["runtime_write_performed"] is False
+    assert proof["normal_apply_authority"] == "reports/operator_summary.json"
+    assert proof["technical_load_safe"] is True
+    assert proof["no_default_only_clean"] is True
+    assert proof["forbidden_normal_surfaces_absent"] is True
+    assert proof["runtime_surface_boundary"] == [
+        "GlobalValues.json",
+        "Mulligan.json",
+        "per-card <CARDID>.json",
+        "Combo.json",
+    ]
     assert "config_quality_summary" not in operator_summary
     assert "acceptance_summary" not in operator_summary
+    assert "config_proof_summary" not in operator_summary
 
 
 def test_configure_quality_summary_failure_stays_diagnostic_only(

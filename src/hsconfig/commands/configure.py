@@ -382,6 +382,13 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 apply_status=apply_status,
                 config_quality_summary=config_quality_summary,
             ),
+            "config_proof_summary": _build_config_proof_summary(
+                operator_summary=operator_summary,
+                validate_status=validate_status,
+                apply_requested=bool(getattr(args, "apply", False)),
+                apply_status=apply_status,
+                config_quality_summary=config_quality_summary,
+            ),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
         },
@@ -619,6 +626,105 @@ def _build_acceptance_summary(
             semantic_intent_first_attention
         )
     return summary
+
+
+def _build_config_proof_summary(
+    *,
+    operator_summary: Mapping[str, Any],
+    validate_status: int,
+    apply_requested: bool,
+    apply_status: int | None,
+    config_quality_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_contract = operator_summary.get("runtime_apply_contract", {})
+    if not isinstance(runtime_contract, Mapping):
+        runtime_contract = {}
+
+    mechanic_visibility = operator_summary.get("mechanic_visibility_summary", {})
+    if not isinstance(mechanic_visibility, Mapping):
+        mechanic_visibility = {}
+
+    default_only_runtime_surfaces = [
+        str(surface)
+        for surface in operator_summary.get("default_only_runtime_surfaces", [])
+        if str(surface)
+    ]
+    forbidden_surfaces = [
+        str(surface)
+        for surface in config_quality_summary.get("legacy_surfaces_present", [])
+        if str(surface)
+    ]
+    problem_checks = [
+        str(check)
+        for check in config_quality_summary.get("problem_checks", [])
+        if str(check)
+    ]
+
+    has_attention = bool(
+        problem_checks
+        or default_only_runtime_surfaces
+        or forbidden_surfaces
+        or str(config_quality_summary.get("status", "")) == "attention"
+    )
+
+    return {
+        "schema_version": 1,
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "normal_apply_authority": str(
+            runtime_contract.get("apply_authority") or "reports/operator_summary.json"
+        ),
+        "technical_load_safe": bool(
+            operator_summary.get("runtime_load_safe")
+            or operator_summary.get("runtime_apply_allowed")
+        ),
+        "technical_status": str(operator_summary.get("technical_status", "")),
+        "validation_status": "passed" if validate_status == 0 else "failed",
+        "apply_requested": apply_requested,
+        "apply_status": apply_status,
+        "source_strength": str(operator_summary.get("source_backed_status", "")),
+        "source_status_apply_blocking": bool(
+            operator_summary.get("source_status_apply_blocking", False)
+        ),
+        "first_missing_source_action": operator_summary.get(
+            "first_missing_source_action"
+        ),
+        "no_default_only_clean": not default_only_runtime_surfaces,
+        "default_only_runtime_surfaces": default_only_runtime_surfaces,
+        "forbidden_normal_surfaces_absent": not forbidden_surfaces,
+        "forbidden_normal_surfaces_present": forbidden_surfaces,
+        "runtime_surface_boundary": [
+            "GlobalValues.json",
+            "Mulligan.json",
+            "per-card <CARDID>.json",
+            "Combo.json",
+        ],
+        "darkbishop_boundary_status": str(
+            config_quality_summary.get("darkbishop_boundary_status", "")
+        ),
+        "mechanic_visibility_non_blocking": bool(
+            mechanic_visibility.get("non_blocking", True)
+        ),
+        "first_warning_boundary": mechanic_visibility.get("first_warning_boundary"),
+        "runtime_json_status": str(config_quality_summary.get("runtime_json_status", "")),
+        "source_to_runtime_status": str(
+            config_quality_summary.get("source_to_runtime_status", "")
+        ),
+        "semantic_intent_status": str(
+            config_quality_summary.get("semantic_intent_status", "")
+        ),
+        "config_quality_status": str(config_quality_summary.get("status", "")),
+        "config_quality_problem_checks": problem_checks,
+        "next_report_to_open": (
+            "reports/contract_doctor.json"
+            if has_attention
+            else str(
+                runtime_contract.get("apply_authority")
+                or "reports/operator_summary.json"
+            )
+        ),
+    }
 
 
 def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:
