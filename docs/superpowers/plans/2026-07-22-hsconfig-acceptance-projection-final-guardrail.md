@@ -346,7 +346,7 @@ The exact count may vary, but there must be no failures.
 
 **Files:**
 - Test: `C:\Users\darbo\Documents\HSConfig\tests\test_universal_wild_no_block_matrix.py`
-- Test: `C:\Users\darbo\Documents\HSConfig\tests\test_no_default_only_runtime_surfaces.py`
+- Test: `C:\Users\darbo\Documents\HSConfig\tests\test_no_default_only_semantic_archetype_matrix.py`
 - Test: `C:\Users\darbo\Documents\HSConfig\tests\test_source_status_resolver.py`
 
 **Interfaces:**
@@ -356,7 +356,7 @@ The exact count may vary, but there must be no failures.
 - [ ] **Step 1: Run no-block and source-status tests**
 
 ```powershell
-pytest tests\test_universal_wild_no_block_matrix.py tests\test_no_default_only_runtime_surfaces.py tests\test_source_status_resolver.py -q
+pytest tests\test_universal_wild_no_block_matrix.py tests\test_no_default_only_semantic_archetype_matrix.py tests\test_source_status_resolver.py -q
 ```
 
 Expected:
