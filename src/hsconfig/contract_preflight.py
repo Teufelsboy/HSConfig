@@ -21,6 +21,9 @@ EXPECTED_CHECK_KEYS = (
     "reference_files_present",
     "checklist_referenced_by_normal_workflow",
     "checklist_listed_in_references",
+    "configure_acceptance_route_visible",
+    "configure_acceptance_projection_not_gate_visible",
+    "config_quality_summary_diagnostic_only_visible",
     "operator_summary_single_authority_visible",
     "source_status_nonblocking_visible",
     "no_default_only_visible",
@@ -209,6 +212,70 @@ def _references_line(skill_text: str) -> str:
     return ""
 
 
+def _has_any(text: str, phrases: tuple[str, ...]) -> bool:
+    return any(phrase in text for phrase in phrases)
+
+
+def _configure_acceptance_route_visible(combined: str) -> bool:
+    return all(
+        term in combined
+        for term in (
+            "<out>/configure_summary.json.acceptance_summary",
+            "acceptance_summary",
+            "use_config_now",
+            "technical_status",
+            "runtime_apply_allowed",
+            "source_strength",
+            "default_only_clean",
+            "next_report_to_open",
+            "<out>/configure_summary.json.config_quality_summary",
+            "config_quality_summary",
+            "reports/operator_summary.json",
+        )
+    )
+
+
+def _configure_acceptance_projection_not_gate_visible(combined: str) -> bool:
+    return (
+        "operator projection" in combined
+        and _has_any(
+            combined,
+            (
+                "does not replace `reports/operator_summary.json` as apply authority",
+                "does not replace `reports/operator_summary.json`",
+                "does not replace `operator_summary.json`",
+            ),
+        )
+        and _has_any(
+            combined,
+            (
+                "operator_summary.json remains the only normal apply authority",
+                "operator_summary.json` remains the only normal apply authority",
+                "operator_summary.json` remains the normal apply authority",
+                "reports/operator_summary.json` as the apply authority",
+            ),
+        )
+    )
+
+
+def _config_quality_summary_diagnostic_only_visible(combined: str) -> bool:
+    return (
+        "<out>/configure_summary.json.config_quality_summary" in combined
+        and "config_quality_summary" in combined
+        and "diagnostic-only" in combined
+        and "non-blocking" in combined
+        and "contract-doctor" in combined
+        and _has_any(
+            combined,
+            (
+                "operator_summary.json remains the only normal apply authority",
+                "operator_summary.json` remains the only normal apply authority",
+                "operator_summary.json` remains the normal apply authority",
+            ),
+        )
+    )
+
+
 def build_research_context_preflight(repo_root: str | Path) -> ResearchContextPreflight:
     root = Path(repo_root).resolve()
     current_truth_path = root / "docs" / "research" / "current-truth.md"
@@ -325,6 +392,15 @@ def build_contract_preflight(
         ),
         "checklist_listed_in_references": (
             "references/contract-compiler-checklist.md" in references_line
+        ),
+        "configure_acceptance_route_visible": _configure_acceptance_route_visible(
+            combined
+        ),
+        "configure_acceptance_projection_not_gate_visible": (
+            _configure_acceptance_projection_not_gate_visible(combined)
+        ),
+        "config_quality_summary_diagnostic_only_visible": (
+            _config_quality_summary_diagnostic_only_visible(combined)
         ),
         "operator_summary_single_authority_visible": (
             "operator_summary.json remains the only normal apply authority" in combined

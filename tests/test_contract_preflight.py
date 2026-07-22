@@ -43,6 +43,18 @@ def test_contract_preflight_passes_for_repo_contract_with_clean_git_snapshot() -
     assert payload["checks"]["negative_scope_visible"] is True
 
 
+def test_contract_preflight_checks_configure_acceptance_route_contract() -> None:
+    payload = build_contract_preflight(Path("."), git=_clean_git())
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["configure_acceptance_route_visible"] is True
+    assert payload["checks"]["configure_acceptance_projection_not_gate_visible"] is True
+    assert payload["checks"]["config_quality_summary_diagnostic_only_visible"] is True
+    assert "configure_acceptance_route_visible" not in payload["failures"]
+    assert "configure_acceptance_projection_not_gate_visible" not in payload["failures"]
+    assert "config_quality_summary_diagnostic_only_visible" not in payload["failures"]
+
+
 def test_contract_preflight_reports_attention_when_git_is_dirty() -> None:
     dirty_git = GitPreflight(
         branch="codex/test",
@@ -238,6 +250,48 @@ def test_contract_preflight_research_context_attention_when_current_truth_missin
     assert payload["diagnostic_only"] is True
     assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
     assert payload["source_status_apply_blocking"] is False
+
+
+def test_contract_preflight_reports_attention_when_configure_acceptance_route_drifts(
+    tmp_path: Path,
+) -> None:
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    operator_root = tmp_path / "docs" / "operator"
+    operator_root.mkdir(parents=True)
+    shutil.copy2(Path("docs") / "operator" / "README.md", operator_root / "README.md")
+
+    research_root = tmp_path / "docs" / "research"
+    research_root.mkdir(parents=True)
+    for filename in ("current-truth.md", "current-truth-index.json"):
+        shutil.copy2(Path("docs") / "research" / filename, research_root / filename)
+
+    for path in (
+        skill_root / "SKILL.md",
+        skill_root / "references" / "workflow.md",
+        operator_root / "README.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        text = text.replace(
+            "<out>/configure_summary.json.acceptance_summary",
+            "<out>/configure_summary.json",
+        )
+        text = text.replace("use_config_now", "use_now")
+        text = text.replace("next_report_to_open", "next_report")
+        text = text.replace("diagnostic-only", "diagnostic")
+        path.write_text(text, encoding="utf-8")
+
+    payload = build_contract_preflight(tmp_path, git=_clean_git())
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["configure_acceptance_route_visible"] is False
+    assert payload["checks"]["config_quality_summary_diagnostic_only_visible"] is False
+    assert "configure_acceptance_route_visible" in payload["failures"]
+    assert "config_quality_summary_diagnostic_only_visible" in payload["failures"]
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["diagnostic_only"] is True
 
 
 def test_contract_preflight_cli_includes_research_context_without_writing_files() -> None:
