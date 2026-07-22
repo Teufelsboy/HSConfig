@@ -167,6 +167,7 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "runtime_write_performed": False,
         "status": "clean",
         "meaningful_cardid_runtime_rows": 1,
+        "taxonomy_reason_counts": {"conditional_minion_death_burn": 1},
         "runtime_rows_missing_trace": [],
         "semantic_score_missing_rows": [],
         "semantic_default_rows": [],
@@ -183,6 +184,42 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "cards_total": 1,
         "cards_with_closure": 1,
     }
+
+
+def test_config_quality_summarizes_semantic_taxonomy_reasons(tmp_path: Path):
+    package = minimal_clean_package(tmp_path)
+    card_behavior = json.loads(
+        (package / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    card_behavior["rows"].append(
+        {
+            "card_id": "LOC_001",
+            "surface_family": "CARDID.json",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "8",
+            "meaningful_runtime_surface": True,
+            "semantic_score": {
+                "band": "medium",
+                "reason": "location_tempo",
+                "profile": "semantic_intent",
+                "matched_signals": ["location"],
+            },
+        }
+    )
+    write_json(package / "reports" / "card_behavior_plan_report.json", card_behavior)
+
+    report = build_config_quality_report(package)
+
+    semantic = report["checks"]["semantic_intent_coverage"]
+    assert semantic["taxonomy_reason_counts"] == {
+        "conditional_minion_death_burn": 1,
+        "location_tempo": 1,
+    }
+    assert semantic["authority"] == "diagnostic_only"
+    assert semantic["apply_blocking"] is False
+    assert report["apply_blocking"] is False
 
 
 def test_config_quality_flags_report_only_mechanic_runtime_emission(

@@ -157,6 +157,7 @@ def _card_behavior_check(card_behavior: Mapping[str, Any]) -> dict[str, Any]:
     accepted_rows = []
     semantic_missing_rows = []
     semantic_default_rows = []
+    semantic_score_rows = []
     out_of_range_rows = []
     for row in rows:
         if not isinstance(row, Mapping):
@@ -168,8 +169,12 @@ def _card_behavior_check(card_behavior: Mapping[str, Any]) -> dict[str, Any]:
         semantic_score = row.get("semantic_score")
         if not isinstance(semantic_score, Mapping):
             semantic_missing_rows.append(compact)
-        elif semantic_score.get("reason") == "semantic_default":
-            semantic_default_rows.append({**compact, "reason": "semantic_default"})
+        else:
+            reason = str(semantic_score.get("reason", "")).strip()
+            if reason:
+                semantic_score_rows.append({**compact, "reason": reason})
+            if reason == "semantic_default":
+                semantic_default_rows.append({**compact, "reason": "semantic_default"})
         if _numeric_value_out_of_runtime_range(row.get("value")):
             out_of_range_rows.append(compact)
 
@@ -178,6 +183,7 @@ def _card_behavior_check(card_behavior: Mapping[str, Any]) -> dict[str, Any]:
         "accepted_cardid_runtime_rows": len(accepted_rows),
         "semantic_score_missing_rows": semantic_missing_rows,
         "semantic_default_rows": semantic_default_rows,
+        "semantic_score_rows": semantic_score_rows,
         "out_of_range_value_rows": out_of_range_rows,
     }
 
@@ -545,6 +551,7 @@ def _semantic_intent_coverage_check(
         "meaningful_cardid_runtime_rows": _int_value(
             card_behavior_check.get("accepted_cardid_runtime_rows", 0)
         ),
+        "taxonomy_reason_counts": _taxonomy_reason_counts(card_behavior_check),
         "runtime_rows_missing_trace": runtime_rows_missing_trace,
         "semantic_score_missing_rows": semantic_score_missing_rows,
         "semantic_default_rows": semantic_default_rows,
@@ -592,6 +599,17 @@ def _list_of_mappings(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+def _taxonomy_reason_counts(card_behavior_check: Mapping[str, Any]) -> dict[str, int]:
+    rows = _list_of_mappings(card_behavior_check.get("semantic_score_rows"))
+    counts: dict[str, int] = {}
+    for row in rows:
+        reason = str(row.get("reason", "")).strip()
+        if not reason:
+            continue
+        counts[reason] = counts.get(reason, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _runtime_json_check(
