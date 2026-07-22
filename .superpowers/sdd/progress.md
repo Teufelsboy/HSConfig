@@ -920,3 +920,17 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 4: Summarize taxonomy reasons in config quality (commit b8e72ea; RED missing taxonomy_reason_counts confirmed; config-quality tests 23 passed; review clean).
 - [x] Task 5: Document diagnostic-only intent boundary (commits e7bb0cb and 856c686; skill-file tests 63 passed; re-review clean after no-HSTuner boundary restoration).
 - [x] Task 6: Final verification (full suite 1739 passed / 11 skipped after canonical pre-run boundary fix 12a81d0; guardrail runner 534 passed; installed skill sync clean; contract preflight PASS; spine sentinel clean).
+
+---
+
+# HSConfig Config Proof Bundle SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-config-proof-bundle.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Task 1: Add Compact Quality Fields For Proof Projection (commits 965f156..ba1802f, review clean)
+- [ ] Task 2: Add Configure-Local Config Proof Summary
+- [ ] Task 3: Make Proof Summary Visible In Contract Preflight
+- [ ] Task 4: Update Operator Docs And Skill Wording
+- [ ] Task 5: Final Verification And Clean Worktree
