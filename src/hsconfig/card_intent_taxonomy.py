@@ -187,9 +187,9 @@ def _has_conditional_minion_death_burn(text: str) -> bool:
 
 
 def _has_direct_enemy_hero_burn(text: str) -> bool:
-    return _has_any(
-        text,
-        ("prefer_enemy_hero", "enemy hero", "face", "hero damage"),
+    return any(
+        _has_phrase_or_token(text, needle)
+        for needle in ("prefer_enemy_hero", "enemy hero", "face", "hero damage")
     ) and _has_damage_wording(text)
 
 
@@ -199,6 +199,12 @@ def _has_damage_wording(text: str) -> bool:
 
 def _has_any(text: str, needles: Sequence[str]) -> bool:
     return any(needle in text for needle in needles)
+
+
+def _has_phrase_or_token(text: str, needle: str) -> bool:
+    if "_" in needle or " " in needle:
+        return needle in text
+    return _has_token(text, needle)
 
 
 def _has_token(text: str, token: str) -> bool:

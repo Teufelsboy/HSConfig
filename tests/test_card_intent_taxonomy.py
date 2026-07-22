@@ -87,3 +87,26 @@ def test_taxonomy_keeps_unknown_mechanics_visible_as_bounded_default():
 
 def test_bounded_default_value_handles_non_numeric_input():
     assert bounded_default_value("not-a-number") == "6"
+
+
+def test_direct_burn_does_not_match_face_inside_surface_word():
+    classification = classify_card_intent(
+        "Card behavior surface damage row without targeting guidance."
+    )
+
+    assert classification.reason == "semantic_default"
+    assert classification.value == "6"
+    assert classification.band == "default"
+
+
+def test_direct_burn_still_matches_real_enemy_hero_and_face_phrases():
+    for text in (
+        "Prefer enemy hero face damage burn.",
+        "prefer_enemy_hero damage plan",
+        "Deal hero damage directly.",
+        "Send face damage now.",
+    ):
+        classification = classify_card_intent(text)
+        assert classification.reason == "direct_enemy_hero_burn"
+        assert classification.value == "12"
+        assert classification.band == "critical"
