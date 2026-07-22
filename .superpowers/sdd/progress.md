@@ -985,3 +985,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean; upstream in sync before implementation; origin/main not ahead; plan anchor c1e1d9c.
 - [x] Task 1: Pure source provenance normalizer committed in 2320087 with fixes 279ff61 and 19726b0; final re-review approved; focused provenance tests passed locally (6 passed).
 - [x] Task 2: Source evidence policy and autopilot provenance projection committed in 8da7fa8; task review approved; source-autopilot tests passed locally (35 passed).
+- [x] Task 3: Research result validator and contract provenance checks committed in 54c1a74 with compatibility fix 2dd726f; re-review approved; focused provenance/validator/contract tests passed locally (45 passed).
