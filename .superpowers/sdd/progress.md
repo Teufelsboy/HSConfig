@@ -934,3 +934,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3: Make Proof Summary Visible In Contract Preflight (commits f40e2ac..8e06587, review clean)
 - [x] Task 4: Update Operator Docs And Skill Wording (commits f40e2ac..8e06587, review clean)
 - [x] Task 5: Final Verification And Clean Worktree (final review fix 40fd4c6 re-reviewed clean; currentness clean; targeted 96 passed; contract-preflight PASS; contract-spine-sentinel clean)
+
+---
+
+# HSConfig Installed Skill Contract Drift Sentinel SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-installed-skill-contract-drift-sentinel.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Task 1: Extract Reusable Installed Skill Sync Status (commits 6679622..e81edcb, review approved; controller ledger committed separately)
+- [ ] Task 2: Project Installed Skill Sync Through Contract Preflight
+- [ ] Task 3: Update Operator Docs And Skill Routing
+- [ ] Task 4: Final Verification, Installed Skill Sync, And Clean Worktree
+
