@@ -54,6 +54,12 @@ package status in `reports/operator_summary.json`. A stale or seed-only
 snapshot must not downgrade `SOURCE_BACKED_STRONG`, must not promote a partial
 package, and does not create apply authority.
 
+The research-result sentinel validates `fields.yaml` and `results/*.json` from
+the latest research-deep batch against the HSConfig result contract. It can mark
+stale, seed-only, malformed, or non-promoting research snapshots as attention,
+but it cannot promote or downgrade canonical package status, cannot replace
+`reports/operator_summary.json`, and keeps `source_status_apply_blocking=false`.
+
 `hsconfig strong-closure-dossier` writes an operator-facing closure dossier for
 a prepared package. strong-closure-dossier is diagnostic-only: it may read
 `reports/operator_summary.json`, research result snapshots, and

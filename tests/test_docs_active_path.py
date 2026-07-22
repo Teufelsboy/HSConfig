@@ -557,3 +557,12 @@ def test_operator_readme_documents_contract_preflight_research_context_lock():
     assert "historical research outline" in text
     assert "diagnostic-only" in text
     assert "operator_summary.json" in text
+
+
+def test_operator_docs_describe_handoff_contract_without_second_gate() -> None:
+    text = Path("docs/operator/README.md").read_text(encoding="utf-8")
+
+    assert "configure_summary.json.handoff_contract" in text
+    assert "diagnostic-only handoff proof" in text
+    assert "does not replace reports/operator_summary.json" in text
+    assert "research-result sentinel" in text

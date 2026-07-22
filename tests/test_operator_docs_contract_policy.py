@@ -546,6 +546,16 @@ def test_operator_docs_name_source_autopilot_without_new_apply_gate():
     assert "operator_summary.json remains the only normal apply authority" in combined
 
 
+def test_source_closure_docs_keep_research_sentinel_non_promoting() -> None:
+    text = Path("docs/operator/source-backed-strong-closure.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "research-result sentinel" in text
+    assert "cannot promote or downgrade" in text
+    assert "source_status_apply_blocking=false" in text
+
+
 def test_operator_docs_keep_single_apply_authority_and_no_default_only_visibility():
     guide = (ROOT / "docs/operator/guide-research-policy.md").read_text(
         encoding="utf-8"

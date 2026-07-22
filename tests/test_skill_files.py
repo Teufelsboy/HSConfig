@@ -1274,3 +1274,12 @@ def test_hsconfig_skill_keeps_explicit_no_hstuner_after_game_boundary():
         "another apply gate."
         in skill
     )
+
+
+def test_hsconfig_skill_mentions_handoff_contract_and_research_sentinel() -> None:
+    text = Path(".agents/skills/hsconfig/SKILL.md").read_text(encoding="utf-8")
+
+    assert "configure_summary.json.handoff_contract" in text
+    assert "research-result sentinel" in text
+    assert "diagnostic-only" in text
+    assert "operator_summary.json remains the only normal apply authority" in text
