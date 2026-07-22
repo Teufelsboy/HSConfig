@@ -1000,3 +1000,6 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 1: Preflight/currentness clean before edits (`dirty=false`, `behind_origin_main=0`, `clean_for_runtime_work=true`); baseline skill/preflight slice passed (88 passed).
 - [x] Tasks 2-6: Receipt visibility tests, compact docs/skill wording, contract-preflight check, and installed skill sync committed in 85e55e1; RED failures confirmed first; task review approved.
 - [x] Tasks 7-8: Final review found no implementation defects and only the open ledger as cleanup item; focused suite 90 passed; guardrails 550 passed; full suite 1831 passed, 11 skipped; installed skill sync in sync; final clean/currentness verification follows the ledger commit.
+Task 2: complete (commits c445942..d69f28c, review clean)
+Task 3: complete (commits d69f28c..55d56b0, review clean)
+Task 4: complete (commits 55d56b0..ff64b30, review clean)
