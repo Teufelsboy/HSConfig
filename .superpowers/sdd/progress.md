@@ -879,3 +879,14 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3: Configure summary and contract-doctor operator surface (commit 5b18546; focused configure/contract-doctor tests 26 passed; task review approved).
 - [x] Task 4: Operator docs and optional skill sync (commit 372a60b; focused docs/skill sync tests 44 passed; task review approved).
 - [x] Task 5: Verification, final review, commit, push, and clean-worktree proof (test-hardening commits 9539e66 and 9bb6887; final review approved after malformed optional semantic-enrichment regression; focused slice 92 passed; guardrail slice 84 passed; full suite 1724 passed, 11 skipped; currentness clean before push).
+
+---
+
+# HSConfig Acceptance Route Coherence Preflight SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-22-hsconfig-acceptance-route-coherence-preflight.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Tasks 1-2: Add and implement configure acceptance route preflight checks (commits 7c52845..61ddfde, re-review approved after projection-drift negative assertion fix)
+- [ ] Task 3: Verify existing contract preflight behavior remains stable
+- [ ] Task 4: Final cleanliness, skill sync, commit, push, and final review
