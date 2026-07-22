@@ -623,10 +623,16 @@ def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
         "problem_count": 0,
         "problem_checks": [],
         "forbidden_normal_surfaces_absent": True,
+        "forbidden_normal_surfaces_status": "clean",
         "legacy_surfaces_present": [],
         "darkbishop_boundary_status": "effect_without_mulligan_keep",
         "runtime_json_status": "clean",
-        "source_to_runtime_status": "diagnostic_only",
+        "source_to_runtime_status": "clean",
+        "currentness_status": "clean",
+        "closure_schema_current": True,
+        "cards_missing_closure": 0,
+        "cards_total": 18,
+        "cards_with_closure": 18,
         "mechanic_runtime_discipline_status": "clean",
         "semantic_intent_status": "clean",
     }
@@ -654,6 +660,7 @@ def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
         "no_default_only_clean": True,
         "default_only_runtime_surfaces": [],
         "forbidden_normal_surfaces_absent": True,
+        "forbidden_normal_surfaces_status": "clean",
         "forbidden_normal_surfaces_present": [],
         "runtime_surface_boundary": [
             "GlobalValues.json",
@@ -661,11 +668,26 @@ def test_build_config_proof_summary_reports_clean_diagnostic_proof() -> None:
             "per-card <CARDID>.json",
             "Combo.json",
         ],
+        "runtime_surface_boundary_details": {
+            "unconditional_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "per-card <CARDID>.json",
+            ],
+            "conditional_surfaces": {
+                "Combo.json": "complete_source_backed_combo",
+            },
+        },
         "darkbishop_boundary_status": "effect_without_mulligan_keep",
         "mechanic_visibility_non_blocking": True,
         "first_warning_boundary": None,
         "runtime_json_status": "clean",
-        "source_to_runtime_status": "diagnostic_only",
+        "source_to_runtime_status": "clean",
+        "currentness_status": "clean",
+        "closure_schema_current": True,
+        "cards_missing_closure": 0,
+        "cards_total": 18,
+        "cards_with_closure": 18,
         "semantic_intent_status": "clean",
         "config_quality_status": "clean",
         "config_quality_problem_checks": [],
@@ -705,10 +727,16 @@ def test_build_config_proof_summary_surfaces_attention_without_blocking() -> Non
             "source_to_runtime_closure_rows_missing",
         ],
         "forbidden_normal_surfaces_absent": False,
+        "forbidden_normal_surfaces_status": "attention",
         "legacy_surfaces_present": ["CustomConfig/deck/Presume.json"],
         "darkbishop_boundary_status": "mulligan_keep_present",
         "runtime_json_status": "attention",
-        "source_to_runtime_status": "diagnostic_only",
+        "source_to_runtime_status": "attention",
+        "currentness_status": "attention",
+        "closure_schema_current": False,
+        "cards_missing_closure": 2,
+        "cards_total": 18,
+        "cards_with_closure": 16,
         "mechanic_runtime_discipline_status": "attention",
         "semantic_intent_status": "attention",
     }
@@ -728,6 +756,8 @@ def test_build_config_proof_summary_surfaces_attention_without_blocking() -> Non
     assert summary["forbidden_normal_surfaces_present"] == [
         "CustomConfig/deck/Presume.json"
     ]
+    assert summary["source_to_runtime_status"] == "attention"
+    assert summary["currentness_status"] == "attention"
     assert summary["first_warning_boundary"] == {
         "mechanic": "location_activation",
         "boundary": "warning_only",
@@ -761,16 +791,20 @@ def test_config_proof_summary_helper_stays_configure_local_projection() -> None:
     configure_source = (
         repo_root / "src" / "hsconfig" / "commands" / "configure.py"
     ).read_text(encoding="utf-8")
-    apply_source = (
-        repo_root / "src" / "hsconfig" / "commands" / "apply.py"
-    ).read_text(encoding="utf-8")
-    apply_gate_source = (
-        repo_root / "src" / "hsconfig" / "apply_gate.py"
-    ).read_text(encoding="utf-8")
+    production_apply_surfaces = [
+        repo_root / "src" / "hsconfig" / "commands" / "apply.py",
+        repo_root / "src" / "hsconfig" / "apply_gate.py",
+        repo_root / "src" / "hsconfig" / "runtime_apply.py",
+        repo_root / "src" / "hsconfig" / "runtime_apply_receipts.py",
+        repo_root / "src" / "hsconfig" / "commands" / "acceptance_matrix.py",
+        repo_root / "src" / "hsconfig" / "acceptance_matrix.py",
+    ]
 
     assert "def _build_config_proof_summary(" in configure_source
-    assert "_build_config_proof_summary" not in apply_source
-    assert "_build_config_proof_summary" not in apply_gate_source
+    for path in production_apply_surfaces:
+        source = path.read_text(encoding="utf-8")
+        assert "_build_config_proof_summary" not in source
+        assert "config_proof_summary" not in source
 
 
 def test_build_acceptance_summary_marks_non_load_safe_package_unusable() -> None:
@@ -907,6 +941,16 @@ def test_compact_config_quality_summary_includes_proof_fields() -> None:
                 "authority": "diagnostic_only",
                 "apply_blocking": False,
             },
+            "trace_completeness": {
+                "runtime_rows_missing_trace": [],
+            },
+            "closure_freshness": {
+                "present": True,
+                "closure_schema_current": True,
+                "cards_missing_closure": 0,
+                "cards_total": 18,
+                "cards_with_closure": 18,
+            },
             "mechanic_runtime_discipline": {
                 "status": "clean",
                 "report_only_runtime_rows": [],
@@ -927,12 +971,82 @@ def test_compact_config_quality_summary_includes_proof_fields() -> None:
         "problem_checks": [],
         "legacy_surfaces_present": [],
         "forbidden_normal_surfaces_absent": True,
+        "forbidden_normal_surfaces_status": "clean",
         "darkbishop_boundary_status": "effect_without_mulligan_keep",
         "runtime_json_status": "clean",
-        "source_to_runtime_status": "diagnostic_only",
+        "source_to_runtime_status": "clean",
+        "currentness_status": "clean",
+        "closure_schema_current": True,
+        "cards_missing_closure": 0,
+        "cards_total": 18,
+        "cards_with_closure": 18,
         "mechanic_runtime_discipline_status": "clean",
         "semantic_intent_status": "clean",
     }
+
+
+def test_compact_config_quality_summary_marks_missing_trace_as_attention() -> None:
+    report = {
+        "status": "attention",
+        "problems": [],
+        "checks": {
+            "source_to_runtime_explainability": {"present": True},
+            "trace_completeness": {
+                "runtime_rows_missing_trace": [{"card_id": "CS2_235"}],
+            },
+            "closure_freshness": {
+                "present": True,
+                "closure_schema_current": True,
+                "cards_missing_closure": 0,
+                "cards_total": 1,
+                "cards_with_closure": 1,
+            },
+        },
+    }
+
+    summary = _compact_config_quality_summary(report)
+
+    assert summary["source_to_runtime_status"] == "attention"
+    assert summary["currentness_status"] == "clean"
+
+
+@pytest.mark.parametrize(
+    ("closure", "expected_status"),
+    [
+        (
+            {
+                "present": True,
+                "closure_schema_current": False,
+                "cards_missing_closure": 1,
+                "cards_total": 18,
+                "cards_with_closure": 17,
+            },
+            "attention",
+        ),
+        (None, "missing"),
+    ],
+)
+def test_compact_config_quality_summary_projects_closure_currentness(
+    closure: dict[str, Any] | None,
+    expected_status: str,
+) -> None:
+    checks: dict[str, Any] = {
+        "source_to_runtime_explainability": {"present": True},
+        "trace_completeness": {"runtime_rows_missing_trace": []},
+    }
+    if closure is not None:
+        checks["closure_freshness"] = closure
+    report = {"status": "attention", "problems": [], "checks": checks}
+
+    summary = _compact_config_quality_summary(report)
+
+    assert summary["currentness_status"] == expected_status
+    if closure is None:
+        assert summary["closure_schema_current"] is False
+        assert summary["cards_missing_closure"] == 0
+    else:
+        assert summary["closure_schema_current"] is closure["closure_schema_current"]
+        assert summary["cards_missing_closure"] == closure["cards_missing_closure"]
 
 
 def test_configure_writes_diagnostic_config_quality_summary(
@@ -1014,7 +1128,8 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert proof["normal_apply_authority"] == "reports/operator_summary.json"
     assert proof["technical_load_safe"] is True
     assert proof["no_default_only_clean"] is True
-    assert proof["forbidden_normal_surfaces_absent"] is True
+    assert proof["forbidden_normal_surfaces_status"] == "unknown"
+    assert proof["forbidden_normal_surfaces_absent"] is None
     assert proof["runtime_surface_boundary"] == [
         "GlobalValues.json",
         "Mulligan.json",
@@ -1088,5 +1203,9 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         "Package is usable now according to reports/operator_summary.json; "
         "source and config-quality details remain diagnostic."
     )
+    assert summary["config_proof_summary"]["forbidden_normal_surfaces_status"] == (
+        "unknown"
+    )
+    assert summary["config_proof_summary"]["forbidden_normal_surfaces_absent"] is None
     assert len(apply_calls) == 1
     assert apply_calls[0].package == str(out / "04_package")

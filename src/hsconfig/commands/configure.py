@@ -473,6 +473,9 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
             ]
             summary["legacy_surfaces_present"] = legacy_present
             summary["forbidden_normal_surfaces_absent"] = not legacy_present
+            summary["forbidden_normal_surfaces_status"] = (
+                "clean" if not legacy_present else "attention"
+            )
 
         darkbishop = checks.get("darkbishop_boundary")
         if isinstance(darkbishop, Mapping):
@@ -496,16 +499,55 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
 
         explainability = checks.get("source_to_runtime_explainability")
         if isinstance(explainability, Mapping):
-            if bool(explainability.get("present")):
-                authority = str(explainability.get("authority") or "diagnostic_only")
-                apply_blocking = bool(explainability.get("apply_blocking", False))
-                summary["source_to_runtime_status"] = (
-                    "diagnostic_only"
-                    if authority == "diagnostic_only" and not apply_blocking
-                    else "attention"
+            trace_completeness = checks.get("trace_completeness")
+            runtime_rows_missing_trace = (
+                trace_completeness.get("runtime_rows_missing_trace")
+                if isinstance(trace_completeness, Mapping)
+                else None
+            )
+            if not bool(explainability.get("present")) or not isinstance(
+                runtime_rows_missing_trace, list
+            ):
+                summary["source_to_runtime_status"] = "missing"
+            elif runtime_rows_missing_trace:
+                summary["source_to_runtime_status"] = "attention"
+            else:
+                summary["source_to_runtime_status"] = "clean"
+
+        if isinstance(explainability, Mapping) or "closure_freshness" in checks:
+            closure_freshness = checks.get("closure_freshness")
+            if isinstance(closure_freshness, Mapping):
+                closure_present = bool(closure_freshness.get("present"))
+                closure_schema_current = bool(
+                    closure_freshness.get("closure_schema_current")
+                )
+                cards_missing_closure = int(
+                    closure_freshness.get("cards_missing_closure") or 0
+                )
+                cards_total = int(closure_freshness.get("cards_total") or 0)
+                cards_with_closure = int(
+                    closure_freshness.get("cards_with_closure") or 0
                 )
             else:
-                summary["source_to_runtime_status"] = "missing"
+                closure_present = False
+                closure_schema_current = False
+                cards_missing_closure = 0
+                cards_total = 0
+                cards_with_closure = 0
+
+            summary["currentness_status"] = (
+                "clean"
+                if (
+                    closure_present
+                    and closure_schema_current
+                    and cards_missing_closure == 0
+                )
+                else "attention" if closure_present else "missing"
+            )
+            summary["closure_schema_current"] = closure_schema_current
+            summary["cards_missing_closure"] = cards_missing_closure
+            summary["cards_total"] = cards_total
+            summary["cards_with_closure"] = cards_with_closure
 
         mechanic = checks.get("mechanic_runtime_discipline")
         if isinstance(mechanic, Mapping):
@@ -654,6 +696,23 @@ def _build_config_proof_summary(
         for surface in config_quality_summary.get("legacy_surfaces_present", [])
         if str(surface)
     ]
+    forbidden_normal_surfaces_status = str(
+        config_quality_summary.get("forbidden_normal_surfaces_status") or ""
+    )
+    if forbidden_normal_surfaces_status not in {"clean", "attention"}:
+        if "legacy_surfaces_present" in config_quality_summary:
+            forbidden_normal_surfaces_status = (
+                "clean" if not forbidden_surfaces else "attention"
+            )
+        else:
+            forbidden_normal_surfaces_status = "unknown"
+    forbidden_normal_surfaces_absent: bool | None
+    if forbidden_normal_surfaces_status == "clean":
+        forbidden_normal_surfaces_absent = True
+    elif forbidden_normal_surfaces_status == "attention":
+        forbidden_normal_surfaces_absent = False
+    else:
+        forbidden_normal_surfaces_absent = None
     problem_checks = [
         str(check)
         for check in config_quality_summary.get("problem_checks", [])
@@ -692,14 +751,29 @@ def _build_config_proof_summary(
         ),
         "no_default_only_clean": not default_only_runtime_surfaces,
         "default_only_runtime_surfaces": default_only_runtime_surfaces,
-        "forbidden_normal_surfaces_absent": not forbidden_surfaces,
-        "forbidden_normal_surfaces_present": forbidden_surfaces,
+        "forbidden_normal_surfaces_absent": forbidden_normal_surfaces_absent,
+        "forbidden_normal_surfaces_status": forbidden_normal_surfaces_status,
+        "forbidden_normal_surfaces_present": (
+            forbidden_surfaces
+            if forbidden_normal_surfaces_status != "unknown"
+            else None
+        ),
         "runtime_surface_boundary": [
             "GlobalValues.json",
             "Mulligan.json",
             "per-card <CARDID>.json",
             "Combo.json",
         ],
+        "runtime_surface_boundary_details": {
+            "unconditional_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "per-card <CARDID>.json",
+            ],
+            "conditional_surfaces": {
+                "Combo.json": "complete_source_backed_combo",
+            },
+        },
         "darkbishop_boundary_status": str(
             config_quality_summary.get("darkbishop_boundary_status", "")
         ),
@@ -709,7 +783,20 @@ def _build_config_proof_summary(
         "first_warning_boundary": mechanic_visibility.get("first_warning_boundary"),
         "runtime_json_status": str(config_quality_summary.get("runtime_json_status", "")),
         "source_to_runtime_status": str(
-            config_quality_summary.get("source_to_runtime_status", "")
+            config_quality_summary.get("source_to_runtime_status") or "missing"
+        ),
+        "currentness_status": str(
+            config_quality_summary.get("currentness_status") or "missing"
+        ),
+        "closure_schema_current": bool(
+            config_quality_summary.get("closure_schema_current", False)
+        ),
+        "cards_missing_closure": int(
+            config_quality_summary.get("cards_missing_closure") or 0
+        ),
+        "cards_total": int(config_quality_summary.get("cards_total") or 0),
+        "cards_with_closure": int(
+            config_quality_summary.get("cards_with_closure") or 0
         ),
         "semantic_intent_status": str(
             config_quality_summary.get("semantic_intent_status", "")
