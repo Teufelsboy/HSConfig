@@ -55,7 +55,7 @@ first and then run `hsconfig contract-doctor --package <04_package> --json` for
 details. Package-mode preflight is diagnostic-only; it does not write files,
 does not replace `reports/operator_summary.json`, and does not block a
 technically load-safe package.
-Package mode also mirrors the generated `surface_intent` receipt as diagnostic-only fields, so operators can see required/rich/legacy surface intent without changing apply authority.
+Package mode also mirrors compact generated `surface_intent` diagnostics, including status, surface count, fallback rows, legacy-policy surfaces, and first attention, without changing apply authority.
 Use `--skill-install-root <path>` only when testing or checking a non-default
 Codex skill root. This preflight is diagnostic-only and does not replace
 `reports/operator_summary.json`.

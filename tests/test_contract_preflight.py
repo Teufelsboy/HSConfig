@@ -990,6 +990,14 @@ def test_contract_preflight_package_mode_surfaces_attention_surface_intent_witho
             "intent_source": "fallback",
         }
     )
+    surface_intent["rows"].append(
+        {
+            "card_id": "Presume",
+            "surface": "Presume.json",
+            "intent": "legacy_policy",
+            "intent_source": "contract",
+        }
+    )
     _write_json(surface_intent_path, surface_intent)
 
     payload = build_contract_preflight(
@@ -1005,7 +1013,10 @@ def test_contract_preflight_package_mode_surfaces_attention_surface_intent_witho
     assert contract["package_contract_current"] is True
     assert contract["surface_intent_status"] == "attention"
     assert contract["surface_intent_present"] is True
-    assert contract["surface_intent_first_attention"]
+    assert contract["surface_intent_surface_count"] == 3
+    assert contract["surface_intent_fallback_intent_rows"] == 1
+    assert contract["surface_intent_legacy_policy_surface_rows"] == ["Presume.json"]
+    assert contract["surface_intent_first_attention"] == "surface_intent_fallback_visible"
     assert all("surface_intent" not in failure for failure in contract["failures"])
 
 
