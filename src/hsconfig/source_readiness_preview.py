@@ -27,14 +27,14 @@ def build_source_readiness_preview(
         or autopilot.get("semantic_status")
         or strong_summary.get("semantic_status")
     )
-    source_backed_strong_ready = bool(
-        strong_summary.get("source_backed_strong_ready")
-        or strong_closure.get("promotion_ready")
+    source_backed_strong_ready = (
+        _bool(strong_summary.get("source_backed_strong_ready"))
+        or _bool(strong_closure.get("promotion_ready"))
         or semantic_status == "SOURCE_BACKED_STRONG"
     )
-    strong_candidate = bool(
-        autopilot.get("strong_candidate")
-        or strong_summary.get("strong_candidate")
+    strong_candidate = (
+        _bool(autopilot.get("strong_candidate"))
+        or _bool(strong_summary.get("strong_candidate"))
         or source_backed_strong_ready
     )
     first_missing_source_action = _first_action(
@@ -90,7 +90,7 @@ def build_source_readiness_preview(
         "surface_source_gap_count": _lane_count(surface_rows, "source_gap"),
         "default_only_clean": not default_only_runtime_surfaces,
         "default_only_runtime_surfaces": default_only_runtime_surfaces,
-        "runtime_apply_allowed": bool(operator.get("runtime_apply_allowed", False)),
+        "runtime_apply_allowed": _bool(operator.get("runtime_apply_allowed", False)),
         "runtime_apply_mode": _text(operator.get("runtime_apply_mode")),
         "readiness_summary": _readiness_summary(
             readiness_lane,
@@ -161,6 +161,23 @@ def _int(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "t", "yes", "y", "on"}:
+            return True
+        if normalized in {"", "0", "false", "f", "no", "n", "off", "none", "null"}:
+            return False
+        return False
+    return bool(value)
 
 
 def _text(value: Any) -> str:

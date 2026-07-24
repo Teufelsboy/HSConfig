@@ -130,6 +130,32 @@ def test_preview_reports_partial_source_gap_without_blocking_apply() -> None:
     assert preview["runtime_apply_allowed"] is True
 
 
+def test_preview_normalizes_boolean_strings_without_blocking_default_only_surfaces() -> None:
+    preview = build_source_readiness_preview(
+        source_autopilot_report={
+            "semantic_status": "SOURCE_BACKED_PARTIAL",
+            "strong_candidate": "0",
+            "strong_closure_summary": {
+                "source_backed_strong_ready": "False",
+                "first_missing_source_action": "add_current_card_specific_runtime_source",
+            },
+        },
+        operator_summary={
+            "runtime_apply_allowed": "False",
+            "default_only_runtime_surfaces": ["Mulligan.json"],
+            "source_status_apply_blocking": False,
+        },
+    )
+
+    assert preview["runtime_apply_allowed"] is False
+    assert preview["source_backed_strong_ready"] is False
+    assert preview["strong_candidate"] is False
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surfaces"] == ["Mulligan.json"]
+    assert preview["apply_blocking"] is False
+    assert preview["source_status_apply_blocking"] is False
+
+
 def test_preview_uses_candidate_plan_when_autopilot_is_not_available() -> None:
     preview = build_source_readiness_preview(
         source_candidate_plan={
