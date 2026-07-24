@@ -1334,7 +1334,11 @@ def _is_canonical_surface_intent_row(
     rule_id = str(row.get("rule_id") or "").strip()
     card_id = _row_card_id(row)
     if surface == "GlobalValues.json":
-        return surface in required_surfaces and rule_id == "globalvalues_full_key_profile"
+        return (
+            surface in required_surfaces
+            and not card_id
+            and rule_id == "globalvalues_full_key_profile"
+        )
     if surface == "Combo.json":
         return surface in optional_surfaces and rule_id == "combo_sequences" and not card_id
     if surface == "Mulligan.json":

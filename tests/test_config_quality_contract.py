@@ -1995,6 +1995,66 @@ def test_config_quality_does_not_accept_nested_surface_intent_row_as_globalvalue
     assert report["apply_blocking"] is False
 
 
+def test_config_quality_does_not_accept_card_bearing_globalvalues_intent(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["surface_status_ledger"] = [
+        {"surface": "cardid_behavior", "status": "emitted"},
+        {"surface": "mulligan", "status": "emitted"},
+        {"surface": "combo", "status": "not_applicable"},
+    ]
+    write_json(package / "reports" / "operator_summary.json", operator)
+    write_json(
+        package / "reports" / "surface_intent.json",
+        {
+            "rows": [
+                {
+                    "rule_id": "globalvalues_full_key_profile",
+                    "card_id": "UNRELATED_001",
+                    "surface": "GlobalValues.json",
+                    "intent": "bogus",
+                },
+                {
+                    "rule_id": "NX2_019_card_behavior",
+                    "card_id": "NX2_019",
+                    "surface": "NX2_019.json",
+                    "surface_family": "CARDID.json",
+                    "intent": "conditional_minion_death_burn",
+                },
+            ],
+            "required_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "NX2_019.json",
+            ],
+            "optional_surfaces": [],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    projection = report["checks"]["surface_intent_projection"]
+    assert audit["status"] == "attention"
+    assert audit["runtime_files_without_intent"] == [
+        "CustomConfig/shadowpriest/GlobalValues.json"
+    ]
+    assert projection["status"] == "attention"
+    assert projection["first_attention"] == "surface_intent_malformed_row_visible"
+    assert projection["malformed_rows"] == [
+        {
+            "card_id": "UNRELATED_001",
+            "rule_id": "globalvalues_full_key_profile",
+            "surface": "GlobalValues.json",
+        }
+    ]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_reports_authority_drift_without_changing_normal_apply_authority(
     tmp_path: Path,
 ):
