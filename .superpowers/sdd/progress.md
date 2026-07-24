@@ -1038,4 +1038,4 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Tasks 3-4: source-manifest/configure integration implemented; Important URL trust-boundary findings fixed and re-reviewed clean; focused source/acquire/configure suite passed (30 passed).
 - [x] Task 5: operator workflow docs updated; task review approved after wording fix; docs/skill focused slice passed.
 - [x] Task 6: final contract, guardrail, full-suite, and currentness verification (focused source 97 passed; docs/manifest 73 passed; guardrails 559 passed; full suite 1865 passed, 11 skipped; final review approved; pre-commit preflight attention only because the intended worktree changes were still unstaged).
-- [ ] Task 7: stage, commit, push, and final clean-worktree proof.
+- [x] Task 7: stage, commit, push, and final clean-worktree proof (implementation committed in 6cef32a and pushed to origin/codex/hsconfig-semantic-intent-scoring; final clean/currentness proof follows this ledger-only closure commit).
