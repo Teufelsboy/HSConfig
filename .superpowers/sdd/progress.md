@@ -1023,9 +1023,10 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before edits; dirty=false, behind_origin_main=0, clean_for_runtime_work=true.
 - [x] Tasks 1-2: Package preflight surface-intent receipt tests and implementation
 - [x] Task 3: Diagnostic-only boundary sentinel and operator docs
-- [ ] Task 4: Final verification, push, and clean-current proof
+- [x] Task 4: Final verification, push, and clean-current proof
 - Task 1-2: complete (commits e91cf13..ec43197, review clean)
 - Task 3: complete (commits ec43197..f3d7835, re-review clean)
+- Task 4: complete (focused 84 passed; full 1893 passed, 11 skipped; contract-preflight PASS; final re-review clean)
 
 # HSConfig Skill Thin Router Contract Hardening SDD Progress
 
