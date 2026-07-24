@@ -44,6 +44,12 @@ def test_handoff_contract_reports_clean_single_authority_package() -> None:
             "closure_schema_current": True,
             "cards_missing_closure": 0,
             "semantic_intent_status": "clean",
+            "surface_intent_status": "clean",
+            "surface_intent_present": True,
+            "surface_intent_surface_count": 3,
+            "surface_intent_fallback_intent_rows": 0,
+            "surface_intent_legacy_policy_surface_rows": [],
+            "surface_intent_first_attention": None,
             "runtime_json_status": "clean",
         },
         config_quality_summary={
@@ -86,6 +92,12 @@ def test_handoff_contract_reports_clean_single_authority_package() -> None:
         "closure_schema_current": True,
         "cards_missing_closure": 0,
         "semantic_intent_status": "clean",
+        "surface_intent_status": "clean",
+        "surface_intent_present": True,
+        "surface_intent_surface_count": 3,
+        "surface_intent_fallback_intent_rows": 0,
+        "surface_intent_legacy_policy_surface_rows": [],
+        "surface_intent_first_attention": None,
         "mechanic_runtime_discipline_status": "clean",
         "config_quality_status": "clean",
         "config_quality_problem_checks": [],
@@ -134,6 +146,12 @@ def test_handoff_contract_surfaces_attention_without_blocking_apply() -> None:
             "closure_schema_current": False,
             "cards_missing_closure": 2,
             "semantic_intent_status": "attention",
+            "surface_intent_status": "attention",
+            "surface_intent_present": True,
+            "surface_intent_surface_count": 4,
+            "surface_intent_fallback_intent_rows": 1,
+            "surface_intent_legacy_policy_surface_rows": ["Presume.json"],
+            "surface_intent_first_attention": "surface_intent_fallback_visible",
             "runtime_json_status": "attention",
         },
         config_quality_summary={
@@ -150,3 +168,11 @@ def test_handoff_contract_surfaces_attention_without_blocking_apply() -> None:
     assert contract["default_only_clean"] is False
     assert contract["default_only_runtime_surfaces"] == ["Mulligan.json"]
     assert contract["next_report_to_open"] == "reports/contract_doctor.json"
+    assert contract["surface_intent_status"] == "attention"
+    assert contract["surface_intent_present"] is True
+    assert contract["surface_intent_surface_count"] == 4
+    assert contract["surface_intent_fallback_intent_rows"] == 1
+    assert contract["surface_intent_legacy_policy_surface_rows"] == ["Presume.json"]
+    assert contract["surface_intent_first_attention"] == (
+        "surface_intent_fallback_visible"
+    )

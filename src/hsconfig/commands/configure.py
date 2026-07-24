@@ -555,6 +555,30 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
                 for item in config_intent.get("default_only_runtime_surfaces", [])
                 if str(item)
             ]
+        surface_intent = checks.get("surface_intent_projection")
+        if isinstance(surface_intent, Mapping):
+            summary["surface_intent_status"] = str(surface_intent.get("status") or "")
+            summary["surface_intent_present"] = bool(
+                surface_intent.get("present", False)
+            )
+            summary["surface_intent_surface_count"] = int(
+                surface_intent.get("surface_count") or 0
+            )
+            summary["surface_intent_fallback_intent_rows"] = len(
+                [
+                    item
+                    for item in surface_intent.get("fallback_intent_rows", [])
+                    if isinstance(item, Mapping)
+                ]
+            )
+            summary["surface_intent_legacy_policy_surface_rows"] = [
+                str(item.get("surface"))
+                for item in surface_intent.get("legacy_policy_surface_rows", [])
+                if isinstance(item, Mapping) and str(item.get("surface") or "")
+            ]
+            first_attention = surface_intent.get("first_attention")
+            if first_attention is not None:
+                summary["surface_intent_first_attention"] = str(first_attention)
         legacy_surfaces = checks.get("legacy_surfaces")
         if isinstance(legacy_surfaces, Mapping):
             legacy_present = [
@@ -894,6 +918,30 @@ def _build_config_proof_summary(
         "semantic_intent_status": str(
             config_quality_summary.get("semantic_intent_status", "")
         ),
+        "surface_intent_status": str(
+            config_quality_summary.get("surface_intent_status", "")
+        ),
+        "surface_intent_present": bool(
+            config_quality_summary.get("surface_intent_present", False)
+        ),
+        "surface_intent_surface_count": int(
+            config_quality_summary.get("surface_intent_surface_count") or 0
+        ),
+        "surface_intent_fallback_intent_rows": int(
+            config_quality_summary.get("surface_intent_fallback_intent_rows") or 0
+        ),
+        "surface_intent_legacy_policy_surface_rows": [
+            str(surface)
+            for surface in config_quality_summary.get(
+                "surface_intent_legacy_policy_surface_rows", []
+            )
+            if str(surface)
+        ],
+        "surface_intent_first_attention": (
+            str(config_quality_summary.get("surface_intent_first_attention"))
+            if config_quality_summary.get("surface_intent_first_attention") is not None
+            else None
+        ),
         "config_intent_self_audit_status": str(
             config_quality_summary.get("config_intent_self_audit_status", "")
         ),
@@ -1045,6 +1093,30 @@ def _build_handoff_contract(
         ),
         "semantic_intent_status": str(
             config_proof_summary.get("semantic_intent_status") or ""
+        ),
+        "surface_intent_status": str(
+            config_proof_summary.get("surface_intent_status") or ""
+        ),
+        "surface_intent_present": bool(
+            config_proof_summary.get("surface_intent_present", False)
+        ),
+        "surface_intent_surface_count": int(
+            config_proof_summary.get("surface_intent_surface_count") or 0
+        ),
+        "surface_intent_fallback_intent_rows": int(
+            config_proof_summary.get("surface_intent_fallback_intent_rows") or 0
+        ),
+        "surface_intent_legacy_policy_surface_rows": [
+            str(surface)
+            for surface in config_proof_summary.get(
+                "surface_intent_legacy_policy_surface_rows", []
+            )
+            if str(surface)
+        ],
+        "surface_intent_first_attention": (
+            str(config_proof_summary.get("surface_intent_first_attention"))
+            if config_proof_summary.get("surface_intent_first_attention") is not None
+            else None
         ),
         **(
             {

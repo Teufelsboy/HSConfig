@@ -349,6 +349,43 @@ def test_config_quality_surfaces_surface_intent_attention_without_new_problem(
         problem["check"].startswith("surface_intent_")
         for problem in report["problems"]
     )
+    compact = _compact_config_quality_summary(report)
+    assert compact["surface_intent_status"] == "attention"
+    assert compact["surface_intent_present"] is True
+    assert compact["surface_intent_surface_count"] == 4
+    assert compact["surface_intent_fallback_intent_rows"] == 1
+    assert compact["surface_intent_legacy_policy_surface_rows"] == ["Presume.json"]
+    assert compact["surface_intent_first_attention"] == (
+        "surface_intent_fallback_visible"
+    )
+
+
+def test_config_quality_missing_surface_intent_is_non_blocking_diagnostic(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    (package / "reports" / "surface_intent.json").unlink()
+
+    report = build_config_quality_report(package)
+
+    assert report["apply_blocking"] is False
+    assert report["problems"] == []
+    assert report["checks"]["surface_intent_projection"] == {
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "present": False,
+        "status": "missing",
+        "surface_count": 0,
+        "row_count": 0,
+        "required_surfaces": [],
+        "optional_surfaces": [],
+        "rich_optional_runtime_surfaces": [],
+        "fallback_intent_rows": [],
+        "legacy_policy_surface_rows": [],
+        "attention": [],
+        "first_attention": None,
+    }
 
 
 def test_config_quality_flags_report_only_mechanic_runtime_emission(
