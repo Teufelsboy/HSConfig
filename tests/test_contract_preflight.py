@@ -976,6 +976,39 @@ def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     assert contract["next_report_to_open"] == "reports/operator_summary.json"
 
 
+def test_contract_preflight_package_mode_surfaces_attention_surface_intent_without_gate(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    surface_intent_path = package / "reports" / "surface_intent.json"
+    surface_intent = json.loads(surface_intent_path.read_text(encoding="utf-8"))
+    surface_intent["rows"].append(
+        {
+            "card_id": "GENERIC_001",
+            "surface": "GENERIC_001.json",
+            "intent": "aggressive_card_behavior",
+            "intent_source": "fallback",
+        }
+    )
+    _write_json(surface_intent_path, surface_intent)
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["package_contract_current"] is True
+    contract = payload["package_contract"]
+    assert contract["package_contract_current"] is True
+    assert contract["surface_intent_status"] == "attention"
+    assert contract["surface_intent_present"] is True
+    assert contract["surface_intent_first_attention"]
+    assert all("surface_intent" not in failure for failure in contract["failures"])
+
+
 def test_contract_preflight_package_mode_surfaces_missing_surface_intent_without_gate(
     tmp_path: Path,
 ) -> None:

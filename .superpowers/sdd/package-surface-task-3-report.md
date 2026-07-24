@@ -54,3 +54,31 @@ and `runtime_apply.py` do not consume the `surface_intent` namespace.
 No known Task 3 concerns. The full repository test suite and currentness check
 were outside this worker's scoped verification; the focused contract tests and
 whitespace validation passed.
+
+## Review Fix
+
+The review coverage gaps were addressed without production-code changes.
+
+### Changed Files
+
+- `tests/test_contract_preflight.py`
+  - Added a fixture mutation regression proving attention-level `surface_intent`
+    remains non-gating in package preflight.
+- `tests/test_no_second_gate_contract.py`
+  - Extended the namespace-level `surface_intent` absence check across all four
+    guarded paths: `apply_gate.py`, `runtime_apply.py`, `commands/apply.py`, and
+    `operator_summary.py`.
+- `.superpowers/sdd/package-surface-task-3-report.md`
+  - Recorded this review fix and verification results.
+
+### Exact Test Results
+
+- `python -m pytest tests/test_contract_preflight.py::test_contract_preflight_package_mode_surfaces_attention_surface_intent_without_gate -q`
+  -> `1 passed in 0.32s` (run before any production-code change; no production
+  change was needed).
+- `python -m pytest tests/test_contract_preflight.py::test_contract_preflight_package_mode_surfaces_attention_surface_intent_without_gate tests/test_no_second_gate_contract.py -q`
+  -> `6 passed in 0.34s`.
+- `python -m pytest tests/test_contract_preflight.py tests/test_config_quality_contract.py tests/test_no_second_gate_contract.py -q`
+  -> `84 passed in 10.70s`.
+- `git diff --check`
+  -> passed with no whitespace errors.
