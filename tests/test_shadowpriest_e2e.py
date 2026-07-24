@@ -128,6 +128,78 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     )
 
 
+def test_source_backed_strong_shadowpriest_has_no_known_semantic_intent_fallbacks(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    out = tmp_path / "pkg"
+    code = main(
+        [
+            "prepare",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+        ]
+    )
+
+    reports = out / "reports"
+    behavior_report = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    surface_intent = json.loads(
+        (reports / "surface_intent.json").read_text(encoding="utf-8")
+    )
+    quality = build_config_quality_report(out)
+
+    known_cards = {
+        "DS1_233",
+        "GVG_009",
+        "NX2_019",
+        "SCH_514",
+        "SW_446",
+        "TOY_381",
+        "VAC_419",
+        "VAC_512",
+        "YOD_032",
+    }
+    semantic_default_rows = [
+        {
+            "card_id": row.get("card_id"),
+            "behavior_block": row.get("behavior_block"),
+            "intent": row.get("intent"),
+            "reason": row.get("semantic_score", {}).get("reason"),
+        }
+        for row in behavior_report["rows"]
+        if row.get("card_id") in known_cards
+        and row.get("semantic_score", {}).get("reason") == "semantic_default"
+    ]
+    fallback_surface_rows = [
+        {
+            "card_id": row.get("card_id"),
+            "surface": row.get("surface"),
+            "intent": row.get("intent"),
+            "intent_source": row.get("intent_source"),
+        }
+        for row in surface_intent["rows"]
+        if row.get("card_id") in known_cards
+        and row.get("intent_source") == "fallback"
+    ]
+
+    assert code == 0
+    assert semantic_default_rows == []
+    assert fallback_surface_rows == []
+    assert quality["authority"] == "diagnostic_only"
+    assert quality["apply_blocking"] is False
+    assert quality["checks"]["card_behavior"]["semantic_default_rows"] == []
+
+
 def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_unique(
     tmp_path: Path, monkeypatch
 ):
