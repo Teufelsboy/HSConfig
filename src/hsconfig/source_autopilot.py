@@ -8,6 +8,7 @@ from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_policy import classify_source_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
+from hsconfig.source_readiness_preview import build_source_readiness_preview
 from hsconfig.source_text_claim_extractor import extract_text_claims
 from hsconfig.strong_closure_profiles import ClosureProfileVerdict, evaluate_closure_profile
 
@@ -345,7 +346,7 @@ def _build_report(
         current_date=current_date,
         profile_verdict=profile_verdict,
     )
-    return {
+    report = {
         "schema_version": 1,
         "deck_name": deck_name,
         "status": "OK",
@@ -395,6 +396,10 @@ def _build_report(
             "warning_count": len(warnings) if isinstance(warnings, list) else 0,
         },
     }
+    report["source_readiness_preview"] = build_source_readiness_preview(
+        source_autopilot_report=report,
+    )
+    return report
 
 
 def _build_strong_closure_summary(

@@ -78,3 +78,32 @@ Self-review:
 Commit info:
 - Commit message: `feat: expose source provenance in autopilot`.
 - The resulting commit hash is supplied in the task response because a commit cannot stably record its own final hash.
+
+## Task 2: Embed Source Readiness Preview
+
+Status: complete
+
+Files changed:
+- `src/hsconfig/source_autopilot.py`
+- `src/hsconfig/commands/configure.py`
+- `tests/test_source_autopilot.py`
+- `tests/test_configure_online_source.py`
+- `.superpowers/sdd/task-2-report.md`
+
+TDD evidence:
+- RED after adding the required preview assertions:
+  `pytest tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
+  - Result: `3 failed, 46 passed in 11.13s`; failures were expected `KeyError: 'source_readiness_preview'` in the autopilot report and configure summary paths.
+- GREEN after embedding `build_source_readiness_preview` in autopilot and configure:
+  `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
+  - Result: `55 passed in 11.09s`.
+
+Implementation notes:
+- `source_autopilot_report["source_readiness_preview"]` is built from the in-memory autopilot report only.
+- `configure_summary["source_readiness_preview"]` is built from the existing `source_candidate_plan`, optional `source_autopilot_report.json`, and `operator_summary`.
+- The preview remains diagnostic-only and keeps `runtime_apply_authority` fixed at `reports/operator_summary.json`.
+- No runtime writes, apply gates, second apply authority, HSTuner paths, log parsing, replay parsing, HDT parsing, or gameplay evaluation were added.
+
+Open risks:
+- No broader full-repo suite was run; verification was limited to the Task-2 targeted suites from the brief plus the existing preview helper tests.
+- `.superpowers/sdd/progress.md` was already modified outside this task and was left untouched.

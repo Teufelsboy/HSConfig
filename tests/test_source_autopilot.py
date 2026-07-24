@@ -180,14 +180,32 @@ def test_build_source_autopilot_bundle_outputs_strict_source_documents():
         current_date="2026-07-15",
     )
 
-    assert bundle["source_autopilot_report"]["status"] == "OK"
-    assert bundle["source_autopilot_report"]["source_rank_summary"]["guide_current_deck_match"] == 1
-    assert bundle["source_autopilot_report"]["claim_kind_counts"]["mulligan_keep"] == 4
-    summary = bundle["source_autopilot_report"]["strong_closure_summary"]
+    report = bundle["source_autopilot_report"]
+    assert report["status"] == "OK"
+    assert report["source_rank_summary"]["guide_current_deck_match"] == 1
+    assert report["claim_kind_counts"]["mulligan_keep"] == 4
+    summary = report["strong_closure_summary"]
     assert summary["technical_no_block"] is True
     assert summary["source_backed_strong_ready"] is True
     assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert summary["first_missing_source_action"] == "none"
+    preview = report["source_readiness_preview"]
+
+    assert preview["authority"] == "diagnostic_source_readiness_preview"
+    assert preview["diagnostic_only"] is True
+    assert preview["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert preview["apply_blocking"] is False
+    assert preview["runtime_write_performed"] is False
+    assert preview["source_status_apply_blocking"] is False
+    assert preview["source_autopilot_report_present"] is True
+    assert preview["operator_summary_present"] is False
+    assert preview["semantic_status"] == report["semantic_status"]
+    assert preview["source_backed_strong_ready"] == report[
+        "strong_closure_summary"
+    ]["source_backed_strong_ready"]
+    assert preview["first_missing_source_action"] == report[
+        "first_missing_source_action"
+    ]
     assert bundle["source_documents_payload"]["source_documents"]
 
     strict_bundle = build_source_document_bundle(

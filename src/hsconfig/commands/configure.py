@@ -36,6 +36,7 @@ from hsconfig.source_candidate_plan import (
     dedupe_acquisition_urls,
     is_acquisition_url,
 )
+from hsconfig.source_readiness_preview import build_source_readiness_preview
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
@@ -390,6 +391,16 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         source_urls=source_urls,
         source_closure_intake_receipt=source_closure_intake_receipt,
     )
+    source_autopilot_report = (
+        _read_optional_json(source_autopilot_path / "source_autopilot_report.json")
+        if source_autopilot_path
+        else None
+    )
+    source_readiness_preview = build_source_readiness_preview(
+        source_candidate_plan=source_candidate_plan,
+        source_autopilot_report=source_autopilot_report,
+        operator_summary=operator_summary,
+    )
 
     return _finish(
         out,
@@ -424,6 +435,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "source_status_reasons": list(
                 operator_summary.get("source_status_reasons") or []
             ),
+            "source_readiness_preview": source_readiness_preview,
             "source_status_apply_blocking": bool(
                 operator_summary.get("source_status_apply_blocking", False)
             ),

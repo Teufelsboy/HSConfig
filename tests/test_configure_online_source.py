@@ -297,6 +297,8 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     package = out / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
     explainability = _read_json(package / "reports" / "source_to_runtime_explainability.json")
+    preview = summary["source_readiness_preview"]
+    autopilot_preview = autopilot["source_readiness_preview"]
     deck_dirs = [path for path in (package / "CustomConfig").iterdir() if path.is_dir()]
     assert len(deck_dirs) == 1
     deck_dir = deck_dirs[0]
@@ -314,6 +316,21 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
+    assert preview["authority"] == "diagnostic_source_readiness_preview"
+    assert preview["diagnostic_only"] is True
+    assert preview["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert preview["apply_blocking"] is False
+    assert preview["runtime_write_performed"] is False
+    assert preview["source_status_apply_blocking"] is False
+    assert preview["source_candidate_plan_present"] is True
+    assert preview["source_autopilot_report_present"] is True
+    assert preview["operator_summary_present"] is True
+    assert preview["semantic_status"] == operator["semantic_status"]
+    assert preview["default_only_runtime_surfaces"] == []
+    assert preview["default_only_clean"] is True
+    assert preview["runtime_apply_allowed"] is True
+    assert preview["runtime_apply_mode"] == "load_safe_apply"
+    assert autopilot_preview["authority"] == "diagnostic_source_readiness_preview"
     blocker_reasons = {
         str(blocker.get("reason", ""))
         for blocker in operator["semantic_blockers"]
@@ -448,12 +465,23 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
 
     acquisition = _read_json(out / "02_source_acquisition" / "source_acquisition_report.json")
     operator = _read_json(out / "04_package" / "reports" / "operator_summary.json")
+    summary = _read_json(out / "configure_summary.json")
+    preview = summary["source_readiness_preview"]
 
     assert status == 0
     assert acquisition["failed_fetch_count"] == 1
     assert acquisition["first_missing_source_action"] == "add_public_guide_url_or_use_static_semantics"
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+    assert preview["authority"] == "diagnostic_source_readiness_preview"
+    assert preview["diagnostic_only"] is True
+    assert preview["readiness_lane"] in {
+        "source_partial_no_block",
+        "acquisition_plan_ready_no_block",
+    }
+    assert preview["source_status_apply_blocking"] is False
+    assert preview["runtime_apply_allowed"] is True
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
 
 
