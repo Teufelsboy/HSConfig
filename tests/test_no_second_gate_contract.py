@@ -42,3 +42,15 @@ def test_source_to_runtime_explainability_is_summary_only_not_apply_gate_input()
     assert "_source_to_runtime_explainability_summary" in operator_summary
     assert "source_to_runtime_explainability_summary" in operator_summary
     assert "runtime_apply_allowed" in operator_summary
+
+
+def test_surface_intent_projection_is_summary_only_not_apply_gate_input():
+    guarded_paths = [
+        "src/hsconfig/apply_gate.py",
+        "src/hsconfig/runtime_apply.py",
+        "src/hsconfig/commands/apply.py",
+        "src/hsconfig/operator_summary.py",
+    ]
+
+    for relative_path in guarded_paths:
+        assert "surface_intent_projection" not in _read(relative_path), relative_path
