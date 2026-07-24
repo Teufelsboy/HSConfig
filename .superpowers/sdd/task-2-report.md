@@ -1,3 +1,12 @@
+# Current Task 2: Embed Source Readiness Preview
+
+Status: review hygiene complete
+
+Current-task index:
+- Current implementation report: `## Task 2: Embed Source Readiness Preview`
+- Review hygiene fix: `## Review Fix: Source Readiness Preview Value Propagation`
+- Historical Task-2 report entries are preserved below for audit history.
+
 # Task 2 Report: Semantic Intent Scorer
 
 Status: complete
@@ -107,3 +116,20 @@ Implementation notes:
 Open risks:
 - No broader full-repo suite was run; verification was limited to the Task-2 targeted suites from the brief plus the existing preview helper tests.
 - `.superpowers/sdd/progress.md` was already modified outside this task and was left untouched.
+
+## Review Fix: Source Readiness Preview Value Propagation
+
+Status: complete
+
+Files changed:
+- `tests/test_configure_online_source.py`
+- `.superpowers/sdd/task-2-report.md`
+
+Fix note:
+- Added configure-summary assertions that `source_readiness_preview["first_missing_source_action"]` is propagated from `reports/operator_summary.json` and that `recommended_next_source_action` mirrors the first missing source action.
+- Added a current-task header/index at the top of this report so the active Task 2 section is visible before older historical report entries.
+- The preferred operator field existed in the ShadowPriest fixture, so no fallback assertion was needed.
+
+Verification:
+- `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
+  - Result: `55 passed in 9.81s` on the latest rerun after all code edits.

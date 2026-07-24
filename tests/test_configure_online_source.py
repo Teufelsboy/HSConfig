@@ -326,6 +326,12 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert preview["source_autopilot_report_present"] is True
     assert preview["operator_summary_present"] is True
     assert preview["semantic_status"] == operator["semantic_status"]
+    assert preview["first_missing_source_action"] == operator[
+        "first_missing_source_action"
+    ]
+    assert preview["recommended_next_source_action"] == preview[
+        "first_missing_source_action"
+    ]
     assert preview["default_only_runtime_surfaces"] == []
     assert preview["default_only_clean"] is True
     assert preview["runtime_apply_allowed"] is True
