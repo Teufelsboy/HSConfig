@@ -16,6 +16,7 @@ class RepoCurrentness:
     ahead_origin_main: int
     behind_origin_main: int
     clean_for_runtime_work: bool
+    origin_main_error: str | None = None
 
 
 def parse_status_short(text: str) -> tuple[str, bool]:
@@ -63,15 +64,24 @@ def build_currentness(cwd: str | Path) -> RepoCurrentness:
     )
     upstream = upstream_result.stdout.strip() or None
 
-    ahead, behind = parse_ahead_behind(
-        _run_git(
-            root,
-            "rev-list",
-            "--left-right",
-            "--count",
-            "HEAD...origin/main",
-        ).stdout
+    origin_main_result = _run_git(
+        root,
+        "rev-list",
+        "--left-right",
+        "--count",
+        "HEAD...origin/main",
+        check=False,
     )
+    origin_main_error = None
+    if origin_main_result.returncode == 0:
+        ahead, behind = parse_ahead_behind(origin_main_result.stdout)
+    else:
+        ahead, behind = 0, 1
+        origin_main_error = (
+            origin_main_result.stderr.strip()
+            or origin_main_result.stdout.strip()
+            or "Unable to compare HEAD with origin/main"
+        )
     return RepoCurrentness(
         cwd=str(root),
         branch=branch,
@@ -79,15 +89,16 @@ def build_currentness(cwd: str | Path) -> RepoCurrentness:
         dirty=dirty,
         ahead_origin_main=ahead,
         behind_origin_main=behind,
-        clean_for_runtime_work=(not dirty and behind == 0),
+        clean_for_runtime_work=(not dirty and behind == 0 and origin_main_error is None),
+        origin_main_error=origin_main_error,
     )
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cwd", default=".")
     parser.add_argument("--json", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     currentness = build_currentness(args.cwd)
     if args.json:

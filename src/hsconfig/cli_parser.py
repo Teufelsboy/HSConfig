@@ -18,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Normal operator docs: docs/operator/README.md\n"
             "Preferred normal path: configure.\n"
             "Lower-level inspected path: source-manifest -> "
-            "draft-source-documents -> research-deck -> "
+            "source-autopilot or draft-source-documents -> research-deck -> "
             f"prepare -> validate -> apply. {NEGATIVE_SCOPE_TEXT}\n"
             "Expert and legacy path: build, --claims-json, "
             "--cards-json, --plan-reports-dir."

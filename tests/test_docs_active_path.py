@@ -65,16 +65,16 @@ def test_operator_docs_name_configure_as_preferred_normal_path():
     ) in text
     assert "For staged inspection, use the Lower-Level Inspected Path below." in text
     assert (
-        "source-manifest -> draft-source-documents -> research-deck -> "
-        "prepare -> validate -> apply"
+        "source-manifest -> source-autopilot or draft-source-documents -> "
+        "research-deck -> prepare -> validate -> apply"
     ) in text
     assert "HSConfig is pre-run only" in text
 
 
 def test_preferred_path_docs_use_single_lower_level_chain_label():
     exact_chain = (
-        "source-manifest -> draft-source-documents -> research-deck -> "
-        "prepare -> validate -> apply"
+        "source-manifest -> source-autopilot or draft-source-documents -> "
+        "research-deck -> prepare -> validate -> apply"
     )
     root_readme = Path("README.md").read_text(encoding="utf-8")
     operator_readme = Path("docs/operator/README.md").read_text(encoding="utf-8")

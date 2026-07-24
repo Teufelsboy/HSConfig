@@ -17,7 +17,7 @@ The package must not be default-only:
 - `GlobalValues.json` exists
 - `Mulligan.json` exists
 - every known deck CardID gets a per-card JSON file
-- normal path does not emit `Presume.json` or `Concede.json`
+- normal path does not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json`
 
 ## Runtime Apply Promise
 
@@ -28,7 +28,7 @@ The package must not be default-only:
 - `READY_TO_APPLY_WITH_WARNINGS` still means the package is usable.
 
 Minimal load-safe runtime apply is deliberately narrower than normal prepare richness. `GlobalValues.json` and `Mulligan.json` are the required runtime files. Per-card `<CARDID>.json` files, `Combo.json`, and identity-gated option files make the package more useful, and normal deck preparation should emit them when the deck and evidence support them, but their absence alone must not block a package that is otherwise `technical_status=VALID_PACKAGE` and `runtime_apply_mode=load_safe_apply`.
-`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.
 The proof-matrix expectation that normal `prepare` emits one per-card JSON file for every unique deck CardID is HSConfig rich-output repo policy. It is not the minimal runtime-apply gate and not an official HearthRanger minimum.
 

@@ -9,6 +9,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 ## Quick Start
 
 - Run `hsconfig configure` for normal operation.
+- Before source refresh, package generation, or runtime-facing apply review, run `git fetch --all --prune --tags`, `python scripts/check_hsconfig_currentness.py --cwd . --json`, and `git status --short --branch`. Runtime-facing work must start from a clean worktree and not be behind `origin/main`; feature branches may be ahead.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
 - After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
@@ -32,8 +33,8 @@ ownership, and missing links; they do not grant apply permission.
 
 Normal HSConfig output is limited to `GlobalValues.json`, `Mulligan.json`,
 per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence
-exists. `Presume.json` and `Concede.json` are known VisionAI surfaces, but they
-are outside the normal output path.
+exists. `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are
+known VisionAI surfaces, but they are outside the normal output path.
 
 ### Optional Contract Preflight
 
@@ -124,7 +125,7 @@ The loop is intentionally narrow. It proves that a real deck can move through th
 
 ## Lower-Level Inspected Path
 
-Lower-level inspected path: `source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply`.
+Lower-level inspected path: `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 
 Use this path when each source and research stage must be inspected before package preparation.
 
@@ -182,7 +183,7 @@ Open `reports/operator_summary.json` first.
 - `mulligan_policy_status` tells whether Mulligan used source-backed or policy-backed keeps. `default_only_runtime_surfaces` must normally be empty for a generated deck package; if it is not empty, open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` for the per-card closure rows before improving source claims.
 - `surface_status_ledger` is the compact per-surface health view. It lists `mulligan`, `globalvalues`, `cardid_behavior`, and `combo` with one status each: `source_backed`, `policy_backed`, `static_semantics_backed`, `warning_only`, `suppressed_with_reason`, or `default_only`. This ledger is diagnostic-only. Runtime apply still depends on `operator_summary.json` technical validity and the guarded apply gate, not source strength. A `default_only` row means visible quality debt, not a hidden success and not an apply blocker by itself.
 - Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`. Normal `prepare` packages should still emit per-card `<CARDID>.json` files when deck-card identity is known, but those rich CardID files are not the minimal runtime-apply gate.
-- `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+- `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 - `load_safe_apply` is an HSConfig operator policy, not a HearthRanger public-doc term. per-card-every-card coverage is HSConfig rich output for stronger control and matrix proof, not a minimal runtime-write requirement.
 - `config_usefulness` is non-blocking. It explains whether the load-safe package is guide-aligned, usable with targeted gaps, or load-safe but thin.
 
@@ -390,9 +391,9 @@ and does not block a technically valid package.
 
 `<out>/configure_summary.json.acceptance_summary` is the first post-`configure` read. It is a compact operator projection with `use_config_now`, `technical_status`, `runtime_apply_allowed`, `source_strength`, `default_only_clean`, and `next_report_to_open`; it does not replace `reports/operator_summary.json`, which remains the normal apply authority.
 
-`<out>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
-
 `configure_summary.json.handoff_contract` is a diagnostic-only handoff proof for normal generated packages. It compresses the already-generated acceptance, config-proof, and config-quality facts into one small object: single authority, no-default-only status, forbidden normal surfaces, source-to-runtime trace status, Darkbishop boundary status, mechanic discipline, and the next report to open. It does not replace reports/operator_summary.json and it cannot grant or deny runtime writes.
+
+`<out>/configure_summary.json.source_closure_receipt` is the compact diagnostic-only source-closure receipt for normal generated packages, read after acceptance and handoff when source depth is the question. It mirrors the canonical source status, no-default-only status, source acquisition counts, source document counts, runtime-lowerable claim counts, and the first missing source action. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and default-only runtime surfaces remain visible quality debt rather than hidden success.
 
 `contract-preflight.research_context.latest_research_result_contract_*` exposes whether the latest research-deep result batch has HSConfig-valid fields and result payloads. This research-result sentinel is source-quality visibility only; it cannot promote, downgrade, block, or apply a package.
 `latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and operator_summary.json remains the only normal apply authority.

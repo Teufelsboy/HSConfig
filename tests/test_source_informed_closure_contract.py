@@ -18,7 +18,7 @@ TARGETS = {
             "Mulligan.json",
             "Combo.json",
         },
-        "forbidden_surfaces": {"Presume.json", "Concede.json"},
+        "forbidden_surfaces": {"Presume.json", "Concede.json", "CardBehavior.json"},
     },
     "Kingslayer": {
         "first_card_id": "DEEP_014",
@@ -29,7 +29,7 @@ TARGETS = {
             "GlobalValues.json",
             "Mulligan.json",
         },
-        "forbidden_surfaces": {"Presume.json", "Concede.json", "Combo.json"},
+        "forbidden_surfaces": {"Presume.json", "Concede.json", "CardBehavior.json", "Combo.json"},
     },
 }
 

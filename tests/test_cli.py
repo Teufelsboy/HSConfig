@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import pytest
 from hsconfig.commands.common import emit_result, run_payload_command
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.cli import main
+from hsconfig.cli_parser import build_parser
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 
 
@@ -15,6 +17,18 @@ SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+
+
+def test_cli_parser_subcommands_match_main_dispatch_commands():
+    parser = build_parser()
+    subparser_action = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    registered_commands = set(subparser_action.choices)
+    dispatch_source = Path("src/hsconfig/cli.py").read_text(encoding="utf-8")
+    dispatched_commands = set(re.findall(r'args\.command == "([^"]+)"', dispatch_source))
+
+    assert registered_commands == dispatched_commands
 
 
 def _write_cards_json(path: Path, card_ids: list[str]) -> None:

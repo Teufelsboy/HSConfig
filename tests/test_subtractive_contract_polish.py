@@ -12,7 +12,7 @@ import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
 
 
-LEGACY_SURFACES = {"Presume.json", "Concede.json"}
+LEGACY_SURFACES = {"Presume.json", "Concede.json", "CardBehavior.json"}
 
 
 ACTIVE_DOC_PATHS = [

@@ -424,7 +424,7 @@ The package must not be default-only:
 - `GlobalValues.json` exists
 - `Mulligan.json` exists
 - every known deck CardID gets a per-card JSON file
-- normal path does not emit `Presume.json` or `Concede.json`
+- normal path does not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json`
 """
 
     assert text.count("## Universal No-Block Contract") == 1
@@ -489,7 +489,10 @@ def test_skill_text_names_source_contract_spine_without_runtime_surface_expansio
     assert "surface gate" in combined
     assert "operator_summary.json remains the normal apply authority" in combined
     assert "Warnings are follow-up work, not runtime apply blockers." in combined
-    assert "normal HSConfig output must not emit `Presume.json` or `Concede.json`" in combined
+    assert (
+        "normal HSConfig output must not emit `Presume.json`, `Concede.json`, or"
+    ) in combined
+    assert "aggregate `CardBehavior.json`" in combined
 
 
 def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():

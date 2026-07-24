@@ -45,6 +45,12 @@ def validate_config_package(
     deck_dirs = sorted(path for path in custom_config.iterdir() if path.is_dir())
     if not deck_dirs:
         errors.append(f"{custom_config}: no deck config directories found")
+    if require_complete_package and len(deck_dirs) > 1:
+        deck_names = ", ".join(path.name for path in deck_dirs)
+        errors.append(
+            f"{custom_config}: expected exactly one deck config directory for complete package, "
+            f"found {len(deck_dirs)}: {deck_names}"
+        )
 
     for deck_dir in deck_dirs:
         if require_complete_package:

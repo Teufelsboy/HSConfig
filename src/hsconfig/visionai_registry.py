@@ -80,6 +80,14 @@ CARD_BEHAVIOR_BLOCK_REGISTRY.update(
     }
 )
 
+NORMAL_PATH_FORBIDDEN_SURFACES = frozenset(
+    {
+        "Presume.json",
+        "Concede.json",
+        "CardBehavior.json",
+    }
+)
+
 SPECIAL_SURFACES = {
     "GlobalValues.json": "GlobalValues",
     "Mulligan.json": "Mulligan",

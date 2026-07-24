@@ -114,6 +114,38 @@ def test_validate_package_strict_mode_accepts_minimal_load_safe_package_without_
     assert report == {"status": "passed", "errors": [], "checked_files": 2}
 
 
+def test_validate_package_strict_mode_rejects_multiple_deck_directories(tmp_path: Path):
+    for deck_name in ("shadowpriest", "piraterogue"):
+        deck_dir = tmp_path / "CustomConfig" / deck_name
+        write_json(
+            deck_dir / "GlobalValues.json",
+            {
+                "GameCardId": "GlobalValues",
+                "ConfigComment": "test",
+                "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+                "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+            },
+        )
+        write_json(
+            deck_dir / "Mulligan.json",
+            {
+                "GameCardId": "Mulligan",
+                "ConfigComment": "test",
+                "Mulligan": {"values": []},
+            },
+        )
+
+    report = validate_config_package(tmp_path, require_complete_package=True)
+
+    assert report["status"] == "failed"
+    assert any(
+        "expected exactly one deck config directory" in error
+        and "piraterogue" in error
+        and "shadowpriest" in error
+        for error in report["errors"]
+    )
+
+
 def test_validate_package_rejects_special_surface_scalar_blocks(tmp_path: Path):
     deck_dir = tmp_path / "CustomConfig" / "deck"
     write_json(

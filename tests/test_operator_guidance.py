@@ -9,7 +9,7 @@ def test_operator_docs_point_to_research_index_without_making_it_operator_path()
     assert "Research artifacts are evidence, not operator instructions." in text
     assert "docs/research/README.md" in text
     assert (
-        "source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply"
+        "source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply"
         in text
     )
 
@@ -42,7 +42,7 @@ def test_operator_readme_has_compact_quick_start_before_details():
     assert "`technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed." in quick_start
     assert "Warnings are follow-up work, not a second apply path." in quick_start
     assert "HSTuner owns post-run evaluation and tuning." in quick_start
-    assert len([line for line in quick_start.splitlines() if line.strip().startswith("- ")]) <= 6
+    assert len([line for line in quick_start.splitlines() if line.strip().startswith("- ")]) <= 7
 
 
 def test_guidance_for_source_backed_strong_package():

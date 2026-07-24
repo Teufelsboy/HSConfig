@@ -298,7 +298,7 @@ def test_apply_gate_blocks_invalid_package(tmp_path: Path):
     assert gate["reasons"][0]["reason"] == "operator_summary_not_valid_package"
 
 
-@pytest.mark.parametrize("surface", ["Presume.json", "Concede.json"])
+@pytest.mark.parametrize("surface", ["Presume.json", "Concede.json", "CardBehavior.json"])
 def test_apply_gate_blocks_normal_path_optional_surfaces(tmp_path: Path, surface: str):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
@@ -330,7 +330,7 @@ def test_apply_gate_blocks_normal_path_optional_surfaces(tmp_path: Path, surface
     ]
 
 
-@pytest.mark.parametrize("surface", ["Presume.json", "Concede.json"])
+@pytest.mark.parametrize("surface", ["Presume.json", "Concede.json", "CardBehavior.json"])
 def test_apply_gate_blocks_actual_optional_surface_when_summary_is_stale(
     tmp_path: Path, surface: str
 ):

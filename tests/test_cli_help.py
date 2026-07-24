@@ -5,8 +5,8 @@ from hsconfig.cli_parser import build_parser
 
 
 INSPECTED_PATH = (
-    "source-manifest -> draft-source-documents -> research-deck -> "
-    "prepare -> validate -> apply"
+    "source-manifest -> source-autopilot or draft-source-documents -> "
+    "research-deck -> prepare -> validate -> apply"
 )
 OLD_LOWER_LEVEL_LABEL = "Lower-level " + "normal path:"
 

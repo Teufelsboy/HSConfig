@@ -36,7 +36,7 @@ The contract conformance snapshot is documentation-as-code for claim-kind policy
 
 Unexpected contract drift is a defect in the source-contract spine. A builder prerequisite gap is different: it means the surface is allowed, but the concrete claim still lacks required structure. Builder prerequisite gaps stay visible and support no-block package generation; they do not create a second operator apply path.
 
-`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 
 ## Gate And Readiness
 
@@ -97,7 +97,7 @@ candidate URLs promotion authority remains forbidden.
 default-only runtime surfaces prevent SOURCE_BACKED_STRONG.
 Canonical source status is resolved in `src/hsconfig/source_status_resolver.py` through `source_backed_status`, `source_strong_ready`, `first_missing_source_action`, `source_missing_source_actions`, `source_status_reasons`, `source_status_diagnostic_only`, and `source_status_apply_blocking`.
 Use the canonical claim lifecycle for source-to-runtime explanations: conflict quarantine means quarantined claims suppress unsafe runtime rows and do not block load-safe valid packages.
-`Presume.json` and `Concede.json` are outside the normal HSConfig path.
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are outside the normal HSConfig path.
 warning-only mechanics do not block load-safe apply.
 `reports/source_evidence_closure.json` is the compact diagnostic package-quality closure summary.
 decklists, HSReplay/HSGuru aggregate stats, static card databases, `policy_fallback`, `default_runtime`, and runtime examples are support/diagnostic only.

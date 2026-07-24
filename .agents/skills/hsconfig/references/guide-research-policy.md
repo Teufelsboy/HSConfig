@@ -155,7 +155,8 @@ not block load-safe valid packages.
 
 `operator_summary.json` remains the normal apply authority. Source-contract reports are diagnostic only. Warnings are follow-up work, not runtime apply blockers.
 
-normal HSConfig output must not emit `Presume.json` or `Concede.json`.
+normal HSConfig output must not emit `Presume.json`, `Concede.json`, or
+aggregate `CardBehavior.json`.
 
 reports/operator_summary.json remains the only normal apply authority.
 diagnostic reports must not become apply gates. default-only runtime surfaces

@@ -199,7 +199,7 @@ def test_report_marks_source_informed_apply_ready_without_strong_promotion():
     assert report["source_status_reasons"] == ["semantic_blocker"]
 
 
-@pytest.mark.parametrize("surface_name", ["Presume.json", "Concede.json"])
+@pytest.mark.parametrize("surface_name", ["Presume.json", "Concede.json", "CardBehavior.json"])
 def test_report_blocks_strong_promotion_when_normal_path_optional_surface_exists(surface_name):
     report = build_strong_promotion_report(
         deck_name="PirateDH",

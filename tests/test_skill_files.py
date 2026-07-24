@@ -82,9 +82,10 @@ def test_skill_and_workflow_stay_compact_and_canonical():
     assert "<CARDID>.json" in combined
     assert "`Combo.json`" in combined
     assert (
-        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path. Their absence never blocks a "
-        "valid load-safe package, and their presence in a normal package is treated as drift."
+        "`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are "
+        "legacy/diagnostic VisionAI surfaces outside the normal HSConfig output "
+        "path. Their absence never blocks a valid load-safe package, and their "
+        "presence in a normal package is treated as drift."
     ) in active_docs
     for duplicate_section in [
         "Preferred normal workflow:",
@@ -110,9 +111,10 @@ def test_active_docs_document_presume_aoe_surface_without_normal_output():
     ]
     active_docs = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
     required = [
-        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path. Their absence never blocks a "
-        "valid load-safe package, and their presence in a normal package is treated as drift.",
+        "`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are "
+        "legacy/diagnostic VisionAI surfaces outside the normal HSConfig output "
+        "path. Their absence never blocks a valid load-safe package, and their "
+        "presence in a normal package is treated as drift.",
     ]
     forbidden = [
         "without a current verified first-party help-page citation",
@@ -139,16 +141,17 @@ def test_active_docs_call_presume_concede_legacy_diagnostic_not_normal_path():
     combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
 
     required_sentence = (
-        "`Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces "
-        "outside the normal HSConfig output path. Their absence never blocks a "
-        "valid load-safe package, and their presence in a normal package is treated as drift."
+        "`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are "
+        "legacy/diagnostic VisionAI surfaces outside the normal HSConfig output "
+        "path. Their absence never blocks a valid load-safe package, and their "
+        "presence in a normal package is treated as drift."
     )
     assert required_sentence in combined
 
     forbidden_phrases = [
         "`Concede.json` is publicly documented",
         "`Presume.json` is publicly documented",
-        "normal HSConfig does not emit `Presume.json` or `Concede.json`; absence",
+        "normal HSConfig does not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json`; absence",
     ]
     for phrase in forbidden_phrases:
         assert phrase not in combined
@@ -995,7 +998,7 @@ def test_docs_and_skill_explain_current_modern_mechanic_visibility_without_block
     assert "modern mechanic visibility is non-blocking" in combined.lower()
     assert "reports/mechanic_drift_report.json" in combined
     assert "reports/semantic_enrichment_report.json" in combined
-    assert "source-manifest -> draft-source-documents -> research-deck -> prepare -> validate -> apply" in combined
+    assert "source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply" in combined
 
 
 def test_new_modern_mechanics_are_report_only_visibility_not_partial_lowering():

@@ -56,7 +56,7 @@ If a claim cannot be lowered safely, keep it in
 syntax.
 
 Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
-Do not emit `Presume.json` or `Concede.json` in the normal HSConfig path.
+Do not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json` in the normal HSConfig path.
 
 ## Choice Surface Lowering
 

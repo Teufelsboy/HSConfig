@@ -47,6 +47,18 @@ def test_guardrail_runner_includes_contract_invariant_closure_tests():
     assert required <= set(FOCUSED_CONTRACT_TESTS)
 
 
+def test_guardrail_runner_includes_direct_validate_and_apply_boundaries():
+    from scripts.check_contract_guardrails import FOCUSED_CONTRACT_TESTS
+
+    required = {
+        "tests/test_validate_package.py",
+        "tests/test_apply_gate.py",
+        "tests/test_runtime_apply.py",
+    }
+
+    assert required <= set(FOCUSED_CONTRACT_TESTS)
+
+
 def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_path):
     repo_root = tmp_path
     skill_root = tmp_path / "skills"
@@ -79,6 +91,9 @@ def test_guardrail_commands_include_skill_sync_sentinel_and_boundary_suite(tmp_p
     assert "tests/test_source_to_runtime_explainability.py" in commands[2].argv
     assert "tests/test_research_current_truth_index.py" in commands[2].argv
     assert "tests/test_skill_contract_entrypoint.py" in commands[2].argv
+    assert "tests/test_validate_package.py" in commands[2].argv
+    assert "tests/test_apply_gate.py" in commands[2].argv
+    assert "tests/test_runtime_apply.py" in commands[2].argv
 
 
 def test_run_guardrails_stops_at_first_failure(tmp_path, capsys):
