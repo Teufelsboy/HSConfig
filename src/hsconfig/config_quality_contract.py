@@ -702,6 +702,12 @@ def _surface_intent_projection_check(
         for row in rows
         if str(row.get("surface") or "") in {"Presume.json", "Concede.json"}
     ]
+    malformed_rows = [
+        _surface_intent_row_summary(row)
+        for row in rows
+        if str(row.get("surface") or "") not in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+        and not _is_canonical_surface_intent_row(surface_intent, row)
+    ]
 
     attention: list[dict[str, Any]] = []
     if fallback_rows:
@@ -716,6 +722,13 @@ def _surface_intent_projection_check(
             {
                 "check": "surface_intent_legacy_policy_surface_visible",
                 "count": len(legacy_policy_rows),
+            }
+        )
+    if malformed_rows:
+        attention.append(
+            {
+                "check": "surface_intent_malformed_row_visible",
+                "count": len(malformed_rows),
             }
         )
 
@@ -734,6 +747,7 @@ def _surface_intent_projection_check(
         ),
         "fallback_intent_rows": fallback_rows,
         "legacy_policy_surface_rows": legacy_policy_rows,
+        "malformed_rows": malformed_rows,
         "attention": attention,
         "first_attention": attention[0]["check"] if attention else None,
     }
@@ -1291,18 +1305,60 @@ def _explained_runtime_files_from_reports(
 def _surface_intent_runtime_files(surface_intent: Mapping[str, Any]) -> set[str]:
     explained: set[str] = set()
     for row in _report_rows(surface_intent, ("rows",)):
-        surface = _standard_surface_name(row.get("surface"))
-        if not surface or surface in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
+        if not _is_canonical_surface_intent_row(surface_intent, row):
             continue
+        surface = str(row.get("surface") or "").strip()
         intent = str(row.get("intent", "")).strip()
         if not intent or intent == "legacy_policy_surface":
             continue
-        surface_name = Path(surface).name
-        if surface_name.endswith(".json"):
-            explained.add(surface_name)
-        elif surface == "per-card <CARDID>.json":
-            explained.add(surface)
+        explained.add(surface)
     return explained
+
+
+def _is_canonical_surface_intent_row(
+    surface_intent: Mapping[str, Any],
+    row: Mapping[str, Any],
+) -> bool:
+    surface = str(row.get("surface") or "").strip()
+    required_surfaces = set(_string_list(surface_intent.get("required_surfaces")))
+    optional_surfaces = set(_string_list(surface_intent.get("optional_surfaces")))
+
+    if (
+        not surface
+        or surface != Path(surface).name
+        or surface not in required_surfaces | optional_surfaces
+        or surface in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+    ):
+        return False
+
+    rule_id = str(row.get("rule_id") or "").strip()
+    card_id = _row_card_id(row)
+    if surface == "GlobalValues.json":
+        return surface in required_surfaces and rule_id == "globalvalues_full_key_profile"
+    if surface == "Combo.json":
+        return surface in optional_surfaces and rule_id == "combo_sequences" and not card_id
+    if surface == "Mulligan.json":
+        return (
+            surface in required_surfaces
+            and bool(card_id)
+            and rule_id == f"{card_id}_mulligan_hold"
+        )
+
+    return (
+        surface in required_surfaces
+        and bool(card_id)
+        and surface == f"{card_id}.json"
+        and str(row.get("surface_family") or "") == "CARDID.json"
+        and rule_id == f"{card_id}_card_behavior"
+    )
+
+
+def _surface_intent_row_summary(row: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "card_id": _row_card_id(row),
+        "rule_id": str(row.get("rule_id") or ""),
+        "surface": str(row.get("surface") or ""),
+    }
 
 
 def _has_emitted_runtime_intent(row: Mapping[str, Any]) -> bool:

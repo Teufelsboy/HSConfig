@@ -287,3 +287,22 @@ def test_shadowpriest_static_damage_claims_receive_specific_semantic_scores():
         assert score.band == band
         assert score.profile == "semantic_intent"
         assert score.matched_signals
+
+
+def test_card_named_guide_title_does_not_override_an_unrelated_claim():
+    score = score_card_behavior_claim(
+        {
+            "claim_kind": "card_role",
+            "cards": ["GENERIC_CARD"],
+            "source_title": "Mind Blast Priest Guide",
+            "evidence_text_short": "This card has Tradeable.",
+        },
+        behavior_block="BeforePlayCardBonus",
+        intent="tradeable",
+        roles=["tradeable"],
+        value_default="6",
+    )
+
+    assert score.reason == "semantic_default"
+    assert score.value == "6"
+    assert score.band == "default"

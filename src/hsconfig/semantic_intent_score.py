@@ -40,6 +40,7 @@ def score_card_behavior_claim(
             intent=intent,
             roles=roles,
         ),
+        card_identity=_claim_card_identity(claim),
         value_default=value_default,
     )
     return SemanticIntentScore(
@@ -79,13 +80,26 @@ def _normalized_claim_text(
         claim.get("intent"),
         claim.get("mechanic"),
         claim.get("evidence_text_short"),
-        claim.get("source_title"),
         behavior_block,
         intent,
         " ".join(str(role) for role in roles),
         " ".join(str(family) for family in semantic_families),
     )
     return " ".join(str(part).lower() for part in parts if part is not None)
+
+
+def _claim_card_identity(claim: Mapping[str, Any]) -> str | None:
+    for key in ("card_id", "card_name", "name"):
+        value = str(claim.get(key) or "").strip()
+        if value:
+            return value
+
+    cards = claim.get("cards")
+    if isinstance(cards, Sequence) and not isinstance(cards, (str, bytes)):
+        card_ids = [str(card_id).strip() for card_id in cards if str(card_id).strip()]
+        if len(card_ids) == 1:
+            return card_ids[0]
+    return None
 
 
 __all__ = ("SemanticIntentScore", "score_card_behavior_claim")

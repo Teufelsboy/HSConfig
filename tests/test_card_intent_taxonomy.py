@@ -10,7 +10,8 @@ def test_taxonomy_classifies_shadowpriest_core_effects_in_priority_order():
         "Darkbishop Benedictus changes your starting Hero Power to Mind Spike."
     )
     aura = classify_card_intent(
-        "Voidtouched Attendant makes both heroes take extra damage from all sources."
+        "Voidtouched Attendant makes both heroes take extra damage from all sources.",
+        card_identity="SW_446",
     )
     mind_sear = classify_card_intent(
         "Mind Sear deals 2 damage to a minion and 3 damage to the enemy hero if it dies."
@@ -166,30 +167,57 @@ def test_taxonomy_classifies_shadowpriest_reciprocal_and_self_damage_semantics()
 
 
 def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card_text():
-    assert classify_card_intent("Shadowbomber battlecry damage minion pressure").reason == (
+    assert classify_card_intent(
+        "battlecry damage minion pressure", card_identity="GVG_009"
+    ).reason == (
         "reciprocal_hero_burn"
     )
-    assert classify_card_intent("Acupuncture combo_piece damage pressure spell").reason == (
+    assert classify_card_intent(
+        "combo_piece damage pressure spell", card_identity="Acupuncture"
+    ).reason == (
         "reciprocal_hero_burn"
     )
-    assert classify_card_intent("Raise Dead damage pressure spell").reason == (
+    assert classify_card_intent(
+        "damage pressure spell", card_identity="SCH_514"
+    ).reason == (
         "self_damage_resource"
     )
-    assert classify_card_intent("Brain Masseuse damage minion pressure").reason == (
+    assert classify_card_intent(
+        "damage minion pressure", card_identity="Brain Masseuse"
+    ).reason == (
         "self_damage_liability_body"
     )
-    assert classify_card_intent("Frenzied Felwing damage minion pressure").reason == (
+    assert classify_card_intent(
+        "damage minion pressure", card_identity="YOD_032"
+    ).reason == (
         "opponent_damage_discount_tempo"
     )
-    assert classify_card_intent("Papercraft Angel aura hero_power minion pressure").reason == (
+    assert classify_card_intent(
+        "aura hero_power minion pressure", card_identity="TOY_381"
+    ).reason == (
         "hero_power_cost_aura"
     )
-    assert classify_card_intent("Mind Blast combo_piece damage pressure spell").reason == (
+    assert classify_card_intent(
+        "combo_piece damage pressure spell", card_identity="DS1_233"
+    ).reason == (
         "direct_enemy_hero_burn"
     )
-    assert classify_card_intent("Mind Sear damage pressure spell").reason == (
+    assert classify_card_intent(
+        "damage pressure spell", card_identity="NX2_019"
+    ).reason == (
         "conditional_minion_death_burn"
     )
+
+
+def test_taxonomy_rejects_substring_card_identities_without_card_text():
+    for card_identity in ("Mind Blaster", "Raise Deadly"):
+        classification = classify_card_intent(
+            "unrelated pressure claim", card_identity=card_identity
+        )
+
+        assert classification.reason == "semantic_default"
+        assert classification.value == "6"
+        assert classification.band == "default"
 
 
 def test_damage_aura_still_wins_before_reciprocal_hero_burn():

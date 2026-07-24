@@ -21,7 +21,7 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
     for card_id, card in _cards(contract).items():
         surface = f"{card_id}.json"
         required_surfaces.add(surface)
-        diagnostic_intent = _diagnostic_card_intent(card)
+        diagnostic_intent = _diagnostic_card_intent(card_id, card)
         rows.append(
             {
                 "rule_id": f"{card_id}_card_behavior",
@@ -108,9 +108,12 @@ def _combo_claim_ids(contract: dict[str, Any]) -> list[str]:
     )
 
 
-def _diagnostic_card_intent(card: dict[str, Any]) -> dict[str, str]:
+def _diagnostic_card_intent(card_id: str, card: dict[str, Any]) -> dict[str, str]:
     text = _card_intent_text(card)
-    classification = classify_card_intent(text)
+    classification = classify_card_intent(
+        text,
+        card_identity=card_id or str(card.get("name") or ""),
+    )
     if classification.reason == "semantic_default":
         return {"intent": "aggressive_card_behavior", "source": "fallback"}
     return {"intent": classification.reason, "source": "card_intent_taxonomy"}
@@ -118,13 +121,11 @@ def _diagnostic_card_intent(card: dict[str, Any]) -> dict[str, str]:
 
 def _card_intent_text(card: dict[str, Any]) -> str:
     parts = [
-        card.get("name"),
         card.get("claim_kind"),
         card.get("stance"),
         card.get("intent"),
         card.get("mechanic"),
         card.get("evidence_text_short"),
-        card.get("source_title"),
         " ".join(str(role) for role in card.get("roles", [])),
         " ".join(str(family) for family in card.get("semantic_families", [])),
         " ".join(str(family) for family in card.get("mechanic_families", [])),

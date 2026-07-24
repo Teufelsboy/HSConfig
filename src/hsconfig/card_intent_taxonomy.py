@@ -16,11 +16,13 @@ class CardIntentClassification:
 def classify_card_intent(
     text: str,
     *,
+    card_identity: str | None = None,
     value_default: str = "6",
 ) -> CardIntentClassification:
     normalized = str(text or "").lower()
+    identity_reason = _card_identity_reason(card_identity)
 
-    if _has_hero_power_transform(normalized):
+    if _has_hero_power_transform(normalized) or identity_reason == "hero_power_transform":
         return CardIntentClassification(
             reason="hero_power_transform",
             value="10",
@@ -35,11 +37,11 @@ def classify_card_intent(
                     ),
                 ),
                 ("shadowform", "shadowform" in normalized),
-                ("mind_spike", "mind spike" in normalized),
+                ("mind_spike", identity_reason == "hero_power_transform"),
             ),
         )
 
-    if _has_damage_aura_amplifier(normalized):
+    if _has_damage_aura_amplifier(normalized) or identity_reason == "damage_aura_amplifier":
         return CardIntentClassification(
             reason="damage_aura_amplifier",
             value="10",
@@ -50,12 +52,15 @@ def classify_card_intent(
                 ("both_heroes_take", "both heroes take" in normalized),
                 (
                     "voidtouched_attendant",
-                    _has_voidtouched_attendant_identity(normalized),
+                    identity_reason == "damage_aura_amplifier",
                 ),
             ),
         )
 
-    if _has_conditional_minion_death_burn(normalized):
+    if (
+        _has_conditional_minion_death_burn(normalized)
+        or identity_reason == "conditional_minion_death_burn"
+    ):
         return CardIntentClassification(
             reason="conditional_minion_death_burn",
             value="10",
@@ -73,13 +78,13 @@ def classify_card_intent(
             ),
         )
 
-    if _has_self_damage_resource(normalized):
+    if _has_self_damage_resource(normalized) or identity_reason == "self_damage_resource":
         return CardIntentClassification(
             reason="self_damage_resource",
             value="8",
             band="medium",
             matched_signals=_signals(
-                ("raise_dead", "raise dead" in normalized),
+                ("raise_dead", identity_reason == "self_damage_resource"),
                 ("self_damage", _has_self_damage_to_own_hero(normalized)),
                 (
                     "return_dead_friendly_minions",
@@ -95,13 +100,16 @@ def classify_card_intent(
             ),
         )
 
-    if _has_opponent_damage_discount_tempo(normalized):
+    if (
+        _has_opponent_damage_discount_tempo(normalized)
+        or identity_reason == "opponent_damage_discount_tempo"
+    ):
         return CardIntentClassification(
             reason="opponent_damage_discount_tempo",
             value="8",
             band="medium",
             matched_signals=_signals(
-                ("frenzied_felwing", "frenzied felwing" in normalized),
+                ("frenzied_felwing", identity_reason == "opponent_damage_discount_tempo"),
                 (
                     "cost_reduction",
                     _has_any(normalized, ("costs (1) less", "costs less")),
@@ -120,13 +128,16 @@ def classify_card_intent(
             ),
         )
 
-    if _has_self_damage_liability_body(normalized):
+    if (
+        _has_self_damage_liability_body(normalized)
+        or identity_reason == "self_damage_liability_body"
+    ):
         return CardIntentClassification(
             reason="self_damage_liability_body",
             value="6",
             band="medium",
             matched_signals=_signals(
-                ("brain_masseuse", "brain masseuse" in normalized),
+                ("brain_masseuse", identity_reason == "self_damage_liability_body"),
                 (
                     "takes_damage_reflects_to_own_hero",
                     _has_any(
@@ -142,13 +153,13 @@ def classify_card_intent(
             ),
         )
 
-    if _has_hero_power_cost_aura(normalized):
+    if _has_hero_power_cost_aura(normalized) or identity_reason == "hero_power_cost_aura":
         return CardIntentClassification(
             reason="hero_power_cost_aura",
             value="8",
             band="medium",
             matched_signals=_signals(
-                ("papercraft_angel", "papercraft angel" in normalized),
+                ("papercraft_angel", identity_reason == "hero_power_cost_aura"),
                 ("hero_power", _has_any(normalized, ("hero power", "hero_power"))),
                 (
                     "cost_zero",
@@ -157,7 +168,7 @@ def classify_card_intent(
             ),
         )
 
-    if _has_direct_enemy_hero_burn(normalized):
+    if _has_direct_enemy_hero_burn(normalized) or identity_reason == "direct_enemy_hero_burn":
         return CardIntentClassification(
             reason="direct_enemy_hero_burn",
             value="12",
@@ -174,14 +185,14 @@ def classify_card_intent(
             ),
         )
 
-    if _has_reciprocal_hero_burn(normalized):
+    if _has_reciprocal_hero_burn(normalized) or identity_reason == "reciprocal_hero_burn":
         return CardIntentClassification(
             reason="reciprocal_hero_burn",
             value="10",
             band="high",
             matched_signals=_signals(
-                ("shadowbomber", "shadowbomber" in normalized),
-                ("acupuncture", "acupuncture" in normalized),
+                ("shadowbomber", card_identity == "GVG_009"),
+                ("acupuncture", card_identity == "VAC_419"),
                 ("each_hero", "each hero" in normalized),
                 ("both_heroes", "both heroes" in normalized),
                 ("damage", _has_damage_wording(normalized)),
@@ -247,7 +258,7 @@ def bounded_default_value(value_default: str) -> str:
 
 
 def _has_hero_power_transform(text: str) -> bool:
-    if _has_any(text, ("hero_power_transform", "shadowform", "mind spike")):
+    if "hero_power_transform" in text:
         return True
     return _has_any(text, ("hero power", "hero_power")) and _has_any(
         text,
@@ -256,8 +267,6 @@ def _has_hero_power_transform(text: str) -> bool:
 
 
 def _has_damage_aura_amplifier(text: str) -> bool:
-    if _has_voidtouched_attendant_identity(text):
-        return True
     return _has_damage_wording(text) and _has_any(
         text,
         (
@@ -272,13 +281,7 @@ def _has_damage_aura_amplifier(text: str) -> bool:
     )
 
 
-def _has_voidtouched_attendant_identity(text: str) -> bool:
-    return "voidtouched attendant" in text or _has_token(text, "voidtouched")
-
-
 def _has_conditional_minion_death_burn(text: str) -> bool:
-    if "mind sear" in text:
-        return True
     return (
         "enemy hero" in text
         and _has_any(text, ("if it dies", "dies"))
@@ -287,8 +290,6 @@ def _has_conditional_minion_death_burn(text: str) -> bool:
 
 
 def _has_direct_enemy_hero_burn(text: str) -> bool:
-    if "mind blast" in text:
-        return True
     return any(
         _has_phrase_or_token(text, needle)
         for needle in ("prefer_enemy_hero", "enemy hero", "face", "hero damage")
@@ -296,8 +297,6 @@ def _has_direct_enemy_hero_burn(text: str) -> bool:
 
 
 def _has_reciprocal_hero_burn(text: str) -> bool:
-    if _has_any(text, ("shadowbomber", "acupuncture")):
-        return True
     return _has_damage_wording(text) and _has_any(
         text,
         ("each hero", "both heroes"),
@@ -305,8 +304,6 @@ def _has_reciprocal_hero_burn(text: str) -> bool:
 
 
 def _has_self_damage_resource(text: str) -> bool:
-    if "raise dead" in text:
-        return True
     return _has_self_damage_to_own_hero(text) and _has_any(
         text,
         (
@@ -318,8 +315,6 @@ def _has_self_damage_resource(text: str) -> bool:
 
 
 def _has_opponent_damage_discount_tempo(text: str) -> bool:
-    if "frenzied felwing" in text:
-        return True
     return _has_any(text, ("costs (1) less", "costs less")) and _has_any(
         text,
         (
@@ -331,8 +326,6 @@ def _has_opponent_damage_discount_tempo(text: str) -> bool:
 
 
 def _has_self_damage_liability_body(text: str) -> bool:
-    if "brain masseuse" in text:
-        return True
     return _has_any(
         text,
         ("whenever this minion takes damage", "also deal that amount to your hero"),
@@ -340,8 +333,6 @@ def _has_self_damage_liability_body(text: str) -> bool:
 
 
 def _has_hero_power_cost_aura(text: str) -> bool:
-    if "papercraft angel" in text:
-        return True
     return _has_any(text, ("hero power", "hero_power")) and _has_any(
         text,
         ("costs (0)", "costs 0", "cost 0", "free hero power"),
@@ -361,6 +352,34 @@ def _has_self_damage_to_own_hero(text: str) -> bool:
 
 def _has_damage_wording(text: str) -> bool:
     return _has_any(text, ("damage", "deals", "deal ", "burn"))
+
+
+def _card_identity_reason(card_identity: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", str(card_identity or "").strip().lower())
+    return {
+        "SW_448".lower(): "hero_power_transform",
+        "darkbishop benedictus": "hero_power_transform",
+        "EX1_625t".lower(): "hero_power_transform",
+        "mind spike": "hero_power_transform",
+        "SW_446".lower(): "damage_aura_amplifier",
+        "voidtouched attendant": "damage_aura_amplifier",
+        "NX2_019".lower(): "conditional_minion_death_burn",
+        "mind sear": "conditional_minion_death_burn",
+        "SCH_514".lower(): "self_damage_resource",
+        "raise dead": "self_damage_resource",
+        "YOD_032".lower(): "opponent_damage_discount_tempo",
+        "frenzied felwing": "opponent_damage_discount_tempo",
+        "VAC_512".lower(): "self_damage_liability_body",
+        "brain masseuse": "self_damage_liability_body",
+        "TOY_381".lower(): "hero_power_cost_aura",
+        "papercraft angel": "hero_power_cost_aura",
+        "DS1_233".lower(): "direct_enemy_hero_burn",
+        "mind blast": "direct_enemy_hero_burn",
+        "GVG_009".lower(): "reciprocal_hero_burn",
+        "shadowbomber": "reciprocal_hero_burn",
+        "VAC_419".lower(): "reciprocal_hero_burn",
+        "acupuncture": "reciprocal_hero_burn",
+    }.get(normalized, "")
 
 
 def _has_any(text: str, needles: Sequence[str]) -> bool:

@@ -234,6 +234,7 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "rich_optional_runtime_surfaces": ["NX2_019.json"],
         "fallback_intent_rows": [],
         "legacy_policy_surface_rows": [],
+        "malformed_rows": [],
         "attention": [],
         "first_attention": None,
     }
@@ -291,7 +292,7 @@ def test_config_quality_surfaces_surface_intent_attention_without_new_problem(
         {
             "rows": [
                 {
-                    "rule_id": "fallback_card_behavior",
+                    "rule_id": "GENERIC_001_card_behavior",
                     "card_id": "GENERIC_001",
                     "surface": "GENERIC_001.json",
                     "surface_family": "CARDID.json",
@@ -1931,6 +1932,66 @@ def test_config_quality_flags_runtime_file_without_intent_in_self_audit(
         "check": "config_intent_runtime_file_without_intent",
         "value": ["CustomConfig/shadowpriest/UNTRACED_001.json"],
     } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_does_not_accept_nested_surface_intent_row_as_globalvalues_intent(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["surface_status_ledger"] = [
+        {"surface": "cardid_behavior", "status": "emitted"},
+        {"surface": "mulligan", "status": "emitted"},
+        {"surface": "combo", "status": "not_applicable"},
+    ]
+    write_json(package / "reports" / "operator_summary.json", operator)
+    write_json(
+        package / "reports" / "surface_intent.json",
+        {
+            "rows": [
+                {
+                    "rule_id": "globalvalues_full_key_profile",
+                    "card_id": None,
+                    "surface": "nested/GlobalValues.json",
+                    "intent": "bogus",
+                },
+                {
+                    "rule_id": "NX2_019_card_behavior",
+                    "card_id": "NX2_019",
+                    "surface": "NX2_019.json",
+                    "surface_family": "CARDID.json",
+                    "intent": "conditional_minion_death_burn",
+                },
+            ],
+            "required_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "NX2_019.json",
+            ],
+            "optional_surfaces": [],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    projection = report["checks"]["surface_intent_projection"]
+    assert audit["status"] == "attention"
+    assert audit["runtime_files_without_intent"] == [
+        "CustomConfig/shadowpriest/GlobalValues.json"
+    ]
+    assert projection["status"] == "attention"
+    assert projection["first_attention"] == "surface_intent_malformed_row_visible"
+    assert projection["malformed_rows"] == [
+        {
+            "card_id": "",
+            "rule_id": "globalvalues_full_key_profile",
+            "surface": "nested/GlobalValues.json",
+        }
+    ]
     assert report["apply_blocking"] is False
 
 

@@ -191,8 +191,24 @@ def test_source_backed_strong_shadowpriest_has_no_known_semantic_intent_fallback
         if row.get("card_id") in known_cards
         and row.get("intent_source") == "fallback"
     ]
+    known_behavior_card_ids = {
+        row.get("card_id")
+        for row in behavior_report["rows"]
+        if row.get("card_id") in known_cards
+        and row.get("surface_family") == "CARDID.json"
+        and row.get("behavior_block")
+        and row.get("meaningful_runtime_surface", True) is not False
+    }
+    known_surface_intent_card_ids = {
+        row.get("card_id")
+        for row in surface_intent["rows"]
+        if row.get("card_id") in known_cards
+        and row.get("surface_family") == "CARDID.json"
+    }
 
     assert code == 0
+    assert known_behavior_card_ids == known_cards
+    assert known_surface_intent_card_ids == known_cards
     assert semantic_default_rows == []
     assert fallback_surface_rows == []
     assert quality["authority"] == "diagnostic_only"
