@@ -60,7 +60,7 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 
 ## Expert Paths
 
-- Drift check: `hsconfig contract-preflight --json` verifies currentness, installed-skill sync, and source/runtime wording.
+- Drift check: `hsconfig contract-preflight --json` verifies currentness, installed-skill sync, and source/runtime wording; add `--package <04_package>` for read-only package runtime/config-quality readiness.
 - Use `--skill-install-root` only for non-default skill roots.
 - Use optional expert inputs only for fixtures, diagnostics, or inspected expert paths.
 - Use `--allow-placeholder` only for deterministic fixture or preview tests.

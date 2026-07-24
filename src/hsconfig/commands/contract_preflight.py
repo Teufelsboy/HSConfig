@@ -128,11 +128,14 @@ def _unavailable_source_candidate_plan_contract_payload() -> dict[str, object]:
 
 def run_contract_preflight_command(args: Namespace) -> int:
     repo_root = getattr(args, "repo_root", ".")
+    package = getattr(args, "package", None)
     try:
-        payload = build_contract_preflight(
-            repo_root,
-            skill_install_root=getattr(args, "skill_install_root", None),
-        )
+        preflight_kwargs = {
+            "skill_install_root": getattr(args, "skill_install_root", None),
+        }
+        if package is not None:
+            preflight_kwargs["package"] = package
+        payload = build_contract_preflight(repo_root, **preflight_kwargs)
     except Exception as exc:
         payload = {
             "status": "ATTENTION",
@@ -156,6 +159,59 @@ def run_contract_preflight_command(args: Namespace) -> int:
             "source_status_apply_blocking": False,
             "diagnostic_only": True,
         }
+        if package is not None:
+            error_message = (
+                f"contract-preflight raised {type(exc).__name__}: "
+                f"{str(exc) or type(exc).__name__}"
+            )
+            payload["checks"]["package_contract_current"] = False
+            payload["package_contract"] = {
+                "status": "attention",
+                "package": str(package),
+                "present": Path(package).is_dir(),
+                "authority": "diagnostic_only",
+                "validation_status": "failed",
+                "validation_errors": [error_message],
+                "validation_checked_files": 0,
+                "config_quality_status": "attention",
+                "config_quality_problem_count": 1,
+                "config_quality_first_problem": {
+                    "check": "contract_preflight_exception",
+                    "value": str(exc),
+                },
+                "ready_to_use_from_operator_summary": False,
+                "observed_operator_source_status_apply_blocking": False,
+                "observed_default_only_runtime_surfaces": [],
+                "next_report_to_open": "reports/operator_summary.json",
+                "runtime_apply_authority": "reports/operator_summary.json",
+                "source_status_apply_blocking": False,
+                "apply_blocking": False,
+                "runtime_write_performed": False,
+                "notes": [
+                    "Package contract preflight is diagnostic only.",
+                    (
+                        "reports/operator_summary.json remains the only normal "
+                        "apply authority."
+                    ),
+                    error_message,
+                ],
+                "technical_status": "",
+                "semantic_status": "",
+                "runtime_apply_mode": "",
+                "runtime_apply_allowed": False,
+                "default_only_runtime_surfaces": [],
+                "validate_config_package_status": "failed",
+                "validate_config_package_errors": [error_message],
+                "checked_runtime_files": 0,
+                "config_intent_self_audit_status": "attention",
+                "config_intent_first_attention": "contract_preflight_exception",
+                "closure_schema_current": False,
+                "cards_missing_closure": 0,
+                "package_contract_current": False,
+                "failures": ["contract_preflight_exception"],
+            }
+            if "package_contract_current" not in payload["failures"]:
+                payload["failures"].append("package_contract_current")
     return emit_result(
         payload,
         bool(getattr(args, "json", False)),

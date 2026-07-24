@@ -256,6 +256,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Root directory that contains installed Codex skills.",
     )
+    contract_preflight.add_argument(
+        "--package",
+        help=(
+            "Optional path to a prepared 04_package directory. When provided, "
+            "contract-preflight also reports package runtime validity and "
+            "config-quality readiness as diagnostic-only JSON."
+        ),
+    )
     contract_preflight.add_argument("--json", action="store_true")
 
     research_status_sync = subparsers.add_parser(

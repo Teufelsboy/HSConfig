@@ -15,6 +15,7 @@ from hsconfig.contract_preflight import (
     GitPreflight,
     build_contract_preflight,
     build_git_preflight,
+    build_package_contract_preflight,
 )
 from hsconfig.commands import contract_preflight as contract_preflight_command
 
@@ -36,6 +37,160 @@ def _synced_install_root(tmp_path: Path) -> Path:
     install_root = tmp_path / "custom skill root"
     sync_skill(install_root)
     return install_root
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _contract_preflight_clean_package(tmp_path: Path) -> Path:
+    package = tmp_path / "04_package"
+    deck = package / "CustomConfig" / "shadowpriest"
+    reports = package / "reports"
+    _write_json(
+        reports / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "runtime_load_safe": True,
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_contract": {
+                "apply_authority": "reports/operator_summary.json",
+            },
+            "source_status_diagnostic_only": True,
+            "source_status_apply_blocking": False,
+            "default_only_runtime_surfaces": [],
+            "default_only_runtime_surface_details": [],
+            "no_default_only_runtime_status": {
+                "status": "clean",
+                "default_only_runtime_surfaces": [],
+            },
+            "source_to_runtime_explainability_summary": {
+                "non_blocking": True,
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "closure_lane_counts": {"source_backed_runtime_lowered": 1},
+                "cards_with_closure": 1,
+                "cards_missing_closure": 0,
+                "closure_schema_current": True,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "surface_status_ledger": [
+                {"surface": "cardid_behavior", "status": "emitted"},
+                {"surface": "globalvalues", "status": "emitted"},
+                {"surface": "mulligan", "status": "emitted"},
+                {"surface": "combo", "status": "not_applicable"},
+            ],
+        },
+    )
+    _write_json(
+        reports / "deck_identity.json",
+        {
+            "deck_name": "ShadowPriest",
+            "cards": [{"card_id": "NX2_019", "name": "Mind Sear"}],
+        },
+    )
+    _write_json(
+        reports / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "NX2_019",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforeBattlecryTargetBonus",
+                    "value": "10",
+                    "meaningful_runtime_surface": True,
+                    "semantic_score": {
+                        "band": "high",
+                        "reason": "conditional_minion_death_burn",
+                        "profile": "semantic_intent",
+                        "matched_signals": [
+                            "enemy_hero_damage",
+                            "death_condition",
+                        ],
+                    },
+                }
+            ]
+        },
+    )
+    _write_json(
+        reports / "source_to_runtime_explainability.json",
+        {
+            "default_only_runtime_surfaces": [],
+            "summary": {
+                "cards_total": 1,
+                "claims_total": 1,
+                "runtime_lowered_claims": 1,
+                "next_report_to_open": "reports/source_to_runtime_explainability.json",
+            },
+            "claim_rows": [
+                {
+                    "claim_id": "claim_mind_sear_effect",
+                    "claim_kind": "targeting_rule",
+                    "builder_or_router_decision": "emitted",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "first_missing_link": None,
+                }
+            ],
+            "card_rows": [
+                {
+                    "card_id": "NX2_019",
+                    "first_missing_link": None,
+                    "source_lane": "runtime_lowered",
+                    "emitted_runtime_files": ["NX2_019.json"],
+                    "runtime_surfaces": ["cardid"],
+                    "closure": {
+                        "lane": "source_backed_runtime_lowered",
+                        "runtime_surfaces": ["NX2_019.json"],
+                        "default_only_risk": False,
+                    },
+                    "evidence_chain": [
+                        {
+                            "claim_id": "claim_mind_sear_effect",
+                            "claim_kind": "targeting_rule",
+                            "source_lane": "runtime_lowered",
+                            "source_type": "deck_matched_public_guide",
+                            "runtime_files": ["NX2_019.json"],
+                            "resolution_reason": "emitted",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    _write_json(
+        deck / "NX2_019.json",
+        {
+            "GameCardId": "NX2_019",
+            "ConfigComment": "ShadowPriest: generated behavior for NX2_019",
+            "BeforeBattlecryTargetBonus": {
+                "values": [
+                    {
+                        "comment": "ShadowPriest: Mind Sear source-backed target preference",
+                        "condition": "*",
+                        "value": "10",
+                    }
+                ]
+            },
+        },
+    )
+    _write_json(
+        deck / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "ShadowPriest global values"},
+    )
+    _write_json(
+        deck / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "ShadowPriest mulligan",
+            "Mulligan": {"values": []},
+        },
+    )
+    return package
 
 
 def test_contract_preflight_import_path_does_not_require_research_sentinel() -> None:
@@ -545,6 +700,16 @@ def test_contract_preflight_is_registered_but_not_part_of_configure_path() -> No
     assert parser_help.returncode == 0
     assert "contract-preflight" in parser_help.stdout
 
+    contract_preflight_help = subprocess.run(
+        [sys.executable, "-m", "hsconfig.cli", "contract-preflight", "--help"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert contract_preflight_help.returncode == 0
+    assert "--package" in contract_preflight_help.stdout
+
     configure_help = subprocess.run(
         [sys.executable, "-m", "hsconfig.cli", "configure", "--help"],
         text=True,
@@ -574,6 +739,222 @@ def test_contract_preflight_reports_research_context_as_diagnostic_only() -> Non
     assert research_context["recommended_research_entrypoint"] == "docs/research/current-truth.md"
     assert research_context["historical_outline_count"] > 0
     assert "docs/research/current-truth.md" not in research_context["historical_outline_paths"]
+
+
+def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "PASS"
+    assert payload["diagnostic_only"] is True
+    assert payload["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["checks"]["package_contract_current"] is True
+    assert "package_contract_current" not in payload["failures"]
+    assert "package_contract" in payload
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "clean"
+    assert contract["package_contract_current"] is True
+    assert contract["authority"] == "diagnostic_only"
+    assert contract["runtime_write_performed"] is False
+    assert contract["apply_blocking"] is False
+    assert contract["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert contract["ready_to_use_from_operator_summary"] is True
+    assert contract["technical_status"] == "VALID_PACKAGE"
+    assert contract["runtime_apply_mode"] == "load_safe_apply"
+    assert contract["runtime_apply_allowed"] is True
+    assert contract["source_status_apply_blocking"] is False
+    assert contract["observed_operator_source_status_apply_blocking"] is False
+    assert contract["default_only_runtime_surfaces"] == []
+    assert contract["validate_config_package_status"] == "passed"
+    assert contract["config_quality_status"] == "clean"
+    assert contract["config_quality_problem_count"] == 0
+    assert contract["config_intent_self_audit_status"] == "clean"
+    assert contract["closure_schema_current"] is True
+    assert contract["cards_missing_closure"] == 0
+    assert contract["next_report_to_open"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_omits_package_contract_without_package(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    assert "package_contract" not in payload
+    assert "package_contract_current" not in payload["checks"]
+    assert "package_contract_current" not in payload["failures"]
+
+
+def test_contract_preflight_package_mode_requires_boolean_runtime_apply_allowed(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    operator_path = package / "reports" / "operator_summary.json"
+    operator = json.loads(operator_path.read_text(encoding="utf-8"))
+    operator["runtime_apply_allowed"] = "false"
+    _write_json(operator_path, operator)
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["package_contract_current"] is False
+    assert "package_contract_current" in payload["failures"]
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "attention"
+    assert contract["runtime_apply_allowed"] is False
+    assert contract["ready_to_use_from_operator_summary"] is False
+    assert contract["package_contract_current"] is False
+    assert "runtime_apply_allowed_not_true" in contract["failures"]
+    assert contract["source_status_apply_blocking"] is False
+
+
+def test_contract_preflight_package_mode_exposes_default_only_attention_without_blocking(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    operator_path = package / "reports" / "operator_summary.json"
+    operator = json.loads(operator_path.read_text(encoding="utf-8"))
+    operator["semantic_status"] = "VALID_BUT_NOT_GUIDE_STRONG"
+    operator["default_only_runtime_surfaces"] = ["Mulligan.json"]
+    operator["no_default_only_runtime_status"] = {
+        "status": "attention",
+        "default_only_runtime_surfaces": ["Mulligan.json"],
+    }
+    operator_path.write_text(json.dumps(operator, indent=2), encoding="utf-8")
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["checks"]["package_contract_current"] is False
+    assert "package_contract_current" in payload["failures"]
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "attention"
+    assert contract["package_contract_current"] is False
+    assert contract["authority"] == "diagnostic_only"
+    assert contract["apply_blocking"] is False
+    assert contract["runtime_write_performed"] is False
+    assert contract["source_status_apply_blocking"] is False
+    assert contract["observed_operator_source_status_apply_blocking"] is False
+    assert contract["runtime_apply_allowed"] is True
+    assert contract["ready_to_use_from_operator_summary"] is True
+    assert contract["default_only_runtime_surfaces"] == ["Mulligan.json"]
+    assert "default_only_runtime_surfaces_present" in contract["failures"]
+    assert contract["next_report_to_open"] == "reports/contract_doctor.json"
+
+
+def test_contract_preflight_package_mode_exposes_malformed_runtime_json_attention(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    (package / "CustomConfig" / "shadowpriest" / "Mulligan.json").write_text(
+        "{not json",
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["checks"]["package_contract_current"] is False
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "attention"
+    assert contract["validate_config_package_status"] == "failed"
+    assert contract["apply_blocking"] is False
+    assert contract["runtime_write_performed"] is False
+    assert contract["source_status_apply_blocking"] is False
+    assert "validate_config_package_failed" in contract["failures"]
+
+
+def test_contract_preflight_package_mode_requires_complete_runtime_files(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    (package / "CustomConfig" / "shadowpriest" / "Mulligan.json").unlink()
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["package_contract_current"] is False
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "attention"
+    assert contract["validate_config_package_status"] == "failed"
+    assert any(
+        "missing required runtime file Mulligan.json" in error
+        for error in contract["validate_config_package_errors"]
+    )
+    assert "validate_config_package_failed" in contract["failures"]
+    assert contract["source_status_apply_blocking"] is False
+
+
+def test_contract_preflight_package_mode_malformed_operator_summary_is_attention(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    (package / "reports" / "operator_summary.json").write_text(
+        "{not json",
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["package_contract_current"] is False
+
+    contract = payload["package_contract"]
+
+    assert contract["status"] == "attention"
+    assert contract["ready_to_use_from_operator_summary"] is False
+    assert "operator_summary.json is missing or invalid." in contract["notes"]
+    assert "config_quality_attention" in contract["failures"]
+    assert contract["source_status_apply_blocking"] is False
 
 
 def test_contract_preflight_research_context_attention_when_current_truth_missing(
@@ -695,6 +1076,93 @@ def test_contract_preflight_cli_includes_research_context_without_writing_files(
     assert payload["research_context"]["historical_outlines_apply_authority"] is False
     assert payload["diagnostic_only"] is True
     assert before == after
+
+
+def test_contract_preflight_cli_package_mode_does_not_write_files(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+    before_git = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    before_package = sorted(path.relative_to(package).as_posix() for path in package.rglob("*"))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "hsconfig.cli",
+            "contract-preflight",
+            "--repo-root",
+            ".",
+            "--package",
+            str(package),
+            "--json",
+        ],
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    after_git = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    after_package = sorted(path.relative_to(package).as_posix() for path in package.rglob("*"))
+
+    assert before_git == after_git
+    assert before_package == after_package
+    assert result.returncode in (0, 1), result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["package_contract"]["runtime_write_performed"] is False
+    assert payload["package_contract"]["authority"] == "diagnostic_only"
+
+
+def test_contract_preflight_cli_package_fallback_preserves_package_contract_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "missing_04_package"
+    schema_keys = set(build_package_contract_preflight(package))
+
+    def _raise_preflight(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise RuntimeError("forced preflight failure")
+
+    monkeypatch.setattr(
+        contract_preflight_command,
+        "build_contract_preflight",
+        _raise_preflight,
+    )
+
+    exit_code = contract_preflight_command.run_contract_preflight_command(
+        Namespace(
+            repo_root=".",
+            skill_install_root=None,
+            package=str(package),
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 1
+    assert payload["status"] == "ATTENTION"
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["checks"]["package_contract_current"] is False
+    assert "package_contract_current" in payload["failures"]
+    assert set(payload["package_contract"]) == schema_keys
+    assert payload["package_contract"]["status"] == "attention"
+    assert payload["package_contract"]["package"] == str(package)
+    assert payload["package_contract"]["package_contract_current"] is False
+    assert payload["package_contract"]["failures"] == ["contract_preflight_exception"]
 
 
 def test_contract_preflight_exposes_research_result_contract_sentinel() -> None:

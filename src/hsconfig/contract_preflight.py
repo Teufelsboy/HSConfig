@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 import subprocess
+from typing import Any
 
 from hsconfig.skill_sync_status import build_installed_skill_sync_status
 
@@ -88,6 +90,43 @@ class ResearchContextPreflight:
     latest_research_result_contract_no_op_validation_risk: bool
     source_status_apply_blocking: bool
     notes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PackageContractPreflight:
+    status: str
+    package: str
+    present: bool
+    authority: str
+    validation_status: str
+    validation_errors: list[str]
+    validation_checked_files: int
+    config_quality_status: str
+    config_quality_problem_count: int
+    config_quality_first_problem: dict[str, Any] | None
+    ready_to_use_from_operator_summary: bool
+    observed_operator_source_status_apply_blocking: bool
+    observed_default_only_runtime_surfaces: list[str]
+    next_report_to_open: str
+    runtime_apply_authority: str
+    source_status_apply_blocking: bool
+    apply_blocking: bool
+    runtime_write_performed: bool
+    notes: tuple[str, ...]
+    technical_status: str
+    semantic_status: str
+    runtime_apply_mode: str
+    runtime_apply_allowed: bool
+    default_only_runtime_surfaces: list[str]
+    validate_config_package_status: str
+    validate_config_package_errors: list[str]
+    checked_runtime_files: int
+    config_intent_self_audit_status: str
+    config_intent_first_attention: str | None
+    closure_schema_current: bool
+    cards_missing_closure: int
+    package_contract_current: bool
+    failures: list[str]
 
 
 def _run_git(
@@ -222,6 +261,39 @@ def _read(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _as_mapping(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _string_items(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _first_problem(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    first = value[0]
+    return dict(first) if isinstance(first, Mapping) else {"value": str(first)}
+
+
+def _int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _relative_posix(root: Path, path: Path) -> str:
@@ -410,6 +482,214 @@ def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
             "reports/operator_summary.json remains the only normal apply authority.",
         ],
     }
+
+
+def build_package_contract_preflight(package: str | Path | None) -> dict[str, Any] | None:
+    if package is None:
+        return None
+
+    package_path = Path(package)
+    normal_authority = "reports/operator_summary.json"
+    base_notes = (
+        "Package contract preflight is diagnostic only.",
+        "reports/operator_summary.json remains the only normal apply authority.",
+    )
+    if not package_path.is_dir():
+        validation_errors = [f"{package_path}: package directory not found"]
+        failures = ["package_missing"]
+        return asdict(
+            PackageContractPreflight(
+                status="attention",
+                package=str(package_path),
+                present=False,
+                authority="diagnostic_only",
+                validation_status="failed",
+                validation_errors=validation_errors,
+                validation_checked_files=0,
+                config_quality_status="attention",
+                config_quality_problem_count=1,
+                config_quality_first_problem={
+                    "check": "package_missing",
+                    "value": str(package_path),
+                },
+                ready_to_use_from_operator_summary=False,
+                observed_operator_source_status_apply_blocking=False,
+                observed_default_only_runtime_surfaces=[],
+                next_report_to_open=normal_authority,
+                runtime_apply_authority=normal_authority,
+                source_status_apply_blocking=False,
+                apply_blocking=False,
+                runtime_write_performed=False,
+                notes=base_notes + ("Package directory is missing.",),
+                technical_status="",
+                semantic_status="",
+                runtime_apply_mode="",
+                runtime_apply_allowed=False,
+                default_only_runtime_surfaces=[],
+                validate_config_package_status="failed",
+                validate_config_package_errors=validation_errors,
+                checked_runtime_files=0,
+                config_intent_self_audit_status="missing",
+                config_intent_first_attention="package_missing",
+                closure_schema_current=False,
+                cards_missing_closure=0,
+                package_contract_current=False,
+                failures=failures,
+            )
+        )
+
+    from hsconfig.config_quality_contract import build_config_quality_report
+    from hsconfig.validate_package import validate_config_package
+
+    operator = _as_mapping(_read_json(package_path / normal_authority))
+    try:
+        validation = validate_config_package(
+            package_path,
+            require_complete_package=True,
+        )
+    except Exception as exc:
+        validation = {
+            "status": "failed",
+            "errors": [f"validate_config_package raised {type(exc).__name__}: {exc}"],
+            "checked_files": 0,
+        }
+    try:
+        quality = build_config_quality_report(package_path)
+    except Exception as exc:
+        quality = {
+            "status": "attention",
+            "checks": {},
+            "problems": [
+                {
+                    "check": "config_quality_exception",
+                    "value": f"{type(exc).__name__}: {exc}",
+                }
+            ],
+        }
+
+    quality_checks = _as_mapping(quality.get("checks"))
+    operator_quality = _as_mapping(quality_checks.get("operator_summary"))
+    closure = _as_mapping(quality_checks.get("closure_freshness"))
+    config_intent = _as_mapping(quality_checks.get("config_intent_self_audit"))
+    quality_problems = quality.get("problems", [])
+
+    runtime_contract = _as_mapping(operator.get("runtime_apply_contract"))
+    runtime_apply_authority = str(
+        runtime_contract.get("apply_authority") or normal_authority
+    )
+    raw_runtime_apply_allowed = operator.get("runtime_apply_allowed", False)
+    runtime_apply_allowed = raw_runtime_apply_allowed is True
+    runtime_apply_mode = str(operator.get("runtime_apply_mode", ""))
+    technical_status = str(operator.get("technical_status", ""))
+    semantic_status = str(operator.get("semantic_status", ""))
+    observed_source_blocking = bool(
+        operator_quality.get(
+            "source_status_apply_blocking",
+            operator.get("source_status_apply_blocking", False),
+        )
+    )
+    default_only = _string_items(
+        operator_quality.get(
+            "default_only_runtime_surfaces",
+            operator.get("default_only_runtime_surfaces", []),
+        )
+    )
+
+    validation_status = str(validation.get("status", "failed"))
+    validation_errors = _string_items(validation.get("errors", []))
+    validation_checked_files = _int_value(validation.get("checked_files", 0))
+    config_quality_status = str(quality.get("status", "attention"))
+    config_quality_problem_count = (
+        len(quality_problems) if isinstance(quality_problems, list) else 0
+    )
+    config_intent_status = str(config_intent.get("status", "missing"))
+    config_intent_first_attention_value = config_intent.get("first_attention")
+    config_intent_first_attention = (
+        str(config_intent_first_attention_value)
+        if config_intent_first_attention_value
+        else None
+    )
+    closure_schema_current = bool(closure.get("closure_schema_current", False))
+    cards_missing_closure = _int_value(closure.get("cards_missing_closure", 0))
+
+    ready_to_use = (
+        technical_status == "VALID_PACKAGE"
+        and runtime_apply_mode == "load_safe_apply"
+        and runtime_apply_allowed is True
+        and runtime_apply_authority == normal_authority
+    )
+
+    failures: list[str] = []
+    if validation_status != "passed":
+        failures.append("validate_config_package_failed")
+    if config_quality_status != "clean":
+        failures.append("config_quality_attention")
+    if technical_status != "VALID_PACKAGE":
+        failures.append("technical_status_not_valid_package")
+    if runtime_apply_mode != "load_safe_apply":
+        failures.append("runtime_apply_mode_not_load_safe_apply")
+    if raw_runtime_apply_allowed is not True:
+        failures.append("runtime_apply_allowed_not_true")
+    if runtime_apply_authority != normal_authority:
+        failures.append("runtime_apply_authority_not_operator_summary")
+    if observed_source_blocking:
+        failures.append("observed_operator_source_status_apply_blocking_true")
+    if default_only:
+        failures.append("default_only_runtime_surfaces_present")
+    if config_intent_status != "clean":
+        failures.append("config_intent_self_audit_attention")
+    if closure_schema_current is not True:
+        failures.append("closure_schema_not_current")
+    if cards_missing_closure:
+        failures.append("cards_missing_closure")
+
+    package_contract_current = not failures
+    next_report = (
+        normal_authority if package_contract_current else "reports/contract_doctor.json"
+    )
+    notes = base_notes
+    if not operator:
+        notes += ("operator_summary.json is missing or invalid.",)
+    if default_only:
+        notes += ("Default-only runtime surfaces require operator attention.",)
+
+    return asdict(
+        PackageContractPreflight(
+            status="clean" if package_contract_current else "attention",
+            package=str(package_path),
+            present=True,
+            authority="diagnostic_only",
+            validation_status=validation_status,
+            validation_errors=validation_errors,
+            validation_checked_files=validation_checked_files,
+            config_quality_status=config_quality_status,
+            config_quality_problem_count=config_quality_problem_count,
+            config_quality_first_problem=_first_problem(quality_problems),
+            ready_to_use_from_operator_summary=ready_to_use,
+            observed_operator_source_status_apply_blocking=observed_source_blocking,
+            observed_default_only_runtime_surfaces=default_only,
+            next_report_to_open=next_report,
+            runtime_apply_authority=runtime_apply_authority,
+            source_status_apply_blocking=False,
+            apply_blocking=False,
+            runtime_write_performed=False,
+            notes=notes,
+            technical_status=technical_status,
+            semantic_status=semantic_status,
+            runtime_apply_mode=runtime_apply_mode,
+            runtime_apply_allowed=runtime_apply_allowed,
+            default_only_runtime_surfaces=default_only,
+            validate_config_package_status=validation_status,
+            validate_config_package_errors=validation_errors,
+            checked_runtime_files=validation_checked_files,
+            config_intent_self_audit_status=config_intent_status,
+            config_intent_first_attention=config_intent_first_attention,
+            closure_schema_current=closure_schema_current,
+            cards_missing_closure=cards_missing_closure,
+            package_contract_current=package_contract_current,
+            failures=failures,
+        )
+    )
 
 
 def _latest_research_result_contract(root: Path) -> dict[str, object]:
@@ -660,6 +940,7 @@ def build_contract_preflight(
     *,
     git: GitPreflight | None = None,
     skill_install_root: str | Path | None = None,
+    package: str | Path | None = None,
 ) -> dict[str, object]:
     root = Path(repo_root).resolve()
     repo_root_exists = root.exists()
@@ -802,7 +1083,15 @@ def build_contract_preflight(
             research_context.historical_outlines_apply_authority is False
         ),
     }
-    failures = [name for name, passed in checks.items() if not passed]
+    package_contract = build_package_contract_preflight(package)
+    if package_contract is not None:
+        checks["package_contract_current"] = bool(
+            package_contract.get("package_contract_current", False)
+        )
+
+    failures = [key for key in EXPECTED_CHECK_KEYS if not checks[key]]
+    if package_contract is not None and not checks["package_contract_current"]:
+        failures.append("package_contract_current")
     payload: dict[str, object] = {
         "status": "PASS" if not failures else "ATTENTION",
         "repo_root": str(root),
@@ -818,6 +1107,8 @@ def build_contract_preflight(
         "source_status_apply_blocking": False,
         "diagnostic_only": True,
     }
+    if package_contract is not None:
+        payload["package_contract"] = package_contract
     if not repo_root_exists:
         payload["error"] = {
             "type": "FileNotFoundError",

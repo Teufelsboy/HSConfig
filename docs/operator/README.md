@@ -46,6 +46,15 @@ boundaries, and the research-context lock around `docs/research/current-truth.md
 The `source_candidate_plan.json` check is diagnostic-only and does not replace `reports/operator_summary.json`.
 The historical research outline files remain
 diagnostic-only evidence and do not replace `reports/operator_summary.json`.
+When a package already exists, use
+`hsconfig contract-preflight --package <04_package> --json` for a single
+read-only readiness view. It combines the repo/skill preflight with package
+runtime validation and compact config-quality signals. If
+`package_contract.status=attention`, inspect `reports/operator_summary.json`
+first and then run `hsconfig contract-doctor --package <04_package> --json` for
+details. Package-mode preflight is diagnostic-only; it does not write files,
+does not replace `reports/operator_summary.json`, and does not block a
+technically load-safe package.
 Use `--skill-install-root <path>` only when testing or checking a non-default
 Codex skill root. This preflight is diagnostic-only and does not replace
 `reports/operator_summary.json`.
