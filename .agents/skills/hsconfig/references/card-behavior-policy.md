@@ -58,6 +58,31 @@ syntax.
 Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
 Do not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json` in the normal HSConfig path.
 
+## Diagnostic Intent Taxonomy
+
+Card intent taxonomy is diagnostic and scoring-only. It may choose stronger
+values for supported per-card CardID behavior rows, but it must not create a new
+runtime surface, a new apply gate, or unsupported HearthRanger syntax.
+
+Known ShadowPriest-style semantics that should not remain generic defaults when
+card text or exact card identity is available:
+
+- Direct enemy hero burn, for example Mind Blast.
+- Conditional minion-death burn, for example Mind Sear.
+- Reciprocal hero burn, for example Shadowbomber and Acupuncture.
+- Damage-aura amplification, for example Voidtouched Attendant.
+- Self-damage resource/refill, for example Raise Dead.
+- Self-damage liability body, for example Brain Masseuse.
+- Opponent-damage discount tempo, for example Frenzied Felwing.
+- Hero-power cost aura, for example Papercraft Angel.
+- Hero-power transform, for example Darkbishop Benedictus.
+- Location tempo/draw, for example Cathedral of Atonement.
+
+These classifications explain `semantic_score.reason` and `surface_intent`
+rows. They do not prove Mulligan keeps, exact combo order, targeting conditions,
+or post-game tuning. Keep unsupported sequencing and timing claims report-only
+unless a documented VisionAI surface can express them safely.
+
 ## Choice Surface Lowering
 
 `discover_choice` may lower to `OnDiscoverCardBonus` only when the selected option card identity is resolved from source evidence and linked entity metadata. If no condition is supplied, HSConfig derives `my_discover(count(),cardid=<OPTION_CARD_ID>) > 0`.
