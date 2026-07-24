@@ -156,6 +156,89 @@ def test_contract_preflight_checks_configure_acceptance_route_contract(
     assert "config_proof_summary_visible" not in payload["failures"]
 
 
+def test_contract_preflight_checks_source_candidate_plan_visibility(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    contract = payload["source_candidate_plan_contract"]
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["source_candidate_plan_visible"] is True
+    assert "source_candidate_plan_visible" not in payload["failures"]
+    assert contract == {
+        "status": "visible",
+        "authority": "diagnostic_source_candidate_plan",
+        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "operator_entrypoint_path": "docs/operator/README.md",
+        "implementation_path": "src/hsconfig/source_candidate_plan.py",
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "candidate_plan_can_promote": False,
+        "candidate_plan_can_block_apply": False,
+        "normal_path": (
+            "source-manifest -> configure --online-source -> "
+            "source-acquire/source-autopilot -> prepare"
+        ),
+        "notes": [
+            "source_candidate_plan.json is acquisition guidance only.",
+            "Candidate plans cannot promote or block runtime apply.",
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
+def test_contract_preflight_reports_attention_when_source_candidate_plan_visibility_drifts(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    source_root = tmp_path / "src" / "hsconfig"
+    source_root.mkdir(parents=True)
+    shutil.copy2(
+        Path("src") / "hsconfig" / "source_candidate_plan.py",
+        source_root / "source_candidate_plan.py",
+    )
+
+    workflow_path = target_docs / "operator" / "source-builder-workflow.md"
+    workflow_path.write_text(
+        workflow_path.read_text(encoding="utf-8").replace(
+            "The plan cannot promote, block apply, write runtime config, "
+            "or replace `reports/operator_summary.json`.",
+            "The plan can decide source status.",
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["source_candidate_plan_visible"] is False
+    assert "source_candidate_plan_visible" in payload["failures"]
+    assert payload["source_candidate_plan_contract"]["status"] == "attention"
+    assert payload["source_candidate_plan_contract"]["runtime_apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert payload["source_candidate_plan_contract"]["source_status_apply_blocking"] is False
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["diagnostic_only"] is True
+
+
 def test_contract_preflight_checks_pre_run_config_contract_receipt_visibility(
     tmp_path: Path,
 ) -> None:
@@ -285,6 +368,28 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
     )
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
+
+    assert payload["source_candidate_plan_contract"] == {
+        "status": "attention",
+        "authority": "diagnostic_source_candidate_plan",
+        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "operator_entrypoint_path": "docs/operator/README.md",
+        "implementation_path": "src/hsconfig/source_candidate_plan.py",
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "candidate_plan_can_promote": False,
+        "candidate_plan_can_block_apply": False,
+        "normal_path": (
+            "source-manifest -> configure --online-source -> "
+            "source-acquire/source-autopilot -> prepare"
+        ),
+        "notes": [
+            "source candidate plan contract preflight unavailable",
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
 
     assert code == 1
     assert {

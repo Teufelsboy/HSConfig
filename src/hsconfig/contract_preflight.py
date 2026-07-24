@@ -32,6 +32,7 @@ EXPECTED_CHECK_KEYS = (
     "config_proof_summary_visible",
     "operator_summary_single_authority_visible",
     "source_status_nonblocking_visible",
+    "source_candidate_plan_visible",
     "no_default_only_visible",
     "runtime_surface_boundary_visible",
     "darkbishop_effect_not_mulligan_visible",
@@ -348,6 +349,69 @@ def _config_proof_summary_visible(combined: str) -> bool:
     )
 
 
+def _source_candidate_plan_contract_visible(
+    operator_text: str,
+    source_builder_workflow_text: str,
+    source_candidate_plan_text: str,
+) -> bool:
+    operator_terms = (
+        "source-candidate plan visibility",
+        "source_candidate_plan.json",
+        "does not replace `reports/operator_summary.json`",
+    )
+    workflow_terms = (
+        "Queries are for Codex/operator research only",
+        "The plan cannot promote, block apply, write runtime config, "
+        "or replace `reports/operator_summary.json`.",
+    )
+    implementation_terms = (
+        '"authority": "diagnostic_source_candidate_plan"',
+        '"apply_blocking": False',
+        '"runtime_write_performed": False',
+        '"source_status_apply_blocking": False',
+        '"candidate_plan_can_promote": False',
+        '"candidate_plan_can_block_apply": False',
+        '"normal_apply_authority": _NORMAL_APPLY_AUTHORITY',
+    )
+    return (
+        all(term in operator_text for term in operator_terms)
+        and _has_any(
+            source_builder_workflow_text,
+            (
+                "source_candidate_plan.json is deterministic pre-acquisition guidance",
+                "`source_candidate_plan.json` is deterministic pre-acquisition guidance",
+            ),
+        )
+        and all(term in source_builder_workflow_text for term in workflow_terms)
+        and all(term in source_candidate_plan_text for term in implementation_terms)
+    )
+
+
+def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
+    return {
+        "status": "visible" if visible else "attention",
+        "authority": "diagnostic_source_candidate_plan",
+        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "operator_entrypoint_path": "docs/operator/README.md",
+        "implementation_path": "src/hsconfig/source_candidate_plan.py",
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "candidate_plan_can_promote": False,
+        "candidate_plan_can_block_apply": False,
+        "normal_path": (
+            "source-manifest -> configure --online-source -> "
+            "source-acquire/source-autopilot -> prepare"
+        ),
+        "notes": [
+            "source_candidate_plan.json is acquisition guidance only.",
+            "Candidate plans cannot promote or block runtime apply.",
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
 def _latest_research_result_contract(root: Path) -> dict[str, object]:
     research_root = root / "docs" / "research"
     if not research_root.is_dir():
@@ -604,11 +668,31 @@ def build_contract_preflight(
     workflow_text = _read(skill_root / "references" / "workflow.md")
     checklist_text = _read(skill_root / "references" / "contract-compiler-checklist.md")
     operator_text = _read(root / "docs" / "operator" / "README.md")
-    combined = "\n".join([skill_text, workflow_text, checklist_text, operator_text])
+    source_builder_workflow_text = _read(
+        root / "docs" / "operator" / "source-builder-workflow.md"
+    )
+    source_candidate_plan_text = _read(
+        root / "src" / "hsconfig" / "source_candidate_plan.py"
+    )
+    combined = "\n".join(
+        [
+            skill_text,
+            workflow_text,
+            checklist_text,
+            operator_text,
+            source_builder_workflow_text,
+            source_candidate_plan_text,
+        ]
+    )
     references_line = _references_line(skill_text)
     git_snapshot = git or build_git_preflight(root)
     research_context = build_research_context_preflight(root)
     installed_skill_sync = build_installed_skill_sync_status(root, skill_install_root)
+    source_candidate_plan_visible = _source_candidate_plan_contract_visible(
+        operator_text,
+        source_builder_workflow_text,
+        source_candidate_plan_text,
+    )
 
     checks = {
         "repo_current": (
@@ -663,6 +747,7 @@ def build_contract_preflight(
                 or "`SOURCE_BACKED_STRONG` is an evidence-quality label" in combined
             )
         ),
+        "source_candidate_plan_visible": source_candidate_plan_visible,
         "no_default_only_visible": (
             "No hidden default-only runtime" in combined
             and "default_only_runtime_surfaces=[]" in combined
@@ -726,6 +811,9 @@ def build_contract_preflight(
         "failures": failures,
         "research_context": asdict(research_context),
         "installed_skill_sync": installed_skill_sync,
+        "source_candidate_plan_contract": _source_candidate_plan_contract_payload(
+            source_candidate_plan_visible
+        ),
         "runtime_apply_authority": "reports/operator_summary.json",
         "source_status_apply_blocking": False,
         "diagnostic_only": True,

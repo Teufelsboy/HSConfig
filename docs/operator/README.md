@@ -40,9 +40,11 @@ are outside the normal output path.
 Use `hsconfig contract-preflight --json` for a read-only repo and skill contract
 check before source refresh, package generation, or runtime-facing apply review.
 It checks currentness, installed-skill sync, skill reference routing,
-source-status non-blocking policy, no-default-only visibility, supported runtime
-surfaces, negative-scope boundaries, and the research-context lock around
-`docs/research/current-truth.md`. The historical research outline files remain
+source-status non-blocking policy, source-candidate plan visibility,
+no-default-only visibility, supported runtime surfaces, negative-scope
+boundaries, and the research-context lock around `docs/research/current-truth.md`.
+The `source_candidate_plan.json` check is diagnostic-only and does not replace `reports/operator_summary.json`.
+The historical research outline files remain
 diagnostic-only evidence and do not replace `reports/operator_summary.json`.
 Use `--skill-install-root <path>` only when testing or checking a non-default
 Codex skill root. This preflight is diagnostic-only and does not replace

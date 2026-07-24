@@ -102,6 +102,30 @@ def _unavailable_research_context_payload(repo_root: str) -> dict[str, object]:
         }
 
 
+def _unavailable_source_candidate_plan_contract_payload() -> dict[str, object]:
+    return {
+        "status": "attention",
+        "authority": "diagnostic_source_candidate_plan",
+        "documentation_path": "docs/operator/source-builder-workflow.md",
+        "operator_entrypoint_path": "docs/operator/README.md",
+        "implementation_path": "src/hsconfig/source_candidate_plan.py",
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "candidate_plan_can_promote": False,
+        "candidate_plan_can_block_apply": False,
+        "normal_path": (
+            "source-manifest -> configure --online-source -> "
+            "source-acquire/source-autopilot -> prepare"
+        ),
+        "notes": [
+            "source candidate plan contract preflight unavailable",
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
 def run_contract_preflight_command(args: Namespace) -> int:
     repo_root = getattr(args, "repo_root", ".")
     try:
@@ -124,6 +148,9 @@ def run_contract_preflight_command(args: Namespace) -> int:
             "installed_skill_sync": _unavailable_installed_skill_payload(
                 repo_root,
                 getattr(args, "skill_install_root", None),
+            ),
+            "source_candidate_plan_contract": (
+                _unavailable_source_candidate_plan_contract_payload()
             ),
             "runtime_apply_authority": "reports/operator_summary.json",
             "source_status_apply_blocking": False,
