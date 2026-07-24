@@ -1052,3 +1052,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task review: independent reviewer found no Critical, Important, or Minor issues and confirmed no source-find, HSTuner, replay/log parsing, runtime write, new apply authority, promotion gate, or gameplay sequencing was introduced.
 - [x] Implementation commit: source-candidate preflight contract committed in 08d50fb; focused source/configure regression passed (54 passed); contract-preflight returned PASS with source_candidate_plan_visible=true and all source-candidate apply/write/promote/block flags false.
 - [x] Guardrails and final review: contract guardrails passed (559 passed; installed skill sync OK; contract spine sentinel OK); final code reviewer approved the diff with no Critical, Important, or Minor findings.
+
+---
+
+# HSConfig Source Readiness Preview SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-24-hsconfig-source-readiness-preview.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before edits; matching upstream branches compared and both local branches matched their upstream refs.
+- [x] Task 1: Add Source Readiness Preview Helper (commits b08d27e..33c6a0b; RED import/edge regressions confirmed; helper suite 6 passed; final review clean)
+- [x] Task 2: Embed Preview In Autopilot And Configure Summaries (commits 6725658..7e5f19e; focused source/configure/preview slice 56 passed; task review clean after preserving authoritative `none` source action)
+- [x] Task 3: Add Contract Preflight And Operator Documentation (commits aef23bf..4053811; contract preflight suite 39 passed; re-review clean after schema parity and explicit `source_status_apply_blocking=false` wording)
+- [x] Task 4: Synchronize Skill And Verify The Full Contract (installed skill sync and `--check` passed; focused feature slice 95 passed; full suite 1885 passed, 11 skipped; final clean/currentness proof follows this ledger commit)
