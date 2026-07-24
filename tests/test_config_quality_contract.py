@@ -1870,6 +1870,29 @@ def test_config_quality_exposes_clean_config_intent_self_audit(tmp_path: Path):
     assert audit["first_attention"] is None
 
 
+def test_config_quality_accepts_surface_intent_for_special_runtime_file_intent(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    operator["surface_status_ledger"] = [
+        {"surface": "cardid_behavior", "status": "emitted"},
+        {"surface": "mulligan", "status": "emitted"},
+        {"surface": "combo", "status": "not_applicable"},
+    ]
+    write_json(package / "reports" / "operator_summary.json", operator)
+
+    report = build_config_quality_report(package)
+
+    audit = report["checks"]["config_intent_self_audit"]
+    assert audit["status"] == "clean"
+    assert audit["runtime_files_without_intent"] == []
+    assert audit["attention"] == []
+    assert report["problems"] == []
+
+
 def test_config_quality_flags_runtime_file_without_intent_in_self_audit(
     tmp_path: Path,
 ):

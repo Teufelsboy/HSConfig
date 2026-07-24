@@ -192,6 +192,7 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
             deck_identity=deck_identity,
             card_behavior=card_behavior,
             explainability=explainability,
+            surface_intent=surface_intent,
         ),
         "surface_intent_projection": _surface_intent_projection_check(
             surface_intent
@@ -1107,12 +1108,14 @@ def _config_intent_self_audit_check(
     deck_identity: Mapping[str, Any],
     card_behavior: Mapping[str, Any],
     explainability: Mapping[str, Any],
+    surface_intent: Mapping[str, Any],
 ) -> dict[str, Any]:
     runtime_files = _runtime_files_from_custom_config(package)
     explained_files = _explained_runtime_files_from_reports(
         operator=operator,
         card_behavior=card_behavior,
         explainability=explainability,
+        surface_intent=surface_intent,
     )
     normal_apply_authority_drift = _normal_apply_authority_drift(operator)
     deck_card_ids = _deck_identity_card_ids(deck_identity)
@@ -1230,6 +1233,7 @@ def _explained_runtime_files_from_reports(
     operator: Mapping[str, Any],
     card_behavior: Mapping[str, Any],
     explainability: Mapping[str, Any],
+    surface_intent: Mapping[str, Any],
 ) -> set[str]:
     explained: set[str] = set()
 
@@ -1279,6 +1283,25 @@ def _explained_runtime_files_from_reports(
             elif surface:
                 explained.add(surface)
 
+    explained.update(_surface_intent_runtime_files(surface_intent))
+
+    return explained
+
+
+def _surface_intent_runtime_files(surface_intent: Mapping[str, Any]) -> set[str]:
+    explained: set[str] = set()
+    for row in _report_rows(surface_intent, ("rows",)):
+        surface = _standard_surface_name(row.get("surface"))
+        if not surface or surface in FORBIDDEN_LEGACY_RUNTIME_SURFACES:
+            continue
+        intent = str(row.get("intent", "")).strip()
+        if not intent or intent == "legacy_policy_surface":
+            continue
+        surface_name = Path(surface).name
+        if surface_name.endswith(".json"):
+            explained.add(surface_name)
+        elif surface == "per-card <CARDID>.json":
+            explained.add(surface)
     return explained
 
 
