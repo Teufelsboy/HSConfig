@@ -126,6 +126,34 @@ def _unavailable_source_candidate_plan_contract_payload() -> dict[str, object]:
     }
 
 
+def _unavailable_source_readiness_preview_contract_payload() -> dict[str, object]:
+    return {
+        "status": "attention",
+        "authority": "diagnostic_source_readiness_preview",
+        "documentation_paths": [
+            "docs/operator/source-builder-workflow.md",
+            ".agents/skills/hsconfig/references/workflow.md",
+        ],
+        "implementation_path": "src/hsconfig/source_readiness_preview.py",
+        "producer_paths": [
+            "src/hsconfig/source_autopilot.py",
+            "src/hsconfig/commands/configure.py",
+        ],
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "notes": [
+            "source readiness preview contract preflight unavailable",
+            (
+                "Source readiness preview cannot promote SOURCE_BACKED_STRONG, "
+                "block apply, apply runtime files, or write runtime config."
+            ),
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
 def run_contract_preflight_command(args: Namespace) -> int:
     repo_root = getattr(args, "repo_root", ".")
     package = getattr(args, "package", None)
@@ -154,6 +182,9 @@ def run_contract_preflight_command(args: Namespace) -> int:
             ),
             "source_candidate_plan_contract": (
                 _unavailable_source_candidate_plan_contract_payload()
+            ),
+            "source_readiness_preview_contract": (
+                _unavailable_source_readiness_preview_contract_payload()
             ),
             "runtime_apply_authority": "reports/operator_summary.json",
             "source_status_apply_blocking": False,

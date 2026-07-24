@@ -35,6 +35,7 @@ EXPECTED_CHECK_KEYS = (
     "operator_summary_single_authority_visible",
     "source_status_nonblocking_visible",
     "source_candidate_plan_visible",
+    "source_readiness_preview_visible",
     "no_default_only_visible",
     "runtime_surface_boundary_visible",
     "darkbishop_effect_not_mulligan_visible",
@@ -479,6 +480,87 @@ def _source_candidate_plan_contract_payload(visible: bool) -> dict[str, object]:
         "notes": [
             "source_candidate_plan.json is acquisition guidance only.",
             "Candidate plans cannot promote or block runtime apply.",
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
+def _source_readiness_preview_visible(
+    source_readiness_preview_text: str,
+    configure_text: str,
+    source_autopilot_text: str,
+    operator_text: str,
+    workflow_text: str,
+) -> bool:
+    docs_terms = (
+        "source_readiness_preview",
+        "diagnostic-only",
+        "does not replace `reports/operator_summary.json`",
+    )
+    implementation_terms = (
+        "diagnostic_source_readiness_preview",
+        '_NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"',
+        '"diagnostic_only": True',
+        '"runtime_apply_authority": _NORMAL_APPLY_AUTHORITY',
+        '"apply_blocking": False',
+        '"runtime_write_performed": False',
+        '"source_status_apply_blocking": False',
+        '"readiness_lane": readiness_lane',
+        'return "default_only_runtime_surface_no_block"',
+        "replace_default_only_runtime_surface_with_source_or_policy_claim",
+    )
+    autopilot_terms = (
+        "build_source_readiness_preview",
+        'report["source_readiness_preview"]',
+    )
+    configure_terms = (
+        "build_source_readiness_preview",
+        '"source_readiness_preview": source_readiness_preview',
+    )
+    forbidden_producer_terms = (
+        "source_readiness_preview_apply_authority",
+        "source_readiness_preview_apply_blocking",
+        "source_readiness_preview_runtime_write",
+    )
+    return (
+        all(term in operator_text for term in docs_terms)
+        and all(term in workflow_text for term in docs_terms)
+        and all(term in source_readiness_preview_text for term in implementation_terms)
+        and all(term in source_autopilot_text for term in autopilot_terms)
+        and all(term in configure_text for term in configure_terms)
+        and not any(
+            term in source_autopilot_text or term in configure_text
+            for term in forbidden_producer_terms
+        )
+    )
+
+
+def _source_readiness_preview_contract_payload(visible: bool) -> dict[str, object]:
+    return {
+        "status": "visible" if visible else "attention",
+        "authority": "diagnostic_source_readiness_preview",
+        "documentation_paths": [
+            "docs/operator/source-builder-workflow.md",
+            ".agents/skills/hsconfig/references/workflow.md",
+        ],
+        "implementation_path": "src/hsconfig/source_readiness_preview.py",
+        "producer_paths": [
+            "src/hsconfig/source_autopilot.py",
+            "src/hsconfig/commands/configure.py",
+        ],
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "notes": [
+            (
+                "Source readiness preview summarizes candidate, autopilot, "
+                "and operator source readiness."
+            ),
+            (
+                "Source readiness preview cannot promote SOURCE_BACKED_STRONG, "
+                "block apply, apply runtime files, or write runtime config."
+            ),
             "reports/operator_summary.json remains the only normal apply authority.",
         ],
     }
@@ -955,6 +1037,11 @@ def build_contract_preflight(
     source_candidate_plan_text = _read(
         root / "src" / "hsconfig" / "source_candidate_plan.py"
     )
+    source_readiness_preview_text = _read(
+        root / "src" / "hsconfig" / "source_readiness_preview.py"
+    )
+    source_autopilot_text = _read(root / "src" / "hsconfig" / "source_autopilot.py")
+    configure_text = _read(root / "src" / "hsconfig" / "commands" / "configure.py")
     combined = "\n".join(
         [
             skill_text,
@@ -963,6 +1050,9 @@ def build_contract_preflight(
             operator_text,
             source_builder_workflow_text,
             source_candidate_plan_text,
+            source_readiness_preview_text,
+            source_autopilot_text,
+            configure_text,
         ]
     )
     references_line = _references_line(skill_text)
@@ -973,6 +1063,13 @@ def build_contract_preflight(
         operator_text,
         source_builder_workflow_text,
         source_candidate_plan_text,
+    )
+    source_readiness_preview_visible = _source_readiness_preview_visible(
+        source_readiness_preview_text,
+        configure_text,
+        source_autopilot_text,
+        source_builder_workflow_text,
+        workflow_text,
     )
 
     checks = {
@@ -1029,6 +1126,7 @@ def build_contract_preflight(
             )
         ),
         "source_candidate_plan_visible": source_candidate_plan_visible,
+        "source_readiness_preview_visible": source_readiness_preview_visible,
         "no_default_only_visible": (
             "No hidden default-only runtime" in combined
             and "default_only_runtime_surfaces=[]" in combined
@@ -1102,6 +1200,11 @@ def build_contract_preflight(
         "installed_skill_sync": installed_skill_sync,
         "source_candidate_plan_contract": _source_candidate_plan_contract_payload(
             source_candidate_plan_visible
+        ),
+        "source_readiness_preview_contract": (
+            _source_readiness_preview_contract_payload(
+                source_readiness_preview_visible
+            )
         ),
         "runtime_apply_authority": "reports/operator_summary.json",
         "source_status_apply_blocking": False,

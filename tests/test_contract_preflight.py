@@ -349,6 +349,117 @@ def test_contract_preflight_checks_source_candidate_plan_visibility(
     }
 
 
+def test_contract_preflight_checks_source_readiness_preview_visibility(
+    tmp_path: Path,
+) -> None:
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    contract = payload["source_readiness_preview_contract"]
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["source_readiness_preview_visible"] is True
+    assert "source_readiness_preview_visible" not in payload["failures"]
+    assert contract == {
+        "status": "visible",
+        "authority": "diagnostic_source_readiness_preview",
+        "documentation_paths": [
+            "docs/operator/source-builder-workflow.md",
+            ".agents/skills/hsconfig/references/workflow.md",
+        ],
+        "implementation_path": "src/hsconfig/source_readiness_preview.py",
+        "producer_paths": [
+            "src/hsconfig/source_autopilot.py",
+            "src/hsconfig/commands/configure.py",
+        ],
+        "runtime_apply_authority": "reports/operator_summary.json",
+        "source_status_apply_blocking": False,
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "notes": [
+            (
+                "Source readiness preview summarizes candidate, autopilot, "
+                "and operator source readiness."
+            ),
+            (
+                "Source readiness preview cannot promote SOURCE_BACKED_STRONG, "
+                "block apply, apply runtime files, or write runtime config."
+            ),
+            "reports/operator_summary.json remains the only normal apply authority.",
+        ],
+    }
+
+
+def test_contract_preflight_reports_attention_when_source_readiness_preview_drifts(
+    tmp_path: Path,
+) -> None:
+    source_docs = Path("docs")
+    target_docs = tmp_path / "docs"
+    shutil.copytree(source_docs, target_docs)
+
+    skill_root = tmp_path / ".agents" / "skills" / "hsconfig"
+    shutil.copytree(Path(".agents") / "skills" / "hsconfig", skill_root)
+
+    source_root = tmp_path / "src" / "hsconfig"
+    source_root.mkdir(parents=True)
+    for filename in (
+        "source_candidate_plan.py",
+        "source_readiness_preview.py",
+        "source_autopilot.py",
+    ):
+        shutil.copy2(
+            Path("src") / "hsconfig" / filename,
+            source_root / filename,
+        )
+    command_root = source_root / "commands"
+    command_root.mkdir(parents=True)
+    shutil.copy2(
+        Path("src") / "hsconfig" / "commands" / "configure.py",
+        command_root / "configure.py",
+    )
+
+    workflow_path = target_docs / "operator" / "source-builder-workflow.md"
+    workflow_path.write_text(
+        workflow_path.read_text(encoding="utf-8").replace(
+            "diagnostic-only",
+            "diagnostic",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    preview_path = source_root / "source_readiness_preview.py"
+    preview_path.write_text(
+        preview_path.read_text(encoding="utf-8").replace(
+            '"apply_blocking": False',
+            '"apply_blocking": True',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_contract_preflight(
+        tmp_path,
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+    )
+
+    assert payload["status"] == "ATTENTION"
+    assert payload["checks"]["source_readiness_preview_visible"] is False
+    assert "source_readiness_preview_visible" in payload["failures"]
+    assert payload["source_readiness_preview_contract"]["status"] == "attention"
+    assert payload["source_readiness_preview_contract"]["runtime_apply_authority"] == (
+        "reports/operator_summary.json"
+    )
+    assert payload["source_readiness_preview_contract"][
+        "source_status_apply_blocking"
+    ] is False
+    assert payload["source_status_apply_blocking"] is False
+    assert payload["diagnostic_only"] is True
+
+
 def test_contract_preflight_reports_attention_when_source_candidate_plan_visibility_drifts(
     tmp_path: Path,
 ) -> None:

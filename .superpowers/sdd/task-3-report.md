@@ -142,3 +142,86 @@ Result: `45 passed in 0.27s`.
 Scope: only `source_provenance.py`, its regression test, and this report changed;
 no runtime/apply, default-only surface, operator-authority, or gameplay behavior
 was touched.
+
+---
+
+# Task 3: Source Readiness Preview Contract Visibility
+
+## Status
+
+Completed. Contract preflight now exposes `source_readiness_preview_visible` and
+`source_readiness_preview_contract` for the existing diagnostic
+`source_readiness_preview` report field. The check verifies documentation,
+implementation constants, default-only/no-block terms, and producer emissions in
+`source_autopilot_report.json` and `configure_summary.json`.
+
+## RED
+
+Command:
+
+```powershell
+pytest tests/test_contract_preflight.py::test_contract_preflight_checks_source_readiness_preview_visibility tests/test_contract_preflight.py::test_contract_preflight_reports_attention_when_source_readiness_preview_drifts -q
+```
+
+Result before implementation: `2 failed in 4.09s`.
+
+- PASS-path test failed with `KeyError: 'source_readiness_preview_contract'`.
+- Drift-path test still reported `PASS` because no readiness-preview visibility
+  check existed yet.
+
+## GREEN / Verification
+
+Focused command:
+
+```powershell
+pytest tests/test_contract_preflight.py::test_contract_preflight_checks_source_readiness_preview_visibility tests/test_contract_preflight.py::test_contract_preflight_reports_attention_when_source_readiness_preview_drifts -q
+```
+
+Result after implementation: `2 passed in 1.16s`.
+
+Full contract preflight tests:
+
+```powershell
+pytest tests/test_contract_preflight.py -q
+```
+
+Result: `39 passed in 10.39s`.
+
+CLI preflight:
+
+```powershell
+python -m hsconfig.cli contract-preflight --repo-root . --json
+```
+
+Result: exit code `1`, `status=ATTENTION`; `source_readiness_preview_visible=true`
+and `source_readiness_preview_contract.status=visible`. Attention was due to
+`repo_current=false` on the dirty worktree and `installed_skill_sync_current=false`
+because the repo skill workflow paragraph differs from the installed skill copy.
+`runtime_apply_authority` remained `reports/operator_summary.json` and
+`source_status_apply_blocking` remained `false`.
+
+Diff check:
+
+```powershell
+git diff --check -- src/hsconfig/contract_preflight.py src/hsconfig/commands/contract_preflight.py tests/test_contract_preflight.py docs/operator/source-builder-workflow.md .agents/skills/hsconfig/references/workflow.md .superpowers/sdd/task-3-report.md
+```
+
+Result: exit code `0`; only CRLF conversion warnings.
+
+## Changed Files
+
+- `src/hsconfig/contract_preflight.py`
+- `src/hsconfig/commands/contract_preflight.py`
+- `tests/test_contract_preflight.py`
+- `docs/operator/source-builder-workflow.md`
+- `.agents/skills/hsconfig/references/workflow.md`
+- `.superpowers/sdd/task-3-report.md`
+
+## Notes
+
+- `src/hsconfig/commands/contract_preflight.py` was updated only to preserve the
+  existing CLI fallback payload schema after adding the new top-level contract
+  key.
+- No runtime outputs, logs, HSTuner paths, apply paths, or
+  `.superpowers/sdd/progress.md` were edited.
+- No commit was created.

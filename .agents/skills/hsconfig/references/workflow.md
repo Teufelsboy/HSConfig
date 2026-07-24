@@ -10,6 +10,8 @@ Recommended fresh deck command: `hsconfig configure --deck-name "<DeckName>" --d
 If public sources are thin, the command still writes a valid package and reports the first missing source action. Do not manually relabel `SOURCE_BACKED_PARTIAL` as `SOURCE_BACKED_STRONG`.
 When compact public source-search records exist, `hsconfig configure --auto-source --source-search-results-json ...` writes `02_source_autopilot/source_documents.json` and feeds it into `hsconfig research-deck --source-documents-json` and `hsconfig prepare --guide-sources-json`. `source-autopilot` is source-strength preflight, not runtime apply authority; `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`.
 
+`source_readiness_preview` is a diagnostic-only source-readiness receipt in `source_autopilot_report.json` and `configure_summary.json`. It summarizes candidate, autopilot, and operator source status, first missing source action, default-only visibility, and readiness lane. It does not replace `reports/operator_summary.json`, cannot promote `SOURCE_BACKED_STRONG`, block apply, apply runtime files, or write runtime config.
+
 HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 
 Identity fields such as `hs_id` keep deck rows and examples unambiguous before games are played. hdt_deck_id is identity-only metadata, not replay evidence, not HDT parsing input, and not a post-run tuning source.
