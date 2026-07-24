@@ -118,6 +118,7 @@ def _diagnostic_card_intent(card: dict[str, Any]) -> dict[str, str]:
 
 def _card_intent_text(card: dict[str, Any]) -> str:
     parts = [
+        card.get("name"),
         card.get("claim_kind"),
         card.get("stance"),
         card.get("intent"),
@@ -126,5 +127,6 @@ def _card_intent_text(card: dict[str, Any]) -> str:
         card.get("source_title"),
         " ".join(str(role) for role in card.get("roles", [])),
         " ".join(str(family) for family in card.get("semantic_families", [])),
+        " ".join(str(family) for family in card.get("mechanic_families", [])),
     ]
     return " ".join(str(part).lower() for part in parts if part is not None)

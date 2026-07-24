@@ -111,3 +111,79 @@ def test_surface_intent_projects_specific_card_intent_when_known():
     assert rows["DRAW_001"]["intent_source"] == "card_intent_taxonomy"
     assert rows["GENERIC_001"]["intent"] == "aggressive_card_behavior"
     assert rows["GENERIC_001"]["intent_source"] == "fallback"
+
+
+def test_surface_intent_projects_shadowpriest_specific_card_intents_without_fallback():
+    report = build_surface_intent(
+        {
+            "cards": {
+                "DS1_233": {
+                    "name": "Mind Blast",
+                    "roles": ["combo_piece", "damage", "pressure", "spell"],
+                    "semantic_families": ["damage", "spell"],
+                    "mechanic_families": ["damage", "spell"],
+                },
+                "GVG_009": {
+                    "name": "Shadowbomber",
+                    "roles": ["battlecry", "damage", "minion", "pressure"],
+                    "semantic_families": ["battlecry", "damage", "minion"],
+                    "mechanic_families": ["battlecry", "damage", "minion"],
+                },
+                "NX2_019": {
+                    "name": "Mind Sear",
+                    "roles": ["damage", "pressure", "spell"],
+                    "semantic_families": ["damage", "spell"],
+                    "mechanic_families": ["damage", "spell"],
+                },
+                "SCH_514": {
+                    "name": "Raise Dead",
+                    "roles": ["damage", "pressure", "spell"],
+                    "semantic_families": ["damage", "spell"],
+                    "mechanic_families": ["damage", "spell"],
+                },
+                "SW_446": {
+                    "name": "Voidtouched Attendant",
+                    "roles": ["aura", "damage", "minion", "pressure"],
+                    "semantic_families": ["aura", "damage", "minion"],
+                    "mechanic_families": ["damage", "minion"],
+                },
+                "TOY_381": {
+                    "name": "Papercraft Angel",
+                    "roles": ["aura", "combo_piece", "hero_power", "minion", "pressure"],
+                    "semantic_families": ["aura", "hero_power", "minion"],
+                    "mechanic_families": ["minion"],
+                },
+                "VAC_419": {
+                    "name": "Acupuncture",
+                    "roles": ["combo_piece", "damage", "pressure", "spell"],
+                    "semantic_families": ["damage", "spell"],
+                    "mechanic_families": ["damage", "spell"],
+                },
+                "VAC_512": {
+                    "name": "Brain Masseuse",
+                    "roles": ["damage", "minion", "pressure", "trigger_visual"],
+                    "semantic_families": ["damage", "minion", "trigger_visual"],
+                    "mechanic_families": ["damage", "minion"],
+                },
+                "YOD_032": {
+                    "name": "Frenzied Felwing",
+                    "roles": ["damage", "minion", "pressure"],
+                    "semantic_families": ["damage", "minion"],
+                    "mechanic_families": ["damage", "minion"],
+                },
+            }
+        }
+    )
+
+    rows = {row["card_id"]: row for row in report["rows"] if row.get("card_id")}
+
+    assert rows["DS1_233"]["intent"] == "direct_enemy_hero_burn"
+    assert rows["GVG_009"]["intent"] == "reciprocal_hero_burn"
+    assert rows["NX2_019"]["intent"] == "conditional_minion_death_burn"
+    assert rows["SCH_514"]["intent"] == "self_damage_resource"
+    assert rows["SW_446"]["intent"] == "damage_aura_amplifier"
+    assert rows["TOY_381"]["intent"] == "hero_power_cost_aura"
+    assert rows["VAC_419"]["intent"] == "reciprocal_hero_burn"
+    assert rows["VAC_512"]["intent"] == "self_damage_liability_body"
+    assert rows["YOD_032"]["intent"] == "opponent_damage_discount_tempo"
+    assert all(row["intent_source"] == "card_intent_taxonomy" for row in rows.values())
