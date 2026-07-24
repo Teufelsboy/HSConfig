@@ -124,3 +124,28 @@ Review fix
 - GREEN command: `python -m pytest tests/test_source_provenance.py -q`
 - GREEN result: exit 0, `6 passed in 0.10s`.
 - No downstream consumers, runtime apply/output, or dependencies were changed.
+
+## Task 1: Source Readiness Preview Helper
+
+### Geaenderte Dateien
+
+- `src/hsconfig/source_readiness_preview.py`
+- `tests/test_source_readiness_preview.py`
+- `.superpowers/sdd/task-1-report.md` (Report only)
+
+### RED-Ausgabe kurz
+
+- Command: `pytest tests/test_source_readiness_preview.py -q`
+- Result: exit 1 during collection.
+- Expected failure: `ModuleNotFoundError: No module named 'hsconfig.source_readiness_preview'`.
+
+### GREEN-Ausgabe kurz
+
+- Command: `pytest tests/test_source_readiness_preview.py -q`
+- Result: exit 0, `4 passed in 0.11s`.
+
+### Offene Risiken
+
+- Nur die fokussierte Task-1-Testdatei wurde ausgefuehrt; keine volle Suite.
+- Die bereits vorher vorhandene Aenderung an `.superpowers/sdd/progress.md` wurde nicht beruehrt.
+- Kein Commit erstellt; Controller uebernimmt Commit/Review.
