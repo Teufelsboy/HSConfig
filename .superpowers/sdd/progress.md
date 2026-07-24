@@ -1078,3 +1078,19 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 2: Embed Preview In Autopilot And Configure Summaries (commits 6725658..7e5f19e; focused source/configure/preview slice 56 passed; task review clean after preserving authoritative `none` source action)
 - [x] Task 3: Add Contract Preflight And Operator Documentation (commits aef23bf..4053811; contract preflight suite 39 passed; re-review clean after schema parity and explicit `source_status_apply_blocking=false` wording)
 - [x] Task 4: Synchronize Skill And Verify The Full Contract (installed skill sync and `--check` passed; final-review fix a49b9dc re-reviewed clean; reviewer focused regression 97 passed; full suite 1887 passed, 11 skipped; contract-preflight PASS; guardrails 559 passed; currentness dirty=false, behind_origin_main=0, clean_for_runtime_work=true)
+
+---
+
+# HSConfig ShadowPriest Semantic Intent Hardening SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-24-hsconfig-shadowpriest-semantic-intent-hardening.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: fetched/pruned remotes; branch codex/hsconfig-semantic-intent-scoring clean before edits; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Tasks 1-2: classified ShadowPriest semantic intent reasons and values; review clean; focused taxonomy/score/router/contract tests passed.
+- [x] Task 3: projected specific surface intents from name/mechanic families; review clean; fallback rows for known ShadowPriest cards eliminated.
+- [x] Task 4: added SOURCE_BACKED_STRONG ShadowPriest E2E semantic/surface fallback guard; review clean; ShadowPriest E2E/depth/fresh closure suite passed.
+- [x] Task 5: documented diagnostic-only card-intent taxonomy policy in the active HSConfig skill reference; review clean; docs/skill contract suite passed.
+- [x] Verification fix: TDD regression confirmed `GlobalValues.json` was still reported as runtime_file_without_intent when only `surface_intent.json` explained it; fixed config intent self-audit to read normal surface-intent rows as diagnostic intent evidence (commit fbcf704).
+- [x] Post-fix verification: focused config/preflight/surface/ShadowPriest suite passed (92 passed); installed HSConfig skill synced; fresh ShadowPriest package passed validate, contract-preflight, and contract-doctor with SOURCE_BACKED_STRONG, config_intent_self_audit=clean, surface_intent_status=clean, no default-only surfaces, and source_status_apply_blocking=false; full suite passed (1909 passed, 11 skipped).
+- [ ] Final whole-branch review and clean-current closure.
