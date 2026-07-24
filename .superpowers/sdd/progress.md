@@ -1039,3 +1039,16 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 5: operator workflow docs updated; task review approved after wording fix; docs/skill focused slice passed.
 - [x] Task 6: final contract, guardrail, full-suite, and currentness verification (focused source 97 passed; docs/manifest 73 passed; guardrails 559 passed; full suite 1865 passed, 11 skipped; final review approved; pre-commit preflight attention only because the intended worktree changes were still unstaged).
 - [x] Task 7: stage, commit, push, and final clean-worktree proof (implementation committed in 6cef32a and pushed to origin/codex/hsconfig-semantic-intent-scoring; final clean/currentness proof follows this ledger-only closure commit).
+
+---
+
+# HSConfig Source Candidate Contract Preflight SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-24-hsconfig-source-candidate-contract-preflight.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: git fetch completed; currentness reported dirty=false, behind_origin_main=0, clean_for_runtime_work=true; baseline contract-preflight tests passed (26 passed).
+- [x] Tasks 1-3: worker executed the RED->GREEN bundle for source-candidate contract visibility because RED-only tests were not a useful commit boundary; RED confirmed with three expected failures, then implementation passed contract-preflight tests (28 passed).
+- [x] Task review: independent reviewer found no Critical, Important, or Minor issues and confirmed no source-find, HSTuner, replay/log parsing, runtime write, new apply authority, promotion gate, or gameplay sequencing was introduced.
+- [x] Implementation commit: source-candidate preflight contract committed in 08d50fb; focused source/configure regression passed (54 passed); contract-preflight returned PASS with source_candidate_plan_visible=true and all source-candidate apply/write/promote/block flags false.
+- [x] Guardrails and final review: contract guardrails passed (559 passed; installed skill sync OK; contract spine sentinel OK); final code reviewer approved the diff with no Critical, Important, or Minor findings.
