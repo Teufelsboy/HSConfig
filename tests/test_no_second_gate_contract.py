@@ -54,3 +54,14 @@ def test_surface_intent_projection_is_summary_only_not_apply_gate_input():
 
     for relative_path in guarded_paths:
         assert "surface_intent_projection" not in _read(relative_path), relative_path
+        assert "surface_intent_status" not in _read(relative_path), relative_path
+        assert "surface_intent_present" not in _read(relative_path), relative_path
+
+
+def test_contract_preflight_may_surface_intent_but_not_apply_authority():
+    preflight = _read("src/hsconfig/contract_preflight.py")
+
+    assert "surface_intent_status" in preflight
+    assert "surface_intent_present" in preflight
+    assert "surface_intent" not in _read("src/hsconfig/apply_gate.py")
+    assert "surface_intent" not in _read("src/hsconfig/runtime_apply.py")
