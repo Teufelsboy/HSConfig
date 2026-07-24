@@ -274,3 +274,17 @@ remains the only normal apply authority.
 
 - Message: `feat: report research provenance gaps`
 - Scope: the six Task 4 authorized files listed above.
+
+## Final Review Fix: Unevaluated Default-Only Preview State
+
+- The source readiness preview now distinguishes an evaluated empty
+  `operator_summary.default_only_runtime_surfaces` list from an absent field.
+  Source-only Autopilot previews preserve their
+  `not_evaluated_in_source_preflight` status, stay non-blocking, and cannot
+  enter the strong-ready lane without an operator runtime-surface evaluation.
+- Regression RED: the required targeted command reported `8 failed, 2 passed`
+  because the preview lacked the new evaluated/status fields; the contract
+  guard regression also failed as expected before its visibility terms were
+  added.
+- GREEN: required targeted command `10 passed in 1.91s`; focused contract
+  guard `1 passed in 0.11s`; required broad suite `97 passed in 21.18s`.

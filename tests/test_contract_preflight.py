@@ -13,6 +13,7 @@ import pytest
 from scripts.sync_installed_skill import sync_skill
 from hsconfig.contract_preflight import (
     GitPreflight,
+    _source_readiness_preview_visible,
     build_contract_preflight,
     build_git_preflight,
     build_package_contract_preflight,
@@ -460,6 +461,33 @@ def test_contract_preflight_reports_attention_when_source_readiness_preview_drif
     ] is False
     assert payload["source_status_apply_blocking"] is False
     assert payload["diagnostic_only"] is True
+
+
+def test_source_readiness_preview_visibility_requires_default_only_status_fields() -> None:
+    preview_text = (Path("src") / "hsconfig" / "source_readiness_preview.py").read_text(
+        encoding="utf-8"
+    )
+    preview_without_status = preview_text.replace(
+        '"default_only_runtime_surface_status": default_only_runtime_surface_status,',
+        '"runtime_surface_status": default_only_runtime_surface_status,',
+        1,
+    )
+
+    assert _source_readiness_preview_visible(
+        preview_without_status,
+        (Path("src") / "hsconfig" / "commands" / "configure.py").read_text(
+            encoding="utf-8"
+        ),
+        (Path("src") / "hsconfig" / "source_autopilot.py").read_text(
+            encoding="utf-8"
+        ),
+        (Path("docs") / "operator" / "source-builder-workflow.md").read_text(
+            encoding="utf-8"
+        ),
+        (Path(".agents") / "skills" / "hsconfig" / "references" / "workflow.md").read_text(
+            encoding="utf-8"
+        ),
+    ) is False
 
 
 def test_contract_preflight_reports_attention_when_source_candidate_plan_visibility_drifts(

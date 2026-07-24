@@ -31,8 +31,14 @@ def build_source_readiness_preview(
         or autopilot.get("semantic_status")
         or strong_summary.get("semantic_status")
     )
+    default_only_evaluated = "default_only_runtime_surfaces" in operator
     default_only_runtime_surfaces = _text_list(
         operator.get("default_only_runtime_surfaces")
+    )
+    default_only_runtime_surface_status = _default_only_runtime_surface_status(
+        default_only_evaluated=default_only_evaluated,
+        default_only_runtime_surfaces=default_only_runtime_surfaces,
+        source_autopilot_report=autopilot,
     )
     raw_source_backed_strong = (
         _bool(strong_summary.get("source_backed_strong_ready"))
@@ -55,6 +61,7 @@ def build_source_readiness_preview(
     )
     source_backed_strong_ready = (
         raw_source_backed_strong
+        and default_only_evaluated
         and not default_only_runtime_surfaces
         and first_missing_source_action == _NO_MISSING_SOURCE_ACTION
     )
@@ -62,6 +69,8 @@ def build_source_readiness_preview(
     surface_rows = _mapping_rows(autopilot.get("surface_rows"))
     readiness_lane = _readiness_lane(
         source_backed_strong_ready=source_backed_strong_ready,
+        raw_source_backed_strong=raw_source_backed_strong,
+        default_only_evaluated=default_only_evaluated,
         default_only_runtime_surfaces=default_only_runtime_surfaces,
         autopilot_present=bool(autopilot),
         candidate_present=bool(candidate),
@@ -97,7 +106,11 @@ def build_source_readiness_preview(
         ),
         "card_source_gap_count": _lane_count(card_rows, "source_gap"),
         "surface_source_gap_count": _lane_count(surface_rows, "source_gap"),
-        "default_only_clean": not default_only_runtime_surfaces,
+        "default_only_evaluated": default_only_evaluated,
+        "default_only_clean": (
+            default_only_evaluated and not default_only_runtime_surfaces
+        ),
+        "default_only_runtime_surface_status": default_only_runtime_surface_status,
         "default_only_runtime_surfaces": default_only_runtime_surfaces,
         "runtime_apply_allowed": _bool(operator.get("runtime_apply_allowed", False)),
         "runtime_apply_mode": _text(operator.get("runtime_apply_mode")),
@@ -134,12 +147,16 @@ def _first_action(
 def _readiness_lane(
     *,
     source_backed_strong_ready: bool,
+    raw_source_backed_strong: bool,
+    default_only_evaluated: bool,
     default_only_runtime_surfaces: Sequence[str],
     autopilot_present: bool,
     candidate_present: bool,
 ) -> str:
     if source_backed_strong_ready:
         return "source_backed_strong_ready"
+    if raw_source_backed_strong and not default_only_evaluated:
+        return "runtime_surface_not_evaluated_no_block"
     if default_only_runtime_surfaces:
         return "default_only_runtime_surface_no_block"
     if autopilot_present:
@@ -147,6 +164,22 @@ def _readiness_lane(
     if candidate_present:
         return "acquisition_plan_ready_no_block"
     return "source_context_missing_no_block"
+
+
+def _default_only_runtime_surface_status(
+    *,
+    default_only_evaluated: bool,
+    default_only_runtime_surfaces: Sequence[str],
+    source_autopilot_report: Mapping[str, Any],
+) -> str:
+    if default_only_evaluated:
+        if default_only_runtime_surfaces:
+            return "default_only_runtime_surfaces_present"
+        return "clean"
+    return (
+        _text(source_autopilot_report.get("default_only_runtime_surface_status"))
+        or "not_evaluated_without_operator_summary"
+    )
 
 
 def _readiness_summary(readiness_lane: str, first_missing_source_action: str) -> str:

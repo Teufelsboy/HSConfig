@@ -200,9 +200,13 @@ def test_build_source_autopilot_bundle_outputs_strict_source_documents():
     assert preview["source_autopilot_report_present"] is True
     assert preview["operator_summary_present"] is False
     assert preview["semantic_status"] == report["semantic_status"]
-    assert preview["source_backed_strong_ready"] == report[
-        "strong_closure_summary"
-    ]["source_backed_strong_ready"]
+    assert preview["default_only_evaluated"] is False
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surface_status"] == (
+        "not_evaluated_in_source_preflight"
+    )
+    assert preview["source_backed_strong_ready"] is False
+    assert preview["readiness_lane"] == "runtime_surface_not_evaluated_no_block"
     assert preview["first_missing_source_action"] == report[
         "first_missing_source_action"
     ]

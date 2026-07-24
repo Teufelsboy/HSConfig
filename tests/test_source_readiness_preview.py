@@ -73,7 +73,9 @@ def test_preview_reports_source_backed_strong_without_creating_apply_gate() -> N
         "effect_semantics_not_mulligan_keep_target_count": 1,
         "card_source_gap_count": 0,
         "surface_source_gap_count": 0,
+        "default_only_evaluated": True,
         "default_only_clean": True,
+        "default_only_runtime_surface_status": "clean",
         "default_only_runtime_surfaces": [],
         "runtime_apply_allowed": True,
         "runtime_apply_mode": "load_safe_apply",
@@ -106,7 +108,11 @@ def test_preview_keeps_strong_default_only_surface_out_of_clean_ready_lane() -> 
     assert preview["semantic_status"] == "SOURCE_BACKED_STRONG"
     assert preview["source_backed_strong_ready"] is False
     assert preview["readiness_lane"] == "default_only_runtime_surface_no_block"
+    assert preview["default_only_evaluated"] is True
     assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surface_status"] == (
+        "default_only_runtime_surfaces_present"
+    )
     assert preview["default_only_runtime_surfaces"] == ["Mulligan.json"]
     assert preview["first_missing_source_action"] == (
         "replace_default_only_runtime_surface_with_source_or_policy_claim"
@@ -198,6 +204,8 @@ def test_preview_reports_partial_source_gap_without_blocking_apply() -> None:
     assert preview["card_source_gap_count"] == 1
     assert preview["surface_source_gap_count"] == 1
     assert preview["default_only_clean"] is True
+    assert preview["default_only_evaluated"] is True
+    assert preview["default_only_runtime_surface_status"] == "clean"
     assert preview["runtime_apply_allowed"] is True
 
 
@@ -241,6 +249,11 @@ def test_preview_uses_candidate_plan_when_autopilot_is_not_available() -> None:
     assert preview["operator_summary_present"] is False
     assert preview["readiness_lane"] == "acquisition_plan_ready_no_block"
     assert preview["first_missing_source_action"] == "fetch_and_validate_explicit_source_urls"
+    assert preview["default_only_evaluated"] is False
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surface_status"] == (
+        "not_evaluated_without_operator_summary"
+    )
     assert preview["source_status_apply_blocking"] is False
 
 
@@ -252,6 +265,43 @@ def test_preview_handles_missing_inputs_without_runtime_write_or_block() -> None
     assert preview["operator_summary_present"] is False
     assert preview["readiness_lane"] == "source_context_missing_no_block"
     assert preview["first_missing_source_action"] == "add_public_guide_url_or_use_static_semantics"
+    assert preview["default_only_evaluated"] is False
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surface_status"] == (
+        "not_evaluated_without_operator_summary"
+    )
     assert preview["apply_blocking"] is False
     assert preview["runtime_write_performed"] is False
     assert preview["source_status_apply_blocking"] is False
+
+
+def test_preview_keeps_strong_source_preflight_runtime_surface_state_unevaluated() -> None:
+    preview = build_source_readiness_preview(
+        source_autopilot_report={
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "strong_candidate": True,
+            "default_only_runtime_surface_status": (
+                "not_evaluated_in_source_preflight"
+            ),
+            "strong_closure_summary": {
+                "source_backed_strong_ready": True,
+                "strong_evidence_row_count": 8,
+                "first_missing_source_action": "none",
+            },
+            "source_backed_strong_closure": {
+                "promotion_ready": True,
+                "first_missing_source_action": "none",
+            },
+        }
+    )
+
+    assert preview["operator_summary_present"] is False
+    assert preview["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert preview["strong_candidate"] is True
+    assert preview["default_only_evaluated"] is False
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surface_status"] == (
+        "not_evaluated_in_source_preflight"
+    )
+    assert preview["source_backed_strong_ready"] is False
+    assert preview["readiness_lane"] == "runtime_surface_not_evaluated_no_block"

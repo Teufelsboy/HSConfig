@@ -333,10 +333,17 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         "first_missing_source_action"
     ]
     assert preview["default_only_runtime_surfaces"] == []
+    assert preview["default_only_evaluated"] is True
     assert preview["default_only_clean"] is True
+    assert preview["default_only_runtime_surface_status"] == "clean"
     assert preview["runtime_apply_allowed"] is True
     assert preview["runtime_apply_mode"] == "load_safe_apply"
     assert autopilot_preview["authority"] == "diagnostic_source_readiness_preview"
+    assert autopilot_preview["default_only_evaluated"] is False
+    assert autopilot_preview["default_only_clean"] is False
+    assert autopilot_preview["default_only_runtime_surface_status"] == (
+        "not_evaluated_in_source_preflight"
+    )
     blocker_reasons = {
         str(blocker.get("reason", ""))
         for blocker in operator["semantic_blockers"]

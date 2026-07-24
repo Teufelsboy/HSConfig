@@ -506,7 +506,10 @@ def _source_readiness_preview_visible(
         '"runtime_write_performed": False',
         '"source_status_apply_blocking": False',
         '"readiness_lane": readiness_lane',
+        '"default_only_evaluated": default_only_evaluated',
+        '"default_only_runtime_surface_status": default_only_runtime_surface_status',
         'return "default_only_runtime_surface_no_block"',
+        'return "runtime_surface_not_evaluated_no_block"',
         "replace_default_only_runtime_surface_with_source_or_policy_claim",
     )
     autopilot_terms = (
