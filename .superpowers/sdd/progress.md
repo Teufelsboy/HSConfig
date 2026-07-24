@@ -1015,6 +1015,18 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 
 ---
 
+# HSConfig Package Surface Intent Preflight Receipt SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-24-hsconfig-package-surface-intent-preflight-receipt.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before edits; dirty=false, behind_origin_main=0, clean_for_runtime_work=true.
+- [x] Tasks 1-2: Package preflight surface-intent receipt tests and implementation
+- [x] Task 3: Diagnostic-only boundary sentinel and operator docs
+- [ ] Task 4: Final verification, push, and clean-current proof
+- Task 1-2: complete (commits e91cf13..ec43197, review clean)
+- Task 3: complete (commits ec43197..f3d7835, re-review clean)
+
 # HSConfig Skill Thin Router Contract Hardening SDD Progress
 
 Plan: docs/superpowers/plans/2026-07-22-hsconfig-skill-thin-router-contract-hardening.md
