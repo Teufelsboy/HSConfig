@@ -122,3 +122,81 @@ def test_direct_burn_still_matches_real_enemy_hero_and_face_phrases():
         assert classification.reason == "direct_enemy_hero_burn"
         assert classification.value == "12"
         assert classification.band == "critical"
+
+
+def test_taxonomy_classifies_shadowpriest_reciprocal_and_self_damage_semantics():
+    shadowbomber = classify_card_intent(
+        "<b>Battlecry:</b> Deal 3 damage to each hero. battlecry BATTLECRY"
+    )
+    acupuncture = classify_card_intent("[x]Deal $4 damage to both heroes.")
+    raise_dead = classify_card_intent(
+        "Deal $3 damage to your hero. Return two friendly minions that died this game to your hand."
+    )
+    brain_masseuse = classify_card_intent(
+        "[x]Whenever this minion takes damage, also deal that amount to your hero. TRIGGER_VISUAL"
+    )
+    felwing = classify_card_intent(
+        "Costs (1) less for each damage dealt to your opponent this turn."
+    )
+
+    assert shadowbomber.reason == "reciprocal_hero_burn"
+    assert shadowbomber.value == "10"
+    assert shadowbomber.band == "high"
+    assert "each_hero" in shadowbomber.matched_signals
+
+    assert acupuncture.reason == "reciprocal_hero_burn"
+    assert acupuncture.value == "10"
+    assert acupuncture.band == "high"
+    assert "both_heroes" in acupuncture.matched_signals
+
+    assert raise_dead.reason == "self_damage_resource"
+    assert raise_dead.value == "8"
+    assert raise_dead.band == "medium"
+    assert "return_dead_friendly_minions" in raise_dead.matched_signals
+
+    assert brain_masseuse.reason == "self_damage_liability_body"
+    assert brain_masseuse.value == "6"
+    assert brain_masseuse.band == "medium"
+    assert "takes_damage_reflects_to_own_hero" in brain_masseuse.matched_signals
+
+    assert felwing.reason == "opponent_damage_discount_tempo"
+    assert felwing.value == "8"
+    assert felwing.band == "medium"
+    assert "opponent_damage_this_turn" in felwing.matched_signals
+
+
+def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card_text():
+    assert classify_card_intent("Shadowbomber battlecry damage minion pressure").reason == (
+        "reciprocal_hero_burn"
+    )
+    assert classify_card_intent("Acupuncture combo_piece damage pressure spell").reason == (
+        "reciprocal_hero_burn"
+    )
+    assert classify_card_intent("Raise Dead damage pressure spell").reason == (
+        "self_damage_resource"
+    )
+    assert classify_card_intent("Brain Masseuse damage minion pressure").reason == (
+        "self_damage_liability_body"
+    )
+    assert classify_card_intent("Frenzied Felwing damage minion pressure").reason == (
+        "opponent_damage_discount_tempo"
+    )
+    assert classify_card_intent("Papercraft Angel aura hero_power minion pressure").reason == (
+        "hero_power_cost_aura"
+    )
+    assert classify_card_intent("Mind Blast combo_piece damage pressure spell").reason == (
+        "direct_enemy_hero_burn"
+    )
+    assert classify_card_intent("Mind Sear damage pressure spell").reason == (
+        "conditional_minion_death_burn"
+    )
+
+
+def test_damage_aura_still_wins_before_reciprocal_hero_burn():
+    classification = classify_card_intent(
+        "Voidtouched Attendant makes both heroes take extra damage from all sources."
+    )
+
+    assert classification.reason == "damage_aura_amplifier"
+    assert classification.value == "10"
+    assert classification.band == "critical"

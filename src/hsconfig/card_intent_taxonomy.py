@@ -73,6 +73,90 @@ def classify_card_intent(
             ),
         )
 
+    if _has_self_damage_resource(normalized):
+        return CardIntentClassification(
+            reason="self_damage_resource",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("raise_dead", "raise dead" in normalized),
+                ("self_damage", _has_self_damage_to_own_hero(normalized)),
+                (
+                    "return_dead_friendly_minions",
+                    _has_any(
+                        normalized,
+                        (
+                            "return two friendly minions",
+                            "friendly minions that died",
+                            "died this game to your hand",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    if _has_opponent_damage_discount_tempo(normalized):
+        return CardIntentClassification(
+            reason="opponent_damage_discount_tempo",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("frenzied_felwing", "frenzied felwing" in normalized),
+                (
+                    "cost_reduction",
+                    _has_any(normalized, ("costs (1) less", "costs less")),
+                ),
+                (
+                    "opponent_damage_this_turn",
+                    _has_any(
+                        normalized,
+                        (
+                            "damage dealt to your opponent this turn",
+                            "opponent this turn",
+                            "opponent_damage",
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+    if _has_self_damage_liability_body(normalized):
+        return CardIntentClassification(
+            reason="self_damage_liability_body",
+            value="6",
+            band="medium",
+            matched_signals=_signals(
+                ("brain_masseuse", "brain masseuse" in normalized),
+                (
+                    "takes_damage_reflects_to_own_hero",
+                    _has_any(
+                        normalized,
+                        (
+                            "whenever this minion takes damage",
+                            "also deal that amount to your hero",
+                            "takes damage",
+                        ),
+                    )
+                    and _has_self_damage_to_own_hero(normalized),
+                ),
+            ),
+        )
+
+    if _has_hero_power_cost_aura(normalized):
+        return CardIntentClassification(
+            reason="hero_power_cost_aura",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("papercraft_angel", "papercraft angel" in normalized),
+                ("hero_power", _has_any(normalized, ("hero power", "hero_power"))),
+                (
+                    "cost_zero",
+                    _has_any(normalized, ("costs (0)", "costs 0", "cost 0")),
+                ),
+            ),
+        )
+
     if _has_direct_enemy_hero_burn(normalized):
         return CardIntentClassification(
             reason="direct_enemy_hero_burn",
@@ -86,6 +170,20 @@ def classify_card_intent(
                         ("prefer_enemy_hero", "enemy hero", "face", "hero damage"),
                     ),
                 ),
+                ("damage", _has_damage_wording(normalized)),
+            ),
+        )
+
+    if _has_reciprocal_hero_burn(normalized):
+        return CardIntentClassification(
+            reason="reciprocal_hero_burn",
+            value="10",
+            band="high",
+            matched_signals=_signals(
+                ("shadowbomber", "shadowbomber" in normalized),
+                ("acupuncture", "acupuncture" in normalized),
+                ("each_hero", "each hero" in normalized),
+                ("both_heroes", "both heroes" in normalized),
                 ("damage", _has_damage_wording(normalized)),
             ),
         )
@@ -179,6 +277,8 @@ def _has_voidtouched_attendant_identity(text: str) -> bool:
 
 
 def _has_conditional_minion_death_burn(text: str) -> bool:
+    if "mind sear" in text:
+        return True
     return (
         "enemy hero" in text
         and _has_any(text, ("if it dies", "dies"))
@@ -187,9 +287,75 @@ def _has_conditional_minion_death_burn(text: str) -> bool:
 
 
 def _has_direct_enemy_hero_burn(text: str) -> bool:
+    if "mind blast" in text:
+        return True
     return any(
         _has_phrase_or_token(text, needle)
         for needle in ("prefer_enemy_hero", "enemy hero", "face", "hero damage")
+    ) and _has_damage_wording(text)
+
+
+def _has_reciprocal_hero_burn(text: str) -> bool:
+    if _has_any(text, ("shadowbomber", "acupuncture")):
+        return True
+    return _has_damage_wording(text) and _has_any(
+        text,
+        ("each hero", "both heroes"),
+    )
+
+
+def _has_self_damage_resource(text: str) -> bool:
+    if "raise dead" in text:
+        return True
+    return _has_self_damage_to_own_hero(text) and _has_any(
+        text,
+        (
+            "return two friendly minions",
+            "friendly minions that died",
+            "died this game to your hand",
+        ),
+    )
+
+
+def _has_opponent_damage_discount_tempo(text: str) -> bool:
+    if "frenzied felwing" in text:
+        return True
+    return _has_any(text, ("costs (1) less", "costs less")) and _has_any(
+        text,
+        (
+            "damage dealt to your opponent this turn",
+            "opponent this turn",
+            "opponent_damage",
+        ),
+    )
+
+
+def _has_self_damage_liability_body(text: str) -> bool:
+    if "brain masseuse" in text:
+        return True
+    return _has_any(
+        text,
+        ("whenever this minion takes damage", "also deal that amount to your hero"),
+    ) and _has_self_damage_to_own_hero(text)
+
+
+def _has_hero_power_cost_aura(text: str) -> bool:
+    if "papercraft angel" in text:
+        return True
+    return _has_any(text, ("hero power", "hero_power")) and _has_any(
+        text,
+        ("costs (0)", "costs 0", "cost 0", "free hero power"),
+    )
+
+
+def _has_self_damage_to_own_hero(text: str) -> bool:
+    return _has_any(
+        text,
+        (
+            "damage to your hero",
+            "deal that amount to your hero",
+            "your hero",
+        ),
     ) and _has_damage_wording(text)
 
 

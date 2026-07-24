@@ -197,3 +197,93 @@ def test_semantic_score_reuses_taxonomy_reason_for_board_tempo():
     assert score.reason == "board_tempo"
     assert score.profile == "semantic_intent"
     assert "pirate" in score.matched_signals
+
+
+def test_shadowpriest_static_damage_claims_receive_specific_semantic_scores():
+    cases = [
+        (
+            {
+                "claim_kind": "mechanic_usage",
+                "cards": ["GVG_009"],
+                "evidence_text_short": "<b>Battlecry:</b> Deal 3 damage to each hero. battlecry BATTLECRY",
+            },
+            "BeforePlayCardBonus",
+            "use_damage_according_to_card_text",
+            ["damage"],
+            "reciprocal_hero_burn",
+            "10",
+            "high",
+        ),
+        (
+            {
+                "claim_kind": "mechanic_usage",
+                "cards": ["SCH_514"],
+                "evidence_text_short": (
+                    "Deal $3 damage to your hero. Return two friendly minions that died this game to your hand."
+                ),
+            },
+            "BeforePlayCardBonus",
+            "use_damage_according_to_card_text",
+            ["damage"],
+            "self_damage_resource",
+            "8",
+            "medium",
+        ),
+        (
+            {
+                "claim_kind": "mechanic_usage",
+                "cards": ["VAC_419"],
+                "evidence_text_short": "[x]Deal $4 damage to both heroes.",
+            },
+            "BeforePlayCardBonus",
+            "use_damage_according_to_card_text",
+            ["damage"],
+            "reciprocal_hero_burn",
+            "10",
+            "high",
+        ),
+        (
+            {
+                "claim_kind": "mechanic_usage",
+                "cards": ["VAC_512"],
+                "evidence_text_short": (
+                    "[x]Whenever this minion takes damage, also deal that amount to your hero. TRIGGER_VISUAL"
+                ),
+            },
+            "BeforePlayCardBonus",
+            "use_damage_according_to_card_text",
+            ["damage"],
+            "self_damage_liability_body",
+            "6",
+            "medium",
+        ),
+        (
+            {
+                "claim_kind": "mechanic_usage",
+                "cards": ["YOD_032"],
+                "evidence_text_short": (
+                    "Costs (1) less for each damage dealt to your opponent this turn."
+                ),
+            },
+            "BeforePlayCardBonus",
+            "use_damage_according_to_card_text",
+            ["damage"],
+            "opponent_damage_discount_tempo",
+            "8",
+            "medium",
+        ),
+    ]
+
+    for claim, block, intent, roles, reason, value, band in cases:
+        score = score_card_behavior_claim(
+            claim,
+            behavior_block=block,
+            intent=intent,
+            roles=roles,
+            value_default="6",
+        )
+        assert score.reason == reason
+        assert score.value == value
+        assert score.band == band
+        assert score.profile == "semantic_intent"
+        assert score.matched_signals
