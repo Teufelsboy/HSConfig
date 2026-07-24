@@ -25,13 +25,17 @@ from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
-from hsconfig.source_candidate_registry import candidate_urls, source_candidates_for_deck
 from hsconfig.source_closure_intake import (
     SOURCE_CLOSURE_INTAKE_RECEIPT_RELATIVE_PATH,
     build_source_closure_intake_receipt,
     summarize_source_closure_intake,
 )
 from hsconfig.source_evidence_closure import build_source_evidence_closure_report
+from hsconfig.source_candidate_plan import (
+    build_source_candidate_plan,
+    dedupe_acquisition_urls,
+    is_acquisition_url,
+)
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
@@ -69,6 +73,8 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "collectible_cards_json": getattr(args, "collectible_cards_json", None),
         "full_cards_json": getattr(args, "full_cards_json", None),
         "allow_placeholder": bool(getattr(args, "allow_placeholder", False)),
+        "source_url": list(getattr(args, "source_url", []) or []),
+        "current_date": getattr(args, "current_date", None),
         "json": True,
     }
 
@@ -90,19 +96,38 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     source_documents_json = None
     source_autopilot_path = None
     source_closure_intake_receipt_path = None
+    source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
+    explicit_source_urls = dedupe_acquisition_urls(
+        list(getattr(args, "source_url", []) or [])
+    )
+    source_candidate_plan = _load_source_candidate_plan(
+        source_candidate_plan_path,
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        explicit_source_urls=explicit_source_urls,
+        current_date=getattr(args, "current_date", None),
+    )
     source_candidate_urls: list[str] = []
     source_urls: list[str] = []
     if bool(getattr(args, "online_source", False)):
-        explicit_source_urls = list(getattr(args, "source_url", []) or [])
-        source_candidates = source_candidates_for_deck(args.deck_name, args.deck_code)
-        source_candidate_urls = candidate_urls(source_candidates)
-        source_urls = _dedupe_preserve_order([*explicit_source_urls, *source_candidate_urls])
+        source_candidate_urls = _plan_urls(source_candidate_plan, "candidate_urls")
+        if not source_candidate_urls:
+            source_candidate_urls = _plan_candidate_row_urls(source_candidate_plan)
+        source_urls = _plan_urls(source_candidate_plan, "source_urls")
+        if not source_urls:
+            source_urls = dedupe_acquisition_urls(
+                [*explicit_source_urls, *source_candidate_urls]
+            )
+        surviving_registry_urls = [
+            url
+            for url in source_candidate_urls
+            if url not in explicit_source_urls and url in source_urls
+        ]
         try:
             acquire_payload, acquire_status = source_acquire_payload(
                 SimpleNamespace(
-                    **common,
-                    source_url=source_urls,
-                    candidate_registry_url_count=len(source_candidate_urls),
+                    **{**common, "source_url": source_urls},
+                    candidate_registry_url_count=len(surviving_registry_urls),
                     source_fixture_url_map_json=getattr(
                         args,
                         "source_fixture_url_map_json",
@@ -113,7 +138,6 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                         "source_fetch_timeout_seconds",
                         6.0,
                     ),
-                    current_date=getattr(args, "current_date", None),
                     out=str(source_acquisition_dir),
                 )
             )
@@ -148,7 +172,6 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 SimpleNamespace(
                     **common,
                     source_search_results_json=args.source_search_results_json,
-                    current_date=getattr(args, "current_date", None),
                     out=str(autopilot_dir),
                 )
             )
@@ -373,6 +396,11 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "OK",
         {
             "manifest_path": str(manifest_dir / "source_research_manifest.json"),
+            "source_candidate_plan_path": str(source_candidate_plan_path),
+            "source_candidate_plan_summary": _compact_source_candidate_plan_summary(
+                source_candidate_plan,
+                source_candidate_urls=source_candidate_urls,
+            ),
             "source_acquisition_path": (
                 str(source_acquisition_path) if source_acquisition_path else None
             ),
@@ -1055,6 +1083,127 @@ def _read_optional_json(path: str | Path | None) -> dict[str, Any] | None:
     except FileNotFoundError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _load_source_candidate_plan(
+    path: Path,
+    *,
+    deck_name: str,
+    deck_code: str,
+    explicit_source_urls: list[str],
+    current_date: str | None,
+) -> dict[str, Any]:
+    explicit_source_urls = dedupe_acquisition_urls(explicit_source_urls)
+    try:
+        payload = read_json(path)
+    except (FileNotFoundError, ValueError, TypeError):
+        return _rebuild_source_candidate_plan(
+            deck_name=deck_name,
+            deck_code=deck_code,
+            explicit_source_urls=explicit_source_urls,
+            current_date=current_date,
+        )
+    if not _source_candidate_plan_is_usable(payload, explicit_source_urls):
+        return _rebuild_source_candidate_plan(
+            deck_name=deck_name,
+            deck_code=deck_code,
+            explicit_source_urls=explicit_source_urls,
+            current_date=current_date,
+        )
+    return dict(payload)
+
+
+def _rebuild_source_candidate_plan(
+    *,
+    deck_name: str,
+    deck_code: str,
+    explicit_source_urls: list[str],
+    current_date: str | None,
+) -> dict[str, Any]:
+    return build_source_candidate_plan(
+        deck_name=deck_name,
+        deck_code=deck_code,
+        deck_identity={"deck_name": deck_name, "cards": []},
+        candidate_archetypes={},
+        explicit_source_urls=explicit_source_urls,
+        current_date=current_date,
+    )
+
+
+def _source_candidate_plan_is_usable(
+    payload: Any,
+    explicit_source_urls: list[str],
+) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    if payload.get("authority") != "diagnostic_source_candidate_plan":
+        return False
+    candidate_urls = payload.get("candidate_urls")
+    source_urls = payload.get("source_urls")
+    if not isinstance(candidate_urls, list) or not isinstance(source_urls, list):
+        return False
+    if not all(isinstance(url, str) for url in [*candidate_urls, *source_urls]):
+        return False
+    if not all(is_acquisition_url(url) for url in [*candidate_urls, *source_urls]):
+        return False
+    row_urls = _raw_plan_candidate_row_urls(payload)
+    if not all(is_acquisition_url(url) for url in row_urls):
+        return False
+    expected_source_urls = dedupe_acquisition_urls(
+        [*explicit_source_urls, *candidate_urls]
+    )
+    return _plan_urls(payload, "source_urls") == expected_source_urls
+
+
+def _plan_urls(plan: Mapping[str, Any], key: str) -> list[str]:
+    values = plan.get(key)
+    if not isinstance(values, list):
+        return []
+    return dedupe_acquisition_urls(values)
+
+
+def _plan_candidate_row_urls(plan: Mapping[str, Any]) -> list[str]:
+    return dedupe_acquisition_urls(_raw_plan_candidate_row_urls(plan))
+
+
+def _raw_plan_candidate_row_urls(plan: Mapping[str, Any]) -> list[str]:
+    rows = plan.get("candidate_url_rows")
+    if not isinstance(rows, list):
+        return []
+    return _dedupe_preserve_order(
+        [str(row.get("url", "")) for row in rows if isinstance(row, Mapping)]
+    )
+
+
+def _compact_source_candidate_plan_summary(
+    plan: Mapping[str, Any],
+    *,
+    source_candidate_urls: list[str],
+) -> dict[str, Any]:
+    return {
+        "authority": "diagnostic_source_candidate_plan",
+        "apply_blocking": False,
+        "source_status_apply_blocking": False,
+        "candidate_registry_url_count": _plan_nonnegative_int(
+            plan.get("candidate_registry_url_count"),
+            default=len(source_candidate_urls),
+        ),
+        "explicit_source_url_count": _plan_nonnegative_int(
+            plan.get("explicit_source_url_count"),
+            default=0,
+        ),
+        "query_count": _plan_nonnegative_int(plan.get("query_count"), default=0),
+        "first_missing_source_action": str(
+            plan.get("first_missing_source_action") or ""
+        ),
+    }
+
+
+def _plan_nonnegative_int(value: Any, *, default: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
 
 
 def _source_search_records(path: str | Path | None) -> list[dict[str, Any]]:

@@ -124,6 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
     source_manifest.add_argument("--deck-code", required=True)
     source_manifest.add_argument("--out", required=True)
     source_manifest.add_argument("--cards-json")
+    source_manifest.add_argument("--source-url", action="append", default=[])
+    source_manifest.add_argument("--current-date")
     source_manifest.add_argument("--allow-placeholder", action="store_true")
     source_manifest.add_argument("--json", action="store_true")
 

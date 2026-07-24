@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.cli import main
+from hsconfig.commands import configure as configure_command
 from hsconfig.source_candidate_registry import SourceCandidate
 
 from tests.test_configure_auto_source import (
@@ -471,7 +474,7 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
     fixture_map = tmp_path / "fixture_map.json"
     fixture_map.write_text(json.dumps({source_url: str(thin_page)}), encoding="utf-8")
     monkeypatch.setattr(
-        "hsconfig.commands.configure.source_candidates_for_deck",
+        "hsconfig.source_candidate_plan.source_candidates_for_deck",
         lambda deck_name, deck_code=None: [
             SourceCandidate(
                 url=source_url,
@@ -524,3 +527,289 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
+
+
+def test_configure_online_source_uses_explicit_urls_before_registry_urls(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_thin_cards_json(cards_json)
+    explicit_url = "https://example.test/explicit-guide"
+    registry_url = "https://example.test/registry-guide"
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(
+        json.dumps(
+            {
+                explicit_url: str(FIXTURES / "source_pages" / "decklist_only.html"),
+                registry_url: str(FIXTURES / "source_pages" / "decklist_only.html"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_candidate_plan.source_candidates_for_deck",
+        lambda deck_name, deck_code=None: [
+            SourceCandidate(
+                url=registry_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="test_archetype",
+                reason="test registry candidate",
+                priority=10,
+                expected_strength="guide_current_deck_match",
+            ),
+            SourceCandidate(
+                url=explicit_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="test_archetype",
+                reason="duplicate explicit URL",
+                priority=20,
+                expected_strength="guide_current_deck_match",
+            ),
+        ],
+    )
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "ThinDeck",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--source-url",
+            explicit_url,
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+
+    assert status == 0
+    assert summary["source_candidate_urls"] == [registry_url, explicit_url]
+    assert summary["source_urls"] == [explicit_url, registry_url]
+    acquisition = _read_json(
+        out / "02_source_acquisition" / "source_acquisition_report.json"
+    )
+    assert acquisition["explicit_source_url_count"] == 1
+    assert acquisition["candidate_registry_url_count"] == 1
+
+
+@pytest.mark.parametrize(
+    "broken_plan",
+    ["missing", "invalid", "malformed", "query", "query_row"],
+)
+def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusable(
+    tmp_path: Path,
+    monkeypatch,
+    broken_plan: str,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_thin_cards_json(cards_json)
+    explicit_url = "https://example.test/explicit-guide"
+    registry_url = "https://example.test/registry-guide"
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(
+        json.dumps(
+            {
+                explicit_url: str(FIXTURES / "source_pages" / "decklist_only.html"),
+                registry_url: str(FIXTURES / "source_pages" / "decklist_only.html"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_candidate_plan.source_candidates_for_deck",
+        lambda deck_name, deck_code=None: [
+            SourceCandidate(
+                url=registry_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="test_archetype",
+                reason="test registry candidate",
+                priority=10,
+                expected_strength="guide_current_deck_match",
+            ),
+            SourceCandidate(
+                url=explicit_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="test_archetype",
+                reason="duplicate explicit URL",
+                priority=20,
+                expected_strength="guide_current_deck_match",
+            ),
+        ],
+    )
+    original_manifest_payload = configure_command.source_manifest_payload
+
+    def write_unusable_candidate_plan(args):
+        payload, status = original_manifest_payload(args)
+        plan_path = Path(args.out) / "source_candidate_plan.json"
+        if broken_plan == "missing":
+            plan_path.unlink()
+        elif broken_plan == "invalid":
+            plan_path.write_text("{", encoding="utf-8")
+        else:
+            if broken_plan == "query":
+                plan = {
+                    "authority": "diagnostic_source_candidate_plan",
+                    "candidate_urls": ["ThinDeck deck guide 2026"],
+                    "source_urls": [explicit_url, "ThinDeck deck guide 2026"],
+                }
+            elif broken_plan == "query_row":
+                plan = {
+                    "authority": "diagnostic_source_candidate_plan",
+                    "candidate_urls": [],
+                    "source_urls": [],
+                    "candidate_url_rows": [
+                        {"url": "ThinDeck deck guide 2026"},
+                    ],
+                }
+            else:
+                plan = {
+                    "candidate_urls": "not-a-list",
+                    "source_urls": ["ThinDeck deck guide 2026"],
+                }
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+        return payload, status
+
+    acquire_calls: list[list[str]] = []
+    original_acquire_payload = configure_command.source_acquire_payload
+
+    def capture_acquire_urls(args):
+        acquire_calls.append(list(args.source_url))
+        return original_acquire_payload(args)
+
+    monkeypatch.setattr(
+        configure_command,
+        "source_manifest_payload",
+        write_unusable_candidate_plan,
+    )
+    monkeypatch.setattr(
+        configure_command,
+        "source_acquire_payload",
+        capture_acquire_urls,
+    )
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "ThinDeck",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--source-url",
+            explicit_url,
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+
+    assert status == 0
+    assert acquire_calls == [[explicit_url, registry_url]]
+    assert all(
+        url.startswith("https://") and "?" not in url
+        for url in acquire_calls[0]
+    )
+    assert summary["source_urls"] == [explicit_url, registry_url]
+
+
+def test_configure_online_source_filters_invalid_explicit_source_url_before_acquisition(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_thin_cards_json(cards_json)
+    invalid_source_url = "ThinDeck deck guide 2026"
+    registry_url = "https://example.test/registry-guide"
+    fixture_map = tmp_path / "fixture_map.json"
+    fixture_map.write_text(
+        json.dumps(
+            {
+                registry_url: str(FIXTURES / "source_pages" / "decklist_only.html"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_candidate_plan.source_candidates_for_deck",
+        lambda deck_name, deck_code=None: [
+            SourceCandidate(
+                url=registry_url,
+                source_family="guide",
+                deck_name=str(deck_name),
+                archetype="test_archetype",
+                reason="test registry candidate",
+                priority=10,
+                expected_strength="guide_current_deck_match",
+            ),
+        ],
+    )
+    acquire_calls: list[list[str]] = []
+    original_acquire_payload = configure_command.source_acquire_payload
+
+    def capture_acquire_urls(args):
+        acquire_calls.append(list(args.source_url))
+        return original_acquire_payload(args)
+
+    monkeypatch.setattr(
+        configure_command,
+        "source_acquire_payload",
+        capture_acquire_urls,
+    )
+    out = tmp_path / "configure"
+
+    status = main(
+        [
+            "configure",
+            "--deck-name",
+            "ThinDeck",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--source-url",
+            invalid_source_url,
+            "--source-fixture-url-map-json",
+            str(fixture_map),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+
+    assert status == 0
+    assert acquire_calls == [[registry_url]]
+    assert summary["source_urls"] == [registry_url]
+    assert summary["source_candidate_plan_summary"]["explicit_source_url_count"] == 0

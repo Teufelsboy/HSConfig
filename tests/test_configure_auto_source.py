@@ -321,10 +321,22 @@ def test_configure_online_source_uses_registry_when_source_url_is_omitted(
         for url in summary["source_candidate_urls"]
     )
     assert summary["source_urls"] == summary["source_candidate_urls"]
+    assert summary["source_candidate_plan_path"] == str(
+        out / "01_manifest" / "source_candidate_plan.json"
+    )
+    assert summary["source_candidate_plan_summary"]["authority"] == (
+        "diagnostic_source_candidate_plan"
+    )
+    assert summary["source_candidate_plan_summary"]["apply_blocking"] is False
+    assert summary["source_candidate_plan_summary"]["source_status_apply_blocking"] is False
+    assert summary["source_candidate_plan_summary"]["query_count"] >= 1
     assert acquisition["candidate_registry_url_count"] == 1
     assert acquisition["attempted_url_count"] == 1
     assert acquisition["source_record_count"] == 1
     assert autopilot["runtime_apply_authority"] == "reports/operator_summary.json"
+    assert operator["runtime_apply_contract"]["apply_authority"] == (
+        "reports/operator_summary.json"
+    )
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["default_only_runtime_surfaces"] == []
 

@@ -44,6 +44,34 @@ def test_source_acquire_cli_writes_compiled_source_search_results(tmp_path):
     assert (out / "source_claim_compiler_report.json").exists()
 
 
+def test_source_acquire_cli_ignores_non_url_source_input(tmp_path):
+    out = tmp_path / "out"
+
+    status = main(
+        [
+            "source-acquire",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG17oG1cEGAAA=",
+            "--source-url",
+            "ThinDeck deck guide 2026",
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+
+    acquisition = json.loads(
+        (out / "source_acquisition_report.json").read_text(encoding="utf-8")
+    )
+
+    assert status == 0
+    assert acquisition["attempted_url_count"] == 0
+    assert acquisition["source_record_count"] == 0
+    assert acquisition["failed_fetch_count"] == 0
+
+
 def test_source_acquire_fixture_map_accepts_original_reddit_url_key(tmp_path):
     original_url = (
         "https://www.reddit.com/r/wildhearthstone/comments/"

@@ -4,6 +4,10 @@ HSConfig can already build a valid initial package from deck input. It reaches `
 
 The current lightweight autonomy bridge is `hsconfig source-autopilot` or `hsconfig configure --auto-source --source-search-results-json ...`. The next improvement is stronger source acquisition before those compact records are handed to `source-autopilot`, not another runtime gate or runtime surface.
 
+## Source Candidate Plan
+
+`source_candidate_plan.json` is the deterministic pre-acquisition plan. It lists registry candidate URLs, explicit URL ordering, public-search query suggestions, card-level claim targets, and the first missing source action. It is diagnostic acquisition guidance only: it cannot promote, block apply, write runtime config, or replace `reports/operator_summary.json`.
+
 ## Input
 
 - deck name

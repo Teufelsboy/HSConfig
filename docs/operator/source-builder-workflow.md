@@ -8,8 +8,8 @@ Identity fields such as `hs_id` keep deck rows and examples unambiguous before g
 
 Normal path:
 
-1. Run `hsconfig source-manifest` to get deck aliases, card targets, and research questions.
-2. Prefer `hsconfig configure --online-source --auto-source --source-url ...` for a fresh public-guide-backed package when URLs are available; if no URL is known, use Codex/web research to find current public guide URLs and repeat `--source-url` for each useful source.
+1. Run `hsconfig source-manifest`; it writes deck aliases, card targets, research questions, `source_research_manifest.json`, and diagnostic `source_candidate_plan.json`.
+2. Prefer `hsconfig configure --online-source --auto-source --source-url ...` for a fresh public-guide-backed package when URLs are available. It uses `source_candidate_plan.json` to order explicit `--source-url` values first, then registry candidate URLs, with duplicates removed. If no URL is known, use Codex/operator research with the plan's query suggestions to find current public guide URLs and repeat `--source-url` for each useful source.
 3. Prefer `hsconfig source-autopilot` when compact public source-search records already exist; it writes ranked sources, evidence rows, and `source_documents.json`.
 4. Use Codex research plus `hsconfig draft-source-documents` only when you are manually collecting short evidence rows from current guide, mulligan, card-text, and metadata sources.
 5. Run `hsconfig research-deck --source-documents-json ...` to normalize guide sources.
@@ -46,6 +46,8 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 ```
 
 `source-acquire` fetches bounded public pages and writes compact source records. Fetch failures, thin pages, decklist-only records, and static metadata without explicit supported effect semantics remain visible diagnostics; they do not block a technically valid package and do not promote `SOURCE_BACKED_STRONG`.
+
+`source_candidate_plan.json` is deterministic pre-acquisition guidance. It lists candidate and explicit URL order, query suggestions, card-level claim targets, and the first missing source action. Queries are for Codex/operator research only; HSConfig core does not scrape search result pages or pass query text to source acquisition. The plan cannot promote, block apply, write runtime config, or replace `reports/operator_summary.json`.
 
 `reports/02_source_acquisition/source_closure_intake_receipt.json` is the bounded intake receipt for candidate source rows and fetched source metadata. It is diagnostic-only: it can explain source readiness, first missing source actions, and which URLs entered configure, but it cannot promote `SOURCE_BACKED_STRONG`, block load-safe generation, write runtime config, or replace `reports/operator_summary.json` as the apply authority.
 

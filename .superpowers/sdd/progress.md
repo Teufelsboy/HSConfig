@@ -1025,3 +1025,17 @@ Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
 - [x] Task 3: Refactored SKILL/contract guardrails to pin active reference docs instead of default-only SKILL entrypoint wording.
 - [x] Task 4: Added diagnostic-only `skill_thin_router_visible` contract-preflight coverage for all six active references.
 - [x] Task 5: Synced installed skill and verified focused suite (109 passed), contract guardrails (559 passed), and full test suite (1851 passed, 11 skipped).
+
+---
+
+# HSConfig Source Candidate Plan SDD Progress
+
+Plan: docs/superpowers/plans/2026-07-24-hsconfig-source-candidate-plan.md
+Controller: main Codex session in C:\Users\darbo\Documents\HSConfig
+
+- [x] Preflight/currentness: branch codex/hsconfig-semantic-intent-scoring clean before edits; behind_origin_main=0; clean_for_runtime_work=true.
+- [x] Tasks 1-2: pure diagnostic source-candidate planner implemented; task review approved after minor regression hardening; focused planner suite passed.
+- [x] Tasks 3-4: source-manifest/configure integration implemented; Important URL trust-boundary findings fixed and re-reviewed clean; focused source/acquire/configure suite passed (30 passed).
+- [x] Task 5: operator workflow docs updated; task review approved after wording fix; docs/skill focused slice passed.
+- [x] Task 6: final contract, guardrail, full-suite, and currentness verification (focused source 97 passed; docs/manifest 73 passed; guardrails 559 passed; full suite 1865 passed, 11 skipped; final review approved; pre-commit preflight attention only because the intended worktree changes were still unstaged).
+- [ ] Task 7: stage, commit, push, and final clean-worktree proof.

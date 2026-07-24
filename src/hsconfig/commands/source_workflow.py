@@ -21,6 +21,10 @@ from hsconfig.source_acquisition import collect_public_source_records, fetchable
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_closure_optimizer import build_source_closure_optimizer_report
+from hsconfig.source_candidate_plan import (
+    build_source_candidate_plan,
+    dedupe_acquisition_urls,
+)
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_research_manifest import build_source_research_manifest
@@ -123,14 +127,24 @@ def source_manifest_payload(args: argparse.Namespace) -> tuple[dict[str, Any], i
         candidate_archetypes=candidate_archetypes,
         fixture_row=fixture_row_for(args.deck_name),
     )
+    source_candidate_plan = build_source_candidate_plan(
+        deck_name=args.deck_name,
+        deck_code=args.deck_code,
+        deck_identity=deck_identity,
+        candidate_archetypes=candidate_archetypes,
+        explicit_source_urls=list(getattr(args, "source_url", []) or []),
+        current_date=getattr(args, "current_date", None),
+    )
     output_path = out / "source_research_manifest.json"
+    candidate_plan_path = out / "source_candidate_plan.json"
     write_json(output_path, manifest)
+    write_json(candidate_plan_path, source_candidate_plan)
     return (
         {
             "status": "OK",
             "deck_name": args.deck_name,
             "deck_slug": deck_identity["deck_slug"],
-            "written_files": [str(output_path)],
+            "written_files": [str(output_path), str(candidate_plan_path)],
         },
         0,
     )
@@ -256,6 +270,9 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
 def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     prepare_research_output_dir(out)
+    source_urls = dedupe_acquisition_urls(
+        list(getattr(args, "source_url", []) or [])
+    )
 
     cards_payload = load_cards(
         getattr(args, "cards_json", None),
@@ -274,7 +291,7 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
     acquired = collect_public_source_records(
         deck_name=args.deck_name,
         deck_identity=deck_identity,
-        source_urls=list(getattr(args, "source_url", []) or []),
+        source_urls=source_urls,
         current_date=getattr(args, "current_date", None),
         fetcher=_fixture_fetcher(getattr(args, "source_fixture_url_map_json", None)),
         resolver=_fixture_resolver(getattr(args, "source_fixture_url_map_json", None)),
