@@ -544,6 +544,8 @@ def _source_readiness_preview_contract_payload(visible: bool) -> dict[str, objec
             ".agents/skills/hsconfig/references/workflow.md",
         ],
         "implementation_path": "src/hsconfig/source_readiness_preview.py",
+        "configure_summary_field": "source_readiness_preview",
+        "autopilot_report_field": "source_readiness_preview",
         "producer_paths": [
             "src/hsconfig/source_autopilot.py",
             "src/hsconfig/commands/configure.py",

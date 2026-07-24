@@ -371,6 +371,8 @@ def test_contract_preflight_checks_source_readiness_preview_visibility(
             ".agents/skills/hsconfig/references/workflow.md",
         ],
         "implementation_path": "src/hsconfig/source_readiness_preview.py",
+        "configure_summary_field": "source_readiness_preview",
+        "autopilot_report_field": "source_readiness_preview",
         "producer_paths": [
             "src/hsconfig/source_autopilot.py",
             "src/hsconfig/commands/configure.py",

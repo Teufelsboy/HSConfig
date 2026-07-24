@@ -225,3 +225,22 @@ Result: exit code `0`; only CRLF conversion warnings.
 - No runtime outputs, logs, HSTuner paths, apply paths, or
   `.superpowers/sdd/progress.md` were edited.
 - No commit was created.
+
+## Review Fix: Contract Field Names
+
+Status: complete
+
+Review finding:
+- Task 3 required `configure_summary_field` and `autopilot_report_field` in
+  `source_readiness_preview_contract`, but the initial payload only exposed
+  `documentation_paths` and `producer_paths`.
+
+Fix:
+- Added `configure_summary_field="source_readiness_preview"` and
+  `autopilot_report_field="source_readiness_preview"` to both the normal
+  contract-preflight payload and CLI exception fallback payload.
+- Updated the focused contract expectation to pin these fields.
+
+Verification:
+- `pytest tests/test_contract_preflight.py::test_contract_preflight_checks_source_readiness_preview_visibility tests/test_contract_preflight.py::test_contract_preflight_runtime_error_fallback_preserves_normal_payload_schema -q`
+  - Result: `2 passed in 1.30s`.
