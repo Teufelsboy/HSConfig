@@ -5,6 +5,11 @@ from typing import Any
 
 _AUTHORITY = "diagnostic_source_readiness_preview"
 _NORMAL_APPLY_AUTHORITY = "reports/operator_summary.json"
+_DEFAULT_MISSING_SOURCE_ACTION = "add_public_guide_url_or_use_static_semantics"
+_DEFAULT_ONLY_RUNTIME_SURFACE_ACTION = (
+    "replace_default_only_runtime_surface_with_source_or_policy_claim"
+)
+_NO_MISSING_SOURCE_ACTION = "none"
 
 
 def build_source_readiness_preview(
@@ -19,7 +24,6 @@ def build_source_readiness_preview(
     strong_summary = _mapping(autopilot.get("strong_closure_summary"))
     strong_closure = _mapping(autopilot.get("source_backed_strong_closure"))
     target_summary = _mapping(candidate.get("target_summary"))
-    runtime_contract = _mapping(operator.get("runtime_apply_contract"))
 
     semantic_status = _text(
         operator.get("semantic_status")
@@ -27,7 +31,10 @@ def build_source_readiness_preview(
         or autopilot.get("semantic_status")
         or strong_summary.get("semantic_status")
     )
-    source_backed_strong_ready = (
+    default_only_runtime_surfaces = _text_list(
+        operator.get("default_only_runtime_surfaces")
+    )
+    raw_source_backed_strong = (
         _bool(strong_summary.get("source_backed_strong_ready"))
         or _bool(strong_closure.get("promotion_ready"))
         or semantic_status == "SOURCE_BACKED_STRONG"
@@ -35,7 +42,7 @@ def build_source_readiness_preview(
     strong_candidate = (
         _bool(autopilot.get("strong_candidate"))
         or _bool(strong_summary.get("strong_candidate"))
-        or source_backed_strong_ready
+        or raw_source_backed_strong
     )
     first_missing_source_action = _first_action(
         operator,
@@ -43,15 +50,19 @@ def build_source_readiness_preview(
         strong_closure,
         autopilot,
         candidate,
-        source_backed_strong_ready=source_backed_strong_ready,
+        raw_source_backed_strong=raw_source_backed_strong,
+        default_only_runtime_surfaces=default_only_runtime_surfaces,
+    )
+    source_backed_strong_ready = (
+        raw_source_backed_strong
+        and not default_only_runtime_surfaces
+        and first_missing_source_action == _NO_MISSING_SOURCE_ACTION
     )
     card_rows = _mapping_rows(autopilot.get("card_rows"))
     surface_rows = _mapping_rows(autopilot.get("surface_rows"))
-    default_only_runtime_surfaces = _text_list(
-        operator.get("default_only_runtime_surfaces")
-    )
     readiness_lane = _readiness_lane(
         source_backed_strong_ready=source_backed_strong_ready,
+        default_only_runtime_surfaces=default_only_runtime_surfaces,
         autopilot_present=bool(autopilot),
         candidate_present=bool(candidate),
     )
@@ -60,9 +71,7 @@ def build_source_readiness_preview(
         "schema_version": 1,
         "authority": _AUTHORITY,
         "diagnostic_only": True,
-        "runtime_apply_authority": _text(
-            runtime_contract.get("apply_authority") or _NORMAL_APPLY_AUTHORITY
-        ),
+        "runtime_apply_authority": _NORMAL_APPLY_AUTHORITY,
         "apply_blocking": False,
         "runtime_write_performed": False,
         "source_status_apply_blocking": False,
@@ -101,25 +110,31 @@ def build_source_readiness_preview(
 
 def _first_action(
     *sources: Mapping[str, Any],
-    source_backed_strong_ready: bool,
+    raw_source_backed_strong: bool,
+    default_only_runtime_surfaces: Sequence[str],
 ) -> str:
-    if source_backed_strong_ready:
-        return "none"
     for source in sources:
         value = _text(source.get("first_missing_source_action"))
-        if value and value != "none":
+        if value and value != _NO_MISSING_SOURCE_ACTION:
             return value
-    return "add_public_guide_url_or_use_static_semantics"
+    if default_only_runtime_surfaces:
+        return _DEFAULT_ONLY_RUNTIME_SURFACE_ACTION
+    if raw_source_backed_strong:
+        return _NO_MISSING_SOURCE_ACTION
+    return _DEFAULT_MISSING_SOURCE_ACTION
 
 
 def _readiness_lane(
     *,
     source_backed_strong_ready: bool,
+    default_only_runtime_surfaces: Sequence[str],
     autopilot_present: bool,
     candidate_present: bool,
 ) -> str:
     if source_backed_strong_ready:
         return "source_backed_strong_ready"
+    if default_only_runtime_surfaces:
+        return "default_only_runtime_surface_no_block"
     if autopilot_present:
         return "source_partial_no_block"
     if candidate_present:

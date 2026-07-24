@@ -81,6 +81,46 @@ def test_preview_reports_source_backed_strong_without_creating_apply_gate() -> N
     }
 
 
+def test_preview_keeps_strong_default_only_surface_out_of_clean_ready_lane() -> None:
+    preview = build_source_readiness_preview(
+        operator_summary={
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "default_only_runtime_surfaces": ["Mulligan.json"],
+            "first_missing_source_action": (
+                "replace_default_only_runtime_surface_with_source_or_policy_claim"
+            ),
+            "runtime_apply_contract": {
+                "apply_authority": "bad-authority.json",
+            },
+        },
+    )
+
+    assert preview["apply_blocking"] is False
+    assert preview["source_status_apply_blocking"] is False
+    assert preview["runtime_write_performed"] is False
+    assert preview["runtime_apply_allowed"] is True
+    assert preview["runtime_apply_mode"] == "load_safe_apply"
+    assert preview["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert preview["source_backed_strong_ready"] is False
+    assert preview["readiness_lane"] == "default_only_runtime_surface_no_block"
+    assert preview["default_only_clean"] is False
+    assert preview["default_only_runtime_surfaces"] == ["Mulligan.json"]
+    assert preview["first_missing_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
+    assert preview["recommended_next_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
+    assert (
+        "default_only_runtime_surface_no_block"
+        in preview["readiness_summary"]
+    )
+    assert preview["runtime_apply_authority"] == "reports/operator_summary.json"
+
+
 def test_preview_reports_partial_source_gap_without_blocking_apply() -> None:
     preview = build_source_readiness_preview(
         source_candidate_plan={
