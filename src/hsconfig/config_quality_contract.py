@@ -165,6 +165,10 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     if not isinstance(semantic_enrichment, Mapping):
         semantic_enrichment = {}
 
+    surface_intent = _read_json(package / "reports" / "surface_intent.json")
+    if not isinstance(surface_intent, Mapping):
+        surface_intent = {}
+
     checks = {
         "operator_summary": _operator_summary_check(operator),
         "card_behavior": _card_behavior_check(card_behavior),
@@ -188,6 +192,9 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
             deck_identity=deck_identity,
             card_behavior=card_behavior,
             explainability=explainability,
+        ),
+        "surface_intent_projection": _surface_intent_projection_check(
+            surface_intent
         ),
     }
     checks["semantic_intent_coverage"] = _semantic_intent_coverage_check(
@@ -649,6 +656,83 @@ def _semantic_intent_coverage_check(
         "report_only_runtime_rows": report_only_runtime_rows,
         "warning_only_card_count": warning_only["card_count"],
         "warning_only_mechanics": warning_only["mechanics"],
+        "attention": attention,
+        "first_attention": attention[0]["check"] if attention else None,
+    }
+
+
+def _surface_intent_projection_check(
+    surface_intent: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not surface_intent:
+        return {
+            "authority": "diagnostic_only",
+            "apply_blocking": False,
+            "runtime_write_performed": False,
+            "present": False,
+            "status": "missing",
+            "surface_count": 0,
+            "row_count": 0,
+            "required_surfaces": [],
+            "optional_surfaces": [],
+            "rich_optional_runtime_surfaces": [],
+            "fallback_intent_rows": [],
+            "legacy_policy_surface_rows": [],
+            "attention": [],
+            "first_attention": None,
+        }
+
+    rows = _list_of_mappings(surface_intent.get("rows"))
+    fallback_rows = [
+        {
+            "card_id": str(row.get("card_id") or ""),
+            "surface": str(row.get("surface") or ""),
+            "intent": str(row.get("intent") or ""),
+        }
+        for row in rows
+        if str(row.get("intent_source") or "") == "fallback"
+    ]
+    legacy_policy_rows = [
+        {
+            "card_id": str(row.get("card_id") or ""),
+            "surface": str(row.get("surface") or ""),
+            "intent": str(row.get("intent") or ""),
+        }
+        for row in rows
+        if str(row.get("surface") or "") in {"Presume.json", "Concede.json"}
+    ]
+
+    attention: list[dict[str, Any]] = []
+    if fallback_rows:
+        attention.append(
+            {
+                "check": "surface_intent_fallback_visible",
+                "count": len(fallback_rows),
+            }
+        )
+    if legacy_policy_rows:
+        attention.append(
+            {
+                "check": "surface_intent_legacy_policy_surface_visible",
+                "count": len(legacy_policy_rows),
+            }
+        )
+
+    return {
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "present": True,
+        "status": "clean" if not attention else "attention",
+        "surface_count": _int_value(surface_intent.get("surface_count")),
+        "row_count": len(rows),
+        "required_surfaces": _string_list(surface_intent.get("required_surfaces")),
+        "optional_surfaces": _string_list(surface_intent.get("optional_surfaces")),
+        "rich_optional_runtime_surfaces": _string_list(
+            surface_intent.get("rich_optional_runtime_surfaces")
+        ),
+        "fallback_intent_rows": fallback_rows,
+        "legacy_policy_surface_rows": legacy_policy_rows,
         "attention": attention,
         "first_attention": attention[0]["check"] if attention else None,
     }

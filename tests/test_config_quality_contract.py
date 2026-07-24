@@ -134,6 +134,41 @@ def minimal_clean_package(tmp_path: Path) -> Path:
         deck_dir / "Mulligan.json",
         {"GameCardId": "Mulligan", "Mulligan": {"values": []}},
     )
+    write_json(
+        package / "reports" / "surface_intent.json",
+        {
+            "rows": [
+                {
+                    "rule_id": "globalvalues_full_key_profile",
+                    "card_id": None,
+                    "surface": "GlobalValues.json",
+                    "intent": "profile_and_overlay_full_global_values",
+                    "source_claim_ids": ["claim_mind_sear_effect"],
+                },
+                {
+                    "rule_id": "NX2_019_card_behavior",
+                    "card_id": "NX2_019",
+                    "surface": "NX2_019.json",
+                    "surface_family": "CARDID.json",
+                    "intent": "conditional_minion_death_burn",
+                    "intent_source": "card_intent_taxonomy",
+                    "source_claim_ids": ["claim_mind_sear_effect"],
+                },
+            ],
+            "required_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "NX2_019.json",
+            ],
+            "optional_surfaces": [],
+            "minimum_required_runtime_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+            ],
+            "rich_optional_runtime_surfaces": ["NX2_019.json"],
+            "surface_count": 3,
+        },
+    )
     return package
 
 
@@ -182,6 +217,26 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "attention": [],
         "first_attention": None,
     }
+    assert report["checks"]["surface_intent_projection"] == {
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "present": True,
+        "status": "clean",
+        "surface_count": 3,
+        "row_count": 2,
+        "required_surfaces": [
+            "GlobalValues.json",
+            "Mulligan.json",
+            "NX2_019.json",
+        ],
+        "optional_surfaces": [],
+        "rich_optional_runtime_surfaces": ["NX2_019.json"],
+        "fallback_intent_rows": [],
+        "legacy_policy_surface_rows": [],
+        "attention": [],
+        "first_attention": None,
+    }
     assert report["checks"]["closure_freshness"] == {
         "present": True,
         "closure_schema_current": True,
@@ -225,6 +280,75 @@ def test_config_quality_summarizes_semantic_taxonomy_reasons(tmp_path: Path):
     assert semantic["authority"] == "diagnostic_only"
     assert semantic["apply_blocking"] is False
     assert report["apply_blocking"] is False
+
+
+def test_config_quality_surfaces_surface_intent_attention_without_new_problem(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "surface_intent.json",
+        {
+            "rows": [
+                {
+                    "rule_id": "fallback_card_behavior",
+                    "card_id": "GENERIC_001",
+                    "surface": "GENERIC_001.json",
+                    "surface_family": "CARDID.json",
+                    "intent": "aggressive_card_behavior",
+                    "intent_source": "fallback",
+                    "source_claim_ids": [],
+                },
+                {
+                    "rule_id": "legacy_presume",
+                    "card_id": None,
+                    "surface": "Presume.json",
+                    "intent": "legacy_policy_surface",
+                    "source_claim_ids": [],
+                },
+            ],
+            "required_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+                "GENERIC_001.json",
+            ],
+            "optional_surfaces": ["Presume.json"],
+            "minimum_required_runtime_surfaces": [
+                "GlobalValues.json",
+                "Mulligan.json",
+            ],
+            "rich_optional_runtime_surfaces": ["GENERIC_001.json"],
+            "surface_count": 4,
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    surface_intent = report["checks"]["surface_intent_projection"]
+    assert surface_intent["authority"] == "diagnostic_only"
+    assert surface_intent["apply_blocking"] is False
+    assert surface_intent["runtime_write_performed"] is False
+    assert surface_intent["status"] == "attention"
+    assert surface_intent["first_attention"] == "surface_intent_fallback_visible"
+    assert surface_intent["fallback_intent_rows"] == [
+        {
+            "card_id": "GENERIC_001",
+            "surface": "GENERIC_001.json",
+            "intent": "aggressive_card_behavior",
+        }
+    ]
+    assert surface_intent["legacy_policy_surface_rows"] == [
+        {
+            "card_id": "",
+            "surface": "Presume.json",
+            "intent": "legacy_policy_surface",
+        }
+    ]
+    assert report["apply_blocking"] is False
+    assert not any(
+        problem["check"].startswith("surface_intent_")
+        for problem in report["problems"]
+    )
 
 
 def test_config_quality_flags_report_only_mechanic_runtime_emission(
