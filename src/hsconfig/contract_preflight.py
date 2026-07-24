@@ -124,6 +124,12 @@ class PackageContractPreflight:
     checked_runtime_files: int
     config_intent_self_audit_status: str
     config_intent_first_attention: str | None
+    surface_intent_status: str
+    surface_intent_present: bool
+    surface_intent_surface_count: int
+    surface_intent_fallback_intent_rows: int
+    surface_intent_legacy_policy_surface_rows: list[str]
+    surface_intent_first_attention: str | None
     closure_schema_current: bool
     cards_missing_closure: int
     package_contract_current: bool
@@ -295,6 +301,38 @@ def _int_value(value: Any) -> int:
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def _surface_intent_contract_receipt(
+    surface_intent: Mapping[str, Any],
+) -> dict[str, Any]:
+    fallback_rows = [
+        row
+        for row in surface_intent.get("fallback_intent_rows", [])
+        if isinstance(row, Mapping)
+    ]
+    legacy_policy_rows = [
+        row
+        for row in surface_intent.get("legacy_policy_surface_rows", [])
+        if isinstance(row, Mapping)
+    ]
+    first_attention_value = surface_intent.get("first_attention")
+    return {
+        "surface_intent_status": str(surface_intent.get("status") or "missing"),
+        "surface_intent_present": bool(surface_intent.get("present", False)),
+        "surface_intent_surface_count": _int_value(
+            surface_intent.get("surface_count", 0)
+        ),
+        "surface_intent_fallback_intent_rows": len(fallback_rows),
+        "surface_intent_legacy_policy_surface_rows": [
+            str(row.get("surface"))
+            for row in legacy_policy_rows
+            if str(row.get("surface") or "")
+        ],
+        "surface_intent_first_attention": (
+            str(first_attention_value) if first_attention_value else None
+        ),
+    }
 
 
 def _relative_posix(root: Path, path: Path) -> str:
@@ -618,6 +656,12 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
                 checked_runtime_files=0,
                 config_intent_self_audit_status="missing",
                 config_intent_first_attention="package_missing",
+                surface_intent_status="missing",
+                surface_intent_present=False,
+                surface_intent_surface_count=0,
+                surface_intent_fallback_intent_rows=0,
+                surface_intent_legacy_policy_surface_rows=[],
+                surface_intent_first_attention="package_missing",
                 closure_schema_current=False,
                 cards_missing_closure=0,
                 package_contract_current=False,
@@ -658,6 +702,9 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
     operator_quality = _as_mapping(quality_checks.get("operator_summary"))
     closure = _as_mapping(quality_checks.get("closure_freshness"))
     config_intent = _as_mapping(quality_checks.get("config_intent_self_audit"))
+    surface_intent_receipt = _surface_intent_contract_receipt(
+        _as_mapping(quality_checks.get("surface_intent_projection"))
+    )
     quality_problems = quality.get("problems", [])
 
     runtime_contract = _as_mapping(operator.get("runtime_apply_contract"))
@@ -771,6 +818,20 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
             checked_runtime_files=validation_checked_files,
             config_intent_self_audit_status=config_intent_status,
             config_intent_first_attention=config_intent_first_attention,
+            surface_intent_status=surface_intent_receipt["surface_intent_status"],
+            surface_intent_present=surface_intent_receipt["surface_intent_present"],
+            surface_intent_surface_count=surface_intent_receipt[
+                "surface_intent_surface_count"
+            ],
+            surface_intent_fallback_intent_rows=surface_intent_receipt[
+                "surface_intent_fallback_intent_rows"
+            ],
+            surface_intent_legacy_policy_surface_rows=surface_intent_receipt[
+                "surface_intent_legacy_policy_surface_rows"
+            ],
+            surface_intent_first_attention=surface_intent_receipt[
+                "surface_intent_first_attention"
+            ],
             closure_schema_current=closure_schema_current,
             cards_missing_closure=cards_missing_closure,
             package_contract_current=package_contract_current,

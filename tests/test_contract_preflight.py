@@ -164,6 +164,38 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        reports / "surface_intent.json",
+        {
+            "authority": "diagnostic_only",
+            "apply_blocking": False,
+            "runtime_write_performed": False,
+            "surface_count": 3,
+            "required_surfaces": ["GlobalValues.json", "Mulligan.json"],
+            "optional_surfaces": ["NX2_019.json"],
+            "rich_optional_runtime_surfaces": ["NX2_019.json"],
+            "rows": [
+                {
+                    "card_id": "GlobalValues",
+                    "surface": "GlobalValues.json",
+                    "intent": "global_values",
+                    "intent_source": "contract",
+                },
+                {
+                    "card_id": "Mulligan",
+                    "surface": "Mulligan.json",
+                    "intent": "mulligan_policy",
+                    "intent_source": "contract",
+                },
+                {
+                    "card_id": "NX2_019",
+                    "surface": "NX2_019.json",
+                    "intent": "cardid_behavior",
+                    "intent_source": "contract",
+                },
+            ],
+        },
+    )
+    _write_json(
         deck / "NX2_019.json",
         {
             "GameCardId": "NX2_019",
@@ -933,9 +965,41 @@ def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     assert contract["config_quality_status"] == "clean"
     assert contract["config_quality_problem_count"] == 0
     assert contract["config_intent_self_audit_status"] == "clean"
+    assert contract["surface_intent_status"] == "clean"
+    assert contract["surface_intent_present"] is True
+    assert contract["surface_intent_surface_count"] == 3
+    assert contract["surface_intent_fallback_intent_rows"] == 0
+    assert contract["surface_intent_legacy_policy_surface_rows"] == []
+    assert contract["surface_intent_first_attention"] is None
     assert contract["closure_schema_current"] is True
     assert contract["cards_missing_closure"] == 0
     assert contract["next_report_to_open"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_package_mode_surfaces_missing_surface_intent_without_gate(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    (package / "reports" / "surface_intent.json").unlink()
+
+    payload = build_contract_preflight(
+        Path("."),
+        git=_clean_git(),
+        skill_install_root=_synced_install_root(tmp_path),
+        package=package,
+    )
+
+    assert payload["status"] == "PASS"
+    assert payload["checks"]["package_contract_current"] is True
+    contract = payload["package_contract"]
+    assert contract["package_contract_current"] is True
+    assert contract["surface_intent_status"] == "missing"
+    assert contract["surface_intent_present"] is False
+    assert contract["surface_intent_surface_count"] == 0
+    assert contract["surface_intent_fallback_intent_rows"] == 0
+    assert contract["surface_intent_legacy_policy_surface_rows"] == []
+    assert contract["surface_intent_first_attention"] is None
+    assert all("surface_intent" not in failure for failure in contract["failures"])
 
 
 def test_contract_preflight_omits_package_contract_without_package(
@@ -1312,6 +1376,16 @@ def test_contract_preflight_cli_package_fallback_preserves_package_contract_sche
     assert payload["checks"]["package_contract_current"] is False
     assert "package_contract_current" in payload["failures"]
     assert set(payload["package_contract"]) == schema_keys
+    fallback_contract = payload["package_contract"]
+    assert set(fallback_contract) == schema_keys
+    assert fallback_contract["surface_intent_status"] == "attention"
+    assert fallback_contract["surface_intent_present"] is False
+    assert fallback_contract["surface_intent_surface_count"] == 0
+    assert fallback_contract["surface_intent_fallback_intent_rows"] == 0
+    assert fallback_contract["surface_intent_legacy_policy_surface_rows"] == []
+    assert fallback_contract["surface_intent_first_attention"] == (
+        "contract_preflight_exception"
+    )
     assert payload["package_contract"]["status"] == "attention"
     assert payload["package_contract"]["package"] == str(package)
     assert payload["package_contract"]["package_contract_current"] is False
