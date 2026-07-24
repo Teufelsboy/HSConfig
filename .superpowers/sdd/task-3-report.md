@@ -244,3 +244,17 @@ Fix:
 Verification:
 - `pytest tests/test_contract_preflight.py::test_contract_preflight_checks_source_readiness_preview_visibility tests/test_contract_preflight.py::test_contract_preflight_runtime_error_fallback_preserves_normal_payload_schema -q`
   - Result: `2 passed in 1.30s`.
+
+## Review Polish: Fallback Schema and Apply-Blocking Wording
+
+Status: complete
+
+The two Minor review polish items were addressed: the runtime-error fallback
+test now asserts the four required `source_readiness_preview_contract` fields,
+and both workflow paragraphs explicitly state that
+`source_status_apply_blocking=false`.
+
+Verification results for this polish pass:
+- Focused contract tests: `2 passed in 1.51s`.
+- Full contract preflight tests: `39 passed in 10.73s`.
+- Scoped `git diff --check`: passed.

@@ -660,6 +660,18 @@ def test_contract_preflight_runtime_error_fallback_preserves_normal_payload_sche
     }
 
     assert code == 1
+    assert payload["source_readiness_preview_contract"][
+        "configure_summary_field"
+    ] == "source_readiness_preview"
+    assert payload["source_readiness_preview_contract"][
+        "autopilot_report_field"
+    ] == "source_readiness_preview"
+    assert payload["source_readiness_preview_contract"][
+        "runtime_apply_authority"
+    ] == "reports/operator_summary.json"
+    assert payload["source_readiness_preview_contract"][
+        "source_status_apply_blocking"
+    ] is False
     assert {
         "research_context",
         "installed_skill_sync",
