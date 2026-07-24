@@ -114,9 +114,16 @@ def _first_action(
     default_only_runtime_surfaces: Sequence[str],
 ) -> str:
     for source in sources:
+        if "first_missing_source_action" not in source:
+            continue
         value = _text(source.get("first_missing_source_action"))
-        if value and value != _NO_MISSING_SOURCE_ACTION:
-            return value
+        if not value:
+            continue
+        if value == _NO_MISSING_SOURCE_ACTION:
+            if default_only_runtime_surfaces:
+                return _DEFAULT_ONLY_RUNTIME_SURFACE_ACTION
+            return _NO_MISSING_SOURCE_ACTION
+        return value
     if default_only_runtime_surfaces:
         return _DEFAULT_ONLY_RUNTIME_SURFACE_ACTION
     if raw_source_backed_strong:

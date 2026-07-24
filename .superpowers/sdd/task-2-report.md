@@ -5,6 +5,7 @@ Status: review hygiene complete
 Current-task index:
 - Current implementation report: `## Task 2: Embed Source Readiness Preview`
 - Review hygiene fix: `## Review Fix: Source Readiness Preview Value Propagation`
+- Important review fix: `## Review Fix: Authoritative None Source Action`
 - Historical Task-2 report entries are preserved below for audit history.
 
 # Task 2 Report: Semantic Intent Scorer
@@ -133,3 +134,28 @@ Fix note:
 Verification:
 - `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
   - Result: `55 passed in 9.81s` on the latest rerun after all code edits.
+
+## Review Fix: Authoritative None Source Action
+
+Status: complete
+
+Files changed:
+- `src/hsconfig/source_readiness_preview.py`
+- `tests/test_source_readiness_preview.py`
+- `.superpowers/sdd/task-2-report.md`
+
+Fix note:
+- Added a regression test for `operator_summary["first_missing_source_action"] == "none"` with lower-precedence Autopilot and Candidate Plan non-none actions.
+- `_first_action` now distinguishes a missing `first_missing_source_action` key from an explicit `"none"` value. Explicit `"none"` from the operator/autopilot/strong closure path prevents lower-precedence source actions from rewriting the preview action.
+- Default-only runtime surfaces remain visible as the default-only source action and do not become hidden source-backed-strong readiness.
+
+Verification:
+- RED before implementation:
+  `pytest tests/test_source_readiness_preview.py::test_preview_keeps_operator_none_authoritative_over_lower_source_actions -q`
+  - Result: `1 failed`; expected `"none"`, actual `add_current_card_specific_runtime_source`.
+- GREEN after fix:
+  `pytest tests/test_source_readiness_preview.py::test_preview_keeps_operator_none_authoritative_over_lower_source_actions -q`
+  - Result: `1 passed in 0.10s`.
+- Targeted review suite:
+  `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
+  - Result: `56 passed in 11.43s`.

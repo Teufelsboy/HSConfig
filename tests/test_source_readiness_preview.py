@@ -121,6 +121,37 @@ def test_preview_keeps_strong_default_only_surface_out_of_clean_ready_lane() -> 
     assert preview["runtime_apply_authority"] == "reports/operator_summary.json"
 
 
+def test_preview_keeps_operator_none_authoritative_over_lower_source_actions() -> None:
+    preview = build_source_readiness_preview(
+        source_candidate_plan={
+            "source_urls": ["https://example.test/explicit-guide"],
+            "first_missing_source_action": "fetch_and_validate_explicit_source_urls",
+        },
+        source_autopilot_report={
+            "semantic_status": "SOURCE_BACKED_PARTIAL",
+            "strong_candidate": True,
+            "first_missing_source_action": "add_current_card_specific_runtime_source",
+            "strong_closure_summary": {
+                "source_backed_strong_ready": True,
+                "first_missing_source_action": "add_current_card_specific_runtime_source",
+            },
+        },
+        operator_summary={
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "source_backed_status": "SOURCE_BACKED_STRONG",
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "default_only_runtime_surfaces": [],
+            "first_missing_source_action": "none",
+        },
+    )
+
+    assert preview["first_missing_source_action"] == "none"
+    assert preview["recommended_next_source_action"] == "none"
+    assert preview["source_backed_strong_ready"] is True
+    assert preview["readiness_lane"] == "source_backed_strong_ready"
+
+
 def test_preview_reports_partial_source_gap_without_blocking_apply() -> None:
     preview = build_source_readiness_preview(
         source_candidate_plan={
