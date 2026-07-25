@@ -569,6 +569,72 @@ def test_config_quality_flags_report_only_location_activation_runtime_row(
     assert report["apply_blocking"] is False
 
 
+def test_config_quality_flags_report_only_location_activation_from_roles(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "REV_290",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "value": "6",
+                    "meaningful_runtime_surface": True,
+                    "roles": ["location_activation"],
+                    "semantic_score": {
+                        "band": "medium",
+                        "reason": "location_activation",
+                        "profile": "semantic_intent",
+                    },
+                }
+            ]
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "REV_290.json",
+        {
+            "GameCardId": "REV_290",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "unsupported role-only location activation",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    expected_row = {
+        "card_id": "REV_290",
+        "mechanic": "location_activation",
+        "behavior_block": "BeforePlayCardBonus",
+        "value": "6",
+    }
+    assert report["checks"]["mechanic_runtime_discipline"][
+        "report_only_runtime_rows"
+    ] == [expected_row]
+    check = report["checks"]["visionai_semantic_surface"]
+    assert check["status"] == "failed"
+    assert check["unsupported_report_only_runtime_rows"] == [expected_row]
+    assert {
+        "check": "visionai_semantic_surface_failed",
+        "value": {
+            "non_targeted_battlecry_target_rows": 0,
+            "effect_only_body_rows": 0,
+            "unsupported_report_only_runtime_rows": 1,
+            "semantic_default_runtime_rows": 0,
+        },
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
 def test_config_quality_surfaces_surface_intent_attention_without_new_problem(
     tmp_path: Path,
 ):

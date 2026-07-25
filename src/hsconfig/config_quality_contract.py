@@ -10,7 +10,13 @@ from hsconfig.default_only_runtime_surfaces import (
     default_only_runtime_surface_errors,
     has_default_only_runtime_surfaces,
 )
-from hsconfig.mechanic_support import mechanic_lowering_policy
+from hsconfig.mechanic_support import (
+    MECHANIC_SUPPORT,
+    NON_MECHANIC_ROLES,
+    ROLE_ALIASES,
+    mechanic_lowering_policy,
+    normalize_role_token,
+)
 from hsconfig.role_tokens import has_explicit_opening_hand_mulligan_intent
 from hsconfig.source_document_model import claim_can_lower_to_runtime
 
@@ -583,22 +589,21 @@ def _mechanic_runtime_discipline_check(
     unregistered: set[str] = set()
 
     for row in rows:
-        mechanic = str(row.get("mechanic", "") or "").strip()
-        if not mechanic:
-            continue
-        policy = mechanic_lowering_policy(mechanic)
-        if policy.get("suppression_reason") == "unregistered_mechanic_runtime_surface":
-            unregistered.add(mechanic)
-        if policy.get("policy") != "report_only":
-            continue
-        report_only_rows.append(
-            {
-                "card_id": _row_card_id(row),
-                "mechanic": mechanic,
-                "behavior_block": str(row.get("behavior_block", "")),
-                "value": str(row.get("value", "")),
-            }
-        )
+        for mechanic in _report_only_mechanics_from_row(row):
+            policy = mechanic_lowering_policy(mechanic)
+            if (
+                policy.get("suppression_reason")
+                == "unregistered_mechanic_runtime_surface"
+            ):
+                unregistered.add(mechanic)
+            report_only_rows.append(
+                {
+                    "card_id": _row_card_id(row),
+                    "mechanic": mechanic,
+                    "behavior_block": str(row.get("behavior_block", "")),
+                    "value": str(row.get("value", "")),
+                }
+            )
 
     return {
         "status": "attention" if report_only_rows or unregistered else "clean",
@@ -816,11 +821,7 @@ def _visionai_semantic_surface_check(
         ):
             non_targeted_battlecry_target_rows.append(_compact_behavior_row(row))
 
-        mechanic = str(row.get("mechanic", "") or "").strip()
-        if (
-            mechanic
-            and mechanic_lowering_policy(mechanic).get("policy") == "report_only"
-        ):
+        for mechanic in _report_only_mechanics_from_row(row):
             unsupported_report_only_runtime_rows.append(
                 {
                     **_compact_behavior_row(row),
@@ -926,6 +927,79 @@ def _card_behavior_row_is_emitted(
     runtime_blocks: set[tuple[str, str]],
 ) -> bool:
     return (_row_card_id(row), str(row.get("behavior_block", ""))) in runtime_blocks
+
+
+def _report_only_mechanics_from_row(row: Mapping[str, Any]) -> list[str]:
+    mechanics: set[str] = set()
+
+    mechanics.update(
+        _report_only_mechanics_from_value(
+            row.get("mechanic"),
+            source_key="mechanic",
+        )
+    )
+    mechanics.update(
+        _report_only_mechanics_from_value(
+            row.get("mechanic_families"),
+            source_key="mechanic_families",
+        )
+    )
+    mechanics.update(
+        _report_only_mechanics_from_value(
+            row.get("semantic_families"),
+            source_key="semantic_families",
+        )
+    )
+    mechanics.update(
+        _report_only_mechanics_from_value(
+            row.get("roles"),
+            source_key="roles",
+        )
+    )
+    return sorted(mechanics)
+
+
+def _report_only_mechanics_from_value(value: Any, *, source_key: str) -> set[str]:
+    mechanics: set[str] = set()
+    for token in _normalized_tokens(value):
+        mechanic = _canonical_mechanic_token(token)
+        if not _is_report_only_mechanic_token(
+            token,
+            mechanic,
+            source_key=source_key,
+        ):
+            continue
+        mechanics.add(mechanic)
+    return mechanics
+
+
+def _canonical_mechanic_token(token: str) -> str:
+    normalized = normalize_role_token(token)
+    return ROLE_ALIASES.get(normalized, normalized)
+
+
+def _is_report_only_mechanic_token(
+    token: str,
+    mechanic: str,
+    *,
+    source_key: str,
+) -> bool:
+    if source_key == "roles" and token in NON_MECHANIC_ROLES:
+        return False
+
+    policy = mechanic_lowering_policy(mechanic)
+    if policy.get("policy") != "report_only":
+        return False
+
+    if source_key == "mechanic":
+        return True
+    if source_key == "mechanic_families":
+        return True
+    if source_key == "roles":
+        return mechanic in MECHANIC_SUPPORT or token in ROLE_ALIASES
+    if source_key == "semantic_families":
+        return mechanic in MECHANIC_SUPPORT or token in ROLE_ALIASES
+    return False
 
 
 def _source_rows_by_claim_id(
