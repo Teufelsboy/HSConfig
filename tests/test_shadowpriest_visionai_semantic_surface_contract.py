@@ -93,7 +93,7 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     assert "BeforeBattlecryTargetBonus" not in cathedral
     assert "BeforeUseHeroPowerBonus" not in cathedral
 
-    assert "OnBoardBoardBonus" in voidtouched
+    assert "OnBoardBonus" in voidtouched
     assert "BeforePlayCardBonus" in voidtouched
 
 

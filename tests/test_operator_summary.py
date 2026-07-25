@@ -257,6 +257,7 @@ def test_operator_summary_exposes_mechanic_visibility_without_blocking_apply():
     assert summary["mechanic_visibility_summary"]["mechanics_by_bucket"]["warning_only"] == [
         "dredge"
     ]
+    assert summary["mechanic_visibility_summary"]["warning_only_mechanics"] == ["dredge"]
     assert summary["mechanic_visibility_summary"]["warning_boundaries"] == [
         {
             "mechanic": "dredge",

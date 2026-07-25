@@ -50,13 +50,30 @@ def test_targeting_behavior_row_receives_semantic_score_value():
 
     assert plan["suppressed"] == []
     row = plan["rows"][0]
-    assert row["behavior_block"] == "BeforeBattlecryTargetBonus"
+    assert row["behavior_block"] == "BeforePlayCardBonus"
     assert row["value"] == "10"
     assert row["semantic_score"]["reason"] == "conditional_minion_death_burn"
     assert row["semantic_score"]["band"] == "high"
     assert row["semantic_score"]["profile"] == "semantic_intent"
     assert "enemy_hero_damage" in row["semantic_score"]["matched_signals"]
     assert "death_condition" in row["semantic_score"]["matched_signals"]
+
+
+def test_explicit_target_runtime_block_is_preserved():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_kind": "targeting_rule",
+                "cards": ["TARGET_CARD"],
+                "stance": "prefer_enemy_minion",
+                "runtime_block": "BeforeBattlecryTargetBonus",
+                "target_scope": "enemy_minion",
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
 
 
 def test_explicit_runtime_value_wins_over_semantic_score():
@@ -200,7 +217,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
     assert [row["behavior_block"] for row in plan["rows"]] == [
         "OnChooseOneCardBonus",
         "BeforeUseHeroPowerBonus",
-        "BeforeBattlecryTargetBonus",
+        "BeforePlayCardBonus",
     ]
     assert plan["option_resolution"] == [
         {

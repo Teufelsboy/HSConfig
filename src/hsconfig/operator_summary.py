@@ -1301,6 +1301,7 @@ def _mechanic_visibility_summary(
             "partial": [],
             "warning_only": [],
         },
+        "warning_only_mechanics": [],
         "warning_only_card_count": 0,
         "first_warning_boundary": None,
         "warning_boundaries": [],
@@ -1342,6 +1343,9 @@ def _mechanic_visibility_summary(
             "partial": [str(item) for item in mechanics_by_bucket.get("partial", [])],
             "warning_only": [str(item) for item in mechanics_by_bucket.get("warning_only", [])],
         },
+        "warning_only_mechanics": [
+            str(item) for item in mechanics_by_bucket.get("warning_only", [])
+        ],
         "warning_only_card_count": _int_value(visibility.get("warning_only_card_count", 0)),
         "first_warning_boundary": visibility.get("first_warning_boundary"),
         "warning_boundaries": [

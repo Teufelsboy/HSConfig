@@ -11,7 +11,7 @@ from hsconfig.mechanic_support import (
 
 
 NON_MECHANIC_FALLBACK_BLOCKS = {
-    "prefer_enemy_minion": "BeforeBattlecryTargetBonus",
+    "prefer_enemy_minion": "BeforePlayCardBonus",
     "prefer_friendly_minion": "BeforePlayCardBonus",
 }
 DIAGNOSTIC_ONLY_ROLE_FALLBACKS = {

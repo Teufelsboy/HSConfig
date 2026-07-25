@@ -27,7 +27,7 @@ INTENT_BLOCKS = {
     "in_hand_value": "InHandBonus",
     "on_board_value": "OnBoardBonus",
     "play_timing": "BeforePlayCardBonus",
-    "targeting_rule": "BeforeBattlecryTargetBonus",
+    "targeting_rule": "BeforePlayCardBonus",
     "hero_power_use": "BeforeUseHeroPowerBonus",
     "hero_power_transform": "BeforeUseHeroPowerBonus",
     "attack_posture": "BeforePhysicalAttackBonus",
@@ -122,6 +122,11 @@ def route_card_behavior_surfaces(
         if claim_kind == "targeting_rule":
             intent = _claim_intent(claim, fallback=claim_kind)
             behavior_block = explicit_block or INTENT_BLOCKS[claim_kind]
+            if (
+                behavior_block == "BeforeBattlecryTargetBonus"
+                and not _is_target_backed_claim(claim)
+            ):
+                behavior_block = "BeforePlayCardBonus"
             rows.extend(
                 _rows_for_cards(
                     claim,
@@ -395,6 +400,13 @@ def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
 
 def _claim_intent(claim: dict[str, Any], *, fallback: str) -> str:
     return str(claim.get("stance") or claim.get("intent") or fallback)
+
+
+def _is_target_backed_claim(claim: dict[str, Any]) -> bool:
+    if claim.get("target_scope"):
+        return True
+    qualifiers = claim.get("semantic_qualifiers")
+    return isinstance(qualifiers, dict) and bool(qualifiers.get("target_scope"))
 
 
 def _condition(claim: dict[str, Any]) -> tuple[str, str | None]:
