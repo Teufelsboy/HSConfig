@@ -79,6 +79,60 @@ def test_combo_with_falsey_structured_card_operand_is_suppressed():
     ]
 
 
+def test_combo_with_falsey_combo_partner_is_suppressed():
+    claim = {
+        "claim_id": "combo-falsey-partner",
+        "claim_kind": "combo_sequence",
+        "cards": ["EX1_001", "EX1_002"],
+        "sequence": ["EX1_001", "EX1_002"],
+        "timing_kind": "same_turn",
+        "operator": ">>",
+        "values": ["10", "20"],
+        "conditions": {"coin": True, "combo_partner": ""},
+    }
+
+    plan = build_combo_plan(
+        deck_cards={"EX1_001", "EX1_002"},
+        claims=[claim],
+    )
+
+    assert plan["combos"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "combo-falsey-partner",
+            "cards": ["EX1_001", "EX1_002"],
+            "reason": "unsupported_condition",
+        }
+    ]
+
+
+def test_combo_with_wrong_type_hand_contains_any_is_suppressed():
+    claim = {
+        "claim_id": "combo-wrong-type-any",
+        "claim_kind": "combo_sequence",
+        "cards": ["EX1_001", "EX1_002"],
+        "sequence": ["EX1_001", "EX1_002"],
+        "timing_kind": "same_turn",
+        "operator": ">>",
+        "values": ["10", "20"],
+        "conditions": {"hand_contains_any": 1},
+    }
+
+    plan = build_combo_plan(
+        deck_cards={"EX1_001", "EX1_002"},
+        claims=[claim],
+    )
+
+    assert plan["combos"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "combo-wrong-type-any",
+            "cards": ["EX1_001", "EX1_002"],
+            "reason": "unsupported_condition",
+        }
+    ]
+
+
 def test_combo_plan_rows_use_lifecycle_claim_id_without_rewriting_source_claim_ids():
     plan = build_combo_plan(
         deck_cards={"CARD_A", "CARD_B"},
