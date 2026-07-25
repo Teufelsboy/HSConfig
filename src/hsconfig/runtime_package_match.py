@@ -48,7 +48,25 @@ def _resolve_config_dir(package_root: Path, config_dir: str | None) -> str:
 def _json_files(path: Path) -> dict[str, Any]:
     if not path.is_dir():
         return {}
-    return {file.name: read_json(file) for file in sorted(path.glob("*.json"))}
+    return {
+        file.name: read_json(file)
+        for file in sorted(path.glob("*.json"))
+        if file.is_file()
+    }
+
+
+def _matching_mapping_lines(path: Path, config_dir: str) -> list[str]:
+    if not path.is_file():
+        return []
+    matched_lines = []
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", ";")) or "=" not in stripped:
+            continue
+        _, value = stripped.split("=", 1)
+        if value.strip() == config_dir:
+            matched_lines.append(line)
+    return matched_lines
 
 
 def _compare_json(package_value: Any, runtime_value: Any) -> _JsonComparison:
@@ -108,13 +126,7 @@ def build_runtime_package_match_report(
                 }
             )
 
-    matched_lines: list[str] = []
-    if deck_config_ini.is_file():
-        matched_lines = [
-            line
-            for line in deck_config_ini.read_text(encoding="utf-8-sig").splitlines()
-            if resolved_config_dir in line
-        ]
+    matched_lines = _matching_mapping_lines(deck_config_ini, resolved_config_dir)
     mentions_config_dir = bool(matched_lines)
     status = "matched"
     if (

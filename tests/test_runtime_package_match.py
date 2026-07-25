@@ -84,3 +84,56 @@ def test_runtime_package_match_reports_missing_and_changed_json_keys(tmp_path: P
             runtime_root=runtime,
             config_dir="shadowpriest",
         )
+
+
+@pytest.mark.parametrize(
+    "mapping_line",
+    [
+        "# ShadowPriest=shadowpriest",
+        "ShadowPriest=shadowpriest-extra",
+        "OtherDeck=other-config",
+    ],
+)
+def test_runtime_package_match_requires_exact_active_mapping(
+    tmp_path: Path, mapping_line: str
+):
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    files = {"GlobalValues.json": {"GameCardId": "GlobalValues"}}
+    _write_deck(package, "shadowpriest", files)
+    _write_deck(runtime, "shadowpriest", files)
+    (runtime / "CustomConfig" / "deck_config.ini").write_text(
+        mapping_line, encoding="utf-8"
+    )
+
+    report = build_runtime_package_match_report(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir="shadowpriest",
+    )
+
+    assert report["status"] == "mismatch"
+    assert report["deck_config_ini"]["mentions_config_dir"] is False
+    assert report["deck_config_ini"]["matched_lines"] == []
+
+
+def test_runtime_package_match_ignores_json_directories(tmp_path: Path):
+    package = tmp_path / "package"
+    runtime = tmp_path / "runtime"
+    files = {"GlobalValues.json": {"GameCardId": "GlobalValues"}}
+    _write_deck(package, "shadowpriest", files)
+    _write_deck(runtime, "shadowpriest", files)
+    (package / "CustomConfig" / "shadowpriest" / "ignored.json").mkdir()
+    (runtime / "CustomConfig" / "deck_config.ini").write_text(
+        "ShadowPriest=shadowpriest\n", encoding="utf-8"
+    )
+
+    report = build_runtime_package_match_report(
+        package_root=package,
+        runtime_root=runtime,
+        config_dir="shadowpriest",
+    )
+
+    assert report["status"] == "matched"
+    assert report["package_file_count"] == 1
+    assert report["runtime_file_count"] == 1
