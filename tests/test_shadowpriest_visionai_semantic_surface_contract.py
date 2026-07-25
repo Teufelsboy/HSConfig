@@ -102,12 +102,13 @@ def test_shadowpriest_report_only_claims_do_not_create_runtime_gaps(shadowpriest
     operator = reports["operator_summary"]
 
     usefulness = operator["config_usefulness"]
+    combo = usefulness["surfaces"]["combo"]
     explainability = operator["source_to_runtime_explainability_summary"]
     mechanic_visibility = operator["mechanic_visibility_summary"]
 
     assert usefulness["first_usefulness_gap"] != "combo_gap"
-    assert usefulness["combo_expected"] is False
-    assert usefulness["combo_row_count"] == 0
+    assert combo["combo_expected"] is False
+    assert combo["combo_row_count"] == 0
     assert explainability["cards_with_first_missing_link"] == 0
 
     warning_only = set(mechanic_visibility["warning_only_mechanics"])
