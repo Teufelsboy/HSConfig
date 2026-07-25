@@ -44,23 +44,6 @@ def _strict_package(tmp_path: Path) -> Path:
             {"GameCardId": "Combo", "ConfigComment": "x"},
             "missing required block ComboList",
         ),
-        (
-            "EX1_001.json",
-            {
-                "GameCardId": "EX1_001",
-                "ConfigComment": "x",
-                "BeforePlayCardBonus": {
-                    "values": [
-                        {
-                            "condition": "nonsense",
-                            "value": "NaN",
-                            "metadata": "leak",
-                        }
-                    ]
-                },
-            },
-            "unsupported runtime condition",
-        ),
     ],
 )
 def test_validate_package_rejects_semantically_invalid_rows(
@@ -76,31 +59,212 @@ def test_validate_package_rejects_semantically_invalid_rows(
     assert any(expected in error for error in result["errors"])
 
 
-def test_validate_combo_requires_valid_cardids_numeric_values_and_safe_condition(tmp_path):
-    package = _strict_package(tmp_path)
-    combo = {
-        "GameCardId": "Combo",
-        "ConfigComment": "x",
-        "ComboList": {
-            "values": [
-                {
-                    "comment": "bad",
-                    "condition": "nonsense",
-                    "combo": "BAD-ID >> EX1_002",
-                    "value": "ten >> 20",
-                }
-            ]
+def _write_card_behavior(package: Path, row: dict[str, object]) -> None:
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {
+            "GameCardId": "EX1_001",
+            "ConfigComment": "x",
+            "BeforePlayCardBonus": {"values": [row]},
         },
-    }
-    deck_dir = package / "CustomConfig" / "deck"
-    (deck_dir / "Combo.json").write_text(json.dumps(combo), encoding="utf-8")
+    )
+
+
+def _write_combo(package: Path, row: dict[str, object]) -> None:
+    write_json(
+        package / "CustomConfig" / "deck" / "Combo.json",
+        {
+            "GameCardId": "Combo",
+            "ConfigComment": "x",
+            "ComboList": {"values": [row]},
+        },
+    )
+
+
+def test_validate_package_rejects_ordinary_row_unsupported_condition(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_card_behavior(package, {"condition": "nonsense", "value": "1"})
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("unsupported runtime condition" in error for error in result["errors"])
+
+
+def test_validate_package_rejects_ordinary_row_provenance_key(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_card_behavior(
+        package,
+        {"condition": "*", "value": "1", "source_claim_ids": ["claim-a"]},
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("unsupported runtime row key source_claim_ids" in error for error in result["errors"])
+
+
+def test_validate_package_rejects_ordinary_row_nonnumeric_value(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_card_behavior(package, {"condition": "*", "value": "ten"})
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("BeforePlayCardBonus row 0 ten must be numeric" in error for error in result["errors"])
+
+
+def test_validate_package_rejects_ordinary_row_nonfinite_decimal(tmp_path):
+    package = _strict_package(tmp_path)
+    nonfinite_decimal = "9" * 400
+    _write_card_behavior(package, {"condition": "*", "value": nonfinite_decimal})
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("must be a finite decimal" in error for error in result["errors"])
+
+
+def test_validate_combo_rejects_unsupported_condition(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_combo(
+        package,
+        {
+            "comment": "bad",
+            "condition": "nonsense",
+            "combo": "EX1_001 >> EX1_002",
+            "value": "10 >> 20",
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("unsupported runtime condition" in error for error in result["errors"])
+
+
+def test_validate_combo_rejects_invalid_card_id(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_combo(
+        package,
+        {
+            "comment": "bad",
+            "condition": "*",
+            "combo": "BAD-ID >> EX1_002",
+            "value": "10 >> 20",
+        },
+    )
 
     result = validate_config_package(package, require_complete_package=True)
 
     assert result["status"] == "failed"
     assert any("invalid Combo card id BAD-ID" in error for error in result["errors"])
-    assert any("unsupported runtime condition" in error for error in result["errors"])
+
+
+def test_validate_combo_rejects_nonnumeric_value_segment(tmp_path):
+    package = _strict_package(tmp_path)
+    _write_combo(
+        package,
+        {
+            "comment": "bad",
+            "condition": "*",
+            "combo": "EX1_001 >> EX1_002",
+            "value": "ten >> 20",
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
     assert any("Combo value segment ten must be numeric" in error for error in result["errors"])
+
+
+def test_validate_combo_rejects_nonfinite_value_segment(tmp_path):
+    package = _strict_package(tmp_path)
+    nonfinite_decimal = "9" * 400
+    _write_combo(
+        package,
+        {
+            "comment": "bad",
+            "condition": "*",
+            "combo": "EX1_001 >> EX1_002",
+            "value": f"10 >> {nonfinite_decimal}",
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("must be a finite decimal" in error for error in result["errors"])
+
+
+def test_validate_globalvalues_rejects_unsupported_condition(tmp_path):
+    package = _strict_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "x",
+            "FirstTurnValueWeight": {"values": [{"condition": "nonsense", "value": "1"}]},
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("unsupported runtime condition" in error for error in result["errors"])
+
+
+def test_validate_globalvalues_rejects_provenance_key(tmp_path):
+    package = _strict_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "x",
+            "FirstTurnValueWeight": {
+                "values": [{"condition": "*", "value": "1", "metadata": "leak"}]
+            },
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("unsupported runtime row key metadata" in error for error in result["errors"])
+
+
+def test_validate_globalvalues_rejects_unsafe_expression(tmp_path):
+    package = _strict_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "x",
+            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1 / 0"}]},
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("must be a safe numeric expression" in error for error in result["errors"])
+
+
+def test_validate_globalvalues_preserves_safe_arithmetic_expression(tmp_path):
+    package = _strict_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "x",
+            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "3.32 + 2"}]},
+        },
+    )
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "passed"
 
 
 def test_supported_surface_accepts_special_and_cardid_json():
@@ -475,6 +639,36 @@ def test_validate_package_rejects_trailing_comma_runtime_json(tmp_path: Path):
 
     assert report["status"] == "failed"
     assert any("EX1_001.json: invalid JSON" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    ("raw_json", "constant"),
+    [
+        ('{"GameCardId":"EX1_001","ConfigComment":NaN}', "NaN"),
+        (
+            '{"GameCardId":"EX1_001","ConfigComment":"x",'
+            '"BeforePlayCardBonus":{"values":[{"condition":"*","value":Infinity}]}}',
+            "Infinity",
+        ),
+        (
+            '{"GameCardId":"EX1_001","ConfigComment":"x",'
+            '"BeforePlayCardBonus":{"values":[{"comment":-Infinity,'
+            '"condition":"*","value":"1"}]}}',
+            "-Infinity",
+        ),
+    ],
+)
+def test_validate_package_rejects_nonstandard_json_constants_in_checked_and_unchecked_fields(
+    tmp_path: Path, raw_json: str, constant: str
+):
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    deck_dir.mkdir(parents=True)
+    (deck_dir / "EX1_001.json").write_text(raw_json, encoding="utf-8")
+
+    report = validate_config_package(tmp_path)
+
+    assert report["status"] == "failed"
+    assert any("invalid JSON" in error and constant in error for error in report["errors"])
 
 
 def test_validate_package_rejects_non_json_surface_with_underscore(tmp_path: Path):

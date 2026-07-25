@@ -70,7 +70,10 @@ def validate_config_package(
                 continue
             checked_files += 1
             try:
-                data = json.loads(path.read_text(encoding="utf-8-sig"))
+                data = json.loads(
+                    path.read_text(encoding="utf-8-sig"),
+                    parse_constant=_reject_nonstandard_json_constant,
+                )
             except Exception as exc:
                 errors.append(f"{path}: invalid JSON: {exc}")
                 continue
@@ -359,8 +362,9 @@ def _validate_combo_row(path: Path, index: int, row: Any) -> list[str]:
         if not CARD_ID_RE.fullmatch(card_id):
             errors.append(f"{path}: invalid Combo card id {card_id}")
     for value_segment in value_segments:
-        if not NUMERIC_RE.fullmatch(value_segment):
-            errors.append(f"{path}: Combo value segment {value_segment} must be numeric")
+        decimal_error = _finite_decimal_error(value_segment)
+        if decimal_error is not None:
+            errors.append(f"{path}: Combo value segment {value_segment} {decimal_error}")
     return errors
 
 
@@ -406,9 +410,19 @@ def _validate_condition(path: Path, label: str, row: Mapping[str, Any]) -> list[
 
 
 def _validate_numeric_value(path: Path, label: str, value: Any) -> list[str]:
-    if NUMERIC_RE.fullmatch(str(value).strip()):
+    decimal_error = _finite_decimal_error(value)
+    if decimal_error is None:
         return []
-    return [f"{path}: {label} {value} must be numeric"]
+    return [f"{path}: {label} {value} {decimal_error}"]
+
+
+def _finite_decimal_error(value: Any) -> str | None:
+    decimal = str(value).strip()
+    if not NUMERIC_RE.fullmatch(decimal):
+        return "must be numeric"
+    if not math.isfinite(float(decimal)):
+        return "must be a finite decimal"
+    return None
 
 
 def _validate_globalvalues_value(path: Path, label: str, value: Any) -> list[str]:
@@ -419,3 +433,7 @@ def _validate_globalvalues_value(path: Path, label: str, value: Any) -> list[str
     if math.isfinite(numeric_value):
         return []
     return [f"{path}: {label} value {value} must be a safe numeric expression"]
+
+
+def _reject_nonstandard_json_constant(constant: str) -> None:
+    raise ValueError(f"non-standard JSON constant {constant}")
