@@ -677,8 +677,9 @@ def test_explainability_card_rows_include_compact_closure_lane():
     report = build_source_to_runtime_explainability_report(audit)
     rows = {row["card_id"]: row for row in report["card_rows"]}
 
+    assert rows["CARD_KEEP"]["first_missing_link"] is None
     assert rows["CARD_KEEP"]["closure"] == {
-        "lane": "runtime_backed",
+        "lane": "source_action_needed",
         "claim_kinds": ["mulligan_keep"],
         "source_lanes": ["runtime_lowered", "suppressed_with_reason"],
         "runtime_surfaces": ["Mulligan.json"],
@@ -688,8 +689,8 @@ def test_explainability_card_rows_include_compact_closure_lane():
         "suppressed_reasons": [
             "start_of_game_effect_does_not_require_opening_hand"
         ],
-        "first_missing_link": None,
-        "next_source_action": "add_explicit_mulligan_claim",
+        "first_missing_link": "opening_hand_mulligan_intent",
+        "next_source_action": "add_explicit_opening_hand_mulligan_source",
     }
 
 

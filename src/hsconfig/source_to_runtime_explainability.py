@@ -165,7 +165,7 @@ def _card_rows(
             for path in sorted(set(expected_files) | set(not_emitted_files))
             if path not in set(emitted_files)
         ]
-        card_first_missing_link = _card_first_missing_link(
+        diagnostic_first_missing_link = _card_first_missing_link(
             raw_card,
             strongest_claim,
             missing_claim,
@@ -173,8 +173,10 @@ def _card_rows(
         first_missing_link = _card_level_first_missing_link(
             emitted_surfaces=emitted_files,
             missing_runtime_surfaces=missing_runtime_files,
-            claim_missing_links=(
-                [card_first_missing_link] if card_first_missing_link is not None else []
+            card_missing_links=(
+                [diagnostic_first_missing_link]
+                if diagnostic_first_missing_link is not None
+                else []
             ),
         )
         why_not_emitted = _card_why_not_emitted(strongest_claim, missing_claim)
@@ -189,7 +191,7 @@ def _card_rows(
             else ""
         )
         next_source_action = _next_source_action(
-            first_missing_link=first_missing_link,
+            first_missing_link=diagnostic_first_missing_link,
             why_not_emitted=why_not_emitted,
             claim_kind=claim_kind,
         )
@@ -214,7 +216,7 @@ def _card_rows(
             "next_source_action": next_source_action,
             "first_missing_source_action": _first_missing_source_action(
                 related_claims=related_claims,
-                first_missing_link=first_missing_link,
+                first_missing_link=diagnostic_first_missing_link,
                 why_not_emitted=why_not_emitted,
                 claim_kind=claim_kind,
                 next_source_action=next_source_action,
@@ -226,11 +228,15 @@ def _card_rows(
             "closure_lane": closure_lane,
             "strong_ready": closure_lane == "source_backed_runtime_lowered",
             "default_only_blocker": (
-                first_missing_link == "default_only_runtime_surface"
+                diagnostic_first_missing_link == "default_only_runtime_surface"
             ),
         }
+        closure_input = {
+            **card_row,
+            "first_missing_link": diagnostic_first_missing_link,
+        }
         card_row["closure"] = _closure_row(
-            row=card_row,
+            row=closure_input,
             related_claims=_related_claims_with_source_lanes(
                 related_claims,
                 audit_claim_rows,
@@ -690,11 +696,11 @@ def _card_level_first_missing_link(
     *,
     emitted_surfaces: list[str],
     missing_runtime_surfaces: list[str],
-    claim_missing_links: list[str],
+    card_missing_links: list[str],
 ) -> str | None:
     if emitted_surfaces and not missing_runtime_surfaces:
         return None
-    return claim_missing_links[0] if claim_missing_links else None
+    return card_missing_links[0] if card_missing_links else None
 
 
 def _first_missing_related_claim(
