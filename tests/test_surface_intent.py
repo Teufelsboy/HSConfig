@@ -1,3 +1,4 @@
+from hsconfig.gameplan_contract import build_gameplan_contract
 from hsconfig.surface_intent import build_surface_intent
 
 
@@ -62,6 +63,38 @@ def test_report_only_combo_does_not_make_combo_surface_expected():
 
     assert "Combo.json" not in intent.get("required_surfaces", [])
     assert "Combo.json" not in intent.get("optional_surfaces", [])
+
+
+def test_surface_intent_keeps_timed_combo_from_gameplan_contract():
+    contract = build_gameplan_contract(
+        {"deck_name": "Fixture", "cards": [{"card_id": "CARD_A"}, {"card_id": "CARD_B"}]},
+        {
+            "cards": [
+                {"card_id": "CARD_A", "name": "Setup", "mechanic_families": []},
+                {"card_id": "CARD_B", "name": "Payoff", "mechanic_families": []},
+            ]
+        },
+        {
+            "claims": [
+                {
+                    "claim_id": "combo_same_turn",
+                    "source": "guide",
+                    "claim": "Play Setup then Payoff as a combo.",
+                    "claim_type": "combo_sequence",
+                    "claim_kind": "combo_sequence",
+                    "cards": ["CARD_A", "CARD_B"],
+                    "timing_kind": "same_turn",
+                    "values": ["10", "10"],
+                    "confidence": "source_backed",
+                }
+            ]
+        },
+    )
+
+    intent = build_surface_intent(contract)
+
+    assert contract["combos"][0]["timing_kind"] == "same_turn"
+    assert "Combo.json" in intent["optional_surfaces"]
 
 
 def test_surface_intent_does_not_route_legacy_policy_surfaces_even_when_flagged():

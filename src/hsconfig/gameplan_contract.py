@@ -356,16 +356,23 @@ def _infer_combos(
         values = claim.get("values")
         if not isinstance(values, list) or len(values) != len(cards):
             values = ["10" for _ in cards]
-        combos.append(
-            {
-                "rule_id": f"{claim['claim_id']}_combo",
-                "cards": cards,
-                "operator": str(claim.get("operator", ">>")),
-                "values": [str(value) for value in values],
-                "source_claim_ids": [claim["claim_id"]],
-                "confidence": claim.get("confidence", "source_backed"),
-            }
-        )
+        combo = {
+            "rule_id": f"{claim['claim_id']}_combo",
+            "cards": cards,
+            "operator": str(claim.get("operator", ">>")),
+            "values": [str(value) for value in values],
+            "source_claim_ids": [claim["claim_id"]],
+            "confidence": claim.get("confidence", "source_backed"),
+        }
+        for field in (
+            "timing",
+            "timing_kind",
+            "sequence_timing",
+            "semantic_qualifiers",
+        ):
+            if field in claim:
+                combo[field] = claim[field]
+        combos.append(combo)
     return sorted(combos, key=lambda row: row["rule_id"]), sorted(
         suppressions, key=lambda row: row["claim_id"]
     )

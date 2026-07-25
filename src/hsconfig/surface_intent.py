@@ -120,7 +120,19 @@ def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:
         return True
     if combo.get("runtime_surface") == "Combo.json":
         return True
-    timing = str(combo.get("timing") or combo.get("sequence_timing") or "").strip()
+    qualifiers = combo.get("semantic_qualifiers")
+    qualifier_timing = (
+        qualifiers.get("timing") or qualifiers.get("sequence_timing")
+        if isinstance(qualifiers, Mapping)
+        else None
+    )
+    timing = str(
+        combo.get("timing")
+        or combo.get("timing_kind")
+        or combo.get("sequence_timing")
+        or qualifier_timing
+        or ""
+    ).strip()
     cards = combo.get("cards") or combo.get("card_ids") or []
     return timing in {"same_turn", "ordered", "exact_order"} and len(cards) >= 2
 
