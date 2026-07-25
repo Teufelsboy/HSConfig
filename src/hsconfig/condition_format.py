@@ -127,7 +127,10 @@ def _atoms_from_structured_condition(
         raw_cards = value["hand_contains_any"]
         cards = [raw_cards] if isinstance(raw_cards, str) else list(raw_cards)
         atoms.extend(f"my_hand(count(),cardid={card}) > 0" for card in cards)
-    return [atom for atom in atoms if _is_atom_safe(atom)], None
+    unsafe_atoms = [atom for atom in atoms if not _is_atom_safe(atom)]
+    if unsafe_atoms:
+        return [], "unsupported_condition"
+    return atoms, None
 
 
 def _normalize_opponent_classes(value: Any) -> list[str] | None:

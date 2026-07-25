@@ -127,6 +127,24 @@ def test_structured_conditions_lower_to_runtime_safe_atoms():
     )
 
 
+def test_coin_plus_invalid_hand_card_fails_closed():
+    condition, reason = lower_runtime_condition(
+        {"coin": True, "hand_contains": "BAD-ID"}
+    )
+
+    assert condition == "*"
+    assert reason == "unsupported_condition"
+
+
+def test_hand_contains_any_fails_when_one_card_is_invalid():
+    condition, reason = lower_runtime_condition(
+        {"hand_contains_any": ["EX1_001", "BAD-ID"]}
+    )
+
+    assert condition == "*"
+    assert reason == "unsupported_condition"
+
+
 def test_report_only_and_unsupported_dicts_do_not_emit_runtime_conditions():
     assert lower_runtime_condition({"phase": "early", "posture": "burn"}) == ("*", None)
     assert lower_runtime_condition({"unknown": "value"}) == ("*", "unsupported_condition")

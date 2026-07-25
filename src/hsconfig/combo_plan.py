@@ -44,7 +44,17 @@ def build_combo_plan(
 
         row = {key: value for key, value in contract.items() if key != "emittable"}
         _with_claim_id(row, claim)
-        row["condition"] = _condition(claim)
+        condition, condition_error = _condition(claim)
+        if condition_error is not None:
+            suppressed.append(
+                _suppression(
+                    claim,
+                    [str(card) for card in contract.get("cards", [])],
+                    condition_error,
+                )
+            )
+            continue
+        row["condition"] = condition
         row["source_claim_ids"] = _source_claim_ids(claim)
         row["confidence"] = str(
             claim.get("claim_confidence", claim.get("confidence", "source_backed"))
@@ -121,8 +131,7 @@ def _claim_for_contract(claim: dict[str, Any]) -> dict[str, Any]:
     return {**claim, "claim_id": claim_id}
 
 
-def _condition(claim: dict[str, Any]) -> str:
-    condition, _unsupported_reason = lower_runtime_condition(
+def _condition(claim: dict[str, Any]) -> tuple[str, str | None]:
+    return lower_runtime_condition(
         claim.get("conditions", claim.get("condition", "*"))
     )
-    return condition
