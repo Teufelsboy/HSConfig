@@ -307,6 +307,8 @@ def test_configure_builds_valid_load_safe_package_without_source_evidence(
     assert (package / "CustomConfig").exists()
     assert list(package.glob("CustomConfig/*/GlobalValues.json"))
     assert list(package.glob("CustomConfig/*/Mulligan.json"))
+    assert summary["runtime_package_match_status"] == "not_checked"
+    assert summary["runtime_package_match"] is None
 
 
 def test_configure_source_evidence_is_not_reingested_after_drafting(
@@ -400,7 +402,10 @@ def test_configure_apply_uses_existing_apply_command_gate(
         captured["fake"] = args.fake
         captured["from_fake_receipt"] = args.from_fake_receipt
         captured["json"] = args.json
-        return {"status": "applied"}, 0
+        return {
+            "status": "applied",
+            "receipt": {"runtime_package_match": {"status": "matched"}},
+        }, 0
 
     monkeypatch.setattr("hsconfig.commands.configure.apply_payload", fake_apply_payload)
 
@@ -427,6 +432,8 @@ def test_configure_apply_uses_existing_apply_command_gate(
     assert code == 0
     assert summary["apply_performed"] is True
     assert summary["apply_status"] == 0
+    assert summary["runtime_package_match_status"] == "matched"
+    assert summary["runtime_package_match"]["status"] == "matched"
     assert captured == {
         "package": str(out / "04_package"),
         "runtime_root": str(runtime_root),
