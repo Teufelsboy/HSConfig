@@ -612,6 +612,45 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
             first_attention = surface_intent.get("first_attention")
             if first_attention is not None:
                 summary["surface_intent_first_attention"] = str(first_attention)
+        visionai_surface = checks.get("visionai_semantic_surface")
+        if isinstance(visionai_surface, Mapping):
+            summary["visionai_semantic_surface_status"] = str(
+                visionai_surface.get("status") or ""
+            )
+            summary["visionai_non_targeted_battlecry_target_rows"] = len(
+                [
+                    item
+                    for item in visionai_surface.get(
+                        "non_targeted_battlecry_target_rows", []
+                    )
+                    if isinstance(item, Mapping)
+                ]
+            )
+            summary["visionai_effect_only_body_rows"] = len(
+                [
+                    item
+                    for item in visionai_surface.get("effect_only_body_rows", [])
+                    if isinstance(item, Mapping)
+                ]
+            )
+            summary["visionai_unsupported_report_only_runtime_rows"] = len(
+                [
+                    item
+                    for item in visionai_surface.get(
+                        "unsupported_report_only_runtime_rows", []
+                    )
+                    if isinstance(item, Mapping)
+                ]
+            )
+            summary["visionai_semantic_default_runtime_rows"] = len(
+                [
+                    item
+                    for item in visionai_surface.get(
+                        "semantic_default_runtime_rows", []
+                    )
+                    if isinstance(item, Mapping)
+                ]
+            )
         legacy_surfaces = checks.get("legacy_surfaces")
         if isinstance(legacy_surfaces, Mapping):
             legacy_present = [

@@ -1028,6 +1028,39 @@ def test_compact_config_quality_summary_includes_config_intent_self_audit() -> N
     }
 
 
+def test_compact_config_quality_summary_includes_clean_visionai_semantic_surface() -> None:
+    report = {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problems": [],
+        "checks": {
+            "visionai_semantic_surface": {
+                "status": "clean",
+                "non_targeted_battlecry_target_rows": [],
+                "effect_only_body_rows": [],
+                "unsupported_report_only_runtime_rows": [],
+                "semantic_default_runtime_rows": [],
+            }
+        },
+    }
+
+    assert _compact_config_quality_summary(report) == {
+        "status": "clean",
+        "authority": "diagnostic_only",
+        "apply_blocking": False,
+        "runtime_write_performed": False,
+        "problem_count": 0,
+        "problem_checks": [],
+        "visionai_semantic_surface_status": "clean",
+        "visionai_non_targeted_battlecry_target_rows": 0,
+        "visionai_effect_only_body_rows": 0,
+        "visionai_unsupported_report_only_runtime_rows": 0,
+        "visionai_semantic_default_runtime_rows": 0,
+    }
+
+
 def test_compact_config_quality_summary_includes_proof_fields() -> None:
     report = {
         "status": "clean",

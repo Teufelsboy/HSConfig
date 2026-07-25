@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.config_quality_contract import build_config_quality_report
 
 
 SHADOWPRIEST_DECK_CODE = (
@@ -47,11 +48,11 @@ def shadowpriest_package(tmp_path: Path, monkeypatch):
             "source_to_runtime_explainability": "source_to_runtime_explainability.json",
         }.items()
     }
-    return package / "CustomConfig" / "shadowpriest", reports
+    return package, reports
 
 
 def read_card_json(package_root, card_id):
-    path = package_root / f"{card_id}.json"
+    path = package_root / "CustomConfig" / "shadowpriest" / f"{card_id}.json"
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
 
@@ -119,3 +120,18 @@ def test_shadowpriest_report_only_claims_do_not_create_runtime_gaps(shadowpriest
     assert "start_of_game_keyword" not in warning_only
     assert "start_of_game_modifier" not in warning_only
     assert "trigger_visual" not in warning_only
+
+
+def test_shadowpriest_quality_report_has_clean_visionai_semantic_surface_check(
+    shadowpriest_package,
+):
+    package_root, _reports = shadowpriest_package
+
+    quality = build_config_quality_report(package_root)
+    check = quality["checks"]["visionai_semantic_surface"]
+
+    assert check["status"] == "clean"
+    assert check["non_targeted_battlecry_target_rows"] == []
+    assert check["effect_only_body_rows"] == []
+    assert check["unsupported_report_only_runtime_rows"] == []
+    assert check["semantic_default_runtime_rows"] == []

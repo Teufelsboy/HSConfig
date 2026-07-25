@@ -82,6 +82,7 @@ def minimal_clean_package(tmp_path: Path) -> Path:
                 {
                     "claim_id": "claim_mind_sear_effect",
                     "claim_kind": "targeting_rule",
+                    "target_scope": "enemy_minion",
                     "builder_or_router_decision": "emitted",
                     "emitted_runtime_files": ["NX2_019.json"],
                     "first_missing_link": None,
@@ -103,12 +104,63 @@ def minimal_clean_package(tmp_path: Path) -> Path:
                         {
                             "claim_id": "claim_mind_sear_effect",
                             "claim_kind": "targeting_rule",
+                            "target_scope": "enemy_minion",
                             "source_lane": "runtime_lowered",
                             "source_type": "deck_matched_public_guide",
                             "runtime_files": ["NX2_019.json"],
                             "resolution_reason": "emitted",
                         }
                     ],
+                }
+            ],
+        },
+    )
+    write_json(
+        package / "reports" / "guide_claim_bundle.json",
+        {
+            "claims": [
+                {
+                    "claim_id": "claim_mind_sear_effect",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["NX2_019"],
+                    "stance": "prefer_enemy_minion",
+                    "target_scope": "enemy_minion",
+                    "runtime_block": "BeforeBattlecryTargetBonus",
+                    "source_claim_ids": ["claim_mind_sear_effect"],
+                }
+            ],
+            "unsupported_claims": [],
+            "source_evidence_index": [],
+        },
+    )
+    write_json(
+        package / "reports" / "gameplan_contract.json",
+        {
+            "cards": {
+                "NX2_019": {
+                    "card_id": "NX2_019",
+                    "roles": ["prefer_enemy_minion"],
+                    "semantic_families": ["targeting_rule"],
+                    "source_claim_ids": ["claim_mind_sear_effect"],
+                }
+            },
+            "card_role_map": [
+                {
+                    "card_id": "NX2_019",
+                    "roles": ["prefer_enemy_minion"],
+                    "semantic_families": ["targeting_rule"],
+                    "source_claim_ids": ["claim_mind_sear_effect"],
+                }
+            ],
+            "source_claims": [
+                {
+                    "claim_id": "claim_mind_sear_effect",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["NX2_019"],
+                    "stance": "prefer_enemy_minion",
+                    "target_scope": "enemy_minion",
+                    "runtime_block": "BeforeBattlecryTargetBonus",
+                    "source_claim_ids": ["claim_mind_sear_effect"],
                 }
             ],
         },
@@ -238,6 +290,13 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "attention": [],
         "first_attention": None,
     }
+    assert report["checks"]["visionai_semantic_surface"] == {
+        "status": "clean",
+        "non_targeted_battlecry_target_rows": [],
+        "effect_only_body_rows": [],
+        "unsupported_report_only_runtime_rows": [],
+        "semantic_default_runtime_rows": [],
+    }
     assert report["checks"]["closure_freshness"] == {
         "present": True,
         "closure_schema_current": True,
@@ -280,6 +339,233 @@ def test_config_quality_summarizes_semantic_taxonomy_reasons(tmp_path: Path):
     }
     assert semantic["authority"] == "diagnostic_only"
     assert semantic["apply_blocking"] is False
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_flags_non_targeted_battlecry_target_runtime_row(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    card_behavior = json.loads(
+        (package / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    card_behavior["rows"][0].update(
+        {
+            "claim_id": "claim_generic_battlecry",
+            "source_claim_ids": ["claim_generic_battlecry"],
+            "roles": ["battlecry"],
+            "mechanic": "battlecry",
+        }
+    )
+    write_json(package / "reports" / "card_behavior_plan_report.json", card_behavior)
+    generic_claim = {
+        "claim_id": "claim_generic_battlecry",
+        "claim_kind": "mechanic_usage",
+        "cards": ["NX2_019"],
+        "mechanic": "battlecry",
+        "stance": "battlecry",
+        "source_claim_ids": ["claim_generic_battlecry"],
+    }
+    write_json(
+        package / "reports" / "guide_claim_bundle.json",
+        {"claims": [generic_claim], "unsupported_claims": []},
+    )
+    write_json(
+        package / "reports" / "gameplan_contract.json",
+        {
+            "cards": {
+                "NX2_019": {
+                    "card_id": "NX2_019",
+                    "roles": ["battlecry"],
+                    "semantic_families": ["battlecry"],
+                    "source_claim_ids": ["claim_generic_battlecry"],
+                }
+            },
+            "source_claims": [generic_claim],
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    check = report["checks"]["visionai_semantic_surface"]
+    assert check["status"] == "failed"
+    assert check["non_targeted_battlecry_target_rows"] == [
+        {
+            "card_id": "NX2_019",
+            "behavior_block": "BeforeBattlecryTargetBonus",
+            "value": "10",
+        }
+    ]
+    assert {
+        "check": "visionai_semantic_surface_failed",
+        "value": {
+            "non_targeted_battlecry_target_rows": 1,
+            "effect_only_body_rows": 0,
+            "unsupported_report_only_runtime_rows": 0,
+            "semantic_default_runtime_rows": 0,
+        },
+    } in report["problems"]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_flags_effect_only_start_game_body_runtime_rows(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    card_behavior = json.loads(
+        (package / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    card_behavior["rows"].extend(
+        [
+            {
+                "card_id": "SW_448",
+                "surface_family": "CARDID.json",
+                "behavior_block": "InHandPlayPriority",
+                "value": "7",
+                "meaningful_runtime_surface": True,
+                "source_claim_ids": ["claim_darkbishop_effect"],
+                "semantic_score": {
+                    "band": "medium",
+                    "reason": "source_backed_darkbishop_effect",
+                    "profile": "semantic_intent",
+                },
+            },
+            {
+                "card_id": "SW_448",
+                "surface_family": "CARDID.json",
+                "behavior_block": "BeforePlayCardBonus",
+                "value": "8",
+                "meaningful_runtime_surface": True,
+                "roles": ["pressure"],
+                "source_claim_ids": [],
+                "semantic_score": {
+                    "band": "medium",
+                    "reason": "pressure_play_bonus",
+                    "profile": "semantic_intent",
+                },
+            },
+        ]
+    )
+    write_json(package / "reports" / "card_behavior_plan_report.json", card_behavior)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "SW_448.json",
+        {
+            "GameCardId": "SW_448",
+            "InHandPlayPriority": {
+                "values": [
+                    {
+                        "comment": "generic hand priority",
+                        "condition": "*",
+                        "value": "7",
+                    }
+                ]
+            },
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "generic body timing",
+                        "condition": "*",
+                        "value": "8",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "reports" / "gameplan_contract.json",
+        {
+            "cards": {
+                "SW_448": {
+                    "card_id": "SW_448",
+                    "roles": [
+                        "deckbuilding_modifier",
+                        "hero_power_transform",
+                        "passive_start_effect",
+                        "shadowform",
+                        "start_of_game_keyword",
+                    ],
+                    "semantic_families": ["start_of_game", "hero_power_transform"],
+                    "source_claim_ids": ["claim_darkbishop_effect"],
+                }
+            }
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    check = report["checks"]["visionai_semantic_surface"]
+    assert check["status"] == "failed"
+    assert check["effect_only_body_rows"] == [
+        {
+            "card_id": "SW_448",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "8",
+        },
+        {
+            "card_id": "SW_448",
+            "behavior_block": "InHandPlayPriority",
+            "value": "7",
+        },
+    ]
+    assert report["apply_blocking"] is False
+
+
+def test_config_quality_flags_report_only_location_activation_runtime_row(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "REV_290",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "value": "6",
+                    "meaningful_runtime_surface": True,
+                    "mechanic": "location_activation",
+                    "semantic_score": {
+                        "band": "medium",
+                        "reason": "location_activation",
+                        "profile": "semantic_intent",
+                    },
+                }
+            ]
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "REV_290.json",
+        {
+            "GameCardId": "REV_290",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "unsupported location activation",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    check = report["checks"]["visionai_semantic_surface"]
+    assert check["status"] == "failed"
+    assert check["unsupported_report_only_runtime_rows"] == [
+        {
+            "card_id": "REV_290",
+            "mechanic": "location_activation",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "6",
+        }
+    ]
     assert report["apply_blocking"] is False
 
 
@@ -1132,6 +1418,76 @@ def test_config_quality_flags_semantic_default_rows(tmp_path: Path):
             "reason": "semantic_default",
         }
     ]
+    assert report["checks"]["visionai_semantic_surface"][
+        "semantic_default_runtime_rows"
+    ] == []
+
+
+def test_config_quality_flags_semantic_default_when_card_specific_source_roles_exist(
+    tmp_path: Path,
+):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "card_id": "CARD_DEFAULT",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "value": "6",
+                    "meaningful_runtime_surface": True,
+                    "semantic_score": {
+                        "band": "default",
+                        "reason": "semantic_default",
+                        "profile": "semantic_intent",
+                    },
+                }
+            ]
+        },
+    )
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "CARD_DEFAULT.json",
+        {
+            "GameCardId": "CARD_DEFAULT",
+            "BeforePlayCardBonus": {
+                "values": [
+                    {
+                        "comment": "semantic default despite roles",
+                        "condition": "*",
+                        "value": "6",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(
+        package / "reports" / "gameplan_contract.json",
+        {
+            "cards": {
+                "CARD_DEFAULT": {
+                    "card_id": "CARD_DEFAULT",
+                    "roles": ["pressure"],
+                    "semantic_families": ["damage"],
+                    "source_claim_ids": ["claim_card_default"],
+                }
+            }
+        },
+    )
+
+    report = build_config_quality_report(package)
+
+    check = report["checks"]["visionai_semantic_surface"]
+    assert check["status"] == "failed"
+    assert check["semantic_default_runtime_rows"] == [
+        {
+            "card_id": "CARD_DEFAULT",
+            "behavior_block": "BeforePlayCardBonus",
+            "value": "6",
+            "reason": "semantic_default",
+        }
+    ]
+    assert report["apply_blocking"] is False
 
 
 def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
@@ -1163,6 +1519,9 @@ def test_config_quality_semantic_intent_coverage_counts_warning_only_semantics(
     report = build_config_quality_report(package)
 
     assert report["status"] == "clean"
+    assert report["checks"]["visionai_semantic_surface"][
+        "unsupported_report_only_runtime_rows"
+    ] == []
     assert report["checks"]["semantic_intent_coverage"]["warning_only_card_count"] == 2
     assert report["checks"]["semantic_intent_coverage"]["warning_only_mechanics"] == [
         "location_activation",

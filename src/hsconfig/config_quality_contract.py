@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from hsconfig.compile_cardid import _is_effect_only_start_of_game_card
 from hsconfig.default_only_runtime_surfaces import (
     default_only_runtime_surface_errors,
     has_default_only_runtime_surfaces,
@@ -169,6 +170,14 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     if not isinstance(surface_intent, Mapping):
         surface_intent = {}
 
+    gameplan_contract = _read_json(package / "reports" / "gameplan_contract.json")
+    if not isinstance(gameplan_contract, Mapping):
+        gameplan_contract = {}
+
+    guide_claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
+    if not isinstance(guide_claim_bundle, Mapping):
+        guide_claim_bundle = {}
+
     checks = {
         "operator_summary": _operator_summary_check(operator),
         "card_behavior": _card_behavior_check(card_behavior),
@@ -196,6 +205,13 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         ),
         "surface_intent_projection": _surface_intent_projection_check(
             surface_intent
+        ),
+        "visionai_semantic_surface": _visionai_semantic_surface_check(
+            package=package,
+            card_behavior=card_behavior,
+            gameplan_contract=gameplan_contract,
+            guide_claim_bundle=guide_claim_bundle,
+            semantic_enrichment=semantic_enrichment,
         ),
     }
     checks["semantic_intent_coverage"] = _semantic_intent_coverage_check(
@@ -751,6 +767,405 @@ def _surface_intent_projection_check(
         "attention": attention,
         "first_attention": attention[0]["check"] if attention else None,
     }
+
+
+def _visionai_semantic_surface_check(
+    *,
+    package: Path,
+    card_behavior: Mapping[str, Any],
+    gameplan_contract: Mapping[str, Any],
+    guide_claim_bundle: Mapping[str, Any],
+    semantic_enrichment: Mapping[str, Any],
+) -> dict[str, Any]:
+    runtime_rows = _runtime_cardid_value_rows(package)
+    runtime_blocks = {
+        (row["card_id"], row["behavior_block"])
+        for row in runtime_rows
+        if row["card_id"] and row["behavior_block"]
+    }
+    report_rows = _meaningful_cardid_rows(card_behavior)
+    source_rows_by_claim = _source_rows_by_claim_id(
+        gameplan_contract,
+        guide_claim_bundle,
+    )
+    card_roles = _semantic_surface_roles_by_card(
+        card_behavior,
+        gameplan_contract,
+        semantic_enrichment,
+    )
+    card_specific_source_metadata = _card_specific_source_metadata_cards(
+        gameplan_contract,
+        semantic_enrichment,
+    )
+
+    non_targeted_battlecry_target_rows: list[dict[str, str]] = []
+    unsupported_report_only_runtime_rows: list[dict[str, str]] = []
+    semantic_default_runtime_rows: list[dict[str, str]] = []
+    explicit_before_play_body_authority_cards: set[str] = set()
+
+    for row in report_rows:
+        if not _card_behavior_row_is_emitted(row, runtime_blocks):
+            continue
+        card_id = _row_card_id(row)
+        behavior_block = str(row.get("behavior_block", ""))
+        linked_source_rows = _linked_source_rows(row, source_rows_by_claim)
+
+        if (
+            behavior_block == "BeforeBattlecryTargetBonus"
+            and _has_only_non_targeted_battlecry_authority(row, linked_source_rows)
+        ):
+            non_targeted_battlecry_target_rows.append(_compact_behavior_row(row))
+
+        mechanic = str(row.get("mechanic", "") or "").strip()
+        if (
+            mechanic
+            and mechanic_lowering_policy(mechanic).get("policy") == "report_only"
+        ):
+            unsupported_report_only_runtime_rows.append(
+                {
+                    **_compact_behavior_row(row),
+                    "mechanic": mechanic,
+                }
+            )
+
+        if (
+            behavior_block == "BeforePlayCardBonus"
+            and _has_explicit_behavior_row_authority(row)
+        ):
+            explicit_before_play_body_authority_cards.add(card_id)
+
+        semantic_score = row.get("semantic_score")
+        if (
+            isinstance(semantic_score, Mapping)
+            and str(semantic_score.get("reason", "")).strip() == "semantic_default"
+            and card_id in card_specific_source_metadata
+        ):
+            semantic_default_runtime_rows.append(
+                {**_compact_behavior_row(row), "reason": "semantic_default"}
+            )
+
+    effect_only_body_rows: list[dict[str, str]] = []
+    for runtime_row in runtime_rows:
+        card_id = runtime_row["card_id"]
+        behavior_block = runtime_row["behavior_block"]
+        if not _is_effect_only_start_of_game_card(card_roles.get(card_id, set())):
+            continue
+        if behavior_block == "InHandPlayPriority":
+            effect_only_body_rows.append(_compact_runtime_row(runtime_row))
+        elif (
+            behavior_block == "BeforePlayCardBonus"
+            and card_id not in explicit_before_play_body_authority_cards
+        ):
+            effect_only_body_rows.append(_compact_runtime_row(runtime_row))
+
+    non_targeted_battlecry_target_rows = _dedupe_sorted_rows(
+        non_targeted_battlecry_target_rows
+    )
+    effect_only_body_rows = _dedupe_sorted_rows(effect_only_body_rows)
+    unsupported_report_only_runtime_rows = _dedupe_sorted_rows(
+        unsupported_report_only_runtime_rows
+    )
+    semantic_default_runtime_rows = _dedupe_sorted_rows(semantic_default_runtime_rows)
+    failed = bool(
+        non_targeted_battlecry_target_rows
+        or effect_only_body_rows
+        or unsupported_report_only_runtime_rows
+        or semantic_default_runtime_rows
+    )
+    return {
+        "status": "failed" if failed else "clean",
+        "non_targeted_battlecry_target_rows": non_targeted_battlecry_target_rows,
+        "effect_only_body_rows": effect_only_body_rows,
+        "unsupported_report_only_runtime_rows": unsupported_report_only_runtime_rows,
+        "semantic_default_runtime_rows": semantic_default_runtime_rows,
+    }
+
+
+def _runtime_cardid_value_rows(package: Path) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for deck_dir in _custom_config_deck_dirs(package):
+        for path in sorted(deck_dir.glob("*.json")):
+            if (
+                path.name in SPECIAL_RUNTIME_FILES
+                or path.name in FORBIDDEN_LEGACY_RUNTIME_SURFACES
+            ):
+                continue
+            card_id = _file_card_id(path.name)
+            if not card_id:
+                continue
+            payload = _read_json(path)
+            if not isinstance(payload, Mapping):
+                continue
+            for block, block_payload in payload.items():
+                if block in {"GameCardId", "ConfigComment"}:
+                    continue
+                values: Any
+                if isinstance(block_payload, Mapping):
+                    values = block_payload.get("values", [])
+                elif isinstance(block_payload, list):
+                    values = block_payload
+                else:
+                    continue
+                if not isinstance(values, list):
+                    continue
+                for value_row in values:
+                    if not isinstance(value_row, Mapping):
+                        continue
+                    rows.append(
+                        {
+                            "card_id": card_id,
+                            "behavior_block": str(block),
+                            "value": str(value_row.get("value", "")),
+                        }
+                    )
+    return rows
+
+
+def _card_behavior_row_is_emitted(
+    row: Mapping[str, Any],
+    runtime_blocks: set[tuple[str, str]],
+) -> bool:
+    return (_row_card_id(row), str(row.get("behavior_block", ""))) in runtime_blocks
+
+
+def _source_rows_by_claim_id(
+    gameplan_contract: Mapping[str, Any],
+    guide_claim_bundle: Mapping[str, Any],
+) -> dict[str, list[Mapping[str, Any]]]:
+    rows: list[Mapping[str, Any]] = []
+    rows.extend(
+        _report_rows(
+            gameplan_contract,
+            (
+                "source_claims",
+                "source_backed_actions",
+                "static_semantic_actions",
+                "unsupported_or_review_only_claims",
+            ),
+        )
+    )
+    rows.extend(_report_rows(guide_claim_bundle, ("claims", "unsupported_claims")))
+    nested_bundle = gameplan_contract.get("guide_claim_bundle")
+    rows.extend(_report_rows(nested_bundle, ("claims", "unsupported_claims")))
+
+    by_claim: dict[str, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        for claim_id in _row_claim_ids(row):
+            by_claim.setdefault(claim_id, []).append(row)
+    return by_claim
+
+
+def _linked_source_rows(
+    row: Mapping[str, Any],
+    source_rows_by_claim: Mapping[str, list[Mapping[str, Any]]],
+) -> list[Mapping[str, Any]]:
+    linked: list[Mapping[str, Any]] = []
+    seen: set[int] = set()
+    for claim_id in _runtime_row_claim_ids(row) | _row_claim_ids(row):
+        for source_row in source_rows_by_claim.get(claim_id, []):
+            marker = id(source_row)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            linked.append(source_row)
+    return linked
+
+
+def _has_only_non_targeted_battlecry_authority(
+    row: Mapping[str, Any],
+    linked_source_rows: list[Mapping[str, Any]],
+) -> bool:
+    if not linked_source_rows and not (
+        _runtime_row_claim_ids(row) | _row_claim_ids(row)
+    ):
+        return False
+    evidence_rows = [row, *linked_source_rows]
+    if _has_target_authority(evidence_rows):
+        return False
+    return any(_mentions_battlecry(row) for row in evidence_rows)
+
+
+TARGET_AUTHORITY_TOKENS = {
+    "prefer_enemy_hero",
+    "prefer_enemy_minion",
+    "prefer_friendly_minion",
+    "targeting_rule",
+}
+
+
+def _has_target_authority(rows: list[Mapping[str, Any]]) -> bool:
+    for row in rows:
+        if str(row.get("target_scope", "") or "").strip():
+            return True
+        qualifiers = row.get("semantic_qualifiers")
+        if (
+            isinstance(qualifiers, Mapping)
+            and str(qualifiers.get("target_scope", "") or "").strip()
+        ):
+            return True
+        tokens = _semantic_surface_tokens(row)
+        if tokens & TARGET_AUTHORITY_TOKENS:
+            return True
+    return False
+
+
+def _mentions_battlecry(row: Mapping[str, Any]) -> bool:
+    tokens = _semantic_surface_tokens(row)
+    return "battlecry" in tokens or str(row.get("behavior_block", "")).lower() == (
+        "beforebattlecrytargetbonus"
+    )
+
+
+def _has_explicit_behavior_row_authority(row: Mapping[str, Any]) -> bool:
+    semantic_score = row.get("semantic_score")
+    if (
+        isinstance(semantic_score, Mapping)
+        and str(semantic_score.get("reason", "")).strip() == "semantic_default"
+    ):
+        return False
+    return bool(_runtime_row_claim_ids(row) | _row_claim_ids(row))
+
+
+def _semantic_surface_roles_by_card(
+    card_behavior: Mapping[str, Any],
+    gameplan_contract: Mapping[str, Any],
+    semantic_enrichment: Mapping[str, Any],
+) -> dict[str, set[str]]:
+    roles: dict[str, set[str]] = {}
+    for row in _meaningful_cardid_rows(card_behavior):
+        card_id = _row_card_id(row)
+        if card_id:
+            roles.setdefault(card_id, set()).update(_semantic_surface_tokens(row))
+    for row in _card_metadata_rows(gameplan_contract.get("cards")):
+        card_id = _row_card_id(row)
+        if card_id:
+            roles.setdefault(card_id, set()).update(_semantic_surface_role_tokens(row))
+    for row in _report_rows(gameplan_contract, ("card_role_map",)):
+        card_id = _row_card_id(row)
+        if card_id:
+            roles.setdefault(card_id, set()).update(_semantic_surface_role_tokens(row))
+    for row in _card_metadata_rows(semantic_enrichment.get("cards")):
+        card_id = _row_card_id(row)
+        if card_id:
+            roles.setdefault(card_id, set()).update(_semantic_surface_role_tokens(row))
+    return roles
+
+
+def _card_specific_source_metadata_cards(
+    gameplan_contract: Mapping[str, Any],
+    semantic_enrichment: Mapping[str, Any],
+) -> set[str]:
+    card_ids: set[str] = set()
+    for row in _card_metadata_rows(gameplan_contract.get("cards")):
+        if _has_card_specific_source_metadata(row):
+            card_id = _row_card_id(row)
+            if card_id:
+                card_ids.add(card_id)
+    for row in _report_rows(gameplan_contract, ("card_role_map",)):
+        if _has_card_specific_source_metadata(row):
+            card_id = _row_card_id(row)
+            if card_id:
+                card_ids.add(card_id)
+    for row in _card_metadata_rows(semantic_enrichment.get("cards")):
+        if _has_card_specific_source_metadata(row):
+            card_id = _row_card_id(row)
+            if card_id:
+                card_ids.add(card_id)
+    return card_ids
+
+
+def _card_metadata_rows(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        rows = []
+        for card_id, row in value.items():
+            if not isinstance(row, Mapping):
+                continue
+            normalized = dict(row)
+            normalized.setdefault("card_id", str(card_id))
+            rows.append(normalized)
+        return rows
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, Mapping)]
+    return []
+
+
+def _has_card_specific_source_metadata(row: Mapping[str, Any]) -> bool:
+    for key in ("roles", "semantic_families", "source_claim_ids"):
+        if _string_list(row.get(key)):
+            return True
+    classification = row.get("classification")
+    if isinstance(classification, Mapping):
+        return bool(classification)
+    return bool(str(classification or "").strip())
+
+
+def _semantic_surface_role_tokens(row: Mapping[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for key in ("roles", "semantic_families", "mechanic_families"):
+        tokens.update(_normalized_tokens(row.get(key)))
+    return tokens
+
+
+def _semantic_surface_tokens(row: Mapping[str, Any]) -> set[str]:
+    tokens = _semantic_surface_role_tokens(row)
+    for key in (
+        "behavior_block",
+        "claim_kind",
+        "claim_type",
+        "intent",
+        "mechanic",
+        "runtime_block",
+        "stance",
+    ):
+        tokens.update(_normalized_tokens(row.get(key)))
+    return tokens
+
+
+def _normalized_tokens(value: Any) -> set[str]:
+    raw_values = _string_list(value)
+    tokens: set[str] = set()
+    for raw_value in raw_values:
+        token = (
+            str(raw_value)
+            .strip()
+            .lower()
+            .replace("'", "")
+            .replace("’", "")
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+        if token:
+            tokens.add(token)
+    return tokens
+
+
+def _compact_runtime_row(row: Mapping[str, str]) -> dict[str, str]:
+    return {
+        "card_id": str(row.get("card_id", "")),
+        "behavior_block": str(row.get("behavior_block", "")),
+        "value": str(row.get("value", "")),
+    }
+
+
+def _dedupe_sorted_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    deduped: list[dict[str, str]] = []
+    for row in rows:
+        key = tuple(sorted((str(k), str(v)) for k, v in row.items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return sorted(
+        deduped,
+        key=lambda row: (
+            str(row.get("card_id", "")),
+            str(row.get("behavior_block", "")),
+            str(row.get("mechanic", "")),
+            str(row.get("value", "")),
+            str(row.get("reason", "")),
+        ),
+    )
 
 
 def _semantic_warning_only_summary(
@@ -1555,6 +1970,23 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "check": "config_intent_unsupported_runtime_files",
                 "value": config_intent["unsupported_runtime_files"],
+            }
+        )
+
+    visionai = checks["visionai_semantic_surface"]
+    if visionai["status"] == "failed":
+        problems.append(
+            {
+                "check": "visionai_semantic_surface_failed",
+                "value": {
+                    key: len(visionai[key])
+                    for key in (
+                        "non_targeted_battlecry_target_rows",
+                        "effect_only_body_rows",
+                        "unsupported_report_only_runtime_rows",
+                        "semantic_default_runtime_rows",
+                    )
+                },
             }
         )
 
