@@ -15,6 +15,7 @@ from hsconfig.runtime_apply_receipts import (
     write_fake_apply_receipt,
     write_runtime_write_history,
 )
+from hsconfig.runtime_package_match import assert_runtime_matches_package
 from hsconfig.validate_package import (
     validate_config_package,
 )
@@ -119,6 +120,11 @@ def apply_package(
             deck_name=mapped_deck_name,
             config_dir=deck_dir_name,
         )
+        runtime_package_match = assert_runtime_matches_package(
+            package_root=package,
+            runtime_root=runtime,
+            config_dir=deck_dir_name,
+        )
         copied_files = sorted(
             path.relative_to(source_dir).as_posix()
             for path in source_dir.rglob("*")
@@ -141,6 +147,8 @@ def apply_package(
             "deck_config_ini_previous_sha256": deck_config_receipt["previous_sha256"],
             "deck_config_ini_current_sha256": deck_config_receipt["current_sha256"],
             "fake_receipt_verified": fake_verification,
+            "runtime_package_match": runtime_package_match,
+            "runtime_package_match_status": runtime_package_match["status"],
             "runtime_snapshot_before": before_snapshot,
             "runtime_snapshot_after": runtime_snapshot(runtime, deck_dir_name),
             "rollback_snapshot_path": rollback_snapshot_path,

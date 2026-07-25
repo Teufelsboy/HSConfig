@@ -5,6 +5,7 @@ import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import write_json
+from hsconfig.runtime_package_match import RuntimePackageMismatchError
 from hsconfig.runtime_apply import apply_package
 
 
@@ -1295,3 +1296,57 @@ def test_apply_package_appends_rollback_history_when_final_receipt_write_fails(
     ) == {"old": True}
     assert not (runtime / "CustomConfig" / "deck" / "GlobalValues.json").exists()
     assert deck_config.read_text(encoding="utf-8") == old_deck_config_text
+
+
+def test_apply_package_receipt_includes_runtime_package_match(tmp_path: Path):
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+
+    receipt = apply_package(package_root=package, runtime_root=runtime)
+
+    assert receipt["status"] == "applied"
+    assert receipt["runtime_package_match_status"] == "matched"
+    assert receipt["runtime_package_match"]["status"] == "matched"
+    assert receipt["runtime_package_match"]["runtime_write_performed"] is False
+    assert receipt["runtime_package_match"]["runtime_permission_impact"] == "none"
+
+
+def test_apply_package_rolls_back_when_runtime_package_match_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    write_json(runtime / "CustomConfig" / "deck" / "marker.json", {"marker": "before"})
+
+    def fail_match(**_: object) -> dict[str, object]:
+        raise RuntimePackageMismatchError(
+            {
+                "status": "mismatch",
+                "config_dir": "deck",
+                "missing_in_runtime": ["EX1_001.json"],
+                "extra_in_runtime": [],
+                "semantic_mismatch_count": 0,
+                "semantic_mismatches": [],
+            }
+        )
+
+    monkeypatch.setattr(runtime_apply, "assert_runtime_matches_package", fail_match)
+
+    with pytest.raises(RuntimePackageMismatchError):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    marker = runtime / "CustomConfig" / "deck" / "marker.json"
+    assert json.loads(marker.read_text(encoding="utf-8")) == {"marker": "before"}
