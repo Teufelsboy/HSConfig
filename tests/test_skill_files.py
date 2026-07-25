@@ -592,6 +592,8 @@ def test_skill_sources_document_runtime_apply_mode_as_descriptive():
 
     assert "Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`." in skill
     assert "Runtime apply is guarded" in skill
+    assert "receipt.runtime_package_match.status" in skill
+    assert "This is an install-integrity check, not a source/semantic apply gate." in skill
     assert "runtime_apply_mode" in combined
     assert "runtime_apply_allowed" in combined
     assert "ALLOWED_WITH_WARNINGS" in combined
@@ -602,6 +604,9 @@ def test_skill_sources_document_runtime_apply_mode_as_descriptive():
     assert "hsconfig apply" in workflow
     assert "apply_package()" in workflow
     assert "re-evaluate the operator gate before writing" in workflow
+    assert "receipt.runtime_package_match.status" in workflow
+    assert "runtime-match --package <package> --runtime-root <runtime> --json" in workflow
+    assert "This is an install-integrity check, not a source/semantic apply gate." in workflow
 
 
 def test_readme_documents_installed_skill_sync():

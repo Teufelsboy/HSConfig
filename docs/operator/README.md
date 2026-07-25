@@ -104,6 +104,22 @@ Choice surface lowering follows the card behavior policy: `discover_choice` and 
 
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
+### Runtime package match
+
+After `apply` or `configure --apply`, HSConfig verifies that the active
+`CustomConfig/<config_dir>` folder semantically matches the validated package
+that was copied. This is a technical install-integrity check: if the runtime
+folder differs, the apply is rolled back and the command fails.
+
+For read-only audits, run:
+
+```powershell
+python -m hsconfig.cli runtime-match --package <package> --runtime-root C:\Users\darbo\Desktop\HS --json
+```
+
+`runtime-match` does not grant apply permission and never writes runtime files.
+Apply permission still comes only from `reports/operator_summary.json`.
+
 ## Real-Deck Usage Loop
 
 Use this loop to run `hsconfig configure`, then inspect source-contract and no-default-only diagnostics without treating them as extra gates.

@@ -164,6 +164,16 @@ def test_source_backed_strong_operator_docs_state_task7_contracts():
             ) from exc
 
 
+def test_runtime_match_is_post_apply_install_integrity_only() -> None:
+    text = (ROOT / "docs" / "operator" / "README.md").read_text(encoding="utf-8")
+
+    assert "### Runtime package match" in text
+    assert "semantically matches the validated package" in text
+    assert "runtime-match --package <package> --runtime-root C:\\Users\\darbo\\Desktop\\HS --json" in text
+    assert "`runtime-match` does not grant apply permission and never writes runtime files." in text
+    assert "Apply permission still comes only from `reports/operator_summary.json`." in text
+
+
 def test_repo_hsconfig_skill_states_task7_contracts():
     text = _repo_skill_docs_text()
 

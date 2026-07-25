@@ -38,6 +38,10 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 - Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 - `reports/operator_summary.json` remains the only normal apply authority.
 - Runtime apply is guarded by `operator_summary.json`, package structure, fake receipts, and package hashes.
+- After runtime apply, inspect `receipt.runtime_package_match.status`. It must be
+  `matched` for a successful install. For read-only checks use
+  `python -m hsconfig.cli runtime-match --package <package> --runtime-root <runtime> --json`.
+  This is an install-integrity check, not a source/semantic apply gate.
 - `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate.
 - `source_status_apply_blocking` must remain `false` for source-quality work.
 - No hidden default-only runtime success.
