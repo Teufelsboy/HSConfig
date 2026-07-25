@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
+from hsconfig.compile_globalvalues import _numeric_value
+from hsconfig.condition_format import classify_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
     CARD_BEHAVIOR_BLOCKS,
@@ -20,6 +23,12 @@ SPECIAL_SURFACE_NAMES = {
     "Presume.json",
     "Concede.json",
 }
+
+RUNTIME_VALUE_ROW_KEYS = {"comment", "condition", "value"}
+MULLIGAN_ROW_KEYS = {"comment", "condition", "mulligan", "value"}
+COMBO_ROW_KEYS = {"comment", "condition", "combo", "value"}
+CARD_ID_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)+[A-Za-z0-9]*$")
+NUMERIC_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$")
 
 
 def validate_config_package(
@@ -140,6 +149,10 @@ def _validate_card_behavior_blocks(path: Path, data: dict[str, Any]) -> list[str
             errors.append(f"{path}: unsupported card behavior block {key}")
         elif not _has_values_array(value):
             errors.append(f"{path}: block {key} must contain values array")
+        else:
+            errors.extend(
+                _validate_runtime_value_rows(path, f"{key} row", value["values"])
+            )
     return errors
 
 
@@ -173,13 +186,33 @@ def _validate_globalvalues_rows(path: Path, data: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"{path}: GlobalValues block {key} row {index} missing condition"
                 )
+            else:
+                errors.extend(
+                    _validate_condition(path, f"GlobalValues block {key} row {index}", row)
+                )
             if "value" not in row:
                 errors.append(f"{path}: GlobalValues block {key} row {index} missing value")
+            else:
+                errors.extend(
+                    _validate_globalvalues_value(
+                        path, f"GlobalValues block {key} row {index}", row["value"]
+                    )
+                )
+            errors.extend(
+                _validate_row_keys(
+                    path,
+                    f"GlobalValues block {key} row {index}",
+                    row,
+                    RUNTIME_VALUE_ROW_KEYS,
+                )
+            )
     return errors
 
 
 def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
     errors = _validate_named_values_blocks(path, data, {"Mulligan"})
+    if "Mulligan" not in data:
+        errors.append(f"{path}: missing required block Mulligan")
     block = data.get("Mulligan", {})
     values = block.get("values") if isinstance(block, dict) else []
     if not isinstance(values, list):
@@ -196,6 +229,9 @@ def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
         if not isinstance(row, dict):
             errors.append(f"{path}: Mulligan row {index} must be an object")
             continue
+        errors.extend(
+            _validate_row_keys(path, f"Mulligan row {index}", row, MULLIGAN_ROW_KEYS)
+        )
         selector_info: dict[str, Any] | None = None
         if not row.get("mulligan"):
             errors.append(f"{path}: Mulligan row {index} missing mulligan")
@@ -208,6 +244,8 @@ def _validate_mulligan(path: Path, data: dict[str, Any]) -> list[str]:
                 )
         if "condition" not in row:
             errors.append(f"{path}: Mulligan row {index} missing condition")
+        else:
+            errors.extend(_validate_condition(path, f"Mulligan row {index}", row))
         if row.get("value") not in {"hold", "discard"}:
             errors.append(f"{path}: Mulligan row {index} value must be hold or discard")
         if selector_info is None or not selector_info["supported"]:
@@ -274,10 +312,12 @@ def _validate_named_values_blocks(
 
 
 def _validate_combo(path: Path, data: dict[str, Any]) -> list[str]:
-    errors = _validate_values_blocks(path, data)
+    errors = _validate_named_values_blocks(path, data, {"ComboList"})
     combo_list = data.get("ComboList")
-    if combo_list is not None and not _has_values_array(combo_list):
-        errors.append(f"{path}: ComboList must contain values array")
+    if combo_list is None:
+        errors.append(f"{path}: missing required block ComboList")
+        return errors
+    if not _has_values_array(combo_list):
         return errors
     if _has_values_array(combo_list):
         for index, row in enumerate(combo_list["values"]):
@@ -292,11 +332,18 @@ def _has_values_array(value: Any) -> bool:
 def _validate_combo_row(path: Path, index: int, row: Any) -> list[str]:
     if not isinstance(row, dict):
         return [f"{path}: ComboList row {index} must be an object"]
-    allowed_keys = {"comment", "condition", "combo", "value"}
     errors = [
         f"{path}: ComboList row {index} unsupported ComboList row key {key}"
-        for key in sorted(set(row) - allowed_keys)
+        for key in sorted(set(row) - COMBO_ROW_KEYS)
     ]
+    if "condition" not in row:
+        errors.append(f"{path}: ComboList row {index} missing condition")
+    else:
+        errors.extend(_validate_condition(path, f"ComboList row {index}", row))
+    if "combo" not in row:
+        errors.append(f"{path}: ComboList row {index} missing combo")
+    if "value" not in row:
+        errors.append(f"{path}: ComboList row {index} missing value")
     combo = str(row.get("combo", "")).strip()
     value = str(row.get("value", "")).strip()
     combo_segments = _split_combo_segments(combo)
@@ -308,6 +355,12 @@ def _validate_combo_row(path: Path, index: int, row: Any) -> list[str]:
             f"{path}: ComboList row {index} combo/value segment count mismatch: "
             f"{len(combo_segments)} combo segments, {len(value_segments)} value segments"
         )
+    for card_id in combo_segments:
+        if not CARD_ID_RE.fullmatch(card_id):
+            errors.append(f"{path}: invalid Combo card id {card_id}")
+    for value_segment in value_segments:
+        if not NUMERIC_RE.fullmatch(value_segment):
+            errors.append(f"{path}: Combo value segment {value_segment} must be numeric")
     return errors
 
 
@@ -315,3 +368,54 @@ def _split_combo_segments(text: str) -> list[str]:
     if not text:
         return []
     return [part.strip() for part in re.split(r"\s*(?:>>|>->)\s*", text) if part.strip()]
+
+
+def _validate_runtime_value_rows(path: Path, label: str, values: list[Any]) -> list[str]:
+    errors = []
+    for index, row in enumerate(values):
+        row_label = f"{label} {index}"
+        if not isinstance(row, Mapping):
+            errors.append(f"{path}: {row_label} must be an object")
+            continue
+        errors.extend(_validate_row_keys(path, row_label, row, RUNTIME_VALUE_ROW_KEYS))
+        if "condition" not in row:
+            errors.append(f"{path}: {row_label} missing condition")
+        else:
+            errors.extend(_validate_condition(path, row_label, row))
+        if "value" not in row:
+            errors.append(f"{path}: {row_label} missing value")
+        else:
+            errors.extend(_validate_numeric_value(path, row_label, row["value"]))
+    return errors
+
+
+def _validate_row_keys(
+    path: Path, label: str, row: Mapping[str, Any], allowed_keys: set[str]
+) -> list[str]:
+    return [
+        f"{path}: {label} unsupported runtime row key {key}"
+        for key in sorted(set(row) - allowed_keys)
+    ]
+
+
+def _validate_condition(path: Path, label: str, row: Mapping[str, Any]) -> list[str]:
+    classified = classify_runtime_condition(row.get("condition"))
+    if classified.status == "runtime_safe":
+        return []
+    return [f"{path}: {label} unsupported runtime condition"]
+
+
+def _validate_numeric_value(path: Path, label: str, value: Any) -> list[str]:
+    if NUMERIC_RE.fullmatch(str(value).strip()):
+        return []
+    return [f"{path}: {label} {value} must be numeric"]
+
+
+def _validate_globalvalues_value(path: Path, label: str, value: Any) -> list[str]:
+    try:
+        numeric_value = _numeric_value(str(value).strip())
+    except ValueError:
+        return [f"{path}: {label} value {value} must be a safe numeric expression"]
+    if math.isfinite(numeric_value):
+        return []
+    return [f"{path}: {label} value {value} must be a safe numeric expression"]

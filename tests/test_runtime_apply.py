@@ -938,7 +938,7 @@ def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_pa
         {
             "GameCardId": "EX1_001",
             "ConfigComment": "changed",
-            "InHandPlayPriority": {"values": [{"condition": "Always", "value": 100}]},
+            "InHandPlayPriority": {"values": [{"condition": "*", "value": 100}]},
         },
     )
 

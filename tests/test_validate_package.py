@@ -1,8 +1,106 @@
+import json
 from pathlib import Path
+
+import pytest
 
 from hsconfig.io import write_json
 from hsconfig.validate_package import validate_config_package
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS, supported_surface
+
+
+def _strict_package(tmp_path: Path) -> Path:
+    package = tmp_path
+    deck_dir = package / "CustomConfig" / "deck"
+    write_json(
+        deck_dir / "GlobalValues.json",
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "test",
+            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "1"}]},
+            "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+        },
+    )
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "test",
+            "Mulligan": {"values": []},
+        },
+    )
+    return package
+
+
+@pytest.mark.parametrize(
+    ("filename", "payload", "expected"),
+    [
+        (
+            "Mulligan.json",
+            {"GameCardId": "Mulligan", "ConfigComment": "x"},
+            "missing required block Mulligan",
+        ),
+        (
+            "Combo.json",
+            {"GameCardId": "Combo", "ConfigComment": "x"},
+            "missing required block ComboList",
+        ),
+        (
+            "EX1_001.json",
+            {
+                "GameCardId": "EX1_001",
+                "ConfigComment": "x",
+                "BeforePlayCardBonus": {
+                    "values": [
+                        {
+                            "condition": "nonsense",
+                            "value": "NaN",
+                            "metadata": "leak",
+                        }
+                    ]
+                },
+            },
+            "unsupported runtime condition",
+        ),
+    ],
+)
+def test_validate_package_rejects_semantically_invalid_rows(
+    tmp_path, filename, payload, expected
+):
+    package = _strict_package(tmp_path)
+    deck_dir = package / "CustomConfig" / "deck"
+    (deck_dir / filename).write_text(json.dumps(payload), encoding="utf-8")
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any(expected in error for error in result["errors"])
+
+
+def test_validate_combo_requires_valid_cardids_numeric_values_and_safe_condition(tmp_path):
+    package = _strict_package(tmp_path)
+    combo = {
+        "GameCardId": "Combo",
+        "ConfigComment": "x",
+        "ComboList": {
+            "values": [
+                {
+                    "comment": "bad",
+                    "condition": "nonsense",
+                    "combo": "BAD-ID >> EX1_002",
+                    "value": "ten >> 20",
+                }
+            ]
+        },
+    }
+    deck_dir = package / "CustomConfig" / "deck"
+    (deck_dir / "Combo.json").write_text(json.dumps(combo), encoding="utf-8")
+
+    result = validate_config_package(package, require_complete_package=True)
+
+    assert result["status"] == "failed"
+    assert any("invalid Combo card id BAD-ID" in error for error in result["errors"])
+    assert any("unsupported runtime condition" in error for error in result["errors"])
+    assert any("Combo value segment ten must be numeric" in error for error in result["errors"])
 
 
 def test_supported_surface_accepts_special_and_cardid_json():
