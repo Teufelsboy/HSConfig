@@ -363,9 +363,14 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if apply_status != 0:
             return _finish(out, "failed", {"stage": "apply", **apply_payload_result}, apply_status)
 
-    runtime_package_match = (
-        apply_payload_result.get("receipt", {}).get("runtime_package_match")
+    apply_receipt = (
+        apply_payload_result.get("receipt")
         if isinstance(apply_payload_result, dict)
+        else None
+    )
+    runtime_package_match = (
+        apply_receipt.get("runtime_package_match")
+        if isinstance(apply_receipt, dict)
         else None
     )
     runtime_package_match_status = (
@@ -373,6 +378,20 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if isinstance(runtime_package_match, dict)
         else "not_checked"
     )
+    if bool(getattr(args, "apply", False)) and runtime_package_match_status != "matched":
+        return _finish(
+            out,
+            "failed",
+            {
+                **(apply_payload_result if isinstance(apply_payload_result, dict) else {}),
+                "stage": "apply",
+                "status": "failed",
+                "errors": [
+                    "Successful apply receipt lacks runtime_package_match.status=matched."
+                ],
+            },
+            1,
+        )
 
     acceptance_summary = _build_acceptance_summary(
         operator_summary=operator_summary,

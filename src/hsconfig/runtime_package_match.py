@@ -31,6 +31,7 @@ def _format_mismatch_message(report: dict[str, Any]) -> str:
 
 def _resolve_config_dir(package_root: Path, config_dir: str | None) -> str:
     if config_dir is not None:
+        _validate_config_dir(config_dir)
         return config_dir
 
     custom_config = package_root / "CustomConfig"
@@ -43,6 +44,20 @@ def _resolve_config_dir(package_root: Path, config_dir: str | None) -> str:
             f"{custom_config}, found {len(candidates)}."
         )
     return candidates[0]
+
+
+def _validate_config_dir(config_dir: str) -> None:
+    path = Path(config_dir)
+    if (
+        not isinstance(config_dir, str)
+        or not config_dir.strip()
+        or config_dir != config_dir.strip()
+        or path.is_absolute()
+        or path.name != config_dir
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or any(separator in config_dir for separator in ("/", "\\"))
+    ):
+        raise ValueError(f"Invalid config directory name: {config_dir!r}")
 
 
 def _json_files(path: Path) -> dict[str, Any]:
@@ -79,14 +94,39 @@ def _compare_json(package_value: Any, runtime_value: Any) -> _JsonComparison:
             changed_common_keys=sorted(
                 key
                 for key in package_keys & runtime_keys
-                if package_value[key] != runtime_value[key]
+                if not _json_semantically_equal(
+                    package_value[key], runtime_value[key]
+                )
             ),
         )
     return _JsonComparison(
         missing_keys_in_runtime=[],
         extra_keys_in_runtime=[],
-        changed_common_keys=["__root__"] if package_value != runtime_value else [],
+        changed_common_keys=(
+            ["__root__"]
+            if not _json_semantically_equal(package_value, runtime_value)
+            else []
+        ),
     )
+
+
+def _json_semantically_equal(package_value: Any, runtime_value: Any) -> bool:
+    if isinstance(package_value, bool) or isinstance(runtime_value, bool):
+        return type(package_value) is type(runtime_value) and package_value == runtime_value
+    if isinstance(package_value, dict) and isinstance(runtime_value, dict):
+        return (
+            set(package_value) == set(runtime_value)
+            and all(
+                _json_semantically_equal(package_value[key], runtime_value[key])
+                for key in package_value
+            )
+        )
+    if isinstance(package_value, list) and isinstance(runtime_value, list):
+        return len(package_value) == len(runtime_value) and all(
+            _json_semantically_equal(package_item, runtime_item)
+            for package_item, runtime_item in zip(package_value, runtime_value)
+        )
+    return package_value == runtime_value
 
 
 def build_runtime_package_match_report(

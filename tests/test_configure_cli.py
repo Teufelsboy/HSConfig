@@ -444,6 +444,53 @@ def test_configure_apply_uses_existing_apply_command_gate(
     }
 
 
+@pytest.mark.parametrize(
+    "receipt",
+    [{}, {"runtime_package_match": "matched"}],
+)
+def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
+    tmp_path: Path,
+    monkeypatch,
+    receipt: dict[str, object],
+):
+    _stub_empty_card_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json)
+    out = tmp_path / "configure"
+
+    monkeypatch.setattr(
+        "hsconfig.commands.configure.apply_payload",
+        lambda args: ({"status": "applied", "receipt": receipt}, 0),
+    )
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--apply",
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+
+    assert code == 1
+    assert summary["status"] == "failed"
+    assert summary["stage"] == "apply"
+    assert summary["errors"] == [
+        "Successful apply receipt lacks runtime_package_match.status=matched."
+    ]
+
+
 def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, capsys):
     _stub_empty_card_fetches(monkeypatch)
 
@@ -1258,7 +1305,10 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
 
     def fake_apply_payload(args):
         apply_calls.append(args)
-        return {"status": "applied"}, 0
+        return {
+            "status": "applied",
+            "receipt": {"runtime_package_match": {"status": "matched"}},
+        }, 0
 
     monkeypatch.setattr(
         "hsconfig.commands.configure.build_config_quality_report",
