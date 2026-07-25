@@ -13,6 +13,7 @@ from hsconfig.commands.contract_spine_sentinel import (
 from hsconfig.commands.contract_preflight import run_contract_preflight_command
 from hsconfig.commands.configure import run_configure_command
 from hsconfig.commands.prepare import run_prepare_command
+from hsconfig.commands.runtime_match import run_runtime_match_command
 from hsconfig.commands.source_workflow import (
     run_draft_source_documents_command,
     run_research_deck_command,
@@ -34,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_configure_command(args)
     if args.command == "apply":
         return run_apply_command(args)
+    if args.command == "runtime-match":
+        return run_runtime_match_command(args)
     if args.command == "build":
         return run_prepare_command(args, expert_mode=True)
     if args.command == "prepare":

@@ -336,6 +336,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--package", required=True)
     validate.add_argument("--json", action="store_true")
 
+    runtime_match = subparsers.add_parser(
+        "runtime-match",
+        help=(
+            "Read-only package-to-runtime semantic match check. "
+            "Does not grant apply permission and never writes runtime files."
+        ),
+    )
+    runtime_match.add_argument("--package", required=True)
+    runtime_match.add_argument("--runtime-root", required=True)
+    runtime_match.add_argument("--config-dir")
+    runtime_match.add_argument("--json", action="store_true")
+
     apply = subparsers.add_parser(
         "apply",
         description=(
