@@ -31,6 +31,50 @@ SHADOW_DECK_IDENTITY = {
 }
 
 
+def _shadowpriest_identity() -> dict:
+    return SHADOW_DECK_IDENTITY
+
+
+def _strong_ranked_source(*, normalized_text: str) -> dict:
+    return {
+        "source_url": "https://example.test/shadow-priest",
+        "source_title": "Shadow Priest Guide",
+        "source_family": "guide",
+        "source_visibility": "full_text",
+        "source_record_strength": "candidate_strong",
+        "source_rank_lane": "guide_current_deck_match",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match_scope": "deck_matched",
+        "publication_year": 2026,
+        "deck_match": {
+            "deck_name": "ShadowPriest",
+            "archetype": "shadowpriest",
+            "matched_card_ids": ["SW_446", "TOY_381"],
+        },
+        "normalized_text": normalized_text,
+    }
+
+
+def test_autopilot_does_not_turn_keep_alive_into_mulligan_keep():
+    ranked = [
+        _strong_ranked_source(
+            normalized_text=(
+                "Strategy: Keep Voidtouched Attendant alive on the board "
+                "so its aura continues."
+            )
+        )
+    ]
+
+    rows = extract_source_evidence_rows(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        ranked_sources=ranked,
+        current_date="2026-07-25",
+    )
+
+    assert [row for row in rows if row["claim_kind"] == "mulligan_keep"] == []
+
+
 def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
@@ -1089,8 +1133,8 @@ def test_source_autopilot_routes_imbuemage_source_search_to_hero_power_imbue():
     report = bundle["source_autopilot_report"]
     closure = report["source_backed_strong_closure"]
     assert closure["closure_profile"] == "hero_power_imbue"
-    assert closure["closure_profile_closed"] is True
-    assert report["strong_candidate"] is True
+    assert closure["closure_profile_closed"] is False
+    assert report["strong_candidate"] is False
 
 
 def test_source_autopilot_old_non_wild_guide_requests_current_or_evergreen_source():

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from hsconfig import source_acquisition as source_acquisition_module
 from hsconfig.source_acquisition import (
+    _deck_match_evidence,
     collect_public_source_records,
     extract_visible_text,
     validate_public_source_url,
@@ -25,6 +26,105 @@ def _fake_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
     if url.endswith("decklist"):
         return 200, "text/html", (FIXTURES / "decklist_only.html").read_bytes()
     return 404, "text/plain", b"not found"
+
+
+def _shadowpriest_identity() -> dict:
+    return {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {"card_id": "BAR_735", "name": "Darkbishop Benedictus", "cost": 5, "count": 1},
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
+            {"card_id": "SCH_514", "name": "Raise Dead", "cost": 0, "count": 2},
+            {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
+        ],
+    }
+
+
+def _identity_with_unique_cards(card_count: int) -> dict:
+    return {
+        "deck_name": "ShadowPriest",
+        "deck_slug": "shadowpriest",
+        "deck_code_hash": "sha256:shadow",
+        "cards": [
+            {
+                "card_id": f"CARD_{index:03d}",
+                "name": f"Fixture Card {index}",
+                "cost": index,
+                "count": 1,
+            }
+            for index in range(card_count)
+        ],
+    }
+
+
+def test_footer_year_does_not_make_old_guide_current():
+    html = b"""
+    <html>
+      <head><title>Shadow Priest Guide</title></head>
+      <body>
+        <article><p>Published 2021. Mulligan: keep Mind Blast.</p></article>
+        <footer>Copyright 2026</footer>
+      </body>
+    </html>
+    """
+
+    result = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        source_urls=["https://example.test/guide"],
+        current_date="2026-07-25",
+        fetcher=lambda _url, _timeout: (200, "text/html", html),
+        resolver=lambda _host: ["93.184.216.34"],
+    )
+
+    record = result["source_records"][0]
+    assert record["publication_year"] is None
+    assert record["source_record_strength"] != "candidate_strong"
+
+
+def test_explicit_article_published_time_is_used():
+    html = b"""
+    <html>
+      <head>
+        <meta property="article:published_time" content="2026-05-03T12:00:00Z">
+        <title>Shadow Priest Guide</title>
+      </head>
+      <body><article>Mulligan: keep Mind Blast.</article></body>
+    </html>
+    """
+
+    result = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        source_urls=["https://example.test/guide"],
+        current_date="2026-07-25",
+        fetcher=lambda _url, _timeout: (200, "text/html", html),
+        resolver=lambda _host: ["93.184.216.34"],
+    )
+
+    assert result["source_records"][0]["publication_year"] == 2026
+
+
+def test_five_of_sixteen_cards_is_archetype_not_exact_deck_match():
+    identity = _identity_with_unique_cards(16)
+    text = "ShadowPriest guide " + " ".join(
+        card["name"] for card in identity["cards"][:5]
+    )
+
+    evidence, scope = _deck_match_evidence(
+        "ShadowPriest",
+        identity,
+        "ShadowPriest Guide",
+        text,
+    )
+
+    assert evidence["matched_card_count"] == 5
+    assert evidence["unique_deck_card_count"] == 16
+    assert evidence["card_overlap_ratio"] == 0.3125
+    assert scope == "archetype_matched"
 
 
 def test_extract_visible_text_removes_markup_and_keeps_title():
@@ -94,7 +194,10 @@ def test_collect_public_source_records_uses_utc_year_when_current_date_is_not_su
             "text/html",
             b"""
             <html>
-              <head><title>ShadowPriest 2026 Guide</title></head>
+              <head>
+                <meta property="article:published_time" content="2026-07-15T00:00:00Z">
+                <title>ShadowPriest 2026 Guide</title>
+              </head>
               <body>
                 <h1>ShadowPriest 2026 Guide</h1>
                 <p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p>
@@ -177,7 +280,10 @@ def test_reddit_thread_urls_fetch_through_old_reddit_but_preserve_source_url():
             "text/html",
             b"""
             <html>
-              <head><title>Any help with CtA Paladin mulligan 2026</title></head>
+              <head>
+                <meta property="article:published_time" content="2026-07-18T00:00:00Z">
+                <title>Any help with CtA Paladin mulligan 2026</title>
+              </head>
               <body>
                 <p>Published July 18, 2026.</p>
                 <p>Mulligan: Keep Boogie Down and Call to Arms for the current
@@ -339,7 +445,10 @@ def test_full_text_guide_wins_over_stats_context_markers():
             "text/html",
             b"""
             <html>
-              <head><title>ShadowPriest 2026 Mulligan Guide</title></head>
+              <head>
+                <meta property="article:published_time" content="2026-07-15T00:00:00Z">
+                <title>ShadowPriest 2026 Mulligan Guide</title>
+              </head>
               <body>
                 <h1>ShadowPriest 2026 Mulligan Guide</h1>
                 <p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p>

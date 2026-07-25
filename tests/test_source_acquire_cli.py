@@ -81,7 +81,10 @@ def test_source_acquire_fixture_map_accepts_original_reddit_url_key(tmp_path):
     page.write_text(
         """
         <html>
-          <head><title>Any help with CtA Paladin mulligan 2026</title></head>
+          <head>
+            <meta property="article:published_time" content="2026-07-18T00:00:00Z">
+            <title>Any help with CtA Paladin mulligan 2026</title>
+          </head>
           <body>
             <p>Mulligan: Keep Boogie Down and Call to Arms.</p>
             <p>This Wild CtA Paladin guide discusses early pressure, board
@@ -129,7 +132,7 @@ def test_source_acquire_fixture_map_accepts_original_reddit_url_key(tmp_path):
     )
     record = source_search["records"][0]
     assert record["source_url"] == original_url
-    assert source_search["source_claim_compiler_report"]["promotion_candidate_count"] == 1
+    assert source_search["source_claim_compiler_report"]["promotion_candidate_count"] == 0
     assert record["mulligan"]["keep_card_ids"]
 
 

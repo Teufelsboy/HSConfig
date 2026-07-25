@@ -4,6 +4,7 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from http.client import HTTPSConnection
 from ipaddress import ip_address
+import re
 from socket import create_connection, gaierror, getaddrinfo
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
@@ -20,12 +21,29 @@ class _VisibleTextParser(HTMLParser):
         super().__init__()
         self.title_parts: list[str] = []
         self.text_parts: list[str] = []
+        self.publication_values: list[str] = []
         self._skip_depth = 0
         self._in_title = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        del attrs
         normalized_tag = tag.lower()
+        attributes = {str(key).lower(): str(value or "") for key, value in attrs}
+        if normalized_tag == "meta":
+            marker = (attributes.get("property") or attributes.get("name") or "").lower()
+            if marker in {
+                "article:published_time",
+                "article:modified_time",
+                "date",
+                "datepublished",
+                "datemodified",
+            }:
+                content = attributes.get("content", "").strip()
+                if content:
+                    self.publication_values.append(content)
+        if normalized_tag == "time":
+            value = attributes.get("datetime", "").strip()
+            if value:
+                self.publication_values.append(value)
         if normalized_tag in {"script", "style", "noscript"}:
             self._skip_depth += 1
         if normalized_tag == "title":
@@ -48,12 +66,16 @@ class _VisibleTextParser(HTMLParser):
             self.text_parts.append(text)
 
 
-def extract_visible_text(html: str) -> dict[str, str]:
+def extract_visible_text(html: str) -> dict[str, Any]:
     parser = _VisibleTextParser()
     parser.feed(html)
     title = " ".join(parser.title_parts).strip()
     text = " ".join(parser.text_parts).strip()
-    return {"title": title, "text": text}
+    return {
+        "title": title,
+        "text": text,
+        "publication_values": parser.publication_values,
+    }
 
 
 def collect_public_source_records(
@@ -118,8 +140,8 @@ def collect_public_source_records(
         )
         source_family = _infer_source_family(url, parsed["text"])
         visibility = _source_visibility(source_family, parsed["text"])
-        publication_year = _publication_year_from_text(
-            f'{parsed["title"]} {parsed["text"]}',
+        publication_year = _publication_year_from_metadata(
+            parsed["publication_values"],
             current_date=current_date,
         )
         lane_hint = _source_lane_hint(source_family, visibility)
@@ -288,14 +310,25 @@ def _deck_match_evidence(
     text: str,
 ) -> tuple[dict[str, Any], str]:
     matched_card_ids = _matched_card_ids(deck_identity, text)
+    unique_deck_card_ids = {
+        str(card.get("card_id", ""))
+        for card in deck_identity.get("cards", [])
+        if isinstance(card, Mapping) and str(card.get("card_id", ""))
+    }
+    matched_unique = sorted(set(matched_card_ids))
+    overlap_ratio = (
+        len(matched_unique) / len(unique_deck_card_ids)
+        if unique_deck_card_ids
+        else 0.0
+    )
     deck_name_evidenced = bool(_norm(deck_name)) and _norm(deck_name) in _norm(
         f"{title} {text}"
     )
-    if deck_name_evidenced and matched_card_ids:
-        scope = "deck_or_archetype_matched"
-    elif deck_name_evidenced:
-        scope = "title_or_content_match"
-    elif matched_card_ids:
+    if deck_name_evidenced and overlap_ratio >= 0.80:
+        scope = "deck_matched"
+    elif deck_name_evidenced and len(matched_unique) >= 2:
+        scope = "archetype_matched"
+    elif matched_unique:
         scope = "card_overlap"
     else:
         scope = "unknown"
@@ -304,6 +337,9 @@ def _deck_match_evidence(
             "deck_name": deck_name if scope != "unknown" else "unknown",
             "archetype": _slug(deck_name) if deck_name_evidenced else "unknown",
             "matched_card_ids": matched_card_ids,
+            "matched_card_count": len(matched_unique),
+            "unique_deck_card_count": len(unique_deck_card_ids),
+            "card_overlap_ratio": overlap_ratio,
         },
         scope,
     )
@@ -404,22 +440,20 @@ def _source_document_kind(source_family: str, visibility: str) -> str:
     return "public_page"
 
 
-def _publication_year_from_text(
-    text: str,
+def _publication_year_from_metadata(
+    values: Sequence[str],
     *,
     current_date: str | date | None = None,
 ) -> int | None:
-    years = sorted({year for year in range(2020, 2031) if str(year) in text})
-    if not years:
-        return None
     current_year = _current_year(current_date)
-    if current_year in years:
-        return current_year
-    if current_year is not None:
-        current_or_past = [year for year in years if year <= current_year]
-        if current_or_past:
-            return max(current_or_past)
-    return max(years)
+    for value in values:
+        match = re.search(r"\b(20[2-3]\d)\b", str(value))
+        if not match:
+            continue
+        year = int(match.group(1))
+        if current_year is None or year <= current_year:
+            return year
+    return None
 
 
 def _source_record_strength(
@@ -434,7 +468,7 @@ def _source_record_strength(
     if (
         source_family == "guide"
         and visibility == "full_text"
-        and deck_match_scope in {"deck_or_archetype_matched", "deck_matched"}
+        and deck_match_scope == "deck_matched"
         and publication_year == current_year
     ):
         return "candidate_strong"

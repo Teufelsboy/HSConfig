@@ -219,7 +219,10 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
     current_guide.write_text(
         """
         <html>
-          <head><title>ShadowPriest 2026 Full Mulligan Guide</title></head>
+          <head>
+            <meta property="article:published_time" content="2026-07-18T00:00:00Z">
+            <title>ShadowPriest 2026 Full Mulligan Guide</title>
+          </head>
           <body>
             <h1>ShadowPriest 2026 Full Mulligan Guide</h1>
             <p>Mulligan: Keep Papercraft Angel, Twilight Deceptor, Raise Dead,

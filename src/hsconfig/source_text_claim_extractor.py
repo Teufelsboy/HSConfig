@@ -4,6 +4,8 @@ import re
 from datetime import date
 from typing import Any, Mapping
 
+from hsconfig.source_claim_context import has_explicit_mulligan_context, is_content_evidence
+
 
 STRONG_SOURCE_LANES = {"deck_matched_public_guide"}
 STRONG_RANK_LANES = {"guide_current_deck_match", "guide_evergreen_wild_archetype"}
@@ -74,6 +76,10 @@ def _extract_listed_keep_claims(
 ) -> list[dict[str, Any]]:
     claims: list[dict[str, Any]] = []
     for segment in _positive_keep_segments(text):
+        if not has_explicit_mulligan_context(segment):
+            continue
+        if not is_content_evidence(segment):
+            continue
         segment_l = segment.lower()
         for name_l, card in cards_by_name.items():
             if name_l not in segment_l:
@@ -242,11 +248,22 @@ NEGATIVE_KEEP_MARKERS = (
 
 def _positive_keep_segments(text: str) -> list[str]:
     segments: list[str] = []
+    mulligan_context_active = False
     for sentence in _sentences(text):
         lowered = sentence.lower()
+        if has_explicit_mulligan_context(sentence):
+            mulligan_context_active = True
         if "keep" in lowered:
-            segments.extend(_keep_clause_segments(sentence, polarity="positive"))
+            for segment in _keep_clause_segments(sentence, polarity="positive"):
+                if (
+                    mulligan_context_active
+                    and not has_explicit_mulligan_context(segment)
+                ):
+                    segment = f"Mulligan: {segment}"
+                segments.append(segment)
         segments.extend(_initial_mulligan_list_segments(sentence))
+        if "keep" not in lowered and not has_explicit_mulligan_context(sentence):
+            mulligan_context_active = False
     return segments
 
 

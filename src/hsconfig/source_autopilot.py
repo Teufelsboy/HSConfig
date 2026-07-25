@@ -80,12 +80,20 @@ def rank_public_sources(
             score -= 100
         row["source_visibility"] = _source_visibility_for_documents(row)
         row["source_rank_score"] = score
+        deck_match_scope = _quantitative_deck_match_scope(
+            row,
+            match,
+            deck_name_match=deck_name_match,
+            card_overlap=card_overlap,
+            unique_deck_card_count=len(deck_card_ids),
+        )
+        row["deck_match_scope"] = deck_match_scope
         row["source_rank_lane"] = _rank_lane(
             family,
-            deck_name_match,
             card_overlap,
             current_year,
             row,
+            deck_match_scope=deck_match_scope,
         )
         policy = classify_source_evidence(
             row,
@@ -1138,22 +1146,29 @@ def _append_unique(rows: list[dict[str, Any]], seen: set[tuple[Any, ...]], row: 
 
 def _rank_lane(
     family: str,
-    deck_name_match: bool,
     card_overlap: int,
     current_year: int | None,
     source: Mapping[str, Any],
+    *,
+    deck_match_scope: str,
 ) -> str:
     if (
         family in GUIDE_FAMILIES
-        and deck_name_match
-        and card_overlap > 0
+        and deck_match_scope == "deck_matched"
         and current_year is not None
         and _publication_year(source) == current_year
     ):
         return "guide_current_deck_match"
     if (
         family in GUIDE_FAMILIES
-        and deck_name_match
+        and deck_match_scope == "archetype_matched"
+        and current_year is not None
+        and _publication_year(source) == current_year
+    ):
+        return "guide_current_archetype_match"
+    if (
+        family in GUIDE_FAMILIES
+        and deck_match_scope == "deck_matched"
         and card_overlap >= 2
         and _is_evergreen_wild_source(source, current_year=current_year)
     ):
@@ -1193,10 +1208,7 @@ def _source_lane_for_rank(source_rank_lane: str, deck_match_scope: str) -> str:
         "guide_current_deck_match",
         "guide_evergreen_wild_archetype",
         "guide_card_overlap",
-    } and deck_match_scope in {
-        "deck_matched",
-        "deck_or_archetype_matched",
-    }:
+    } and deck_match_scope == "deck_matched":
         return "deck_matched_public_guide"
     return source_rank_lane or "unknown"
 
@@ -1258,6 +1270,37 @@ def _has_independent_deck_match(
     return declared_deck_name == normalized_deck_name and (
         normalized_deck_name in source_text or card_overlap > 0
     )
+
+
+def _quantitative_deck_match_scope(
+    source: Mapping[str, Any],
+    match: Mapping[str, Any],
+    *,
+    deck_name_match: bool,
+    card_overlap: int,
+    unique_deck_card_count: int,
+) -> str:
+    explicit = _text(source.get("deck_match_scope", "")) or _text(
+        match.get("deck_match_scope", "")
+    )
+    if explicit and explicit != "deck_or_archetype_matched":
+        return explicit
+
+    overlap_ratio = _float_or_none(match.get("card_overlap_ratio"))
+    if overlap_ratio is None:
+        overlap_ratio = (
+            card_overlap / unique_deck_card_count if unique_deck_card_count else 0.0
+        )
+    matched_card_count = _int_or_none(match.get("matched_card_count"))
+    if matched_card_count is None:
+        matched_card_count = card_overlap
+    if deck_name_match and overlap_ratio >= 0.80:
+        return "deck_matched"
+    if deck_name_match and matched_card_count >= 2:
+        return "archetype_matched"
+    if matched_card_count:
+        return "card_overlap"
+    return "unknown"
 
 
 def _deck_match_scope(source: Mapping[str, Any], deck_name: str) -> str:
@@ -1349,6 +1392,13 @@ def _is_public_https(value: Any) -> bool:
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 

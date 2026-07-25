@@ -7,7 +7,8 @@ def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
     del timeout_seconds
     pages = {
         "https://example.test/shadow-guide": (
-            "<html><head><title>Shadow Priest Guide 2026</title></head>"
+            "<html><head><meta property=\"article:published_time\" content=\"2026-07-15T00:00:00Z\">"
+            "<title>Shadow Priest Guide 2026</title></head>"
             "<body><h1>Shadow Priest Mulligan Guide</h1>"
             "<p>Published July 15, 2026.</p>"
             "<p>Mulligan: Keep Papercraft Angel, Twilight Deceptor, Raise Dead, and Shadowbomber.</p>"
@@ -20,7 +21,8 @@ def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
         ),
         "https://example.test/snippet": "<html><body><p>Shadow Priest list.</p></body></html>",
         "https://example.test/multi-year-guide": (
-            "<html><head><title>Shadow Priest Guide 2026</title></head>"
+            "<html><head><meta property=\"article:published_time\" content=\"2026-07-15T00:00:00Z\">"
+            "<title>Shadow Priest Guide 2026</title></head>"
             "<body><p>Originally tested in 2024.</p>"
             "<p>Updated July 15, 2026.</p>"
             "<p>Mulligan: Keep Papercraft Angel.</p>"
@@ -30,7 +32,8 @@ def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
             "</body></html>"
         ),
         "https://example.test/stale-guide": (
-            "<html><head><title>Shadow Priest Mulligan Guide 2025</title></head>"
+            "<html><head><meta property=\"article:published_time\" content=\"2025-07-15T00:00:00Z\">"
+            "<title>Shadow Priest Mulligan Guide 2025</title></head>"
             "<body><p>Published July 15, 2025.</p>"
             "<p>Mulligan: Keep Papercraft Angel.</p>"
             "<p>This full current-looking guide explains opening turns, matchup posture, "

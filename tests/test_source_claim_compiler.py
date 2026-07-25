@@ -18,6 +18,48 @@ DECK_IDENTITY = {
 }
 
 
+def _shadowpriest_identity() -> dict:
+    return {
+        **DECK_IDENTITY,
+        "cards": [
+            *DECK_IDENTITY["cards"],
+            {"card_id": "EMD_123", "name": "Acupuncture", "cost": 2, "count": 2},
+            {"card_id": "CS1_112", "name": "Mind Blast", "cost": 2, "count": 2},
+        ],
+    }
+
+
+def test_compiler_rejects_navigation_text_as_combo_or_gameplan():
+    records = [
+        {
+            "source_url": "https://example.test/shadow-priest",
+            "source_title": "Shadow Priest",
+            "source_family": "guide",
+            "source_visibility": "full_text",
+            "source_record_strength": "candidate_strong",
+            "deck_match_scope": "deck_matched",
+            "publication_year": 2026,
+            "normalized_text": (
+                "Follow Us On Twitter Join us on Discord Home Cards "
+                "Into the Emerald Dream Acupuncture Mind Blast Papercraft Angel"
+            ),
+        }
+    ]
+
+    compiled = compile_source_search_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        acquired_records=records,
+        current_date="2026-07-25",
+    )
+
+    assert [
+        claim
+        for claim in compiled["records"][0]["claims"]
+        if claim["claim_kind"] in {"combo_sequence", "gameplan_posture"}
+    ] == []
+
+
 def test_compile_source_search_records_extracts_atomic_shadowpriest_claims():
     acquired = [
         {

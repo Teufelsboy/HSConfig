@@ -19,7 +19,10 @@ def _shadow_fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
     del timeout_seconds
     html = """
     <html>
-      <head><title>Shadow Priest Mulligan Guide 2026</title></head>
+      <head>
+        <meta property="article:published_time" content="2026-07-15T00:00:00Z">
+        <title>Shadow Priest Mulligan Guide 2026</title>
+      </head>
       <body>
         <p>Published July 15, 2026.</p>
         <p>Mulligan: keep Papercraft Angel, Twilight Deceptor, Raise Dead, and Shadowbomber.</p>

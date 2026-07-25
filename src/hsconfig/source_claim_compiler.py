@@ -5,6 +5,11 @@ from datetime import date, datetime
 import re
 from typing import Any, Mapping, Sequence
 
+from hsconfig.source_claim_context import (
+    has_explicit_mulligan_context,
+    is_content_evidence,
+    is_explicit_combo_sentence,
+)
 
 GUIDE_FAMILIES = {
     "guide",
@@ -209,13 +214,17 @@ def _compile_guide_claims(
             )
         )
 
-    if _mentions_any(text, ["mind spike", "go face", "clear the enemy board"]):
+    hero_power_evidence = _short_evidence(text, marker="mind spike")
+    if (
+        _mentions_any(text, ["mind spike", "go face", "clear the enemy board"])
+        and is_content_evidence(hero_power_evidence)
+    ):
         compiled["claims"].append(
             _claim(
                 "gameplan_posture",
                 [],
                 "hero_power_board_or_face_pressure",
-                _short_evidence(text, marker="mind spike"),
+                hero_power_evidence,
                 "high",
                 scope="deck",
             )
@@ -254,14 +263,15 @@ def _compile_combo_sequence_claims(
     text: str,
 ) -> None:
     for sentence in _sentences(text):
-        lowered = sentence.lower()
-        if not any(
-            marker in lowered
-            for marker in ("combo sequence", "combo:", "sequence:", "into", "together")
-        ):
-            continue
         sequence = _card_sequence_in_sentence(deck_identity, sentence)
         if len(sequence) < 2:
+            continue
+        mentioned_card_names = [
+            _text(card.get("name", ""))
+            for card in _deck_cards(deck_identity)
+            if _text(card.get("card_id", "")) in sequence
+        ]
+        if not is_explicit_combo_sentence(sentence, mentioned_card_names):
             continue
         compiled["claims"].append(
             _claim(
@@ -293,12 +303,15 @@ def _compile_plan_posture_claims(compiled: dict[str, Any], text: str) -> None:
         marker = _first_mentioned_marker(text, markers)
         if not marker:
             continue
+        evidence_text = _short_evidence(text, marker=marker)
+        if not is_content_evidence(evidence_text):
+            continue
         compiled["claims"].append(
             _claim(
                 "gameplan_posture",
                 [],
                 stance,
-                _short_evidence(text, marker=marker),
+                evidence_text,
                 "high",
                 scope="deck",
             )
@@ -604,7 +617,7 @@ def _positive_keep_sentences(text: str) -> list[str]:
     result: list[str] = []
     for sentence in _sentences(text):
         lowered = sentence.lower()
-        if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
+        if "keep" not in lowered or not has_explicit_mulligan_context(lowered):
             continue
         result.extend(_keep_clause_segments(sentence, polarity="positive"))
     return result
@@ -614,17 +627,10 @@ def _negative_keep_sentences(text: str) -> list[str]:
     result: list[str] = []
     for sentence in _sentences(text):
         lowered = sentence.lower()
-        if "keep" not in lowered or not _has_explicit_mulligan_context(lowered):
+        if "keep" not in lowered or not has_explicit_mulligan_context(lowered):
             continue
         result.extend(_keep_clause_segments(sentence, polarity="negative"))
     return result
-
-
-def _has_explicit_mulligan_context(lowered_sentence: str) -> bool:
-    return any(
-        marker in lowered_sentence
-        for marker in ("mulligan", "opening hand", "opening-hand")
-    )
 
 
 def _is_negative_keep_sentence(lowered_sentence: str) -> bool:

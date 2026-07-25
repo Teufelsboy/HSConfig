@@ -38,7 +38,10 @@ EXPECTED_REPRESENTATIVE_SOURCE_STATUS = {
     "Kingslayer": "SOURCE_BACKED_PARTIAL",
 }
 
-EXPECTED_EVIDENCE_STATUS = EXPECTED_REPRESENTATIVE_SOURCE_STATUS
+EXPECTED_EVIDENCE_STATUS = {
+    deck_name: "SOURCE_BACKED_PARTIAL"
+    for deck_name in EXPECTED_REPRESENTATIVE_SOURCE_STATUS
+}
 
 PARTIAL_OR_CONDITIONAL_STATUSES = {
     "SOURCE_BACKED_PARTIAL",
@@ -159,6 +162,22 @@ def _source_search_bundle_for_deck(deck: dict) -> dict:
     )
 
 
+def _exact_current_record(record: dict, deck_identity: dict) -> dict:
+    card_ids = [str(card["card_id"]) for card in deck_identity["cards"]]
+    return {
+        **record,
+        "source_record_strength": "candidate_strong",
+        "deck_match_scope": "deck_matched",
+        "deck_match": {
+            **dict(record.get("deck_match", {})),
+            "matched_card_ids": card_ids,
+            "matched_card_count": len(card_ids),
+            "unique_deck_card_count": len(card_ids),
+            "card_overlap_ratio": 1.0,
+        },
+    }
+
+
 def _write_source_search_documents(tmp_path: Path, deck: dict, bundle: dict) -> Path:
     source_dir = tmp_path / "source_autopilot" / deck["deck_name"]
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -271,7 +290,7 @@ def test_source_search_11_deck_matrix_covers_representative_decks_with_honest_la
 
     assert set(records_by_deck) == set(EXPECTED_REPRESENTATIVE_SOURCE_STATUS)
     for deck_name, records in records_by_deck.items():
-        expected = EXPECTED_REPRESENTATIVE_SOURCE_STATUS[deck_name]
+        expected = EXPECTED_EVIDENCE_STATUS[deck_name]
         assert records, deck_name
         assert _source_claims(records), deck_name
 
@@ -311,15 +330,15 @@ def test_source_search_11_deck_matrix_covers_representative_decks_with_honest_la
             assert report["strong_candidate"] is True, report
         if expected == "SOURCE_BACKED_PARTIAL":
             assert report["strong_candidate"] is False, report
-            assert {
-                record["source_record_strength"] for record in records
-            } <= NON_STRONG_SOURCE_RECORD_STRENGTHS
 
 
 def test_source_autopilot_blocks_non_promoting_partial_record_even_if_it_looks_exact():
     records_by_deck = _source_search_records_by_deck()
     matrix_by_deck = {deck["deck_name"]: deck for deck in load_archetype_matrix()}
-    strong_record = records_by_deck["PirateRogue"][0]
+    deck_identity = _deck_identity_for(matrix_by_deck["PirateRogue"])
+    strong_record = _exact_current_record(
+        records_by_deck["PirateRogue"][0], deck_identity
+    )
     partial_record = {
         **strong_record,
         "source_record_strength": "partial",
@@ -340,7 +359,7 @@ def test_source_autopilot_blocks_non_promoting_partial_record_even_if_it_looks_e
 
     bundle = build_source_autopilot_bundle(
         deck_name="PirateRogue",
-        deck_identity=_deck_identity_for(matrix_by_deck["PirateRogue"]),
+        deck_identity=deck_identity,
         source_search_records=[partial_record],
         current_date="2026-07-15",
     )
@@ -355,7 +374,10 @@ def test_source_autopilot_blocks_non_promoting_partial_record_even_if_it_looks_e
 def test_source_autopilot_drafted_documents_preserve_non_promoting_partial_metadata():
     records_by_deck = _source_search_records_by_deck()
     matrix_by_deck = {deck["deck_name"]: deck for deck in load_archetype_matrix()}
-    strong_record = records_by_deck["PirateRogue"][0]
+    deck_identity = _deck_identity_for(matrix_by_deck["PirateRogue"])
+    strong_record = _exact_current_record(
+        records_by_deck["PirateRogue"][0], deck_identity
+    )
     partial_record = {
         **strong_record,
         "source_record_strength": "partial",
@@ -376,7 +398,7 @@ def test_source_autopilot_drafted_documents_preserve_non_promoting_partial_metad
 
     bundle = build_source_autopilot_bundle(
         deck_name="PirateRogue",
-        deck_identity=_deck_identity_for(matrix_by_deck["PirateRogue"]),
+        deck_identity=deck_identity,
         source_search_records=[partial_record],
         current_date="2026-07-15",
     )
@@ -401,7 +423,10 @@ def test_source_autopilot_drafted_documents_preserve_non_promoting_partial_metad
 def test_source_autopilot_non_promoting_partial_record_does_not_veto_separate_strong_record():
     records_by_deck = _source_search_records_by_deck()
     matrix_by_deck = {deck["deck_name"]: deck for deck in load_archetype_matrix()}
-    strong_record = records_by_deck["PirateRogue"][0]
+    deck_identity = _deck_identity_for(matrix_by_deck["PirateRogue"])
+    strong_record = _exact_current_record(
+        records_by_deck["PirateRogue"][0], deck_identity
+    )
     partial_record = {
         **strong_record,
         "source_url": "https://example.invalid/partial-piraterogue-guide",
@@ -423,7 +448,7 @@ def test_source_autopilot_non_promoting_partial_record_does_not_veto_separate_st
 
     bundle = build_source_autopilot_bundle(
         deck_name="PirateRogue",
-        deck_identity=_deck_identity_for(matrix_by_deck["PirateRogue"]),
+        deck_identity=deck_identity,
         source_search_records=[strong_record, partial_record],
         current_date="2026-07-15",
     )
