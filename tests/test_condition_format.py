@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.condition_format import classify_runtime_condition, lower_runtime_condition
 
 
@@ -143,6 +145,43 @@ def test_hand_contains_any_fails_when_one_card_is_invalid():
 
     assert condition == "*"
     assert reason == "unsupported_condition"
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"coin": True, "hand_contains": ""},
+        {"coin": True, "hand_contains": None},
+        {"coin": True, "hand_contains": False},
+        {"coin": True, "hand_contains": 0},
+        {"coin": True, "hand_contains": []},
+        {"coin": True, "hand_contains": {}},
+        {"coin": True, "combo_partner": ""},
+        {"coin": True, "combo_partner": None},
+        {"coin": True, "combo_partner": False},
+        {"coin": True, "combo_partner": 0},
+        {"coin": True, "combo_partner": []},
+        {"coin": True, "combo_partner": {}},
+    ],
+)
+def test_supplied_structured_card_operands_fail_closed_when_not_card_ids(condition):
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"hand_contains_any": ""},
+        {"hand_contains_any": None},
+        {"hand_contains_any": []},
+        {"hand_contains_any": 1},
+        {"hand_contains_any": {"EX1_001": True}},
+        {"hand_contains_any": ["EX1_001", None]},
+        {"hand_contains_any": ["EX1_001", ""]},
+    ],
+)
+def test_hand_contains_any_rejects_empty_or_non_card_id_collections(condition):
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
 
 
 def test_report_only_and_unsupported_dicts_do_not_emit_runtime_conditions():

@@ -119,18 +119,43 @@ def _atoms_from_structured_condition(
             + " | ".join(clean_classes)
             + " ) > 0"
         )
-    if value.get("hand_contains"):
-        atoms.append(f"my_hand(count(),cardid={value['hand_contains']}) > 0")
-    if value.get("combo_partner"):
-        atoms.append(f"my_hand(count(),cardid={value['combo_partner']}) > 0")
-    if value.get("hand_contains_any"):
-        raw_cards = value["hand_contains_any"]
-        cards = [raw_cards] if isinstance(raw_cards, str) else list(raw_cards)
-        atoms.extend(f"my_hand(count(),cardid={card}) > 0" for card in cards)
+    for key in ("hand_contains", "combo_partner"):
+        if key in value:
+            atom = _card_id_atom(value[key])
+            if atom is None:
+                return [], "unsupported_condition"
+            atoms.append(atom)
+    if "hand_contains_any" in value:
+        card_atoms = _card_id_atoms(value["hand_contains_any"])
+        if card_atoms is None:
+            return [], "unsupported_condition"
+        atoms.extend(card_atoms)
     unsafe_atoms = [atom for atom in atoms if not _is_atom_safe(atom)]
     if unsafe_atoms:
         return [], "unsupported_condition"
     return atoms, None
+
+
+def _card_id_atom(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    atom = f"my_hand(count(),cardid={value}) > 0"
+    return atom if _is_atom_safe(atom) else None
+
+
+def _card_id_atoms(value: Any) -> list[str] | None:
+    if isinstance(value, str):
+        cards = [value]
+    elif isinstance(value, (list, tuple)):
+        cards = value
+    else:
+        return None
+    if not cards:
+        return None
+    atoms = [_card_id_atom(card) for card in cards]
+    if any(atom is None for atom in atoms):
+        return None
+    return [atom for atom in atoms if atom is not None]
 
 
 def _normalize_opponent_classes(value: Any) -> list[str] | None:
