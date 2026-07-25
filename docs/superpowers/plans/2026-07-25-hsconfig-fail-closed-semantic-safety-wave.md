@@ -85,6 +85,10 @@ Do not execute those plans separately after this plan begins.
 
 ### Task 1: Canonicalize The Repository To One Main Branch
 
+**Publication status (2026-07-25): completed.** The plan commit was
+fast-forwarded to `main`, `origin/main` was synchronized, the redundant local
+and remote feature refs were deleted, and the final divergence was `0 0`.
+
 **Files:**
 
 - No source files modified.
@@ -95,7 +99,7 @@ Do not execute those plans separately after this plan begins.
 - Consumes: the committed plan and all existing commits on `codex/hsconfig-semantic-intent-scoring`.
 - Produces: `main` at the exact previous feature-branch HEAD, no feature branch, no open PR, clean local/remote parity.
 
-- [ ] **Step 1: Refresh refs and prove the starting tree is clean**
+- [x] **Step 1: Refresh refs and prove the starting tree is clean**
 
 Run:
 
@@ -115,7 +119,7 @@ The current feature branch is not behind its upstream.
 There is no open pull request.
 ```
 
-- [ ] **Step 2: Fast-forward the canonical branch**
+- [x] **Step 2: Fast-forward the canonical branch**
 
 Run:
 
@@ -131,7 +135,7 @@ Expected:
 main and origin/main resolve to the same commit as the former feature branch.
 ```
 
-- [ ] **Step 3: Remove the redundant branch locally and remotely**
+- [x] **Step 3: Remove the redundant branch locally and remotely**
 
 Run:
 
@@ -148,7 +152,7 @@ Expected:
 Only main and origin/main remain.
 ```
 
-- [ ] **Step 4: Verify canonical parity before code work**
+- [x] **Step 4: Verify canonical parity before code work**
 
 Run:
 
