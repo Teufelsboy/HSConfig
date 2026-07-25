@@ -1041,6 +1041,19 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert "MyWeaponValue" in allowed
     assert "MyHeroPowerValue" not in allowed
     assert key_profile_report == globalvalues_profile
+    assert key_profile_report["schema_version"] == 1
+    assert key_profile_report["status"] in {
+        "baseline_confirmed",
+        "overlay_changed",
+    }
+    assert key_profile_report["runtime_permission_impact"] == "none"
+    assert key_profile_report["summary"]["key_count"] == key_profile_report["key_count"]
+    assert key_profile_report["summary"]["changed_key_count"] == len(
+        key_profile_report["changed_keys"]
+    )
+    assert key_profile_report["summary"]["unchanged_key_count"] == len(
+        key_profile_report["unchanged_keys"]
+    )
     assert key_profile_report["keys"]["MyWeaponValue"]["authority_category"] == (
         "step1_posture_overlay_allowed"
     )

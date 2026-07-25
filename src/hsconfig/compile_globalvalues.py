@@ -132,9 +132,25 @@ def compile_globalvalues(
             unchanged_keys.append(key)
         key_profiles[key] = decision
 
+    status = "overlay_changed" if changed_keys else "baseline_confirmed"
+    summary = {
+        "status": status,
+        "runtime_permission_impact": "none",
+        "key_count": len(profile_keys),
+        "changed_key_count": len(changed_keys),
+        "unchanged_key_count": len(unchanged_keys),
+        "expected_overlay_key_count": len(expected_overlay_keys),
+        "generated_overlay_key_count": len(generated_overlay_keys),
+        "all_baseline_keys_accounted_for": True,
+    }
+
     return {
         "config": config,
         "profile": {
+            "schema_version": 1,
+            "status": status,
+            "runtime_permission_impact": "none",
+            "summary": summary,
             "key_count": len(profile_keys),
             "generated_overlay_keys": generated_overlay_keys,
             "expected_overlay_keys": expected_overlay_keys,
