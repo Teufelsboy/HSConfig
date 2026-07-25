@@ -538,13 +538,87 @@ def test_explainability_card_rows_surface_missing_related_claims():
     report = build_source_to_runtime_explainability_report(audit)
     rows = {row["card_id"]: row for row in report["card_rows"]}
 
-    assert report["summary"]["cards_with_first_missing_link"] == 2
+    assert report["summary"]["cards_with_first_missing_link"] == 1
     assert rows["CARD_KEEP"]["strongest_claim_id"] == "keep_claim"
-    assert rows["CARD_KEEP"]["first_missing_link"] == "claim_kind_policy"
+    assert rows["CARD_KEEP"]["first_missing_link"] is None
     assert rows["CARD_KEEP"]["why_not_emitted"] == "unsupported_or_unmapped"
     assert rows["CARD_KEEP"]["next_source_action"] == (
         "map_claim_kind_or_keep_report_only"
     )
+
+
+def test_explainability_keeps_claim_gap_but_not_card_gap_when_runtime_is_emitted():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "FixtureDeck",
+        "claim_rows": {
+            "claim_runtime": {
+                "claim_id": "claim_runtime",
+                "claim_kind": "targeting_rule",
+                "lane": "runtime_lowered",
+                "policy_lane": "runtime_lowerable",
+                "lowered_surfaces": ["cardid"],
+                "first_reason": "allowed",
+                "cards": ["NX2_019"],
+            },
+            "claim_role": {
+                "claim_id": "claim_role",
+                "claim_kind": "card_role",
+                "lane": "runtime_lowerable",
+                "policy_lane": "runtime_lowerable",
+                "lowered_surfaces": ["cardid"],
+                "first_reason": "not_seen_by_builder",
+                "cards": ["NX2_019"],
+            },
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "claim_runtime",
+                "claim_kind": "targeting_rule",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "allowed",
+                "surface_gate_reason": "allowed",
+                "builder_or_router_decision": "emitted",
+                "runtime_surface": "NX2_019.json",
+                "emitted_files": ["NX2_019.json"],
+                "suppressed_reason": None,
+                "first_missing_link": None,
+                "operator_impact": "diagnostic_only",
+            },
+            {
+                "claim_id": "claim_role",
+                "claim_kind": "card_role",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "allowed",
+                "surface_gate_reason": "allowed",
+                "builder_or_router_decision": "not_seen_by_builder",
+                "runtime_surface": "NX2_019.json",
+                "emitted_files": [],
+                "suppressed_reason": None,
+                "first_missing_link": "builder_or_router",
+                "operator_impact": "diagnostic_only",
+            },
+        ],
+        "card_rows": {
+            "NX2_019": {
+                "name": "Mind Sear",
+                "readiness_lane": "cardid_only",
+                "first_missing_link": "none",
+                "runtime_surfaces": ["NX2_019.json"],
+                "claim_lanes": {"runtime_lowered": 1, "runtime_lowerable": 1},
+            }
+        },
+    }
+
+    report = build_source_to_runtime_explainability_report(audit)
+
+    card = report["card_rows"][0]
+    assert card.get("first_missing_link") is None
+    assert report["summary"]["cards_with_first_missing_link"] == 0
+    role_claim = next(
+        row for row in report["claim_rows"] if row["claim_id"] == "claim_role"
+    )
+    assert role_claim["first_missing_link"] == "builder_or_router"
 
 
 def test_explainability_uses_canonical_action_for_readiness_missing_links():
@@ -604,7 +678,7 @@ def test_explainability_card_rows_include_compact_closure_lane():
     rows = {row["card_id"]: row for row in report["card_rows"]}
 
     assert rows["CARD_KEEP"]["closure"] == {
-        "lane": "source_action_needed",
+        "lane": "runtime_backed",
         "claim_kinds": ["mulligan_keep"],
         "source_lanes": ["runtime_lowered", "suppressed_with_reason"],
         "runtime_surfaces": ["Mulligan.json"],
@@ -614,8 +688,8 @@ def test_explainability_card_rows_include_compact_closure_lane():
         "suppressed_reasons": [
             "start_of_game_effect_does_not_require_opening_hand"
         ],
-        "first_missing_link": "opening_hand_mulligan_intent",
-        "next_source_action": "add_explicit_opening_hand_mulligan_source",
+        "first_missing_link": None,
+        "next_source_action": "add_explicit_mulligan_claim",
     }
 
 

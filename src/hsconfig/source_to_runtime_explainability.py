@@ -153,12 +153,6 @@ def _card_rows(
         )
         best_source_lane = _best_source_lane(raw_card, strongest_claim_id, audit_claim_rows)
         missing_claim = _first_missing_related_claim(related_claims)
-        first_missing_link = _card_first_missing_link(
-            raw_card,
-            strongest_claim,
-            missing_claim,
-        )
-        why_not_emitted = _card_why_not_emitted(strongest_claim, missing_claim)
         emitted_files = _aggregate_claim_files(
             related_claims, key="emitted_runtime_files"
         )
@@ -166,6 +160,24 @@ def _card_rows(
             related_claims, key="not_emitted_runtime_files"
         )
         expected_files = _aggregate_expected_card_files(str(card_id), related_claims)
+        missing_runtime_files = [
+            path
+            for path in sorted(set(expected_files) | set(not_emitted_files))
+            if path not in set(emitted_files)
+        ]
+        card_first_missing_link = _card_first_missing_link(
+            raw_card,
+            strongest_claim,
+            missing_claim,
+        )
+        first_missing_link = _card_level_first_missing_link(
+            emitted_surfaces=emitted_files,
+            missing_runtime_surfaces=missing_runtime_files,
+            claim_missing_links=(
+                [card_first_missing_link] if card_first_missing_link is not None else []
+            ),
+        )
+        why_not_emitted = _card_why_not_emitted(strongest_claim, missing_claim)
         runtime_backed = bool(emitted_files) or any(
             _bool_value(claim.get("runtime_backed")) for claim in related_claims
         )
@@ -196,11 +208,7 @@ def _card_rows(
             ),
             "first_missing_link": first_missing_link,
             "emitted_runtime_files": emitted_files,
-            "not_emitted_runtime_files": [
-                path
-                for path in sorted(set(expected_files) | set(not_emitted_files))
-                if path not in set(emitted_files)
-            ],
+            "not_emitted_runtime_files": missing_runtime_files,
             "why_not_emitted": why_not_emitted,
             "apply_blocked": False,
             "next_source_action": next_source_action,
@@ -676,6 +684,17 @@ def _card_first_missing_link(
     if missing_claim:
         return _normalized_missing_link(missing_claim.get("first_missing_link"))
     return None
+
+
+def _card_level_first_missing_link(
+    *,
+    emitted_surfaces: list[str],
+    missing_runtime_surfaces: list[str],
+    claim_missing_links: list[str],
+) -> str | None:
+    if emitted_surfaces and not missing_runtime_surfaces:
+        return None
+    return claim_missing_links[0] if claim_missing_links else None
 
 
 def _first_missing_related_claim(
