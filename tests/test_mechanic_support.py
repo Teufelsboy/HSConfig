@@ -67,6 +67,40 @@ def test_support_for_roles_returns_defensive_copies_for_registered_specs():
     assert support_for_roles(["future_keyword"])[0] == original_unknown_row
 
 
+def test_battlecry_defaults_to_play_bonus_while_target_bonus_stays_allowed():
+    mechanic_allowed_runtime_blocks = _helper("mechanic_allowed_runtime_blocks")
+    mechanic_default_runtime_block = _helper("mechanic_default_runtime_block")
+
+    assert mechanic_default_runtime_block("battlecry") == "BeforePlayCardBonus"
+    assert mechanic_allowed_runtime_blocks("battlecry") == {
+        "BeforeBattlecryTargetBonus",
+        "BeforePlayCardBonus",
+    }
+
+
+def test_static_metadata_roles_do_not_create_warning_only_noise():
+    roles = [
+        "deckbuilding_modifier",
+        "passive_start_effect",
+        "shadowform",
+        "start_of_game_keyword",
+        "start_of_game_modifier",
+        "trigger_visual",
+        "location_activation",
+    ]
+
+    rows = support_for_roles(roles)
+    by_role = {row["role"]: row for row in rows}
+
+    assert by_role["deckbuilding_modifier"]["support_bucket"] != "warning_only"
+    assert by_role["passive_start_effect"]["support_bucket"] != "warning_only"
+    assert by_role["shadowform"]["support_bucket"] != "warning_only"
+    assert by_role["start_of_game_keyword"]["support_bucket"] != "warning_only"
+    assert by_role["start_of_game_modifier"]["support_bucket"] != "warning_only"
+    assert "trigger_visual" not in by_role
+    assert by_role["location_activation"]["support_bucket"] == "warning_only"
+
+
 def test_summarize_mechanic_support_counts_warning_only_cards():
     summary = summarize_mechanic_support(
         [
@@ -139,6 +173,7 @@ def test_summarize_mechanic_visibility_is_non_blocking_and_operator_readable():
     assert summary["mechanics_by_bucket"]["identity_gated_direct"] == ["discover"]
     assert summary["mechanics_by_bucket"]["partial"] == ["aura"]
     assert summary["mechanics_by_bucket"]["warning_only"] == ["board_position", "dredge"]
+    assert summary["warning_only_mechanics"] == ["board_position", "dredge"]
     assert summary["warning_only_card_count"] == 2
     assert summary["first_warning_boundary"]["mechanic"] == "board_position"
     assert summary["warning_boundaries"] == [

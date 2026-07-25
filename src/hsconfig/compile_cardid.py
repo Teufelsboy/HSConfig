@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from hsconfig.mechanic_support import (
     ROLE_ALIASES,
@@ -28,6 +28,24 @@ BACKED_CONFIDENCE_LANES = {
     "source_backed_static_semantics",
 }
 
+EFFECT_ONLY_START_OF_GAME_ROLES = {
+    "deckbuilding_modifier",
+    "hero_power_transform",
+    "passive_start_effect",
+    "shadow_hero_power",
+    "shadowform",
+    "start_of_game",
+    "start_of_game_keyword",
+    "start_of_game_modifier",
+}
+BODY_AUTHORITY_ROLES = {
+    "body_pressure",
+    "board_tempo",
+    "mulligan_anchor",
+    "playable_body",
+    "tempo_body",
+}
+
 
 def compile_cardid_behaviors(
     contract: dict[str, Any] | None = None,
@@ -44,29 +62,35 @@ def compile_cardid_behaviors(
     files: dict[str, dict[str, Any]] = {}
     for card_id, card in sorted(cards.items()):
         roles = set(card.get("roles", []))
+        effect_only_start_of_game = _is_effect_only_start_of_game_card(roles)
         source_claim_ids = list(card.get("source_claim_ids", []))
         confidence = str(card.get("confidence", card.get("coverage_status", "generic_low_confidence")))
         config: dict[str, Any] = {
             "GameCardId": card_id,
             "ConfigComment": f"{deck_name}: generated behavior for {card_id}",
         }
-        _append_block_row(
-            config,
-            "InHandPlayPriority",
-            deck_name,
-            card_id,
-            "in_hand_priority",
-            _priority_value(roles, confidence),
-            source_claim_ids,
-            confidence,
-        )
+        if not effect_only_start_of_game:
+            _append_block_row(
+                config,
+                "InHandPlayPriority",
+                deck_name,
+                card_id,
+                "in_hand_priority",
+                _priority_value(roles, confidence),
+                source_claim_ids,
+                confidence,
+            )
         explicit_blocks = _append_explicit_behavior_rows(
             config,
             deck_name,
             card_id,
             card.get("behavior_rows", []),
         )
-        if "pressure" in roles and "BeforePlayCardBonus" not in explicit_blocks:
+        if (
+            not effect_only_start_of_game
+            and "pressure" in roles
+            and "BeforePlayCardBonus" not in explicit_blocks
+        ):
             _append_block_row(
                 config,
                 "BeforePlayCardBonus",
@@ -77,7 +101,11 @@ def compile_cardid_behaviors(
                 source_claim_ids,
                 confidence,
             )
-        if "prefer_enemy_hero" in roles and "BeforePlayCardBonus" not in explicit_blocks:
+        if (
+            not effect_only_start_of_game
+            and "prefer_enemy_hero" in roles
+            and "BeforePlayCardBonus" not in explicit_blocks
+        ):
             _append_block_row(
                 config,
                 "BeforePlayCardBonus",
@@ -91,6 +119,8 @@ def compile_cardid_behaviors(
         for role in sorted(roles):
             block = _role_fallback_block(role)
             if block is None:
+                continue
+            if effect_only_start_of_game and block == "BeforePlayCardBonus":
                 continue
             if block in explicit_blocks:
                 continue
@@ -108,6 +138,17 @@ def compile_cardid_behaviors(
             )
         files[f"{card_id}.json"] = config
     return files
+
+
+def _is_effect_only_start_of_game_card(roles: Iterable[str]) -> bool:
+    role_set = {normalize_role_token(role) for role in roles if role}
+    canonical_roles = {ROLE_ALIASES.get(role, role) for role in role_set}
+    combined_roles = role_set | canonical_roles
+    if not combined_roles.intersection(EFFECT_ONLY_START_OF_GAME_ROLES):
+        return False
+    if combined_roles.intersection(BODY_AUTHORITY_ROLES):
+        return False
+    return True
 
 
 def _role_fallback_block(role: str) -> str | None:

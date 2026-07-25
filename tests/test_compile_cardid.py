@@ -28,7 +28,8 @@ def test_compile_cardid_behaviors_emit_valid_files_with_clean_runtime_rows(tmp_p
     assert files["EX1_001.json"]["GameCardId"] == "EX1_001"
     priority_row = files["EX1_001.json"]["InHandPlayPriority"]["values"][0]
     assert set(priority_row) == {"comment", "condition", "value"}
-    assert "BeforeBattlecryTargetBonus" in files["EX1_001.json"]
+    assert "BeforePlayCardBonus" in files["EX1_001.json"]
+    assert "BeforeBattlecryTargetBonus" not in files["EX1_001.json"]
     assert "OnDiscoverCardBonus" in files["EX1_002.json"]
 
     deck_dir = tmp_path / "CustomConfig" / "deck"
@@ -63,7 +64,7 @@ def test_compile_cardid_behaviors_preserves_roles_when_surface_rows_are_passed()
     files = compile_cardid_behaviors(contract, rows=rows)
 
     assert "BeforePlayCardBonus" in files["EX1_001.json"]
-    assert "BeforeBattlecryTargetBonus" in files["EX1_001.json"]
+    assert "BeforeBattlecryTargetBonus" not in files["EX1_001.json"]
 
 
 def test_compile_cardid_treats_backed_confidence_lanes_as_stronger_than_generic():
@@ -386,6 +387,69 @@ def test_compile_cardid_keeps_inhand_priority_for_report_only_cards():
         ]
     assert "BeforePlayCardBonus" not in files["CARD_TRADEABLE.json"]
     assert "OnDiscoverCardBonus" not in files["CARD_DREDGE.json"]
+
+
+def test_effect_only_darkbishop_keeps_hero_power_bonus_without_body_priority():
+    contract = {
+        "deck_name": "ShadowPriest",
+        "cards": {
+            "SW_448": {
+                "name": "Darkbishop Benedictus",
+                "roles": [
+                    "deckbuilding_modifier",
+                    "hero_power_transform",
+                    "passive_start_effect",
+                    "pressure",
+                    "shadowform",
+                    "start_of_game_keyword",
+                ],
+                "source_claim_ids": ["claim-darkbishop-effect"],
+                "confidence": "source_backed",
+                "behavior_rows": [
+                    {
+                        "behavior_block": "BeforeUseHeroPowerBonus",
+                        "condition": "*",
+                        "value": "10",
+                        "comment": "ShadowPriest: SW_448_enable_shadow_hero_power",
+                        "source_claim_ids": ["claim-darkbishop-effect"],
+                    }
+                ],
+            }
+        },
+    }
+
+    card_files = compile_cardid_behaviors(contract)
+    darkbishop = card_files["SW_448.json"]
+
+    assert "BeforeUseHeroPowerBonus" in darkbishop
+    assert "InHandPlayPriority" not in darkbishop
+    assert "BeforePlayCardBonus" not in darkbishop
+
+
+def test_explicit_body_behavior_row_is_not_removed_for_effect_only_card():
+    contract = {
+        "deck_name": "ShadowPriest",
+        "cards": {
+            "SW_448": {
+                "name": "Darkbishop Benedictus",
+                "roles": ["hero_power_transform", "shadowform"],
+                "source_claim_ids": ["claim-effect", "claim-body"],
+                "behavior_rows": [
+                    {
+                        "behavior_block": "BeforePlayCardBonus",
+                        "condition": "*",
+                        "value": "4",
+                        "comment": "ShadowPriest: explicit_body_source",
+                        "source_claim_ids": ["claim-body"],
+                    }
+                ],
+            }
+        },
+    }
+
+    card_files = compile_cardid_behaviors(contract)
+
+    assert "BeforePlayCardBonus" in card_files["SW_448.json"]
 
 
 def test_compile_cardid_preserves_explicit_behavior_row_order_with_same_block():

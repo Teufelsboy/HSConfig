@@ -11,8 +11,8 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
     "battlecry": {
         "support_level": "direct",
         "normal_path_surfaces": [
-            "CARDID.json:BeforeBattlecryTargetBonus",
             "CARDID.json:BeforePlayCardBonus",
+            "CARDID.json:BeforeBattlecryTargetBonus",
             "Combo.json:exact_sequence",
         ],
         "warning_boundary": (
@@ -430,6 +430,7 @@ ROLE_ALIASES = {
     "weapon_pressure": "weapon",
     "spell_generation": "generated_entity",
     "choose_one_choice": "choose_one",
+    "deckbuilding_modifier": "start_of_game",
     "positioning": "board_position",
     "spell_target": "generic_spell_target",
     "location_use": "location_activation",
@@ -439,6 +440,10 @@ ROLE_ALIASES = {
     "board_buff": "aura",
     "board_scaling": "aura",
     "board_flood": "aura",
+    "passive_start_effect": "start_of_game",
+    "shadowform": "hero_power_transform",
+    "start_of_game_keyword": "start_of_game",
+    "start_of_game_modifier": "start_of_game",
     "hand_mutation": "discard",
     "payoff_summon": "generated_entity",
     "magnetic": "aura",
@@ -456,6 +461,7 @@ NON_MECHANIC_ROLES = {
     "prefer_enemy_hero",
     "pressure",
     "spell",
+    "trigger_visual",
 }
 
 IDENTITY_GATED_DIRECT_MECHANICS = {
@@ -647,28 +653,31 @@ def support_for_roles(roles: Iterable[str]) -> list[dict[str, Any]]:
             continue
         mechanic = ROLE_ALIASES.get(raw_role, raw_role)
         spec = MECHANIC_SUPPORT.get(mechanic)
-        if mechanic in seen:
+        if raw_role in seen:
             continue
-        seen.add(mechanic)
+        seen.add(raw_role)
         if spec is None:
-            rows.append(
-                deepcopy(
-                    {
-                        "mechanic": mechanic,
-                        "support_level": "warning_only",
-                        "normal_path_surfaces": ["report-only"],
-                        "warning_boundary": (
-                            "No registered VisionAI normal-path surface exists for role "
-                            f"'{mechanic}'; keep it visible as warning-only until mapped."
-                        ),
-                        "lowering": mechanic_lowering_policy(mechanic),
-                        "registered": False,
-                    }
-                )
+            row = deepcopy(
+                {
+                    "role": raw_role,
+                    "mechanic": mechanic,
+                    "support_level": "warning_only",
+                    "normal_path_surfaces": ["report-only"],
+                    "warning_boundary": (
+                        "No registered VisionAI normal-path surface exists for role "
+                        f"'{mechanic}'; keep it visible as warning-only until mapped."
+                    ),
+                    "lowering": mechanic_lowering_policy(mechanic),
+                    "registered": False,
+                }
             )
+            row["support_bucket"] = operator_visibility_bucket(row)
+            rows.append(row)
             continue
-        rows.append({"mechanic": mechanic, **deepcopy(spec)})
-    return sorted(rows, key=lambda row: row["mechanic"])
+        row = {"role": raw_role, "mechanic": mechanic, **deepcopy(spec)}
+        row["support_bucket"] = operator_visibility_bucket(row)
+        rows.append(row)
+    return sorted(rows, key=lambda row: (row["mechanic"], row["role"]))
 
 
 def operator_visibility_bucket(support: dict[str, Any]) -> str:
@@ -747,6 +756,7 @@ def summarize_mechanic_visibility(rows: Iterable[dict[str, Any]]) -> dict[str, A
             bucket: sorted(mechanics_by_bucket.get(bucket, set()))
             for bucket in VISIBILITY_BUCKETS
         },
+        "warning_only_mechanics": sorted(mechanics_by_bucket.get("warning_only", set())),
         "warning_only_card_count": len(warning_cards),
         "first_warning_boundary": first_warning_boundary,
         "warning_boundaries": [
