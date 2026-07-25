@@ -464,7 +464,7 @@ def test_preserves_explicit_runtime_lowering_fields_for_router():
                 "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
-                        "claim_kind": "targeting_rule",
+                        "claim_kind": "card_role",
                         "cards": ["SW_446"],
                         "stance": "prefer_enemy_hero",
                         "runtime_block": "BeforePlayCardBonus",
@@ -478,7 +478,7 @@ def test_preserves_explicit_runtime_lowering_fields_for_router():
         ],
     )
 
-    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "targeting_rule")
+    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "card_role")
     routed = route_card_behavior_claims([claim])
     row = routed["card_rows"]["SW_446"][0]
 
@@ -503,7 +503,7 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
                 "retrieved_at": "2026-07-06T12:00:00Z",
                 "claims": [
                     {
-                        "claim_kind": "targeting_rule",
+                        "claim_kind": "card_role",
                         "cards": ["SW_446"],
                         "stance": "prefer_enemy_hero",
                         "conditions": {"posture": "burn"},
@@ -518,7 +518,7 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
         ],
     )
 
-    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "targeting_rule")
+    claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "card_role")
     routed = route_card_behavior_claims([claim])
     row = routed["card_rows"]["SW_446"][0]
 

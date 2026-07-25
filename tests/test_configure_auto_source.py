@@ -127,7 +127,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     assert summary["source_documents_json"] == str(out / "02_source_autopilot" / "source_documents.json")
     assert autopilot_report["strong_candidate"] is True
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert source_closure_receipt["authority"] == "diagnostic_only"
     assert source_closure_receipt["operator_gate"] == "reports/operator_summary.json"
@@ -138,10 +138,10 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     assert source_closure_receipt["runtime_write_performed"] is False
     assert source_closure_receipt["source_backed_status"] == operator["source_backed_status"]
     assert source_closure_receipt["source_status_apply_blocking"] is False
-    assert source_closure_receipt["first_missing_source_action"] == "none"
+    assert source_closure_receipt["first_missing_source_action"] == "inspect_card_gap"
     assert source_closure_receipt["default_only_clean"] is True
     assert source_closure_receipt["default_only_runtime_surfaces"] == []
-    assert source_closure_receipt["source_closure_lane"] == "strong"
+    assert source_closure_receipt["source_closure_lane"] == "source_action_needed"
     assert source_closure_receipt["compiled_claim_count"] >= 1
     assert source_closure_receipt["runtime_lowerable_claim_count"] >= 1
     for key in (

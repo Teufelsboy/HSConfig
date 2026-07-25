@@ -11,7 +11,8 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
             "claim_kind": "targeting_rule",
             "cards": ["CARD_A"],
             "stance": "prefer_enemy_hero",
-            "runtime_block": "BeforePlayCardBonus",
+            "target_scope": "enemy_hero",
+            "runtime_block": "BeforeBattlecryTargetBonus",
             "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
             "runtime_value": "12",
         },
@@ -28,7 +29,7 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
 
     plan = route_card_behavior_claims(claims)
 
-    assert plan["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+    assert plan["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
     assert plan["rows"][0]["condition"] == "my_target(count(),hero=true) > 0"
     assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
     assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
@@ -39,6 +40,8 @@ def test_targeting_behavior_row_receives_semantic_score_value():
         "claim_kind": "targeting_rule",
         "cards": ["NX2_019"],
         "stance": "prefer_enemy_minion",
+        "target_scope": "enemy_minion",
+        "runtime_block": "BeforeBattlecryTargetBonus",
         "evidence_text_short": (
             "Mind Sear deals 2 damage to a minion and deals 3 damage "
             "to the enemy hero if it dies."
@@ -50,13 +53,69 @@ def test_targeting_behavior_row_receives_semantic_score_value():
 
     assert plan["suppressed"] == []
     row = plan["rows"][0]
-    assert row["behavior_block"] == "BeforePlayCardBonus"
+    assert row["behavior_block"] == "BeforeBattlecryTargetBonus"
     assert row["value"] == "10"
     assert row["semantic_score"]["reason"] == "conditional_minion_death_burn"
     assert row["semantic_score"]["band"] == "high"
     assert row["semantic_score"]["profile"] == "semantic_intent"
     assert "enemy_hero_damage" in row["semantic_score"]["matched_signals"]
     assert "death_condition" in row["semantic_score"]["matched_signals"]
+
+
+def test_targeting_claim_without_target_scope_is_suppressed():
+    claim = {
+        "claim_id": "target-missing-scope",
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "stance": "prefer_enemy_minion",
+        "source_claim_ids": ["target-missing-scope"],
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["rows"] == []
+    assert report["suppressed"] == [
+        {
+            "claim_id": "target-missing-scope",
+            "claim_kind": "targeting_rule",
+            "cards": ["NX2_019"],
+            "reason": "missing_target_scope",
+        }
+    ]
+
+
+def test_targeting_claim_requires_compatible_target_block():
+    claim = {
+        "claim_id": "target-wrong-block",
+        "claim_kind": "targeting_rule",
+        "cards": ["CARD_TARGET"],
+        "target_scope": "enemy_minion",
+        "runtime_block": "BeforePlayCardBonus",
+        "source_claim_ids": ["target-wrong-block"],
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["rows"] == []
+    assert report["suppressed"][0]["reason"] == "target_scope_not_encoded"
+
+
+def test_targeting_claim_with_scope_and_target_block_is_meaningful():
+    claim = {
+        "claim_id": "target-complete",
+        "claim_kind": "targeting_rule",
+        "cards": ["CARD_TARGET"],
+        "target_scope": "enemy_minion",
+        "runtime_block": "BeforeBattlecryTargetBonus",
+        "condition": "my_target(count(),minion=true) > 0",
+        "source_claim_ids": ["target-complete"],
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["suppressed"] == []
+    assert report["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
+    assert report["rows"][0]["meaningful_runtime_surface"] is True
 
 
 def test_explicit_target_runtime_block_is_preserved():
@@ -81,6 +140,8 @@ def test_explicit_runtime_value_wins_over_semantic_score():
         "claim_kind": "targeting_rule",
         "cards": ["NX2_019"],
         "stance": "prefer_enemy_minion",
+        "target_scope": "enemy_minion",
+        "runtime_block": "BeforeBattlecryTargetBonus",
         "runtime_value": "8",
         "evidence_text_short": (
             "Mind Sear deals 2 damage to a minion and deals 3 damage "
@@ -151,6 +212,8 @@ def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
                 "claim_kind": "targeting_rule",
                 "cards": ["CARD_A"],
                 "stance": "prefer_enemy_hero",
+                "target_scope": "enemy_hero",
+                "runtime_block": "BeforeBattlecryTargetBonus",
                 "source_claim_ids": ["raw_target"],
                 "_claim_lifecycle": {
                     "claim_id": "lifecycle_target",
@@ -199,6 +262,8 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "claim_kind": "targeting_rule",
             "cards": ["CARD_B"],
             "stance": "prefer_enemy_minion",
+            "target_scope": "enemy_minion",
+            "runtime_block": "BeforeBattlecryTargetBonus",
             "runtime_value": "8",
         },
     ]
@@ -217,7 +282,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
     assert [row["behavior_block"] for row in plan["rows"]] == [
         "OnChooseOneCardBonus",
         "BeforeUseHeroPowerBonus",
-        "BeforePlayCardBonus",
+        "BeforeBattlecryTargetBonus",
     ]
     assert plan["option_resolution"] == [
         {
@@ -621,6 +686,8 @@ def test_routes_targeting_claim_to_cardid_surface():
             "claim_kind": "targeting_rule",
             "cards": ["DMF_090"],
             "stance": "prefer_enemy_hero",
+            "target_scope": "enemy_hero",
+            "runtime_block": "BeforeBattlecryTargetBonus",
             "conditions": {"phase": "burn"},
             "claim_confidence": "high",
             "source_refs": ["guide:1"],
@@ -658,6 +725,8 @@ def test_card_role_fallback_does_not_override_stronger_targeting_row():
                 "claim_kind": "targeting_rule",
                 "cards": ["CARD_001"],
                 "stance": "prefer_enemy_hero",
+                "target_scope": "enemy_hero",
+                "runtime_block": "BeforeBattlecryTargetBonus",
                 "claim_confidence": "high",
             },
             {

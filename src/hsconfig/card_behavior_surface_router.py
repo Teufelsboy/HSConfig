@@ -23,6 +23,18 @@ TARGETING_STANCES = {
     "prefer_enemy_minion",
     "prefer_friendly_minion",
 }
+TARGET_RUNTIME_BLOCKS = {
+    "BeforeBattlecryTargetBonus",
+    "OnDiscoverCardBonus",
+    "OnChooseOneCardBonus",
+    "OnAdaptCardBonus",
+}
+TARGET_SCOPE_RUNTIME_CONDITIONS = {
+    "enemy_hero": "my_target(count(),hero=true) > 0",
+    "enemy_minion": "my_target(count(),minion=true) > 0",
+    "friendly_hero": "my_target(count(),hero=true) > 0",
+    "friendly_minion": "my_target(count(),minion=true) > 0",
+}
 INTENT_BLOCKS = {
     "in_hand_value": "InHandBonus",
     "on_board_value": "OnBoardBonus",
@@ -70,6 +82,11 @@ def route_card_behavior_surfaces(
             suppressed.append(_suppressed_row(claim, claim_kind, cards, gate.reason))
             continue
         condition, condition_error = _condition(claim)
+        if condition_error is not None:
+            target_condition = _documented_target_scope_condition(claim)
+            if target_condition is not None:
+                condition = target_condition
+                condition_error = None
         if condition_error is not None:
             suppressed.append(_suppressed_row(claim, claim_kind, cards, condition_error))
             continue
@@ -120,19 +137,23 @@ def route_card_behavior_surfaces(
             )
 
         if claim_kind == "targeting_rule":
+            if not _is_target_backed_claim(claim):
+                suppressed.append(
+                    _suppressed_row(claim, claim_kind, cards, "missing_target_scope")
+                )
+                continue
+            if explicit_block not in TARGET_RUNTIME_BLOCKS:
+                suppressed.append(
+                    _suppressed_row(claim, claim_kind, cards, "target_scope_not_encoded")
+                )
+                continue
             intent = _claim_intent(claim, fallback=claim_kind)
-            behavior_block = explicit_block or INTENT_BLOCKS[claim_kind]
-            if (
-                behavior_block == "BeforeBattlecryTargetBonus"
-                and not _is_target_backed_claim(claim)
-            ):
-                behavior_block = "BeforePlayCardBonus"
             rows.extend(
                 _rows_for_cards(
                     claim,
                     cards,
                     condition=condition,
-                    behavior_block=behavior_block,
+                    behavior_block=explicit_block,
                     intent=intent,
                     roles=[intent],
                 )
@@ -403,10 +424,32 @@ def _claim_intent(claim: dict[str, Any], *, fallback: str) -> str:
 
 
 def _is_target_backed_claim(claim: dict[str, Any]) -> bool:
+    return _target_scope(claim) is not None
+
+
+def _target_scope(claim: dict[str, Any]) -> str | None:
     if claim.get("target_scope"):
-        return True
+        return str(claim["target_scope"])
     qualifiers = claim.get("semantic_qualifiers")
-    return isinstance(qualifiers, dict) and bool(qualifiers.get("target_scope"))
+    if isinstance(qualifiers, dict) and qualifiers.get("target_scope"):
+        return str(qualifiers["target_scope"])
+    return None
+
+
+def _documented_target_scope_condition(claim: dict[str, Any]) -> str | None:
+    target_scope = _target_scope(claim)
+    if target_scope is None:
+        return None
+    expected = TARGET_SCOPE_RUNTIME_CONDITIONS.get(target_scope.lower())
+    if expected is None:
+        return None
+    raw_condition = claim.get("conditions", claim.get("condition", "*"))
+    if isinstance(raw_condition, dict):
+        raw_condition = raw_condition.get("runtime_condition")
+    if not isinstance(raw_condition, str):
+        return None
+    normalized = " ".join(raw_condition.strip().split())
+    return expected if normalized == expected else None
 
 
 def _condition(claim: dict[str, Any]) -> tuple[str, str | None]:

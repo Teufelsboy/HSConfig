@@ -75,7 +75,7 @@
       "deck_name": "BigShaman",
       "claims": [
         {
-          "claim_kind": "targeting_rule",
+          "claim_kind": "card_role",
           "cards": ["CFM_696"],
           "stance": "prefer_enemy_minion",
           "runtime_block": "BeforePlayCardBonus",
@@ -86,7 +86,8 @@
           "claim_kind": "targeting_rule",
           "cards": ["CS2_038"],
           "stance": "prefer_friendly_minion",
-          "runtime_block": "BeforePlayCardBonus",
+          "target_scope": "friendly_minion",
+          "runtime_block": "BeforeBattlecryTargetBonus",
           "evidence_text_short": "Choose a minion. When it dies, resummon it.",
           "source_confidence": "high"
         },
@@ -127,7 +128,8 @@
           "claim_kind": "targeting_rule",
           "cards": ["WON_335"],
           "stance": "prefer_friendly_minion",
-          "runtime_block": "BeforePlayCardBonus",
+          "target_scope": "friendly_minion",
+          "runtime_block": "BeforeBattlecryTargetBonus",
           "evidence_text_short": "Destroy a minion, then return it to life with full Health.",
           "source_confidence": "high"
         },

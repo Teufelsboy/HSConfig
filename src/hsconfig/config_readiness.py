@@ -32,6 +32,8 @@ MISSING_LINKS = (
     "needs_mulligan_claim",
     "needs_combo_sequence",
     "needs_condition_lowering",
+    "needs_target_scope",
+    "needs_target_surface",
     "needs_mechanic_lowering",
 )
 SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
@@ -41,7 +43,14 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_mulligan_claim": "mulligan_claim_gap",
     "needs_combo_sequence": "combo_sequence_gap",
     "needs_condition_lowering": "condition_lowering_gap",
+    "needs_target_scope": "target_scope_gap",
+    "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
+}
+SEMANTIC_SUPPRESSION_MISSING_LINKS = {
+    "unsupported_condition": "needs_condition_lowering",
+    "missing_target_scope": "needs_target_scope",
+    "target_scope_not_encoded": "needs_target_surface",
 }
 GUIDE_BACKED_COVERAGE_STATUSES = {
     "guide_backed",
@@ -72,7 +81,7 @@ def build_config_readiness_report(
         fallback_cardids=all_cardid_cards,
     )
     emitted_cardid_cards = set(emitted_cardid_file_map) & concrete_cardid_cards
-    unsupported_condition_cards = _cards_from_unsupported_condition_suppression(
+    semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
     mulligan_cards = _cards_from_mulligan(mulligan_plan)
@@ -102,7 +111,7 @@ def build_config_readiness_report(
             uncovered=uncovered,
             concrete_cardid_cards=concrete_cardid_cards,
             emitted_cardid_cards=emitted_cardid_cards,
-            unsupported_condition_cards=unsupported_condition_cards,
+            semantic_suppression_missing_links=semantic_suppression_missing_links,
             mulligan_cards=mulligan_cards,
             suppressed_mulligan_cards=suppressed_mulligan_cards,
             combo_cards=combo_cards,
@@ -238,13 +247,17 @@ def _is_cardid_runtime_row(row: Any) -> bool:
     )
 
 
-def _cards_from_unsupported_condition_suppression(
+def _cards_from_semantic_suppression(
     card_behavior_plan: dict[str, Any],
-) -> set[str]:
-    cards: set[str] = set()
+) -> dict[str, str]:
+    missing_links: dict[str, str] = {}
     for row in card_behavior_plan.get("suppressed", []):
-        if not isinstance(row, dict) or row.get("reason") != "unsupported_condition":
+        if not isinstance(row, dict):
             continue
+        missing_link = SEMANTIC_SUPPRESSION_MISSING_LINKS.get(str(row.get("reason", "")))
+        if missing_link is None:
+            continue
+        cards: set[str] = set()
         for key in ("card_id", "card"):
             if row.get(key):
                 cards.add(str(row[key]))
@@ -252,7 +265,9 @@ def _cards_from_unsupported_condition_suppression(
         if isinstance(suppressed_cards, str):
             suppressed_cards = [suppressed_cards]
         cards.update(str(card) for card in suppressed_cards if str(card))
-    return cards
+        for card_id in cards:
+            missing_links.setdefault(card_id, missing_link)
+    return missing_links
 
 
 def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
@@ -354,7 +369,7 @@ def _lane_and_missing_link(
     uncovered: set[str],
     concrete_cardid_cards: set[str],
     emitted_cardid_cards: set[str],
-    unsupported_condition_cards: set[str],
+    semantic_suppression_missing_links: dict[str, str],
     mulligan_cards: set[str],
     suppressed_mulligan_cards: set[str],
     combo_cards: set[str],
@@ -380,8 +395,8 @@ def _lane_and_missing_link(
         if is_guide_backed and roles and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
             return "globalvalues_only", "none"
         return "globalvalues_only", "needs_runtime_surface"
-    if card_id in unsupported_condition_cards:
-        return "report_only_supported", "needs_condition_lowering"
+    if card_id in semantic_suppression_missing_links:
+        return "report_only_supported", semantic_suppression_missing_links[card_id]
     if is_guide_backed and "mulligan_anchor" in roles:
         return "report_only_supported", "needs_mulligan_claim"
     if is_guide_backed and "combo_piece" in roles:

@@ -449,7 +449,12 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
     if claim_kind == "card_role":
         return {**claim, "runtime_block": "InHandBonus"}
     if claim_kind == "targeting_rule":
-        return {**claim, "stance": "prefer_enemy_hero"}
+        return {
+            **claim,
+            "stance": "prefer_enemy_hero",
+            "target_scope": "enemy_hero",
+            "runtime_block": "BeforeBattlecryTargetBonus",
+        }
     if claim_kind == "mechanic_usage":
         return {**claim, "mechanic": "deathrattle"}
     if claim_kind == "known_bad_pattern":

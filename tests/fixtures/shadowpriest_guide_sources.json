@@ -40,7 +40,7 @@
         "source_confidence": "medium"
       },
       {
-        "claim_kind": "targeting_rule",
+        "claim_kind": "card_role",
         "cards": ["SW_446"],
         "stance": "prefer_enemy_hero",
         "runtime_block": "BeforePlayCardBonus",
@@ -53,6 +53,8 @@
         "claim_kind": "targeting_rule",
         "cards": ["DS1_233"],
         "stance": "prefer_enemy_hero",
+        "target_scope": "enemy_hero",
+        "runtime_block": "BeforeBattlecryTargetBonus",
         "conditions": {"posture": "burn_reach"},
         "evidence_text_short": "Mind Blast is burn reach and should normally target the enemy hero.",
         "source_confidence": "high"

@@ -75,6 +75,29 @@ def _report_for_card(
     )
 
 
+def _one_card_identity(card_id: str) -> dict:
+    return {
+        "deck_name": "Fixture",
+        "deck_slug": "fixture",
+        "cards": [
+            {
+                "card_id": card_id,
+                "name": card_id,
+                "count": 1,
+                "coverage_status": "guide_backed",
+            }
+        ],
+    }
+
+
+def _covered_claims(card_id: str, coverage_status: str) -> dict:
+    return {
+        "uncovered_cards": [],
+        "cards": {card_id: {"coverage_status": coverage_status}},
+        "total_cards": 1,
+    }
+
+
 def test_runtime_emitted_card_gets_runtime_lane():
     report = build_config_readiness_report(
         deck_identity={
@@ -258,6 +281,31 @@ def test_unsupported_condition_suppression_needs_condition_lowering():
     assert row["readiness_lane"] == "report_only_supported"
     assert row["first_missing_link"] == "needs_condition_lowering"
     assert report["summary"]["cards_needing_condition_lowering"] == 1
+
+
+def test_targeting_suppression_does_not_count_as_runtime_closed():
+    report = build_config_readiness_report(
+        deck_identity=_one_card_identity("NX2_019"),
+        claim_coverage=_covered_claims("NX2_019", "guide_backed"),
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "target",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["NX2_019"],
+                    "reason": "missing_target_scope",
+                }
+            ],
+        },
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        combo_plan={"combos": [], "suppressed": []},
+        gameplan_contract={},
+        global_values_authority_matrix={},
+    )
+
+    assert report["cards"]["NX2_019"]["readiness_lane"] != "runtime_emitted"
+    assert report["cards"]["NX2_019"]["first_missing_link"] == "needs_target_scope"
 
 
 def test_non_cardid_diagnostic_row_does_not_count_as_runtime_surface():
