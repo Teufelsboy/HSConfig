@@ -75,6 +75,60 @@ def test_autopilot_does_not_turn_keep_alive_into_mulligan_keep():
     assert [row for row in rows if row["claim_kind"] == "mulligan_keep"] == []
 
 
+def test_autopilot_does_not_carry_mulligan_context_to_later_keep_sentence():
+    ranked = [
+        _strong_ranked_source(
+            normalized_text=(
+                "Mulligan: Keep Papercraft Angel. "
+                "Keep Voidtouched Attendant alive on the board."
+            )
+        )
+    ]
+
+    rows = extract_source_evidence_rows(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        ranked_sources=ranked,
+        current_date="2026-07-26",
+    )
+
+    assert [
+        row["cards"]
+        for row in rows
+        if row["claim_kind"] == "mulligan_keep"
+    ] == [["TOY_381"]]
+
+
+def test_rank_public_sources_overrides_claimed_exact_scope_without_overlap():
+    ranked = rank_public_sources(
+        deck_name="ShadowPriest",
+        deck_identity=SHADOW_DECK_IDENTITY,
+        source_search_records=[
+            {
+                "source_url": "https://example.test/shadow-priest",
+                "source_title": "Shadow Priest Guide 2026",
+                "source_family": "guide",
+                "source_visibility": "full_text",
+                "source_record_strength": "candidate_strong",
+                "publication_year": 2026,
+                "deck_match_scope": "deck_matched",
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_446"],
+                    "matched_card_count": 6,
+                    "unique_deck_card_count": 6,
+                    "card_overlap_ratio": 1.0,
+                },
+                "normalized_text": "Shadow Priest Guide 2026.",
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+    assert ranked[0]["deck_match_scope"] == "card_overlap"
+    assert ranked[0]["source_rank_lane"] == "guide_card_overlap"
+
+
 def _fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 

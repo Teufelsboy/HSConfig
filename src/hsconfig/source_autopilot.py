@@ -58,7 +58,18 @@ def rank_public_sources(
             for card_id in _as_list(match.get("matched_card_ids", []))
             if _text(card_id)
         }
-        card_overlap = len(deck_card_ids & matched_ids)
+        matched_deck_card_ids = deck_card_ids & matched_ids
+        card_overlap = len(matched_deck_card_ids)
+        overlap_ratio = (
+            card_overlap / len(deck_card_ids) if deck_card_ids else 0.0
+        )
+        row["deck_match"] = {
+            **dict(match),
+            "matched_card_ids": sorted(matched_deck_card_ids),
+            "matched_card_count": card_overlap,
+            "unique_deck_card_count": len(deck_card_ids),
+            "card_overlap_ratio": overlap_ratio,
+        }
         deck_name_match = _has_independent_deck_match(
             row,
             normalized_deck_name,
@@ -81,8 +92,6 @@ def rank_public_sources(
         row["source_visibility"] = _source_visibility_for_documents(row)
         row["source_rank_score"] = score
         deck_match_scope = _quantitative_deck_match_scope(
-            row,
-            match,
             deck_name_match=deck_name_match,
             card_overlap=card_overlap,
             unique_deck_card_count=len(deck_card_ids),
@@ -1273,32 +1282,19 @@ def _has_independent_deck_match(
 
 
 def _quantitative_deck_match_scope(
-    source: Mapping[str, Any],
-    match: Mapping[str, Any],
     *,
     deck_name_match: bool,
     card_overlap: int,
     unique_deck_card_count: int,
 ) -> str:
-    explicit = _text(source.get("deck_match_scope", "")) or _text(
-        match.get("deck_match_scope", "")
+    overlap_ratio = (
+        card_overlap / unique_deck_card_count if unique_deck_card_count else 0.0
     )
-    if explicit and explicit != "deck_or_archetype_matched":
-        return explicit
-
-    overlap_ratio = _float_or_none(match.get("card_overlap_ratio"))
-    if overlap_ratio is None:
-        overlap_ratio = (
-            card_overlap / unique_deck_card_count if unique_deck_card_count else 0.0
-        )
-    matched_card_count = _int_or_none(match.get("matched_card_count"))
-    if matched_card_count is None:
-        matched_card_count = card_overlap
     if deck_name_match and overlap_ratio >= 0.80:
         return "deck_matched"
-    if deck_name_match and matched_card_count >= 2:
+    if deck_name_match and card_overlap >= 2:
         return "archetype_matched"
-    if matched_card_count:
+    if card_overlap:
         return "card_overlap"
     return "unknown"
 
@@ -1392,13 +1388,6 @@ def _is_public_https(value: Any) -> bool:
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _float_or_none(value: Any) -> float | None:
-    try:
-        return float(value)
     except (TypeError, ValueError):
         return None
 

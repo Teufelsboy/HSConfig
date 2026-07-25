@@ -248,22 +248,11 @@ NEGATIVE_KEEP_MARKERS = (
 
 def _positive_keep_segments(text: str) -> list[str]:
     segments: list[str] = []
-    mulligan_context_active = False
     for sentence in _sentences(text):
         lowered = sentence.lower()
-        if has_explicit_mulligan_context(sentence):
-            mulligan_context_active = True
         if "keep" in lowered:
-            for segment in _keep_clause_segments(sentence, polarity="positive"):
-                if (
-                    mulligan_context_active
-                    and not has_explicit_mulligan_context(segment)
-                ):
-                    segment = f"Mulligan: {segment}"
-                segments.append(segment)
+            segments.extend(_keep_clause_segments(sentence, polarity="positive"))
         segments.extend(_initial_mulligan_list_segments(sentence))
-        if "keep" not in lowered and not has_explicit_mulligan_context(sentence):
-            mulligan_context_active = False
     return segments
 
 

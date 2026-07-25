@@ -114,13 +114,7 @@ def test_extracts_full_text_shadowpriest_list_claims_without_negated_keeps():
     for claim in claims:
         claims_by_kind.setdefault(claim["claim_kind"], set()).update(claim["cards"])
 
-    assert claims_by_kind["mulligan_keep"] == {
-        "TOY_381",
-        "TOY_518",
-        "SW_444",
-        "SCH_514",
-        "GVG_009",
-    }
+    assert claims_by_kind["mulligan_keep"] == {"TOY_381", "TOY_518", "SW_444"}
     assert "SW_448" not in claims_by_kind["mulligan_keep"]
     assert "SW_448" in claims_by_kind["mulligan_discard"]
     assert claims_by_kind["hero_power_transform"] == {"SW_448"}
