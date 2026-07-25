@@ -52,9 +52,14 @@ def compile_cardid_behaviors(
     *,
     deck_name: str | None = None,
     rows: list[dict[str, Any]] | None = None,
+    static_runtime_suppressed_card_ids: Iterable[str] | None = None,
 ) -> dict[str, dict[str, Any]]:
     contract = contract or {}
     deck_name = deck_name or str(contract.get("deck_name", "Deck"))
+    suppressed_static_runtime_card_ids = _suppressed_static_runtime_card_ids(
+        contract,
+        static_runtime_suppressed_card_ids,
+    )
     cards = _cards_from_contract(contract)
     if rows:
         _merge_row_cards(cards, _cards_from_rows(rows))
@@ -69,6 +74,12 @@ def compile_cardid_behaviors(
             "GameCardId": card_id,
             "ConfigComment": f"{deck_name}: generated behavior for {card_id}",
         }
+        if (
+            card_id in suppressed_static_runtime_card_ids
+            and not card.get("behavior_rows", [])
+        ):
+            files[f"{card_id}.json"] = config
+            continue
         if not effect_only_start_of_game:
             _append_block_row(
                 config,
@@ -149,6 +160,23 @@ def _is_effect_only_start_of_game_card(roles: Iterable[str]) -> bool:
     if combined_roles.intersection(BODY_AUTHORITY_ROLES):
         return False
     return True
+
+
+def _suppressed_static_runtime_card_ids(
+    contract: dict[str, Any],
+    explicit_card_ids: Iterable[str] | None,
+) -> set[str]:
+    card_ids = {str(card_id) for card_id in explicit_card_ids or [] if str(card_id)}
+    card_behavior_plan = contract.get("card_behavior_plan", {})
+    if isinstance(card_behavior_plan, dict):
+        card_ids.update(
+            str(card_id)
+            for card_id in card_behavior_plan.get(
+                "static_runtime_suppressed_card_ids", []
+            )
+            if str(card_id)
+        )
+    return card_ids
 
 
 def _role_fallback_block(role: str) -> str | None:

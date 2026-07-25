@@ -15,6 +15,10 @@ LANE_RANK = {
     "unsupported_or_unmapped": 3,
     "report_only": 4,
 }
+CLAIM_KIND_RANK = {
+    "hero_power_transform": 0,
+    "mechanic_usage": 90,
+}
 
 REPORT_PATH = "reports/source_to_runtime_explainability.json"
 
@@ -626,16 +630,23 @@ def _matching_claim(
 def _strongest_claim_id(
     claim_ids: list[str], audit_claim_rows: Mapping[str, Any]
 ) -> str | None:
-    ranked: list[tuple[int, str]] = []
+    ranked: list[tuple[int, int, str]] = []
     for claim_id in claim_ids:
         raw_claim = audit_claim_rows.get(claim_id)
         if not isinstance(raw_claim, Mapping):
             continue
         lane = str(raw_claim.get("lane", "report_only"))
-        ranked.append((LANE_RANK.get(lane, 99), claim_id))
+        claim_kind = str(raw_claim.get("claim_kind", ""))
+        ranked.append(
+            (
+                LANE_RANK.get(lane, 99),
+                CLAIM_KIND_RANK.get(claim_kind, 50),
+                claim_id,
+            )
+        )
     if not ranked:
         return None
-    return sorted(ranked)[0][1]
+    return sorted(ranked)[0][2]
 
 
 def _best_source_lane(

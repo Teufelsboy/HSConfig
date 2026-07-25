@@ -226,6 +226,76 @@ def test_explainability_card_rows_pick_strongest_claim_and_next_action():
     }
 
 
+def test_explainability_prefers_hero_power_transform_over_generic_mechanic_usage():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "FixtureDeck",
+        "claim_rows": {
+            "claim_000_mechanic": {
+                "claim_id": "claim_000_mechanic",
+                "claim_kind": "mechanic_usage",
+                "lane": "runtime_lowered",
+                "policy_lane": "runtime_lowerable",
+                "cards": ["SW_448"],
+            },
+            "claim_999_hero_power": {
+                "claim_id": "claim_999_hero_power",
+                "claim_kind": "hero_power_transform",
+                "lane": "runtime_lowered",
+                "policy_lane": "runtime_lowerable",
+                "cards": ["SW_448"],
+            },
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "claim_000_mechanic",
+                "claim_kind": "mechanic_usage",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "allowed",
+                "surface_gate_reason": "allowed",
+                "builder_or_router_decision": "emitted",
+                "runtime_surface": "SW_448.json",
+                "emitted_files": ["SW_448.json"],
+                "suppressed_reason": None,
+                "first_missing_link": None,
+                "operator_impact": "diagnostic_only",
+            },
+            {
+                "claim_id": "claim_999_hero_power",
+                "claim_kind": "hero_power_transform",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "allowed",
+                "surface_gate_reason": "allowed",
+                "builder_or_router_decision": "emitted",
+                "runtime_surface": "SW_448.json",
+                "emitted_files": ["SW_448.json"],
+                "suppressed_reason": None,
+                "first_missing_link": None,
+                "operator_impact": "diagnostic_only",
+            },
+        ],
+        "card_rows": {
+            "SW_448": {
+                "name": "Darkbishop Benedictus",
+                "readiness_lane": "runtime_emitted",
+                "first_missing_link": "none",
+                "runtime_surfaces": ["SW_448.json"],
+                "claim_lanes": {"runtime_lowered": 2},
+            }
+        },
+    }
+
+    report = build_source_to_runtime_explainability_report(audit)
+    row = report["card_rows"][0]
+
+    assert row["strongest_claim_id"] == "claim_999_hero_power"
+    assert row["strongest_claim_kind"] == "hero_power_transform"
+    assert {claim["claim_kind"] for claim in row["evidence_chain"]} == {
+        "hero_power_transform",
+        "mechanic_usage",
+    }
+
+
 def test_explainability_card_rows_include_evidence_chain_for_runtime_and_gaps():
     report = build_source_to_runtime_explainability_report(_fixture_audit())
     rows = {row["card_id"]: row for row in report["card_rows"]}

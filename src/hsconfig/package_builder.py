@@ -205,6 +205,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     cardid_behavior_files = compile_cardid_behaviors(
         gameplan_contract,
         rows=card_behavior_plan["rows"],
+        static_runtime_suppressed_card_ids=card_behavior_plan.get(
+            "static_runtime_suppressed_card_ids",
+            [],
+        ),
     )
     config_readiness_report = build_config_readiness_report(
         deck_identity=deck_identity,
@@ -703,17 +707,46 @@ def _filter_card_behavior_plan(
     allowed_claim_ids: set[str],
 ) -> dict[str, Any]:
     result = dict(plan)
+    original_card_ids = _card_ids_from_card_behavior_rows(plan.get("rows", []))
     rows = _filter_runtime_rows_by_claim_ids(plan.get("rows", []), allowed_claim_ids)
     card_rows: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         if not isinstance(row, dict) or not row.get("card_id"):
             continue
         card_rows.setdefault(str(row["card_id"]), []).append(row)
+    kept_card_ids = set(card_rows)
+    existing_suppressed = _string_set(plan.get("static_runtime_suppressed_card_ids", []))
     result["rows"] = rows
     result["card_rows"] = {
         card_id: card_rows[card_id] for card_id in sorted(card_rows)
     }
+    result["static_runtime_suppressed_card_ids"] = sorted(
+        existing_suppressed | (original_card_ids - kept_card_ids)
+    )
     return result
+
+
+def _card_ids_from_card_behavior_rows(rows: Any) -> set[str]:
+    if not isinstance(rows, list):
+        return set()
+    return {
+        str(row["card_id"])
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("card_id")
+        and (
+            row.get("surface_family") == "CARDID.json"
+            or row.get("surface") in {"CARDID.json", "CardID.json"}
+        )
+    }
+
+
+def _string_set(value: Any) -> set[str]:
+    if isinstance(value, str):
+        value = [value]
+    if not isinstance(value, list):
+        return set()
+    return {str(item) for item in value if str(item)}
 
 
 def _filter_combo_plan(

@@ -49,6 +49,7 @@ GUIDE_BACKED_COVERAGE_STATUSES = {
     "source_backed_static_semantics",
 }
 GLOBALVALUES_SUFFICIENT_ROLES = {"hero_power_transform"}
+READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = {"role", "support_bucket"}
 
 
 def build_config_readiness_report(
@@ -87,7 +88,7 @@ def build_config_readiness_report(
     missing_counter: Counter[str] = Counter()
 
     for card_id, card in sorted(cards.items()):
-        mechanic_support = support_for_roles(card.get("roles", []))
+        mechanic_support = _readiness_mechanic_support(card.get("roles", []))
         runtime_surfaces = _runtime_surfaces(
             card_id=card_id,
             emitted_cardid_file_map=emitted_cardid_file_map,
@@ -167,6 +168,19 @@ def _cards_from_deck(
             cards[normalized_id]["card_id"] = normalized_id
 
     return cards
+
+
+def _readiness_mechanic_support(roles: Iterable[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in support_for_roles(roles):
+        rows.append(
+            {
+                key: value
+                for key, value in row.items()
+                if key not in READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS
+            }
+        )
+    return rows
 
 
 def _cards_from_any_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
