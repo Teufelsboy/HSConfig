@@ -1,161 +1,78 @@
-# Current Task 2: Embed Source Readiness Preview
+# Task 2 Report: Strict Research Result Contract Classifier
 
-Status: review hygiene complete
+## Status
 
-Current-task index:
-- Current implementation report: `## Task 2: Embed Source Readiness Preview`
-- Review hygiene fix: `## Review Fix: Source Readiness Preview Value Propagation`
-- Important review fix: `## Review Fix: Authoritative None Source Action`
-- Historical Task-2 report entries are preserved below for audit history.
+DONE
 
-# Task 2 Report: Semantic Intent Scorer
+## Scope
 
-Status: complete
+- Added `src/hsconfig/research_result_contract.py` with a pure-Python classifier.
+- Updated `src/hsconfig/research_status_sync.py` to append contract diagnostics to each research snapshot row.
+- Added and updated focused tests in `tests/test_research_result_contract.py` and `tests/test_research_status_sync.py`.
+- No runtime package, `reports/operator_summary.json`, or HearthRanger runtime file was written.
+- No `--apply` command was run.
 
-Files changed:
-- `src/hsconfig/semantic_intent_score.py`
-- `.superpowers/sdd/task-2-report.md`
+## Contract Behavior Implemented
 
-Verification:
-- RED before implementation: `python -m pytest tests\test_semantic_intent_score.py -q -p no:cacheprovider`
-  - Result: failed during collection with `ModuleNotFoundError: No module named 'hsconfig.semantic_intent_score'`.
-- Post-implementation tests: `python -m pytest tests\test_semantic_intent_score.py -q -p no:cacheprovider`
-  - Result: `5 passed in 0.07s`.
-- Compile check: `python -m py_compile src\hsconfig\semantic_intent_score.py`
-  - Result: exit 0.
-- Diff whitespace check: `git diff --check -- src/hsconfig/semantic_intent_score.py tests/test_semantic_intent_score.py .superpowers/sdd/task-2-report.md`
-  - Result: exit 0; Git emitted only an LF-to-CRLF warning for this Markdown file.
+- Missing deck identity returns `contract_valid=false` and `snapshot_kind="invalid"`.
+- Seed strengths, including `unfetched_acquisition_seed`, remain `seed_only` and non-promoting.
+- Snippet-only evidence is `partial` and non-promoting, never a URL-seed or strong proof surrogate.
+- Strong status or strength requires `first_missing_source_action="none"`, accepted lowerable claim kinds, and full-text or explicit canonical evidence before it becomes promotion-eligible.
+- Strong-looking but incomplete input is classified as `partial`.
+- Canonical downgrade and source-status apply blocking are always `false`.
+- The classifier recognizes a strong marker from any supported status/strength field, not merely the first populated one.
+- `research-status-sync` stays diagnostic-only and preserves `reports/operator_summary.json` as the normal apply authority.
 
-Commit hash:
-- The exact commit hash is reported in the final worker response after commit creation.
+## TDD Evidence
 
-Concerns:
-- `.superpowers/sdd/progress.md` was already modified outside this task and was left untouched.
-- The task requested a report file containing the final commit hash, but a commit cannot contain its own hash as stable content. The final response carries the exact hash.
+### RED
 
-## Review Fix: Explicit Value Fallback And Default Bounds
+1. Before the module existed:
 
-Status: complete
+```text
+ModuleNotFoundError: No module named 'hsconfig.research_result_contract'
+```
 
-Files changed:
-- `src/hsconfig/semantic_intent_score.py`
-- `tests/test_semantic_intent_score.py`
-- `.superpowers/sdd/task-2-report.md`
+2. Before checking all source status/strength fields:
 
-Fixes:
-- Blank `runtime_value` now falls through to a non-blank explicit `value` and still reports `reason="explicit_runtime_value"`.
-- Non-explicit semantic default fallback values are now clamped to the supported helper range `4` through `12`.
-- Explicit source values remain authoritative and are not clamped by the fallback helper.
+```text
+AssertionError: assert 'partial' == 'strong'
+```
 
-Verification:
-- RED after adding review regression tests: `python -m pytest tests\test_semantic_intent_score.py -q -p no:cacheprovider`
-  - Result: `2 failed, 5 passed`; failures covered blank `runtime_value` fallback and unclamped low default.
-- Post-fix scorer tests: `python -m pytest tests\test_semantic_intent_score.py -q -p no:cacheprovider`
-  - Result: `7 passed in 0.09s`.
-- Compile check: `python -m py_compile src\hsconfig\semantic_intent_score.py`
-  - Result: exit 0.
+Both failures were expected and directly exercised the missing behavior.
 
-## Task 2: Source Freshness Provenance Normalizer
+### GREEN
 
-Status: complete
+Focused Task 2 verification:
 
-Files changed:
-- `src/hsconfig/source_evidence_policy.py`
-- `src/hsconfig/source_autopilot.py`
-- `tests/test_source_autopilot.py`
-- `.superpowers/sdd/task-2-report.md`
+```powershell
+python -m pytest tests\test_research_result_contract.py tests\test_research_status_sync.py -q -p no:cacheprovider
+```
 
-TDD evidence:
-- RED after adding the required provenance tests:
-  `python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_exposes_current_or_evergreen_provenance tests/test_source_autopilot.py::test_source_evidence_rows_preserve_provenance_projection -q`
-  - Result: `2 failed`; both failures were expected `KeyError: 'freshness_status'` from the missing ranked/evidence-row projections.
-- GREEN after wiring `normalize_source_provenance` through policy and autopilot:
-  `python -m pytest tests/test_source_autopilot.py::test_rank_public_sources_exposes_current_or_evergreen_provenance tests/test_source_autopilot.py::test_source_evidence_rows_preserve_provenance_projection -q`
-  - Result: `2 passed in 0.32s`.
-- Focused regression suite:
-  `python -m pytest tests/test_source_autopilot.py -q`
-  - Result: `35 passed in 7.57s`.
-- Compile and whitespace checks:
-  `python -m py_compile src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py` and `git diff --check -- src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py tests/test_source_autopilot.py .superpowers/sdd/task-2-report.md`
-  - Result: exit 0. Git emitted only existing line-ending conversion warnings.
+Result: `16 passed`.
 
-Self-review:
-- `source_freshness_lane`, source rank lanes, promotion blockers, and source lane semantics remain owned by existing policy code and are unchanged.
-- Provenance is an additive diagnostic projection; `source_status_apply_blocking` is explicitly `False` and is not used as an apply gate.
-- Both ranking and evidence-row construction receive the same deck identity, preserving deck-identity provenance in derived rows.
-- No runtime, gameplay, Mulligan, default-only surface, dependency, or research changes were made.
+Final regression command:
 
-Commit info:
-- Commit message: `feat: expose source provenance in autopilot`.
-- The resulting commit hash is supplied in the task response because a commit cannot stably record its own final hash.
+```powershell
+python -m pytest tests\test_research_result_contract.py tests\test_research_status_sync.py tests\test_source_status_resolver.py tests\test_source_acquisition.py tests\test_source_text_claim_extractor.py tests\test_universal_wild_no_block_matrix.py -q -p no:cacheprovider
+```
 
-## Task 2: Embed Source Readiness Preview
+Result: `73 passed in 18.05s`.
 
-Status: complete
+Additional syntax verification:
 
-Files changed:
-- `src/hsconfig/source_autopilot.py`
-- `src/hsconfig/commands/configure.py`
-- `tests/test_source_autopilot.py`
-- `tests/test_configure_online_source.py`
-- `.superpowers/sdd/task-2-report.md`
+```powershell
+python -m compileall -q src\hsconfig\research_result_contract.py src\hsconfig\research_status_sync.py
+```
 
-TDD evidence:
-- RED after adding the required preview assertions:
-  `pytest tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
-  - Result: `3 failed, 46 passed in 11.13s`; failures were expected `KeyError: 'source_readiness_preview'` in the autopilot report and configure summary paths.
-- GREEN after embedding `build_source_readiness_preview` in autopilot and configure:
-  `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
-  - Result: `55 passed in 11.09s`.
+Result: passed.
 
-Implementation notes:
-- `source_autopilot_report["source_readiness_preview"]` is built from the in-memory autopilot report only.
-- `configure_summary["source_readiness_preview"]` is built from the existing `source_candidate_plan`, optional `source_autopilot_report.json`, and `operator_summary`.
-- The preview remains diagnostic-only and keeps `runtime_apply_authority` fixed at `reports/operator_summary.json`.
-- No runtime writes, apply gates, second apply authority, HSTuner paths, log parsing, replay parsing, HDT parsing, or gameplay evaluation were added.
+## Diff Review
 
-Open risks:
-- No broader full-repo suite was run; verification was limited to the Task-2 targeted suites from the brief plus the existing preview helper tests.
-- `.superpowers/sdd/progress.md` was already modified outside this task and was left untouched.
+- `git diff --check` passed; only Git's existing LF-to-CRLF informational warnings were emitted.
+- The existing untracked plan file `docs/superpowers/plans/2026-07-18-hsconfig-live-source-strong-config-closure.md` was preserved unchanged.
+- No commit was created.
 
-## Review Fix: Source Readiness Preview Value Propagation
+## Concerns
 
-Status: complete
-
-Files changed:
-- `tests/test_configure_online_source.py`
-- `.superpowers/sdd/task-2-report.md`
-
-Fix note:
-- Added configure-summary assertions that `source_readiness_preview["first_missing_source_action"]` is propagated from `reports/operator_summary.json` and that `recommended_next_source_action` mirrors the first missing source action.
-- Added a current-task header/index at the top of this report so the active Task 2 section is visible before older historical report entries.
-- The preferred operator field existed in the ShadowPriest fixture, so no fallback assertion was needed.
-
-Verification:
-- `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
-  - Result: `55 passed in 9.81s` on the latest rerun after all code edits.
-
-## Review Fix: Authoritative None Source Action
-
-Status: complete
-
-Files changed:
-- `src/hsconfig/source_readiness_preview.py`
-- `tests/test_source_readiness_preview.py`
-- `.superpowers/sdd/task-2-report.md`
-
-Fix note:
-- Added a regression test for `operator_summary["first_missing_source_action"] == "none"` with lower-precedence Autopilot and Candidate Plan non-none actions.
-- `_first_action` now distinguishes a missing `first_missing_source_action` key from an explicit `"none"` value. Explicit `"none"` from the operator/autopilot/strong closure path prevents lower-precedence source actions from rewriting the preview action.
-- Default-only runtime surfaces remain visible as the default-only source action and do not become hidden source-backed-strong readiness.
-
-Verification:
-- RED before implementation:
-  `pytest tests/test_source_readiness_preview.py::test_preview_keeps_operator_none_authoritative_over_lower_source_actions -q`
-  - Result: `1 failed`; expected `"none"`, actual `add_current_card_specific_runtime_source`.
-- GREEN after fix:
-  `pytest tests/test_source_readiness_preview.py::test_preview_keeps_operator_none_authoritative_over_lower_source_actions -q`
-  - Result: `1 passed in 0.10s`.
-- Targeted review suite:
-  `pytest tests/test_source_readiness_preview.py tests/test_source_autopilot.py tests/test_configure_online_source.py -q`
-  - Result: `56 passed in 11.43s`.
+- None. The classifier intentionally reports promotion eligibility only as a diagnostic input signal; it does not modify canonical package status resolution or apply gating.

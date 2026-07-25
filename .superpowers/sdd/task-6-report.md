@@ -336,12 +336,3 @@ apply-block.
   emitted rather than treating its absence as a default-only fallback.
 - The tests build isolated packages with fixture data and stubbed card fetches;
   they do not prove a live HearthRanger runtime load.
-
----
-
-## Review Follow-up: Source Provenance Compatibility
-
-- Restored the tracked Task 3-5 report history from `c1e1d9c` and retained the
-  current provenance-task reports as appended sections.
-- Preserved top-level source freshness and rank lane compatibility, including
-  explicit non-blocking stale provenance diagnostics.
