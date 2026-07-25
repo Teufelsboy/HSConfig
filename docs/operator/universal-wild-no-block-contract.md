@@ -75,6 +75,20 @@ Acceptance-loop wording:
   semantics, but must not become a mulligan keep without explicit opening-hand
   source text.
 
+## VisionAI Semantic Surface Rules
+
+HSConfig emits runtime keys only when the source evidence is both source-backed
+and semantically compatible with the HearthRanger VisionAI surface.
+
+- Non-targeted Battlecry evidence lowers to play timing, not target bonus.
+- Target bonus surfaces require explicit target evidence.
+- Start-of-game and deckbuilding effects are effect value, not automatic
+  hand or body priority.
+- Report-only mechanics remain diagnostic and do not create missing runtime
+  gaps.
+- Locations may receive play priority, while activation semantics stay
+  warning-only until a supported runtime surface exists.
+
 ## Card Data Intake
 
 HSConfig uses a three-layer intake policy:
