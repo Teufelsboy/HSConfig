@@ -32,7 +32,7 @@ Tests:
   - Result: passed. Git printed expected CRLF normalization warnings for touched files, with no whitespace errors.
 
 Commit hash:
-- Final commit hash is recorded in the Codex final response after commit creation. A commit cannot contain its own final object hash inside a tracked file.
+- Implementation commit: `208dd17458982248eeaa5cd05ec25d8231b91061`
 
 Concerns:
 - None for the requested scope.
