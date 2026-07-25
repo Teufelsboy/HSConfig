@@ -4,6 +4,7 @@ from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_contract_audit import build_source_contract_audit
+from hsconfig.source_to_runtime_explainability import _card_expected_runtime_files
 
 
 def _fixture_audit() -> dict:
@@ -619,6 +620,16 @@ def test_explainability_keeps_claim_gap_but_not_card_gap_when_runtime_is_emitted
         row for row in report["claim_rows"] if row["claim_id"] == "claim_role"
     )
     assert role_claim["first_missing_link"] == "builder_or_router"
+
+
+def test_suppressed_combo_claim_does_not_expect_card_level_combo_runtime_link():
+    claim = {
+        "claim_kind": "combo_sequence",
+        "cards": ["DS1_233", "VAC_419"],
+        "suppressed_reason": "missing_timing",
+    }
+
+    assert _card_expected_runtime_files("DS1_233", claim) == []
 
 
 def test_explainability_uses_canonical_action_for_readiness_missing_links():

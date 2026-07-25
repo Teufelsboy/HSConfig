@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.card_intent_taxonomy import classify_card_intent
 
@@ -50,7 +50,12 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    if contract.get("combos"):
+    lowerable_combos = [
+        combo
+        for combo in contract.get("combos", [])
+        if isinstance(combo, Mapping) and _combo_claim_is_runtime_lowerable(combo)
+    ]
+    if lowerable_combos:
         optional_surfaces.add("Combo.json")
         rows.append(
             {
@@ -58,7 +63,7 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
                 "card_id": None,
                 "surface": "Combo.json",
                 "intent": "same_turn_combo_sequences",
-                "source_claim_ids": _combo_claim_ids(contract),
+                "source_claim_ids": _combo_claim_ids(lowerable_combos),
             }
         )
 
@@ -98,14 +103,26 @@ def _all_source_claim_ids(contract: dict[str, Any]) -> list[str]:
     )
 
 
-def _combo_claim_ids(contract: dict[str, Any]) -> list[str]:
+def _combo_claim_ids(combos: list[Mapping[str, Any]]) -> list[str]:
     return sorted(
         {
             str(claim_id)
-            for combo in contract.get("combos", [])
+            for combo in combos
             for claim_id in combo.get("source_claim_ids", [])
         }
     )
+
+
+def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:
+    if combo.get("suppressed_reason"):
+        return False
+    if combo.get("runtime_lowering_status") in {"emitted", "runtime_lowered"}:
+        return True
+    if combo.get("runtime_surface") == "Combo.json":
+        return True
+    timing = str(combo.get("timing") or combo.get("sequence_timing") or "").strip()
+    cards = combo.get("cards") or combo.get("card_ids") or []
+    return timing in {"same_turn", "ordered", "exact_order"} and len(cards) >= 2
 
 
 def _diagnostic_card_intent(card_id: str, card: dict[str, Any]) -> dict[str, str]:

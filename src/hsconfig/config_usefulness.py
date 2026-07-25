@@ -186,13 +186,19 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
     combos = _list(report.get("combos"))
     suppressed = _list(report.get("suppressed"))
     gap_count = _int(summary.get("cards_needing_combo_sequence"))
-    combo_expected = bool(combos or suppressed or gap_count)
+    lowerable_suppressed = [
+        combo
+        for combo in suppressed
+        if isinstance(combo, dict) and _combo_claim_is_runtime_lowerable(combo)
+    ]
+    report_only_suppressed = bool(suppressed) and not lowerable_suppressed
+    combo_expected = bool(combos or lowerable_suppressed or (gap_count and not report_only_suppressed))
     if combos:
         status = "rich"
-    elif not combo_expected:
-        status = "not_expected"
     elif suppressed:
         status = "report_only"
+    elif not combo_expected:
+        status = "not_expected"
     else:
         status = "thin"
     return {
@@ -202,6 +208,18 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
         "combo_row_count": len(combos),
         "suppressed_combo_claim_count": len(suppressed),
     }
+
+
+def _combo_claim_is_runtime_lowerable(combo: dict[str, Any]) -> bool:
+    if combo.get("suppressed_reason") or combo.get("reason"):
+        return False
+    if combo.get("runtime_lowering_status") in {"emitted", "runtime_lowered"}:
+        return True
+    if combo.get("runtime_surface") == "Combo.json":
+        return True
+    timing = str(combo.get("timing") or combo.get("sequence_timing") or "").strip()
+    cards = combo.get("cards") or combo.get("card_ids") or []
+    return timing in {"same_turn", "ordered", "exact_order"} and len(cards) >= 2
 
 
 def _globalvalues_surface(report: dict[str, Any]) -> dict[str, Any]:
@@ -228,7 +246,7 @@ def _first_gap(
 ) -> str:
     if _int(summary.get("cards_needing_runtime_surface")):
         return "runtime_surface_gap"
-    if _int(summary.get("cards_needing_combo_sequence")) or combo["status"] in {"thin", "report_only"} and combo["combo_expected"]:
+    if combo["combo_expected"] and combo["status"] in {"thin", "report_only"}:
         return "combo_gap"
     if _int(summary.get("cards_needing_condition_lowering")):
         return "condition_gap"

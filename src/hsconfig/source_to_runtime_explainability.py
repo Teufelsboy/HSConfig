@@ -759,11 +759,25 @@ def _card_expected_runtime_files(
         return [f"{card_id}.json"]
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
         return ["Mulligan.json"]
-    if claim_kind == "combo_sequence":
+    if claim_kind == "combo_sequence" and _combo_claim_is_runtime_lowerable(
+        strongest_claim
+    ):
         return ["Combo.json"]
     if claim_kind in {"gameplan_posture", "globalvalue_numeric_tuning"}:
         return ["GlobalValues.json"]
     return []
+
+
+def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:
+    if combo.get("suppressed_reason") or combo.get("why_not_emitted"):
+        return False
+    if combo.get("runtime_lowering_status") in {"emitted", "runtime_lowered"}:
+        return True
+    if combo.get("runtime_surface") == "Combo.json":
+        return True
+    timing = str(combo.get("timing") or combo.get("sequence_timing") or "").strip()
+    cards = combo.get("cards") or combo.get("card_ids") or []
+    return timing in {"same_turn", "ordered", "exact_order"} and len(cards) >= 2
 
 
 def _aggregate_expected_card_files(

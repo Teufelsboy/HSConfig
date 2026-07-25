@@ -371,9 +371,10 @@ def test_report_only_combo_claim_without_combo_json_is_not_default_only_runtime(
 
     combo = usefulness["surfaces"]["combo"]
     assert combo["status"] == "report_only"
-    assert combo["combo_expected"] is True
+    assert combo["combo_expected"] is False
     assert combo["suppressed_combo_claim_count"] == 1
     assert combo["default_only"] is False
+    assert usefulness["first_usefulness_gap"] != "combo_gap"
 
 
 def test_combo_readiness_gap_stays_visible_without_default_only_runtime():
@@ -407,6 +408,38 @@ def test_combo_readiness_gap_stays_visible_without_default_only_runtime():
 
     combo = usefulness["surfaces"]["combo"]
     assert combo["status"] == "report_only"
-    assert combo["combo_expected"] is True
+    assert combo["combo_expected"] is False
     assert combo["default_only"] is False
-    assert usefulness["first_usefulness_gap"] == "combo_gap"
+    assert usefulness["first_usefulness_gap"] != "combo_gap"
+
+
+def test_report_only_combo_claim_is_diagnostic_not_usefulness_gap():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="STATIC_SEMANTICS_USABLE",
+        config_readiness_summary={},
+        mulligan_plan_report={
+            "rules": [{"card": "CARD_001", "selector_kind": "card", "action": "hold"}],
+            "quality": {"has_concrete_keeps": True},
+        },
+        card_behavior_plan_report={
+            "rows": [
+                {
+                    "card_id": "CARD_001",
+                    "meaningful_runtime_surface": True,
+                    "behavior_block": {"BeforePlayCardBonus": {"values": []}},
+                }
+            ]
+        },
+        combo_plan_report={
+            "combos": [],
+            "suppressed": [{"reason": "missing_timing"}],
+        },
+        globalvalues_profile_report={"changed_keys": ["FirstTurnValueWeight"]},
+    )
+
+    combo = usefulness["surfaces"]["combo"]
+    assert combo["combo_expected"] is False
+    assert combo["combo_row_count"] == 0
+    assert combo["suppressed_combo_claim_count"] == 1
+    assert usefulness["first_usefulness_gap"] != "combo_gap"

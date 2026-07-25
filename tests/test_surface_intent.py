@@ -16,7 +16,13 @@ def test_surface_intent_routes_normal_runtime_surfaces_from_contract():
             },
         },
         "mulligan_anchors": [{"card_id": "EX1_001", "source_claim_ids": ["claim_a"]}],
-        "combos": [{"rule_id": "combo_1", "cards": ["EX1_001", "EX1_002"]}],
+        "combos": [
+            {
+                "rule_id": "combo_1",
+                "cards": ["EX1_001", "EX1_002"],
+                "timing": "same_turn",
+            }
+        ],
         "policies": {
             "presume": [{"rule_id": "presume_1", "value": "opponent_is_slow"}],
             "concede": [{"rule_id": "concede_1", "value": "lethal_unavailable"}],
@@ -37,6 +43,25 @@ def test_surface_intent_routes_normal_runtime_surfaces_from_contract():
     assert "Combo.json" in intent["optional_surfaces"]
     assert "Presume.json" not in intent["optional_surfaces"]
     assert "Concede.json" not in intent["optional_surfaces"]
+
+
+def test_report_only_combo_does_not_make_combo_surface_expected():
+    contract = {
+        "deck_name": "ShadowPriest",
+        "cards": {},
+        "combos": [
+            {
+                "claim_id": "combo-report-only",
+                "cards": ["DS1_233", "VAC_419"],
+                "suppressed_reason": "missing_timing",
+            }
+        ],
+    }
+
+    intent = build_surface_intent(contract)
+
+    assert "Combo.json" not in intent.get("required_surfaces", [])
+    assert "Combo.json" not in intent.get("optional_surfaces", [])
 
 
 def test_surface_intent_does_not_route_legacy_policy_surfaces_even_when_flagged():
