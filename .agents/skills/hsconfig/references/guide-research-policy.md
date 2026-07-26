@@ -78,6 +78,10 @@ stable visible reason. It does not block the
 `policy_backed`, never count as exact guide evidence, and cannot infer a
 Darkbishop opening-hand keep from its start-of-game effect.
 
+The same four exact public-guide fields gate `gameplan_posture` before it can
+authorize a GlobalValues posture overlay. Archetype-only posture claims remain
+visible with a stable suppression reason and preserve the validated baseline.
+
 Short evidence row shape for `--source-evidence-json`:
 
 ```json

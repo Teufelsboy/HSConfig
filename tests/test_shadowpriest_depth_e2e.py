@@ -162,7 +162,7 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         }
     )
     for claim in guide_document["claims"]:
-        if claim["claim_kind"] == "mulligan_keep":
+        if claim["claim_kind"] in {"mulligan_keep", "gameplan_posture"}:
             claim["promotion_eligible"] = True
     guide_sources.write_text(json.dumps(guide_payload), encoding="utf-8")
     package = tmp_path / "package"

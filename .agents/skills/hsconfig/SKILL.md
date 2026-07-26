@@ -24,7 +24,7 @@ Read `<out>/configure_summary.json.handoff_contract` next as diagnostic-only pre
 Read `<out>/configure_summary.json.config_proof_summary` and `<out>/configure_summary.json.config_quality_summary` only as diagnostic proof.
 These summaries do not replace `reports/operator_summary.json`, cannot apply runtime files, and cannot turn source gaps into blockers.
 
-For an optimal fresh deck config, prefer:
+For a source-refreshed deck config on the source-backed route, use this command only when runtime installation is intended:
 `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --apply --json`
 
 Before source refresh, deck package generation, or runtime-facing apply work, run `git fetch --all --prune --tags`, then `python scripts/check_hsconfig_currentness.py --cwd . --json`.

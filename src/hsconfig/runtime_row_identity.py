@@ -81,10 +81,13 @@ def canonicalize_runtime_rows(
         representative = min(signature_rows, key=_representative_sort_key)
         canonical = dict(representative)
         source_claim_ids = _merged_source_claim_ids(signature_rows)
+        source_refs = _merged_source_refs(signature_rows)
         merged_claim_ids = _merged_claim_ids(signature_rows)
         if len(signature_rows) > 1:
             merged_claim_ids = _all_provenance_claim_ids(signature_rows)
         canonical["source_claim_ids"] = source_claim_ids
+        if source_refs:
+            canonical["source_refs"] = source_refs
         if merged_claim_ids:
             canonical["merged_claim_ids"] = merged_claim_ids
         canonical_rows.append(canonical)
@@ -94,6 +97,7 @@ def canonicalize_runtime_rows(
                 {
                     "signature": list(signature),
                     "source_claim_ids": source_claim_ids,
+                    "source_refs": source_refs,
                     "merged_claim_ids": merged_claim_ids,
                 }
             )
@@ -130,6 +134,21 @@ def _merged_source_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:
         if claim_id:
             claim_ids.add(claim_id)
     return sorted(claim_ids)
+
+
+def _merged_source_refs(rows: Iterable[dict[str, Any]]) -> list[str]:
+    source_refs: set[str] = set()
+    for row in rows:
+        values = row.get("source_refs", [])
+        if isinstance(values, str):
+            values = [values]
+        if isinstance(values, (list, tuple, set)):
+            source_refs.update(
+                normalized
+                for item in values
+                if (normalized := str(item).strip())
+            )
+    return sorted(source_refs)
 
 
 def _merged_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:

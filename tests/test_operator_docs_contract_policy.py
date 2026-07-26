@@ -872,6 +872,9 @@ def test_operator_contract_models_physical_rows_and_assurance_dimensions() -> No
     )
     assert rows["duplicate_provenance"]["Result"] == "merge and sort provenance"
     assert rows["conflicting_values"]["Result"] == "fail closed; suppress physical row"
+    assert rows["physical_report_parity"]["Shape"] == (
+        "physical CardID values versus meaningful card-behavior report rows"
+    )
     assert rows["physical_report_parity"]["Result"] == "exact row parity required"
 
     assert set(assurance) == {
@@ -887,3 +890,7 @@ def test_operator_contract_models_physical_rows_and_assurance_dimensions() -> No
     )
     assert assurance["optimality_claim_allowed"]["Contract value"] == "false"
     assert assurance["runtime_gate_impact"]["Contract value"] == "none"
+
+    surfaces = _markdown_table(spine, "## ShadowPriest Runtime Surfaces")
+    assert surfaces["reciprocal_hero_burn"]["Runtime surface"] == "report-only"
+    assert "state_dependent" not in surfaces

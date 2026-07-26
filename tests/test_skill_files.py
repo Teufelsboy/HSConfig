@@ -1458,4 +1458,11 @@ def test_skill_entrypoint_routes_audited_closure_to_direct_references() -> None:
     assert card_contract["summon_trigger_board_engine"]["Behavior block"] == (
         "OnBoardBonus"
     )
+    assert card_contract["reciprocal_hero_burn"]["Emission status"] == "report_only"
+    assert "state_dependent" not in card_contract
     assert card_contract["metadata_only"]["Emission status"] == "report_only"
+
+    row_contract = _markdown_table(card, "## Physical Runtime Row Contract")
+    assert row_contract["physical_report_parity"]["Shape"] == (
+        "physical CardID values versus meaningful card-behavior report rows"
+    )

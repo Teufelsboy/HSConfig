@@ -1,5 +1,6 @@
 from hsconfig.globalvalues_key_authority import authority_for_key
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
+from hsconfig.source_document_model import can_lower_to_globalvalues
 
 
 def test_globalvalues_key_authority_classifies_core_keys():
@@ -207,3 +208,78 @@ def test_globalvalues_ignores_aggro_profile_without_authorized_posture_claims():
             "reason": "no_source_backed_posture_overlay",
         }
     ]
+
+
+def _public_guide_posture_claim(
+    *,
+    deck_match_scope: str,
+    source_lane: str,
+) -> dict[str, object]:
+    return {
+        "claim_id": f"{deck_match_scope}-posture",
+        "claim_kind": "gameplan_posture",
+        "stance": "aggressive",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "source_type": "public_guide",
+        "source_family": "guide",
+        "deck_match_scope": deck_match_scope,
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": source_lane,
+        "source_refs": [f"guide:{deck_match_scope}"],
+    }
+
+
+def test_archetype_only_public_guide_posture_is_visibly_suppressed() -> None:
+    claim = _public_guide_posture_claim(
+        deck_match_scope="archetype_matched",
+        source_lane="archetype_matched_public_guide",
+    )
+
+    decision = can_lower_to_globalvalues(claim)
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggressive",
+        claims=[claim],
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "globalvalues_requires_exact_deck_match"
+    assert matrix["posture"] == "baseline"
+    assert matrix["allowed_step1_overlays"][0]["reason"] == (
+        "no_source_backed_posture_overlay"
+    )
+    suppression = next(
+        row
+        for row in matrix["blocked_until_runtime_evidence"]
+        if row.get("claim_refs") == [
+            "archetype_matched-posture",
+            "guide:archetype_matched",
+        ]
+    )
+    assert suppression["authority"] == "source_contract_suppressed"
+    assert suppression["reason"] == "globalvalues_requires_exact_deck_match"
+
+
+def test_exact_public_guide_posture_remains_authorized() -> None:
+    claim = _public_guide_posture_claim(
+        deck_match_scope="exact_deck_matched",
+        source_lane="deck_matched_public_guide",
+    )
+
+    decision = can_lower_to_globalvalues(claim)
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggressive",
+        claims=[claim],
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+    assert matrix["posture"] == "aggro"
+    assert {
+        row["key"] for row in matrix["allowed_step1_overlays"]
+    } >= {"FirstTurnValueWeight", "MyHeroPowerValue"}
+    assert not any(
+        row.get("authority") == "source_contract_suppressed"
+        for row in matrix["blocked_until_runtime_evidence"]
+    )

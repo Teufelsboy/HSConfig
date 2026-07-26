@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.deckstring_decode import decode_deck_code
 
 
 SHADOWPRIEST_CODE = (
@@ -987,6 +989,10 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
 def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     tmp_path: Path, capsys
 ):
+    decoded_deck = decode_deck_code(SHADOWPRIEST_CODE)
+    deck_fingerprint = stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in decoded_deck["cards"]
+    )
     source_documents = tmp_path / "source_documents.json"
     source_documents.write_text(
         json.dumps(
@@ -999,6 +1005,16 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
                         "retrieved_at": "2026-07-06T00:00:00Z",
                         "deck_name": "ShadowPriest",
                         "archetype": "weapon_pressure",
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match_scope": "exact_deck_matched",
+                        "promotion_eligible": True,
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "matched": True,
+                                "matched_deck_fingerprint": deck_fingerprint,
+                            }
+                        },
                         "claims": [
                             {
                                 "claim_kind": "gameplan_posture",
@@ -1006,6 +1022,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
                                 "stance": "weapon_pressure",
                                 "reason": "Prioritize weapon pressure.",
                                 "source_confidence": "high",
+                                "promotion_eligible": True,
                             }
                         ],
                     }

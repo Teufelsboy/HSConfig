@@ -180,3 +180,46 @@ def test_conflict_reports_complete_stable_provenance():
         "raw-b",
         "raw-shared",
     ]
+
+
+def test_exact_duplicate_source_refs_are_merged_for_every_input_permutation():
+    rows = [
+        {
+            "card_id": "REV_290",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "8",
+            "claim_id": claim_id,
+            "source_refs": source_refs,
+        }
+        for claim_id, source_refs in (
+            ("claim-a", ["guide:z", "guide:shared"]),
+            ("claim-b", ["guide:a", "guide:shared"]),
+            ("claim-c", ["guide:m"]),
+        )
+    ]
+
+    encoded_results = set()
+    for permutation in permutations(rows):
+        result = canonicalize_runtime_rows(permutation)
+        assert result["rows"][0]["source_refs"] == [
+            "guide:a",
+            "guide:m",
+            "guide:shared",
+            "guide:z",
+        ]
+        assert result["merged_provenance"][0]["source_refs"] == [
+            "guide:a",
+            "guide:m",
+            "guide:shared",
+            "guide:z",
+        ]
+        encoded_results.add(
+            json.dumps(
+                result,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+
+    assert len(encoded_results) == 1

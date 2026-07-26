@@ -138,7 +138,19 @@ def test_skill_sync_propagates_source_backed_closure_guidance(tmp_path: Path):
         encoding="utf-8"
     )
 
-    assert "For an optimal fresh deck config, prefer:" in skill_text
+    for text in (skill_text, workflow_text):
+        apply_line_index = next(
+            index
+            for index, line in enumerate(text.splitlines())
+            if "--online-source --auto-source --apply --json" in line
+        )
+        route_context = " ".join(
+            text.splitlines()[max(0, apply_line_index - 1) : apply_line_index + 1]
+        ).lower()
+        assert "source-refreshed" in route_context
+        assert "runtime install" in route_context
+        assert "only when" in route_context
+        assert "optimal fresh deck config" not in text.lower()
     references_block = skill_text.split("## References:", 1)[1]
     assert "references/contract-compiler-checklist.md" in references_block
     assert (

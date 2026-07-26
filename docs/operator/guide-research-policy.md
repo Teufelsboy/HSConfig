@@ -76,6 +76,11 @@ explicitly `policy_backed`, never count as exact guide evidence, and still
 exclude non-hand start-of-game effects such as Darkbishop Benedictus unless
 separate exact opening-hand authority exists.
 
+The same four exact public-guide fields gate `gameplan_posture` before it can
+authorize a GlobalValues posture overlay. Archetype-only posture claims remain
+visible with a stable suppression reason and leave validated baseline posture
+values unchanged.
+
 ## Structured Source Format
 
 Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.

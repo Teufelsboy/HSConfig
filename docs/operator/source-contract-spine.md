@@ -42,8 +42,10 @@ Load safety does not prove in-client optimality.
 | `hero_power_transform` | `SW_448 -> EX1_625t` | one `BeforeUseHeroPowerBonus` | No Darkbishop body priority and no inferred Mulligan keep. |
 | `gameplan_posture` | separate exact guide claim | `GlobalValues.json` posture overlay | The Hero Power transform alone has no aggressive GlobalValues authority. |
 | `summon_trigger_board_engine` | Treasure Distributor or Ship's Chirurgeon | `OnBoardBonus` | Board engine value only; it does not claim the card summons a minion. |
-| `reciprocal_burn` | reciprocal health effect | report-only | Self-health safety is not proven by the supported condition grammar. |
-| `state_dependent` | unresolved runtime state | report-only | Emit only after a documented deterministic condition exists. |
+| `reciprocal_hero_burn` | reciprocal health effect | report-only | Self-health safety is not proven by the supported condition grammar. |
+
+Other state-dependent mechanics remain report-only until a documented
+deterministic condition exists.
 
 ## Physical Runtime Row Contract
 
@@ -53,13 +55,15 @@ Load safety does not prove in-client optimality.
 | `full_signature` | `(card_id, behavior_block, condition, value)` | canonical emitted-row identity |
 | `duplicate_provenance` | identical full signature | merge and sort provenance |
 | `conflicting_values` | same runtime key with different values | fail closed; suppress physical row |
-| `physical_report_parity` | physical rows versus `runtime_emitted` lifecycle rows | exact row parity required |
+| `physical_report_parity` | physical CardID `values` versus meaningful card-behavior report rows | exact row parity required |
 
 Equivalent physical rows emit once while their source claim IDs, source
 references, and lifecycle claim IDs merge deterministically. Conflicting values
 must stay visible in diagnostics and must not reach runtime output. Reports may
 call a CardID row `runtime_emitted` only when the parsed physical payload
-contains the matching non-metadata `values` row.
+contains the matching non-metadata `values` row. Every physical CardID `values`
+row must correspond to one meaningful card-behavior report row, and every such
+meaningful report row must correspond to physical output.
 
 ## Configuration Assurance
 

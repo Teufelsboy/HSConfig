@@ -100,8 +100,7 @@ unless a documented VisionAI surface can express them safely.
 | --- | --- | --- | --- |
 | `hero_power_transform` | `SW_448 -> EX1_625t` | `BeforeUseHeroPowerBonus` | exactly one active row |
 | `summon_trigger_board_engine` | Treasure Distributor or Ship's Chirurgeon | `OnBoardBonus` | one active row per card |
-| `reciprocal_burn` | reciprocal health effect | none | report_only |
-| `state_dependent` | unresolved runtime state | none | report_only |
+| `reciprocal_hero_burn` | reciprocal health effect | none | report_only |
 | `metadata_only` | filename or identity metadata only | none | report_only |
 
 Darkbishop owns no body priority and no inferred Mulligan keep. Reciprocal burn
@@ -117,12 +116,14 @@ parsed physical payload with a non-metadata `values` row can earn that status.
 | `full_signature` | `(card_id, behavior_block, condition, value)` | canonical emitted-row identity |
 | `duplicate_provenance` | identical full signature | merge and sort provenance |
 | `conflicting_values` | same runtime key with different values | fail closed; suppress physical row |
-| `physical_report_parity` | physical rows versus emitted lifecycle rows | exact row parity required |
+| `physical_report_parity` | physical CardID `values` versus meaningful card-behavior report rows | exact row parity required |
 
 Duplicate full signatures emit once while source claim IDs, source references,
 and lifecycle claim IDs merge deterministically. Different values for the same
 runtime key must fail closed and remain diagnostic. Physical output and
-`runtime_emitted` report rows must have exact parity.
+meaningful card-behavior report rows must have exact parity: every physical
+CardID `values` row has one meaningful report row, and every meaningful report
+row has physical output.
 
 ## Configuration Assurance
 

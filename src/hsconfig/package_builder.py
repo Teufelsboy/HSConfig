@@ -38,6 +38,7 @@ from hsconfig.source_claim_conflicts import build_claim_conflict_report
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
+    lifecycle_claim_id,
     runtime_claims_for_surface,
     select_claims_for_surface,
 )
@@ -142,13 +143,27 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     ]
     cardid_claims = runtime_claims_for_surface(initial_lifecycle_rows, "cardid")
     combo_claims = runtime_claims_for_surface(initial_lifecycle_rows, "combo")
-    globalvalues_claims = runtime_claims_for_surface(
+    globalvalues_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "globalvalues",
     )
-    globalvalues_authority_claims = [
+    globalvalues_claims = globalvalues_selection["accepted_claims"]
+    globalvalues_decision_claims = [
         *globalvalues_claims,
-        *_runtime_evidence_globalvalue_claims(initial_lifecycle_rows),
+        *globalvalues_selection["rejected_claims"],
+    ]
+    globalvalues_decision_claim_ids = {
+        lifecycle_claim_id(claim) for claim in globalvalues_decision_claims
+    }
+    globalvalues_authority_claims = [
+        *globalvalues_decision_claims,
+        *[
+            claim
+            for claim in _runtime_evidence_globalvalue_claims(
+                initial_lifecycle_rows
+            )
+            if lifecycle_claim_id(claim) not in globalvalues_decision_claim_ids
+        ],
     ]
     mulligan_plan = build_mulligan_plan(
         deck_name=args.deck_name,

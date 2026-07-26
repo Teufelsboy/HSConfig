@@ -55,8 +55,12 @@ def build_globalvalues_authority_matrix(
     aggression_profile: str,
     claims: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    claim_decisions = [
+        (claim, can_lower_to_globalvalues(claim))
+        for claim in claims
+    ]
     lowerable_claims = [
-        claim for claim in claims if can_lower_to_globalvalues(claim).allowed
+        claim for claim, decision in claim_decisions if decision.allowed
     ]
     claim_refs = _claim_refs(lowerable_claims)
     posture = _resolve_posture(aggression_profile, lowerable_claims)
@@ -106,6 +110,13 @@ def build_globalvalues_authority_matrix(
     for claim in claims:
         if normalized_claim_kind(claim) == "globalvalue_numeric_tuning":
             blocked.append(_numeric_tuning_blocked_row(claim))
+    for claim, decision in claim_decisions:
+        if (
+            normalized_claim_kind(claim) == "gameplan_posture"
+            and not decision.allowed
+            and decision.reason.startswith("globalvalues_requires_")
+        ):
+            blocked.append(_source_contract_suppressed_row(claim, decision.reason))
     return {
         "aggression_profile": aggression_profile,
         "posture": posture or "baseline",
@@ -176,6 +187,24 @@ def _numeric_tuning_blocked_row(claim: dict[str, Any]) -> dict[str, Any]:
         "claim_refs": _claim_refs([claim]),
         "reason": "requires_runtime_evidence",
         "blocked_reason": "requires_runtime_evidence",
+    }
+    claim_id = lifecycle_claim_id(claim)
+    if claim_id:
+        row["claim_id"] = claim_id
+    return row
+
+
+def _source_contract_suppressed_row(
+    claim: dict[str, Any],
+    reason: str,
+) -> dict[str, Any]:
+    row = {
+        "key": "gameplan_posture",
+        "authority": "source_contract_suppressed",
+        "key_authority": authority_for_key("gameplan_posture"),
+        "claim_refs": _claim_refs([claim]),
+        "reason": reason,
+        "blocked_reason": reason,
     }
     claim_id = lifecycle_claim_id(claim)
     if claim_id:

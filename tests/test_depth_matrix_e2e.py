@@ -39,6 +39,7 @@ def test_depth_matrix_shadowpriest_primary_surface_contract(tmp_path: Path):
     operator = read_json(reports / "operator_summary.json")
     gameplan = read_json(reports / "gameplan_contract.json")
     globalvalues_profile = read_json(reports / "globalvalues_profile.json")
+    authority = read_json(reports / "global_values_authority_matrix.json")
 
     assert code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
@@ -55,7 +56,19 @@ def test_depth_matrix_shadowpriest_primary_surface_contract(tmp_path: Path):
         effect["target_card_id"] == "EX1_625t"
         for effect in gameplan["deckwide_effects"]
     )
-    assert globalvalues_profile["keys"]["MyHeroPowerValue"]["status"] == "overlay_changed"
+    assert authority["posture"] == "baseline"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row["key"] == "gameplan_posture"
+        and row["authority"] == "source_contract_suppressed"
+        and row["reason"] == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert globalvalues_profile["keys"]["MyHeroPowerValue"]["status"] == (
+        "baseline_confirmed"
+    )
 
 
 def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
@@ -93,12 +106,14 @@ def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
-    assert authority["posture"] == "token_board"
-    assert allowed & {
-        "GlobalMinionAttack",
-        "GlobalMinionHealth",
-        "GlobalMinionIntrinsicValue",
-    }
+    assert authority["posture"] == "baseline"
+    assert allowed == {"baseline"}
+    assert any(
+        row["key"] == "gameplan_posture"
+        and row["authority"] == "source_contract_suppressed"
+        and row["reason"] == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
 
 
 def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypatch):
