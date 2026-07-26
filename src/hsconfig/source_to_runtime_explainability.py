@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
+from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.source_claim_gap_report import NEXT_ACTION_BY_MISSING_LINK
 
 
@@ -63,8 +64,15 @@ def build_source_to_runtime_explainability_report(
         audit if audit is not None else source_contract_audit_report,
         runtime_files=runtime_files,
     )
+    accepted_behavior_rows, owner_collisions = (
+        partition_runtime_entity_owner_rows(
+            row
+            for row in (card_behavior_plan or {}).get("rows", [])
+            if isinstance(row, Mapping)
+        )
+    )
     runtime_entity_transitions = _runtime_entity_transitions(
-        card_behavior_plan or {}
+        {"rows": accepted_behavior_rows}
     )
     ownership_by_claim_id = {
         row["claim_id"]: row
@@ -115,6 +123,7 @@ def build_source_to_runtime_explainability_report(
             }
             for row in runtime_entity_transitions
         ],
+        "runtime_entity_owner_collisions": owner_collisions,
         "operator_attention": _operator_attention_rows(card_rows),
     }
 

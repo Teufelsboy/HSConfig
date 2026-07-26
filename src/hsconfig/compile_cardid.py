@@ -6,6 +6,7 @@ from hsconfig.mechanic_support import (
     ROLE_ALIASES,
     normalize_role_token,
 )
+from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 
 
@@ -34,11 +35,15 @@ class CompiledCardIdFiles(dict[str, dict[str, Any]]):
         *args: Any,
         merged_duplicate_runtime_row_count: int = 0,
         runtime_row_conflicts: list[dict[str, Any]] | None = None,
+        runtime_entity_owner_collisions: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.merged_duplicate_runtime_row_count = merged_duplicate_runtime_row_count
         self.runtime_row_conflicts = list(runtime_row_conflicts or [])
+        self.runtime_entity_owner_collisions = list(
+            runtime_entity_owner_collisions or []
+        )
 
 
 def compile_cardid_behaviors(
@@ -51,14 +56,18 @@ def compile_cardid_behaviors(
     contract = contract or {}
     deck_name = deck_name or str(contract.get("deck_name", "Deck"))
     del static_runtime_suppressed_card_ids
+    accepted_rows, owner_collisions = partition_runtime_entity_owner_rows(
+        rows or []
+    )
     cards = _cards_from_contract(contract)
-    if rows:
-        _merge_row_cards(cards, _cards_from_rows(rows))
+    if accepted_rows:
+        _merge_row_cards(cards, _cards_from_rows(accepted_rows))
     canonical = _canonicalize_card_behavior_rows(cards)
 
     files = CompiledCardIdFiles(
         merged_duplicate_runtime_row_count=canonical["merged_duplicate_count"],
         runtime_row_conflicts=canonical["conflicts"],
+        runtime_entity_owner_collisions=owner_collisions,
     )
     for card_id, card in sorted(cards.items()):
         config: dict[str, Any] = {

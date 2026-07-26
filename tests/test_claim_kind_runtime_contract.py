@@ -1033,7 +1033,7 @@ def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
         "claim_kind": "hero_power_transform",
         "claim_readiness": "source_backed_static_semantics",
         "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_HP"],
+        "cards": ["SW_448"],
         "runtime_block": "BeforeUseHeroPowerBonus",
     }
 
@@ -1042,14 +1042,15 @@ def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
     routed = route_card_behavior_surfaces(
         [claim],
         identity_links={
-            "CARD_HP": {"hero_power_transform": "HERO_POWER_HP"}
+            "SW_448": {"hero_power_transform": "EX1_625t"}
         },
     )
 
     assert cardid_decision.allowed is True
     assert mulligan_decision.allowed is False
     assert mulligan_decision.reason == "claim_kind_not_mulligan_surface"
-    assert routed["rows"][0]["card_id"] == "CARD_HP"
+    assert routed["rows"][0]["card_id"] == "SW_448"
+    assert routed["rows"][0]["runtime_card_id"] == "EX1_625t"
     assert routed["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
     assert routed["suppressed"] == []
 

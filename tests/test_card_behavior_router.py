@@ -657,7 +657,7 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
         {
             "claim_id": "claim_hero_power",
             "claim_kind": "hero_power_transform",
-            "cards": ["CARD_A"],
+            "cards": ["SW_448"],
             "stance": "use_hero_power_pressure",
             "runtime_value": "4",
             "source_lane": "deck_matched_public_guide",
@@ -677,21 +677,25 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
     plan = route_card_behavior_surfaces(
         claims,
         identity_links={
-            "CARD_A": {"hero_power_transform": "HERO_POWER_A"},
+            "SW_448": {"hero_power_transform": "EX1_625t"},
             "CARD_Z": [{"link_kind": "entourage", "card_id": "CHOICE_ALPHA"}],
         },
     )
 
     assert [row["claim_id"] for row in plan["rows"]] == [
-        "claim_hero_power",
         "claim_target",
         "claim_choose_one",
+        "claim_hero_power",
     ]
-    assert [row["card_id"] for row in plan["rows"]] == ["CARD_A", "CARD_B", "CARD_Z"]
+    assert [row["card_id"] for row in plan["rows"]] == [
+        "CARD_B",
+        "CARD_Z",
+        "SW_448",
+    ]
     assert [row["behavior_block"] for row in plan["rows"]] == [
-        "BeforeUseHeroPowerBonus",
         "BeforeBattlecryTargetBonus",
         "OnChooseOneCardBonus",
+        "BeforeUseHeroPowerBonus",
     ]
     assert plan["option_resolution"] == [
         {
@@ -1029,6 +1033,71 @@ def test_hero_power_transform_claim_routes_to_curated_linked_runtime_owner():
     assert plan["rows"][0]["link_kind"] == "hero_power_transform"
     assert plan["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
     assert plan["rows"][0]["meaningful_runtime_surface"] is True
+
+
+def test_hero_power_transform_rejects_unauthorized_supplement_owner_link():
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+    from hsconfig.linked_entity_supplement import curated_links_for
+
+    supplement_owner_links = {
+        str(row["link_kind"]): str(row["card_id"])
+        for row in curated_links_for("EX1_625")
+    }
+    assert supplement_owner_links == {
+        "hero_power_transform": "EX1_625t"
+    }
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_shadowform",
+                "claim_kind": "hero_power_transform",
+                "cards": ["EX1_625"],
+                "claim_readiness": "source_backed_static_semantics",
+                "stance": "shadow_hero_power_pressure",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+            }
+        ],
+        identity_links={"EX1_625": supplement_owner_links},
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_shadowform",
+            "claim_kind": "hero_power_transform",
+            "cards": ["EX1_625"],
+            "reason": "linked_runtime_entity_unresolved",
+        }
+    ]
+
+
+def test_hero_power_transform_rejects_artificial_owner_link():
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_artificial",
+                "claim_kind": "hero_power_transform",
+                "cards": ["CARD_HP"],
+                "claim_readiness": "source_backed_static_semantics",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+            }
+        ],
+        identity_links={
+            "CARD_HP": {
+                "hero_power_transform": "HERO_POWER_HP",
+            }
+        },
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == (
+        "linked_runtime_entity_unresolved"
+    )
 
 
 def test_hero_power_transform_claim_without_curated_owner_is_suppressed():

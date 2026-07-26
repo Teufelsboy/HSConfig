@@ -3,9 +3,17 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from hsconfig.card_intent_taxonomy import classify_card_intent
+from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 
 
 def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
+    accepted_behavior_rows, owner_collisions = (
+        partition_runtime_entity_owner_rows(
+            row
+            for row in _card_behavior_rows(contract)
+            if isinstance(row, Mapping)
+        )
+    )
     rows = [
         {
             "rule_id": "globalvalues_full_key_profile",
@@ -36,7 +44,9 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    for runtime_card_id, ownership in _linked_runtime_entities(contract).items():
+    for runtime_card_id, ownership in _linked_runtime_entities(
+        accepted_behavior_rows
+    ).items():
         surface = f"{runtime_card_id}.json"
         if surface in required_surfaces:
             continue
@@ -106,6 +116,7 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
         "minimum_required_runtime_surfaces": minimum_required_runtime_surfaces,
         "rich_optional_runtime_surfaces": rich_optional_runtime_surfaces,
         "surface_count": len(required_surfaces) + len(optional_surfaces),
+        "runtime_entity_owner_collisions": owner_collisions,
     }
 
 
@@ -116,16 +127,17 @@ def _cards(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(card["card_id"]): dict(card) for card in sorted(cards, key=lambda row: row["card_id"])}
 
 
-def _linked_runtime_entities(
-    contract: Mapping[str, Any],
-) -> dict[str, dict[str, Any]]:
+def _card_behavior_rows(contract: Mapping[str, Any]) -> list[Any]:
     card_behavior_plan = contract.get("card_behavior_plan", {})
     if not isinstance(card_behavior_plan, Mapping):
-        return {}
+        return []
     rows = card_behavior_plan.get("rows", [])
-    if not isinstance(rows, list):
-        return {}
+    return rows if isinstance(rows, list) else []
 
+
+def _linked_runtime_entities(
+    rows: list[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
     linked: dict[str, dict[str, Any]] = {}
     for row in rows:
         if not isinstance(row, Mapping):

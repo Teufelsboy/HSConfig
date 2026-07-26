@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from hsconfig.report_ownership import build_report_ownership
+from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 
 
 KNOWN_DIAGNOSTIC_REPORT_FILES = frozenset(
@@ -69,7 +70,16 @@ def build_output_ownership_manifest(
     card_behavior_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     report_rows = {row["file"]: dict(row) for row in build_report_ownership()}
-    runtime_entity_ownership = _runtime_entity_ownership(card_behavior_plan or {})
+    accepted_behavior_rows, owner_collisions = (
+        partition_runtime_entity_owner_rows(
+            row
+            for row in (card_behavior_plan or {}).get("rows", [])
+            if isinstance(row, dict)
+        )
+    )
+    runtime_entity_ownership = _runtime_entity_ownership(
+        accepted_behavior_rows
+    )
     ownership_by_runtime_card_id = {
         row["runtime_card_id"]: row for row in runtime_entity_ownership
     }
@@ -112,16 +122,15 @@ def build_output_ownership_manifest(
         },
         "files": files,
         "runtime_entity_ownership": runtime_entity_ownership,
+        "runtime_entity_owner_collisions": owner_collisions,
     }
 
 
 def _runtime_entity_ownership(
-    card_behavior_plan: dict[str, Any],
+    behavior_rows: Sequence[dict[str, Any]],
 ) -> list[dict[str, str]]:
     rows: dict[tuple[str, str, str], dict[str, str]] = {}
-    for row in card_behavior_plan.get("rows", []):
-        if not isinstance(row, dict):
-            continue
+    for row in behavior_rows:
         source_card_id = str(row.get("source_card_id") or row.get("card_id") or "")
         runtime_card_id = str(row.get("runtime_card_id") or row.get("card_id") or "")
         link_kind = str(row.get("link_kind") or "self")

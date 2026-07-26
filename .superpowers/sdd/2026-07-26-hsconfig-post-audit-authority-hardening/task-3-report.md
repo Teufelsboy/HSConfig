@@ -216,3 +216,134 @@ Vorgesehener Task-Commit:
 ```text
 fix: assign hero power behavior to linked runtime entity
 ```
+
+## Fix-Runde 1: Autorisierte Owner und eindeutige Runtime-Ownership
+
+Status: `DONE`
+
+### Review-Befunde und Korrektur
+
+Die erste Review-Runde fand zwei wichtige Fail-closed-Lücken:
+
+1. Der Resolver akzeptierte jede formal passende
+   `hero_power_transform`-Map.
+2. Mehrere Source-Karten konnten denselben `runtime_card_id` beanspruchen;
+   abhängige Flächen verwendeten dabei `setdefault` oder Last-write-wins.
+
+Die Linked-Owner-Auflösung erlaubt jetzt ausschliesslich dieses vollständige
+Tupel:
+
+```text
+source_card_id=SW_448
+semantic_reason=hero_power_before_use
+link_kind=hero_power_transform
+runtime_card_id=EX1_625t
+```
+
+Alle anderen expliziten, Supplement- oder künstlichen Zuordnungen werden
+fail-closed verworfen. Direkt geprüft sind insbesondere:
+
+- `EX1_625 -> EX1_625t` aus dem vorhandenen Linked-Entity-Supplement;
+- `CARD_HP -> HERO_POWER_HP` als formal gültige künstliche Map.
+
+Der Router erzeugt in beiden Fällen keine Zeile und meldet unverändert:
+
+```text
+linked_runtime_entity_unresolved
+```
+
+### Zentraler Collision-Schutz
+
+`runtime_entity_owner.py` prüft aktive Verhaltenszeilen nun zentral vor der
+weiteren Verarbeitung. Beanspruchen unterschiedliche `source_card_id`-Werte
+denselben `runtime_card_id`, werden sämtliche aktiven Zeilen dieses Runtime-
+Owners verworfen. Der deterministische Diagnosecode lautet:
+
+```text
+linked_runtime_entity_owner_collision
+```
+
+Die Diagnose enthält zusätzlich den kollidierenden `runtime_card_id` und die
+sortierte Liste der konkurrierenden `source_card_ids`.
+
+Compiler, Config Readiness, Source-to-Runtime Explainability, Surface Intent
+und Output Ownership Manifest verwenden dieselbe zentrale Partitionierung.
+Damit entstehen weder eine aktive Runtime-Zeile noch stilles First-/Last-write-
+Verhalten oder doppelte Ownership-Manifest-Zeilen. Die Diagnose wird auf allen
+vier Berichtsflächen identisch als `runtime_entity_owner_collisions`
+ausgegeben; der Compiler trägt dieselbe Liste auf dem Ergebnisobjekt.
+
+Der Schutz erkennt aktive Compiler-Zeilen auch dann, wenn ein korrupter Plan
+das optionale Feld `meaningful_runtime_surface` weglässt.
+
+### TDD-Evidenz
+
+Vor der Produktionsänderung wurden die beiden neuen Regressionen rot
+ausgeführt:
+
+```text
+2 failed in 0.31s
+```
+
+Die Fehler bestätigten:
+
+- die nicht autorisierte `EX1_625`-Transformation wurde noch geroutet;
+- `RUNTIME_SHARED.json` wurde bei zwei konkurrierenden Sources noch
+  kompiliert.
+
+Finale fokussierte Owner-/Compiler-/Readiness-/Explainability-/Surface-/
+Manifest-Suite:
+
+```text
+275 passed in 9.29s
+```
+
+Installierter Skill, Contract-Spine-Sentinel und fokussierte
+Contract-/Boundary-Guardrails:
+
+```text
+HSConfig skill is in sync
+contract spine sentinel: clean
+798 passed in 49.27s
+```
+
+Finale vollständige Repository-Suite nach der letzten Testergänzung:
+
+```text
+2392 passed, 11 skipped in 239.59s
+```
+
+Ruff auf allen in Fix-Runde 1 geänderten Python-Dateien:
+
+```text
+All checks passed!
+```
+
+`git diff --check` meldet keine Whitespace-Fehler. Der bekannte
+repo-weite Formatierungs-Altbestand bleibt unverändert; ein gezielter
+`ruff format --check` würde acht bereits von Task 3 berührte Dateien breiter
+neu formatieren und wurde deshalb nicht als fachfremder Rewrite angewendet.
+
+### Self-Review
+
+- Die autorisierte Owner-Identität ist ein exaktes Vier-Felder-Tupel und kein
+  struktureller Truthy-Check mehr.
+- Der vorhandene Supplement-Eintrag für `EX1_625` verleiht keine
+  Runtime-Authority.
+- Normale selbst besessene CardID-Zeilen behalten ihr bisheriges Verhalten.
+- Mehrere Zeilen derselben Source für denselben Runtime-Owner sind keine
+  Kollision; erst unterschiedliche Source-IDs schliessen den Owner.
+- Kollisions-IDs und Source-Listen werden unabhängig von Eingabereihenfolge
+  sortiert.
+- Alle betroffenen Konsumenten unterdrücken denselben kollidierenden Owner und
+  tragen dieselbe Diagnose.
+- Apply-Authority, Runtime-Write-Gates, Source-Authority und Step-1/Step-2-
+  Grenzen wurden nicht verändert.
+- Es wurden keine Runtime-, HSTuner-, Hearthstone-, Desktop- oder privaten
+  Evidence-Dateien geschrieben.
+
+Commit für Fix-Runde 1:
+
+```text
+fix: enforce unique linked runtime ownership
+```
