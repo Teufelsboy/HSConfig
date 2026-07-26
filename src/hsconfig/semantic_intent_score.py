@@ -11,6 +11,7 @@ class SemanticIntentScore:
     value: str
     band: str
     reason: str
+    semantic_reason: str
     profile: str
     matched_signals: tuple[str, ...] = ()
 
@@ -23,16 +24,6 @@ def score_card_behavior_claim(
     roles: Sequence[str],
     value_default: str = "6",
 ) -> SemanticIntentScore:
-    explicit = _explicit_value(claim)
-    if explicit is not None and str(explicit).strip():
-        return SemanticIntentScore(
-            value=str(explicit),
-            band="explicit",
-            reason="explicit_runtime_value",
-            profile="source_claim",
-            matched_signals=("explicit_value",),
-        )
-
     classification = classify_card_intent(
         _normalized_claim_text(
             claim,
@@ -43,10 +34,22 @@ def score_card_behavior_claim(
         card_identity=_claim_card_identity(claim),
         value_default=value_default,
     )
+    explicit = _explicit_value(claim)
+    if explicit is not None and str(explicit).strip():
+        return SemanticIntentScore(
+            value=str(explicit),
+            band="explicit",
+            reason="explicit_runtime_value",
+            semantic_reason=classification.reason,
+            profile="source_claim",
+            matched_signals=("explicit_value",),
+        )
+
     return SemanticIntentScore(
         value=classification.value,
         band=classification.band,
         reason=classification.reason,
+        semantic_reason=classification.reason,
         profile="semantic_intent",
         matched_signals=classification.matched_signals,
     )

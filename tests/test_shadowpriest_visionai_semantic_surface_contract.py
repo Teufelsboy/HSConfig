@@ -161,7 +161,6 @@ def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
     assert check["attention"] == [
         "missing_target_scope",
         "semantic_surface_not_expressible",
-        "semantic_surface_not_proven",
     ]
     assert quality["semantic_handoff_status"] == "attention"
     assert quality["semantic_handoff_reasons"] == check["attention"]

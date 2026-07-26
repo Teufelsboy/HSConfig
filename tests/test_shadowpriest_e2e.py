@@ -201,6 +201,7 @@ def test_semantically_gated_shadowpriest_has_no_known_semantic_intent_fallbacks(
         and row.get("behavior_block")
         and row.get("meaningful_runtime_surface", True) is not False
     }
+    known_report_only_card_ids = known_cards - known_behavior_card_ids
     known_surface_intent_card_ids = {
         row.get("card_id")
         for row in surface_intent["rows"]
@@ -211,10 +212,16 @@ def test_semantically_gated_shadowpriest_has_no_known_semantic_intent_fallbacks(
     assert code == 0
     assert known_behavior_card_ids == {
         "DS1_233",
-        "GVG_009",
         "SW_446",
         "TOY_381",
+    }
+    assert known_report_only_card_ids == {
+        "GVG_009",
+        "NX2_019",
+        "SCH_514",
         "VAC_419",
+        "VAC_512",
+        "YOD_032",
     }
     assert known_surface_intent_card_ids == known_cards
     assert semantic_default_rows == []
@@ -414,7 +421,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert validate_code == 0
     assert validate_out["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
@@ -432,7 +439,10 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert source_to_runtime_explainability["authority"] == "diagnostic_only"
     assert source_to_runtime_explainability["apply_blocking"] is False
     assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"]
-    assert operator_summary["source_informed_apply_readiness"]["status"] == "blocked"
+    assert (
+        operator_summary["source_informed_apply_readiness"]["status"]
+        == "not_applicable"
+    )
     assert apply_code == 0
     assert apply_out["status"] == "applied"
     assert apply_out["apply_gate"]["status"] == "allowed"

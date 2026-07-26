@@ -406,7 +406,12 @@ def _append_semantically_allowed_rows(
     for row in candidates:
         semantic_score = row.get("semantic_score", {})
         decision = decide_semantic_runtime(
-            semantic_reason=str(semantic_score.get("reason", "")),
+            semantic_reason=str(
+                semantic_score.get(
+                    "semantic_reason",
+                    semantic_score.get("reason", ""),
+                )
+            ),
             source_lane=_claim_source_lane(claim),
             condition=str(row["condition"]),
             runtime_block=str(row["behavior_block"]),
@@ -603,6 +608,7 @@ def _attach_behavior_fields(
     row["semantic_score"] = {
         "band": semantic_score.band,
         "reason": semantic_score.reason,
+        "semantic_reason": semantic_score.semantic_reason,
         "profile": semantic_score.profile,
         "matched_signals": list(semantic_score.matched_signals),
     }

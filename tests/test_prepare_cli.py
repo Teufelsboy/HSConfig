@@ -134,7 +134,7 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert payload["package"] == str(package)
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
@@ -306,6 +306,14 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     source_index = json.loads((reports / "source_evidence_index.json").read_text(encoding="utf-8"))
     unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    voidtouched = json.loads(
+        (
+            package
+            / "CustomConfig"
+            / "shadowpriest"
+            / "SW_446.json"
+        ).read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -318,7 +326,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert unsupported == []
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
-    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] > 0
+    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] == 0
+    assert "OnBoardBonus" in voidtouched
+    assert "BeforePlayCardBonus" not in voidtouched
     assert (reports / "mulligan_plan_report.json").exists()
 
 
@@ -958,7 +968,7 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     ]
     assert lane_counts["generic_low_confidence"] == 1
     assert lane_counts["source_backed_static_semantics"] > 0
-    assert lane_counts["contract_gap"] > 0
+    assert lane_counts.get("contract_gap", 0) == 0
     assert any(
         warning["reason"] == "valid_but_not_guide_strong"
         for warning in operator_summary["warnings"]

@@ -212,9 +212,13 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
     assert "SW_446" in concrete_keeps
     assert mulligan_values[-1]["mulligan"] == "*"
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
-    assert "BeforePlayCardBonus" in cardid
+    assert set(cardid) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
+    assert [row["value"] for row in cardid["OnBoardBonus"]["values"]] == ["10"]
     assert all("source_claim_ids" not in row for block in cardid.values() if isinstance(block, dict) for row in block.get("values", []))
-    assert behavior_report["card_rows"]["SW_446"][0]["intent"] == "prefer_enemy_hero"
+    assert (
+        behavior_report["card_rows"]["SW_446"][0]["intent"]
+        == "use_aura_according_to_card_text"
+    )
     assert mulligan_report["quality"]["has_concrete_keeps"] is True
     assert any(row["key"] == "FirstTurnValueWeight" for row in global_authority["allowed_step1_overlays"])
 
@@ -332,22 +336,72 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
             encoding="utf-8"
         )
     )
-    before_play_values = voidtouched["BeforePlayCardBonus"]["values"]
+    physical_card_ids = {
+        "CFM_637",
+        "DRG_056",
+        "DS1_233",
+        "GVG_009",
+        "NX2_019",
+        "REV_290",
+        "SCH_514",
+        "SW_444",
+        "SW_446",
+        "SW_448",
+        "TOY_381",
+        "TOY_518",
+        "VAC_419",
+        "VAC_512",
+        "WON_065",
+        "YOD_032",
+    }
+    metadata_keys = {"ConfigComment", "GameCardId"}
+    card_payloads = {
+        card_id: json.loads(
+            (out / "CustomConfig" / "shadowpriest" / f"{card_id}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for card_id in physical_card_ids
+    }
+    active_card_ids = {
+        card_id
+        for card_id, payload in card_payloads.items()
+        if set(payload) - metadata_keys
+    }
+    report_only_card_ids = physical_card_ids - active_card_ids
 
     assert result == 0
     assert coverage["guide_backed_cards"] >= 8
     assert len(coverage["uncovered_cards"]) <= 4
     assert depth["depth_status"] in {"strong", "usable", "usable_with_runtime_gaps"}
     assert depth["summary"]["cards_needing_runtime_surface"] == 0
-    assert depth["summary"]["warnings_count"] >= 0
-    assert readiness["summary"]["generic_low_confidence"] <= 4
-    assert readiness["summary"]["runtime_emitted"] >= 4
-    assert readiness["summary"]["cards_needing_mechanic_lowering"] > 0
-    assert len(mulligan["Mulligan"]["values"]) >= 4
-    assert any(
-        row["value"] == "12" and "prefer_enemy_hero" in row.get("comment", "")
-        for row in before_play_values
-    )
+    assert depth["summary"]["warnings_count"] == 14
+    assert readiness["summary"]["generic_low_confidence"] == 0
+    assert readiness["summary"]["runtime_emitted"] == 2
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
+    assert len(mulligan["Mulligan"]["values"]) == 4
+    assert active_card_ids == {
+        "DS1_233",
+        "REV_290",
+        "SW_446",
+        "SW_448",
+        "TOY_518",
+        "WON_065",
+    }
+    assert report_only_card_ids == {
+        "CFM_637",
+        "DRG_056",
+        "GVG_009",
+        "NX2_019",
+        "SCH_514",
+        "SW_444",
+        "TOY_381",
+        "VAC_419",
+        "VAC_512",
+        "YOD_032",
+    }
+    assert set(voidtouched) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
+    assert [row["value"] for row in voidtouched["OnBoardBonus"]["values"]] == ["10"]
 
 
 def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: Path, capsys):

@@ -30,7 +30,10 @@ def test_core_source_backed_fixture_stage_respects_fail_closed_runtime_gate(
     assert promotion["runtime_lowering_status"] == "LOAD_SAFE_WITH_POLICY_OR_REVIEW_ROWS"
     assert promotion["first_missing_source_action"] != "none"
     assert result["readiness"]["summary"]["cards_needing_guide_claims"] == 0
-    assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] > 0
+    if deck["deck_name"] == "ShadowPriest":
+        assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] == 0
+    else:
+        assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] > 0
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
 

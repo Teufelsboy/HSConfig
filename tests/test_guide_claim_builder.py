@@ -452,7 +452,7 @@ def test_deck_scoped_gameplan_posture_claim_is_promoted_without_cards():
     assert posture_claims[0]["scope"] == "deck"
 
 
-def test_preserves_explicit_runtime_lowering_fields_for_router():
+def test_preserves_explicit_runtime_lowering_fields_before_semantic_gate():
     bundle = build_guide_claim_bundle(
         deck_identity={"deck_name": "ShadowPriest"},
         card_metadata={"SW_446": {"name": "Voidtouched Attendant", "text": ""}},
@@ -480,18 +480,21 @@ def test_preserves_explicit_runtime_lowering_fields_for_router():
 
     claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "card_role")
     routed = route_card_behavior_claims([claim])
-    row = routed["card_rows"]["SW_446"][0]
 
     assert claim["runtime_block"] == "BeforePlayCardBonus"
     assert claim["runtime_value"] == "12"
     assert claim["condition"] == "*"
     assert claim["conditions"] == "*"
-    assert row["behavior_block"] == "BeforePlayCardBonus"
-    assert row["value"] == "12"
-    assert row["condition"] == "*"
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"][0]["claim_id"] == claim["claim_id"]
+    assert routed["suppressed"][0]["cards"] == ["SW_446"]
+    assert (
+        routed["suppressed"][0]["reason"]
+        == "semantic_surface_not_expressible"
+    )
 
 
-def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
+def test_explicit_runtime_lowering_prefers_singular_condition_before_semantic_gate():
     bundle = build_guide_claim_bundle(
         deck_identity={"deck_name": "ShadowPriest"},
         card_metadata={"SW_446": {"name": "Voidtouched Attendant", "text": ""}},
@@ -520,10 +523,13 @@ def test_explicit_runtime_lowering_prefers_singular_condition_for_router():
 
     claim = next(claim for claim in bundle["claims"] if claim["claim_kind"] == "card_role")
     routed = route_card_behavior_claims([claim])
-    row = routed["card_rows"]["SW_446"][0]
 
     assert claim["condition"] == "my_target(count(),hero=true) > 0"
     assert claim["conditions"] == "my_target(count(),hero=true) > 0"
-    assert row["behavior_block"] == "BeforePlayCardBonus"
-    assert row["value"] == "12"
-    assert row["condition"] == "my_target(count(),hero=true) > 0"
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"][0]["claim_id"] == claim["claim_id"]
+    assert routed["suppressed"][0]["cards"] == ["SW_446"]
+    assert (
+        routed["suppressed"][0]["reason"]
+        == "semantic_surface_not_expressible"
+    )

@@ -1380,7 +1380,6 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "semantic_handoff_status": "attention",
         "semantic_handoff_reasons": [
             "semantic_surface_not_expressible",
-            "semantic_surface_not_proven",
         ],
         "normal_apply_authority": "reports/operator_summary.json",
         "runtime_apply_allowed": True,
@@ -1435,7 +1434,6 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert handoff["semantic_handoff_status"] == "attention"
     assert handoff["semantic_handoff_reasons"] == [
         "semantic_surface_not_expressible",
-        "semantic_surface_not_proven",
     ]
     assert handoff["source_status_apply_blocking"] is False
     assert handoff["source_gaps_apply_blocking"] is False

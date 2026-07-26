@@ -1,5 +1,7 @@
 import importlib.util
 
+import pytest
+
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 
@@ -389,31 +391,95 @@ def test_explicit_target_runtime_block_is_preserved():
     assert plan["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
 
 
-def test_explicit_runtime_value_wins_over_semantic_score():
-    mind_sear_claim = {
-        "claim_kind": "targeting_rule",
-        "cards": ["NX2_019"],
-        "stance": "prefer_enemy_minion",
-        "target_scope": "enemy_minion",
-        "runtime_block": "BeforeBattlecryTargetBonus",
-        "runtime_value": "8",
+def test_explicit_runtime_value_preserves_value_provenance_and_card_semantics():
+    treasure_distributor_claim = {
+        "claim_kind": "card_role",
+        "cards": ["TOY_518"],
+        "stance": "pirate_buff",
+        "runtime_block": "OnBoardBonus",
+        "runtime_value": "9",
+        "condition": "*",
         "evidence_text_short": (
-            "Mind Sear deals 2 damage to a minion and deals 3 damage "
-            "to the enemy hero if it dies."
+            "After you summon a Pirate, Treasure Distributor gives it +1 Attack."
         ),
-        "source_claim_ids": ["mind_sear_source"],
+        "source_claim_ids": ["treasure_distributor_source"],
         "source_lane": "deck_matched_public_guide",
     }
 
-    plan = route_card_behavior_surfaces([mind_sear_claim])
+    plan = route_card_behavior_surfaces([treasure_distributor_claim])
 
     assert plan["suppressed"] == []
     explicit_row = plan["rows"][0]
-    assert explicit_row["value"] == "8"
+    assert explicit_row["value"] == "9"
     assert explicit_row["semantic_score"]["reason"] == "explicit_runtime_value"
+    assert (
+        explicit_row["semantic_score"]["semantic_reason"]
+        == "summon_trigger_board_engine"
+    )
     assert explicit_row["semantic_score"]["band"] == "explicit"
     assert explicit_row["semantic_score"]["profile"] == "source_claim"
     assert explicit_row["semantic_score"]["matched_signals"] == ["explicit_value"]
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {
+            "claim_id": "voidtouched_explicit_before_play",
+            "claim_kind": "card_role",
+            "cards": ["SW_446"],
+            "stance": "damage_amplifier",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "12",
+            "condition": "*",
+            "evidence_text_short": (
+                "Voidtouched Attendant makes both heroes take extra damage "
+                "from all sources."
+            ),
+            "source_lane": "deck_matched_public_guide",
+        },
+        {
+            "claim_id": "shadowbomber_explicit_before_play",
+            "claim_kind": "card_role",
+            "cards": ["GVG_009"],
+            "stance": "battlecry_damage",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "10",
+            "condition": "*",
+            "evidence_text_short": (
+                "Shadowbomber deals 3 damage to each hero with its Battlecry."
+            ),
+            "source_lane": "deck_matched_public_guide",
+        },
+        {
+            "claim_id": "treasure_distributor_explicit_before_play",
+            "claim_kind": "card_role",
+            "cards": ["TOY_518"],
+            "stance": "pirate_buff",
+            "runtime_block": "BeforePlayCardBonus",
+            "runtime_value": "8",
+            "condition": "*",
+            "evidence_text_short": (
+                "After you summon a Pirate, Treasure Distributor gives it "
+                "+1 Attack."
+            ),
+            "source_lane": "deck_matched_public_guide",
+        },
+    ],
+    ids=["SW_446", "GVG_009", "TOY_518"],
+)
+def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(claim):
+    plan = route_card_behavior_surfaces([claim])
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": claim["claim_id"],
+            "claim_kind": "card_role",
+            "cards": claim["cards"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
 
 
 def test_suppressed_behavior_row_is_not_semantically_scored():
