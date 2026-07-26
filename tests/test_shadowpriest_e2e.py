@@ -258,19 +258,29 @@ def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_un
     ]
 
     assert code == 0
-    assert runtime_keys == [
-        ("SW_446", "*", "hold"),
-        ("GVG_009", "*", "hold"),
-        ("*", "*", "discard"),
-    ]
     assert len(runtime_keys) == len(set(runtime_keys))
     assert not any(
         row.get("mulligan") == "SW_448" and row.get("value") == "hold"
         for row in runtime_rows
     )
     assert plan_report["quality"]["merged_duplicate_rule_count"] == 0
-    assert plan_report["quality"]["source_backed_keep_rule_count"] == 2
-    assert plan_report["quality"]["default_only"] is False
+    assert plan_report["quality"]["source_backed_keep_rule_count"] == 0
+    source_claim_holds = [
+        row
+        for row in plan_report["rules"]
+        if row.get("action") == "hold" and row.get("source_type") == "source_claim"
+    ]
+    policy_holds = [
+        row
+        for row in plan_report["rules"]
+        if row.get("action") == "hold"
+    ]
+    assert source_claim_holds == []
+    assert policy_holds
+    assert all(
+        row.get("source_type") == "policy_backed_autonomous_mulligan"
+        for row in policy_holds
+    )
 
 
 def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_lifecycle(

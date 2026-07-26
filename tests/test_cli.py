@@ -612,7 +612,7 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert card_role_map["EX1_001"]["confidence"] == "guide_backed"
     assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
     assert globalvalue_intent["pressure_bias"] == "high"
-    assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
+    assert mulligan["Mulligan"]["values"] == []
     assert not (deck_dir / "Combo.json").exists()
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]

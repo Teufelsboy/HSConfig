@@ -184,13 +184,12 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
     assert "SW_448" not in concrete_keeps
-    assert "SW_446" in concrete_keeps
-    assert mulligan_values[-1]["mulligan"] == "*"
+    assert "SW_446" not in concrete_keeps
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
     assert "BeforePlayCardBonus" in cardid
     assert all("source_claim_ids" not in row for block in cardid.values() if isinstance(block, dict) for row in block.get("values", []))
     assert behavior_report["card_rows"]["SW_446"][0]["intent"] == "prefer_enemy_hero"
-    assert mulligan_report["quality"]["has_concrete_keeps"] is True
+    assert mulligan_report["quality"]["source_backed_keep_rule_count"] == 0
     assert any(row["key"] == "FirstTurnValueWeight" for row in global_authority["allowed_step1_overlays"])
 
 

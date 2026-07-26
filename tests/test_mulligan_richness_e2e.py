@@ -29,10 +29,9 @@ def test_prepare_with_rich_mulligan_sources_emits_rich_applyable_package(
     assert result["payload"]["status"] == "passed"
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert mulligan_surface["status"] == "rich"
-    assert mulligan_surface["source_backed_rule_count"] >= 4
-    assert {row["mulligan"] for row in mulligan_values} >= {"TEST_001", "TEST_002", "TEST_003"}
-    assert "*" in {row["mulligan"] for row in mulligan_values}
+    assert mulligan_surface["status"] == "thin"
+    assert mulligan_surface["source_backed_rule_count"] == 0
+    assert mulligan_values == []
 
 
 def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(

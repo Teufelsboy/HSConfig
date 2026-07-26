@@ -397,6 +397,9 @@ def _source_mulligan_intent_cards_for_policy(
     for claim in claims:
         if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:
             continue
+        lifecycle = claim.get("_claim_lifecycle")
+        if isinstance(lifecycle, dict) and lifecycle.get("surface_gate_allowed") is False:
+            continue
         cards.update(_claim_cards(claim))
     for row in [*rules, *suppressed_rules]:
         if row.get("action") not in {"hold", "discard"}:

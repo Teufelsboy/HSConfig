@@ -304,7 +304,7 @@ def test_drafter_preserves_non_hand_semantic_qualifiers_through_mulligan_gate():
     }
     decision = can_lower_to_mulligan(claim)
     assert decision.allowed is False
-    assert decision.reason == "start_of_game_effect_does_not_require_opening_hand"
+    assert decision.reason == "mulligan_requires_exact_deck_match"
 
 
 def test_drafter_preserves_evidence_policy_fields():
@@ -395,4 +395,6 @@ def test_drafter_preserves_explicit_mulligan_timing_for_real_opening_hand_claim(
 
     assert claim["semantic_qualifiers"]["deck_evaluation"] == ["highlander"]
     assert claim["semantic_qualifiers"]["timing"] == "mulligan"
-    assert can_lower_to_mulligan(claim).allowed is True
+    decision = can_lower_to_mulligan(claim)
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_exact_deck_match"

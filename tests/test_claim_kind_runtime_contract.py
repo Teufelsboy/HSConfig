@@ -212,10 +212,23 @@ def test_mulligan_discard_can_lower_to_mulligan_surface():
         ),
     ],
 )
-def test_public_guide_mulligan_requires_exact_authority(override, reason):
+@pytest.mark.parametrize(
+    "source_family",
+    [
+        "guide",
+        "mulligan_guide",
+        "matchup_guide",
+        "guide_fixture",
+        "public_guide",
+        "community_guide",
+    ],
+)
+def test_public_guide_mulligan_requires_exact_authority(
+    source_family, override, reason
+):
     claim = {
         "claim_kind": "mulligan_keep",
-        "source_family": "guide",
+        "source_family": source_family,
         "cards": ["TOY_381"],
         "deck_match_scope": "exact_deck_matched",
         "promotion_eligible": True,
@@ -249,7 +262,7 @@ def test_public_guide_mulligan_with_exact_authority_can_lower():
     assert decision.reason == "allowed"
 
 
-def test_legacy_guide_mulligan_without_public_authority_fields_stays_compatible():
+def test_public_guide_mulligan_without_authority_fields_is_rejected():
     decision = can_lower_to_mulligan(
         {
             "claim_kind": "mulligan_keep",
@@ -259,8 +272,8 @@ def test_legacy_guide_mulligan_without_public_authority_fields_stays_compatible(
         }
     )
 
-    assert decision.allowed is True
-    assert decision.reason == "allowed"
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_exact_deck_match"
 
 
 def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():

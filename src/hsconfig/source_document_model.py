@@ -145,6 +145,8 @@ PUBLIC_GUIDE_SOURCE_FAMILIES = frozenset(
         "guide_fixture",
         "mulligan_guide",
         "matchup_guide",
+        "public_guide",
+        "community_guide",
     }
 )
 STATISTICAL_ENRICHMENT_SOURCE_TYPES = frozenset(
@@ -395,9 +397,7 @@ def can_lower_to_mulligan(
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "mulligan")
     source_family = _normalized_text(claim.get("source_family"))
-    public_guide = source_family in {"guide", "mulligan_guide"} and any(
-        field in claim for field in ("promotion_eligible", "source_lane")
-    )
+    public_guide = source_family in PUBLIC_GUIDE_SOURCE_FAMILIES
     if public_guide:
         if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
             return SurfaceGateDecision(

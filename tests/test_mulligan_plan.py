@@ -320,6 +320,31 @@ def test_mulligan_plan_reports_lifecycle_rejected_claim_without_compiling_rule()
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
 
 
+def test_policy_fallback_can_hold_card_from_lifecycle_rejected_guide_claim():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_id": "archetype-guide-keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["TOY_381"],
+                "_claim_lifecycle": {
+                    "surface_gate_allowed": False,
+                    "surface_gate_reason": "mulligan_requires_exact_deck_match",
+                },
+            }
+        ],
+        card_roles={"TOY_381": {"roles": ["one_drop", "early_pressure"]}},
+        deck_cards={"TOY_381": {"name": "Policy Candidate", "cost": 1}},
+        allow_policy_backed=True,
+    )
+
+    hold = next(row for row in plan["rules"] if row["action"] == "hold")
+
+    assert hold["card"] == "TOY_381"
+    assert hold["source_type"] == "policy_backed_autonomous_mulligan"
+
+
 def test_mulligan_plan_rejects_runtime_condition_wrapper_with_condition_sibling():
     claims = [
         {
