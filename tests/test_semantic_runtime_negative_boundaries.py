@@ -7,49 +7,17 @@ from hsconfig.static_semantics import infer_static_semantics
 from hsconfig.source_document_model import (
     can_lower_to_globalvalues,
     can_lower_to_mulligan,
-    source_claim_signature,
     surface_gate_decision,
 )
+from tests.combo_authority_fixtures import canonical_combo_plan_inputs
 
 
-_COMBO_TEST_FINGERPRINT = "semantic-boundary-combo-fingerprint"
-
-
-def build_combo_plan(*, deck_cards, claims):
-    authoritative_claims = [
-        {
-            **claim,
-            "source_family": "guide",
-            "source_type": "public_guide",
-            "source_visibility": "full_text",
-            "source_lane": "deck_matched_public_guide",
-            "deck_match_scope": "exact_deck_matched",
-            "promotion_eligible": True,
-            "deck_match": {
-                "exact_deck_evidence": {
-                    "candidate_count": 1,
-                    "decoded_candidate_count": 1,
-                    "matched": True,
-                    "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
-                    "candidate_deck_code_hashes": ["sha256:semantic-boundary-combo"],
-                }
-            },
-        }
-        for claim in claims
-    ]
-    receipts = [
-        {
-            "receipt_kind": "canonical_exact_deck_source_document",
-            "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
-            "claim_id": str(claim.get("claim_id", "")),
-            "claim_signature": source_claim_signature(claim),
-        }
-        for claim in authoritative_claims
-    ]
+def build_combo_plan(*, deck_cards, claim_ids):
+    claims, deck_identity, receipts = canonical_combo_plan_inputs(claim_ids)
     return _build_combo_plan(
         deck_cards=deck_cards,
-        claims=authoritative_claims,
-        deck_identity={"deck_fingerprint": _COMBO_TEST_FINGERPRINT},
+        claims=claims,
+        deck_identity=deck_identity,
         verified_source_receipts=receipts,
     )
 
@@ -110,19 +78,10 @@ def test_unresolved_discover_choice_stays_suppressed_until_option_identity_is_li
 
 
 def test_vague_combo_sequence_without_two_cards_stays_suppressed():
-    claim = {
-        "claim_id": "vague_combo",
-        "claim_kind": "combo_sequence",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_001"],
-        "sequence": ["CARD_001"],
-        "timing_kind": "same_turn",
-        "operator": ">>",
-        "values": ["6"],
-    }
-
-    result = build_combo_plan(deck_cards={"CARD_001"}, claims=[claim])
+    result = build_combo_plan(
+        deck_cards={"CARD_001"},
+        claim_ids=["vague_combo"],
+    )
 
     assert result["combos"] == []
     assert result["suppressed"][0]["claim_id"] == "vague_combo"
@@ -227,19 +186,10 @@ def test_discover_choice_without_option_identity_is_suppressed_not_lowered():
 
 
 def test_one_card_or_vague_combo_sequence_does_not_emit_combo_json_rows():
-    contract = {
-        "claims": [
-            {
-                "claim_id": "vague_combo",
-                "claim_kind": "combo_sequence",
-                "claim_readiness": "guide_backed",
-                "cards": ["CARD_A"],
-                "sequence": ["CARD_A"],
-            }
-        ]
-    }
-
-    combo = build_combo_plan(deck_cards={"CARD_A"}, claims=contract["claims"])
+    combo = build_combo_plan(
+        deck_cards={"CARD_001"},
+        claim_ids=["vague_combo"],
+    )
 
     assert combo["combos"] == []
     assert combo["suppressed"][0]["claim_id"] == "vague_combo"
