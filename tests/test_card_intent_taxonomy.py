@@ -231,6 +231,14 @@ def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card
     )
 
 
+def test_id_only_conditional_semantics_report_current_matched_signals():
+    raise_dead = classify_card_intent("", card_identity="SCH_514")
+    felwing = classify_card_intent("", card_identity="YOD_032")
+
+    assert raise_dead.matched_signals == ("raise_dead",)
+    assert felwing.matched_signals == ("frenzied_felwing",)
+
+
 def test_taxonomy_rejects_substring_card_identities_without_card_text():
     for card_identity in ("Mind Blaster", "Raise Deadly"):
         classification = classify_card_intent(

@@ -77,17 +77,19 @@ def build_config_readiness_report(
     card_behavior_plan: dict[str, Any],
     combo_plan: dict[str, Any],
     global_values_authority_matrix: dict[str, Any],
-    emitted_cardid_files: list[str] | tuple[str, ...] | set[str] | None = None,
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ) = None,
 ) -> dict[str, Any]:
     cards = _cards_from_deck(deck_identity, gameplan_contract)
     uncovered = {str(card) for card in claim_coverage.get("uncovered_cards", [])}
     all_cardid_cards = _cards_from_any_card_behavior(card_behavior_plan)
     concrete_cardid_cards = _cards_from_card_behavior(card_behavior_plan)
-    emitted_cardid_file_map = _emitted_cardid_file_map(
+    emitted_cardid_file_map, meaningful_emitted_cardids = _emitted_cardid_file_map(
         emitted_cardid_files,
         fallback_cardids=all_cardid_cards,
     )
-    emitted_cardid_cards = set(emitted_cardid_file_map) & concrete_cardid_cards
+    emitted_cardid_cards = meaningful_emitted_cardids & concrete_cardid_cards
     semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
@@ -224,14 +226,19 @@ def _is_meaningful_cardid_runtime_row(row: Any) -> bool:
 
 
 def _emitted_cardid_file_map(
-    emitted_cardid_files: list[str] | tuple[str, ...] | set[str] | None,
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ),
     *,
     fallback_cardids: set[str],
-) -> dict[str, str]:
+) -> tuple[dict[str, str], set[str]]:
     if emitted_cardid_files is None:
-        return {card_id: f"{card_id}.json" for card_id in fallback_cardids}
+        file_map = {card_id: f"{card_id}.json" for card_id in fallback_cardids}
+        return file_map, set(file_map)
 
     file_map: dict[str, str] = {}
+    meaningful_cardids: set[str] = set()
+    payloads = emitted_cardid_files if isinstance(emitted_cardid_files, Mapping) else None
     for emitted_file in emitted_cardid_files:
         filename = str(emitted_file).replace("\\", "/").rsplit("/", 1)[-1]
         if not filename.endswith(".json"):
@@ -240,7 +247,23 @@ def _emitted_cardid_file_map(
         if not card_id:
             continue
         file_map[card_id] = filename
-    return file_map
+        if payloads is None or _has_runtime_effect_rows(payloads[emitted_file]):
+            meaningful_cardids.add(card_id)
+    return file_map, meaningful_cardids
+
+
+def _has_runtime_effect_rows(payload: Any) -> bool:
+    if not isinstance(payload, Mapping):
+        return False
+    for block, block_payload in payload.items():
+        if block in {"GameCardId", "ConfigComment"}:
+            continue
+        if not isinstance(block_payload, Mapping):
+            continue
+        values = block_payload.get("values", [])
+        if isinstance(values, list) and values:
+            return True
+    return False
 
 
 def _is_cardid_runtime_row(row: Any) -> bool:
@@ -392,7 +415,11 @@ def _lane_and_missing_link(
         return "archetype_inferred", "needs_guide_claim"
     if is_guide_backed and card_id in suppressed_mulligan_cards:
         return "report_only_supported", "needs_mulligan_claim"
-    if card_id in concrete_cardid_cards or card_id in combo_cards:
+    if card_id in concrete_cardid_cards and card_id not in emitted_cardid_cards:
+        return "report_only_supported", "needs_runtime_surface"
+    if card_id in semantic_suppression_missing_links:
+        return "report_only_supported", semantic_suppression_missing_links[card_id]
+    if card_id in emitted_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
     if card_id in mulligan_cards:
         if is_guide_backed and _has_source_claim_ids(card):
@@ -402,8 +429,6 @@ def _lane_and_missing_link(
         if is_guide_backed and roles and roles <= GLOBALVALUES_SUFFICIENT_ROLES:
             return "globalvalues_only", "none"
         return "globalvalues_only", "needs_runtime_surface"
-    if card_id in semantic_suppression_missing_links:
-        return "report_only_supported", semantic_suppression_missing_links[card_id]
     if is_guide_backed and "mulligan_anchor" in roles:
         return "report_only_supported", "needs_mulligan_claim"
     if is_guide_backed and "combo_piece" in roles:

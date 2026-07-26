@@ -120,7 +120,10 @@ def classify_card_intent(
             value="8",
             band="medium",
             matched_signals=_signals(
-                ("raise_dead", identity_reason == "self_damage_resource"),
+                (
+                    "raise_dead",
+                    identity_reason == "conditional_self_damage_resource",
+                ),
                 ("self_damage", _has_self_damage_to_own_hero(normalized)),
                 (
                     "return_dead_friendly_minions",
@@ -145,7 +148,10 @@ def classify_card_intent(
             value="8",
             band="medium",
             matched_signals=_signals(
-                ("frenzied_felwing", identity_reason == "opponent_damage_discount_tempo"),
+                (
+                    "frenzied_felwing",
+                    identity_reason == "conditional_cost_reduction",
+                ),
                 (
                     "cost_reduction",
                     _has_any(normalized, ("costs (1) less", "costs less")),

@@ -170,6 +170,146 @@ def test_runtime_emitted_card_gets_runtime_lane():
     assert row["runtime_surfaces"] == ["CARD_001.json"]
 
 
+def test_meaningful_report_row_requires_matching_emitted_cardid_file():
+    report = _report_for_card(
+        card_id="CARD_MISSING_FILE",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_MISSING_FILE",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files=[],
+    )
+
+    row = report["cards"]["CARD_MISSING_FILE"]
+    assert row["runtime_surfaces"] == []
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
+def test_missing_cardid_file_gap_is_not_hidden_by_source_backed_mulligan_surface():
+    report = _report_for_card(
+        card_id="CARD_MISSING_BEHAVIOR",
+        roles=["mulligan_anchor"],
+        coverage_status="source_backed",
+        mulligan_plan={
+            "rules": [
+                {
+                    "card": "CARD_MISSING_BEHAVIOR",
+                    "action": "hold",
+                    "source_claim_ids": ["CARD_MISSING_BEHAVIOR_claim"],
+                }
+            ]
+        },
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_MISSING_BEHAVIOR",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files=[],
+    )
+
+    row = report["cards"]["CARD_MISSING_BEHAVIOR"]
+    assert row["runtime_surfaces"] == ["Mulligan.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
+def test_semantic_suppression_takes_precedence_over_emitted_runtime_row():
+    report = _report_for_card(
+        card_id="CARD_PARTIAL",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_PARTIAL",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [
+                {
+                    "claim_id": "conditional_claim",
+                    "cards": ["CARD_PARTIAL"],
+                    "reason": "unsupported_condition",
+                }
+            ],
+        },
+        emitted_cardid_files={
+            "CARD_PARTIAL.json": {
+                "GameCardId": "CARD_PARTIAL",
+                "ConfigComment": "Fixture generated behavior",
+                "BeforePlayCardBonus": {
+                    "values": [
+                        {
+                            "comment": "Fixture behavior",
+                            "condition": "*",
+                            "value": "8",
+                        }
+                    ]
+                },
+            }
+        },
+    )
+
+    row = report["cards"]["CARD_PARTIAL"]
+    assert row["runtime_surfaces"] == ["CARD_PARTIAL.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_condition_lowering"
+    assert row["source_depth_lane"] == "condition_lowering_gap"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
+def test_identity_only_cardid_payload_is_visible_but_not_meaningful_emission():
+    report = _report_for_card(
+        card_id="CARD_METADATA_ONLY",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_METADATA_ONLY",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files={
+            "CARD_METADATA_ONLY.json": {
+                "GameCardId": "CARD_METADATA_ONLY",
+                "ConfigComment": "Identity only",
+            }
+        },
+    )
+
+    row = report["cards"]["CARD_METADATA_ONLY"]
+    assert row["runtime_surfaces"] == ["CARD_METADATA_ONLY.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
 def test_mulligan_only_card_gets_specific_lane():
     report = build_config_readiness_report(
         deck_identity={

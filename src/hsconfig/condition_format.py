@@ -79,6 +79,8 @@ def _lower(value: Any) -> tuple[str, str | None]:
         return cleaned or "*", None
     if isinstance(value, dict):
         if "runtime_condition" in value:
+            if set(value) != {"runtime_condition"}:
+                return "*", "unsupported_condition"
             return _lower(value["runtime_condition"])
         keys = {str(key) for key in value}
         if keys <= REPORT_ONLY_CONDITION_KEYS:

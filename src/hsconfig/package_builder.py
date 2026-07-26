@@ -218,7 +218,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         card_behavior_plan=card_behavior_plan,
         combo_plan=combo_plan,
         global_values_authority_matrix=global_values_authority_matrix,
-        emitted_cardid_files=cardid_behavior_files.keys(),
+        emitted_cardid_files=cardid_behavior_files,
     )
     guide_source_depth_report = build_guide_source_depth_report(
         guide_claim_bundle=guide_claim_bundle,

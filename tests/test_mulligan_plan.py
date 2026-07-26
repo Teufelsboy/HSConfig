@@ -281,6 +281,26 @@ def test_mulligan_plan_suppresses_unsupported_conditions_instead_of_broadening_t
     assert plan["quality"]["first_gap_reason"] == "unsupported_mulligan_condition"
 
 
+def test_mulligan_plan_rejects_runtime_condition_wrapper_with_condition_sibling():
+    claims = [
+        {
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_001"],
+            "conditions": {
+                "runtime_condition": "coin",
+                "hand_contains": "BAD-ID",
+            },
+            "claim_id": "wrapped_bad_condition",
+        }
+    ]
+
+    plan = build_mulligan_plan(deck_name="Deck", claims=claims, card_roles={})
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"][0]["card"] == "CARD_001"
+    assert plan["suppressed_rules"][0]["reason"] == "unsupported_mulligan_condition"
+
+
 def test_mulligan_plan_orders_conflicting_exact_rules_by_precedence():
     claims = [
         {

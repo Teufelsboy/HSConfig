@@ -1274,6 +1274,30 @@ def test_unsupported_structured_condition_is_suppressed():
     assert routed["suppressed"][0]["reason"] == "unsupported_condition"
 
 
+def test_target_router_rejects_runtime_condition_wrapper_with_condition_sibling():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "claim_atomic_target_condition",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_001"],
+                "stance": "prefer_enemy_hero",
+                "target_scope": "enemy_hero",
+                "runtime_block": "BeforeBattlecryTargetBonus",
+                "conditions": {
+                    "runtime_condition": "my_target(count(),hero=true) > 0",
+                    "hand_contains": "BAD-ID",
+                },
+                "runtime_value": "12",
+                "source_lane": "deck_matched_public_guide",
+            }
+        ]
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"][0]["reason"] == "unsupported_condition"
+
+
 def test_router_keeps_unproven_overkill_semantics_report_only():
     report = route_card_behavior_claims(
         [

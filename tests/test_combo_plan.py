@@ -52,6 +52,36 @@ def test_combo_with_unsupported_condition_is_suppressed():
     ]
 
 
+def test_combo_rejects_runtime_condition_wrapper_with_condition_sibling():
+    claim = {
+        "claim_id": "combo-wrapped-condition",
+        "claim_kind": "combo_sequence",
+        "cards": ["EX1_001", "EX1_002"],
+        "sequence": ["EX1_001", "EX1_002"],
+        "timing_kind": "same_turn",
+        "operator": ">>",
+        "values": ["10", "20"],
+        "conditions": {
+            "runtime_condition": "coin",
+            "hand_contains": "BAD-ID",
+        },
+    }
+
+    plan = build_combo_plan(
+        deck_cards={"EX1_001", "EX1_002"},
+        claims=[claim],
+    )
+
+    assert plan["combos"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "combo-wrapped-condition",
+            "cards": ["EX1_001", "EX1_002"],
+            "reason": "unsupported_condition",
+        }
+    ]
+
+
 def test_combo_with_falsey_structured_card_operand_is_suppressed():
     claim = {
         "claim_id": "combo-falsey-condition",

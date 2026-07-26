@@ -197,6 +197,17 @@ def test_report_only_and_unsupported_dicts_do_not_emit_runtime_conditions():
     )
 
 
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"runtime_condition": "coin", "hand_contains": "BAD-ID"},
+        {"runtime_condition": "coin", "unknown": "value"},
+    ],
+)
+def test_runtime_condition_wrapper_rejects_condition_siblings(condition):
+    assert lower_runtime_condition(condition) == ("*", "unsupported_condition")
+
+
 def test_direct_string_opponent_hero_conditions_with_unknown_classes_are_unsupported():
     unsupported = [
         "opp_hero(count(), hero_class=banana ) > 0",

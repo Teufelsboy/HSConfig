@@ -89,7 +89,11 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
                 "needs_mulligan_claim",
                 "needs_combo_sequence",
                 "needs_condition_lowering",
+                "needs_target_scope",
+                "needs_invalid_target_scope",
+                "needs_target_surface",
                 "needs_mechanic_lowering",
+                "semantic_surface_not_expressible",
             }
             assert chain["next_action"]
 

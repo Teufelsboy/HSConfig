@@ -518,10 +518,13 @@ def _documented_target_scope_condition(claim: dict[str, Any]) -> str | None:
         return None
     raw_condition = claim.get("conditions", claim.get("condition", "*"))
     if isinstance(raw_condition, dict):
-        raw_condition = raw_condition.get("runtime_condition")
-    if not isinstance(raw_condition, str):
+        normalized, condition_error = lower_runtime_condition(raw_condition)
+        if condition_error is not None:
+            return None
+    elif isinstance(raw_condition, str):
+        normalized = " ".join(raw_condition.strip().split())
+    else:
         return None
-    normalized = " ".join(raw_condition.strip().split())
     return expected if normalized == expected else None
 
 
