@@ -210,3 +210,18 @@ def test_hero_power_cost_aura_rejects_unrelated_static_surfaces(runtime_block):
 
     assert decision.allowed is False
     assert decision.reason == "semantic_surface_not_expressible"
+
+
+def test_hero_power_cost_aura_accepts_real_static_mechanic_usage_on_board():
+    decision = decide_semantic_runtime(
+        semantic_reason="hero_power_cost_aura",
+        source_lane="official_static_semantics",
+        condition="*",
+        runtime_block="OnBoardBonus",
+        claim_kind="mechanic_usage",
+    )
+
+    assert decision == SemanticRuntimeDecision(
+        True,
+        "semantic_surface_supported",
+    )

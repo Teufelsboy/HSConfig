@@ -36,6 +36,7 @@ STATIC_ACTION_SURFACES = {
         ("BeforeUseHeroPowerBonus", "card_role", "*"),
         ("BeforeUseHeroPowerBonus", "mechanic_usage", "*"),
         ("OnBoardBonus", "card_role", "*"),
+        ("OnBoardBonus", "mechanic_usage", "*"),
     },
     "hero_power_transform": {
         ("BeforeUseHeroPowerBonus", "card_role", "*"),

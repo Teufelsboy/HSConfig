@@ -380,9 +380,9 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert len(coverage["uncovered_cards"]) <= 4
     assert depth["depth_status"] in {"strong", "usable", "usable_with_runtime_gaps"}
     assert depth["summary"]["cards_needing_runtime_surface"] == 0
-    assert depth["summary"]["warnings_count"] == 10
+    assert depth["summary"]["warnings_count"] == 9
     assert readiness["summary"]["generic_low_confidence"] == 0
-    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["runtime_emitted"] == 7
     assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
     assert len(mulligan["Mulligan"]["values"]) == 4
     assert active_card_ids == {
@@ -390,6 +390,7 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
         "REV_290",
         "SW_446",
         "SW_448",
+        "TOY_381",
         "TOY_518",
         "WON_065",
     }
@@ -400,7 +401,6 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
         "NX2_019",
         "SCH_514",
         "SW_444",
-        "TOY_381",
         "VAC_419",
         "VAC_512",
         "YOD_032",

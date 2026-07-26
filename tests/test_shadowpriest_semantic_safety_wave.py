@@ -194,6 +194,204 @@ def _assert_exact_globalvalues_key_sets(
 
 
 @pytest.mark.parametrize(
+    (
+        "source_url",
+        "expected_source_authority",
+        "expected_source_keeps",
+        "expected_policy_keeps",
+        "expected_changed_keys",
+    ),
+    [
+        (
+            "https://example.test/shadowpriest-exact",
+            "exact",
+            5,
+            0,
+            {
+                "FirstTurnValueWeight",
+                "SecondTurnValueWeight",
+                "GlobalMinionAttack",
+                "GlobalMinionIntrinsicValue",
+                "MyHeroPowerValue",
+            },
+        ),
+        (
+            "https://example.test/shadowpriest-archetype",
+            "partial",
+            0,
+            3,
+            set(),
+        ),
+    ],
+)
+def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
+    tmp_path,
+    monkeypatch,
+    source_url,
+    expected_source_authority,
+    expected_source_keeps,
+    expected_policy_keeps,
+    expected_changed_keys,
+):
+    card_feed = [
+        {
+            "id": "SW_446",
+            "dbfId": 64429,
+            "name": "Voidtouched Attendant",
+            "type": "MINION",
+            "cardClass": "PRIEST",
+            "collectible": True,
+            "text": "Both heroes take one extra damage from all sources.",
+            "mechanics": ["AURA"],
+        },
+        {
+            "id": "TOY_381",
+            "dbfId": 103492,
+            "name": "Papercraft Angel",
+            "type": "MINION",
+            "cardClass": "PRIEST",
+            "collectible": True,
+            "text": "Your Hero Power costs (0).",
+            "mechanics": ["AURA"],
+        },
+    ]
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: card_feed,
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_cards",
+        lambda timeout=10.0: card_feed,
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: card_feed,
+    )
+    out = tmp_path / expected_source_authority
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            DECK_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--online-source",
+            "--auto-source",
+            "--source-url",
+            source_url,
+            "--source-fixture-url-map-json",
+            "tests/fixtures/source_pages/shadowpriest_source_url_map.json",
+            "--current-date",
+            "2026-07-26",
+            "--json",
+        ]
+    )
+
+    package = out / "04_package"
+    reports = package / "reports"
+    deck_dir = package / "CustomConfig" / "shadowpriest"
+    summary = json.loads((out / "configure_summary.json").read_text(encoding="utf-8"))
+    operator = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    readiness = json.loads(
+        (reports / "per_card_config_readiness_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    conflict = json.loads(
+        (reports / "claim_conflict_report.json").read_text(encoding="utf-8")
+    )
+    mulligan = json.loads(
+        (reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
+    globalvalues = json.loads(
+        (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
+    )
+    mulligan_config = json.loads(
+        (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
+    )
+    darkbishop = json.loads((deck_dir / "SW_448.json").read_text(encoding="utf-8"))
+    papercraft = json.loads((deck_dir / "TOY_381.json").read_text(encoding="utf-8"))
+
+    physical_signatures = set()
+    active_card_ids = set()
+    report_only_card_ids = set()
+    for card_id in EXPECTED_CARD_IDS:
+        payload = json.loads(
+            (deck_dir / f"{card_id}.json").read_text(encoding="utf-8")
+        )
+        blocks = set(payload) - {"GameCardId", "ConfigComment"}
+        if not blocks:
+            report_only_card_ids.add(card_id)
+            continue
+        active_card_ids.add(card_id)
+        for block_name in blocks:
+            physical_signatures.update(
+                (
+                    card_id,
+                    block_name,
+                    str(row["condition"]),
+                    str(row["value"]),
+                )
+                for row in payload[block_name]["values"]
+            )
+
+    report_signatures = {
+        (
+            str(row["card_id"]),
+            str(row["behavior_block"]),
+            str(row["condition"]),
+            str(row["value"]),
+        )
+        for row in behavior["rows"]
+        if row.get("meaningful_runtime_surface") is True
+    }
+    mulligan_config_text = json.dumps(mulligan_config, sort_keys=True)
+
+    assert code == 0
+    assert summary["status"] == "OK"
+    assert summary["apply_performed"] is False
+    assert summary["handoff_contract"]["runtime_write_performed"] is False
+    assert operator["configuration_assurance"]["source_authority"] == (
+        expected_source_authority
+    )
+    assert physical_signatures == SAFE_SHADOWPRIEST_ROWS
+    assert report_signatures == SAFE_SHADOWPRIEST_ROWS
+    assert active_card_ids == {row[0] for row in SAFE_SHADOWPRIEST_ROWS}
+    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST
+    assert readiness["summary"]["runtime_emitted"] == 7
+    assert readiness["summary"]["report_only_supported"] == 9
+    assert conflict["conflict_count"] == 0
+    assert set(papercraft) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
+    assert [
+        (row["condition"], row["value"])
+        for row in papercraft["OnBoardBonus"]["values"]
+    ] == [("*", "8")]
+    assert set(darkbishop) == {
+        "BeforeUseHeroPowerBonus",
+        "ConfigComment",
+        "GameCardId",
+    }
+    assert "SW_448" not in mulligan_config_text
+    assert mulligan["quality"]["source_backed_keep_rule_count"] == (
+        expected_source_keeps
+    )
+    assert mulligan["quality"]["policy_backed_keep_rule_count"] == (
+        expected_policy_keeps
+    )
+    assert set(globalvalues["changed_keys"]) == expected_changed_keys
+
+
+@pytest.mark.parametrize(
     "card_id",
     sorted(REPORT_ONLY_SHADOWPRIEST),
 )
