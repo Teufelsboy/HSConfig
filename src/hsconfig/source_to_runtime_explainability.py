@@ -19,6 +19,14 @@ CLAIM_KIND_RANK = {
     "hero_power_transform": 0,
     "mechanic_usage": 90,
 }
+MULLIGAN_AUTHORITY_ACTION_BY_REASON = {
+    "mulligan_requires_exact_deck_match": "add_exact_deck_matched_source",
+    "mulligan_requires_promotion_eligible_source": "add_promotion_eligible_source",
+    "mulligan_requires_full_text_source": "add_full_text_public_guide_source",
+    "mulligan_requires_deck_matched_public_guide_lane": (
+        "add_deck_matched_public_guide_source"
+    ),
+}
 
 REPORT_PATH = "reports/source_to_runtime_explainability.json"
 
@@ -815,8 +823,9 @@ def _next_source_action(
     reason = _normalized_empty(why_not_emitted)
     if first_missing_link is None and reason is None:
         return "none"
-    if reason == "mulligan_requires_exact_deck_match":
-        return "add_exact_deck_matched_source"
+    authority_action = MULLIGAN_AUTHORITY_ACTION_BY_REASON.get(reason or "")
+    if authority_action is not None:
+        return authority_action
     if first_missing_link in NEXT_ACTION_BY_MISSING_LINK:
         return NEXT_ACTION_BY_MISSING_LINK[first_missing_link]
     if first_missing_link == "opening_hand_mulligan_intent":

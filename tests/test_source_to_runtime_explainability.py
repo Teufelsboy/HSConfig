@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
+from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.source_contract_audit import build_source_contract_audit
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
-from hsconfig.source_contract_audit import build_source_contract_audit
 from hsconfig.source_to_runtime_explainability import _card_expected_runtime_files
 
 
@@ -726,6 +729,121 @@ def test_explainability_uses_canonical_action_for_readiness_missing_links():
     assert rows["CARD_MULL"]["next_source_action"] == (
         "add_mulligan_keep_or_discard_claim"
     )
+
+
+@pytest.mark.parametrize(
+    ("override", "reason", "expected_action"),
+    [
+        (
+            {"deck_match_scope": "archetype_matched"},
+            "mulligan_requires_exact_deck_match",
+            "add_exact_deck_matched_source",
+        ),
+        (
+            {"promotion_eligible": False},
+            "mulligan_requires_promotion_eligible_source",
+            "add_promotion_eligible_source",
+        ),
+        (
+            {"source_visibility": "snippet_only"},
+            "mulligan_requires_full_text_source",
+            "add_full_text_public_guide_source",
+        ),
+        (
+            {"source_lane": "archetype_matched_public_guide"},
+            "mulligan_requires_deck_matched_public_guide_lane",
+            "add_deck_matched_public_guide_source",
+        ),
+    ],
+)
+def test_mulligan_authority_suppression_recommends_authority_repair(
+    override: dict[str, object],
+    reason: str,
+    expected_action: str,
+):
+    card_id = "AUTHORITY_CARD"
+    claim_id = "authority_claim"
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "cards": [{"card_id": card_id, "name": "Authority Card", "count": 1}],
+    }
+    gameplan_contract = {
+        "cards": {
+            card_id: {
+                "card_id": card_id,
+                "name": "Authority Card",
+                "count": 1,
+                "coverage_status": "generic_low_confidence",
+                "roles": [],
+            }
+        }
+    }
+    claim = {
+        "claim_id": claim_id,
+        "claim_kind": "mulligan_keep",
+        "source_family": "guide",
+        "cards": [card_id],
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "claim_readiness": "guide_backed",
+        **override,
+    }
+    mulligan_plan = {
+        "rules": [],
+        "suppressed_rules": [
+            {
+                "claim_id": claim_id,
+                "card": card_id,
+                "reason": reason,
+            }
+        ],
+    }
+    config_readiness = build_config_readiness_report(
+        deck_identity=deck_identity,
+        claim_coverage={"uncovered_cards": [card_id], "total_cards": 1},
+        gameplan_contract=gameplan_contract,
+        mulligan_plan=mulligan_plan,
+        card_behavior_plan={"rows": [], "suppressed": []},
+        combo_plan={"combos": [], "suppressed": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+    )
+
+    assert config_readiness["cards"][card_id]["first_missing_link"] == (
+        "needs_mulligan_claim"
+    )
+
+    audit = build_source_contract_audit(
+        deck_name="FixtureDeck",
+        deck_identity=deck_identity,
+        guide_claim_bundle={"claims": [claim]},
+        mulligan_plan=mulligan_plan,
+        config_readiness_report=config_readiness,
+    )
+    report = build_source_to_runtime_explainability_report(audit)
+    claim_row = next(
+        row for row in report["claim_rows"] if row["claim_id"] == claim_id
+    )
+    card_row = next(row for row in report["card_rows"] if row["card_id"] == card_id)
+    attention_row = next(
+        row for row in report["operator_attention"] if row["card_id"] == card_id
+    )
+
+    assert claim_row["why_not_emitted"] == reason
+    assert card_row["why_not_emitted"] == reason
+    assert card_row["next_source_action"] == expected_action
+    assert card_row["first_missing_source_action"] == expected_action
+    assert attention_row["next_source_action"] == expected_action
+    assert attention_row["first_missing_source_action"] == expected_action
+    assert claim_row["next_source_action"] == expected_action
+    assert "add_mulligan_keep_or_discard_claim" not in {
+        claim_row["next_source_action"],
+        card_row["next_source_action"],
+        card_row["first_missing_source_action"],
+        attention_row["next_source_action"],
+        attention_row["first_missing_source_action"],
+    }
 
 
 def test_explainability_card_rows_include_compact_closure_lane():
