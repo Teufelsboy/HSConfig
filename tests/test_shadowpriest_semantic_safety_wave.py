@@ -14,24 +14,25 @@ DECK_CODE = (
     "KgG17oG1cEGAAA="
 )
 DECK_CODE_HASH = "fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2"
-EXPECTED_CARD_COUNTS = {
-    "CFM_637": 1,
-    "DRG_056": 2,
-    "DS1_233": 2,
-    "GVG_009": 2,
-    "NX2_019": 2,
-    "REV_290": 2,
-    "SCH_514": 2,
-    "SW_444": 2,
-    "SW_446": 2,
-    "SW_448": 1,
-    "TOY_381": 2,
-    "TOY_518": 2,
-    "VAC_419": 2,
-    "VAC_512": 2,
-    "WON_065": 2,
-    "YOD_032": 2,
-}
+EXPECTED_CARD_ROWS = [
+    ("DS1_233", 2),
+    ("GVG_009", 2),
+    ("CFM_637", 1),
+    ("DRG_056", 2),
+    ("YOD_032", 2),
+    ("SCH_514", 2),
+    ("SW_444", 2),
+    ("SW_446", 2),
+    ("SW_448", 1),
+    ("REV_290", 2),
+    ("NX2_019", 2),
+    ("WON_065", 2),
+    ("TOY_381", 2),
+    ("TOY_518", 2),
+    ("VAC_512", 2),
+    ("VAC_419", 2),
+]
+EXPECTED_CARD_COUNTS = dict(EXPECTED_CARD_ROWS)
 EXPECTED_CARD_IDS = frozenset(EXPECTED_CARD_COUNTS)
 EXPECTED_CARD_JSON_FILES = frozenset(
     f"{card_id}.json" for card_id in EXPECTED_CARD_IDS
@@ -39,6 +40,51 @@ EXPECTED_CARD_JSON_FILES = frozenset(
 EXPECTED_RUNTIME_JSON_FILES = EXPECTED_CARD_JSON_FILES | {
     "GlobalValues.json",
     "Mulligan.json",
+}
+EXPECTED_GLOBALVALUES_BASELINE_KEYS = frozenset(
+    {
+        "ConfigComment",
+        "FirstTurnValueWeight",
+        "GameCardId",
+        "GlobalCharge",
+        "GlobalDivineShield",
+        "GlobalDurability",
+        "GlobalFrozen",
+        "GlobalHeroAttack",
+        "GlobalHeroHealth",
+        "GlobalLocationHealth",
+        "GlobalLocationIntrinsicValue",
+        "GlobalMinionAttack",
+        "GlobalMinionHealth",
+        "GlobalMinionIntrinsicValue",
+        "GlobalOverload",
+        "GlobalQuestProgressValue",
+        "GlobalStealth",
+        "GlobalTaunt",
+        "GlobalWeaponAttack",
+        "GlobalWindfury",
+        "OppGlobalCharge",
+        "OppGlobalDivineShield",
+        "OppGlobalDurability",
+        "OppGlobalFrozen",
+        "OppGlobalHeroAttack",
+        "OppGlobalHeroHealth",
+        "OppGlobalLocationHealth",
+        "OppGlobalLocationIntrinsicValue",
+        "OppGlobalMinionAttack",
+        "OppGlobalMinionHealth",
+        "OppGlobalMinionIntrinsicValue",
+        "OppGlobalOverload",
+        "OppGlobalQuestProgressValue",
+        "OppGlobalStealth",
+        "OppGlobalTaunt",
+        "OppGlobalWeaponAttack",
+        "OppGlobalWindfury",
+        "SecondTurnValueWeight",
+    }
+)
+EXPECTED_GLOBALVALUES_EMITTED_KEYS = EXPECTED_GLOBALVALUES_BASELINE_KEYS | {
+    "MyHeroPowerValue"
 }
 
 
@@ -99,6 +145,28 @@ def _assert_expected_cardid_coverage(
 ) -> None:
     assert roster_card_ids == EXPECTED_CARD_IDS
     assert runtime_json_files == EXPECTED_RUNTIME_JSON_FILES
+
+
+def _assert_expected_roster_rows(raw_rows: object) -> None:
+    assert isinstance(raw_rows, list)
+    assert len(raw_rows) == len(EXPECTED_CARD_ROWS) == 16
+    roster_pairs = [
+        (str(row["card_id"]), int(row["count"]))
+        for row in raw_rows
+    ]
+    assert len({card_id for card_id, _ in roster_pairs}) == len(raw_rows)
+    assert roster_pairs == EXPECTED_CARD_ROWS
+    assert sum(count for _, count in roster_pairs) == 30
+
+
+def _assert_exact_globalvalues_key_sets(
+    baseline_keys: set[str],
+    emitted_keys: set[str],
+    profile_keys: set[str],
+) -> None:
+    assert baseline_keys == EXPECTED_GLOBALVALUES_BASELINE_KEYS
+    assert emitted_keys == EXPECTED_GLOBALVALUES_EMITTED_KEYS
+    assert profile_keys == EXPECTED_GLOBALVALUES_EMITTED_KEYS
 
 
 @pytest.mark.parametrize(
@@ -175,9 +243,11 @@ def test_shadowpriest_package_identity_and_globalvalues_are_exact(package):
     globalvalues = _card(package, "GlobalValues")
     deck_dir = package / "CustomConfig" / "shadowpriest"
 
+    raw_roster_rows = identity["cards"]
+    _assert_expected_roster_rows(raw_roster_rows)
     roster_counts = {
         str(card["card_id"]): int(card["count"])
-        for card in identity["cards"]
+        for card in raw_roster_rows
     }
     runtime_json_files = {path.name for path in deck_dir.glob("*.json")}
     _assert_expected_cardid_coverage(set(roster_counts), runtime_json_files)
@@ -201,13 +271,16 @@ def test_shadowpriest_package_identity_and_globalvalues_are_exact(package):
     assert validation["checked_files"] == len(EXPECTED_RUNTIME_JSON_FILES)
 
     baseline_keys = set(baseline)
+    _assert_exact_globalvalues_key_sets(
+        baseline_keys,
+        set(globalvalues),
+        set(profile["keys"]),
+    )
     assert len(baseline_keys) == 38
     assert baseline_receipt["key_count"] == 38
     assert baseline_receipt["snapshot_status"] == "known_runtime_snapshot"
     assert baseline_receipt["source"] == "bundled_fallback"
-    assert set(globalvalues) == baseline_keys | {"MyHeroPowerValue"}
     assert profile["key_count"] == 39
-    assert set(profile["keys"]) == set(globalvalues)
     assert profile["expected_overlay_keys"] == []
     assert profile["generated_overlay_keys"] == ["MyHeroPowerValue"]
     assert profile["missing_overlay_keys"] == []
@@ -241,6 +314,32 @@ def test_cardid_coverage_proof_rejects_missing_roster_or_file(package):
         _assert_expected_cardid_coverage(
             roster_card_ids,
             runtime_json_files - {"TOY_518.json"},
+        )
+
+
+def test_raw_roster_proof_rejects_duplicate_extra_row(package):
+    identity = _report(package, "deck_identity.json")
+    duplicated_rows = [dict(row) for row in identity["cards"]]
+    duplicated_rows.append(dict(duplicated_rows[0]))
+
+    with pytest.raises(AssertionError):
+        _assert_expected_roster_rows(duplicated_rows)
+
+
+def test_globalvalues_literal_proof_rejects_same_size_key_replacement(package):
+    baseline = _report(package, "globalvalues_baseline.json")
+    profile = _report(package, "global_values_key_profile_report.json")
+    globalvalues = _card(package, "GlobalValues")
+    replaced_baseline_keys = set(baseline)
+    replaced_baseline_keys.remove("GlobalCharge")
+    replaced_baseline_keys.add("InjectedBaselineKey")
+
+    assert len(replaced_baseline_keys) == 38
+    with pytest.raises(AssertionError):
+        _assert_exact_globalvalues_key_sets(
+            replaced_baseline_keys,
+            set(globalvalues),
+            set(profile["keys"]),
         )
 
 
