@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
@@ -7,11 +5,17 @@ from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.gameplan_contract import build_gameplan_contract
-from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
+from hsconfig.io import write_json
 from hsconfig.mulligan_plan import build_mulligan_plan
-from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.operator_summary import build_operator_summary
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    refresh_package_derivation_authority,
+)
+from hsconfig.research_contract import build_research_contract_bundle
+from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_document_builder import build_source_document_bundle
 
 
@@ -174,18 +178,59 @@ def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path,
     package = tmp_path / family
     deck_dir = package / "CustomConfig" / "deck"
     reports = package / "reports"
-    deck_dir.mkdir(parents=True)
-    reports.mkdir()
-    (deck_dir / "GlobalValues.json").write_text("{}", encoding="utf-8")
-    (deck_dir / "Mulligan.json").write_text('{"mulligan": []}', encoding="utf-8")
-    (reports / "input_manifest.json").write_text('{"deck_name": "deck"}', encoding="utf-8")
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "fixture"}
+    write_json(deck_dir / "GlobalValues.json", globalvalues)
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "fixture",
+            "Mulligan": {"values": []},
+        },
+    )
+    write_json(reports / "input_manifest.json", {"deck_name": "deck"})
+    write_json(reports / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        reports / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
+            "expected_overlay_keys": [],
+            "missing_overlay_keys": [],
+        },
+    )
+    deck_fingerprint = "sha256:" + ("0" * 64)
+    write_json(
+        reports / "deck_identity.json",
+        {"deck_name": "deck", "deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "deck_fingerprint.json",
+        {"deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "guide_claim_bundle.json",
+        {"canonical_source_receipts": []},
+    )
     operator["generated_files"] = [
         "CustomConfig/deck/GlobalValues.json",
         "CustomConfig/deck/Mulligan.json",
     ]
-    (reports / "operator_summary.json").write_text(
-        json.dumps(operator), encoding="utf-8"
+    write_json(
+        reports / "output_ownership_manifest.json",
+        build_output_ownership_manifest(
+            [
+                *operator["generated_files"],
+                DERIVATION_RECEIPT_PATH,
+                "reports/operator_summary.json",
+                "reports/output_ownership_manifest.json",
+            ]
+        ),
     )
+    operator["package_derivation"] = refresh_package_derivation_authority(package)
+    write_json(reports / "operator_summary.json", operator)
 
     gate = evaluate_apply_gate(package)
     assert operator["technical_status"] == "VALID_PACKAGE"

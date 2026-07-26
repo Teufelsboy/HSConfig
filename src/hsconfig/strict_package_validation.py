@@ -8,6 +8,10 @@ from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.validate_package import validate_config_package
 
 
+def strict_validation_passed(report: dict[str, Any]) -> bool:
+    return report.get("status") == "passed" and not report.get("errors")
+
+
 def validate_complete_package(package: str | Path) -> dict[str, Any]:
     """Run the strict complete-package contract used by every caller."""
     package_path = Path(package)

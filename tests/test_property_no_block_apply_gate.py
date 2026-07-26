@@ -7,6 +7,13 @@ import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import write_json
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    DERIVATION_RECEIPT_SCHEMA_VERSION,
+    build_package_derivation_receipt,
+    write_package_derivation_receipt,
+)
 
 
 RUNTIME_FILES = {
@@ -60,6 +67,64 @@ def _write_package(
         }
         if summary_payload:
             summary.update(summary_payload)
+        if write_manifest:
+            reports = package / "reports"
+            globalvalues = files["GlobalValues.json"]
+            write_json(reports / "globalvalues_baseline.json", globalvalues)
+            write_json(
+                reports / "globalvalues_profile.json",
+                {
+                    "key_count": len(globalvalues),
+                    "keys": {
+                        key: {"status": "unchanged"} for key in globalvalues
+                    },
+                    "generated_overlay_keys": [],
+                    "summary": {
+                        "all_expected_overlay_keys_accounted_for": True
+                    },
+                    "expected_overlay_keys": [],
+                    "missing_overlay_keys": [],
+                },
+            )
+            deck_fingerprint = "sha256:" + ("0" * 64)
+            write_json(
+                reports / "deck_identity.json",
+                {
+                    "deck_name": "deck",
+                    "deck_fingerprint": deck_fingerprint,
+                },
+            )
+            write_json(
+                reports / "deck_fingerprint.json",
+                {"deck_fingerprint": deck_fingerprint},
+            )
+            write_json(
+                reports / "guide_claim_bundle.json",
+                {"canonical_source_receipts": []},
+            )
+            ownership = build_output_ownership_manifest(
+                [
+                    *generated_files,
+                    DERIVATION_RECEIPT_PATH,
+                    "reports/operator_summary.json",
+                    "reports/output_ownership_manifest.json",
+                ]
+            )
+            write_json(
+                reports / "output_ownership_manifest.json",
+                ownership,
+            )
+            receipt = build_package_derivation_receipt(package)
+            digest = write_package_derivation_receipt(
+                package / DERIVATION_RECEIPT_PATH,
+                receipt,
+            )
+            summary["package_derivation"] = {
+                "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+                "receipt_path": DERIVATION_RECEIPT_PATH,
+                "receipt_sha256": digest,
+                "verified": True,
+            }
         write_json(package / "reports" / "operator_summary.json", summary)
 
     return package
@@ -162,8 +227,11 @@ def test_valid_minimal_package_without_cardid_or_combo_is_allowed(tmp_path: Path
             "normal_path_optional_surface_present",
         ),
         (
-            lambda package: write_json(package / "CustomConfig" / "deck" / "EX1_999.json", {}),
-            "actual_runtime_file_not_in_operator_summary",
+            lambda package: write_json(
+                package / "CustomConfig" / "deck" / "EX1_999.json",
+                {"GameCardId": "EX1_999", "ConfigComment": "added after build"},
+            ),
+            "package_derivation_mismatch",
         ),
         (
             lambda package: write_json(package / "CustomConfig" / "deck" / "nested" / "EX1_999.json", {}),
@@ -207,7 +275,12 @@ def test_declared_runtime_file_missing_from_disk_blocks(tmp_path: Path):
 def test_summary_runtime_file_drift_blocks(tmp_path: Path):
     package = _write_package(
         tmp_path / "package",
-        runtime_files={"EX1_001.json": {"GameCardId": "EX1_001"}},
+        runtime_files={
+            "EX1_001.json": {
+                "GameCardId": "EX1_001",
+                "ConfigComment": "fixture",
+            }
+        },
         generated_files=[
             "CustomConfig/deck/GlobalValues.json",
             "CustomConfig/deck/Mulligan.json",
@@ -272,10 +345,13 @@ def test_summary_runtime_file_drift_blocks(tmp_path: Path):
             },
             "mutate": lambda package: write_json(
                 package / "CustomConfig" / "deck" / "EX1_777.json",
-                {"GameCardId": "EX1_777"},
+                {
+                    "GameCardId": "EX1_777",
+                    "ConfigComment": "added after build",
+                },
             ),
             "expected_status": "blocked",
-            "expected_reason": "actual_runtime_file_not_in_operator_summary",
+            "expected_reason": "package_derivation_mismatch",
         },
         {
             "name": "legacy_optional_surface",

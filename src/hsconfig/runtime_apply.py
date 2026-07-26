@@ -15,7 +15,10 @@ from hsconfig.runtime_apply_receipts import (
     write_runtime_write_history,
 )
 from hsconfig.runtime_package_match import assert_runtime_matches_package
-from hsconfig.strict_package_validation import validate_complete_package
+from hsconfig.strict_package_validation import (
+    strict_validation_passed,
+    validate_complete_package,
+)
 
 
 def plan_apply_package(
@@ -208,7 +211,7 @@ def _validate_runtime_apply_package(package: Path) -> None:
             f"receipt or runtime writes: {exc}"
         ) from exc
 
-    if report["status"] == "passed":
+    if strict_validation_passed(report):
         return
     errors = report.get("errors") or ["unknown package validation failure"]
     first_error = str(errors[0])

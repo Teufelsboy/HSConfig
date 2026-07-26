@@ -14,6 +14,24 @@ from hsconfig.io import write_json
 from hsconfig.strict_package_validation import validate_complete_package
 
 
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        ({"status": "passed", "errors": []}, True),
+        ({"status": "passed", "errors": ["contradictory error"]}, False),
+        ({"status": "failed", "errors": []}, False),
+        ({}, False),
+    ],
+)
+def test_strict_validation_passed_requires_clean_passed_report(
+    report: dict[str, Any],
+    expected: bool,
+) -> None:
+    from hsconfig.strict_package_validation import strict_validation_passed
+
+    assert strict_validation_passed(report) is expected
+
+
 def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[str, Any], int]:
     code = main([*args, "--json"])
     captured = capsys.readouterr()

@@ -2,10 +2,12 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
-from hsconfig.io import write_json
-from hsconfig.operator_summary import build_operator_summary
+from hsconfig.io import read_json, write_json
+from hsconfig.runtime_apply import apply_package
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -38,9 +40,61 @@ FORBIDDEN_DIAGNOSTIC_IMPORTS = [
     "import hsconfig.source_contract_conformance",
 ]
 
+SHADOWPRIEST_DECK_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+
 
 def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _build_authoritative_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    name: str = "package",
+) -> Path:
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    package = tmp_path / name
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_DECK_CODE,
+            "--runtime-root",
+            str(tmp_path / f"{name}-runtime"),
+            "--out",
+            str(package),
+            "--source-documents-json",
+            "tests/fixtures/source_documents_shadowpriest_strong.json",
+            "--json",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0, payload
+    assert payload["status"] == "passed"
+    return package
+
+
+def _first_reason_code(gate: dict) -> str:
+    reason = gate["reasons"][0]
+    return str(reason.get("code") or reason.get("reason"))
+
+
+def _first_runtime_json(package: Path) -> Path:
+    return next(
+        path
+        for path in sorted((package / "CustomConfig").rglob("*.json"))
+        if path.name not in {"GlobalValues.json", "Mulligan.json"}
+    )
 
 
 def test_active_apply_paths_do_not_consume_source_contract_diagnostics():
@@ -94,18 +148,13 @@ def _write_minimal_runtime_package(package: Path) -> None:
     )
 
 
-def test_configuration_assurance_does_not_change_apply_gate_result(tmp_path: Path):
-    package = tmp_path / "package"
-    _write_minimal_runtime_package(package)
-    summary = build_operator_summary(
-        deck_name="deck",
-        deck_code="fixture",
-        technical_validation={"status": "passed", "errors": []},
-        generated_files=[
-            "CustomConfig/deck/GlobalValues.json",
-            "CustomConfig/deck/Mulligan.json",
-        ],
-    )
+def test_configuration_assurance_does_not_change_apply_gate_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    summary = read_json(package / "reports" / "operator_summary.json")
     assurance = summary["configuration_assurance"]
     authority_before = {
         key: summary[key]
@@ -187,3 +236,304 @@ def test_prepared_package_projects_configuration_assurance_to_operator_outputs(
     assert f"- Source authority: `{assurance['source_authority']}`" in markdown
     assert f"- Semantic closure: `{assurance['semantic_closure']}`" in markdown
     assert "- Runtime gate impact: `none`" in markdown
+
+
+def test_untouched_builder_package_has_verified_derivation_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+
+    receipt = read_json(package / "package_derivation_receipt.json")
+    summary = read_json(package / "reports" / "operator_summary.json")
+    gate = evaluate_apply_gate(package)
+
+    assert receipt["schema_version"] == 1
+    assert summary["package_derivation"] == {
+        "schema_version": 1,
+        "receipt_path": "package_derivation_receipt.json",
+        "receipt_sha256": summary["package_derivation"]["receipt_sha256"],
+        "verified": True,
+    }
+    assert summary["package_derivation"]["receipt_sha256"].startswith("sha256:")
+    assert gate["allowed"] is True
+    assert gate["status"] == "allowed"
+
+
+def test_forged_valid_operator_summary_cannot_authorize_package(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    original = read_json(package / "reports" / "operator_summary.json")
+    write_json(
+        package / "reports" / "operator_summary.json",
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": original["generated_files"],
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "operator_summary_derivation_inconsistent"
+
+
+def test_apply_gate_blocks_runtime_json_value_changed_after_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    runtime_path = _first_runtime_json(package)
+    runtime_payload = read_json(runtime_path)
+    runtime_payload["ConfigComment"] = "tampered after package build"
+    write_json(runtime_path, runtime_payload)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_mismatch"
+
+
+def test_apply_gate_blocks_runtime_json_added_after_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    deck_dir = next(path for path in (package / "CustomConfig").iterdir() if path.is_dir())
+    write_json(
+        deck_dir / "ZZZ_999.json",
+        {
+            "GameCardId": "ZZZ_999",
+            "ConfigComment": "tampered after package build",
+        },
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_mismatch"
+
+
+def test_apply_gate_blocks_authoritative_input_changed_after_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    identity_path = package / "reports" / "deck_identity.json"
+    identity = read_json(identity_path)
+    identity["tampered_after_build"] = True
+    write_json(identity_path, identity)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_mismatch"
+
+
+def test_apply_gate_blocks_missing_derivation_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    (package / "package_derivation_receipt.json").unlink()
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_receipt_missing"
+
+
+def test_apply_gate_blocks_unknown_derivation_receipt_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        package_derivation_receipt_sha256,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    receipt_path = package / "package_derivation_receipt.json"
+    receipt = read_json(receipt_path)
+    receipt["schema_version"] = 999
+    write_json(receipt_path, receipt)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"]["receipt_sha256"] = (
+        package_derivation_receipt_sha256(receipt)
+    )
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_receipt_schema_unsupported"
+
+
+def test_apply_gate_blocks_derivation_receipt_digest_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    receipt_path = package / "package_derivation_receipt.json"
+    receipt = read_json(receipt_path)
+    receipt["inputs"] = {}
+    write_json(receipt_path, receipt)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_receipt_digest_mismatch"
+
+
+def test_strict_validation_failure_blocks_even_when_receipt_verifier_is_forced_true(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    monkeypatch.setattr(
+        "hsconfig.apply_gate.validate_complete_package",
+        lambda _package: {
+            "status": "failed",
+            "errors": ["forced strict validation failure"],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "hsconfig.apply_gate.verify_package_derivation_receipt",
+        lambda _package, _receipt: (True, []),
+        raising=False,
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "strict_package_validation_failed"
+
+
+def test_same_logical_package_has_identical_derivation_receipt_across_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    first = _build_authoritative_package(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        name="first-package",
+    )
+    second = _build_authoritative_package(
+        tmp_path,
+        monkeypatch,
+        capsys,
+        name="second-package",
+    )
+
+    first_receipt = read_json(first / "package_derivation_receipt.json")
+    second_receipt = read_json(second / "package_derivation_receipt.json")
+    first_summary = read_json(first / "reports" / "operator_summary.json")
+    second_summary = read_json(second / "reports" / "operator_summary.json")
+
+    assert first_receipt == second_receipt
+    assert (
+        first_summary["package_derivation"]["receipt_sha256"]
+        == second_summary["package_derivation"]["receipt_sha256"]
+    )
+    serialized = json.dumps(first_receipt, sort_keys=True)
+    assert str(first) not in serialized
+    assert str(second) not in serialized
+
+
+def test_derivation_receipt_excludes_volatile_timestamps_and_absolute_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        build_package_derivation_receipt,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    before = build_package_derivation_receipt(package)
+    identity_path = package / "reports" / "deck_identity.json"
+    identity = read_json(identity_path)
+    identity["generated_at"] = "2030-01-15T12:00:00Z"
+    identity["opaque_reference"] = str(tmp_path / "private" / "deck.json")
+    write_json(identity_path, identity)
+
+    after = build_package_derivation_receipt(package)
+
+    assert after == before
+
+
+def test_derivation_receipt_is_non_circular(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        build_package_derivation_receipt,
+        package_derivation_receipt_sha256,
+        verify_package_derivation_receipt,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    receipt_path = package / "package_derivation_receipt.json"
+    summary_path = package / "reports" / "operator_summary.json"
+    receipt = read_json(receipt_path)
+    digest = package_derivation_receipt_sha256(receipt)
+
+    summary = read_json(summary_path)
+    summary["non_authoritative_tamper"] = "summary must not hash itself"
+    write_json(summary_path, summary)
+    write_json(receipt_path, {**receipt, "untrusted_extra": True})
+
+    rebuilt = build_package_derivation_receipt(package)
+    verified, reasons = verify_package_derivation_receipt(package, receipt)
+
+    assert rebuilt == receipt
+    assert package_derivation_receipt_sha256(rebuilt) == digest
+    assert verified is True
+    assert reasons == []
+    assert "package_derivation_receipt.json" not in receipt["runtime_files"]
+    assert "reports/operator_summary.json" not in receipt["inputs"]
+
+
+def test_runtime_apply_rejects_tamper_before_runtime_write_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    runtime_path = _first_runtime_json(package)
+    runtime_payload = read_json(runtime_path)
+    runtime_payload["ConfigComment"] = "tampered before runtime apply"
+    write_json(runtime_path, runtime_payload)
+
+    def fail_if_runtime_write_boundary_is_reached(**_kwargs):
+        raise AssertionError("runtime write boundary must not be reached")
+
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._snapshot_existing_runtime_target",
+        fail_if_runtime_write_boundary_is_reached,
+    )
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="package_derivation_mismatch"):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    assert not runtime.exists()

@@ -26,6 +26,7 @@ from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
 from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import refresh_package_derivation_authority
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.source_bundle import build_source_bundle
 from hsconfig.source_closure_intake import (
@@ -337,6 +338,9 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         operator_summary,
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
+    )
+    operator_summary["package_derivation"] = refresh_package_derivation_authority(
+        package_dir
     )
     if source_closure_intake_receipt is not None:
         operator_summary["source_closure_intake"] = summarize_source_closure_intake(

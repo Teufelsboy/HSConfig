@@ -4,7 +4,14 @@ from pathlib import Path
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    DERIVATION_RECEIPT_SCHEMA_VERSION,
+    build_package_derivation_receipt,
+    write_package_derivation_receipt,
+)
 from hsconfig.runtime_package_match import RuntimePackageMismatchError
 from hsconfig.runtime_apply import apply_package, plan_apply_package
 
@@ -20,6 +27,59 @@ def _write_validation_reports(package: Path, globalvalues: dict) -> None:
             "summary": {"all_expected_overlay_keys_accounted_for": True},
             "expected_overlay_keys": [],
             "missing_overlay_keys": [],
+        },
+    )
+
+
+def _write_operator_summary_with_derivation(
+    package: Path,
+    summary: dict,
+) -> None:
+    reports = package / "reports"
+    manifest = read_json(reports / "input_manifest.json")
+    deck_name = str(manifest.get("deck_name", "deck"))
+    deck_fingerprint = "sha256:" + ("0" * 64)
+    write_json(
+        reports / "deck_identity.json",
+        {
+            "deck_name": deck_name,
+            "deck_fingerprint": deck_fingerprint,
+        },
+    )
+    write_json(
+        reports / "deck_fingerprint.json",
+        {"deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "guide_claim_bundle.json",
+        {"canonical_source_receipts": []},
+    )
+    generated = summary.get("generated_files", [])
+    generated_files = list(generated) if isinstance(generated, list) else []
+    ownership = build_output_ownership_manifest(
+        [
+            *generated_files,
+            DERIVATION_RECEIPT_PATH,
+            "reports/operator_summary.json",
+            "reports/output_ownership_manifest.json",
+        ]
+    )
+    write_json(reports / "output_ownership_manifest.json", ownership)
+    receipt = build_package_derivation_receipt(package)
+    digest = write_package_derivation_receipt(
+        package / DERIVATION_RECEIPT_PATH,
+        receipt,
+    )
+    write_json(
+        reports / "operator_summary.json",
+        {
+            **summary,
+            "package_derivation": {
+                "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+                "receipt_path": DERIVATION_RECEIPT_PATH,
+                "receipt_sha256": digest,
+                "verified": True,
+            },
         },
     )
 
@@ -65,7 +125,7 @@ def _complete_package(
     }
     if source_informed_apply_readiness is not None:
         summary["source_informed_apply_readiness"] = source_informed_apply_readiness
-    write_json(package / "reports" / "operator_summary.json", summary)
+    _write_operator_summary_with_derivation(package, summary)
     return package
 
 
@@ -87,8 +147,8 @@ def _minimal_load_safe_package_without_cardid(tmp_path: Path) -> Path:
         package / "reports" / "input_manifest.json",
         {"deck_name": "Minimal Deck", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(
-        package / "reports" / "operator_summary.json",
+    _write_operator_summary_with_derivation(
+        package,
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
@@ -727,22 +787,6 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
     capsys.readouterr()
     assert build_code == 0
 
-    generated_files = [
-        str(path.relative_to(package)).replace("/", "\\")
-        for path in sorted((package / "CustomConfig" / "apply_deck").glob("*.json"))
-    ]
-    write_json(
-        package / "reports" / "operator_summary.json",
-        {
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "SOURCE_BACKED_STRONG",
-            "next_action": "READY_TO_APPLY_OR_HANDOFF",
-            "apply_policy": "ALLOWED",
-            "semantic_blockers": [],
-            "generated_files": generated_files,
-        },
-    )
-
     code = main(
         [
             "apply",
@@ -783,8 +827,8 @@ def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section
         package / "reports" / "input_manifest.json",
         {"deck_name": "ShadowPriest", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(
-        package / "reports" / "operator_summary.json",
+    _write_operator_summary_with_derivation(
+        package,
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "SOURCE_BACKED_STRONG",
@@ -833,8 +877,8 @@ def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_pa
         package / "reports" / "input_manifest.json",
         {"deck_name": "Bad\nDeck", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(
-        package / "reports" / "operator_summary.json",
+    _write_operator_summary_with_derivation(
+        package,
         {
             "technical_status": "VALID_PACKAGE",
             "semantic_status": "SOURCE_BACKED_STRONG",
@@ -1050,7 +1094,7 @@ def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_pa
         },
     )
 
-    with pytest.raises(ValueError, match="fake apply receipt does not match package"):
+    with pytest.raises(ValueError, match="package_derivation_mismatch"):
         apply_package(package_root=package, runtime_root=runtime, fake_receipt=receipt)
 
     assert not (runtime / "CustomConfig" / "deck").exists()

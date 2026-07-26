@@ -1,0 +1,306 @@
+# Task 4 Report: Deterministische Package-Derivation-Authority
+
+Status: `DONE`
+
+## Ergebnis
+
+Ein handgeschriebenes oder nachträglich veraltetes
+`reports/operator_summary.json` kann ein Paket nicht mehr selbst zu
+`VALID_PACKAGE` autorisieren.
+
+Der Paketbau erzeugt jetzt eine kanonische
+`package_derivation_receipt.json`. Sie bindet die autoritativen Eingaben und
+alle aktiven Runtime-JSON-Dateien an einen öffentlichen SHA-256-Digest. Die
+Operator Summary enthält nur den Verweis auf diese Quittung. Das Apply-Gate
+vertraut diesem Verweis nicht blind, sondern wiederholt vor jeder
+Runtime-Autorisierung:
+
+1. strikte Paketvalidierung;
+2. vorhandene Deck-Input-Eligibility-Prüfung;
+3. vorhandene strategische Source-Receipt-Prüfung;
+4. Receipt-Schema- und Digest-Prüfung;
+5. vollständige Receipt-Neuberechnung;
+6. Konsistenzprüfung mit der Operator Summary;
+7. Parität zwischen tatsächlichen und deklarierten Runtime-Dateien.
+
+Erst danach darf `technical_status=VALID_PACKAGE` die bestehende
+`load_safe_apply`-Entscheidung auslösen.
+
+## Implementierung
+
+### Kanonische Derivation Receipt
+
+Neu erstellt wurde `src/hsconfig/package_derivation_receipt.py`.
+
+Die Quittung verwendet `schema_version=1` und hasht:
+
+- `reports/input_manifest.json`;
+- `reports/deck_identity.json`;
+- `reports/deck_fingerprint.json`;
+- eine vorhandene Deck-Input-Verifikation;
+- kanonische Source Receipts aus `reports/guide_claim_bundle.json`;
+- `reports/globalvalues_baseline.json`;
+- `reports/globalvalues_profile.json`;
+- `reports/output_ownership_manifest.json`;
+- jede aktive JSON-Datei unter `CustomConfig/`, mit normalisiertem
+  Forward-Slash-Pfad.
+
+JSON wird deterministisch mit sortierten Schlüsseln, kompakten Trennzeichen
+und UTF-8 serialisiert. Source-Receipt-Sequenzen und Pfade werden ordinal
+sortiert. Volatile Zeitfelder und absolute Pfadwerte werden aus der
+Authority-Projektion entfernt.
+
+Der öffentliche Digest wird aus exakt denselben kanonischen Bytes berechnet,
+die in `package_derivation_receipt.json` geschrieben werden.
+
+Die Quittung ist nicht zirkulär:
+
+- sie hasht sich nicht selbst;
+- sie hasht `reports/operator_summary.json` nicht;
+- Human-Reports sind keine Ableitungsinputs.
+
+### Paketbau und Configure-Nachbearbeitung
+
+`package_builder.py` finalisiert zuerst Runtime-Dateien und das
+Output-Ownership-Manifest. Danach schreibt es die Quittung und übergibt deren
+Metadaten an `build_operator_summary()`.
+
+Ein bestehendes Receipt aus einem früheren Build wird vor dem Neuaufbau
+entfernt. Das Ownership-Manifest klassifiziert die neue Root-Datei als
+`integrity_receipt` mit `can_block_apply=true`, ohne sie zu einer zweiten
+human-facing Gate-Datei zu machen.
+
+Der `configure`-Workflow ergänzt nach `prepare` noch `source_bundle.json` und
+erneuert dabei das Output-Ownership-Manifest. Diese autoritative
+Nachbearbeitung aktualisiert nun ebenfalls Quittung und Summary-Bindung.
+Damit bleibt auch das endgültige `04_package` konsistent und ein Fake Apply
+funktioniert nur mit der finalen Paketform.
+
+### Operator Summary
+
+Die Summary enthält:
+
+```json
+{
+  "package_derivation": {
+    "schema_version": 1,
+    "receipt_path": "package_derivation_receipt.json",
+    "receipt_sha256": "sha256:<64 lowercase hex>",
+    "verified": true
+  }
+}
+```
+
+Die technische Statusableitung verwendet den gemeinsamen strikten
+Validierungsvertrag. Für offizielle Builder-Ausgaben ist
+`VALID_PACKAGE` zusätzlich an eine syntaktisch gültige, verifizierte
+Derivation-Bindung gekoppelt.
+
+Direkte Summary-Konstruktion bleibt für isolierte Diagnostik kompatibel. Sie
+erhält dadurch aber keine Apply-Authority: Das Apply-Gate lehnt jedes reale
+Paket ohne Quittung und exakte Summary-Bindung ab.
+
+### Apply-Gate und Runtime-Schreibgrenze
+
+Das Apply-Gate recomputiert die Authority aus dem Paketinhalt. Stabile
+Fail-Closed-Codes sind:
+
+```text
+package_derivation_receipt_missing
+package_derivation_receipt_digest_mismatch
+package_derivation_mismatch
+operator_summary_derivation_inconsistent
+```
+
+Eine unbekannte Receipt-Version wird zusätzlich stabil als
+`package_derivation_receipt_schema_unsupported` ausgewiesen. Eine
+fehlgeschlagene strikte Validierung liefert
+`strict_package_validation_failed`.
+
+`runtime_apply.py` und `apply_gate.py` verwenden denselben
+`strict_validation_passed()`-Vertrag. Negative Runtime-Tests belegen, dass bei
+einem Authority-Fehler die Snapshot-/Write-Grenze nicht erreicht und kein
+Runtime-Verzeichnis erzeugt wird.
+
+### Task-5-Grenze
+
+Task 4 erfindet keine Deck-Input-Verifikation vorweg. Wenn die künftige
+Verifikation als Report oder Manifestfeld vorhanden ist, wird sie gehasht und
+ihre `runtime_apply_eligible`-Entscheidung wird geprüft. Ist sie noch nicht
+vorhanden, bleibt das bisherige Paketformat kompatibel. Die eigentliche
+Deck-Input-Verifikationslogik bleibt Aufgabe 5.
+
+## TDD-Evidenz
+
+### Baseline
+
+Vor den neuen Regressionen:
+
+```text
+89 passed in 10.76s
+```
+
+### RED
+
+Nach Ergänzung der Task-4-Regressions und vor dem Produktcode:
+
+```text
+12 failed, 89 passed in 12.67s
+```
+
+Die Fehler belegten:
+
+- eine gefälschte `VALID_PACKAGE`-Summary überschritt das Apply-Gate;
+- Runtime-Wertänderungen und neue Runtime-Dateien waren nicht
+  ableitungsgebunden;
+- Änderungen an Deck Identity/Fingerprint waren nicht gebunden;
+- Receipt, Schema- und Digest-Prüfungen fehlten;
+- eine erzwungen erfolgreiche Receipt-Verifikation konnte die fehlende
+  strikte Gate-Validierung überstimmen;
+- Runtime Apply erreichte die Schreibvorbereitung trotz Authority-Tamper.
+
+Der separat eingeführte gemeinsame Strict-Result-Vertrag war vor der
+Implementierung ebenfalls rot:
+
+```text
+4 failed, 5 deselected
+```
+
+### GREEN
+
+Erste fokussierte Task-4-Green-Runde:
+
+```text
+101 passed in 16.50s
+```
+
+Finale, im Task-Brief vorgeschriebene Apply-Boundary-Suite:
+
+```text
+140 passed in 24.42s
+```
+
+Sie umfasst:
+
+- `tests/test_apply_gate.py`;
+- `tests/test_apply_authority_boundary.py`;
+- `tests/test_runtime_apply.py`;
+- `tests/test_runtime_apply_receipts.py`;
+- `tests/test_strict_package_validation.py`;
+- `tests/test_output_ownership_manifest.py`;
+- `tests/test_property_no_block_apply_gate.py`.
+
+Direkt betroffene Configure-, Acceptance-, Source-Claim- und
+Subtractive-Contract-Suite:
+
+```text
+65 passed in 20.41s
+```
+
+Finale vollständige Repository-Suite:
+
+```text
+2410 passed, 11 skipped in 255.72s
+```
+
+Ruff auf allen durch Task 4 geänderten Python-Dateien:
+
+```text
+All checks passed!
+```
+
+`git diff --check` meldet keine Whitespace-Fehler. Die Windows-Hinweise zur
+künftigen LF/CRLF-Normalisierung sind keine Diff-Fehler.
+
+## Legacy-Testanpassungen
+
+Es wurden keine Tests durch ein schwächeres Gate grün gemacht.
+
+Drei Acceptance-Matrix-Fälle erwarteten noch, dass eine veraltete
+`VALID_PACKAGE`-Summary fehlende oder ungültige GlobalValues-Authority
+überstimmt. Diese Erwartungen wurden auf das neue fail-closed Verhalten
+umgestellt.
+
+Zwei handgebaute Minimalpakete testen weiterhin bewusst nicht-blockierende
+Source-Konflikte beziehungsweise den Legacy-No-op-Flag. Ihre Fixtures wurden
+zu strikt validen, Receipt-gebundenen Paketen aufgewertet, damit weiterhin
+genau die beabsichtigte Semantikgrenze geprüft wird.
+
+Der vorhandene Configure-Fake-Apply-Test deckte eine echte Produktionslücke
+auf: Das nach `prepare` neu geschriebene Ownership-Manifest machte die
+Quittung veraltet. Die Produktionslogik wurde korrigiert; der Test wurde
+nicht abgeschwächt.
+
+## Self-Review
+
+- Ein unverändertes Builder-Paket verifiziert und darf weiterhin
+  `load_safe_apply` erreichen.
+- Eine handgeschriebene Summary ohne Receipt-Metadaten wird blockiert.
+- Änderungen an Runtime JSON, Runtime-Dateimenge, Deck Identity/Fingerprint,
+  Source Receipts und Ownership-Manifest werden durch Neuberechnung erkannt.
+- Receipt-Änderungen ohne passenden Summary-Digest werden erkannt.
+- Unbekannte Receipt-Schemas werden blockiert.
+- Receipt und Summary sind gegenseitig nicht zirkulär.
+- Logisch identische Pakete in unterschiedlichen Temp-Roots erzeugen
+  identische Receipt-Inhalte und Digests.
+- Absolute Pfade und volatile Zeitwerte verändern die Quittung nicht.
+- `operator_summary.json` bleibt die einzige human-facing Apply-Authority.
+- Die Quittung ist eine maschinenprüfbare Integritätsabhängigkeit, kein
+  zweites menschliches Gate.
+- Es wurden keine Runtime-, HSTuner-, Hearthstone-, Desktop- oder privaten
+  Evidence-Dateien geschrieben.
+
+## Unabhängiges Review
+
+Verdikt: `PASS`, keine P1-, P2- oder P3-Befunde.
+
+Der Reviewer reproduzierte:
+
+```text
+140 passed in 25.20s
+configure warning fake-apply: 1 passed in 8.22s
+11/11 isolierte Authority-Mutationen fail-closed
+```
+
+In separaten Paketkopien wurden nacheinander verändert:
+
+- Runtime-JSON-Inhalt;
+- Deck Identity;
+- Deck Fingerprint;
+- Input Manifest;
+- kanonisches Source Receipt;
+- Output-Ownership-Manifest;
+- Receipt-Inhalt;
+- Receipt-Digest;
+- Summary-Derivation-Metadaten;
+- gefälschte `VALID_PACKAGE`-Summary;
+- kombinierte Authority-Metadaten.
+
+Alle elf Fälle lieferten `gate_allowed=false`. Die Runtime-Snapshot-/Write-
+Grenze wurde nie erreicht und es wurde kein Runtime-Verzeichnis erzeugt.
+Beobachtete Codes waren je nach Schicht
+`package_derivation_mismatch`,
+`package_derivation_receipt_digest_mismatch` und
+`operator_summary_derivation_inconsistent`.
+
+Der Reviewer bestätigte zusätzlich:
+
+- korrekte Gate-Reihenfolge;
+- deterministische Canonicalization und Non-Circularity;
+- Configure-Rebinding nach dem Ownership-Rewrite;
+- keine Workspace-Änderungen durch das Review;
+- sauberes `git diff --check`.
+
+Als bewusste Kompatibilitätsgrenze bleibt direkte, isolierte
+`build_operator_summary()`-Diagnostik ohne Receipt möglich. Daraus entsteht
+keine Autorisierung, weil das Apply-Gate fehlende Derivation-Metadaten
+fail-closed ablehnt. Die Task-5-Eligibility-Schnittstelle bleibt wie verlangt
+optional, bis Task 5 sie produziert.
+
+## Commit
+
+Vorgesehener Task-Commit:
+
+```text
+fix: bind apply authority to package derivation receipt
+```

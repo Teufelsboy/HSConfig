@@ -162,10 +162,11 @@ def test_build_acceptance_matrix_strictly_validates_builder_output_reports(
     assert matrix["status"] == "failed"
     assert matrix["summary"]["valid_package_count"] == 1
     assert matrix["summary"]["load_safe_apply_count"] == 1
-    assert matrix["summary"]["apply_gate_allowed_count"] == 1
+    assert matrix["summary"]["apply_gate_allowed_count"] == 0
     assert matrix["summary"]["validation_pass_count"] == 0
     assert matrix["summary"]["technical_hard_block_count"] == 1
-    assert row["apply_gate_allowed"] is True
+    assert row["apply_gate_allowed"] is False
+    assert row["apply_gate_reasons"][0]["reason"] == "strict_package_validation_failed"
     assert row["validation_status"] == "failed"
     assert any(expected_error in error for error in row["validation_errors"])
     assert matrix["status_authority"]["detail_fields_are_diagnostic"] is True
@@ -268,7 +269,8 @@ def test_acceptance_matrix_status_is_authoritative_when_detail_fields_conflict(
     assert matrix["status"] == "failed"
     assert matrix["status_authority"]["field"] == "status"
     assert matrix["status_authority"]["detail_fields_are_diagnostic"] is True
-    assert row["apply_gate_allowed"] is True
+    assert row["apply_gate_allowed"] is False
+    assert row["apply_gate_reasons"][0]["reason"] == "strict_package_validation_failed"
     assert row["matrix_row_status"] == "failed"
     assert "validation_not_passed" in row["matrix_row_failure_reasons"]
     assert row["matrix_row_interpretation"].startswith(

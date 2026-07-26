@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import hashlib
+import re
 from typing import Any
 
 from hsconfig.config_usefulness import build_config_usefulness
@@ -10,6 +11,7 @@ from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.report_ownership import build_report_ownership
 from hsconfig.source_status_resolver import SourceStatusResolution, resolve_source_status
+from hsconfig.strict_package_validation import strict_validation_passed
 from hsconfig.strong_closure_profiles import (
     ClosureProfileVerdict,
     evaluate_closure_profile,
@@ -17,7 +19,6 @@ from hsconfig.strong_closure_profiles import (
 )
 
 
-VALID_STATUSES = {"passed", "pass", "valid", "ok", "success"}
 SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "technical_status=VALID_PACKAGE",
     "source_depth_status=source_backed",
@@ -158,6 +159,7 @@ def build_operator_summary(
     strong_promotion_report: dict[str, Any] | None = None,
     output_ownership_manifest: dict[str, Any] | None = None,
     gameplan_contract: dict[str, Any] | None = None,
+    package_derivation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -177,7 +179,10 @@ def build_operator_summary(
     deck_code = deck_code or ""
     unsupported_conditions = _runtime_unsupported_condition_rows(unsupported_conditions)
 
-    technical_status = _technical_status(technical_validation)
+    technical_status = _technical_status(
+        technical_validation,
+        package_derivation=package_derivation,
+    )
     effective_config_readiness_summary = _effective_config_readiness_summary(
         config_readiness_summary,
         config_readiness_report,
@@ -438,6 +443,8 @@ def build_operator_summary(
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
     }
+    if package_derivation is not None:
+        summary["package_derivation"] = dict(package_derivation)
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
 
@@ -885,9 +892,27 @@ def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
     ]
 
 
-def _technical_status(report: dict[str, Any]) -> str:
-    status = str(report.get("status", "")).lower()
-    return "VALID_PACKAGE" if status in VALID_STATUSES else "INVALID_PACKAGE"
+def _technical_status(
+    report: dict[str, Any],
+    *,
+    package_derivation: dict[str, Any] | None = None,
+) -> str:
+    if not strict_validation_passed(report):
+        return "INVALID_PACKAGE"
+    if package_derivation is None:
+        # Direct summary construction remains useful for isolated diagnostics.
+        # The package builder always supplies a verified derivation contract,
+        # and the apply gate rejects summaries that do not carry one.
+        return "VALID_PACKAGE"
+    receipt_sha256 = str(package_derivation.get("receipt_sha256", ""))
+    derivation_verified = (
+        package_derivation.get("schema_version") == 1
+        and package_derivation.get("receipt_path")
+        == "package_derivation_receipt.json"
+        and package_derivation.get("verified") is True
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256) is not None
+    )
+    return "VALID_PACKAGE" if derivation_verified else "INVALID_PACKAGE"
 
 
 def _strong_promotion_evidence_blockers(

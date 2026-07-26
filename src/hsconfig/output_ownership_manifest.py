@@ -154,6 +154,16 @@ def _runtime_entity_ownership(
 
 
 def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    if path == "package_derivation_receipt.json":
+        return {
+            "file": path,
+            "producer": "prepare",
+            "classification": "integrity_receipt",
+            "authority": "package_derivation_receipt",
+            "can_block_apply": True,
+            "runtime_surface": None,
+            "diagnostic_only": False,
+        }
     if path in report_rows:
         row = dict(report_rows[path])
         return {

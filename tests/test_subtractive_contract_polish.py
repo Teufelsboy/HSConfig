@@ -8,6 +8,11 @@ from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
 from hsconfig.io import write_json
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    refresh_package_derivation_authority,
+)
 import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
 
@@ -81,9 +86,58 @@ def _write_minimal_package(
     reports = package / "reports"
     deck_dir.mkdir(parents=True)
     reports.mkdir(parents=True)
-    write_json(deck_dir / "GlobalValues.json", {})
-    write_json(deck_dir / "Mulligan.json", {"mulligan": []})
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "fixture"}
+    write_json(deck_dir / "GlobalValues.json", globalvalues)
+    write_json(
+        deck_dir / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "fixture",
+            "Mulligan": {"values": []},
+        },
+    )
     write_json(reports / "input_manifest.json", {"deck_name": "deck"})
+    write_json(reports / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        reports / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
+            "expected_overlay_keys": [],
+            "missing_overlay_keys": [],
+        },
+    )
+    deck_fingerprint = "sha256:" + ("0" * 64)
+    write_json(
+        reports / "deck_identity.json",
+        {"deck_name": "deck", "deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "deck_fingerprint.json",
+        {"deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "guide_claim_bundle.json",
+        {"canonical_source_receipts": []},
+    )
+    generated_files = [
+        "CustomConfig/deck/GlobalValues.json",
+        "CustomConfig/deck/Mulligan.json",
+    ]
+    write_json(
+        reports / "output_ownership_manifest.json",
+        build_output_ownership_manifest(
+            [
+                *generated_files,
+                DERIVATION_RECEIPT_PATH,
+                "reports/operator_summary.json",
+                "reports/output_ownership_manifest.json",
+            ]
+        ),
+    )
+    package_derivation = refresh_package_derivation_authority(package)
     write_json(
         reports / "operator_summary.json",
         {
@@ -91,10 +145,8 @@ def _write_minimal_package(
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
-            "generated_files": [
-                "CustomConfig/deck/GlobalValues.json",
-                "CustomConfig/deck/Mulligan.json",
-            ],
+            "generated_files": generated_files,
+            "package_derivation": package_derivation,
         },
     )
 

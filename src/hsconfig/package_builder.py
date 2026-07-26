@@ -27,6 +27,10 @@ from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    refresh_package_derivation_authority,
+)
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_contract import (
@@ -381,6 +385,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     baseline = baseline_receipt["baseline"]
     globalvalues = compile_globalvalues(baseline, gameplan_contract)
     _reset_generated_package_dirs(deck_dir, reports_dir)
+    derivation_receipt_path = out / DERIVATION_RECEIPT_PATH
+    if derivation_receipt_path.is_file():
+        derivation_receipt_path.unlink()
     write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
     write_json(deck_dir / "Mulligan.json", compile_mulligan(gameplan_contract))
     for filename, payload in cardid_behavior_files.items():
@@ -561,15 +568,18 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "output_ownership_manifest.json",
             "source_evidence_closure.json",
         ),
+        expected_package_files=(DERIVATION_RECEIPT_PATH,),
     )
     output_ownership_manifest = build_output_ownership_manifest(
         generated_files,
         card_behavior_plan=card_behavior_plan,
     )
     write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
+    package_derivation = refresh_package_derivation_authority(out)
     operator_summary = build_operator_summary(
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
+        package_derivation=package_derivation,
         **operator_summary_kwargs,
     )
     (reports_dir / "card_semantic_audit.md").write_text(
@@ -682,11 +692,13 @@ def _generated_package_files(
     reports_dir: Path,
     *,
     expected_report_files: tuple[str, ...] = ("operator_summary.json",),
+    expected_package_files: tuple[str, ...] = (),
 ) -> list[str]:
     files = [
         *sorted(deck_dir.glob("*.json")),
         *sorted(path for path in reports_dir.rglob("*") if path.is_file()),
         *(reports_dir / filename for filename in expected_report_files),
+        *(out / filename for filename in expected_package_files),
     ]
     return sorted({str(path.relative_to(out)) for path in files})
 

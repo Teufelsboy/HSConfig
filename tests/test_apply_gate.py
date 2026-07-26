@@ -3,12 +3,91 @@ from pathlib import Path
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
-from hsconfig.io import write_json
+from hsconfig.io import read_json, write_json
+from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    DERIVATION_RECEIPT_SCHEMA_VERSION,
+    build_package_derivation_receipt,
+    write_package_derivation_receipt,
+)
 from hsconfig.package_io import read_optional_profile, read_required_baseline
 
 
 def _write_operator_summary(package: Path, payload: dict) -> None:
-    write_json(package / "reports" / "operator_summary.json", payload)
+    operator_path = package / "reports" / "operator_summary.json"
+    write_json(operator_path, payload)
+    manifest_path = package / "reports" / "input_manifest.json"
+    custom_config = package / "CustomConfig"
+    if not manifest_path.is_file() or not custom_config.is_dir():
+        return
+
+    deck_dirs = sorted(path for path in custom_config.iterdir() if path.is_dir())
+    if len(deck_dirs) != 1:
+        return
+    globalvalues_path = deck_dirs[0] / "GlobalValues.json"
+    if not globalvalues_path.is_file():
+        return
+    globalvalues = read_json(globalvalues_path)
+    if not isinstance(globalvalues, dict):
+        return
+    reports = package / "reports"
+    write_json(reports / "globalvalues_baseline.json", globalvalues)
+    write_json(
+        reports / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
+            "expected_overlay_keys": [],
+            "missing_overlay_keys": [],
+        },
+    )
+    manifest = read_json(manifest_path)
+    deck_name = str(manifest.get("deck_name", "deck"))
+    deck_fingerprint = "sha256:" + ("0" * 64)
+    write_json(
+        reports / "deck_identity.json",
+        {
+            "deck_name": deck_name,
+            "deck_fingerprint": deck_fingerprint,
+        },
+    )
+    write_json(
+        reports / "deck_fingerprint.json",
+        {"deck_fingerprint": deck_fingerprint},
+    )
+    write_json(
+        reports / "guide_claim_bundle.json",
+        {"canonical_source_receipts": []},
+    )
+    generated = payload.get("generated_files", [])
+    generated_files = list(generated) if isinstance(generated, list) else []
+    ownership = build_output_ownership_manifest(
+        [
+            *generated_files,
+            DERIVATION_RECEIPT_PATH,
+            "reports/operator_summary.json",
+            "reports/output_ownership_manifest.json",
+        ]
+    )
+    write_json(reports / "output_ownership_manifest.json", ownership)
+    receipt = build_package_derivation_receipt(package)
+    digest = write_package_derivation_receipt(
+        package / DERIVATION_RECEIPT_PATH,
+        receipt,
+    )
+    payload = {
+        **payload,
+        "package_derivation": {
+            "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+            "receipt_path": DERIVATION_RECEIPT_PATH,
+            "receipt_sha256": digest,
+            "verified": True,
+        },
+    }
+    write_json(operator_path, payload)
 
 
 def _write_minimal_runtime_package(package: Path) -> None:
@@ -398,7 +477,10 @@ def test_apply_gate_blocks_nested_runtime_files(tmp_path: Path):
 def test_apply_gate_blocks_actual_runtime_file_missing_from_summary(tmp_path: Path):
     package = tmp_path / "package"
     _write_minimal_runtime_package(package)
-    write_json(package / "CustomConfig" / "deck" / "EX1_999.json", {})
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_999.json",
+        {"GameCardId": "EX1_999", "ConfigComment": "unreported"},
+    )
     _write_operator_summary(
         package,
         {
@@ -443,9 +525,22 @@ def test_apply_gate_blocks_actual_runtime_files_when_summary_runtime_entries_mis
         package / "reports" / "input_manifest.json",
         {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
-    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "fixture"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "fixture",
+            "Mulligan": {"values": []},
+        },
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "fixture"},
+    )
     summary = {
         "technical_status": "VALID_PACKAGE",
         "semantic_status": "SOURCE_BACKED_STRONG",
@@ -474,9 +569,22 @@ def test_apply_gate_blocks_unreported_cardid_file_but_allows_absent_cardid_files
         package / "reports" / "input_manifest.json",
         {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
     )
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", {})
-    write_json(package / "CustomConfig" / "deck" / "Mulligan.json", {})
-    write_json(package / "CustomConfig" / "deck" / "EX1_001.json", {})
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "fixture"},
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "Mulligan.json",
+        {
+            "GameCardId": "Mulligan",
+            "ConfigComment": "fixture",
+            "Mulligan": {"values": []},
+        },
+    )
+    write_json(
+        package / "CustomConfig" / "deck" / "EX1_001.json",
+        {"GameCardId": "EX1_001", "ConfigComment": "fixture"},
+    )
     _write_operator_summary(
         package,
         {

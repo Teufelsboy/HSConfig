@@ -4,6 +4,19 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.io import read_json
+from hsconfig.package_derivation_receipt import (
+    DERIVATION_RECEIPT_PATH,
+    DERIVATION_RECEIPT_SCHEMA_VERSION,
+    package_derivation_receipt_sha256,
+    verify_package_derivation_receipt,
+)
+from hsconfig.source_acquisition_provenance import (
+    strategic_source_provenance_is_verified,
+)
+from hsconfig.strict_package_validation import (
+    strict_validation_passed,
+    validate_complete_package,
+)
 from hsconfig.visionai_registry import NORMAL_PATH_FORBIDDEN_SURFACES
 
 
@@ -53,18 +66,39 @@ def evaluate_apply_gate(
     if structure_reasons:
         return _blocked(operator_path, *structure_reasons)
 
-    optional_surface_reasons = [
+    strict_surface_reasons = [
         *_summary_optional_surface_reasons(summary),
         *_actual_optional_surface_reasons(package),
-        *_actual_files_missing_from_summary_reasons(package, summary),
-        *_summary_files_missing_from_actual_reasons(package, summary),
     ]
-    if optional_surface_reasons:
-        return _blocked(operator_path, *optional_surface_reasons)
+    if strict_surface_reasons:
+        return _blocked(operator_path, *strict_surface_reasons)
 
     runtime_json_reasons = _actual_runtime_json_reasons(package)
     if runtime_json_reasons:
         return _blocked(operator_path, *runtime_json_reasons)
+
+    strict_reasons = _strict_package_validation_reasons(package)
+    if strict_reasons:
+        return _blocked(operator_path, *strict_reasons)
+
+    deck_input_reasons = _deck_input_apply_eligibility_reasons(package)
+    if deck_input_reasons:
+        return _blocked(operator_path, *deck_input_reasons)
+
+    source_authority_reasons = _source_authority_reasons(package)
+    if source_authority_reasons:
+        return _blocked(operator_path, *source_authority_reasons)
+
+    derivation_reasons = _package_derivation_reasons(package, summary)
+    if derivation_reasons:
+        return _blocked(operator_path, *derivation_reasons)
+
+    summary_parity_reasons = [
+        *_actual_files_missing_from_summary_reasons(package, summary),
+        *_summary_files_missing_from_actual_reasons(package, summary),
+    ]
+    if summary_parity_reasons:
+        return _blocked(operator_path, *summary_parity_reasons)
 
     technical_status = str(summary.get("technical_status", ""))
     semantic_status = str(summary.get("semantic_status", ""))
@@ -99,6 +133,206 @@ def evaluate_apply_gate(
             "apply_policy": apply_policy,
         },
     )
+
+
+def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
+    try:
+        report = validate_complete_package(package)
+    except (OSError, TypeError, ValueError) as error:
+        return [
+            {
+                "reason": "strict_package_validation_failed",
+                "code": "strict_package_validation_failed",
+                "detail": str(error),
+            }
+        ]
+    if strict_validation_passed(report):
+        return []
+    errors = report.get("errors")
+    return [
+        {
+            "reason": "strict_package_validation_failed",
+            "code": "strict_package_validation_failed",
+            "detail": "Strict package validation failed.",
+            "errors": errors if isinstance(errors, list) else [],
+        }
+    ]
+
+
+def _deck_input_apply_eligibility_reasons(
+    package: Path,
+) -> list[dict[str, str]]:
+    manifest_path = package / "reports" / "input_manifest.json"
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(manifest, dict):
+        return []
+    verification = manifest.get("deck_input_verification")
+    verification_path = package / "reports" / "deck_input_verification.json"
+    if verification_path.is_file():
+        try:
+            verification = read_json(verification_path)
+        except ValueError:
+            verification = {"runtime_apply_eligible": False}
+    if not isinstance(verification, dict):
+        return []
+    if verification.get("runtime_apply_eligible") is True:
+        return []
+    return [
+        {
+            "reason": "deck_input_not_verified",
+            "code": "deck_input_not_verified",
+            "detail": "Deck input is not eligible for runtime apply.",
+        }
+    ]
+
+
+def _source_authority_reasons(package: Path) -> list[dict[str, str]]:
+    bundle_path = package / "reports" / "guide_claim_bundle.json"
+    if not bundle_path.is_file():
+        return []
+    try:
+        bundle = read_json(bundle_path)
+    except ValueError:
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipt container is invalid.",
+            }
+        ]
+    if not isinstance(bundle, dict):
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipt container is invalid.",
+            }
+        ]
+    receipts = bundle.get(
+        "canonical_source_receipts",
+        bundle.get("globalvalues_source_receipts", []),
+    )
+    if not isinstance(receipts, list):
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipts must be a list.",
+            }
+        ]
+    for receipt in receipts:
+        if (
+            not isinstance(receipt, dict)
+            or receipt.get("receipt_kind")
+            != "canonical_exact_deck_source_document"
+            or not strategic_source_provenance_is_verified(
+                receipt.get("acquisition_provenance")
+            )
+        ):
+            return [
+                {
+                    "reason": "source_authority_receipt_invalid",
+                    "code": "source_authority_receipt_invalid",
+                    "detail": "Canonical source receipt is not live verified.",
+                }
+            ]
+    return []
+
+
+def _package_derivation_reasons(
+    package: Path,
+    summary: dict[str, Any],
+) -> list[dict[str, str]]:
+    receipt_path = package / DERIVATION_RECEIPT_PATH
+    summary_derivation = summary.get("package_derivation")
+    if not receipt_path.is_file():
+        return [
+            {
+                "reason": "package_derivation_receipt_missing",
+                "code": "package_derivation_receipt_missing",
+                "detail": "Package derivation receipt is missing.",
+            }
+        ]
+    if not isinstance(summary_derivation, dict):
+        return [
+            {
+                "reason": "operator_summary_derivation_inconsistent",
+                "code": "operator_summary_derivation_inconsistent",
+                "detail": "Operator summary does not reference package derivation.",
+            }
+        ]
+    try:
+        receipt = read_json(receipt_path)
+    except ValueError:
+        return [
+            {
+                "reason": "package_derivation_receipt_digest_mismatch",
+                "code": "package_derivation_receipt_digest_mismatch",
+                "detail": "Package derivation receipt is not valid JSON.",
+            }
+        ]
+    if not isinstance(receipt, dict):
+        return [
+            {
+                "reason": "package_derivation_receipt_digest_mismatch",
+                "code": "package_derivation_receipt_digest_mismatch",
+                "detail": "Package derivation receipt must be an object.",
+            }
+        ]
+    if receipt.get("schema_version") != DERIVATION_RECEIPT_SCHEMA_VERSION:
+        return [
+            {
+                "reason": "package_derivation_receipt_schema_unsupported",
+                "code": "package_derivation_receipt_schema_unsupported",
+                "detail": "Package derivation receipt schema version is not supported.",
+            }
+        ]
+    actual_digest = package_derivation_receipt_sha256(receipt)
+    if summary_derivation.get("receipt_sha256") != actual_digest:
+        return [
+            {
+                "reason": "package_derivation_receipt_digest_mismatch",
+                "code": "package_derivation_receipt_digest_mismatch",
+                "detail": "Package derivation receipt digest does not match the operator summary.",
+            }
+        ]
+    verified, verification_reasons = verify_package_derivation_receipt(
+        package,
+        receipt,
+    )
+    if not verified:
+        first = verification_reasons[0] if verification_reasons else {}
+        code = str(first.get("code") or "package_derivation_mismatch")
+        return [
+            {
+                "reason": code,
+                "code": code,
+                "detail": str(
+                    first.get(
+                        "detail",
+                        "Authoritative package content differs from its receipt.",
+                    )
+                ),
+            }
+        ]
+    expected_summary_derivation = {
+        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "receipt_path": DERIVATION_RECEIPT_PATH,
+        "receipt_sha256": actual_digest,
+        "verified": True,
+    }
+    if summary_derivation != expected_summary_derivation:
+        return [
+            {
+                "reason": "operator_summary_derivation_inconsistent",
+                "code": "operator_summary_derivation_inconsistent",
+                "detail": "Operator summary derivation metadata is inconsistent.",
+            }
+        ]
+    return []
 
 
 def _required_package_structure_reasons(

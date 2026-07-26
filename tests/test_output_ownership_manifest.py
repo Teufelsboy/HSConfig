@@ -1,6 +1,30 @@
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 
 
+def test_package_derivation_receipt_is_integrity_authority_not_second_human_gate():
+    manifest = build_output_ownership_manifest(
+        [
+            "package_derivation_receipt.json",
+            "reports/operator_summary.json",
+        ]
+    )
+
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    assert by_file["package_derivation_receipt.json"] == {
+        "file": "package_derivation_receipt.json",
+        "producer": "prepare",
+        "classification": "integrity_receipt",
+        "authority": "package_derivation_receipt",
+        "can_block_apply": True,
+        "runtime_surface": None,
+        "diagnostic_only": False,
+    }
+    assert [
+        row["file"] for row in manifest["files"] if row["classification"] == "gate"
+    ] == ["reports/operator_summary.json"]
+
+
 def test_surface_intent_shape_change_stays_diagnostic_without_second_apply_authority():
     manifest = build_output_ownership_manifest(
         [
