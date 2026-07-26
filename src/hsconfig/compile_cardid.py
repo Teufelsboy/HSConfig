@@ -6,6 +6,7 @@ from hsconfig.mechanic_support import (
     ROLE_ALIASES,
     normalize_role_token,
 )
+from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 
 
 EFFECT_ONLY_START_OF_GAME_ROLES = {
@@ -27,21 +28,38 @@ BODY_AUTHORITY_ROLES = {
 }
 
 
+class CompiledCardIdFiles(dict[str, dict[str, Any]]):
+    def __init__(
+        self,
+        *args: Any,
+        merged_duplicate_runtime_row_count: int = 0,
+        runtime_row_conflicts: list[dict[str, Any]] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.merged_duplicate_runtime_row_count = merged_duplicate_runtime_row_count
+        self.runtime_row_conflicts = list(runtime_row_conflicts or [])
+
+
 def compile_cardid_behaviors(
     contract: dict[str, Any] | None = None,
     *,
     deck_name: str | None = None,
     rows: list[dict[str, Any]] | None = None,
     static_runtime_suppressed_card_ids: Iterable[str] | None = None,
-) -> dict[str, dict[str, Any]]:
+) -> CompiledCardIdFiles:
     contract = contract or {}
     deck_name = deck_name or str(contract.get("deck_name", "Deck"))
     del static_runtime_suppressed_card_ids
     cards = _cards_from_contract(contract)
     if rows:
         _merge_row_cards(cards, _cards_from_rows(rows))
+    canonical = _canonicalize_card_behavior_rows(cards)
 
-    files: dict[str, dict[str, Any]] = {}
+    files = CompiledCardIdFiles(
+        merged_duplicate_runtime_row_count=canonical["merged_duplicate_count"],
+        runtime_row_conflicts=canonical["conflicts"],
+    )
     for card_id, card in sorted(cards.items()):
         config: dict[str, Any] = {
             "GameCardId": card_id,
@@ -55,6 +73,25 @@ def compile_cardid_behaviors(
         )
         files[f"{card_id}.json"] = config
     return files
+
+
+def _canonicalize_card_behavior_rows(
+    cards: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for card_id, card in cards.items():
+        for behavior_row in card.get("behavior_rows", []):
+            row = dict(behavior_row)
+            row["card_id"] = card_id
+            row.setdefault("value", "6")
+            rows.append(row)
+
+    result = canonicalize_runtime_rows(rows)
+    for card in cards.values():
+        card["behavior_rows"] = []
+    for row in result["rows"]:
+        cards[str(row["card_id"])]["behavior_rows"].append(row)
+    return result
 
 
 def _is_effect_only_start_of_game_card(roles: Iterable[str]) -> bool:

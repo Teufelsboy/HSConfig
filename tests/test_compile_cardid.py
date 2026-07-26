@@ -483,7 +483,7 @@ def test_explicit_body_behavior_row_is_not_removed_for_effect_only_card():
     assert "BeforePlayCardBonus" in card_files["SW_448.json"]
 
 
-def test_compile_cardid_preserves_explicit_behavior_row_order_with_same_block():
+def test_compile_cardid_sorts_explicit_behavior_rows_by_runtime_signature():
     rows = [
         {
             "surface": "CardID.json",
@@ -527,7 +527,64 @@ def test_compile_cardid_preserves_explicit_behavior_row_order_with_same_block():
 
     discover_values = files["EX1_ORDER.json"]["OnDiscoverCardBonus"]["values"]
     assert [row["comment"] for row in discover_values] == [
-        "Fixture: EX1_ORDER_second_source_claim",
         "Fixture: EX1_ORDER_first_source_claim",
+        "Fixture: EX1_ORDER_second_source_claim",
     ]
-    assert [row["value"] for row in discover_values] == ["8", "12"]
+    assert [row["value"] for row in discover_values] == ["12", "8"]
+
+
+def test_compile_cardid_merges_exact_duplicate_rows_as_final_write_guard():
+    rows = [
+        {
+            "surface_family": "CARDID.json",
+            "card_id": "REV_290",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "8",
+            "claim_id": claim_id,
+            "source_claim_ids": [claim_id],
+        }
+        for claim_id in ("claim-a", "claim-b")
+    ]
+
+    files = compile_cardid_behaviors(
+        {"deck_name": "Fixture", "cards": {"REV_290": {}}},
+        rows=rows,
+    )
+
+    assert files["REV_290.json"]["BeforePlayCardBonus"]["values"] == [
+        {
+            "comment": "Fixture: REV_290_behavior",
+            "condition": "*",
+            "value": "8",
+        }
+    ]
+    assert files.merged_duplicate_runtime_row_count == 1
+
+
+def test_compile_cardid_omits_conflicting_key_and_exposes_conflict():
+    rows = [
+        {
+            "surface_family": "CARDID.json",
+            "card_id": "REV_290",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": value,
+            "claim_id": claim_id,
+            "source_claim_ids": [claim_id],
+        }
+        for claim_id, value in (("claim-a", "6"), ("claim-b", "8"))
+    ]
+
+    files = compile_cardid_behaviors(
+        {"deck_name": "Fixture", "cards": {"REV_290": {}}},
+        rows=rows,
+    )
+
+    assert set(files["REV_290.json"]) == {"GameCardId", "ConfigComment"}
+    assert files.runtime_row_conflicts[0]["key"] == [
+        "REV_290",
+        "BeforePlayCardBonus",
+        "*",
+    ]
+    assert files.runtime_row_conflicts[0]["values"] == ["6", "8"]

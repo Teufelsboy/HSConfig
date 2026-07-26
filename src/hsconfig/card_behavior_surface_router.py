@@ -10,6 +10,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
+from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 from hsconfig.semantic_intent_score import score_card_behavior_claim
 from hsconfig.semantic_runtime_gate import decide_semantic_runtime
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
@@ -365,11 +366,30 @@ def route_card_behavior_surfaces(
             _suppressed_row(claim, claim_kind, cards, "no_documented_card_behavior_surface")
         )
 
+    runtime_rows = [row for row in rows if row.get("behavior_block")]
+    report_only_rows = [row for row in rows if not row.get("behavior_block")]
+    canonical = canonicalize_runtime_rows(runtime_rows)
+    output_rows = sorted(
+        [*canonical["rows"], *report_only_rows],
+        key=_runtime_and_report_row_sort_key,
+    )
     return {
-        "rows": rows,
+        "rows": output_rows,
         "suppressed": suppressed,
         "option_resolution": option_resolution,
+        "merged_duplicate_runtime_row_count": canonical["merged_duplicate_count"],
+        "runtime_row_conflicts": canonical["conflicts"],
     }
+
+
+def _runtime_and_report_row_sort_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(row.get("card_id", "")).strip(),
+        str(row.get("behavior_block", "")).strip(),
+        str(row.get("condition", "*")).strip() or "*",
+        str(row.get("value", "")).strip(),
+        str(row.get("claim_id", "")).strip(),
+    )
 
 
 def _rows_for_cards(

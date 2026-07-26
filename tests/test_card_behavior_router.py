@@ -640,7 +640,7 @@ def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
     assert plan["suppressed"][0]["claim_id"] == "lifecycle_bad"
 
 
-def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
+def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
     spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
     assert spec is not None, "card behavior surface router module is required"
     from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
@@ -680,15 +680,15 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
     )
 
     assert [row["claim_id"] for row in plan["rows"]] == [
-        "claim_choose_one",
         "claim_hero_power",
         "claim_target",
+        "claim_choose_one",
     ]
-    assert [row["card_id"] for row in plan["rows"]] == ["CARD_Z", "CARD_A", "CARD_B"]
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_A", "CARD_B", "CARD_Z"]
     assert [row["behavior_block"] for row in plan["rows"]] == [
-        "OnChooseOneCardBonus",
         "BeforeUseHeroPowerBonus",
         "BeforeBattlecryTargetBonus",
+        "OnChooseOneCardBonus",
     ]
     assert plan["option_resolution"] == [
         {
@@ -1067,7 +1067,7 @@ def test_known_bad_pattern_routes_with_explicit_documented_block():
     assert plan["rows"][0]["meaningful_runtime_surface"] is True
 
 
-def test_card_behavior_router_preserves_claim_row_order_across_cards():
+def test_card_behavior_router_sorts_rows_by_canonical_card_identity():
     plan = route_card_behavior_claims(
         [
             {
@@ -1087,7 +1087,7 @@ def test_card_behavior_router_preserves_claim_row_order_across_cards():
         ]
     )
 
-    assert [row["card_id"] for row in plan["rows"]] == ["CARD_Z", "CARD_A"]
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_A", "CARD_Z"]
 
 
 def test_routes_targeting_claim_to_cardid_surface():
@@ -1643,3 +1643,76 @@ def test_cardid_router_reports_mulligan_claim_as_wrong_surface():
     assert routed["rows"] == []
     assert routed["suppressed"][0]["reason"] == "claim_kind_not_cardid_surface"
     assert routed["suppressed"][0]["claim_kind"] == "mulligan_keep"
+
+
+def test_cardid_router_merges_exact_duplicate_runtime_rows_and_provenance():
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": claim_id,
+                "claim_kind": "card_role",
+                "cards": ["REV_290"],
+                "stance": "deploy_location",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "8",
+                "condition": "*",
+                "source_lane": "deck_matched_public_guide",
+            }
+            for claim_id in ("claim-a", "claim-b")
+        ]
+    )
+
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["source_claim_ids"] == ["claim-a"]
+    assert result["rows"][0]["merged_claim_ids"] == ["claim-a", "claim-b"]
+    assert result["merged_duplicate_runtime_row_count"] == 1
+    assert result["runtime_row_conflicts"] == []
+
+
+def test_cardid_router_omits_conflicting_runtime_row_key():
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": claim_id,
+                "claim_kind": "card_role",
+                "cards": ["REV_290"],
+                "stance": "deploy_location",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": value,
+                "condition": "*",
+                "source_lane": "deck_matched_public_guide",
+            }
+            for claim_id, value in (("claim-a", "6"), ("claim-b", "8"))
+        ]
+    )
+
+    assert result["rows"] == []
+    assert result["runtime_row_conflicts"][0]["key"] == [
+        "REV_290",
+        "BeforePlayCardBonus",
+        "*",
+    ]
+    assert result["runtime_row_conflicts"][0]["values"] == ["6", "8"]
+
+
+def test_cardid_router_does_not_canonicalize_report_only_rows_as_runtime_rows():
+    result = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": claim_id,
+                "claim_kind": "card_role",
+                "cards": ["REPORT_ONLY_CARD"],
+                "stance": stance,
+                "source_lane": "deck_matched_public_guide",
+            }
+            for claim_id, stance in (
+                ("claim-pressure", "early_pressure"),
+                ("claim-refill", "refill_pressure"),
+            )
+        ]
+    )
+
+    assert len(result["rows"]) == 2
+    assert all("behavior_block" not in row for row in result["rows"])
+    assert result["merged_duplicate_runtime_row_count"] == 0
+    assert result["runtime_row_conflicts"] == []

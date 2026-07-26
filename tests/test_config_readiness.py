@@ -161,6 +161,15 @@ def test_runtime_emitted_card_gets_runtime_lane():
         },
         combo_plan={"combos": []},
         global_values_authority_matrix={"allowed_step1_overlays": []},
+        emitted_cardid_files={
+            "CARD_001.json": {
+                "GameCardId": "CARD_001",
+                "ConfigComment": "Fixture",
+                "BeforePlayCardBonus": {
+                    "values": [{"condition": "*", "value": "8"}],
+                },
+            }
+        },
     )
 
     assert report["summary"]["runtime_emitted"] == 1
@@ -232,7 +241,7 @@ def test_missing_cardid_file_gap_is_not_hidden_by_source_backed_mulligan_surface
     assert report["summary"]["runtime_emitted"] == 0
 
 
-def test_semantic_suppression_takes_precedence_over_emitted_runtime_row():
+def test_physical_runtime_row_takes_precedence_over_report_suppression():
     report = _report_for_card(
         card_id="CARD_PARTIAL",
         roles=["pressure"],
@@ -273,10 +282,10 @@ def test_semantic_suppression_takes_precedence_over_emitted_runtime_row():
 
     row = report["cards"]["CARD_PARTIAL"]
     assert row["runtime_surfaces"] == ["CARD_PARTIAL.json"]
-    assert row["readiness_lane"] == "report_only_supported"
-    assert row["first_missing_link"] == "needs_condition_lowering"
-    assert row["source_depth_lane"] == "condition_lowering_gap"
-    assert report["summary"]["runtime_emitted"] == 0
+    assert row["readiness_lane"] == "runtime_emitted"
+    assert row["first_missing_link"] == "none"
+    assert row["source_depth_lane"] == "closed"
+    assert report["summary"]["runtime_emitted"] == 1
 
 
 def test_identity_only_cardid_payload_is_visible_but_not_meaningful_emission():
@@ -305,6 +314,64 @@ def test_identity_only_cardid_payload_is_visible_but_not_meaningful_emission():
 
     row = report["cards"]["CARD_METADATA_ONLY"]
     assert row["runtime_surfaces"] == ["CARD_METADATA_ONLY.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
+def test_cardid_filename_presence_without_parsed_payload_is_not_runtime_emission():
+    report = _report_for_card(
+        card_id="CARD_FILENAME_ONLY",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_FILENAME_ONLY",
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files=["CARD_FILENAME_ONLY.json"],
+    )
+
+    row = report["cards"]["CARD_FILENAME_ONLY"]
+    assert row["runtime_surfaces"] == ["CARD_FILENAME_ONLY.json"]
+    assert row["readiness_lane"] == "report_only_supported"
+    assert row["first_missing_link"] == "needs_runtime_surface"
+    assert report["summary"]["runtime_emitted"] == 0
+
+
+def test_unsupported_physical_behavior_block_is_not_runtime_emission():
+    report = _report_for_card(
+        card_id="CARD_UNSUPPORTED_BLOCK",
+        roles=["pressure"],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "card_id": "CARD_UNSUPPORTED_BLOCK",
+                    "surface_family": "CARDID.json",
+                    "behavior_block": "BeforePlayCardBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        emitted_cardid_files={
+            "CARD_UNSUPPORTED_BLOCK.json": {
+                "GameCardId": "CARD_UNSUPPORTED_BLOCK",
+                "ConfigComment": "Fixture",
+                "InventedBehaviorBlock": {
+                    "values": [{"condition": "*", "value": "8"}],
+                },
+            }
+        },
+    )
+
+    row = report["cards"]["CARD_UNSUPPORTED_BLOCK"]
     assert row["readiness_lane"] == "report_only_supported"
     assert row["first_missing_link"] == "needs_runtime_surface"
     assert report["summary"]["runtime_emitted"] == 0
@@ -679,7 +746,19 @@ def test_readiness_counts_only_meaningful_cardid_rows_as_runtime_emitted():
         },
         combo_plan={"combos": []},
         global_values_authority_matrix={"allowed_step1_overlays": []},
-        emitted_cardid_files={"EX1_GENERIC.json", "EX1_DEEP.json"},
+        emitted_cardid_files={
+            "EX1_GENERIC.json": {
+                "GameCardId": "EX1_GENERIC",
+                "ConfigComment": "Fixture",
+            },
+            "EX1_DEEP.json": {
+                "GameCardId": "EX1_DEEP",
+                "ConfigComment": "Fixture",
+                "BeforeOverkilledBonus": {
+                    "values": [{"condition": "*", "value": "8"}],
+                },
+            },
+        },
     )
 
     assert report["cards"]["EX1_DEEP"]["readiness_lane"] == "runtime_emitted"

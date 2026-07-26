@@ -212,7 +212,7 @@ def test_cathedral_only_keeps_supported_deploy_semantics(package):
     _assert_runtime_rows(
         payload,
         "BeforePlayCardBonus",
-        [("*", "8"), ("*", "8"), ("*", "8")],
+        [("*", "8")],
     )
     assert "BeforeBattlecryTargetBonus" not in payload
     assert "BeforeUseHeroPowerBonus" not in payload
@@ -224,12 +224,12 @@ def test_cathedral_only_keeps_supported_deploy_semantics(package):
         ("DS1_233", "BeforePlayCardBonus", [("*", "12")]),
         ("SW_446", "OnBoardBonus", [("*", "10")]),
         ("TOY_381", "OnBoardBonus", [("*", "8")]),
-        ("TOY_518", "OnBoardBonus", [("*", "8"), ("*", "8")]),
-        ("WON_065", "OnBoardBonus", [("*", "8"), ("*", "8")]),
+        ("TOY_518", "OnBoardBonus", [("*", "8")]),
+        ("WON_065", "OnBoardBonus", [("*", "8")]),
         (
             "SW_448",
             "BeforeUseHeroPowerBonus",
-            [("*", "10"), ("*", "10"), ("*", "10")],
+            [("*", "10")],
         ),
     ],
 )
@@ -283,6 +283,33 @@ def test_shadowpriest_has_exactly_seven_active_card_semantics(package):
         "WON_065",
     }
     assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST
+
+    readiness = _report(package, "per_card_config_readiness_report.json")
+    assert readiness["summary"]["runtime_emitted"] == 7
+    assert readiness["summary"]["report_only_supported"] == 9
+
+    behavior_plan = _report(package, "card_behavior_plan_report.json")
+    signatures = [
+        (
+            str(row["card_id"]),
+            str(row["behavior_block"]),
+            str(row["condition"]),
+            str(row["value"]),
+        )
+        for row in behavior_plan["rows"]
+        if row.get("meaningful_runtime_surface") is True
+    ]
+    duplicate_signatures = sorted(
+        signature for signature in set(signatures) if signatures.count(signature) > 1
+    )
+    values_by_key: dict[tuple[str, str, str], set[str]] = {}
+    for card_id, behavior_block, condition, value in signatures:
+        values_by_key.setdefault((card_id, behavior_block, condition), set()).add(value)
+    conflicting_signatures = sorted(
+        key for key, values in values_by_key.items() if len(values) > 1
+    )
+    assert duplicate_signatures == []
+    assert conflicting_signatures == []
 
 
 def test_supported_runtime_row_proof_rejects_empty_values(package):
@@ -420,7 +447,8 @@ def test_shadowpriest_runtime_rows_are_report_traced(package):
     assert trace["status"] == "clean"
     assert trace["unreported_runtime_rows"] == []
     assert trace["reported_rows_missing_runtime"] == []
-    assert trace["physical_cardid_runtime_rows"] == trace["reported_cardid_runtime_rows"]
+    assert trace["physical_cardid_runtime_rows"] == 7
+    assert trace["reported_cardid_runtime_rows"] == 7
 
 
 def test_shadowpriest_is_load_safe_without_claiming_semantic_closure(package):
@@ -446,7 +474,7 @@ def test_darkbishop_effect_does_not_become_mulligan_or_body_priority(package):
     _assert_runtime_rows(
         darkbishop,
         "BeforeUseHeroPowerBonus",
-        [("*", "10"), ("*", "10"), ("*", "10")],
+        [("*", "10")],
     )
     assert "InHandPlayPriority" not in darkbishop
     assert "BeforePlayCardBonus" not in darkbishop

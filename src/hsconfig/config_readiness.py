@@ -9,6 +9,7 @@ from hsconfig.mechanic_support import (
     summarize_mechanic_visibility,
 )
 from hsconfig.io import slugify_deck_name
+from hsconfig.visionai_registry import is_supported_card_behavior_block
 
 
 RUNTIME_SURFACE_MULLIGAN = "Mulligan.json"
@@ -95,7 +96,7 @@ def build_config_readiness_report(
         emitted_cardid_files,
         fallback_cardids=all_cardid_cards,
     )
-    emitted_cardid_cards = meaningful_emitted_cardids & concrete_cardid_cards
+    emitted_cardid_cards = meaningful_emitted_cardids
     semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
@@ -248,7 +249,7 @@ def _emitted_cardid_file_map(
 ) -> tuple[dict[str, str], set[str]]:
     if emitted_cardid_files is None:
         file_map = {card_id: f"{card_id}.json" for card_id in fallback_cardids}
-        return file_map, set(file_map)
+        return file_map, set()
 
     file_map: dict[str, str] = {}
     meaningful_cardids: set[str] = set()
@@ -261,7 +262,7 @@ def _emitted_cardid_file_map(
         if not card_id:
             continue
         file_map[card_id] = filename
-        if payloads is None or _has_runtime_effect_rows(payloads[emitted_file]):
+        if payloads is not None and _has_runtime_effect_rows(payloads[emitted_file]):
             meaningful_cardids.add(card_id)
     return file_map, meaningful_cardids
 
@@ -270,7 +271,7 @@ def _has_runtime_effect_rows(payload: Any) -> bool:
     if not isinstance(payload, Mapping):
         return False
     for block, block_payload in payload.items():
-        if block in {"GameCardId", "ConfigComment"}:
+        if not is_supported_card_behavior_block(str(block)):
             continue
         if not isinstance(block_payload, Mapping):
             continue
@@ -441,10 +442,10 @@ def _lane_and_missing_link(
         return "report_only_supported", "needs_mulligan_claim"
     if card_id in concrete_cardid_cards and card_id not in emitted_cardid_cards:
         return "report_only_supported", "needs_runtime_surface"
-    if card_id in semantic_suppression_missing_links:
-        return "report_only_supported", semantic_suppression_missing_links[card_id]
     if card_id in emitted_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
+    if card_id in semantic_suppression_missing_links:
+        return "report_only_supported", semantic_suppression_missing_links[card_id]
     if card_id in mulligan_cards:
         if is_guide_backed and _has_source_claim_ids(card):
             return "mulligan_only", "none"
