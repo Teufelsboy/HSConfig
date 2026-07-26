@@ -207,28 +207,48 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         plan_dir = Path(plan_reports_dir)
         if not plan_dir.is_dir():
             raise ValueError(f"--plan-reports-dir must be an existing directory: {plan_dir}")
-        imported_plan_guide_claim_bundle = _normalize_claim_conflict_report(
-            _read_plan_report(plan_dir, "guide_claim_bundle.json", {})
+        imported_guide_claim_bundle = _read_plan_report(
+            plan_dir,
+            "guide_claim_bundle.json",
         )
-        mulligan_plan = _read_plan_report(plan_dir, "mulligan_plan_report.json", mulligan_plan)
-        card_behavior_plan = _read_plan_report(
+        imported_plan_guide_claim_bundle = _normalize_claim_conflict_report(
+            imported_guide_claim_bundle or {}
+        )
+        imported_mulligan_plan = _read_plan_report(
+            plan_dir,
+            "mulligan_plan_report.json",
+        )
+        imported_card_behavior_plan = _read_plan_report(
             plan_dir,
             "card_behavior_plan_report.json",
-            card_behavior_plan,
         )
-        combo_plan = _read_plan_report(plan_dir, "combo_plan_report.json", combo_plan)
-        global_values_authority_matrix = _read_plan_report(
+        imported_combo_plan = _read_plan_report(
+            plan_dir,
+            "combo_plan_report.json",
+        )
+        imported_global_values_authority_matrix = _read_plan_report(
             plan_dir,
             "global_values_authority_matrix.json",
-            global_values_authority_matrix,
         )
+        if imported_mulligan_plan is not None:
+            mulligan_plan = imported_mulligan_plan
+        if imported_card_behavior_plan is not None:
+            card_behavior_plan = imported_card_behavior_plan
+        if imported_combo_plan is not None:
+            combo_plan = imported_combo_plan
+        if imported_global_values_authority_matrix is not None:
+            global_values_authority_matrix = (
+                imported_global_values_authority_matrix
+            )
         plan_input_diagnostics = _build_plan_input_diagnostics(
             canonical_guide_claim_bundle=canonical_guide_claim_bundle,
             imported_guide_claim_bundle=imported_plan_guide_claim_bundle,
-            mulligan_plan=mulligan_plan,
-            card_behavior_plan=card_behavior_plan,
-            combo_plan=combo_plan,
-            global_values_authority_matrix=global_values_authority_matrix,
+            imported_mulligan_plan=imported_mulligan_plan or {},
+            imported_card_behavior_plan=imported_card_behavior_plan or {},
+            imported_combo_plan=imported_combo_plan or {},
+            imported_global_values_authority_matrix=(
+                imported_global_values_authority_matrix or {}
+            ),
         )
         (
             mulligan_plan,
@@ -603,10 +623,13 @@ def _reset_generated_package_dirs(deck_dir: Path, reports_dir: Path) -> None:
             shutil.rmtree(target)
 
 
-def _read_plan_report(plan_dir: Path, filename: str, fallback: dict[str, Any]) -> dict[str, Any]:
+def _read_plan_report(
+    plan_dir: Path,
+    filename: str,
+) -> dict[str, Any] | None:
     path = plan_dir / filename
     if not path.exists():
-        return fallback
+        return None
     payload = read_json(path)
     if not isinstance(payload, dict):
         raise ValueError(f"Plan report must be an object: {path}")
@@ -628,10 +651,10 @@ def _build_plan_input_diagnostics(
     *,
     canonical_guide_claim_bundle: dict[str, Any],
     imported_guide_claim_bundle: dict[str, Any],
-    mulligan_plan: dict[str, Any],
-    card_behavior_plan: dict[str, Any],
-    combo_plan: dict[str, Any],
-    global_values_authority_matrix: dict[str, Any],
+    imported_mulligan_plan: dict[str, Any],
+    imported_card_behavior_plan: dict[str, Any],
+    imported_combo_plan: dict[str, Any],
+    imported_global_values_authority_matrix: dict[str, Any],
 ) -> dict[str, Any]:
     canonical_claim_ids = {
         str(claim.get("claim_id", ""))
@@ -661,22 +684,33 @@ def _build_plan_input_diagnostics(
 
     imported_rows: list[dict[str, Any]] = []
     for report_name, section, rows in (
-        ("mulligan_plan_report.json", "rules", mulligan_plan.get("rules", [])),
+        (
+            "mulligan_plan_report.json",
+            "rules",
+            imported_mulligan_plan.get("rules", []),
+        ),
         (
             "card_behavior_plan_report.json",
             "rows",
-            card_behavior_plan.get("rows", []),
+            imported_card_behavior_plan.get("rows", []),
         ),
-        ("combo_plan_report.json", "combos", combo_plan.get("combos", [])),
+        (
+            "combo_plan_report.json",
+            "combos",
+            imported_combo_plan.get("combos", []),
+        ),
         (
             "global_values_authority_matrix.json",
             "allowed_step1_overlays",
-            global_values_authority_matrix.get("allowed_step1_overlays", []),
+            imported_global_values_authority_matrix.get(
+                "allowed_step1_overlays",
+                [],
+            ),
         ),
         (
             "global_values_authority_matrix.json",
             "blocked_until_runtime_evidence",
-            global_values_authority_matrix.get(
+            imported_global_values_authority_matrix.get(
                 "blocked_until_runtime_evidence",
                 [],
             ),
@@ -718,6 +752,7 @@ def _build_plan_input_diagnostics(
             else []
         ),
         "ignored_claims": ignored_claims,
+        "imported_row_count": len(imported_rows),
         "imported_rows": imported_rows,
     }
 
@@ -974,9 +1009,16 @@ def _filter_globalvalues_authority_matrix(
         for row in allowed_rows
     }
     for row in matrix.get("allowed_step1_overlays", []):
-        if not isinstance(row, dict) or row.get("key") == "baseline":
+        if not isinstance(row, dict):
             continue
-        if _globalvalues_plan_row_signature(row) in canonical_signatures:
+        if row.get("key") == "baseline":
+            if any(
+                row == canonical_row
+                for canonical_row in allowed_rows
+                if canonical_row.get("key") == "baseline"
+            ):
+                continue
+        elif _globalvalues_plan_row_signature(row) in canonical_signatures:
             continue
         blocked_rows.append(
             {

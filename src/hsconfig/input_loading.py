@@ -145,11 +145,17 @@ def fixture_row_for(deck_name: str) -> dict[str, Any] | None:
 def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not claims:
         return []
-    documents: dict[tuple[str, str], dict[str, Any]] = {}
+    documents: dict[tuple[str, str, str], dict[str, Any]] = {}
     for claim in claims:
         source_url = str(claim.get("url", ""))
         source_title = str(claim.get("source_title", claim.get("source", "legacy claims")))
-        key = (source_url, source_title)
+        legacy_claim_kind = _effective_legacy_claim_kind(claim)
+        authority_partition = (
+            "posture_without_legacy_authority"
+            if legacy_claim_kind == "gameplan_posture"
+            else "legacy_document_authority"
+        )
+        key = (source_url, source_title, authority_partition)
         document = documents.setdefault(
             key,
             {
@@ -160,7 +166,6 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "claims": [],
             },
         )
-        legacy_claim_kind = _effective_legacy_claim_kind(claim)
         if legacy_claim_kind != "gameplan_posture":
             for field in (
                 "source_visibility",
