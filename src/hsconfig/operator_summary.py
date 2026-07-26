@@ -348,6 +348,15 @@ def build_operator_summary(
             ),
         )
     )
+    configuration_assurance = _configuration_assurance(
+        technical_status=technical_status,
+        source_backed_status=source_status_resolution.source_backed_status,
+        source_lanes=_operator_source_lanes(
+            source_claim_gap_report or {},
+            source_to_runtime_explainability_report or {},
+        ),
+        semantic_handoff_status=str(semantic_handoff["semantic_handoff_status"]),
+    )
     summary = {
         "schema_version": 1,
         "deck": {
@@ -366,6 +375,7 @@ def build_operator_summary(
         "use_config_now": load_safe_to_install,
         "use_config_now_scope": "load_safety_only",
         **semantic_handoff,
+        "configuration_assurance": configuration_assurance,
         "runtime_apply_contract": {
             "apply_authority": "reports/operator_summary.json",
         },
@@ -488,6 +498,33 @@ def _operator_source_lanes(*reports: dict[str, Any]) -> list[str]:
                 )
         lanes.update(_nested_source_lanes(report))
     return sorted(lanes)
+
+
+def _configuration_assurance(
+    *,
+    technical_status: str,
+    source_backed_status: str,
+    source_lanes: list[str],
+    semantic_handoff_status: str,
+) -> dict[str, Any]:
+    if "deck_matched_public_guide" in source_lanes:
+        source_authority = "exact"
+    elif "archetype_matched_public_guide" in source_lanes:
+        source_authority = "archetype_only"
+    elif source_backed_status == "SOURCE_BACKED_PARTIAL":
+        source_authority = "partial"
+    else:
+        source_authority = "unknown"
+    return {
+        "load_safety": (
+            "validated" if technical_status == "VALID_PACKAGE" else "not_validated"
+        ),
+        "source_authority": source_authority,
+        "semantic_closure": semantic_handoff_status,
+        "in_client_behavior": "not_proven_by_pre_run_contract",
+        "optimality_claim_allowed": False,
+        "runtime_gate_impact": "none",
+    }
 
 
 def _nested_source_lanes(value: Any) -> set[str]:

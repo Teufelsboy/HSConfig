@@ -23,6 +23,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_visibility_fields(summary),
             **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
+            **_configuration_assurance_fields(summary),
             **_source_informed_scope_fields(summary),
         }
 
@@ -42,6 +43,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
                 **_mechanic_visibility_fields(summary),
                 **_mechanic_drift_fields(summary),
                 **_runtime_apply_fields(summary),
+                **_configuration_assurance_fields(summary),
                 **_source_informed_scope_fields(summary),
             }
         return {
@@ -57,6 +59,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_visibility_fields(summary),
             **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
+            **_configuration_assurance_fields(summary),
             **_source_informed_scope_fields(summary),
         }
 
@@ -73,6 +76,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
             **_mechanic_visibility_fields(summary),
             **_mechanic_drift_fields(summary),
             **_runtime_apply_fields(summary),
+            **_configuration_assurance_fields(summary),
             **_source_informed_scope_fields(summary),
         }
 
@@ -88,6 +92,7 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
         **_mechanic_visibility_fields(summary),
         **_mechanic_drift_fields(summary),
         **_runtime_apply_fields(summary),
+        **_configuration_assurance_fields(summary),
         **_source_informed_scope_fields(summary),
     }
 
@@ -112,6 +117,13 @@ def _runtime_apply_fields(summary: dict[str, Any]) -> dict[str, Any]:
         "runtime_apply_allowed": bool(summary.get("runtime_apply_allowed", False)),
         "runtime_apply_requires_flag": summary.get("runtime_apply_requires_flag"),
     }
+
+
+def _configuration_assurance_fields(summary: dict[str, Any]) -> dict[str, Any]:
+    assurance = summary.get("configuration_assurance")
+    if not isinstance(assurance, dict):
+        return {}
+    return {"configuration_assurance": assurance}
 
 
 def _source_informed_scope_fields(summary: dict[str, Any]) -> dict[str, Any]:

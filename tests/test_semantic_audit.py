@@ -36,3 +36,28 @@ def test_render_semantic_audit_markdown_lists_deckwide_effects_and_warnings():
     assert "hero_power_transform" in markdown
     assert "Darkbishop Benedictus enters Shadowform at Start of Game." in markdown
     assert "mind_spike_resolved_from_builtin_fallback" in markdown
+
+
+def test_render_semantic_audit_markdown_includes_configuration_assurance():
+    markdown = render_semantic_audit_markdown(
+        {
+            "configuration_assurance": {
+                "load_safety": "validated",
+                "source_authority": "exact",
+                "semantic_closure": "closed",
+                "in_client_behavior": "not_proven_by_pre_run_contract",
+                "optimality_claim_allowed": False,
+                "runtime_gate_impact": "none",
+            }
+        }
+    )
+
+    assert (
+        "## Configuration Assurance\n\n"
+        "- Load safety: `validated`\n"
+        "- Source authority: `exact`\n"
+        "- Semantic closure: `closed`\n"
+        "- In-client behavior: `not_proven_by_pre_run_contract`\n"
+        "- Optimality claim allowed: `false`\n"
+        "- Runtime gate impact: `none`"
+    ) in markdown

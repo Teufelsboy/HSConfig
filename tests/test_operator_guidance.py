@@ -129,6 +129,31 @@ def test_guidance_mirrors_explicit_runtime_apply_fields_from_summary():
     assert guidance["runtime_apply_requires_flag"] == "--allow-source-informed"
 
 
+def test_guidance_preserves_configuration_assurance_and_operator_report_authority():
+    assurance = {
+        "load_safety": "validated",
+        "source_authority": "exact",
+        "semantic_closure": "closed",
+        "in_client_behavior": "not_proven_by_pre_run_contract",
+        "optimality_claim_allowed": False,
+        "runtime_gate_impact": "none",
+    }
+
+    guidance = build_operator_guidance(
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "apply_policy": "ALLOWED",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "configuration_assurance": assurance,
+        }
+    )
+
+    assert guidance["first_report_to_open"] == "reports/operator_summary.json"
+    assert guidance["configuration_assurance"] == assurance
+
+
 def test_guidance_for_load_safe_warning_package():
     guidance = build_operator_guidance(
         {

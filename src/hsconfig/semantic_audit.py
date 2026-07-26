@@ -9,9 +9,26 @@ def render_semantic_audit_markdown(report: dict[str, Any]) -> str:
         "",
         f"Status: `{report.get('semantic_enrichment_status', 'unknown')}`",
         "",
-        "## Deckwide Effects",
-        "",
     ]
+    assurance = report.get("configuration_assurance")
+    if isinstance(assurance, dict):
+        optimality_claim_allowed = str(
+            assurance.get("optimality_claim_allowed", "unknown")
+        ).lower()
+        lines.extend(
+            [
+                "## Configuration Assurance",
+                "",
+                f"- Load safety: `{assurance.get('load_safety', 'unknown')}`",
+                f"- Source authority: `{assurance.get('source_authority', 'unknown')}`",
+                f"- Semantic closure: `{assurance.get('semantic_closure', 'unknown')}`",
+                f"- In-client behavior: `{assurance.get('in_client_behavior', 'unknown')}`",
+                f"- Optimality claim allowed: `{optimality_claim_allowed}`",
+                f"- Runtime gate impact: `{assurance.get('runtime_gate_impact', 'unknown')}`",
+                "",
+            ]
+        )
+    lines.extend(["## Deckwide Effects", ""])
     deckwide_effects = report.get("deckwide_effects", [])
     if deckwide_effects:
         for effect in deckwide_effects:

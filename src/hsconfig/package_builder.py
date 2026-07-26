@@ -328,11 +328,6 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         reports_dir / "unsupported_claims_report.json",
         guide_claim_bundle["unsupported_claims"],
     )
-    (reports_dir / "card_semantic_audit.md").write_text(
-        render_semantic_audit_markdown(semantic_report),
-        encoding="utf-8",
-        newline="\n",
-    )
     write_research_contract_bundle(
         research_bundle,
         reports_dir,
@@ -431,6 +426,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         deck_dir,
         reports_dir,
         expected_report_files=(
+            "card_semantic_audit.md",
             "operator_summary.json",
             "strong_promotion_report.json",
             "output_ownership_manifest.json",
@@ -443,6 +439,18 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
         **operator_summary_kwargs,
+    )
+    (reports_dir / "card_semantic_audit.md").write_text(
+        render_semantic_audit_markdown(
+            {
+                **semantic_report,
+                "configuration_assurance": operator_summary[
+                    "configuration_assurance"
+                ],
+            }
+        ),
+        encoding="utf-8",
+        newline="\n",
     )
     strong_promotion_report = build_strong_promotion_report(
         deck_name=args.deck_name,

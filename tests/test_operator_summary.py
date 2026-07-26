@@ -91,6 +91,30 @@ def _strong_candidate_with_lane_counts(lane_counts):
     )
 
 
+def test_operator_summary_separates_pre_run_assurance_dimensions():
+    summary = _strong_candidate_with_lane_counts(
+        {"deck_matched_public_guide": 3}
+    )
+
+    assert summary["configuration_assurance"] == {
+        "load_safety": "validated",
+        "source_authority": "exact",
+        "semantic_closure": "closed",
+        "in_client_behavior": "not_proven_by_pre_run_contract",
+        "optimality_claim_allowed": False,
+        "runtime_gate_impact": "none",
+    }
+
+
+def test_operator_summary_does_not_allow_optimality_claim_for_archetype_only_source():
+    summary = _strong_candidate_with_lane_counts(
+        {"archetype_matched_public_guide": 3}
+    )
+
+    assert summary["configuration_assurance"]["source_authority"] == "archetype_only"
+    assert summary["configuration_assurance"]["optimality_claim_allowed"] is False
+
+
 def _guide_backed_profile_report(claim_kinds):
     return {
         "summary": {"cards_with_first_missing_link": 0},
