@@ -7,9 +7,8 @@ from typing import Any
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.commands.common import run_payload_command
 from hsconfig.io import read_json
-from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.runtime_apply import apply_package, plan_apply_package
-from hsconfig.validate_package import validate_config_package
+from hsconfig.strict_package_validation import validate_complete_package
 
 
 def run_apply_command(args: argparse.Namespace) -> int:
@@ -29,15 +28,7 @@ def validate_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "checked_files": 0,
         }, 1
 
-    baseline = read_required_baseline(package)
-    profile = read_optional_profile(package)
-    report = validate_config_package(
-        package,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=profile,
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
+    report = validate_complete_package(package)
     return report, 0 if report["status"] == "passed" else 1
 
 
@@ -46,15 +37,7 @@ def apply_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if not package.exists():
         return {"status": "failed", "errors": [f"Package not found: {package}"]}, 1
 
-    baseline = read_required_baseline(package)
-    profile = read_optional_profile(package)
-    report = validate_config_package(
-        package,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=profile,
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
+    report = validate_complete_package(package)
     if report["status"] != "passed":
         return {"status": "failed", "errors": report["errors"], "validation_report": report}, 1
 

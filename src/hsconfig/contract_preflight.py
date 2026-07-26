@@ -683,14 +683,11 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
         build_config_quality_report,
         semantic_handoff_projection,
     )
-    from hsconfig.validate_package import validate_config_package
+    from hsconfig.strict_package_validation import validate_complete_package
 
     operator = _as_mapping(_read_json(package_path / normal_authority))
     try:
-        validation = validate_config_package(
-            package_path,
-            require_complete_package=True,
-        )
+        validation = validate_complete_package(package_path)
     except Exception as exc:
         validation = {
             "status": "failed",

@@ -50,9 +50,9 @@ from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_document_model import claim_can_lower_to_runtime, normalized_claim_kind
+from hsconfig.strict_package_validation import validate_complete_package
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
-from hsconfig.validate_package import validate_config_package
 
 def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     payload, code = build_package_payload(args)
@@ -397,13 +397,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     write_json(reports_dir / "globalvalues_profile.json", globalvalues["profile"])
     write_json(reports_dir / "global_values_key_profile_report.json", globalvalues["profile"])
 
-    report = validate_config_package(
-        out,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=globalvalues["profile"],
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
+    report = validate_complete_package(out)
     write_json(reports_dir / "validation_report.json", report)
     operator_summary_kwargs = {
         "deck_name": args.deck_name,

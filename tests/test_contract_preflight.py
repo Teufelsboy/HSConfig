@@ -218,6 +218,24 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
         {"GameCardId": "GlobalValues", "ConfigComment": "ShadowPriest global values"},
     )
     _write_json(
+        reports / "globalvalues_baseline.json",
+        {"GameCardId": "GlobalValues", "ConfigComment": "ShadowPriest global values"},
+    )
+    _write_json(
+        reports / "globalvalues_profile.json",
+        {
+            "key_count": 2,
+            "keys": {
+                "GameCardId": {"status": "unchanged"},
+                "ConfigComment": {"status": "unchanged"},
+            },
+            "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
+            "expected_overlay_keys": [],
+            "missing_overlay_keys": [],
+        },
+    )
+    _write_json(
         deck / "Mulligan.json",
         {
             "GameCardId": "Mulligan",
