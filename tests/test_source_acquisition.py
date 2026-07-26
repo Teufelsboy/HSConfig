@@ -137,6 +137,55 @@ def test_extract_visible_text_removes_markup_and_keeps_title():
     assert "<p>" not in parsed["text"]
 
 
+def test_visible_text_prefers_main_and_excludes_page_chrome():
+    parsed = extract_visible_text(
+        """
+        <html>
+          <head>
+            <title>ShadowPriest Guide</title>
+            <meta property="article:published_time" content="2026-07-25T00:00:00Z">
+          </head>
+          <body>
+            <header>Help Sign In</header>
+            <nav>Decks Cards Forums</nav>
+            <main>
+              <h1>Exact ShadowPriest plan</h1>
+              <p>Keep the documented one-drop against slow decks.</p>
+            </main>
+            <aside>Follow Us On Twitter</aside>
+            <footer>Privacy Terms</footer>
+          </body>
+        </html>
+        """
+    )
+
+    assert parsed["title"] == "ShadowPriest Guide"
+    assert parsed["content_scope"] == "main_or_article"
+    assert "Exact ShadowPriest plan" in parsed["text"]
+    assert "Keep the documented one-drop" in parsed["text"]
+    assert "Help Sign In" not in parsed["text"]
+    assert "Follow Us On Twitter" not in parsed["text"]
+    assert parsed["publication_values"] == ["2026-07-25T00:00:00Z"]
+
+
+def test_visible_text_uses_sanitized_body_when_primary_content_is_absent():
+    parsed = extract_visible_text(
+        """
+        <html>
+          <head><title>Legacy guide</title></head>
+          <body>
+            <nav>Help Sign In</nav>
+            <section><h1>Mulligan</h1><p>Keep CARD_A.</p></section>
+            <footer>Follow Us On Twitter</footer>
+          </body>
+        </html>
+        """
+    )
+
+    assert parsed["content_scope"] == "visible_body_fallback"
+    assert parsed["text"] == "Mulligan Keep CARD_A."
+
+
 def test_collect_public_source_records_fetches_bounded_public_pages():
     deck_identity = {
         "deck_name": "ShadowPriest",

@@ -17,12 +17,26 @@ HostResolver = Callable[[str], Sequence[str]]
 
 
 class _VisibleTextParser(HTMLParser):
+    PRIMARY_CONTENT_TAGS = {"main", "article"}
+    EXCLUDED_CONTENT_TAGS = {
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "form",
+        "script",
+        "style",
+        "noscript",
+    }
+
     def __init__(self) -> None:
         super().__init__()
         self.title_parts: list[str] = []
-        self.text_parts: list[str] = []
+        self.primary_text_parts: list[str] = []
+        self.fallback_text_parts: list[str] = []
         self.publication_values: list[str] = []
-        self._skip_depth = 0
+        self._primary_depth = 0
+        self._excluded_depth = 0
         self._in_title = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -44,37 +58,46 @@ class _VisibleTextParser(HTMLParser):
             value = attributes.get("datetime", "").strip()
             if value:
                 self.publication_values.append(value)
-        if normalized_tag in {"script", "style", "noscript"}:
-            self._skip_depth += 1
+        if normalized_tag in self.EXCLUDED_CONTENT_TAGS:
+            self._excluded_depth += 1
+        if normalized_tag in self.PRIMARY_CONTENT_TAGS:
+            self._primary_depth += 1
         if normalized_tag == "title":
             self._in_title = True
 
     def handle_endtag(self, tag: str) -> None:
         normalized_tag = tag.lower()
-        if normalized_tag in {"script", "style", "noscript"} and self._skip_depth:
-            self._skip_depth -= 1
         if normalized_tag == "title":
             self._in_title = False
+        if normalized_tag in self.PRIMARY_CONTENT_TAGS and self._primary_depth:
+            self._primary_depth -= 1
+        if normalized_tag in self.EXCLUDED_CONTENT_TAGS and self._excluded_depth:
+            self._excluded_depth -= 1
 
     def handle_data(self, data: str) -> None:
         text = " ".join(data.split())
-        if not text or self._skip_depth:
+        if not text:
             return
         if self._in_title:
             self.title_parts.append(text)
-        else:
-            self.text_parts.append(text)
+            return
+        if self._excluded_depth:
+            return
+        self.fallback_text_parts.append(text)
+        if self._primary_depth:
+            self.primary_text_parts.append(text)
 
 
 def extract_visible_text(html: str) -> dict[str, Any]:
     parser = _VisibleTextParser()
     parser.feed(html)
-    title = " ".join(parser.title_parts).strip()
-    text = " ".join(parser.text_parts).strip()
+    primary = " ".join(parser.primary_text_parts).strip()
+    fallback = " ".join(parser.fallback_text_parts).strip()
     return {
-        "title": title,
-        "text": text,
+        "title": " ".join(parser.title_parts).strip(),
+        "text": primary or fallback,
         "publication_values": parser.publication_values,
+        "content_scope": "main_or_article" if primary else "visible_body_fallback",
     }
 
 
