@@ -57,11 +57,11 @@ def test_source_evidence_closure_reports_profile_verdict(tmp_path: Path):
     assert report["closure_profile"] == "aggro_burn_hero_power"
     assert report["closure_profile_closed"] is True
     assert report["closure_profile_first_missing_link"] == "none"
-    assert report["source_backed_status"] == "SOURCE_BACKED_STRONG"
-    assert report["source_strong_ready"] is True
-    assert report["first_missing_source_action"] == "none"
-    assert report["source_missing_source_actions"] == []
-    assert report["source_status_reasons"] == ["source_backed_strong_ready"]
+    assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["source_strong_ready"] is False
+    assert report["first_missing_source_action"] == "add_explicit_target_scope"
+    assert report["source_missing_source_actions"] == ["add_explicit_target_scope"]
+    assert report["source_status_reasons"] == ["first_missing_claim_chain"]
     assert report["source_status_diagnostic_only"] is True
     assert report["source_status_apply_blocking"] is False
     assert report["apply_blocking"] is False

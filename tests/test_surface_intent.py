@@ -237,11 +237,11 @@ def test_surface_intent_projects_shadowpriest_specific_card_intents_without_fall
 
     assert rows["DS1_233"]["intent"] == "direct_enemy_hero_burn"
     assert rows["GVG_009"]["intent"] == "reciprocal_hero_burn"
-    assert rows["NX2_019"]["intent"] == "conditional_minion_death_burn"
-    assert rows["SCH_514"]["intent"] == "self_damage_resource"
+    assert rows["NX2_019"]["intent"] == "conditional_target_kill_burn"
+    assert rows["SCH_514"]["intent"] == "conditional_self_damage_resource"
     assert rows["SW_446"]["intent"] == "damage_aura_amplifier"
     assert rows["TOY_381"]["intent"] == "hero_power_cost_aura"
     assert rows["VAC_419"]["intent"] == "reciprocal_hero_burn"
     assert rows["VAC_512"]["intent"] == "self_damage_liability_body"
-    assert rows["YOD_032"]["intent"] == "opponent_damage_discount_tempo"
+    assert rows["YOD_032"]["intent"] == "conditional_cost_reduction"
     assert all(row["intent_source"] == "card_intent_taxonomy" for row in rows.values())

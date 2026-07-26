@@ -4,29 +4,9 @@ from typing import Any, Iterable
 
 from hsconfig.mechanic_support import (
     ROLE_ALIASES,
-    mechanic_default_runtime_block,
-    mechanic_lowering_policy,
     normalize_role_token,
 )
 
-
-NON_MECHANIC_FALLBACK_BLOCKS = {
-    "prefer_enemy_minion": "BeforePlayCardBonus",
-    "prefer_friendly_minion": "BeforePlayCardBonus",
-}
-DIAGNOSTIC_ONLY_ROLE_FALLBACKS = {
-    "destroy",
-    "generic_spell_target",
-    "hero_power",
-    "silence",
-    "transform",
-}
-
-BACKED_CONFIDENCE_LANES = {
-    "guide_backed",
-    "source_backed",
-    "source_backed_static_semantics",
-}
 
 EFFECT_ONLY_START_OF_GAME_ROLES = {
     "deckbuilding_modifier",
@@ -56,97 +36,23 @@ def compile_cardid_behaviors(
 ) -> dict[str, dict[str, Any]]:
     contract = contract or {}
     deck_name = deck_name or str(contract.get("deck_name", "Deck"))
-    suppressed_static_runtime_card_ids = _suppressed_static_runtime_card_ids(
-        contract,
-        static_runtime_suppressed_card_ids,
-    )
+    del static_runtime_suppressed_card_ids
     cards = _cards_from_contract(contract)
     if rows:
         _merge_row_cards(cards, _cards_from_rows(rows))
 
     files: dict[str, dict[str, Any]] = {}
     for card_id, card in sorted(cards.items()):
-        roles = set(card.get("roles", []))
-        effect_only_start_of_game = _is_effect_only_start_of_game_card(roles)
-        source_claim_ids = list(card.get("source_claim_ids", []))
-        confidence = str(card.get("confidence", card.get("coverage_status", "generic_low_confidence")))
         config: dict[str, Any] = {
             "GameCardId": card_id,
             "ConfigComment": f"{deck_name}: generated behavior for {card_id}",
         }
-        if (
-            card_id in suppressed_static_runtime_card_ids
-            and not card.get("behavior_rows", [])
-        ):
-            files[f"{card_id}.json"] = config
-            continue
-        if not effect_only_start_of_game:
-            _append_block_row(
-                config,
-                "InHandPlayPriority",
-                deck_name,
-                card_id,
-                "in_hand_priority",
-                _priority_value(roles, confidence),
-                source_claim_ids,
-                confidence,
-            )
-        explicit_blocks = _append_explicit_behavior_rows(
+        _append_explicit_behavior_rows(
             config,
             deck_name,
             card_id,
             card.get("behavior_rows", []),
         )
-        if (
-            not effect_only_start_of_game
-            and "pressure" in roles
-            and "BeforePlayCardBonus" not in explicit_blocks
-        ):
-            _append_block_row(
-                config,
-                "BeforePlayCardBonus",
-                deck_name,
-                card_id,
-                "pressure_play_bonus",
-                "8",
-                source_claim_ids,
-                confidence,
-            )
-        if (
-            not effect_only_start_of_game
-            and "prefer_enemy_hero" in roles
-            and "BeforePlayCardBonus" not in explicit_blocks
-        ):
-            _append_block_row(
-                config,
-                "BeforePlayCardBonus",
-                deck_name,
-                card_id,
-                "prefer_enemy_hero_bonus",
-                "12",
-                source_claim_ids,
-                confidence,
-            )
-        for role in sorted(roles):
-            block = _role_fallback_block(role)
-            if block is None:
-                continue
-            if effect_only_start_of_game and block == "BeforePlayCardBonus":
-                continue
-            if block in explicit_blocks:
-                continue
-            policy = mechanic_lowering_policy(role)
-            _append_block_row(
-                config,
-                block,
-                deck_name,
-                card_id,
-                f"{role}_behavior",
-                str(policy.get("default_value", "6")),
-                source_claim_ids,
-                confidence,
-                condition=str(policy.get("default_condition", "*")),
-            )
         files[f"{card_id}.json"] = config
     return files
 
@@ -160,35 +66,6 @@ def _is_effect_only_start_of_game_card(roles: Iterable[str]) -> bool:
     if combined_roles.intersection(BODY_AUTHORITY_ROLES):
         return False
     return True
-
-
-def _suppressed_static_runtime_card_ids(
-    contract: dict[str, Any],
-    explicit_card_ids: Iterable[str] | None,
-) -> set[str]:
-    card_ids = {str(card_id) for card_id in explicit_card_ids or [] if str(card_id)}
-    card_behavior_plan = contract.get("card_behavior_plan", {})
-    if isinstance(card_behavior_plan, dict):
-        card_ids.update(
-            str(card_id)
-            for card_id in card_behavior_plan.get(
-                "static_runtime_suppressed_card_ids", []
-            )
-            if str(card_id)
-        )
-    return card_ids
-
-
-def _role_fallback_block(role: str) -> str | None:
-    canonical_role = ROLE_ALIASES.get(normalize_role_token(role), normalize_role_token(role))
-    if canonical_role in DIAGNOSTIC_ONLY_ROLE_FALLBACKS:
-        return None
-    if role in NON_MECHANIC_FALLBACK_BLOCKS:
-        return NON_MECHANIC_FALLBACK_BLOCKS[role]
-    policy = mechanic_lowering_policy(canonical_role)
-    if policy["policy"] == "report_only":
-        return None
-    return mechanic_default_runtime_block(role)
 
 
 def _cards_from_contract(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -248,16 +125,6 @@ def _merge_row_cards(
         card.setdefault("behavior_rows", []).extend(row_card.get("behavior_rows", []))
         if card.get("confidence") != "source_backed":
             card["confidence"] = row_card.get("confidence", card.get("confidence", "source_backed"))
-
-
-def _priority_value(roles: set[str], confidence: str) -> str:
-    if "mulligan_anchor" in roles and "pressure" in roles:
-        return "12"
-    if "pressure" in roles or "combo_piece" in roles:
-        return "10"
-    if confidence in BACKED_CONFIDENCE_LANES:
-        return "7"
-    return "5"
 
 
 def _append_explicit_behavior_rows(

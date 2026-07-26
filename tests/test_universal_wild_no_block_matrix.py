@@ -305,6 +305,11 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
     for file_name in emitted_files:
         path = deck_dir / file_name
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            file_name not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
+            and set(payload) <= {"GameCardId", "ConfigComment"}
+        ):
+            continue
         runtime_rows = [
             row
             for block in payload.values()

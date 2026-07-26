@@ -5,7 +5,54 @@ from hsconfig.io import write_json
 from hsconfig.validate_package import validate_config_package
 
 
-def test_compile_cardid_behaviors_emit_valid_files_with_clean_runtime_rows(tmp_path: Path):
+def test_compile_cardid_does_not_invent_priority_for_report_only_card():
+    contract = {
+        "deck_name": "Fixture",
+        "cards": {
+            "EX1_001": {
+                "card_id": "EX1_001",
+                "name": "Report Only",
+                "roles": ["pressure", "tradeable"],
+                "confidence": "source_backed_static_semantics",
+                "behavior_rows": [],
+            }
+        },
+    }
+
+    payload = compile_cardid_behaviors(contract)["EX1_001.json"]
+
+    assert payload == {
+        "GameCardId": "EX1_001",
+        "ConfigComment": "Fixture: generated behavior for EX1_001",
+    }
+
+
+def test_compile_cardid_preserves_explicit_priority_row():
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "EX1_001",
+            "behavior_block": "InHandPlayPriority",
+            "condition": "*",
+            "value": "9",
+            "rule_id_suffix": "guide_priority",
+            "source_claim_ids": ["claim-priority"],
+            "confidence": "guide_backed",
+        }
+    ]
+
+    payload = compile_cardid_behaviors(
+        {"deck_name": "Fixture", "cards": {}},
+        rows=rows,
+    )["EX1_001.json"]
+
+    assert payload["InHandPlayPriority"]["values"][0]["value"] == "9"
+
+
+def test_compile_cardid_behaviors_emit_valid_minimal_files_without_explicit_rows(
+    tmp_path: Path,
+):
     contract = {
         "deck_name": "Fixture Aggro",
         "cards": {
@@ -26,11 +73,8 @@ def test_compile_cardid_behaviors_emit_valid_files_with_clean_runtime_rows(tmp_p
 
     assert set(files) == {"EX1_001.json", "EX1_002.json"}
     assert files["EX1_001.json"]["GameCardId"] == "EX1_001"
-    priority_row = files["EX1_001.json"]["InHandPlayPriority"]["values"][0]
-    assert set(priority_row) == {"comment", "condition", "value"}
-    assert "BeforePlayCardBonus" in files["EX1_001.json"]
-    assert "BeforeBattlecryTargetBonus" not in files["EX1_001.json"]
-    assert "OnDiscoverCardBonus" in files["EX1_002.json"]
+    assert set(files["EX1_001.json"]) == {"GameCardId", "ConfigComment"}
+    assert set(files["EX1_002.json"]) == {"GameCardId", "ConfigComment"}
 
     deck_dir = tmp_path / "CustomConfig" / "deck"
     for filename, payload in files.items():
@@ -39,7 +83,7 @@ def test_compile_cardid_behaviors_emit_valid_files_with_clean_runtime_rows(tmp_p
     assert validate_config_package(tmp_path)["status"] == "passed"
 
 
-def test_compile_cardid_behaviors_preserves_roles_when_surface_rows_are_passed():
+def test_compile_cardid_does_not_derive_behavior_block_from_row_roles():
     contract = {
         "deck_name": "Fixture Aggro",
         "cards": {
@@ -63,11 +107,10 @@ def test_compile_cardid_behaviors_preserves_roles_when_surface_rows_are_passed()
 
     files = compile_cardid_behaviors(contract, rows=rows)
 
-    assert "BeforePlayCardBonus" in files["EX1_001.json"]
-    assert "BeforeBattlecryTargetBonus" not in files["EX1_001.json"]
+    assert set(files["EX1_001.json"]) == {"GameCardId", "ConfigComment"}
 
 
-def test_compile_cardid_treats_backed_confidence_lanes_as_stronger_than_generic():
+def test_compile_cardid_does_not_derive_priority_from_confidence_lane():
     contract = {
         "deck_name": "Fixture",
         "cards": {
@@ -91,12 +134,11 @@ def test_compile_cardid_treats_backed_confidence_lanes_as_stronger_than_generic(
 
     files = compile_cardid_behaviors(contract)
 
-    assert files["EX1_GUIDE.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
-    assert files["EX1_STATIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "7"
-    assert files["EX1_GENERIC.json"]["InHandPlayPriority"]["values"][0]["value"] == "5"
+    for payload in files.values():
+        assert set(payload) == {"GameCardId", "ConfigComment"}
 
 
-def test_compile_cardid_routes_targeting_intent_to_specific_bonus_block():
+def test_compile_cardid_does_not_derive_block_from_targeting_intent():
     contract = {
         "deck_name": "Fixture",
         "cards": {
@@ -121,10 +163,7 @@ def test_compile_cardid_routes_targeting_intent_to_specific_bonus_block():
 
     files = compile_cardid_behaviors(contract, rows=rows)
 
-    assert "BeforePlayCardBonus" in files["DMF_090.json"]
-    bonus_values = files["DMF_090.json"]["BeforePlayCardBonus"]["values"]
-    assert len(bonus_values) == 1
-    assert bonus_values[0]["value"] == "12"
+    assert set(files["DMF_090.json"]) == {"GameCardId", "ConfigComment"}
 
 
 def test_compile_cardid_uses_explicit_behavior_block_rows():
@@ -293,7 +332,7 @@ def test_compile_cardid_does_not_emit_tradeable_fallback_from_roles():
 
     card_file = files["CARD_TRADEABLE.json"]
     assert card_file["GameCardId"] == "CARD_TRADEABLE"
-    assert "InHandPlayPriority" in card_file
+    assert "InHandPlayPriority" not in card_file
     assert "BeforePlayCardBonus" not in card_file
 
 
@@ -313,7 +352,7 @@ def test_compile_cardid_does_not_emit_dredge_fallback_from_roles():
 
     card_file = files["CARD_DREDGE.json"]
     assert card_file["GameCardId"] == "CARD_DREDGE"
-    assert "InHandPlayPriority" in card_file
+    assert "InHandPlayPriority" not in card_file
     assert "BeforePlayCardBonus" not in card_file
     assert "OnDiscoverCardBonus" not in card_file
 
@@ -357,7 +396,7 @@ def test_compile_cardid_emits_behavior_rows_from_router_for_lowerable_mechanics(
     ]
 
 
-def test_compile_cardid_keeps_inhand_priority_for_report_only_cards():
+def test_compile_cardid_keeps_report_only_card_files_minimal():
     contract = {
         "deck_name": "Fixture",
         "cards": {
@@ -378,15 +417,7 @@ def test_compile_cardid_keeps_inhand_priority_for_report_only_cards():
 
     for filename in ("CARD_TRADEABLE.json", "CARD_DREDGE.json"):
         card_file = files[filename]
-        assert card_file["InHandPlayPriority"]["values"] == [
-            {
-                "comment": f"Fixture: {card_file['GameCardId']}_in_hand_priority",
-                "condition": "*",
-                "value": "7",
-            }
-        ]
-    assert "BeforePlayCardBonus" not in files["CARD_TRADEABLE.json"]
-    assert "OnDiscoverCardBonus" not in files["CARD_DREDGE.json"]
+        assert set(card_file) == {"GameCardId", "ConfigComment"}
 
 
 def test_effect_only_darkbishop_keeps_hero_power_bonus_without_body_priority():

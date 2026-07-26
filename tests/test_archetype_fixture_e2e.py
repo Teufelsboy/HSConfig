@@ -132,7 +132,7 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
     assert "blocked_until_runtime_evidence" in globalvalues
 
 
-def test_shadowpriest_fixture_reaches_source_backed_strong(
+def test_shadowpriest_fixture_stays_load_safe_with_semantic_gaps_visible(
     tmp_path: Path, capsys, monkeypatch
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
@@ -164,13 +164,14 @@ def test_shadowpriest_fixture_reaches_source_backed_strong(
     )
 
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert readiness["summary"]["generic_low_confidence"] == 0
     assert readiness["summary"]["cards_needing_guide_claims"] == 0
     assert readiness["summary"]["cards_needing_runtime_surface"] == 0
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] > 0
 
 
-def test_bigshaman_fixture_uses_explicit_recruit_and_deathrattle_values(
+def test_bigshaman_static_recruit_stays_report_only_but_explicit_guide_row_remains(
     tmp_path: Path, capsys, monkeypatch
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
@@ -201,20 +202,6 @@ def test_bigshaman_fixture_uses_explicit_recruit_and_deathrattle_values(
         (out / "CustomConfig" / "bigshaman" / "WW_440.json").read_text(encoding="utf-8")
     )
 
-    assert gvg_029["BeforePlayCardBonus"]["values"] == [
-        {
-            "comment": "BigShaman: GVG_029_summon_hand_minion",
-            "condition": "*",
-            "value": "9",
-        }
-    ]
-    assert {
-        "comment": "BigShaman: WW_440_summon_from_deck",
-        "condition": "*",
-        "value": "9",
-    } in ww_440["BeforePlayCardBonus"]["values"]
-    assert {
-        "comment": "BigShaman: WW_440_deathrattle_summon_from_deck",
-        "condition": "*",
-        "value": "7",
-    } in ww_440["OnBoardBonus"]["values"]
+    assert set(gvg_029) == {"GameCardId", "ConfigComment"}
+    assert "BeforePlayCardBonus" in ww_440
+    assert "OnBoardBonus" not in ww_440

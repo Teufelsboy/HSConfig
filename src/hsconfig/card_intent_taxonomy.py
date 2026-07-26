@@ -22,6 +22,39 @@ def classify_card_intent(
     normalized = str(text or "").lower()
     identity_reason = _card_identity_reason(card_identity)
 
+    if (
+        _has_automatic_from_deck_trigger(normalized)
+        or identity_reason == "automatic_from_deck_trigger"
+    ):
+        return CardIntentClassification(
+            reason="automatic_from_deck_trigger",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("automatic_summon", "summon" in normalized),
+                ("from_deck", "from your deck" in normalized),
+                ("patches_the_pirate", identity_reason == "automatic_from_deck_trigger"),
+            ),
+        )
+
+    if (
+        _has_automatic_from_hand_trigger(normalized)
+        or identity_reason == "automatic_from_hand_trigger"
+    ):
+        return CardIntentClassification(
+            reason="automatic_from_hand_trigger",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("automatic_summon", "summon" in normalized),
+                ("from_hand", "from your hand" in normalized),
+                (
+                    "parachute_brigand",
+                    identity_reason == "automatic_from_hand_trigger",
+                ),
+            ),
+        )
+
     if _has_hero_power_transform(normalized) or identity_reason == "hero_power_transform":
         return CardIntentClassification(
             reason="hero_power_transform",
@@ -58,11 +91,11 @@ def classify_card_intent(
         )
 
     if (
-        _has_conditional_minion_death_burn(normalized)
-        or identity_reason == "conditional_minion_death_burn"
+        _has_conditional_target_kill_burn(normalized)
+        or identity_reason == "conditional_target_kill_burn"
     ):
         return CardIntentClassification(
-            reason="conditional_minion_death_burn",
+            reason="conditional_target_kill_burn",
             value="10",
             band="high",
             matched_signals=_signals(
@@ -78,9 +111,12 @@ def classify_card_intent(
             ),
         )
 
-    if _has_self_damage_resource(normalized) or identity_reason == "self_damage_resource":
+    if (
+        _has_conditional_self_damage_resource(normalized)
+        or identity_reason == "conditional_self_damage_resource"
+    ):
         return CardIntentClassification(
-            reason="self_damage_resource",
+            reason="conditional_self_damage_resource",
             value="8",
             band="medium",
             matched_signals=_signals(
@@ -101,11 +137,11 @@ def classify_card_intent(
         )
 
     if (
-        _has_opponent_damage_discount_tempo(normalized)
-        or identity_reason == "opponent_damage_discount_tempo"
+        _has_conditional_cost_reduction(normalized)
+        or identity_reason == "conditional_cost_reduction"
     ):
         return CardIntentClassification(
-            reason="opponent_damage_discount_tempo",
+            reason="conditional_cost_reduction",
             value="8",
             band="medium",
             matched_signals=_signals(
@@ -199,6 +235,26 @@ def classify_card_intent(
             ),
         )
 
+    if _has_conditional_draw(normalized) or identity_reason == "conditional_draw":
+        return CardIntentClassification(
+            reason="conditional_draw",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("draw", "draw" in normalized),
+                ("condition", _has_any(normalized, ("if ", "whenever ", "after "))),
+                ("twilight_deceptor", identity_reason == "conditional_draw"),
+            ),
+        )
+
+    if _has_location_deploy(normalized) or identity_reason == "location_deploy":
+        return CardIntentClassification(
+            reason="location_deploy",
+            value="8",
+            band="medium",
+            matched_signals=("location", "deploy"),
+        )
+
     if _has_any(normalized, ("location", "cathedral", "atonement")):
         return CardIntentClassification(
             reason="location_tempo",
@@ -281,7 +337,15 @@ def _has_damage_aura_amplifier(text: str) -> bool:
     )
 
 
-def _has_conditional_minion_death_burn(text: str) -> bool:
+def _has_automatic_from_deck_trigger(text: str) -> bool:
+    return "summon" in text and "from your deck" in text
+
+
+def _has_automatic_from_hand_trigger(text: str) -> bool:
+    return "summon" in text and "from your hand" in text
+
+
+def _has_conditional_target_kill_burn(text: str) -> bool:
     return (
         "enemy hero" in text
         and _has_any(text, ("if it dies", "dies"))
@@ -303,7 +367,7 @@ def _has_reciprocal_hero_burn(text: str) -> bool:
     )
 
 
-def _has_self_damage_resource(text: str) -> bool:
+def _has_conditional_self_damage_resource(text: str) -> bool:
     return _has_self_damage_to_own_hero(text) and _has_any(
         text,
         (
@@ -314,7 +378,7 @@ def _has_self_damage_resource(text: str) -> bool:
     )
 
 
-def _has_opponent_damage_discount_tempo(text: str) -> bool:
+def _has_conditional_cost_reduction(text: str) -> bool:
     return _has_any(text, ("costs (1) less", "costs less")) and _has_any(
         text,
         (
@@ -330,6 +394,14 @@ def _has_self_damage_liability_body(text: str) -> bool:
         text,
         ("whenever this minion takes damage", "also deal that amount to your hero"),
     ) and _has_self_damage_to_own_hero(text)
+
+
+def _has_conditional_draw(text: str) -> bool:
+    return "draw" in text and _has_any(text, ("if ", "whenever ", "after "))
+
+
+def _has_location_deploy(text: str) -> bool:
+    return "location" in text and _has_any(text, ("deploy", "play this location"))
 
 
 def _has_hero_power_cost_aura(text: str) -> bool:
@@ -363,14 +435,22 @@ def _card_identity_reason(card_identity: str | None) -> str:
         "mind spike": "hero_power_transform",
         "SW_446".lower(): "damage_aura_amplifier",
         "voidtouched attendant": "damage_aura_amplifier",
-        "NX2_019".lower(): "conditional_minion_death_burn",
-        "mind sear": "conditional_minion_death_burn",
-        "SCH_514".lower(): "self_damage_resource",
-        "raise dead": "self_damage_resource",
-        "YOD_032".lower(): "opponent_damage_discount_tempo",
-        "frenzied felwing": "opponent_damage_discount_tempo",
+        "CFM_637".lower(): "automatic_from_deck_trigger",
+        "patches the pirate": "automatic_from_deck_trigger",
+        "DRG_056".lower(): "automatic_from_hand_trigger",
+        "parachute brigand": "automatic_from_hand_trigger",
+        "NX2_019".lower(): "conditional_target_kill_burn",
+        "mind sear": "conditional_target_kill_burn",
+        "SCH_514".lower(): "conditional_self_damage_resource",
+        "raise dead": "conditional_self_damage_resource",
+        "YOD_032".lower(): "conditional_cost_reduction",
+        "frenzied felwing": "conditional_cost_reduction",
+        "SW_444".lower(): "conditional_draw",
+        "twilight deceptor": "conditional_draw",
         "VAC_512".lower(): "self_damage_liability_body",
         "brain masseuse": "self_damage_liability_body",
+        "REV_290".lower(): "location_deploy",
+        "cathedral of atonement": "location_deploy",
         "TOY_381".lower(): "hero_power_cost_aura",
         "papercraft angel": "hero_power_cost_aura",
         "DS1_233".lower(): "direct_enemy_hero_burn",

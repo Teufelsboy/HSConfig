@@ -91,9 +91,10 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
     summary = read_json(out / "reports" / "operator_summary.json")
     assert summary["technical_status"] == "VALID_PACKAGE"
     if deck_name == "ShadowPriest":
-        assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+        assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
-        assert summary["semantic_blockers"] == []
+        assert summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] > 0
+        assert summary["semantic_blockers"]
     else:
         assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
         assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] > 0
@@ -501,7 +502,7 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
         expected = EXPECTED_EVIDENCE_STATUS[row["deck_name"]]
         assert row["technical_status"] == "VALID_PACKAGE", row
         assert row["runtime_apply_allowed"] is True, row
-        assert row["default_only_runtime_surfaces"] == [], row
+        assert set(row["default_only_runtime_surfaces"]) <= {"cardid_behavior"}, row
         if expected == "SOURCE_BACKED_STRONG":
             assert row["semantic_status"] == "SOURCE_BACKED_STRONG", row
             assert row["promotion_ready"] is True, row
@@ -568,7 +569,11 @@ def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
         assert operator["first_missing_source_action"] == strong_report[
             "first_missing_source_action"
         ]
-        assert operator["no_default_only_runtime_status"] == "clean"
+        assert operator["no_default_only_runtime_status"] in {
+            "clean",
+            "has_default_only_surfaces",
+        }
+        assert set(operator["default_only_runtime_surfaces"]) <= {"cardid_behavior"}
 
         if deck_name in expected_partial:
             assert (

@@ -180,9 +180,10 @@ def test_current_shadowpriest_guide_can_close_aggro_profile_without_extra_apply_
     )
 
     assert code == 0
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     closure = summary["source_backed_strong_closure"]
     assert closure["closure_profile"] == "aggro_burn_hero_power"
     assert closure["closure_profile_closed"] is True
     assert closure["closure_profile_first_missing_link"] == "none"
     assert closure["default_only_runtime_surfaces"] == []
+    assert closure["status"] == "needs_source_closure"

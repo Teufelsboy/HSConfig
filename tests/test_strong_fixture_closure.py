@@ -6,7 +6,7 @@ from tests.helpers.fixture_prepare import load_archetype_matrix, prepare_fixture
 
 
 @pytest.mark.parametrize("deck", load_archetype_matrix(), ids=lambda row: row["deck_name"])
-def test_core_source_backed_fixture_stage_requires_source_backed_strong(
+def test_core_source_backed_fixture_stage_respects_fail_closed_runtime_gate(
     tmp_path,
     monkeypatch,
     deck,
@@ -22,18 +22,15 @@ def test_core_source_backed_fixture_stage_requires_source_backed_strong(
 
     assert result["exit_code"] == 0
     assert result["operator"]["technical_status"] == "VALID_PACKAGE"
-    assert result["operator"]["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert result["operator"]["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
-    assert result["operator"]["semantic_blockers"] == []
-    assert promotion["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
-    assert promotion["static_contract_status"] == "SOURCE_BACKED_STRONG"
-    assert promotion["runtime_lowering_status"] == "NO_DEFAULT_ONLY_RUNTIME_SURFACES"
-    assert promotion["first_missing_source_action"] == "none"
+    assert result["operator"]["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert result["operator"]["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert result["operator"]["semantic_blockers"]
+    assert promotion["verdict"] == "PROMOTION_BLOCKED"
+    assert promotion["static_contract_status"] == "SOURCE_BACKED_PARTIAL"
+    assert promotion["runtime_lowering_status"] == "LOAD_SAFE_WITH_POLICY_OR_REVIEW_ROWS"
+    assert promotion["first_missing_source_action"] != "none"
     assert result["readiness"]["summary"]["cards_needing_guide_claims"] == 0
-    assert result["readiness"]["summary"]["cards_needing_runtime_surface"] == 0
-    assert result["readiness"]["summary"]["cards_needing_combo_sequence"] == 0
-    assert result["readiness"]["summary"]["cards_needing_condition_lowering"] == 0
-    assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] == 0
+    assert result["readiness"]["summary"]["cards_needing_mechanic_lowering"] > 0
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
 

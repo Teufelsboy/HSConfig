@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -189,6 +190,10 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "card_behavior": _card_behavior_check(card_behavior),
         "source_to_runtime_explainability": _explainability_check(explainability),
         "trace_completeness": _trace_completeness_check(card_behavior, explainability),
+        "runtime_row_trace_inventory": _runtime_row_trace_inventory_check(
+            package,
+            card_behavior,
+        ),
         "closure_freshness": _closure_freshness_check(operator),
         "mechanic_runtime_discipline": _mechanic_runtime_discipline_check(
             card_behavior
@@ -385,6 +390,70 @@ def _meaningful_cardid_rows(card_behavior: Mapping[str, Any]) -> list[Mapping[st
     return [
         row for row in rows if isinstance(row, Mapping) and _is_meaningful_cardid_row(row)
     ]
+
+
+def _runtime_row_signature(
+    card_id: str,
+    behavior_block: str,
+    row: Mapping[str, Any],
+) -> tuple[str, str, str, str]:
+    return (
+        card_id,
+        behavior_block,
+        str(row.get("condition", "")),
+        str(row.get("value", "")),
+    )
+
+
+def _runtime_row_trace_inventory_check(
+    package: Path,
+    card_behavior: Mapping[str, Any],
+) -> dict[str, Any]:
+    physical_rows = _runtime_cardid_value_rows(package)
+    reported_rows = _meaningful_cardid_rows(card_behavior)
+    physical = Counter(
+        _runtime_row_signature(
+            str(row["card_id"]),
+            str(row["behavior_block"]),
+            row,
+        )
+        for row in physical_rows
+    )
+    reported = Counter(
+        _runtime_row_signature(
+            _row_card_id(row),
+            str(row.get("behavior_block", "")),
+            row,
+        )
+        for row in reported_rows
+    )
+    unreported = [
+        _runtime_row_from_signature(signature)
+        for signature in sorted((physical - reported).elements())
+    ]
+    missing_runtime = [
+        _runtime_row_from_signature(signature)
+        for signature in sorted((reported - physical).elements())
+    ]
+    return {
+        "status": "clean" if not unreported and not missing_runtime else "attention",
+        "physical_cardid_runtime_rows": len(physical_rows),
+        "reported_cardid_runtime_rows": len(reported_rows),
+        "unreported_runtime_rows": unreported,
+        "reported_rows_missing_runtime": missing_runtime,
+    }
+
+
+def _runtime_row_from_signature(
+    signature: tuple[str, str, str, str],
+) -> dict[str, str]:
+    card_id, behavior_block, condition, value = signature
+    return {
+        "card_id": card_id,
+        "behavior_block": behavior_block,
+        "condition": condition,
+        "value": value,
+    }
 
 
 def _compact_behavior_row(row: Mapping[str, Any]) -> dict[str, str]:
@@ -916,6 +985,7 @@ def _runtime_cardid_value_rows(package: Path) -> list[dict[str, str]]:
                         {
                             "card_id": card_id,
                             "behavior_block": str(block),
+                            "condition": str(value_row.get("condition", "")),
                             "value": str(value_row.get("value", "")),
                         }
                     )
@@ -1964,6 +2034,22 @@ def _problems(checks: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "check": "card_behavior_runtime_row_missing_trace",
                 "value": trace["runtime_rows_missing_trace"],
+            }
+        )
+
+    runtime_row_inventory = checks["runtime_row_trace_inventory"]
+    if runtime_row_inventory["unreported_runtime_rows"]:
+        problems.append(
+            {
+                "check": "unreported_cardid_runtime_rows",
+                "value": runtime_row_inventory["unreported_runtime_rows"],
+            }
+        )
+    if runtime_row_inventory["reported_rows_missing_runtime"]:
+        problems.append(
+            {
+                "check": "reported_cardid_rows_missing_runtime",
+                "value": runtime_row_inventory["reported_rows_missing_runtime"],
             }
         )
 

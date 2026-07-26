@@ -1,8 +1,30 @@
+import pytest
+
 from hsconfig.card_intent_taxonomy import (
     CardIntentClassification,
     bounded_default_value,
     classify_card_intent,
 )
+
+
+@pytest.mark.parametrize(
+    ("card_id", "expected_reason"),
+    [
+        ("CFM_637", "automatic_from_deck_trigger"),
+        ("DRG_056", "automatic_from_hand_trigger"),
+        ("YOD_032", "conditional_cost_reduction"),
+        ("SCH_514", "conditional_self_damage_resource"),
+        ("SW_444", "conditional_draw"),
+        ("NX2_019", "conditional_target_kill_burn"),
+        ("VAC_512", "self_damage_liability_body"),
+        ("REV_290", "location_deploy"),
+    ],
+)
+def test_shadowpriest_risky_cards_have_precise_semantic_reason(
+    card_id, expected_reason
+):
+    result = classify_card_intent("", card_identity=card_id)
+    assert result.reason == expected_reason
 
 
 def test_taxonomy_classifies_shadowpriest_core_effects_in_priority_order():
@@ -28,7 +50,7 @@ def test_taxonomy_classifies_shadowpriest_core_effects_in_priority_order():
     assert aura.band == "critical"
     assert "voidtouched_attendant" in aura.matched_signals
 
-    assert mind_sear.reason == "conditional_minion_death_burn"
+    assert mind_sear.reason == "conditional_target_kill_burn"
     assert mind_sear.value == "10"
     assert mind_sear.band == "high"
     assert "death_condition" in mind_sear.matched_signals
@@ -150,7 +172,7 @@ def test_taxonomy_classifies_shadowpriest_reciprocal_and_self_damage_semantics()
     assert acupuncture.band == "high"
     assert "both_heroes" in acupuncture.matched_signals
 
-    assert raise_dead.reason == "self_damage_resource"
+    assert raise_dead.reason == "conditional_self_damage_resource"
     assert raise_dead.value == "8"
     assert raise_dead.band == "medium"
     assert "return_dead_friendly_minions" in raise_dead.matched_signals
@@ -160,7 +182,7 @@ def test_taxonomy_classifies_shadowpriest_reciprocal_and_self_damage_semantics()
     assert brain_masseuse.band == "medium"
     assert "takes_damage_reflects_to_own_hero" in brain_masseuse.matched_signals
 
-    assert felwing.reason == "opponent_damage_discount_tempo"
+    assert felwing.reason == "conditional_cost_reduction"
     assert felwing.value == "8"
     assert felwing.band == "medium"
     assert "opponent_damage_this_turn" in felwing.matched_signals
@@ -180,7 +202,7 @@ def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card
     assert classify_card_intent(
         "damage pressure spell", card_identity="SCH_514"
     ).reason == (
-        "self_damage_resource"
+        "conditional_self_damage_resource"
     )
     assert classify_card_intent(
         "damage minion pressure", card_identity="Brain Masseuse"
@@ -190,7 +212,7 @@ def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card
     assert classify_card_intent(
         "damage minion pressure", card_identity="YOD_032"
     ).reason == (
-        "opponent_damage_discount_tempo"
+        "conditional_cost_reduction"
     )
     assert classify_card_intent(
         "aura hero_power minion pressure", card_identity="TOY_381"
@@ -205,7 +227,7 @@ def test_taxonomy_classifies_shadowpriest_card_identity_when_surface_has_no_card
     assert classify_card_intent(
         "damage pressure spell", card_identity="NX2_019"
     ).reason == (
-        "conditional_minion_death_burn"
+        "conditional_target_kill_burn"
     )
 
 

@@ -56,6 +56,7 @@ def minimal_clean_package(tmp_path: Path) -> Path:
                     "card_id": "NX2_019",
                     "surface_family": "CARDID.json",
                     "behavior_block": "BeforeBattlecryTargetBonus",
+                    "condition": "*",
                     "value": "10",
                     "meaningful_runtime_surface": True,
                     "semantic_score": {
@@ -222,6 +223,72 @@ def minimal_clean_package(tmp_path: Path) -> Path:
         },
     )
     return package
+
+
+def test_quality_contract_flags_unreported_physical_cardid_row(tmp_path):
+    package = minimal_clean_package(tmp_path)
+    write_json(
+        package / "CustomConfig" / DECK_SLUG / "EX1_001.json",
+        {
+            "GameCardId": "EX1_001",
+            "ConfigComment": "Fixture: generated behavior for EX1_001",
+            "InHandPlayPriority": {
+                "values": [
+                    {
+                        "comment": "Fixture: EX1_001_unreported",
+                        "condition": "*",
+                        "value": "5",
+                    }
+                ]
+            },
+        },
+    )
+
+    report = build_config_quality_report(package)
+    check = report["checks"]["runtime_row_trace_inventory"]
+
+    assert check["status"] == "attention"
+    assert check["unreported_runtime_rows"][0]["card_id"] == "EX1_001"
+    assert (
+        check["unreported_runtime_rows"][0]["behavior_block"]
+        == "InHandPlayPriority"
+    )
+
+
+def test_quality_contract_flags_reported_cardid_row_missing_runtime(tmp_path):
+    package = minimal_clean_package(tmp_path)
+    card_behavior_path = package / "reports" / "card_behavior_plan_report.json"
+    card_behavior = json.loads(card_behavior_path.read_text(encoding="utf-8"))
+    card_behavior["rows"].append(
+        {
+            "card_id": "EX1_002",
+            "surface_family": "CARDID.json",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "9",
+            "meaningful_runtime_surface": True,
+            "semantic_score": {
+                "band": "high",
+                "reason": "direct_enemy_hero_burn",
+                "profile": "semantic_intent",
+                "matched_signals": ["enemy_hero_targeting", "damage"],
+            },
+        }
+    )
+    write_json(card_behavior_path, card_behavior)
+
+    report = build_config_quality_report(package)
+    check = report["checks"]["runtime_row_trace_inventory"]
+
+    assert check["status"] == "attention"
+    assert check["reported_rows_missing_runtime"] == [
+        {
+            "card_id": "EX1_002",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "9",
+        }
+    ]
 
 
 def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
@@ -934,7 +1001,7 @@ def test_config_quality_flags_stray_cardid_runtime_file_by_filename(
     assert report["apply_blocking"] is False
 
 
-def test_config_quality_allows_deck_identity_card_runtime_file_without_emitted_trace(
+def test_config_quality_flags_deck_identity_runtime_row_without_reported_row(
     tmp_path: Path,
 ):
     package = minimal_clean_package(tmp_path)
@@ -988,7 +1055,17 @@ def test_config_quality_allows_deck_identity_card_runtime_file_without_emitted_t
     report = build_config_quality_report(package)
 
     assert report["checks"]["runtime_json"]["stray_cardid_files"] == []
-    assert report["status"] == "clean"
+    assert report["status"] == "attention"
+    assert report["checks"]["runtime_row_trace_inventory"][
+        "unreported_runtime_rows"
+    ] == [
+        {
+            "card_id": "TOY_381",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "6",
+        }
+    ]
     assert not any(
         problem["check"] == "stray_cardid_runtime_files"
         for problem in report["problems"]
@@ -2205,6 +2282,7 @@ def test_config_quality_allows_darkbishop_effect_runtime_without_mulligan_keep(
             "card_id": "SW_448",
             "surface_family": "CARDID.json",
             "behavior_block": "BeforeUseHeroPowerBonus",
+            "condition": "*",
             "value": "10",
             "meaningful_runtime_surface": True,
             "semantic_score": {

@@ -103,11 +103,12 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
                     "card_id": "NX2_019",
                     "surface_family": "CARDID.json",
                     "behavior_block": "BeforeBattlecryTargetBonus",
+                    "condition": "*",
                     "value": "10",
                     "meaningful_runtime_surface": True,
                     "semantic_score": {
                         "band": "high",
-                        "reason": "conditional_minion_death_burn",
+                        "reason": "conditional_target_kill_burn",
                         "profile": "semantic_intent",
                         "matched_signals": [
                             "enemy_hero_damage",

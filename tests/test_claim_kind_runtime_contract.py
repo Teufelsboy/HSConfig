@@ -331,7 +331,6 @@ def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
         "trust_ceiling": "runtime_candidate",
         "cards": ["CARD_HP"],
         "runtime_block": "BeforeUseHeroPowerBonus",
-        "runtime_value": 25,
     }
 
     cardid_decision = surface_gate_decision(claim, "cardid")
@@ -354,7 +353,6 @@ def test_darkbishop_static_effect_and_guide_mulligan_keep_are_independent_claims
         "trust_ceiling": "runtime_candidate",
         "cards": ["SW_448"],
         "runtime_block": "BeforeUseHeroPowerBonus",
-        "runtime_value": 25,
     }
     guide_keep_claim = {
         "claim_id": "voidtouched-guide-keep",

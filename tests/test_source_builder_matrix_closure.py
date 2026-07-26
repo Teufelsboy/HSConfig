@@ -31,5 +31,5 @@ def test_matrix_closure_summary_is_machine_readable(tmp_path: Path):
 
     assert summary["summary"]["deck_count"] == 11
     assert summary["summary"]["valid_package_count"] == 11
-    assert summary["summary"]["source_backed_strong_count"] >= 4
+    assert summary["summary"]["source_backed_strong_count"] == 0
     assert set(summary["decks"]) == {row["deck_name"] for row in rows}

@@ -11,6 +11,7 @@ from hsconfig.mechanic_support import (
     normalize_role_token,
 )
 from hsconfig.semantic_intent_score import score_card_behavior_claim
+from hsconfig.semantic_runtime_gate import decide_semantic_runtime
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
@@ -152,7 +153,9 @@ def route_card_behavior_surfaces(
                 )
                 continue
             intent = _claim_intent(claim, fallback=claim_kind)
-            rows.extend(
+            _append_semantically_allowed_rows(
+                rows,
+                suppressed,
                 _rows_for_cards(
                     claim,
                     cards,
@@ -160,7 +163,9 @@ def route_card_behavior_surfaces(
                     behavior_block=explicit_block,
                     intent=intent,
                     roles=[intent],
-                )
+                ),
+                claim=claim,
+                claim_kind=claim_kind,
             )
             if intent in TARGETING_STANCES:
                 strong_cards.update(cards)
@@ -253,7 +258,9 @@ def route_card_behavior_surfaces(
                     )
                 if not uncovered_cards:
                     continue
-                rows.extend(
+                _append_semantically_allowed_rows(
+                    rows,
+                    suppressed,
                     _rows_for_cards(
                         claim,
                         uncovered_cards,
@@ -268,13 +275,17 @@ def route_card_behavior_surfaces(
                         ),
                         roles=[mechanic],
                         value_default=str(policy.get("default_value", DEFAULT_ROW_VALUE)),
-                    )
+                    ),
+                    claim=claim,
+                    claim_kind=claim_kind,
                 )
                 continue
 
         if claim_kind in INTENT_BLOCKS:
             intent = _claim_intent(claim, fallback=claim_kind)
-            rows.extend(
+            _append_semantically_allowed_rows(
+                rows,
+                suppressed,
                 _rows_for_cards(
                     claim,
                     cards,
@@ -282,7 +293,9 @@ def route_card_behavior_surfaces(
                     behavior_block=explicit_block or INTENT_BLOCKS[claim_kind],
                     intent=intent,
                     roles=[claim_kind],
-                )
+                ),
+                claim=claim,
+                claim_kind=claim_kind,
             )
             continue
 
@@ -293,14 +306,20 @@ def route_card_behavior_surfaces(
                 intent = _claim_intent(claim, fallback="deck_card")
                 row = _base_row(claim, card_id, condition=condition)
                 if explicit_block is not None:
-                    rows.append(
-                        _attach_behavior_fields(
-                            row,
-                            behavior_block=explicit_block,
-                            intent=intent,
-                            roles=[intent],
-                            claim=claim,
-                        )
+                    _append_semantically_allowed_rows(
+                        rows,
+                        suppressed,
+                        [
+                            _attach_behavior_fields(
+                                row,
+                                behavior_block=explicit_block,
+                                intent=intent,
+                                roles=[intent],
+                                claim=claim,
+                            )
+                        ],
+                        claim=claim,
+                        claim_kind=claim_kind,
                     )
                 else:
                     row["intent"] = "in_hand_priority"
@@ -314,7 +333,9 @@ def route_card_behavior_surfaces(
         if claim_kind == "known_bad_pattern":
             if explicit_block is not None:
                 intent = _claim_intent(claim, fallback=claim_kind)
-                rows.extend(
+                _append_semantically_allowed_rows(
+                    rows,
+                    suppressed,
                     _rows_for_cards(
                         claim,
                         cards,
@@ -322,7 +343,9 @@ def route_card_behavior_surfaces(
                         behavior_block=explicit_block,
                         intent=intent,
                         roles=[claim_kind],
-                    )
+                    ),
+                    claim=claim,
+                    claim_kind=claim_kind,
                 )
             else:
                 suppressed.append(
@@ -372,6 +395,36 @@ def _rows_for_cards(
     ]
 
 
+def _append_semantically_allowed_rows(
+    rows: list[dict[str, Any]],
+    suppressed: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    *,
+    claim: dict[str, Any],
+    claim_kind: str,
+) -> None:
+    for row in candidates:
+        semantic_score = row.get("semantic_score", {})
+        decision = decide_semantic_runtime(
+            semantic_reason=str(semantic_score.get("reason", "")),
+            source_lane=_claim_source_lane(claim),
+            condition=str(row["condition"]),
+            runtime_block=str(row["behavior_block"]),
+            claim_kind=claim_kind,
+        )
+        if not decision.allowed:
+            suppressed.append(
+                _suppressed_row(
+                    claim,
+                    claim_kind,
+                    [str(row["card_id"])],
+                    decision.reason,
+                )
+            )
+            continue
+        rows.append(row)
+
+
 def _base_row(claim: dict[str, Any], card_id: str, *, condition: str) -> dict[str, Any]:
     return {
         "surface": "CardID.json",
@@ -384,6 +437,21 @@ def _base_row(claim: dict[str, Any], card_id: str, *, condition: str) -> dict[st
         "source_refs": [str(item) for item in claim.get("source_refs", [])],
         "claim_confidence": str(claim.get("claim_confidence", claim.get("confidence", "source_backed"))),
     }
+
+
+def _claim_source_lane(claim: dict[str, Any]) -> str:
+    source_lane = str(claim.get("source_lane", "")).strip()
+    if source_lane:
+        return source_lane
+    source_refs = claim.get("source_refs", [])
+    if source_refs == ["hearthstonejson_static_semantics"]:
+        return "official_static_semantics"
+    claim_readiness = str(claim.get("claim_readiness", "")).strip()
+    if claim_readiness == "source_backed_static_semantics":
+        return "source_backed_static_semantics"
+    if claim_readiness == "guide_backed":
+        return "deck_matched_public_guide"
+    return ""
 
 
 def _suppressed_row(

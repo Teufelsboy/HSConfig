@@ -103,9 +103,9 @@ def test_shadowpriest_source_documents_surface_readiness_gaps(tmp_path: Path):
     assert code == 0
     summary = json.loads((out / "reports" / "operator_summary.json").read_text(encoding="utf-8"))
     assert summary["technical_status"] == "VALID_PACKAGE"
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
-    assert summary["semantic_blockers"] == []
+    assert summary["semantic_blockers"]
 
 
 def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_path: Path, capsys):
@@ -317,7 +317,7 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert depth["summary"]["warnings_count"] >= 0
     assert readiness["summary"]["generic_low_confidence"] <= 4
     assert readiness["summary"]["runtime_emitted"] >= 4
-    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] > 0
     assert len(mulligan["Mulligan"]["values"]) >= 4
     assert any(
         row["value"] == "12" and "prefer_enemy_hero" in row.get("comment", "")
@@ -394,7 +394,7 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert darkbishop_card_row["closure"]["default_only_risk"] is False
 
 
-def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(tmp_path):
+def test_shadowpriest_semantic_gate_preserves_darkbishop_effect_not_keep(tmp_path):
     package = prepare_shadowpriest_depth_fixture(tmp_path)
     operator = read_json(package / "reports" / "operator_summary.json")
     mulligan = read_json(package / "CustomConfig" / "shadowpriest" / "Mulligan.json")
@@ -404,7 +404,7 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     closure = read_json(package / "reports" / "source_evidence_closure.json")
 
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["default_only_runtime_surfaces"] == []
     concrete_keeps = [
         row["mulligan"]
@@ -436,4 +436,4 @@ def test_shadowpriest_source_backed_strong_preserves_darkbishop_effect_not_keep(
     assert closure["authority"] == "diagnostic_only"
     assert closure["apply_blocking"] is False
     assert closure["operator_gate"] == "reports/operator_summary.json"
-    assert closure["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert closure["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"

@@ -65,20 +65,29 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["source_informed_apply_readiness"]["status"] == "not_applicable"
-    assert operator["source_informed_apply_readiness"]["blocking_reasons"] == []
+    assert operator["source_informed_apply_readiness"]["status"] == "blocked"
+    assert {
+        "cards_need_mechanic_lowering",
+        "contract_gap_not_strong_evidence",
+    } <= set(operator["source_informed_apply_readiness"]["blocking_reasons"])
     assert promotion["promotion_ready"] is False
 
     first_chain = gap_report["summary"]["first_missing_chain"]
-    assert first_chain is None
-    assert gap_report["summary"]["blocked_cards"] == 0
+    assert first_chain is not None
+    assert gap_report["summary"]["blocked_cards"] > 0
     assert target_card_row["name"] == target["first_card_name"]
-    assert target_card_row["first_missing_link"] == "source_eligibility"
-    assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
+    if target_card_row["first_missing_link"] == "needs_mechanic_lowering":
+        assert (
+            target_card_row["next_source_action"]
+            == "add_documented_mechanic_runtime_lowering"
+        )
+    else:
+        assert target_card_row["first_missing_link"] == "source_eligibility"
+        assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
     assert target_card_row["apply_blocked"] is False
     assert "Mulligan.json" in target_card_row["not_emitted_runtime_files"]
 

@@ -58,7 +58,7 @@ def test_shadowpriest_semantic_qualifiers_preserve_effect_without_mulligan_keep(
     )
 
 
-def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_hand(
+def test_semantically_gated_shadowpriest_keeps_benedictus_effect_not_opening_hand(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
@@ -103,7 +103,7 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     ]
 
     assert code == 0
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert quality["authority"] == "diagnostic_only"
     assert quality["apply_blocking"] is False
     assert quality["runtime_write_performed"] is False
@@ -117,10 +117,12 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
         "report_only_runtime_rows"
     ] == []
     assert not quality["checks"]["operator_summary"]["source_status_apply_blocking"]
-    assert mind_sear_rows
-    assert all(row["value"] for row in mind_sear_rows)
-    assert all(row.get("semantic_score") for row in mind_sear_rows)
-    assert all(row["semantic_score"].get("reason") for row in mind_sear_rows)
+    assert mind_sear_rows == []
+    assert any(
+        row["cards"] == ["NX2_019"]
+        and row["reason"] == "semantic_surface_not_expressible"
+        for row in behavior_report["suppressed"]
+    )
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
     assert (
         "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)
@@ -128,7 +130,7 @@ def test_source_backed_strong_shadowpriest_keeps_benedictus_effect_not_opening_h
     )
 
 
-def test_source_backed_strong_shadowpriest_has_no_known_semantic_intent_fallbacks(
+def test_semantically_gated_shadowpriest_has_no_known_semantic_intent_fallbacks(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
@@ -207,7 +209,13 @@ def test_source_backed_strong_shadowpriest_has_no_known_semantic_intent_fallback
     }
 
     assert code == 0
-    assert known_behavior_card_ids == known_cards
+    assert known_behavior_card_ids == {
+        "DS1_233",
+        "GVG_009",
+        "SW_446",
+        "TOY_381",
+        "VAC_419",
+    }
     assert known_surface_intent_card_ids == known_cards
     assert semantic_default_rows == []
     assert fallback_surface_rows == []
@@ -406,7 +414,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert validate_code == 0
     assert validate_out["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
@@ -424,7 +432,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert source_to_runtime_explainability["authority"] == "diagnostic_only"
     assert source_to_runtime_explainability["apply_blocking"] is False
     assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"]
-    assert operator_summary["source_informed_apply_readiness"]["status"] == "not_applicable"
+    assert operator_summary["source_informed_apply_readiness"]["status"] == "blocked"
     assert apply_code == 0
     assert apply_out["status"] == "applied"
     assert apply_out["apply_gate"]["status"] == "allowed"

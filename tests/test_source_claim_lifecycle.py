@@ -235,6 +235,7 @@ def test_runtime_builder_rows_use_lifecycle_claim_id_over_raw_claim_id():
                 "stance": "prefer_enemy_hero",
                 "target_scope": "enemy_hero",
                 "runtime_block": "BeforeBattlecryTargetBonus",
+                "source_lane": "deck_matched_public_guide",
                 "_claim_lifecycle": {
                     "claim_id": "lifecycle_target",
                     "surface": "cardid",

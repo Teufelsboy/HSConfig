@@ -4,6 +4,76 @@ from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 
 
+def test_risky_static_semantics_stay_report_only_after_candidate_scoring():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_mind_sear_static",
+                "claim_kind": "card_role",
+                "cards": ["NX2_019"],
+                "stance": "play_for_conditional_burn",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_lane": "official_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_mind_sear_static",
+            "claim_kind": "card_role",
+            "cards": ["NX2_019"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
+
+
+def test_static_source_ref_maps_to_official_lane_for_semantic_gate():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_raise_dead_static",
+                "claim_kind": "card_role",
+                "cards": ["SCH_514"],
+                "stance": "use_conditional_resource",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "semantic_surface_not_expressible"
+
+
+def test_supported_direct_burn_static_semantics_can_emit_candidate_row():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_mind_blast_static",
+                "claim_kind": "card_role",
+                "cards": ["DS1_233"],
+                "stance": "direct_enemy_hero_burn",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_lane": "official_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["rows"][0]["semantic_score"]["reason"] == "direct_enemy_hero_burn"
+    assert plan["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
+
+
 def test_card_behavior_router_routes_specific_runtime_blocks():
     claims = [
         {
@@ -15,6 +85,7 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
             "runtime_block": "BeforeBattlecryTargetBonus",
             "condition": {"runtime_condition": "my_target(count(),hero=true) > 0"},
             "runtime_value": "12",
+            "source_lane": "deck_matched_public_guide",
         },
         {
             "claim_id": "claim_discover",
@@ -24,6 +95,7 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
             "runtime_block": "OnDiscoverCardBonus",
             "condition": {"runtime_condition": "my_discover(count(),cardid=CARD_C) > 0"},
             "runtime_value": "10",
+            "source_lane": "deck_matched_public_guide",
         },
     ]
 
@@ -47,6 +119,7 @@ def test_targeting_behavior_row_receives_semantic_score_value():
             "to the enemy hero if it dies."
         ),
         "source_claim_ids": ["mind_sear_source"],
+        "source_lane": "deck_matched_public_guide",
     }
 
     plan = route_card_behavior_surfaces([mind_sear_claim])
@@ -55,7 +128,7 @@ def test_targeting_behavior_row_receives_semantic_score_value():
     row = plan["rows"][0]
     assert row["behavior_block"] == "BeforeBattlecryTargetBonus"
     assert row["value"] == "10"
-    assert row["semantic_score"]["reason"] == "conditional_minion_death_burn"
+    assert row["semantic_score"]["reason"] == "conditional_target_kill_burn"
     assert row["semantic_score"]["band"] == "high"
     assert row["semantic_score"]["profile"] == "semantic_intent"
     assert "enemy_hero_damage" in row["semantic_score"]["matched_signals"]
@@ -141,6 +214,7 @@ def test_targeting_claim_with_scope_and_target_block_is_meaningful():
         "runtime_block": "BeforeBattlecryTargetBonus",
         "condition": "my_target(count(),minion=true) > 0",
         "source_claim_ids": ["target-complete"],
+        "source_lane": "deck_matched_public_guide",
     }
 
     report = route_card_behavior_surfaces([claim])
@@ -159,6 +233,7 @@ def test_explicit_target_runtime_block_is_preserved():
                 "stance": "prefer_enemy_minion",
                 "runtime_block": "BeforeBattlecryTargetBonus",
                 "target_scope": "enemy_minion",
+                "source_lane": "deck_matched_public_guide",
             }
         ]
     )
@@ -180,6 +255,7 @@ def test_explicit_runtime_value_wins_over_semantic_score():
             "to the enemy hero if it dies."
         ),
         "source_claim_ids": ["mind_sear_source"],
+        "source_lane": "deck_matched_public_guide",
     }
 
     plan = route_card_behavior_surfaces([mind_sear_claim])
@@ -214,7 +290,7 @@ def test_suppressed_behavior_row_is_not_semantically_scored():
     assert "semantic_score" not in plan["suppressed"][0]
 
 
-def test_standalone_discover_mechanic_claim_routes_to_discover_surface():
+def test_standalone_static_discover_without_exact_semantics_is_report_only():
     plan = route_card_behavior_surfaces(
         [
             {
@@ -228,12 +304,8 @@ def test_standalone_discover_mechanic_claim_routes_to_discover_surface():
         ]
     )
 
-    assert len(plan["rows"]) == 1
-    row = plan["rows"][0]
-    assert row["behavior_block"] == "OnDiscoverCardBonus"
-    assert row["condition"] == "*"
-    assert row["roles"] == ["discover"]
-    assert plan["suppressed"] == []
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "semantic_surface_not_proven"
 
 
 def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
@@ -247,6 +319,7 @@ def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
                 "target_scope": "enemy_hero",
                 "runtime_block": "BeforeBattlecryTargetBonus",
                 "source_claim_ids": ["raw_target"],
+                "source_lane": "deck_matched_public_guide",
                 "_claim_lifecycle": {
                     "claim_id": "lifecycle_target",
                     "surface": "cardid",
@@ -281,6 +354,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "cards": ["CARD_Z"],
             "choice_card_id": "CHOICE_ALPHA",
             "runtime_value": "9",
+            "source_lane": "deck_matched_public_guide",
         },
         {
             "claim_id": "claim_hero_power",
@@ -288,6 +362,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "cards": ["CARD_A"],
             "stance": "use_hero_power_pressure",
             "runtime_value": "4",
+            "source_lane": "deck_matched_public_guide",
         },
         {
             "claim_id": "claim_target",
@@ -297,6 +372,7 @@ def test_card_behavior_surface_router_routes_claim_kinds_in_input_order():
             "target_scope": "enemy_minion",
             "runtime_block": "BeforeBattlecryTargetBonus",
             "runtime_value": "8",
+            "source_lane": "deck_matched_public_guide",
         },
     ]
 
@@ -479,15 +555,12 @@ def test_partial_discover_choice_resolution_suppresses_only_resolved_cards():
         },
     )
 
-    assert [row["card_id"] for row in plan["rows"]] == ["CARD_RESOLVED", "CARD_UNRESOLVED"]
+    assert [row["card_id"] for row in plan["rows"]] == ["CARD_RESOLVED"]
     assert [row["claim_id"] for row in plan["rows"]] == [
         "claim_pick_option_alpha",
-        "claim_generic_discover",
     ]
     assert plan["rows"][0]["behavior_block"] == "OnDiscoverCardBonus"
     assert plan["rows"][0]["condition"] == "my_discover(count(),cardid=OPTION_ALPHA) > 0"
-    assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
-    assert plan["rows"][1]["condition"] == "*"
     assert plan["suppressed"] == [
         {
             "claim_id": "claim_pick_option_alpha",
@@ -500,6 +573,12 @@ def test_partial_discover_choice_resolution_suppresses_only_resolved_cards():
             "claim_kind": "mechanic_usage",
             "cards": ["CARD_RESOLVED"],
             "reason": "covered_by_resolved_choice_surface",
+        },
+        {
+            "claim_id": "claim_generic_discover",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CARD_UNRESOLVED"],
+            "reason": "semantic_surface_not_proven",
         },
     ]
     assert plan["option_resolution"] == [
@@ -632,7 +711,6 @@ def test_hero_power_transform_claim_routes_to_hero_power_surface():
                 "claim_readiness": "source_backed_static_semantics",
                 "stance": "shadow_hero_power_pressure",
                 "runtime_block": "BeforeUseHeroPowerBonus",
-                "runtime_value": "8",
                 "condition": "*",
             }
         ]
@@ -699,12 +777,14 @@ def test_card_behavior_router_preserves_claim_row_order_across_cards():
                 "claim_kind": "card_role",
                 "cards": ["CARD_Z"],
                 "runtime_block": "OnBoardBonus",
+                "source_lane": "deck_matched_public_guide",
             },
             {
                 "claim_id": "claim_a",
                 "claim_kind": "card_role",
                 "cards": ["CARD_A"],
                 "runtime_block": "InHandBonus",
+                "source_lane": "deck_matched_public_guide",
             },
         ]
     )
@@ -723,6 +803,7 @@ def test_routes_targeting_claim_to_cardid_surface():
             "conditions": {"phase": "burn"},
             "claim_confidence": "high",
             "source_refs": ["guide:1"],
+            "source_lane": "deck_matched_public_guide",
         }
     ]
 
@@ -760,6 +841,7 @@ def test_card_role_fallback_does_not_override_stronger_targeting_row():
                 "target_scope": "enemy_hero",
                 "runtime_block": "BeforeBattlecryTargetBonus",
                 "claim_confidence": "high",
+                "source_lane": "deck_matched_public_guide",
             },
             {
                 "claim_kind": "card_role",
@@ -775,7 +857,7 @@ def test_card_role_fallback_does_not_override_stronger_targeting_row():
     assert "in_hand_priority" not in intents
 
 
-def test_deathrattle_static_mechanic_lowers_without_explicit_block():
+def test_deathrattle_static_mechanic_without_supported_semantics_is_report_only():
     routed = route_card_behavior_claims(
         [
             {
@@ -788,17 +870,11 @@ def test_deathrattle_static_mechanic_lowers_without_explicit_block():
         ]
     )
 
-    row = routed["card_rows"]["CARD_DEATHRATTLE"][0]
-
-    assert routed["suppressed"] == []
-    assert row["behavior_block"] == "BeforePlayCardBonus"
-    assert row["intent"] == "use_deathrattle_according_to_card_text"
-    assert row["roles"] == ["deathrattle"]
-    assert row["value"] == "6"
-    assert row["meaningful_runtime_surface"] is True
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"][0]["reason"] == "semantic_surface_not_proven"
 
 
-def test_rush_static_mechanic_lowers_to_attack_posture_without_explicit_block():
+def test_rush_static_mechanic_without_supported_semantics_is_report_only():
     routed = route_card_behavior_claims(
         [
             {
@@ -811,13 +887,8 @@ def test_rush_static_mechanic_lowers_to_attack_posture_without_explicit_block():
         ]
     )
 
-    row = routed["card_rows"]["CARD_RUSH"][0]
-
-    assert routed["suppressed"] == []
-    assert row["behavior_block"] == "BeforePhysicalAttackBonus"
-    assert row["intent"] == "use_rush_according_to_card_text"
-    assert row["roles"] == ["rush"]
-    assert row["meaningful_runtime_surface"] is True
+    assert routed["card_rows"] == {}
+    assert routed["suppressed"][0]["reason"] == "semantic_surface_not_proven"
 
 
 def test_tradeable_static_mechanic_stays_report_only():
@@ -1141,7 +1212,7 @@ def test_unsupported_structured_condition_is_suppressed():
     assert routed["suppressed"][0]["reason"] == "unsupported_condition"
 
 
-def test_router_maps_overkill_mechanic_to_before_overkilled_bonus():
+def test_router_keeps_unproven_overkill_semantics_report_only():
     report = route_card_behavior_claims(
         [
             {
@@ -1154,13 +1225,8 @@ def test_router_maps_overkill_mechanic_to_before_overkilled_bonus():
         ]
     )
 
-    row = report["card_rows"]["EX1_001"][0]
-
-    assert row["behavior_block"] == "BeforeOverkilledBonus"
-    assert row["intent"] == "use_overkill_according_to_card_text"
-    assert row["roles"] == ["overkill"]
-    assert row["meaningful_runtime_surface"] is True
-    assert row["value"] == "6"
+    assert report["card_rows"] == {}
+    assert report["suppressed"][0]["reason"] == "semantic_surface_not_proven"
 
 
 def test_router_replaces_dredge_discover_cardid_fallback_with_report_only_suppression():
@@ -1200,6 +1266,7 @@ def test_router_accepts_explicit_documented_runtime_block():
                 "runtime_block": "OnBoardBonus",
                 "runtime_value": "9",
                 "condition": "my_minion(count(),cardid=EX1_002) > 0",
+                "source_lane": "deck_matched_public_guide",
             }
         ]
     )

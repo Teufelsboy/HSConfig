@@ -57,17 +57,17 @@ def read_card_json(package_root, card_id):
         return json.load(handle)
 
 
-def test_shadowpriest_package_is_source_backed_strong_without_default_only_surfaces(shadowpriest_package):
+def test_shadowpriest_package_is_load_safe_without_default_only_surfaces(shadowpriest_package):
     package_root, reports = shadowpriest_package
     operator = reports["operator_summary"]
 
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert operator["source_backed_status"] == "SOURCE_BACKED_STRONG"
+    assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert operator["runtime_apply_allowed"] is True
     assert operator["source_status_apply_blocking"] is False
     assert operator["default_only_runtime_surfaces"] == []
-    assert operator["source_backed_strong_closure"]["status"] == "ready"
+    assert operator["source_backed_strong_closure"]["status"] == "needs_source_closure"
 
 
 def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
@@ -81,13 +81,13 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     voidtouched = read_card_json(package_root, "SW_446")
 
     assert "BeforeBattlecryTargetBonus" not in shadowbomber
-    assert "BeforeBattlecryTargetBonus" not in twilight_deceptor
+    assert set(twilight_deceptor) == {"GameCardId", "ConfigComment"}
 
     assert "BeforeUseHeroPowerBonus" in darkbishop
     assert "InHandPlayPriority" not in darkbishop
     assert "BeforePlayCardBonus" not in darkbishop
 
-    assert "BeforePlayCardBonus" in mind_sear
+    assert set(mind_sear) == {"GameCardId", "ConfigComment"}
     assert "BeforeBattlecryTargetBonus" not in mind_sear
 
     assert "BeforePlayCardBonus" in cathedral
@@ -110,7 +110,7 @@ def test_shadowpriest_report_only_claims_do_not_create_runtime_gaps(shadowpriest
     assert usefulness["first_usefulness_gap"] != "combo_gap"
     assert combo["combo_expected"] is False
     assert combo["combo_row_count"] == 0
-    assert explainability["cards_with_first_missing_link"] == 0
+    assert explainability["cards_with_first_missing_link"] > 0
 
     warning_only = set(mechanic_visibility["warning_only_mechanics"])
     assert "location_activation" in warning_only

@@ -226,10 +226,12 @@ def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
         "mulligan_claim_needed",
         "runtime_lowerable_claim_needed",
         "source_action_needed",
+        "default_only_runtime_surface",
     }
-    assert source_closure_receipt["next_report_to_open"] == (
-        "reports/source_to_runtime_explainability.json"
-    )
+    assert source_closure_receipt["next_report_to_open"] in {
+        "reports/source_to_runtime_explainability.json",
+        "reports/contract_doctor.json",
+    }
 
 
 def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_safe(

@@ -134,7 +134,7 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert payload["package"] == str(package)
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
@@ -316,9 +316,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert guide_bundle["claims"]
     assert source_index[0]["claim_count"] >= 12
     assert unsupported == []
-    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
-    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] == 0
+    assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] > 0
     assert (reports / "mulligan_plan_report.json").exists()
 
 
@@ -398,8 +398,8 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert payload["status"] == "passed"
     assert guide_sources["source_depth_status"] == "source_backed"
     assert receipt["source_depth_status"] == "source_backed"
-    assert operator_summary["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
@@ -953,10 +953,12 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert payload["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["source_claim_quality_summary"]["non_blocking"] is True
-    assert operator_summary["source_claim_quality_summary"]["source_quality_lane_counts"] == {
-        "generic_low_confidence": 1,
-        "source_backed_static_semantics": 15,
-    }
+    lane_counts = operator_summary["source_claim_quality_summary"][
+        "source_quality_lane_counts"
+    ]
+    assert lane_counts["generic_low_confidence"] == 1
+    assert lane_counts["source_backed_static_semantics"] > 0
+    assert lane_counts["contract_gap"] > 0
     assert any(
         warning["reason"] == "valid_but_not_guide_strong"
         for warning in operator_summary["warnings"]
@@ -1165,10 +1167,16 @@ def test_prepare_source_numeric_globalvalue_tuning_is_runtime_evidence_only(
         row
         for row in source_contract_audit["claim_lifecycle_rows"]
         if row["builder_or_router_decision"] == "suppressed"
+        and row["claim_kind"] == "globalvalue_numeric_tuning"
     ]
     assert suppressed_lifecycle_rows
     assert all(row["first_missing_link"] == "runtime_evidence" for row in suppressed_lifecycle_rows)
-    assert source_claim_gap["suppressed_claim_rows"] == [
+    globalvalue_gap_rows = [
+        row
+        for row in source_claim_gap["suppressed_claim_rows"]
+        if row["claim_kind"] == "globalvalue_numeric_tuning"
+    ]
+    assert globalvalue_gap_rows == [
         {
             "claim_id": row["claim_id"],
             "claim_kind": row["claim_kind"],
@@ -1449,14 +1457,17 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
             "status": "unresolved",
         }
     ]
-    assert suppressions == [
-        {
-            "claim_id": card_behavior["suppressed"][0]["claim_id"],
-            "claim_kind": "discover_choice",
-            "cards": ["DISCOVER_CARD"],
-            "reason": "unresolved_option_identity",
-        }
-    ]
+    assert suppressions[0] == {
+        "claim_id": card_behavior["suppressed"][0]["claim_id"],
+        "claim_kind": "discover_choice",
+        "cards": ["DISCOVER_CARD"],
+        "reason": "unresolved_option_identity",
+    }
+    assert any(
+        row["claim_kind"] == "mechanic_usage"
+        and row["reason"] == "semantic_surface_not_proven"
+        for row in suppressions
+    )
 
 
 def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys, monkeypatch):
@@ -1712,9 +1723,6 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
         )
     )
     resolved_choice_claim_id = card_behavior["option_resolution"][0]["claim_id"]
-    generic_discover_claim_id = next(
-        row["claim_id"] for row in card_behavior["rows"] if row["card_id"] == "CARD_UNRESOLVED"
-    )
     discover_rows = {
         row["card_id"]: row
         for row in card_behavior["rows"]
@@ -1733,12 +1741,9 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
             "CARD_RESOLVED",
             "my_discover(count(),cardid=OPTION_ALPHA) > 0",
         ),
-        (generic_discover_claim_id, "CARD_UNRESOLVED", "*"),
     ]
     assert discover_rows["CARD_RESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
     assert discover_rows["CARD_RESOLVED"]["value"] == "8"
-    assert discover_rows["CARD_UNRESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
-    assert discover_rows["CARD_UNRESOLVED"]["value"] == "8"
     assert suppressions[0] == {
         "claim_id": resolved_choice_claim_id,
         "claim_kind": "discover_choice",
@@ -1748,6 +1753,9 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     assert suppressions[1]["claim_kind"] == "mechanic_usage"
     assert suppressions[1]["cards"] == ["CARD_RESOLVED"]
     assert suppressions[1]["reason"] == "covered_by_resolved_choice_surface"
+    assert suppressions[2]["claim_kind"] == "mechanic_usage"
+    assert suppressions[2]["cards"] == ["CARD_UNRESOLVED"]
+    assert suppressions[2]["reason"] == "semantic_surface_not_proven"
     assert resolved_config["OnDiscoverCardBonus"]["values"] == [
         {
             "comment": "Discover Split Deck: CARD_RESOLVED_pick_option_alpha",
@@ -1755,13 +1763,7 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
             "value": "8",
         }
     ]
-    assert unresolved_config["OnDiscoverCardBonus"]["values"] == [
-        {
-            "comment": "Discover Split Deck: CARD_UNRESOLVED_use_discover_according_to_card_text",
-            "condition": "*",
-            "value": "8",
-        }
-    ]
+    assert set(unresolved_config) == {"GameCardId", "ConfigComment"}
 
 
 def test_prepare_routes_choose_one_claim_with_identity_links(
@@ -1949,9 +1951,9 @@ def test_prepare_writes_source_gap_and_promotion_reports(tmp_path: Path, capsys,
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert source_gap["summary"]["blocked_cards"] == 0
-    assert promotion["promotion_ready"] is True
-    assert promotion["verdict"] == "SOURCE_BACKED_STRONG_CONFIRMED"
+    assert source_gap["summary"]["blocked_cards"] > 0
+    assert promotion["promotion_ready"] is False
+    assert promotion["verdict"] == "PROMOTION_BLOCKED"
 
 
 def test_prepare_clears_stale_reports_before_operator_summary_generated_files(

@@ -129,10 +129,12 @@ def test_mechanic_lowering_parity_micro_fixture_connects_claims_to_runtime_repor
         emitted_cardid_files=list(cardid_files),
     )
 
-    assert _behavior_blocks(behavior_plan, "DEATH_001") == {"BeforePlayCardBonus"}
-    assert _behavior_blocks(behavior_plan, "RUSH_001") == {"BeforePhysicalAttackBonus"}
-    assert _behavior_blocks(behavior_plan, "SPELLBURST_001") == {"BeforePlayCardBonus"}
-    assert "OnDiscoverCardBonus" in _behavior_blocks(behavior_plan, "DISCOVER_001")
+    assert _behavior_blocks(behavior_plan, "DEATH_001") == set()
+    assert _behavior_blocks(behavior_plan, "RUSH_001") == set()
+    assert _behavior_blocks(behavior_plan, "SPELLBURST_001") == set()
+    assert _behavior_blocks(behavior_plan, "DISCOVER_001") == {
+        "OnDiscoverCardBonus"
+    }
     assert {
         (row["claim_kind"], tuple(row["cards"]), row["reason"])
         for row in behavior_plan["suppressed"]
@@ -140,21 +142,27 @@ def test_mechanic_lowering_parity_micro_fixture_connects_claims_to_runtime_repor
         ("mechanic_usage", ("DREDGE_001",), "dredge_has_no_documented_runtime_block"),
         ("mechanic_usage", ("TRADE_001",), "tradeable_has_no_documented_runtime_block"),
         ("choose_one_choice", ("CHOOSE_001",), "unresolved_option_identity"),
+        ("mechanic_usage", ("DEATH_001",), "semantic_surface_not_proven"),
+        ("mechanic_usage", ("RUSH_001",), "semantic_surface_not_proven"),
+        ("mechanic_usage", ("SPELLBURST_001",), "semantic_surface_not_proven"),
     }
 
     assert len(cardid_files) == len(card_metadata)
     for card_id in card_metadata:
         card_file = cardid_files[f"{card_id}.json"]
         assert card_file["GameCardId"] == card_id
-        assert "InHandPlayPriority" in card_file
+        if card_id == "DISCOVER_001":
+            assert "OnDiscoverCardBonus" in card_file
+        else:
+            assert set(card_file) == {"GameCardId", "ConfigComment"}
     assert "BeforePlayCardBonus" not in cardid_files["TRADE_001.json"]
     assert "OnDiscoverCardBonus" not in cardid_files["DREDGE_001.json"]
 
-    assert readiness["cards"]["DEATH_001"]["readiness_lane"] == "runtime_emitted"
-    assert readiness["cards"]["RUSH_001"]["readiness_lane"] == "runtime_emitted"
-    assert readiness["cards"]["SPELLBURST_001"]["readiness_lane"] == "runtime_emitted"
-    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
-    assert "needs_mechanic_lowering" not in {
+    assert readiness["cards"]["DEATH_001"]["readiness_lane"] == "report_only_supported"
+    assert readiness["cards"]["RUSH_001"]["readiness_lane"] == "report_only_supported"
+    assert readiness["cards"]["SPELLBURST_001"]["readiness_lane"] == "report_only_supported"
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 3
+    assert "needs_mechanic_lowering" in {
         row["first_missing_link"] for row in readiness["cards"].values()
     }
     assert readiness["summary"]["mechanic_visibility"]["mechanics_by_bucket"][

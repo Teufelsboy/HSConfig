@@ -51,7 +51,7 @@ def test_blank_runtime_value_falls_back_to_explicit_value():
     assert score.profile == "source_claim"
 
 
-def test_conditional_minion_death_burn_scores_above_generic_default():
+def test_conditional_target_kill_burn_scores_above_generic_default():
     claim = {
         "claim_kind": "targeting_rule",
         "cards": ["NX2_019"],
@@ -72,7 +72,7 @@ def test_conditional_minion_death_burn_scores_above_generic_default():
 
     assert score.value == "10"
     assert score.band == "high"
-    assert score.reason == "conditional_minion_death_burn"
+    assert score.reason == "conditional_target_kill_burn"
     assert "enemy_hero_damage" in score.matched_signals
     assert "death_condition" in score.matched_signals
 
@@ -225,7 +225,7 @@ def test_shadowpriest_static_damage_claims_receive_specific_semantic_scores():
             "BeforePlayCardBonus",
             "use_damage_according_to_card_text",
             ["damage"],
-            "self_damage_resource",
+            "conditional_self_damage_resource",
             "8",
             "medium",
         ),
@@ -268,7 +268,7 @@ def test_shadowpriest_static_damage_claims_receive_specific_semantic_scores():
             "BeforePlayCardBonus",
             "use_damage_according_to_card_text",
             ["damage"],
-            "opponent_damage_discount_tempo",
+            "conditional_cost_reduction",
             "8",
             "medium",
         ),
