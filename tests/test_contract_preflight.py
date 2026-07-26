@@ -1286,6 +1286,25 @@ def test_contract_preflight_package_mode_requires_complete_runtime_files(
     assert contract["source_status_apply_blocking"] is False
 
 
+def test_contract_preflight_uses_neutral_strict_validation_exception_text(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    (package / "reports" / "globalvalues_baseline.json").unlink()
+
+    contract = build_package_contract_preflight(package)
+
+    assert contract is not None
+    assert contract["validation_status"] == "failed"
+    assert contract["validation_errors"][0].startswith(
+        "strict package validation raised ValueError:"
+    )
+    assert contract["package_contract_current"] is False
+    assert contract["authority"] == "diagnostic_only"
+    assert contract["apply_blocking"] is False
+    assert contract["runtime_write_performed"] is False
+
+
 def test_contract_preflight_package_mode_malformed_operator_summary_is_attention(
     tmp_path: Path,
 ) -> None:

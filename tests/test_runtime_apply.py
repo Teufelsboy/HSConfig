@@ -6,7 +6,7 @@ import pytest
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import write_json
 from hsconfig.runtime_package_match import RuntimePackageMismatchError
-from hsconfig.runtime_apply import apply_package
+from hsconfig.runtime_apply import apply_package, plan_apply_package
 
 
 def _write_validation_reports(package: Path, globalvalues: dict) -> None:
@@ -134,6 +134,108 @@ def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
 
 def _allowed_gate(package: Path) -> dict:
     return evaluate_apply_gate(package)
+
+
+def _mutate_globalvalues_report(package: Path, mutation: str) -> None:
+    reports = package / "reports"
+    if mutation == "missing_baseline":
+        (reports / "globalvalues_baseline.json").unlink()
+        return
+    if mutation == "missing_profile":
+        (reports / "globalvalues_profile.json").unlink()
+        return
+    profile_path = reports / "globalvalues_profile.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
+    write_json(profile_path, profile)
+
+
+@pytest.mark.parametrize("operation", ["plan", "apply"])
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing_baseline", "missing_profile", "missing_overlay_keys"],
+)
+def test_runtime_apply_rejects_invalid_globalvalues_reports_before_any_write(
+    tmp_path: Path,
+    operation: str,
+    mutation: str,
+) -> None:
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    apply_gate = _allowed_gate(package)
+    _mutate_globalvalues_report(package, mutation)
+
+    with pytest.raises(
+        ValueError,
+        match="Runtime apply requires a valid complete package",
+    ):
+        if operation == "plan":
+            plan_apply_package(
+                package_root=package,
+                runtime_root=runtime,
+                apply_gate=apply_gate,
+            )
+        else:
+            apply_package(
+                package_root=package,
+                runtime_root=runtime,
+                apply_gate=apply_gate,
+            )
+
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+    assert not runtime.exists()
+
+
+@pytest.mark.parametrize("operation", ["plan", "apply"])
+def test_runtime_apply_obeys_shared_strict_validation_result_before_any_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    from hsconfig import runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    apply_gate = _allowed_gate(package)
+    monkeypatch.setattr(
+        runtime_apply,
+        "validate_complete_package",
+        lambda _package: {
+            "status": "failed",
+            "errors": ["shared strict validation sentinel"],
+            "checked_files": 0,
+        },
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="shared strict validation sentinel"):
+        if operation == "plan":
+            plan_apply_package(
+                package_root=package,
+                runtime_root=runtime,
+                apply_gate=apply_gate,
+            )
+        else:
+            apply_package(
+                package_root=package,
+                runtime_root=runtime,
+                apply_gate=apply_gate,
+            )
+
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+    assert not runtime.exists()
 
 
 def test_apply_package_blocks_direct_write_without_operator_summary(tmp_path: Path):

@@ -10,7 +10,6 @@ import pytest
 from hsconfig import package_builder
 from hsconfig.cli import main
 from hsconfig.contract_preflight import build_package_contract_preflight
-from hsconfig.io import write_json
 
 
 def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[str, Any], int]:
@@ -18,68 +17,6 @@ def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[
     captured = capsys.readouterr()
     assert captured.err == ""
     return json.loads(captured.out), code
-
-
-def _write_strict_package(package: Path) -> None:
-    globalvalues = {
-        "GameCardId": "GlobalValues",
-        "ConfigComment": "strict validation fixture",
-    }
-    write_json(package / "CustomConfig" / "deck" / "GlobalValues.json", globalvalues)
-    write_json(
-        package / "CustomConfig" / "deck" / "Mulligan.json",
-        {
-            "GameCardId": "Mulligan",
-            "ConfigComment": "strict validation fixture",
-            "Mulligan": {"values": []},
-        },
-    )
-    write_json(
-        package / "CustomConfig" / "deck" / "EX1_001.json",
-        {
-            "GameCardId": "EX1_001",
-            "ConfigComment": "strict validation fixture",
-            "InHandPlayPriority": {"values": []},
-        },
-    )
-    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        package / "reports" / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
-        },
-    )
-    write_json(
-        package / "reports" / "input_manifest.json",
-        {"deck_name": "Strict Fixture", "deck_code": "fixture", "runtime_root": "unused"},
-    )
-    write_json(
-        package / "reports" / "operator_summary.json",
-        {
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "SOURCE_BACKED_STRONG",
-            "next_action": "READY_TO_APPLY_OR_HANDOFF",
-            "apply_policy": "ALLOWED",
-            "runtime_apply_allowed": True,
-            "runtime_apply_mode": "load_safe_apply",
-            "runtime_apply_contract": {
-                "apply_authority": "reports/operator_summary.json",
-            },
-            "source_status_apply_blocking": False,
-            "default_only_runtime_surfaces": [],
-            "semantic_blockers": [],
-            "generated_files": [
-                "CustomConfig/deck/GlobalValues.json",
-                "CustomConfig/deck/Mulligan.json",
-                "CustomConfig/deck/EX1_001.json",
-            ],
-        },
-    )
 
 
 def _clean_quality_report(_package: Path) -> dict[str, Any]:
@@ -132,20 +69,6 @@ def _configure_builder_report_mutation(
     monkeypatch.setattr(package_builder, "write_json", write_mutated_report)
 
 
-def _mutate_package_report(package: Path, mutation: str) -> None:
-    reports = package / "reports"
-    if mutation == "missing_baseline":
-        (reports / "globalvalues_baseline.json").unlink()
-        return
-    if mutation == "missing_profile":
-        (reports / "globalvalues_profile.json").unlink()
-        return
-    profile_path = reports / "globalvalues_profile.json"
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
-    profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
-    write_json(profile_path, profile)
-
-
 def _build_fixture(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -173,9 +96,8 @@ def test_valid_package_passes_build_validate_apply_and_preflight(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     build_result, build_code = _build_fixture(tmp_path, capsys)
-    package = tmp_path / "package"
+    package = Path(build_result["package"])
     runtime = tmp_path / "runtime"
-    _write_strict_package(package)
 
     validate_result, validate_code = _run_cli(
         capsys,
@@ -226,10 +148,8 @@ def test_invalid_globalvalues_reports_fail_all_strict_paths(
     _configure_builder_report_mutation(monkeypatch, mutation)
     build_result, build_code = _build_fixture(tmp_path, capsys)
 
-    package = tmp_path / "package"
+    package = tmp_path / "build-package"
     runtime = tmp_path / "runtime"
-    _write_strict_package(package)
-    _mutate_package_report(package, mutation)
 
     validate_result, validate_code = _run_cli(
         capsys,

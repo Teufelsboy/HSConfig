@@ -5,8 +5,7 @@ from typing import Any, Sequence
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import read_json
-from hsconfig.package_io import read_optional_profile, read_required_baseline
-from hsconfig.validate_package import validate_config_package
+from hsconfig.strict_package_validation import validate_complete_package
 
 
 SPECIAL_RUNTIME_FILES = {
@@ -202,15 +201,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _validation_report(package: Path) -> dict[str, Any]:
     try:
-        baseline = read_required_baseline(package)
-        profile = read_optional_profile(package)
-        return validate_config_package(
-            package,
-            globalvalues_baseline=baseline,
-            globalvalues_profile=profile,
-            require_complete_package=True,
-            require_globalvalues_profile=True,
-        )
+        return validate_complete_package(package)
     except Exception as exc:
         return {"status": "failed", "errors": [str(exc)], "checked_files": 0}
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.acceptance_matrix import build_acceptance_matrix
 from hsconfig.cli import main
 from hsconfig.io import write_json
@@ -37,6 +39,20 @@ def _prepare_package(tmp_path: Path, deck_name: str, deck_code: str) -> Path:
         == 0
     )
     return out
+
+
+def _mutate_globalvalues_report(package: Path, mutation: str) -> None:
+    reports = package / "reports"
+    if mutation == "missing_baseline":
+        (reports / "globalvalues_baseline.json").unlink()
+        return
+    if mutation == "missing_profile":
+        (reports / "globalvalues_profile.json").unlink()
+        return
+    profile_path = reports / "globalvalues_profile.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
+    write_json(profile_path, profile)
 
 
 def test_build_acceptance_matrix_summarizes_load_safe_packages(
@@ -122,41 +138,23 @@ def test_build_acceptance_matrix_uses_apply_gate_for_stale_valid_summary(
     assert row["apply_gate_reasons"][0]["reason"] == "missing_custom_config_directory"
 
 
-def test_build_acceptance_matrix_uses_package_validation_for_missing_baseline(
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("missing_baseline", "Missing GlobalValues baseline report"),
+        ("missing_profile", "missing required GlobalValues profile"),
+        ("missing_overlay_keys", "missing_overlay_keys must be an empty list"),
+    ],
+)
+def test_build_acceptance_matrix_strictly_validates_builder_output_reports(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    expected_error: str,
 ):
-    package = tmp_path / "missing-baseline"
-    deck_dir = package / "CustomConfig" / "deck"
-    reports = package / "reports"
-    write_json(
-        deck_dir / "GlobalValues.json",
-        {"GameCardId": "GlobalValues", "ConfigComment": "new"},
-    )
-    write_json(
-        deck_dir / "Mulligan.json",
-        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
-    )
-    write_json(reports / "input_manifest.json", {"deck_name": "deck"})
-    write_json(
-        reports / "operator_summary.json",
-        {
-            "deck": {"name": "MissingBaseline"},
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": "SOURCE_BACKED_STRONG",
-            "next_action": "READY_TO_APPLY_OR_HANDOFF",
-            "apply_policy": "ALLOWED",
-            "runtime_apply_mode": "load_safe_apply",
-            "runtime_apply_allowed": True,
-            "generated_files": [
-                "CustomConfig/deck/GlobalValues.json",
-                "CustomConfig/deck/Mulligan.json",
-            ],
-            "config_usefulness": {"status": "guide_aligned"},
-            "no_block_failure_mode_summary": {
-                "categories": {"technical_hard_block": []}
-            },
-        },
-    )
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    package = _prepare_package(tmp_path, "ShadowPriest", SHADOWPRIEST_CODE)
+    _mutate_globalvalues_report(package, mutation)
 
     matrix = build_acceptance_matrix([package])
     row = matrix["packages"][0]
@@ -169,7 +167,39 @@ def test_build_acceptance_matrix_uses_package_validation_for_missing_baseline(
     assert matrix["summary"]["technical_hard_block_count"] == 1
     assert row["apply_gate_allowed"] is True
     assert row["validation_status"] == "failed"
-    assert "Missing GlobalValues baseline report" in row["validation_errors"][0]
+    assert any(expected_error in error for error in row["validation_errors"])
+    assert matrix["status_authority"]["detail_fields_are_diagnostic"] is True
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+
+
+def test_acceptance_matrix_obeys_shared_strict_validation_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hsconfig import acceptance_matrix
+
+    monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    package = _prepare_package(tmp_path, "ShadowPriest", SHADOWPRIEST_CODE)
+    monkeypatch.setattr(
+        acceptance_matrix,
+        "validate_complete_package",
+        lambda _package: {
+            "status": "failed",
+            "errors": ["shared strict validation sentinel"],
+            "checked_files": 0,
+        },
+        raising=False,
+    )
+
+    matrix = build_acceptance_matrix([package])
+    row = matrix["packages"][0]
+
+    assert matrix["status"] == "failed"
+    assert row["validation_status"] == "failed"
+    assert row["validation_errors"] == ["shared strict validation sentinel"]
+    assert row["apply_gate_allowed"] is True
+    assert matrix["status_authority"]["detail_fields_are_diagnostic"] is True
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
 
 
 def test_build_acceptance_matrix_fails_when_operator_runtime_mode_is_blocked(

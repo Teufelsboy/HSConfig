@@ -691,7 +691,7 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
     except Exception as exc:
         validation = {
             "status": "failed",
-            "errors": [f"validate_config_package raised {type(exc).__name__}: {exc}"],
+            "errors": [f"strict package validation raised {type(exc).__name__}: {exc}"],
             "checked_files": 0,
         }
     try:

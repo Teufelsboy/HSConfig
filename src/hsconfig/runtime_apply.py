@@ -7,7 +7,6 @@ from typing import Any
 
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.io import file_sha256, read_json, write_json
-from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.runtime_apply_receipts import (
     build_fake_apply_receipt,
     runtime_snapshot,
@@ -16,9 +15,7 @@ from hsconfig.runtime_apply_receipts import (
     write_runtime_write_history,
 )
 from hsconfig.runtime_package_match import assert_runtime_matches_package
-from hsconfig.validate_package import (
-    validate_config_package,
-)
+from hsconfig.strict_package_validation import validate_complete_package
 
 
 def plan_apply_package(
@@ -204,21 +201,13 @@ def apply_package(
 
 def _validate_runtime_apply_package(package: Path) -> None:
     try:
-        baseline = read_required_baseline(package)
-        profile = read_optional_profile(package)
+        report = validate_complete_package(package)
     except ValueError as exc:
         raise ValueError(
             "Runtime apply requires a valid complete package before fake/apply "
             f"receipt or runtime writes: {exc}"
         ) from exc
 
-    report = validate_config_package(
-        package,
-        globalvalues_baseline=baseline,
-        globalvalues_profile=profile,
-        require_complete_package=True,
-        require_globalvalues_profile=True,
-    )
     if report["status"] == "passed":
         return
     errors = report.get("errors") or ["unknown package validation failure"]
