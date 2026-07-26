@@ -1010,10 +1010,15 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
                         "deck_match_scope": "exact_deck_matched",
                         "promotion_eligible": True,
                         "deck_match": {
-                            "exact_deck_evidence": {
-                                "matched": True,
-                                "matched_deck_fingerprint": deck_fingerprint,
-                            }
+                                "exact_deck_evidence": {
+                                    "candidate_count": 1,
+                                    "decoded_candidate_count": 1,
+                                    "matched": True,
+                                    "matched_deck_fingerprint": deck_fingerprint,
+                                    "candidate_deck_code_hashes": [
+                                        "sha256:weapon-guide-source"
+                                    ],
+                                }
                         },
                         "claims": [
                             {

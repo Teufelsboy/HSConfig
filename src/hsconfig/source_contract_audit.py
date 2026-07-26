@@ -50,6 +50,10 @@ def build_source_contract_audit(
         global_values_authority_matrix=global_values_authority_matrix,
     )
     card_roles = _card_roles_from_readiness(config_readiness_report)
+    verified_source_receipts = guide_claim_bundle.get(
+        "globalvalues_source_receipts",
+        [],
+    )
     runtime_emission_index = runtime_emission_index or _runtime_emission_index(
         mulligan_plan=mulligan_plan,
         card_behavior_plan=card_behavior_plan,
@@ -76,6 +80,7 @@ def build_source_contract_audit(
                     context={
                         "card_roles": card_roles,
                         "deck_identity": deck_identity,
+                        "verified_source_receipts": verified_source_receipts,
                     },
                 )
             )

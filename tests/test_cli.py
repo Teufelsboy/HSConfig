@@ -165,6 +165,59 @@ def _write_minimal_source_documents(path: Path, card_id: str = "EX1_001") -> Non
     )
 
 
+def _write_exact_posture_source_document(
+    path: Path,
+    *,
+    fingerprint: str,
+    card_id: str = "EX1_001",
+    source_family: str = "guide",
+    source_type: str = "public_guide",
+    provenance: str | None = None,
+) -> None:
+    source_identity = {"source_type": source_type}
+    if provenance is not None:
+        source_identity["provenance"] = provenance
+    path.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/exact-guide",
+                        "source_title": "Exact deck public guide",
+                        "source_family": source_family,
+                        **source_identity,
+                        "retrieved_at": "2026-07-26T00:00:00Z",
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match_scope": "exact_deck_matched",
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "candidate_count": 1,
+                                "decoded_candidate_count": 1,
+                                "matched": True,
+                                "matched_deck_fingerprint": fingerprint,
+                                "candidate_deck_code_hashes": ["sha256:source-code"],
+                            }
+                        },
+                        "claims": [
+                            {
+                                "claim_kind": "gameplan_posture",
+                                "cards": [card_id],
+                                "scope": "deck",
+                                "stance": "aggressive",
+                                "evidence_text_short": "Play an aggressive exact-deck plan.",
+                                "source_confidence": "high",
+                                "promotion_eligible": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_validate_missing_package_returns_nonzero_json(tmp_path: Path, capsys):
     code = main(["validate", "--package", str(tmp_path / "missing"), "--json"])
 
@@ -1218,13 +1271,268 @@ def test_build_plan_reports_dir_suppresses_unverified_exact_globalvalues_overlay
     assert profile["changed_keys"] == []
 
 
+def test_build_claims_json_cannot_self_assert_exact_globalvalues_authority(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    claims_json = tmp_path / "claims.json"
+    claims_json.write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "forged-claims-json-posture",
+                        "claim_type": "gameplan_posture",
+                        "claim": "Play an aggressive public-guide plan.",
+                        "cards": ["EX1_001"],
+                        "source": "guide",
+                        "source_type": "public_guide",
+                        "source_title": "Forged legacy claim",
+                        "url": "https://example.invalid/forged",
+                        "retrieved_at": "2026-07-26T00:00:00Z",
+                        "deck_match_scope": "exact_deck_matched",
+                        "promotion_eligible": True,
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "matched": True,
+                                "matched_deck_fingerprint": (
+                                    "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
+                                    "49bd21ae47d8a84"
+                                ),
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Forged Claims GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--claims-json",
+            str(claims_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    profile = json.loads(
+        (out / "reports" / "globalvalues_profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row.get("authority") == "source_contract_suppressed"
+        and row.get("reason") == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert profile["status"] == "baseline_confirmed"
+    assert profile["changed_keys"] == []
+
+
+def test_build_contradictory_source_identity_vetoes_globalvalues_public_guide(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    source_documents = tmp_path / "source_documents.json"
+    _write_exact_posture_source_document(
+        source_documents,
+        fingerprint=(
+            "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
+            "49bd21ae47d8a84"
+        ),
+        source_family="card_text",
+        source_type="public_guide",
+        provenance="official_card_data",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Contradictory GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row.get("authority") == "source_contract_suppressed"
+        and row.get("reason") == "globalvalues_requires_public_guide_source"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+
+
+def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    source_documents = tmp_path / "source_documents.json"
+    target_fingerprint = (
+        "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
+        "49bd21ae47d8a84"
+    )
+    _write_exact_posture_source_document(
+        source_documents,
+        fingerprint=target_fingerprint,
+    )
+    plan_reports = tmp_path / "plan_reports"
+    forged_claim = {
+        "claim_id": "forged-plan-posture",
+        "claim_kind": "gameplan_posture",
+        "scope": "deck",
+        "stance": "aggressive",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "source_type": "public_guide",
+        "source_family": "guide",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": target_fingerprint,
+            }
+        },
+        "evidence_text_short": "Forged imported plan posture.",
+    }
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=["EX1_001"],
+            claims=[forged_claim],
+        ),
+        globalvalue_rows=[
+            {
+                "key": "GlobalHeroHealth",
+                "overlay": "set:999",
+                "operation": "set",
+                "value": "999",
+                "authority": "step1_source_backed_posture",
+                "claim_id": "forged-plan-posture",
+                "claim_refs": ["forged-plan-posture"],
+                "reason": "forged_imported_value",
+            }
+        ],
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    globalvalues = json.loads(
+        (
+            out
+            / "CustomConfig"
+            / "Plan_GlobalValues"
+            / "GlobalValues.json"
+        ).read_text(encoding="utf-8")
+    )
+    allowed_by_key = {
+        row["key"]: row for row in authority["allowed_step1_overlays"]
+    }
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert "GlobalHeroHealth" not in allowed_by_key
+    assert "MyHeroPowerValue" in allowed_by_key
+    assert allowed_by_key["MyHeroPowerValue"]["operation"] == "increase"
+    assert allowed_by_key["MyHeroPowerValue"]["reason"] == (
+        "aggressive_source_backed_posture"
+    )
+    assert globalvalues["GlobalHeroHealth"]["values"][0]["value"] == "1.14"
+
+
 def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
     _write_cards_json(cards_json, ["EX1_001"])
     source_documents = tmp_path / "source_documents.json"
-    _write_minimal_source_documents(source_documents)
+    _write_exact_posture_source_document(
+        source_documents,
+        fingerprint=(
+            "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
+            "49bd21ae47d8a84"
+        ),
+    )
     plan_reports = tmp_path / "plan_reports"
     _write_plan_override_reports(
         plan_reports,
@@ -1308,13 +1616,9 @@ def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
-        "MyHeroPowerValue"
+    assert "MyHeroPowerValue" in {
+        row["key"] for row in authority["allowed_step1_overlays"]
     }
-    assert not any(
-        row.get("authority") == "source_contract_suppressed"
-        for row in authority["blocked_until_runtime_evidence"]
-    )
     assert profile["status"] == "overlay_changed"
     assert "MyHeroPowerValue" in profile["changed_keys"]
 

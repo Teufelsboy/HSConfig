@@ -79,11 +79,16 @@ separate exact opening-hand authority exists.
 The same four exact public-guide fields gate `gameplan_posture` before it can
 authorize a GlobalValues posture overlay. Archetype-only posture claims remain
 visible with a stable suppression reason and leave validated baseline posture
-values unchanged. For this surface, `deck_match_scope=exact_deck_matched` is
-accepted only when the normalized claim also carries
-`deck_match.exact_deck_evidence.matched=true` and its
-`matched_deck_fingerprint` equals the current target
-`deck_identity["deck_fingerprint"]`. A missing target fingerprint fails closed.
+values unchanged. GlobalValues additionally requires a non-plan source-document
+receipt produced by the canonical source builder. That receipt binds the
+normalized claim signature to decoded exact-deck evidence and the current target
+fingerprint. Claim fields, legacy `--claims-json`, and an imported lifecycle or
+plan report cannot create this authority. A missing receipt or target
+fingerprint fails closed.
+
+All populated source identity fields are evaluated together. An explicit
+official, static, statistical, or otherwise non-guide identity vetoes public
+guide authority even when another field says `public_guide`.
 
 ## Structured Source Format
 
@@ -511,6 +516,10 @@ GlobalValues key authority:
 - `globalvalue_numeric_tuning` is a valid source claim kind for explicit numeric GlobalValues recommendations. It is report-visible but Step1 runtime-blocked with `requires_runtime_evidence` until HSTuner or another runtime-evidence workflow owns the change.
 - `copy_baseline` keys are copied and profiled, not tuned.
 - `step1_posture_overlay_allowed` keys may change only when source posture supports them.
+- Imported plan GlobalValues rows never define authority. HSConfig rebuilds the
+  canonical matrix from the non-plan source receipt and suppresses any imported
+  row whose key, operation, overlay, normalized value, reason, authority, and
+  claim binding do not match that rebuilt matrix.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
 
 ## Claim-Kind Change Checklist

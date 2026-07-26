@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_claim_lifecycle import build_initial_lifecycle_rows
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
@@ -24,27 +25,53 @@ REQUIRED_LIFECYCLE_FIELDS = {
 
 
 def _verified_posture_claim(claim_id: str = "posture_claim") -> dict:
-    return {
-        "claim_id": claim_id,
-        "claim_kind": "gameplan_posture",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": [],
-        "source_type": "public_guide",
-        "source_family": "guide",
-        "deck_match_scope": "exact_deck_matched",
-        "promotion_eligible": True,
-        "source_visibility": "full_text",
-        "source_lane": "deck_matched_public_guide",
-        "deck_match": {
-            "exact_deck_evidence": {
-                "matched": True,
-                "matched_deck_fingerprint": "fixture-deck-fingerprint",
-            }
-        },
-        "source_title": "Fixture Guide",
-        "evidence_text_short": "Use a more aggressive posture.",
+    return _verified_posture_bundle(claim_id)["claims"][0]
+
+
+def _verified_posture_bundle(claim_id: str = "posture_claim") -> dict:
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "deck_fingerprint": "fixture-deck-fingerprint",
+        "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2}],
     }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/fixture-guide",
+                "source_title": "Fixture Guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": "fixture-deck-fingerprint",
+                        "candidate_deck_code_hashes": ["sha256:fixture-source"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": claim_id,
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_KEEP"],
+                        "scope": "deck",
+                        "stance": "aggressive",
+                        "evidence_text_short": "Use a more aggressive posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
 
 
 def test_source_contract_audit_explains_surface_gate_lanes():
@@ -57,8 +84,8 @@ def test_source_contract_audit_explains_surface_gate_lanes():
                 {"card_id": "CARD_NUM", "name": "Numeric Card", "count": 1},
             ],
         },
-        guide_claim_bundle={
-            "claims": [
+            guide_claim_bundle={
+                "claims": [
                 {
                     "claim_id": "keep_claim",
                     "claim_kind": "mulligan_keep",
@@ -434,9 +461,12 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Keep CARD_KEEP.",
                 },
-                _verified_posture_claim(),
-            ]
-        },
+                    _verified_posture_claim(),
+                ],
+                "globalvalues_source_receipts": _verified_posture_bundle()[
+                    "globalvalues_source_receipts"
+                ],
+            },
         mulligan_plan={
             "rules": [
                 {
@@ -748,9 +778,12 @@ def test_claim_lifecycle_marks_allowed_claim_without_builder_emission_as_not_see
             "deck_fingerprint": "fixture-deck-fingerprint",
             "cards": [],
         },
-        guide_claim_bundle={
-            "claims": [_verified_posture_claim()]
-        },
+            guide_claim_bundle={
+                "claims": [_verified_posture_claim()],
+                "globalvalues_source_receipts": _verified_posture_bundle()[
+                    "globalvalues_source_receipts"
+                ],
+            },
         mulligan_plan={"rules": [], "suppressed_rules": []},
         card_behavior_plan={"rows": [], "suppressed": []},
         combo_plan={"combos": [], "suppressed": []},
@@ -781,8 +814,8 @@ def test_source_contract_audit_summarizes_claim_lifecycle_decisions():
             "deck_fingerprint": "fixture-deck-fingerprint",
             "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2}],
         },
-        guide_claim_bundle={
-            "claims": [
+            guide_claim_bundle={
+                "claims": [
                 {
                     "claim_id": "keep_claim",
                     "claim_kind": "mulligan_keep",
@@ -801,9 +834,12 @@ def test_source_contract_audit_summarizes_claim_lifecycle_decisions():
                     "cards": [],
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Tune a numeric GlobalValues key only after games.",
-                },
-            ]
-        },
+                    },
+                ],
+                "globalvalues_source_receipts": _verified_posture_bundle()[
+                    "globalvalues_source_receipts"
+                ],
+            },
         mulligan_plan={
             "rules": [
                 {

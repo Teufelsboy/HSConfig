@@ -56,6 +56,7 @@ def build_globalvalues_authority_matrix(
     aggression_profile: str,
     claims: list[dict[str, Any]],
     deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     claim_decisions = [
         (
@@ -63,6 +64,7 @@ def build_globalvalues_authority_matrix(
             can_lower_to_globalvalues(
                 claim,
                 deck_identity=deck_identity,
+                verified_source_receipts=verified_source_receipts,
             ),
         )
         for claim in claims

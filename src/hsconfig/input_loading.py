@@ -160,18 +160,23 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "claims": [],
             },
         )
-        for field in (
-            "source_visibility",
-            "source_lane",
-            "deck_match_scope",
-            "deck_match",
-            "deck_name",
-            "source_type",
-            "provenance",
-            "source_type_family",
-        ):
-            if field in claim and field not in document:
-                document[field] = claim[field]
+        legacy_claim_kind = (
+            runtime_claim_kind(claim)
+            or str(claim.get("claim_type", "")).strip().lower()
+        )
+        if legacy_claim_kind != "gameplan_posture":
+            for field in (
+                "source_visibility",
+                "source_lane",
+                "deck_match_scope",
+                "deck_match",
+                "deck_name",
+                "source_type",
+                "provenance",
+                "source_type_family",
+            ):
+                if field in claim and field not in document:
+                    document[field] = claim[field]
         document["claims"].append(_legacy_claim_to_guide_claim(claim))
     return list(documents.values())
 

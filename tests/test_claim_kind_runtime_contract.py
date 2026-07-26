@@ -282,34 +282,60 @@ def test_globalvalues_lifecycle_rejects_unverified_posture_authority(
 
 
 def test_globalvalues_lifecycle_accepts_verified_exact_public_guide_posture():
-    lifecycle_rows = build_initial_lifecycle_rows(
-        [
+    deck_identity = {
+        "deck_name": "Receipt Fixture",
+        "deck_fingerprint": "target-fingerprint",
+        "cards": [{"card_id": "CARD_001", "name": "Receipt Card", "count": 1}],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
             {
-                "claim_id": "verified-posture",
-                "claim_kind": "gameplan_posture",
-                "stance": "aggressive",
-                "claim_readiness": "guide_backed",
-                "trust_ceiling": "runtime_candidate",
-                "source_type": "public_guide",
+                "source_url": "https://example.invalid/exact-receipt",
+                "source_title": "Exact receipt guide",
                 "source_family": "guide",
-                "deck_match_scope": "exact_deck_matched",
-                "promotion_eligible": True,
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
                 "deck_match": {
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": "target-fingerprint",
+                        "candidate_deck_code_hashes": ["sha256:source-code"],
                     }
                 },
+                "claims": [
+                    {
+                        "claim_id": "verified-posture",
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_001"],
+                        "scope": "deck",
+                        "stance": "aggressive",
+                        "evidence_text_short": "Use the aggressive posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
             }
-        ]
+        ],
+        current_date="2026-07-26",
+    )
+    lifecycle_rows = build_initial_lifecycle_rows(
+        bundle["claims"]
     )
 
     selection = select_claims_for_surface(
         lifecycle_rows,
         "globalvalues",
-        context={"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["globalvalues_source_receipts"],
+        },
     )
 
     assert len(selection["accepted_claims"]) == 1

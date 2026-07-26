@@ -5,25 +5,22 @@ description: Generate guide-aligned HearthRanger VisionAI CustomConfig packages 
 
 # HSConfig
 
-Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name,
-deck code, and current guide-backed research. HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
+Use this skill when Codex must create or validate a pre-game HearthRanger VisionAI `CustomConfig` package from a deck name, deck code, and current guide-backed research.
+HSConfig is pre-run only. It does not parse replays, inspect winrate, analyze runtime logs, promote candidates, or tune after games. Those tasks belong to HSTuner.
 Do no replay analysis, winrate analysis, HSTuner follow-up, or after-game tuning.
 
 ## Normal Operator Route
 
 For the normal operator entry point, start at `docs/operator/README.md`. Preferred normal path: `hsconfig configure`.
 Lower-level inspected path: `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
-
 Normal workflow:
 1. Prefer `hsconfig configure ...` for normal operation.
 2. Use lower-level commands only when inspecting a stage:
    `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 3. After `configure`, read `<out>/configure_summary.json.acceptance_summary` first; use `reports/operator_summary.json` as the apply authority.
-
 Read `<out>/configure_summary.json.handoff_contract` next as diagnostic-only pre-run proof. Read `<out>/configure_summary.json.source_closure_receipt` only when source depth is the question.
 Read `<out>/configure_summary.json.config_proof_summary` and `<out>/configure_summary.json.config_quality_summary` only as diagnostic proof.
 These summaries do not replace `reports/operator_summary.json`, cannot apply runtime files, and cannot turn source gaps into blockers.
-
 For a source-refreshed deck config on the source-backed route, use this command only when runtime installation is intended:
 `hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --apply --json`
 
@@ -33,6 +30,9 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 ## Hard Boundaries
 
 - Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Guide-backed Mulligan claims require `exact_deck_matched`.
+- GlobalValues posture authority requires a canonical non-plan source-document receipt bound to the normalized claim signature and target deck fingerprint.
+  Legacy `--claims-json`, lifecycle metadata, or imported plan rows cannot self-assert it; any official/static/non-guide provenance signal vetoes it.
+  Plan rows are rebuilt from the receipt rather than accepted by Claim ID.
 - Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 - `reports/operator_summary.json` remains the only normal apply authority.
 - Runtime apply is guarded by `operator_summary.json`, package structure, fake receipts, and package hashes.

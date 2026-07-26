@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from hashlib import sha256
+import json
 from typing import Any, Mapping
 
 from hsconfig.role_tokens import (
@@ -381,6 +383,9 @@ def surface_gate_decision(
         return can_lower_to_globalvalues(
             claim,
             deck_identity=(context or {}).get("deck_identity"),
+            verified_source_receipts=(context or {}).get(
+                "verified_source_receipts"
+            ),
         )
     if normalized_surface == "combo":
         return can_lower_to_combo(claim)
@@ -462,6 +467,7 @@ def can_lower_to_globalvalues(
     claim: Mapping[str, Any],
     *,
     deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
 ) -> SurfaceGateDecision:
     claim_kind = normalized_claim_kind(claim)
     if claim_kind in GLOBALVALUES_RUNTIME_EVIDENCE_CLAIM_KINDS:
@@ -525,6 +531,17 @@ def can_lower_to_globalvalues(
             claim_kind,
             "globalvalues",
         )
+    if not _has_verified_globalvalues_source_receipt(
+        claim,
+        target_fingerprint=target_fingerprint,
+        verified_source_receipts=verified_source_receipts,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_verified_source_receipt",
+            claim_kind,
+            "globalvalues",
+        )
     if not _bool_value(claim.get("promotion_eligible")):
         return SurfaceGateDecision(
             False,
@@ -550,17 +567,47 @@ def can_lower_to_globalvalues(
 
 
 def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
-    explicit_source_type = _normalized_text(
-        claim.get("source_type")
-        or claim.get("provenance")
-        or claim.get("source_type_family")
+    identities = [
+        _normalized_text(claim.get(field))
+        for field in PUBLIC_GUIDE_IDENTITY_FIELDS
+        if _normalized_text(claim.get(field))
+    ]
+    return bool(identities) and all(
+        identity in PUBLIC_GUIDE_SOURCE_FAMILIES for identity in identities
     )
-    if (
-        explicit_source_type
-        and explicit_source_type not in PUBLIC_GUIDE_SOURCE_FAMILIES
-    ):
-        return False
-    return is_public_guide_claim(claim)
+
+
+def globalvalues_claim_signature(claim: Mapping[str, Any]) -> str:
+    payload = {
+        str(key): value
+        for key, value in claim.items()
+        if not str(key).startswith("_") and key != "claim_type"
+    }
+    canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+    return f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def _has_verified_globalvalues_source_receipt(
+    claim: Mapping[str, Any],
+    *,
+    target_fingerprint: str,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None,
+) -> bool:
+    signature = globalvalues_claim_signature(claim)
+    claim_id = str(claim.get("claim_id", "")).strip()
+    for receipt in verified_source_receipts or ():
+        if not isinstance(receipt, Mapping):
+            continue
+        if receipt.get("receipt_kind") != "canonical_exact_deck_source_document":
+            continue
+        if _normalized_text(receipt.get("matched_deck_fingerprint")) != target_fingerprint:
+            continue
+        if str(receipt.get("claim_id", "")).strip() != claim_id:
+            continue
+        if str(receipt.get("claim_signature", "")).strip() != signature:
+            continue
+        return True
+    return False
 
 
 def can_lower_to_combo(claim: Mapping[str, Any]) -> SurfaceGateDecision:

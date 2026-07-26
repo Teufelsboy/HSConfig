@@ -8,6 +8,7 @@ from hsconfig.combo_plan import build_combo_plan
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     surface_gate_decision,
@@ -261,10 +262,14 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         }
     }
     if claim_kind == "gameplan_posture":
-        claim.update(_verified_gameplan_posture_authority())
+        bundle = _verified_gameplan_posture_bundle()
+        claim = bundle["claims"][0]
         context["deck_identity"] = {
             "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
         }
+        context["verified_source_receipts"] = bundle[
+            "globalvalues_source_receipts"
+        ]
     gates = {
         surface: _decision_row(surface_gate_decision(claim, surface, context=context))
         for surface in SURFACES
@@ -449,12 +454,7 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
             "values": ["6"] * len(cards),
         }
     if claim_kind == "gameplan_posture":
-        return {
-            **claim,
-            **_verified_gameplan_posture_authority(),
-            "cards": [],
-            "stance": "aggro_burn",
-        }
+        return _verified_gameplan_posture_bundle()["claims"][0]
     if claim_kind == "globalvalue_numeric_tuning":
         return {**claim, "cards": [], "key": "LowHpBoardValuePenalty"}
     if claim_kind == "card_role":
@@ -501,12 +501,18 @@ def _builder_runner_result(
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["suppressed_rules"])
     if runner == "build_globalvalues_authority_matrix":
+        verified_source_receipts = (
+            _verified_gameplan_posture_bundle()["globalvalues_source_receipts"]
+            if claim_kind == "gameplan_posture"
+            else []
+        )
         plan = build_globalvalues_authority_matrix(
             aggression_profile="baseline",
             claims=[claim],
             deck_identity={
                 "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
             },
+            verified_source_receipts=verified_source_receipts,
         )
         if any(claim["claim_id"] in row.get("claim_refs", []) for row in plan["allowed_step1_overlays"]):
             return {"outcome": "emitted", "reason": "emitted"}
@@ -522,21 +528,50 @@ def _builder_runner_result(
     raise RuntimeError(f"Unsupported conformance runner: {runner}")
 
 
-def _verified_gameplan_posture_authority() -> dict[str, Any]:
-    return {
-        "source_type": "public_guide",
-        "source_family": "guide",
-        "deck_match_scope": "exact_deck_matched",
-        "promotion_eligible": True,
-        "source_visibility": "full_text",
-        "source_lane": "deck_matched_public_guide",
-        "deck_match": {
-            "exact_deck_evidence": {
-                "matched": True,
-                "matched_deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
-            }
-        },
+def _verified_gameplan_posture_bundle() -> dict[str, Any]:
+    deck_identity = {
+        "deck_name": "Conformance",
+        "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        "cards": [{"card_id": "CARD_001", "name": "Conformance Card", "count": 1}],
     }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/conformance-guide",
+                "source_title": "Conformance exact-deck guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+                        "candidate_deck_code_hashes": ["sha256:conformance-source"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "conformance_gameplan_posture",
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_001"],
+                        "scope": "deck",
+                        "stance": "aggro_burn",
+                        "evidence_text_short": "Use the aggro burn posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
 
 
 def _suppressed_result(rows: list[Mapping[str, Any]]) -> dict[str, str]:

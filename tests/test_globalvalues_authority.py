@@ -1,5 +1,6 @@
 from hsconfig.globalvalues_key_authority import authority_for_key
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import can_lower_to_globalvalues
 
 
@@ -11,10 +12,12 @@ def test_globalvalues_key_authority_classifies_core_keys():
 
 
 def test_aggressive_posture_allows_selected_step1_keys():
+    claim, receipts = _verified_public_guide_posture_claim()
     matrix = build_globalvalues_authority_matrix(
         aggression_profile="aggressive",
-        claims=[_public_guide_posture_claim()],
+        claims=[claim],
         deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=receipts,
     )
 
     allowed = {row["key"] for row in matrix["allowed_step1_overlays"]}
@@ -25,11 +28,13 @@ def test_aggressive_posture_allows_selected_step1_keys():
 
 
 def test_globalvalues_rows_use_lifecycle_claim_id_without_rewriting_claim_refs():
+    posture_claim, receipts = _verified_public_guide_posture_claim(
+        claim_id="raw_posture",
+        stance="weapon_pressure",
+    )
+    source_refs = list(posture_claim["source_refs"])
     posture_claim = {
-        **_public_guide_posture_claim(),
-        "claim_id": "raw_posture",
-        "source_refs": [],
-        "stance": "weapon_pressure",
+        **posture_claim,
         "_claim_lifecycle": {
             "claim_id": "lifecycle_posture",
             "surface": "globalvalues",
@@ -50,11 +55,12 @@ def test_globalvalues_rows_use_lifecycle_claim_id_without_rewriting_claim_refs()
             },
         ],
         deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=receipts,
     )
 
     allowed = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
     assert allowed["MyWeaponValue"]["claim_id"] == "lifecycle_posture"
-    assert allowed["MyWeaponValue"]["claim_refs"] == ["raw_posture"]
+    assert allowed["MyWeaponValue"]["claim_refs"] == ["raw_posture", *source_refs]
 
     numeric_row = next(
         row
@@ -66,10 +72,12 @@ def test_globalvalues_rows_use_lifecycle_claim_id_without_rewriting_claim_refs()
 
 
 def test_globalvalues_authority_matrix_embeds_per_key_authority():
+    claim, receipts = _verified_public_guide_posture_claim()
     matrix = build_globalvalues_authority_matrix(
         aggression_profile="aggressive",
-        claims=[_public_guide_posture_claim()],
+        claims=[claim],
         deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=receipts,
     )
 
     allowed = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
@@ -111,16 +119,15 @@ def test_posture_overlay_matrix_supports_named_step1_postures():
     }
 
     for posture, expected_keys in cases.items():
+        claim, receipts = _verified_public_guide_posture_claim(
+            stance=posture,
+            claim_id=f"claim_{posture}",
+        )
         matrix = build_globalvalues_authority_matrix(
             aggression_profile=posture,
-            claims=[
-                {
-                    **_public_guide_posture_claim(),
-                    "stance": posture,
-                    "claim_id": f"claim_{posture}",
-                }
-            ],
+            claims=[claim],
             deck_identity={"deck_fingerprint": "target-fingerprint"},
+            verified_source_receipts=receipts,
         )
 
         rows_by_key = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
@@ -152,16 +159,15 @@ def test_unknown_posture_keeps_baseline_default():
 
 
 def test_source_posture_claim_overrides_generic_aggro_profile():
+    claim, receipts = _verified_public_guide_posture_claim(
+        stance="weapon_pressure",
+        claim_id="claim_weapon",
+    )
     matrix = build_globalvalues_authority_matrix(
         aggression_profile="aggro",
-        claims=[
-            {
-                **_public_guide_posture_claim(),
-                "stance": "weapon_pressure",
-                "claim_id": "claim_weapon",
-            }
-        ],
+        claims=[claim],
         deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=receipts,
     )
 
     allowed = {row["key"] for row in matrix["allowed_step1_overlays"]}
@@ -246,6 +252,57 @@ def _public_guide_posture_claim(
     }
 
 
+def _verified_public_guide_posture_claim(
+    *,
+    stance: str = "aggressive",
+    claim_id: str = "verified-posture",
+) -> tuple[dict[str, object], list[dict[str, object]]]:
+    deck_identity = {
+        "deck_name": "Receipt Fixture",
+        "deck_fingerprint": "target-fingerprint",
+        "cards": [{"card_id": "CARD_001", "name": "Receipt Card", "count": 1}],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/exact-receipt",
+                "source_title": "Exact receipt guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": "target-fingerprint",
+                        "candidate_deck_code_hashes": ["sha256:source-code"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": claim_id,
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_001"],
+                        "scope": "deck",
+                        "stance": stance,
+                        "evidence_text_short": f"Use the {stance} posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+    return bundle["claims"][0], bundle["globalvalues_source_receipts"]
+
+
 def test_archetype_only_public_guide_posture_is_visibly_suppressed() -> None:
     claim = _public_guide_posture_claim(
         deck_match_scope="archetype_matched",
@@ -279,17 +336,19 @@ def test_archetype_only_public_guide_posture_is_visibly_suppressed() -> None:
 
 
 def test_exact_public_guide_posture_remains_authorized() -> None:
-    claim = _public_guide_posture_claim(
-        deck_match_scope="exact_deck_matched",
-        source_lane="deck_matched_public_guide",
-    )
+    claim, receipts = _verified_public_guide_posture_claim()
 
     deck_identity = {"deck_fingerprint": "target-fingerprint"}
-    decision = can_lower_to_globalvalues(claim, deck_identity=deck_identity)
+    decision = can_lower_to_globalvalues(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=receipts,
+    )
     matrix = build_globalvalues_authority_matrix(
         aggression_profile="aggressive",
         claims=[claim],
         deck_identity=deck_identity,
+        verified_source_receipts=receipts,
     )
 
     assert decision.allowed is True
@@ -302,6 +361,35 @@ def test_exact_public_guide_posture_remains_authorized() -> None:
         row.get("authority") == "source_contract_suppressed"
         for row in matrix["blocked_until_runtime_evidence"]
     )
+
+
+def test_raw_claim_cannot_self_assert_exact_public_guide_authority() -> None:
+    claim = _public_guide_posture_claim()
+
+    decision = can_lower_to_globalvalues(
+        claim,
+        deck_identity={"deck_fingerprint": "target-fingerprint"},
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "globalvalues_requires_verified_source_receipt"
+
+
+def test_contradictory_non_guide_provenance_vetoes_public_guide_identity() -> None:
+    claim = {
+        **_public_guide_posture_claim(),
+        "source_type": "public_guide",
+        "provenance": "official_card_data",
+        "source_family": "card_text",
+    }
+
+    decision = can_lower_to_globalvalues(
+        claim,
+        deck_identity={"deck_fingerprint": "target-fingerprint"},
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "globalvalues_requires_public_guide_source"
 
 
 def test_source_less_posture_is_visibly_suppressed_by_matrix() -> None:

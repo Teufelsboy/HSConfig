@@ -61,6 +61,7 @@ def build_guide_claim_bundle(
     claims: list[dict[str, Any]] = []
     unsupported_claims: list[dict[str, Any]] = []
     source_evidence_index: list[dict[str, Any]] = []
+    globalvalues_source_receipts: list[dict[str, Any]] = []
     claim_conflict_report = {"conflict_count": 0, "conflicts": []}
 
     if source_documents:
@@ -72,6 +73,9 @@ def build_guide_claim_bundle(
         claims.extend(source_document_bundle["claims"])
         unsupported_claims.extend(source_document_bundle["unsupported_claims"])
         source_evidence_index.extend(source_document_bundle["source_evidence_index"])
+        globalvalues_source_receipts.extend(
+            source_document_bundle["globalvalues_source_receipts"]
+        )
         claim_conflict_report = source_document_bundle["claim_conflict_report"]
 
     guide_backed_cards = {
@@ -121,6 +125,7 @@ def build_guide_claim_bundle(
         "unsupported_claims": result.unsupported_claims,
         "coverage": result.coverage,
         "source_evidence_index": result.source_evidence_index,
+        "globalvalues_source_receipts": globalvalues_source_receipts,
         "claim_coverage_report": claim_coverage_report,
         "claim_conflict_report": claim_conflict_report,
     }

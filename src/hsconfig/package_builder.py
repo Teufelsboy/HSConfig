@@ -90,6 +90,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     semantic_report = context["semantic_report"]
     guide_claim_bundle = context["guide_claim_bundle"]
     guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
+    canonical_guide_claim_bundle = guide_claim_bundle
+    verified_globalvalues_source_receipts = list(
+        canonical_guide_claim_bundle.get("globalvalues_source_receipts", [])
+    )
     plan_claims = list(guide_claim_bundle.get("claims", []))
     source_claim_conflict_report = guide_claim_bundle.get(
         "claim_conflict_report",
@@ -146,7 +150,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     globalvalues_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "globalvalues",
-        context={"deck_identity": deck_identity},
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": verified_globalvalues_source_receipts,
+        },
     )
     globalvalues_claims = globalvalues_selection["accepted_claims"]
     globalvalues_decision_claims = [
@@ -191,7 +198,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
         claims=globalvalues_authority_claims,
         deck_identity=deck_identity,
+        verified_source_receipts=verified_globalvalues_source_receipts,
     )
+    canonical_global_values_authority_matrix = global_values_authority_matrix
     plan_reports_dir = getattr(args, "plan_reports_dir", None)
     if plan_reports_dir is not None:
         plan_dir = Path(plan_reports_dir)
@@ -231,6 +240,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             card_behavior_plan=card_behavior_plan,
             combo_plan=combo_plan,
             global_values_authority_matrix=global_values_authority_matrix,
+            canonical_global_values_authority_matrix=(
+                canonical_global_values_authority_matrix
+            ),
             card_roles=card_roles,
             deck_identity=deck_identity,
         )
@@ -672,6 +684,7 @@ def _filter_plan_reports_by_lifecycle(
     card_behavior_plan: dict[str, Any],
     combo_plan: dict[str, Any],
     global_values_authority_matrix: dict[str, Any],
+    canonical_global_values_authority_matrix: dict[str, Any],
     card_roles: dict[str, Any],
     deck_identity: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -692,11 +705,6 @@ def _filter_plan_reports_by_lifecycle(
         ),
         "cardid": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "cardid"),
         "combo": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "combo"),
-        "globalvalues": _runtime_claim_ids_for_surface(
-            initial_lifecycle_rows,
-            "globalvalues",
-            deck_identity=deck_identity,
-        ),
     }
     globalvalues_diagnostics = build_globalvalues_authority_matrix(
         aggression_profile="baseline",
@@ -709,7 +717,7 @@ def _filter_plan_reports_by_lifecycle(
         _filter_combo_plan(combo_plan, allowed_claim_ids["combo"]),
         _filter_globalvalues_authority_matrix(
             global_values_authority_matrix,
-            allowed_claim_ids["globalvalues"],
+            canonical_matrix=canonical_global_values_authority_matrix,
             diagnostic_matrix=globalvalues_diagnostics,
         ),
     )
@@ -720,17 +728,10 @@ def _runtime_claim_ids_for_surface(
     surface: str,
     *,
     card_roles: dict[str, Any] | None = None,
-    deck_identity: dict[str, Any] | None = None,
 ) -> set[str]:
-    context = (
-        {"deck_identity": deck_identity}
-        if deck_identity is not None
-        else None
-    )
     claims = runtime_claims_for_surface(
         lifecycle_rows,
         surface,
-        context=context,
         card_roles=card_roles,
     )
     claim_ids: set[str] = set()
@@ -834,41 +835,63 @@ def _filter_combo_plan(
 
 def _filter_globalvalues_authority_matrix(
     matrix: dict[str, Any],
-    allowed_claim_ids: set[str],
     *,
+    canonical_matrix: dict[str, Any],
     diagnostic_matrix: dict[str, Any],
 ) -> dict[str, Any]:
-    result = dict(matrix)
-    allowed_rows = _filter_runtime_rows_by_claim_ids(
-        matrix.get("allowed_step1_overlays", []),
-        allowed_claim_ids,
-    )
+    result = dict(canonical_matrix)
+    allowed_rows = [
+        dict(row)
+        for row in canonical_matrix.get("allowed_step1_overlays", [])
+        if isinstance(row, dict)
+    ]
     diagnostic_blocked = [
         row
         for row in diagnostic_matrix.get("blocked_until_runtime_evidence", [])
         if isinstance(row, dict)
     ]
-    has_source_contract_suppression = any(
-        row.get("authority") == "source_contract_suppressed"
-        for row in diagnostic_blocked
-    )
-    if not allowed_rows and has_source_contract_suppression:
-        allowed_rows = [
-            dict(row)
-            for row in diagnostic_matrix.get("allowed_step1_overlays", [])
-            if isinstance(row, dict)
-        ]
     blocked_rows = [
         dict(row)
-        for row in matrix.get("blocked_until_runtime_evidence", [])
+        for row in canonical_matrix.get("blocked_until_runtime_evidence", [])
         if isinstance(row, dict)
     ]
     for row in diagnostic_blocked:
         if row not in blocked_rows:
             blocked_rows.append(dict(row))
+    canonical_signatures = {
+        _globalvalues_plan_row_signature(row)
+        for row in allowed_rows
+    }
+    for row in matrix.get("allowed_step1_overlays", []):
+        if not isinstance(row, dict) or row.get("key") == "baseline":
+            continue
+        if _globalvalues_plan_row_signature(row) in canonical_signatures:
+            continue
+        blocked_rows.append(
+            {
+                "key": str(row.get("key", "")),
+                "authority": "source_contract_suppressed",
+                "claim_id": str(row.get("claim_id", "")),
+                "claim_refs": sorted(_row_claim_ids(row)),
+                "reason": "globalvalues_plan_row_not_canonical",
+                "blocked_reason": "globalvalues_plan_row_not_canonical",
+            }
+        )
     result["allowed_step1_overlays"] = allowed_rows
     result["blocked_until_runtime_evidence"] = blocked_rows
     return result
+
+
+def _globalvalues_plan_row_signature(row: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        str(row.get("key", "")),
+        str(row.get("operation", "")),
+        str(row.get("overlay", "")),
+        None if row.get("value") is None else str(row.get("value")),
+        str(row.get("reason", "")),
+        str(row.get("authority", "")),
+        tuple(sorted(_row_claim_ids(row))),
+    )
 
 
 def _filter_runtime_rows_by_claim_ids(

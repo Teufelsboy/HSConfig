@@ -23,6 +23,7 @@ This page explains why a source claim did or did not lower to runtime config. It
 | --- | --- | --- |
 | `source_identity` | decoded canonical deck fingerprint | `exact_deck_matched` |
 | `mulligan_authority` | `exact_deck_matched` | guide-backed Mulligan may lower only after the complete exact-guide gate |
+| `globalvalues_authority` | canonical non-plan source-document receipt bound to the exact claim signature | imported claims and plan rows cannot grant or replace posture authority |
 | `hero_power_transform` | exact CardID and linked identity | CardID only |
 | `metadata_only_cardid` | parsed physical `values` row | not `runtime_emitted` |
 | `load_safety` | strict package validation | in-client optimality remains unproven |
@@ -30,6 +31,10 @@ This page explains why a source claim did or did not lower to runtime config. It
 
 `exact_deck_matched` requires a decoded canonical deck fingerprint match.
 Guide-backed Mulligan claims require `exact_deck_matched`.
+GlobalValues posture also requires the canonical source-document receipt; all
+explicit provenance signals must agree that the source is a public guide.
+Plan-report GlobalValues rows are rebuilt from that receipt, never accepted by
+Claim ID alone.
 `hero_power_transform` does not authorize aggressive GlobalValues by itself.
 A metadata-only CardID file is not `runtime_emitted`.
 Load safety does not prove in-client optimality.

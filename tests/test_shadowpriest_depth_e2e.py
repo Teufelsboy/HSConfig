@@ -152,12 +152,17 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
             "source_lane": "deck_matched_public_guide",
             "deck_match_scope": "exact_deck_matched",
             "deck_match": {
-                "exact_deck_evidence": {
-                    "matched": True,
-                    "matched_deck_fingerprint": stable_deck_fingerprint(
-                        [("SW_448", 1), ("TOY_518", 2), ("SW_446", 1)]
-                    ),
-                }
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": stable_deck_fingerprint(
+                            [("SW_448", 1), ("TOY_518", 2), ("SW_446", 1)]
+                        ),
+                        "candidate_deck_code_hashes": [
+                            "sha256:shadowpriest-guide-source"
+                        ],
+                    }
             },
         }
     )

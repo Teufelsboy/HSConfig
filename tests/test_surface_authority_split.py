@@ -1,4 +1,5 @@
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     can_lower_to_cardid,
@@ -9,6 +10,51 @@ from hsconfig.source_document_model import (
     runtime_claim_kind,
     surface_gate_decision,
 )
+
+
+def _canonical_posture_bundle():
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "deck_fingerprint": "fixture-deck-fingerprint",
+        "cards": [{"card_id": "CARD_001", "name": "Fixture Card", "count": 1}],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/fixture-guide",
+                "source_title": "Fixture exact-deck guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": "fixture-deck-fingerprint",
+                        "candidate_deck_code_hashes": ["sha256:fixture-source"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_kind": "gameplan_posture",
+                        "cards": ["CARD_001"],
+                        "scope": "deck",
+                        "stance": "aggro_burn",
+                        "evidence_text_short": "Use an aggro burn posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
 
 
 def test_normalized_claim_kind_keeps_exact_legacy_compatibility():
@@ -84,24 +130,8 @@ def test_explicit_opening_hand_start_of_game_transform_can_be_mulligan_keep():
 
 
 def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_runtime_tuning():
-    posture = {
-        "claim_kind": "gameplan_posture",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "stance": "aggro_burn",
-        "source_type": "public_guide",
-        "source_family": "guide",
-        "deck_match_scope": "exact_deck_matched",
-        "promotion_eligible": True,
-        "source_visibility": "full_text",
-        "source_lane": "deck_matched_public_guide",
-        "deck_match": {
-            "exact_deck_evidence": {
-                "matched": True,
-                "matched_deck_fingerprint": "fixture-deck-fingerprint",
-            }
-        },
-    }
+    bundle = _canonical_posture_bundle()
+    posture = bundle["claims"][0]
     tuning = {
         "claim_kind": "globalvalue_numeric_tuning",
         "claim_readiness": "guide_backed",
@@ -112,6 +142,7 @@ def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_
     assert can_lower_to_globalvalues(
         posture,
         deck_identity={"deck_fingerprint": "fixture-deck-fingerprint"},
+        verified_source_receipts=bundle["globalvalues_source_receipts"],
     ).allowed is True
     decision = can_lower_to_globalvalues(tuning)
     assert decision.allowed is False
@@ -214,27 +245,14 @@ def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
         }
         context = {"card_roles": card_roles}
         if claim_kind == "gameplan_posture":
-            claim.update(
-                {
-                    "source_type": "public_guide",
-                    "source_family": "guide",
-                    "deck_match_scope": "exact_deck_matched",
-                    "promotion_eligible": True,
-                    "source_visibility": "full_text",
-                    "source_lane": "deck_matched_public_guide",
-                    "deck_match": {
-                        "exact_deck_evidence": {
-                            "matched": True,
-                            "matched_deck_fingerprint": (
-                                "fixture-deck-fingerprint"
-                            ),
-                        }
-                    },
-                }
-            )
+            bundle = _canonical_posture_bundle()
+            claim = bundle["claims"][0]
             context["deck_identity"] = {
                 "deck_fingerprint": "fixture-deck-fingerprint"
             }
+            context["verified_source_receipts"] = bundle[
+                "globalvalues_source_receipts"
+            ]
         for surface in surfaces:
             decision = surface_gate_decision(
                 claim,
