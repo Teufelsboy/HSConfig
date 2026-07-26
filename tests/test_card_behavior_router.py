@@ -136,6 +136,91 @@ def test_papercraft_angel_static_aura_routes_to_on_board_bonus():
     )
 
 
+def test_summon_trigger_engine_routes_only_to_on_board_bonus():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_treasure_distributor_static",
+                "claim_kind": "mechanic_usage",
+                "cards": ["TOY_518"],
+                "mechanic": "summon_trigger_board_engine",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_lane": "official_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "OnBoardBonus",
+                "condition": "*",
+                "evidence_text_short": (
+                    "After you summon a Pirate, Treasure Distributor gives it "
+                    "+1 Attack."
+                ),
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert len(plan["rows"]) == 1
+    assert plan["rows"][0]["card_id"] == "TOY_518"
+    assert plan["rows"][0]["behavior_block"] == "OnBoardBonus"
+    assert (
+        plan["rows"][0]["semantic_score"]["reason"]
+        == "summon_trigger_board_engine"
+    )
+
+
+def test_recognized_report_only_semantics_cannot_bypass_exact_guide_gate():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_shadowbomber_exact_guide",
+                "claim_kind": "card_role",
+                "cards": ["GVG_009"],
+                "stance": "battlecry_damage",
+                "claim_readiness": "guide_backed",
+                "source_lane": "deck_matched_public_guide",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": (
+                    "Shadowbomber deals 3 damage to each hero with its Battlecry."
+                ),
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_shadowbomber_exact_guide",
+            "claim_kind": "card_role",
+            "cards": ["GVG_009"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
+
+
+def test_damage_aura_exact_guide_claim_cannot_route_to_before_play():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_voidtouched_before_play",
+                "claim_kind": "card_role",
+                "cards": ["SW_446"],
+                "stance": "damage_amplifier",
+                "claim_readiness": "guide_backed",
+                "source_lane": "deck_matched_public_guide",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": (
+                    "Voidtouched Attendant makes both heroes take one extra "
+                    "damage from all sources."
+                ),
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "semantic_surface_not_expressible"
+
+
 def test_card_behavior_router_routes_specific_runtime_blocks():
     claims = [
         {
@@ -169,7 +254,7 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
     assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
 
 
-def test_targeting_behavior_row_receives_semantic_score_value():
+def test_conditional_target_kill_burn_guide_row_stays_report_only():
     mind_sear_claim = {
         "claim_kind": "targeting_rule",
         "cards": ["NX2_019"],
@@ -186,15 +271,15 @@ def test_targeting_behavior_row_receives_semantic_score_value():
 
     plan = route_card_behavior_surfaces([mind_sear_claim])
 
-    assert plan["suppressed"] == []
-    row = plan["rows"][0]
-    assert row["behavior_block"] == "BeforeBattlecryTargetBonus"
-    assert row["value"] == "10"
-    assert row["semantic_score"]["reason"] == "conditional_target_kill_burn"
-    assert row["semantic_score"]["band"] == "high"
-    assert row["semantic_score"]["profile"] == "semantic_intent"
-    assert "enemy_hero_damage" in row["semantic_score"]["matched_signals"]
-    assert "death_condition" in row["semantic_score"]["matched_signals"]
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "",
+            "claim_kind": "targeting_rule",
+            "cards": ["NX2_019"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
 
 
 def test_targeting_claim_without_target_scope_is_suppressed():

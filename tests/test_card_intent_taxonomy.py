@@ -56,6 +56,38 @@ def test_taxonomy_classifies_shadowpriest_core_effects_in_priority_order():
     assert "death_condition" in mind_sear.matched_signals
 
 
+@pytest.mark.parametrize(
+    ("card_id", "text"),
+    [
+        ("TOY_518", "After you summon a Pirate, give it +1 Attack."),
+        ("WON_065", "After you summon a minion, give it +1 Health."),
+    ],
+)
+def test_taxonomy_classifies_summon_trigger_board_engines(card_id, text):
+    classification = classify_card_intent(text, card_identity=card_id)
+
+    assert classification.reason == "summon_trigger_board_engine"
+    assert classification.value == "8"
+    assert classification.band == "medium"
+
+
+@pytest.mark.parametrize(
+    "card_identity",
+    [
+        "TOY_518",
+        "Treasure Distributor",
+        "WON_065",
+        "Ship's Chirurgeon",
+        "Ship’s Chirurgeon",
+    ],
+)
+def test_taxonomy_maps_summon_trigger_board_engine_identities(card_identity):
+    classification = classify_card_intent("", card_identity=card_identity)
+
+    assert classification.reason == "summon_trigger_board_engine"
+    assert classification.value == "8"
+
+
 def test_taxonomy_does_not_treat_attendant_title_alone_as_damage_aura():
     classification = classify_card_intent(
         "Defensive source note from Attendant deck guide with unrelated tech choices."

@@ -10,6 +10,7 @@ REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE = {
     "conditional_self_damage_resource",
     "conditional_draw",
     "conditional_target_kill_burn",
+    "reciprocal_hero_burn",
     "self_damage_liability_body",
     "location_activation",
 }
@@ -23,8 +24,6 @@ GUIDE_SOURCE_LANES = {
 }
 STATIC_ACTION_SURFACES = {
     "damage_aura_amplifier": {
-        ("BeforePlayCardBonus", "card_role", "*"),
-        ("BeforePlayCardBonus", "mechanic_usage", "*"),
         ("OnBoardBonus", "card_role", "*"),
         ("OnBoardBonus", "mechanic_usage", "*"),
     },
@@ -47,10 +46,9 @@ STATIC_ACTION_SURFACES = {
         ("BeforePlayCardBonus", "card_role", "*"),
         ("BeforePlayCardBonus", "mechanic_usage", "*"),
     },
-    "reciprocal_hero_burn": {
-        ("BeforePlayCardBonus", "card_role", "*"),
-        ("BeforePlayCardBonus", "mechanic_usage", "*"),
-        ("BeforePlayCardBonus", "targeting_rule", "*"),
+    "summon_trigger_board_engine": {
+        ("OnBoardBonus", "card_role", "*"),
+        ("OnBoardBonus", "mechanic_usage", "*"),
     },
 }
 
@@ -69,15 +67,16 @@ def decide_semantic_runtime(
     runtime_block: str,
     claim_kind: str,
 ) -> SemanticRuntimeDecision:
-    if source_lane in STATIC_SOURCE_LANES:
+    if source_lane in STATIC_SOURCE_LANES | GUIDE_SOURCE_LANES:
         if semantic_reason in REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE:
             return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
         allowed_surfaces = STATIC_ACTION_SURFACES.get(semantic_reason)
-        if allowed_surfaces is None:
+        if allowed_surfaces is not None:
+            if (runtime_block, claim_kind, condition) not in allowed_surfaces:
+                return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
+            return SemanticRuntimeDecision(True, "semantic_surface_supported")
+        if source_lane in STATIC_SOURCE_LANES:
             return SemanticRuntimeDecision(False, "semantic_surface_not_proven")
-        if (runtime_block, claim_kind, condition) not in allowed_surfaces:
-            return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
-        return SemanticRuntimeDecision(True, "semantic_surface_supported")
     if source_lane in GUIDE_SOURCE_LANES:
         return SemanticRuntimeDecision(True, "guide_surface_supported")
     return SemanticRuntimeDecision(False, "semantic_surface_not_proven")

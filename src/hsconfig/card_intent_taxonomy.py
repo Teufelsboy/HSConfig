@@ -293,6 +293,21 @@ def classify_card_intent(
             ),
         )
 
+    if (
+        _has_any(normalized, ("after you summon", "whenever you summon"))
+        and _has_any(normalized, ("give it +", "give that minion +"))
+    ) or identity_reason == "summon_trigger_board_engine":
+        return CardIntentClassification(
+            reason="summon_trigger_board_engine",
+            value="8",
+            band="medium",
+            matched_signals=_signals(
+                ("after_you_summon", "after you summon" in normalized),
+                ("pirate_trigger", "pirate" in normalized),
+                ("persistent_buff_engine", "give it +" in normalized),
+            ),
+        )
+
     if _has_any(
         normalized,
         ("summon", "pirate", "treant", "board", "on_board"),
@@ -471,6 +486,11 @@ def _card_identity_reason(card_identity: str | None) -> str:
         "shadowbomber": "reciprocal_hero_burn",
         "VAC_419".lower(): "reciprocal_hero_burn",
         "acupuncture": "reciprocal_hero_burn",
+        "TOY_518".lower(): "summon_trigger_board_engine",
+        "treasure distributor": "summon_trigger_board_engine",
+        "WON_065".lower(): "summon_trigger_board_engine",
+        "ship's chirurgeon": "summon_trigger_board_engine",
+        "ship’s chirurgeon": "summon_trigger_board_engine",
     }.get(normalized, "")
 
 

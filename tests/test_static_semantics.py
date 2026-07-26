@@ -1,4 +1,9 @@
-from hsconfig.static_semantics import infer_static_semantics
+import pytest
+
+from hsconfig.static_semantics import (
+    build_static_semantics_source_records,
+    infer_static_semantics,
+)
 
 
 def _families(card):
@@ -43,6 +48,49 @@ def test_infers_hero_power_transform_and_start_of_game_from_tags_and_text():
     families = _families(card)
 
     assert {"start_of_game", "shadowform", "hero_power", "hero_power_transform"} <= families
+
+
+@pytest.mark.parametrize(
+    ("card_id", "card_name", "text"),
+    [
+        (
+            "TOY_518",
+            "Treasure Distributor",
+            "After you summon a Pirate, give it +1 Attack.",
+        ),
+        (
+            "WON_065",
+            "Ship's Chirurgeon",
+            "After you summon a minion, give it +1 Health.",
+        ),
+    ],
+)
+def test_summon_trigger_board_engine_static_claim_uses_on_board_bonus(
+    card_id, card_name, text
+):
+    card = {
+        "id": card_id,
+        "name": card_name,
+        "type": "MINION",
+        "text": text,
+    }
+
+    assert "summon_trigger_board_engine" in _families(card)
+
+    records = build_static_semantics_source_records(
+        {
+            "deck_name": "ShadowPriest",
+            "cards": [{"card_id": card_id, "count": 1}],
+        },
+        {card_id: card},
+    )
+    claim = next(
+        claim
+        for claim in records[0]["claims"]
+        if claim["mechanic"] == "summon_trigger_board_engine"
+    )
+
+    assert claim["runtime_block"] == "OnBoardBonus"
 
 
 def test_warning_only_contains_unlowerable_choice_surfaces():

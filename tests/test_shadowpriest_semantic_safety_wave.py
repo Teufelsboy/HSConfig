@@ -86,6 +86,26 @@ EXPECTED_GLOBALVALUES_BASELINE_KEYS = frozenset(
 EXPECTED_GLOBALVALUES_EMITTED_KEYS = EXPECTED_GLOBALVALUES_BASELINE_KEYS | {
     "MyHeroPowerValue"
 }
+SAFE_SHADOWPRIEST_ROWS = {
+    ("DS1_233", "BeforePlayCardBonus", "*", "12"),
+    ("REV_290", "BeforePlayCardBonus", "*", "8"),
+    ("SW_446", "OnBoardBonus", "*", "10"),
+    ("SW_448", "BeforeUseHeroPowerBonus", "*", "10"),
+    ("TOY_381", "OnBoardBonus", "*", "8"),
+    ("TOY_518", "OnBoardBonus", "*", "8"),
+    ("WON_065", "OnBoardBonus", "*", "8"),
+}
+REPORT_ONLY_SHADOWPRIEST = {
+    "CFM_637",
+    "DRG_056",
+    "GVG_009",
+    "NX2_019",
+    "SCH_514",
+    "SW_444",
+    "VAC_419",
+    "VAC_512",
+    "YOD_032",
+}
 
 
 @pytest.fixture
@@ -175,11 +195,12 @@ def _assert_exact_globalvalues_key_sets(
 
 @pytest.mark.parametrize(
     "card_id",
-    ["CFM_637", "DRG_056", "YOD_032", "SCH_514", "SW_444", "NX2_019", "VAC_512"],
+    sorted(REPORT_ONLY_SHADOWPRIEST),
 )
 def test_risky_static_cards_have_no_unconditional_action_row(package, card_id):
     payload = _card(package, card_id)
 
+    assert set(payload) == {"GameCardId", "ConfigComment"}
     assert "InHandPlayPriority" not in payload
     assert "BeforePlayCardBonus" not in payload
     assert "BeforeBattlecryTargetBonus" not in payload
@@ -201,14 +222,10 @@ def test_cathedral_only_keeps_supported_deploy_semantics(package):
     ("card_id", "block_name", "expected_signatures"),
     [
         ("DS1_233", "BeforePlayCardBonus", [("*", "12")]),
-        (
-            "GVG_009",
-            "BeforePlayCardBonus",
-            [("*", "10"), ("*", "10"), ("*", "10")],
-        ),
         ("SW_446", "OnBoardBonus", [("*", "10")]),
         ("TOY_381", "OnBoardBonus", [("*", "8")]),
-        ("VAC_419", "BeforePlayCardBonus", [("*", "10")]),
+        ("TOY_518", "OnBoardBonus", [("*", "8"), ("*", "8")]),
+        ("WON_065", "OnBoardBonus", [("*", "8"), ("*", "8")]),
         (
             "SW_448",
             "BeforeUseHeroPowerBonus",
@@ -227,6 +244,45 @@ def test_supported_burn_aura_and_hero_power_rows_remain(
         block_name,
         expected_signatures,
     )
+
+
+def test_shadowpriest_has_exactly_seven_active_card_semantics(package):
+    physical_signatures = set()
+    runtime_emitted_card_ids = set()
+    report_only_card_ids = set()
+
+    for card_id in EXPECTED_CARD_IDS:
+        payload = _card(package, card_id)
+        runtime_blocks = set(payload) - {"GameCardId", "ConfigComment"}
+        if not runtime_blocks:
+            report_only_card_ids.add(card_id)
+            continue
+        runtime_emitted_card_ids.add(card_id)
+        assert "InHandPlayPriority" not in runtime_blocks
+        for block_name in runtime_blocks:
+            values = payload[block_name]["values"]
+            physical_signatures.update(
+                (
+                    card_id,
+                    block_name,
+                    str(row["condition"]),
+                    str(row["value"]),
+                )
+                for row in values
+            )
+
+    assert physical_signatures == SAFE_SHADOWPRIEST_ROWS
+    assert len(physical_signatures) == 7
+    assert runtime_emitted_card_ids == {
+        "DS1_233",
+        "REV_290",
+        "SW_446",
+        "SW_448",
+        "TOY_381",
+        "TOY_518",
+        "WON_065",
+    }
+    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST
 
 
 def test_supported_runtime_row_proof_rejects_empty_values(package):

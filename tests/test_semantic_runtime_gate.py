@@ -1,6 +1,9 @@
 import pytest
 
-from hsconfig.semantic_runtime_gate import decide_semantic_runtime
+from hsconfig.semantic_runtime_gate import (
+    SemanticRuntimeDecision,
+    decide_semantic_runtime,
+)
 
 
 @pytest.mark.parametrize(
@@ -42,6 +45,72 @@ def test_direct_enemy_hero_burn_can_lower_to_play_bonus():
     assert decision.reason == "semantic_surface_supported"
 
 
+def test_summon_trigger_engine_allows_only_on_board_value():
+    allowed = decide_semantic_runtime(
+        semantic_reason="summon_trigger_board_engine",
+        source_lane="official_static_semantics",
+        condition="*",
+        runtime_block="OnBoardBonus",
+        claim_kind="mechanic_usage",
+    )
+    rejected = decide_semantic_runtime(
+        semantic_reason="summon_trigger_board_engine",
+        source_lane="official_static_semantics",
+        condition="*",
+        runtime_block="BeforePlayCardBonus",
+        claim_kind="mechanic_usage",
+    )
+
+    assert allowed.allowed is True
+    assert rejected == SemanticRuntimeDecision(
+        False,
+        "semantic_surface_not_expressible",
+    )
+
+
+@pytest.mark.parametrize(
+    "source_lane",
+    ["official_static_semantics", "deck_matched_public_guide"],
+)
+def test_reciprocal_hero_burn_wildcard_row_is_report_only(source_lane):
+    decision = decide_semantic_runtime(
+        semantic_reason="reciprocal_hero_burn",
+        source_lane=source_lane,
+        condition="*",
+        runtime_block="BeforePlayCardBonus",
+        claim_kind="card_role",
+    )
+
+    assert decision == SemanticRuntimeDecision(
+        False,
+        "semantic_surface_not_expressible",
+    )
+
+
+@pytest.mark.parametrize(
+    ("runtime_block", "allowed"),
+    [
+        ("OnBoardBonus", True),
+        ("BeforePlayCardBonus", False),
+    ],
+)
+def test_damage_aura_amplifier_allows_only_on_board_bonus(runtime_block, allowed):
+    decision = decide_semantic_runtime(
+        semantic_reason="damage_aura_amplifier",
+        source_lane="official_static_semantics",
+        condition="*",
+        runtime_block=runtime_block,
+        claim_kind="mechanic_usage",
+    )
+
+    assert decision.allowed is allowed
+    assert decision.reason == (
+        "semantic_surface_supported"
+        if allowed
+        else "semantic_surface_not_expressible"
+    )
+
+
 @pytest.mark.parametrize(
     ("semantic_reason", "runtime_block", "claim_kind"),
     [
@@ -81,9 +150,7 @@ def test_supported_reason_cannot_bypass_source_lane_authority():
     ("semantic_reason", "runtime_block", "claim_kind"),
     [
         ("direct_enemy_hero_burn", "BeforePlayCardBonus", "targeting_rule"),
-        ("reciprocal_hero_burn", "BeforePlayCardBonus", "card_role"),
         ("damage_aura_amplifier", "OnBoardBonus", "card_role"),
-        ("damage_aura_amplifier", "BeforePlayCardBonus", "mechanic_usage"),
         ("hero_power_cost_aura", "OnBoardBonus", "card_role"),
         ("hero_power_cost_aura", "BeforeUseHeroPowerBonus", "card_role"),
         (

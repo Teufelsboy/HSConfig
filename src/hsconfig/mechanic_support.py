@@ -130,6 +130,14 @@ MECHANIC_SUPPORT: dict[str, dict[str, Any]] = {
         "normal_path_surfaces": ["CARDID.json:BeforePlayCardBonus", "CARDID.json:OnBoardBonus"],
         "warning_boundary": "Generic summon value can be represented only through deploy or board posture.",
     },
+    "summon_trigger_board_engine": {
+        "support_level": "partial",
+        "normal_path_surfaces": ["CARDID.json:OnBoardBonus"],
+        "warning_boundary": (
+            "Board value is representable; exact summon sequencing and "
+            "trigger eligibility remain broader bot evaluation."
+        ),
+    },
     "freeze": {
         "support_level": "partial",
         "normal_path_surfaces": [

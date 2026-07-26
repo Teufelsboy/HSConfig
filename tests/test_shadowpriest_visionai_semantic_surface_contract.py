@@ -12,6 +12,17 @@ SHADOWPRIEST_DECK_CODE = (
     "KgG17oG1cEGAAA="
 )
 SHADOWPRIEST_DECK_NAME = "ShadowPriest"
+REPORT_ONLY_SHADOWPRIEST = {
+    "CFM_637",
+    "DRG_056",
+    "GVG_009",
+    "NX2_019",
+    "SCH_514",
+    "SW_444",
+    "VAC_419",
+    "VAC_512",
+    "YOD_032",
+}
 
 
 @pytest.fixture
@@ -79,6 +90,8 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     mind_sear = read_card_json(package_root, "NX2_019")
     cathedral = read_card_json(package_root, "REV_290")
     voidtouched = read_card_json(package_root, "SW_446")
+    treasure_distributor = read_card_json(package_root, "TOY_518")
+    ships_chirurgeon = read_card_json(package_root, "WON_065")
 
     assert "BeforeBattlecryTargetBonus" not in shadowbomber
     assert set(twilight_deceptor) == {"GameCardId", "ConfigComment"}
@@ -95,7 +108,17 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     assert "BeforeUseHeroPowerBonus" not in cathedral
 
     assert "OnBoardBonus" in voidtouched
-    assert "BeforePlayCardBonus" in voidtouched
+    assert "BeforePlayCardBonus" not in voidtouched
+    assert "OnBoardBonus" in treasure_distributor
+    assert "BeforePlayCardBonus" not in treasure_distributor
+    assert "OnBoardBonus" in ships_chirurgeon
+    assert "BeforePlayCardBonus" not in ships_chirurgeon
+
+    for card_id in REPORT_ONLY_SHADOWPRIEST:
+        assert set(read_card_json(package_root, card_id)) == {
+            "GameCardId",
+            "ConfigComment",
+        }
 
 
 def test_shadowpriest_report_only_claims_do_not_create_runtime_gaps(shadowpriest_package):

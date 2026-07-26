@@ -257,6 +257,23 @@ def infer_static_semantics(card: Mapping[str, Any]) -> dict[str, Any]:
     for keyword, family in MODERN_WARNING_ONLY_KEYWORDS.items():
         if _contains(lowered, keyword):
             _add(families, evidence, family, "text", keyword)
+    if (
+        any(
+            _contains(lowered, phrase)
+            for phrase in ("after you summon", "whenever you summon")
+        )
+        and any(
+            _contains(lowered, phrase)
+            for phrase in ("give it +", "give that minion +")
+        )
+    ):
+        _add(
+            families,
+            evidence,
+            "summon_trigger_board_engine",
+            "text",
+            "summon-trigger board engine",
+        )
 
     if card.get("overload") is not None:
         _add(families, evidence, "overload", "overload", str(card["overload"]))
