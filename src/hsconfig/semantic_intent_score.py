@@ -19,6 +19,7 @@ class SemanticIntentScore:
 def score_card_behavior_claim(
     claim: Mapping[str, Any],
     *,
+    card_identity: str | None = None,
     behavior_block: str,
     intent: str,
     roles: Sequence[str],
@@ -31,7 +32,7 @@ def score_card_behavior_claim(
             intent=intent,
             roles=roles,
         ),
-        card_identity=_claim_card_identity(claim),
+        card_identity=card_identity or _claim_card_identity(claim),
         value_default=value_default,
     )
     explicit = _explicit_value(claim)

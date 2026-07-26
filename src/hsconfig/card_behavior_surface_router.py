@@ -599,6 +599,7 @@ def _attach_behavior_fields(
     row["rule_id_suffix"] = str(claim.get("rule_id_suffix", intent))
     semantic_score = score_card_behavior_claim(
         claim,
+        card_identity=str(row["card_id"]),
         behavior_block=str(row["behavior_block"]),
         intent=str(row.get("intent", "")),
         roles=[str(role) for role in row.get("roles", [])],

@@ -1,4 +1,6 @@
 import importlib.util
+import json
+from pathlib import Path
 
 import pytest
 
@@ -480,6 +482,89 @@ def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(claim):
             "reason": "semantic_surface_not_expressible",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "unsafe_card_id",
+    [
+        "SW_446",
+        "GVG_009",
+        "TOY_518",
+    ],
+)
+@pytest.mark.parametrize(
+    ("value_field", "explicit_value"),
+    [
+        ("runtime_value", "11"),
+        ("value", "13"),
+    ],
+)
+def test_multicard_explicit_value_uses_each_row_card_identity_for_semantic_gate(
+    unsafe_card_id,
+    value_field,
+    explicit_value,
+):
+    claim = {
+        "claim_id": f"multicard_{unsafe_card_id}_{value_field}",
+        "claim_kind": "card_role",
+        "cards": [unsafe_card_id, "DS1_233"],
+        "stance": "pressure_support",
+        "runtime_block": "BeforePlayCardBonus",
+        value_field: explicit_value,
+        "condition": "*",
+        "evidence_text_short": "These cards support the deck's pressure plan.",
+        "source_lane": "deck_matched_public_guide",
+    }
+
+    plan = route_card_behavior_surfaces([claim])
+
+    assert {row["card_id"] for row in plan["rows"]} == {"DS1_233"}
+    safe_row = plan["rows"][0]
+    assert safe_row["value"] == explicit_value
+    assert safe_row["semantic_score"]["reason"] == "explicit_runtime_value"
+    assert (
+        safe_row["semantic_score"]["semantic_reason"]
+        == "direct_enemy_hero_burn"
+    )
+    assert plan["suppressed"] == [
+        {
+            "claim_id": claim["claim_id"],
+            "claim_kind": "card_role",
+            "cards": [unsafe_card_id],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
+
+
+def test_kingslayer_multicard_weapon_claim_keeps_legitimate_rows():
+    fixture = json.loads(
+        Path("tests/fixtures/source_documents_kingslayer_strong.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    claim = next(
+        claim
+        for claim in fixture["source_documents"][0]["claims"]
+        if claim.get("cards") == ["DEEP_014", "VAC_701", "TIME_875t1"]
+    )
+    claim = {
+        **claim,
+        "claim_id": "kingslayer_weapon_sequence",
+        "source_lane": "archetype_matched_public_guide",
+    }
+
+    plan = route_card_behavior_surfaces([claim])
+
+    assert plan["suppressed"] == []
+    assert {row["card_id"] for row in plan["rows"]} == {
+        "DEEP_014",
+        "VAC_701",
+        "TIME_875t1",
+    }
+    assert {row["behavior_block"] for row in plan["rows"]} == {
+        "BeforePhysicalAttackBonus"
+    }
+    assert {row["value"] for row in plan["rows"]} == {"8"}
 
 
 def test_suppressed_behavior_row_is_not_semantically_scored():
