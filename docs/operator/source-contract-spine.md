@@ -40,6 +40,25 @@ A metadata-only CardID file is not `runtime_emitted`.
 Load safety does not prove in-client optimality.
 `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
 
+## GlobalValues Plan Trust Boundary
+
+| Boundary | Canonical input | Required outcome |
+| --- | --- | --- |
+| `legacy_claim_inference` | effective claim kind before authority-field stripping | untyped posture text cannot mint a source receipt |
+| `identity_signal_layers` | document and claim identity signals together | any explicit non-guide signal vetoes public-guide authority |
+| `bundle_receipt_truth` | non-plan source-document bundle and verified receipts | plan bundle and plan receipts cannot replace package truth |
+| `plan_input_diagnostics` | imported plan claims, rows, and receipts | diagnostic only with `runtime_gate_impact=none` |
+| `plan_revalidation` | canonical lifecycle, target fingerprint, and verified receipts | only canonical rows may lower |
+| `suppression_transparency` | key, operation, overlay, value, and claim references | rejected plan attempt remains reconstructible |
+| `exact_evidence_counts` | non-negative integer evidence | malformed counts fail closed to baseline and visible suppression |
+
+The canonical non-plan `guide_claim_bundle.json`, verified source receipts,
+claim lifecycle, and `source_contract_audit.json` remain package truth. An
+imported plan bundle is recorded separately as input diagnosis and never
+replaces those surfaces. A plan row that does match canonical truth must pass
+the same lifecycle, target-fingerprint, and receipt gate; the import path must
+not add a false missing-receipt suppression to that valid row.
+
 ## ShadowPriest Runtime Surfaces
 
 | Semantic family | Identity | Runtime surface | Boundary |

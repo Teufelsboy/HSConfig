@@ -36,6 +36,7 @@ def test_card_behavior_report_persists_compiler_only_runtime_conflicts(
                         "retrieved_at": "2026-07-26T00:00:00Z",
                         "claims": [
                             {
+                                "claim_id": "claim-a",
                                 "claim_kind": "card_role",
                                 "cards": ["REV_290"],
                                 "stance": "deploy_location",
@@ -98,11 +99,11 @@ def test_card_behavior_report_persists_compiler_only_runtime_conflicts(
             "behavior_block": "BeforePlayCardBonus",
             "condition": "*",
             "value": value,
-            "claim_id": claim_id,
-            "source_claim_ids": [claim_id],
+            "claim_id": "claim-a",
+            "source_claim_ids": ["claim-a"],
             "meaningful_runtime_surface": True,
         }
-        for claim_id, value in (("claim-a", "6"), ("claim-b", "8"))
+        for value in ("6", "8")
     ]
     reports = {
         "mulligan_plan_report.json": {

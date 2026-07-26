@@ -201,12 +201,15 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         verified_source_receipts=verified_globalvalues_source_receipts,
     )
     canonical_global_values_authority_matrix = global_values_authority_matrix
+    plan_input_diagnostics: dict[str, Any] | None = None
     plan_reports_dir = getattr(args, "plan_reports_dir", None)
     if plan_reports_dir is not None:
         plan_dir = Path(plan_reports_dir)
         if not plan_dir.is_dir():
             raise ValueError(f"--plan-reports-dir must be an existing directory: {plan_dir}")
-        guide_claim_bundle = _read_plan_report(plan_dir, "guide_claim_bundle.json", guide_claim_bundle)
+        imported_plan_guide_claim_bundle = _normalize_claim_conflict_report(
+            _read_plan_report(plan_dir, "guide_claim_bundle.json", {})
+        )
         mulligan_plan = _read_plan_report(plan_dir, "mulligan_plan_report.json", mulligan_plan)
         card_behavior_plan = _read_plan_report(
             plan_dir,
@@ -219,15 +222,13 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "global_values_authority_matrix.json",
             global_values_authority_matrix,
         )
-        guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
-        source_claim_conflict_report = guide_claim_bundle.get(
-            "claim_conflict_report",
-            {"conflict_count": 0, "conflicts": []},
-        )
-        plan_claims = list(guide_claim_bundle.get("claims", []))
-        initial_lifecycle_rows = build_initial_lifecycle_rows(
-            plan_claims,
-            conflict_report=source_claim_conflict_report,
+        plan_input_diagnostics = _build_plan_input_diagnostics(
+            canonical_guide_claim_bundle=canonical_guide_claim_bundle,
+            imported_guide_claim_bundle=imported_plan_guide_claim_bundle,
+            mulligan_plan=mulligan_plan,
+            card_behavior_plan=card_behavior_plan,
+            combo_plan=combo_plan,
+            global_values_authority_matrix=global_values_authority_matrix,
         )
         (
             mulligan_plan,
@@ -245,6 +246,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             ),
             card_roles=card_roles,
             deck_identity=deck_identity,
+            verified_source_receipts=verified_globalvalues_source_receipts,
         )
     gameplan_contract = {
         **gameplan_contract,
@@ -374,6 +376,11 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     write_json(reports_dir / "combo_plan_report.json", combo_plan)
     write_json(reports_dir / "combo_suppression_report.json", combo_plan.get("suppressed", []))
     write_json(reports_dir / "global_values_authority_matrix.json", global_values_authority_matrix)
+    if plan_input_diagnostics is not None:
+        write_json(
+            reports_dir / "plan_input_diagnostics.json",
+            plan_input_diagnostics,
+        )
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
     write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)
     source_contract_audit_report = build_source_contract_audit(
@@ -386,6 +393,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         global_values_authority_matrix=global_values_authority_matrix,
         config_readiness_report=config_readiness_report,
         initial_lifecycle_rows=initial_lifecycle_rows,
+        plan_input_diagnostics=plan_input_diagnostics,
     )
     write_json(reports_dir / "source_contract_audit.json", source_contract_audit_report)
     (reports_dir / "source_contract_audit.md").write_text(
@@ -616,6 +624,104 @@ def _normalize_claim_conflict_report(bundle: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _build_plan_input_diagnostics(
+    *,
+    canonical_guide_claim_bundle: dict[str, Any],
+    imported_guide_claim_bundle: dict[str, Any],
+    mulligan_plan: dict[str, Any],
+    card_behavior_plan: dict[str, Any],
+    combo_plan: dict[str, Any],
+    global_values_authority_matrix: dict[str, Any],
+) -> dict[str, Any]:
+    canonical_claim_ids = {
+        str(claim.get("claim_id", ""))
+        for claim in canonical_guide_claim_bundle.get("claims", [])
+        if isinstance(claim, dict) and claim.get("claim_id")
+    }
+    imported_claims = [
+        claim
+        for claim in imported_guide_claim_bundle.get("claims", [])
+        if isinstance(claim, dict)
+    ]
+    ignored_claims = []
+    for claim in imported_claims:
+        claim_id = str(claim.get("claim_id", ""))
+        ignored_claims.append(
+            {
+                "claim_id": claim_id,
+                "claim_kind": normalized_claim_kind(claim),
+                "reason": (
+                    "plan_claim_reference_only_canonical_truth_retained"
+                    if claim_id and claim_id in canonical_claim_ids
+                    else "plan_claim_not_canonical_source_truth"
+                ),
+                "runtime_gate_impact": "none",
+            }
+        )
+
+    imported_rows: list[dict[str, Any]] = []
+    for report_name, section, rows in (
+        ("mulligan_plan_report.json", "rules", mulligan_plan.get("rules", [])),
+        (
+            "card_behavior_plan_report.json",
+            "rows",
+            card_behavior_plan.get("rows", []),
+        ),
+        ("combo_plan_report.json", "combos", combo_plan.get("combos", [])),
+        (
+            "global_values_authority_matrix.json",
+            "allowed_step1_overlays",
+            global_values_authority_matrix.get("allowed_step1_overlays", []),
+        ),
+        (
+            "global_values_authority_matrix.json",
+            "blocked_until_runtime_evidence",
+            global_values_authority_matrix.get(
+                "blocked_until_runtime_evidence",
+                [],
+            ),
+        ),
+    ):
+        if not isinstance(rows, list):
+            continue
+        imported_rows.extend(
+            {
+                "report": report_name,
+                "section": section,
+                "row": dict(row),
+            }
+            for row in rows
+            if isinstance(row, dict)
+        )
+
+    imported_receipts = imported_guide_claim_bundle.get(
+        "globalvalues_source_receipts",
+        [],
+    )
+    return {
+        "authority": "diagnostic_only",
+        "runtime_gate_impact": "none",
+        "guide_claim_bundle_status": "ignored_as_runtime_authority",
+        "source_receipts_status": "ignored_as_runtime_authority",
+        "canonical_claim_ids": sorted(canonical_claim_ids),
+        "imported_claim_count": len(imported_claims),
+        "imported_claims": [dict(claim) for claim in imported_claims],
+        "imported_source_receipt_count": (
+            len(imported_receipts) if isinstance(imported_receipts, list) else 0
+        ),
+        "imported_source_receipts": (
+            [
+                dict(receipt) if isinstance(receipt, dict) else receipt
+                for receipt in imported_receipts
+            ]
+            if isinstance(imported_receipts, list)
+            else []
+        ),
+        "ignored_claims": ignored_claims,
+        "imported_rows": imported_rows,
+    }
+
+
 def _policy_mulligan_deck_cards(
     gameplan_cards: Any,
     card_metadata: dict[str, Any] | list[dict[str, Any]],
@@ -687,11 +793,15 @@ def _filter_plan_reports_by_lifecycle(
     canonical_global_values_authority_matrix: dict[str, Any],
     card_roles: dict[str, Any],
     deck_identity: dict[str, Any],
+    verified_source_receipts: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     globalvalues_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "globalvalues",
-        context={"deck_identity": deck_identity},
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": verified_source_receipts,
+        },
     )
     globalvalues_decision_claims = [
         *globalvalues_selection["accepted_claims"],
@@ -710,6 +820,7 @@ def _filter_plan_reports_by_lifecycle(
         aggression_profile="baseline",
         claims=globalvalues_decision_claims,
         deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
     )
     return (
         _filter_mulligan_plan(mulligan_plan, allowed_claim_ids["mulligan"]),
@@ -870,6 +981,13 @@ def _filter_globalvalues_authority_matrix(
         blocked_rows.append(
             {
                 "key": str(row.get("key", "")),
+                "operation": str(row.get("operation", "")),
+                "overlay": str(row.get("overlay", "")),
+                "value": (
+                    None
+                    if row.get("value") is None
+                    else str(row.get("value"))
+                ),
                 "authority": "source_contract_suppressed",
                 "claim_id": str(row.get("claim_id", "")),
                 "claim_refs": sorted(_row_claim_ids(row)),

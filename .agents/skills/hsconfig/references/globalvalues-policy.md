@@ -18,6 +18,20 @@ Rules:
 - Use `copy_baseline` for keys that HSConfig must preserve unchanged.
 - Use `step1_posture_overlay_allowed` only for source-backed Step1 posture keys.
 - Only `gameplan_posture` may drive Step1 GlobalValues posture overlays.
+- Infer the effective legacy claim kind before stripping authority-bearing
+  fields. Untyped posture prose cannot mint a source receipt.
+- Evaluate document and claim source identities additively. Any explicit
+  official, static, statistical, or otherwise non-guide signal vetoes
+  public-guide authority.
+- Keep the canonical non-plan claim bundle, verified receipts, lifecycle, and
+  source audit as package truth. Imported plan claims, rows, and receipts stay
+  in diagnostic-only `plan_input_diagnostics.json`.
+- Re-gate imported plan rows against canonical lifecycle, the target
+  fingerprint, and verified receipts. Preserve key, operation, overlay, value,
+  and claim references when suppressing a noncanonical row.
+- Treat malformed, boolean, negative, or container-shaped exact-evidence
+  counts as missing authority: keep baseline values and emit visible
+  suppression.
 - `globalvalue_numeric_tuning` is accepted source evidence for explicit numeric
   recommendations, but it is `runtime_evidence_required` and must remain
   blocked/report-visible until runtime evidence owns it.

@@ -572,6 +572,19 @@ def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
         for field in PUBLIC_GUIDE_IDENTITY_FIELDS
         if _normalized_text(claim.get(field))
     ]
+    signals = claim.get("source_identity_signals", ())
+    if isinstance(signals, Iterable) and not isinstance(
+        signals,
+        (str, bytes, Mapping),
+    ):
+        for signal in signals:
+            if not isinstance(signal, Mapping):
+                continue
+            if _normalized_text(signal.get("field")) not in PUBLIC_GUIDE_IDENTITY_FIELDS:
+                continue
+            value = _normalized_text(signal.get("value"))
+            if value:
+                identities.append(value)
     return bool(identities) and all(
         identity in PUBLIC_GUIDE_SOURCE_FAMILIES for identity in identities
     )

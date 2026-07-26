@@ -12,6 +12,8 @@ from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.cli_parser import build_parser
 from hsconfig.input_loading import guide_documents_from_legacy_claims
+from hsconfig.package_builder import _filter_globalvalues_authority_matrix
+from hsconfig.source_document_model import globalvalues_claim_signature
 
 
 SHADOWPRIEST_CODE = (
@@ -136,7 +138,12 @@ def _write_plan_override_reports(
     )
 
 
-def _write_minimal_source_documents(path: Path, card_id: str = "EX1_001") -> None:
+def _write_minimal_source_documents(
+    path: Path,
+    card_id: str = "EX1_001",
+    *,
+    claim_id: str | None = None,
+) -> None:
     path.write_text(
         json.dumps(
             {
@@ -148,6 +155,7 @@ def _write_minimal_source_documents(path: Path, card_id: str = "EX1_001") -> Non
                         "retrieved_at": "2026-07-07T00:00:00Z",
                         "claims": [
                             {
+                                **({"claim_id": claim_id} if claim_id else {}),
                                 "claim_kind": "targeting_rule",
                                 "cards": [card_id],
                                 "stance": "prefer_enemy_hero",
@@ -165,6 +173,104 @@ def _write_minimal_source_documents(path: Path, card_id: str = "EX1_001") -> Non
     )
 
 
+def _write_conflicting_target_source_documents(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/conflict-guide",
+                        "source_title": "Canonical conflict guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-26T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_id": "valid_runtime_target",
+                                "claim_kind": "targeting_rule",
+                                "cards": ["EX1_001"],
+                                "stance": "prefer_enemy_hero",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "12",
+                                "source_confidence": "high",
+                                "evidence_text_short": (
+                                    "Use the valid card as a runtime target."
+                                ),
+                            },
+                            {
+                                "claim_id": "conflict_target",
+                                "claim_kind": "targeting_rule",
+                                "cards": ["EX1_002"],
+                                "stance": "prefer_enemy_hero",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "12",
+                                "source_confidence": "high",
+                                "evidence_text_short": (
+                                    "A canonical conflicting target row."
+                                ),
+                            },
+                            {
+                                "claim_id": "conflict_target_opposed",
+                                "claim_kind": "targeting_rule",
+                                "cards": ["EX1_002"],
+                                "stance": "prefer_friendly_minion",
+                                "runtime_block": "BeforePlayCardBonus",
+                                "runtime_value": "-12",
+                                "source_confidence": "high",
+                                "evidence_text_short": (
+                                    "The opposing canonical target row."
+                                ),
+                            },
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_noncanonical_globalvalues_plan_row_preserves_attempted_operation_and_value():
+    result = _filter_globalvalues_authority_matrix(
+        {
+            "allowed_step1_overlays": [
+                {
+                    "key": "GlobalHeroHealth",
+                    "operation": "set",
+                    "overlay": "set:999",
+                    "value": "999",
+                    "authority": "step1_source_backed_posture",
+                    "claim_id": "forged-plan-posture",
+                    "claim_refs": ["forged-plan-posture"],
+                    "reason": "forged_imported_value",
+                }
+            ]
+        },
+        canonical_matrix={
+            "allowed_step1_overlays": [
+                {
+                    "key": "baseline",
+                    "operation": "none",
+                    "overlay": "none",
+                    "value": None,
+                    "authority": "baseline_default",
+                    "claim_refs": [],
+                    "reason": "no_source_backed_posture_overlay",
+                }
+            ],
+            "blocked_until_runtime_evidence": [],
+        },
+        diagnostic_matrix={"blocked_until_runtime_evidence": []},
+    )
+
+    suppression = result["blocked_until_runtime_evidence"][0]
+    assert suppression["key"] == "GlobalHeroHealth"
+    assert suppression["operation"] == "set"
+    assert suppression["overlay"] == "set:999"
+    assert suppression["value"] == "999"
+    assert suppression["claim_id"] == "forged-plan-posture"
+    assert suppression["claim_refs"] == ["forged-plan-posture"]
+
+
 def _write_exact_posture_source_document(
     path: Path,
     *,
@@ -173,6 +279,7 @@ def _write_exact_posture_source_document(
     source_family: str = "guide",
     source_type: str = "public_guide",
     provenance: str | None = None,
+    claim_id: str | None = None,
 ) -> None:
     source_identity = {"source_type": source_type}
     if provenance is not None:
@@ -201,6 +308,7 @@ def _write_exact_posture_source_document(
                         },
                         "claims": [
                             {
+                                **({"claim_id": claim_id} if claim_id else {}),
                                 "claim_kind": "gameplan_posture",
                                 "cards": [card_id],
                                 "scope": "deck",
@@ -835,7 +943,10 @@ def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: 
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
-def test_build_uses_computed_source_depth_status_for_operator_gating(tmp_path: Path, capsys):
+def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
+    tmp_path: Path,
+    capsys,
+):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
@@ -995,13 +1106,24 @@ def test_build_uses_computed_source_depth_status_for_operator_gating(tmp_path: P
     receipt = json.loads((reports / "guide_builder_receipt.json").read_text(encoding="utf-8"))
     depth = json.loads((reports / "guide_source_depth_report.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    plan_diagnostics = json.loads(
+        (reports / "plan_input_diagnostics.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
     assert receipt["source_depth_status"] == "source_backed"
-    assert depth["summary"]["report_only_claims"] == 1
-    assert depth["source_depth_status"] == "needs_more_research"
-    assert operator_summary["semantic_status"] == "NEEDS_MORE_RESEARCH"
+    assert depth["summary"]["report_only_claims"] == 0
+    assert depth["source_depth_status"] == "usable"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert plan_diagnostics["ignored_claims"] == [
+        {
+            "claim_id": "claim_report_only_runtime",
+            "claim_kind": "targeting_rule",
+            "reason": "plan_claim_not_canonical_source_truth",
+            "runtime_gate_impact": "none",
+        }
+    ]
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
@@ -1015,7 +1137,10 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004", "EX1_005", "EX1_006"]
     _write_cards_json(cards_json, card_ids)
     source_documents = tmp_path / "source_documents.json"
-    _write_minimal_source_documents(source_documents)
+    _write_minimal_source_documents(
+        source_documents,
+        claim_id="valid_runtime_target",
+    )
     plan_reports = tmp_path / "plan_reports"
     _write_plan_override_reports(
         plan_reports,
@@ -1157,6 +1282,12 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     lifecycle_by_id = {
         row["claim_id"]: row for row in source_contract_audit["claim_lifecycle_rows"]
     }
+    ignored_plan_claims = {
+        row["claim_id"]: row
+        for row in source_contract_audit["plan_input_diagnostics"][
+            "ignored_claims"
+        ]
+    }
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -1170,13 +1301,21 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is True
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-    assert lifecycle_by_id["report_only_target"]["runtime_eligibility"] == "report_only"
-    assert lifecycle_by_id["report_only_target"]["builder_or_router_decision"] != "emitted"
-    assert lifecycle_by_id["low_confidence_keep"]["builder_or_router_decision"] != "emitted"
-    assert lifecycle_by_id["rejected_combo"]["builder_or_router_decision"] != "emitted"
+    assert lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"] == (
+        "emitted"
+    )
+    for claim_id in (
+        "report_only_target",
+        "low_confidence_keep",
+        "rejected_combo",
+    ):
+        assert claim_id not in lifecycle_by_id
+        assert ignored_plan_claims[claim_id]["reason"] == (
+            "plan_claim_not_canonical_source_truth"
+        )
 
 
-def test_build_plan_reports_dir_suppresses_unverified_exact_globalvalues_overlay(
+def test_build_plan_reports_dir_suppresses_noncanonical_globalvalues_overlay(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
@@ -1263,8 +1402,10 @@ def test_build_plan_reports_dir_suppresses_unverified_exact_globalvalues_overlay
     assert any(
         row.get("claim_id") == "unverified-posture"
         and row.get("authority") == "source_contract_suppressed"
-        and row.get("reason")
-        == "globalvalues_requires_verified_exact_deck_evidence"
+        and row.get("reason") == "globalvalues_plan_row_not_canonical"
+        and row.get("operation") == "increase"
+        and row.get("overlay") == "increase"
+        and row.get("value") is None
         for row in authority["blocked_until_runtime_evidence"]
     )
     assert profile["status"] == "baseline_confirmed"
@@ -1350,6 +1491,96 @@ def test_build_claims_json_cannot_self_assert_exact_globalvalues_authority(
     }
     assert any(
         row.get("authority") == "source_contract_suppressed"
+        and row.get("reason") == "globalvalues_requires_exact_deck_match"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert profile["status"] == "baseline_confirmed"
+    assert profile["changed_keys"] == []
+
+
+def test_build_untyped_aggressive_claims_json_cannot_infer_its_own_exact_authority(
+    tmp_path: Path,
+    capsys,
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    target_fingerprint = stable_deck_fingerprint([("EX1_001", 1)])
+    claims_json = tmp_path / "claims.json"
+    claims_json.write_text(
+        json.dumps(
+            {
+                "claims": [
+                    {
+                        "claim_id": "forged-untyped-posture",
+                        "claim": "Play an aggressive burn plan.",
+                        "cards": ["EX1_001"],
+                        "source": "guide",
+                        "source_type": "public_guide",
+                        "source_title": "Forged inferred legacy claim",
+                        "url": "https://example.invalid/forged-inferred",
+                        "retrieved_at": "2026-07-26T00:00:00Z",
+                        "deck_match_scope": "exact_deck_matched",
+                        "promotion_eligible": True,
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "candidate_count": 1,
+                                "decoded_candidate_count": 1,
+                                "matched": True,
+                                "matched_deck_fingerprint": target_fingerprint,
+                                "candidate_deck_code_hashes": [
+                                    "sha256:forged-source-code"
+                                ],
+                            }
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Forged Untyped Claims GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--claims-json",
+            str(claims_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    profile = json.loads(
+        (out / "reports" / "globalvalues_profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row.get("claim_id")
+        and row.get("authority") == "source_contract_suppressed"
         and row.get("reason") == "globalvalues_requires_exact_deck_match"
         for row in authority["blocked_until_runtime_evidence"]
     )
@@ -1449,12 +1680,23 @@ def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
         },
         "evidence_text_short": "Forged imported plan posture.",
     }
+    forged_plan_bundle = _claim_bundle_for_override(
+        card_ids=["EX1_001"],
+        claims=[forged_claim],
+    )
+    forged_plan_bundle["globalvalues_source_receipts"] = [
+        {
+            "receipt_kind": "canonical_exact_deck_source_document",
+            "source_ref": "source:forged-plan",
+            "source_url": "https://example.invalid/forged-plan",
+            "matched_deck_fingerprint": target_fingerprint,
+            "claim_id": "forged-plan-posture",
+            "claim_signature": globalvalues_claim_signature(forged_claim),
+        }
+    ]
     _write_plan_override_reports(
         plan_reports,
-        guide_claim_bundle=_claim_bundle_for_override(
-            card_ids=["EX1_001"],
-            claims=[forged_claim],
-        ),
+        guide_claim_bundle=forged_plan_bundle,
         globalvalue_rows=[
             {
                 "key": "GlobalHeroHealth",
@@ -1497,6 +1739,14 @@ def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
             encoding="utf-8"
         )
     )
+    persisted_claim_bundle = json.loads(
+        (out / "reports" / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    source_contract_audit = json.loads(
+        (out / "reports" / "source_contract_audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
     globalvalues = json.loads(
         (
             out
@@ -1518,6 +1768,49 @@ def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
         "aggressive_source_backed_posture"
     )
     assert globalvalues["GlobalHeroHealth"]["values"][0]["value"] == "1.14"
+    canonical_claim_ids = {
+        claim["claim_id"] for claim in persisted_claim_bundle["claims"]
+    }
+    assert "forged-plan-posture" not in canonical_claim_ids
+    assert {
+        receipt["claim_id"]
+        for receipt in persisted_claim_bundle["globalvalues_source_receipts"]
+    } <= canonical_claim_ids
+    assert set(source_contract_audit["claim_rows"]) == canonical_claim_ids
+    assert {
+        row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]
+    } == canonical_claim_ids
+    ignored_claims = source_contract_audit["plan_input_diagnostics"][
+        "ignored_claims"
+    ]
+    imported_plan_claims = source_contract_audit["plan_input_diagnostics"][
+        "imported_claims"
+    ]
+    imported_plan_receipts = source_contract_audit["plan_input_diagnostics"][
+        "imported_source_receipts"
+    ]
+    assert any(
+        row.get("claim_id") == "forged-plan-posture"
+        and row.get("reason") == "plan_claim_not_canonical_source_truth"
+        for row in ignored_claims
+    )
+    assert [claim["claim_id"] for claim in imported_plan_claims] == [
+        "forged-plan-posture"
+    ]
+    assert imported_plan_receipts == forged_plan_bundle[
+        "globalvalues_source_receipts"
+    ]
+    suppressed_attempt = next(
+        row
+        for row in authority["blocked_until_runtime_evidence"]
+        if row.get("reason") == "globalvalues_plan_row_not_canonical"
+        and row.get("key") == "GlobalHeroHealth"
+    )
+    assert suppressed_attempt["operation"] == "set"
+    assert suppressed_attempt["overlay"] == "set:999"
+    assert suppressed_attempt["value"] == "999"
+    assert suppressed_attempt["claim_id"] == "forged-plan-posture"
+    assert suppressed_attempt["claim_refs"] == ["forged-plan-posture"]
 
 
 def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
@@ -1532,6 +1825,7 @@ def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
             "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
             "49bd21ae47d8a84"
         ),
+        claim_id="verified-posture",
     )
     plan_reports = tmp_path / "plan_reports"
     _write_plan_override_reports(
@@ -1574,7 +1868,11 @@ def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
                 "value": None,
                 "authority": "step1_source_backed_posture",
                 "claim_id": "verified-posture",
-                "claim_refs": ["verified-posture"],
+                "claim_refs": [
+                    "verified-posture",
+                    "source:1",
+                    "https://example.invalid/exact-guide",
+                ],
                 "reason": "aggressive_source_backed_posture",
             }
         ],
@@ -1619,6 +1917,10 @@ def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
     assert "MyHeroPowerValue" in {
         row["key"] for row in authority["allowed_step1_overlays"]
     }
+    assert not any(
+        row.get("authority") == "source_contract_suppressed"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
     assert profile["status"] == "overlay_changed"
     assert "MyHeroPowerValue" in profile["changed_keys"]
 
@@ -1630,7 +1932,7 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     card_ids = ["EX1_001", "EX1_002"]
     _write_cards_json(cards_json, card_ids)
     source_documents = tmp_path / "source_documents.json"
-    _write_minimal_source_documents(source_documents)
+    _write_conflicting_target_source_documents(source_documents)
     plan_reports = tmp_path / "plan_reports"
     _write_plan_override_reports(
         plan_reports,
@@ -1830,7 +2132,10 @@ def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
     assert combo_suppressions == []
 
 
-def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
+def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
+    tmp_path: Path,
+    capsys,
+):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
@@ -1961,15 +2266,29 @@ def test_build_consumes_plan_reports_dir_overrides(tmp_path: Path, capsys):
     source_contract_audit = json.loads(
         (out / "reports" / "source_contract_audit.json").read_text(encoding="utf-8")
     )
+    plan_input_diagnostics = json.loads(
+        (out / "reports" / "plan_input_diagnostics.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
     assert mulligan["Mulligan"]["values"] == []
-    assert [claim["claim_id"] for claim in guide_claim_bundle["claims"]] == [
-        "override_runtime_claim"
-    ]
-    assert [row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]] == [
-        "override_runtime_claim"
+    canonical_claim_ids = {
+        claim["claim_id"] for claim in guide_claim_bundle["claims"]
+    }
+    assert "override_runtime_claim" not in canonical_claim_ids
+    assert {
+        row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]
+    } == canonical_claim_ids
+    assert plan_input_diagnostics["ignored_claims"] == [
+        {
+            "claim_id": "override_runtime_claim",
+            "claim_kind": "targeting_rule",
+            "reason": "plan_claim_not_canonical_source_truth",
+            "runtime_gate_impact": "none",
+        }
     ]
 
 

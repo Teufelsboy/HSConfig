@@ -71,3 +71,18 @@ def test_source_evidence_closure_is_a_diagnostic_artifact_not_an_apply_authority
     )
     assert by_file["reports/source_evidence_closure.json"]["diagnostic_only"] is True
     assert by_file["reports/source_evidence_closure.json"]["can_block_apply"] is False
+
+
+def test_plan_input_diagnostics_is_classified_without_a_second_apply_authority():
+    manifest = build_output_ownership_manifest(
+        ["reports/operator_summary.json", "reports/plan_input_diagnostics.json"]
+    )
+
+    by_file = {row["file"]: row for row in manifest["files"]}
+    diagnostics = by_file["reports/plan_input_diagnostics.json"]
+
+    assert diagnostics["classification"] == "diagnostic"
+    assert diagnostics["authority"] == "diagnostic_artifact"
+    assert diagnostics["diagnostic_only"] is True
+    assert diagnostics["can_block_apply"] is False
+    assert manifest["summary"]["unclassified_file_count"] == 0

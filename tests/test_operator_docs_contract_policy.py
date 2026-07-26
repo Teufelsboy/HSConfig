@@ -894,3 +894,66 @@ def test_operator_contract_models_physical_rows_and_assurance_dimensions() -> No
     surfaces = _markdown_table(spine, "## ShadowPriest Runtime Surfaces")
     assert surfaces["reciprocal_hero_burn"]["Runtime surface"] == "report-only"
     assert "state_dependent" not in surfaces
+
+
+def test_operator_contract_names_globalvalues_plan_trust_boundaries() -> None:
+    spine = (ROOT / "docs/operator/source-contract-spine.md").read_text(
+        encoding="utf-8"
+    )
+    rows = _markdown_table(spine, "## GlobalValues Plan Trust Boundary")
+
+    assert rows == {
+        "legacy_claim_inference": {
+            "Boundary": "legacy_claim_inference",
+            "Canonical input": (
+                "effective claim kind before authority-field stripping"
+            ),
+            "Required outcome": (
+                "untyped posture text cannot mint a source receipt"
+            ),
+        },
+        "identity_signal_layers": {
+            "Boundary": "identity_signal_layers",
+            "Canonical input": "document and claim identity signals together",
+            "Required outcome": (
+                "any explicit non-guide signal vetoes public-guide authority"
+            ),
+        },
+        "bundle_receipt_truth": {
+            "Boundary": "bundle_receipt_truth",
+            "Canonical input": (
+                "non-plan source-document bundle and verified receipts"
+            ),
+            "Required outcome": (
+                "plan bundle and plan receipts cannot replace package truth"
+            ),
+        },
+        "plan_input_diagnostics": {
+            "Boundary": "plan_input_diagnostics",
+            "Canonical input": "imported plan claims, rows, and receipts",
+            "Required outcome": (
+                "diagnostic only with runtime_gate_impact=none"
+            ),
+        },
+        "plan_revalidation": {
+            "Boundary": "plan_revalidation",
+            "Canonical input": (
+                "canonical lifecycle, target fingerprint, and verified receipts"
+            ),
+            "Required outcome": "only canonical rows may lower",
+        },
+        "suppression_transparency": {
+            "Boundary": "suppression_transparency",
+            "Canonical input": (
+                "key, operation, overlay, value, and claim references"
+            ),
+            "Required outcome": "rejected plan attempt remains reconstructible",
+        },
+        "exact_evidence_counts": {
+            "Boundary": "exact_evidence_counts",
+            "Canonical input": "non-negative integer evidence",
+            "Required outcome": (
+                "malformed counts fail closed to baseline and visible suppression"
+            ),
+        },
+    }

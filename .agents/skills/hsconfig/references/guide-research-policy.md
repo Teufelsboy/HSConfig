@@ -87,6 +87,38 @@ the normalized claim also carries
 `matched_deck_fingerprint` equals the current target
 `deck_identity["deck_fingerprint"]`. A missing target fingerprint fails closed.
 
+## GlobalValues Plan Trust Boundary
+
+| Boundary | Canonical input | Required outcome |
+| --- | --- | --- |
+| `legacy_claim_inference` | effective claim kind before authority-field stripping | untyped posture text cannot mint a source receipt |
+| `identity_signal_layers` | document and claim identity signals together | any explicit non-guide signal vetoes public-guide authority |
+| `bundle_receipt_truth` | non-plan source-document bundle and verified receipts | plan bundle and plan receipts cannot replace package truth |
+| `plan_input_diagnostics` | imported plan claims, rows, and receipts | diagnostic only with `runtime_gate_impact=none` |
+| `plan_revalidation` | canonical lifecycle, target fingerprint, and verified receipts | only canonical rows may lower |
+| `suppression_transparency` | key, operation, overlay, value, and claim references | rejected plan attempt remains reconstructible |
+| `exact_evidence_counts` | non-negative integer evidence | malformed counts fail closed to baseline and visible suppression |
+
+Infer the effective legacy claim kind before stripping authority fields.
+Untyped `aggressive`, `aggro`, `burn`, or `pressure` prose is posture, so a
+legacy claim cannot carry self-asserted source authority into the synthetic
+source-document path. Treat document- and claim-level identity fields as
+additive signals; any explicit official, static, statistical, or otherwise
+non-guide signal vetoes public-guide authority.
+
+Keep the canonical non-plan `guide_claim_bundle.json`, verified receipts, claim
+lifecycle, and `source_contract_audit.json` as package truth. Preserve imported
+plan claims, rows, and receipts separately in `plan_input_diagnostics.json`
+under `imported_claims`, `imported_rows`, and `imported_source_receipts`, with
+`runtime_gate_impact=none`; never substitute them for canonical truth.
+Re-gate plan rows with the canonical lifecycle, current target fingerprint, and
+verified receipts. A valid canonical row must not gain a false
+missing-receipt suppression. A rejected row must retain key, operation,
+overlay, value, `claim_id`, and `claim_refs`, including an attempted `set:999`.
+Malformed, boolean, negative, or container-shaped exact-evidence
+`candidate_count` or `decoded_candidate_count` values fail closed to baseline
+plus visible suppression instead of aborting the build.
+
 Short evidence row shape for `--source-evidence-json`:
 
 ```json

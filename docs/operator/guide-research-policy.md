@@ -90,6 +90,38 @@ All populated source identity fields are evaluated together. An explicit
 official, static, statistical, or otherwise non-guide identity vetoes public
 guide authority even when another field says `public_guide`.
 
+## GlobalValues Plan Trust Boundary
+
+The effective legacy claim kind is inferred before authority-bearing fields are
+stripped. Therefore untyped `aggressive`, `aggro`, `burn`, or `pressure` prose
+is treated as posture before a synthetic source document is built and cannot
+carry self-asserted exact-match, promotion, visibility, lane, or provenance
+authority into a source receipt.
+
+Document-level and claim-level source identities are additive evidence, not
+override aliases. The normalized claim keeps all identity signals for the
+receipt gate, so one claim-local `public_guide` value cannot hide an explicit
+official, static, statistical, or otherwise non-guide document signal.
+
+The canonical non-plan `guide_claim_bundle.json`, its verified receipts, claim
+lifecycle, and `source_contract_audit.json` remain package truth. A
+`--plan-reports-dir` bundle, its claims, rows, and receipts are preserved only
+as `plan_input_diagnostics` with `runtime_gate_impact=none`; its
+`imported_claims`, `imported_rows`, and `imported_source_receipts` fields cannot
+replace or manufacture package authority.
+
+Every imported GlobalValues plan row is revalidated against the canonical
+lifecycle, current target fingerprint, verified source receipts, and rebuilt
+canonical matrix. A canonical positive row lowers without a false
+missing-receipt suppression. A noncanonical row remains suppressed with its
+key, operation, overlay, value, `claim_id`, and `claim_refs`, so an attempt such
+as `GlobalHeroHealth set:999` stays reconstructible.
+
+Exact-deck `candidate_count` and `decoded_candidate_count` evidence accepts
+non-negative integers only. Booleans, negative values, containers, and
+malformed strings fail closed: baseline GlobalValues remain unchanged and a
+visible suppression explains the missing verified receipt.
+
 ## Structured Source Format
 
 Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.
@@ -520,6 +552,12 @@ GlobalValues key authority:
   canonical matrix from the non-plan source receipt and suppresses any imported
   row whose key, operation, overlay, normalized value, reason, authority, and
   claim binding do not match that rebuilt matrix.
+- Imported plan bundles and receipts remain input diagnostics only; the
+  canonical package bundle, lifecycle, and source audit always come from the
+  non-plan source-document path.
+- Suppression preserves the attempted key, operation, overlay, value, and claim
+  references. Malformed exact-evidence counts fail closed to baseline plus
+  visible suppression rather than aborting the build.
 - `runtime_evidence_required` keys stay blocked until HSTuner or another runtime-evidence workflow owns them.
 
 ## Claim-Kind Change Checklist
@@ -622,7 +660,12 @@ Use `source_to_runtime_explainability.json` as the primary card-readable repair 
 - `candidate_archetypes.json`: primary and fallback archetype candidates.
 - `deck_fingerprint.json`: deck multiset identity used by research normalization.
 - `identity_graph_report.json`: main deck, sideboard, hero, and metadata identity.
-- `guide_claim_bundle.json`: normalized claims used by the build.
+- `guide_claim_bundle.json`: canonical normalized non-plan claims and verified
+  receipts used by the build; imported plan bundles cannot replace it.
+- `plan_input_diagnostics.json`: when plan reports are imported,
+  `imported_claims`, `imported_rows`, and `imported_source_receipts` keep their
+  input visible with `runtime_gate_impact=none`; it is never source or apply
+  authority.
 - `source_evidence_index.json`: source-level summary.
 - `claim_coverage_report.json`: guide-backed, static-semantics, and uncovered card counts.
 - `unsupported_claims_report.json`: rejected source claims with reasons.

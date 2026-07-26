@@ -6,6 +6,7 @@ from typing import Any
 
 from hsconfig.source_freshness import classify_freshness as _classify_freshness
 from hsconfig.source_document_model import (
+    PUBLIC_GUIDE_IDENTITY_FIELDS,
     REQUIRED_CLAIM_KEYS,
     REQUIRED_SOURCE_KEYS,
     SUPPORTED_ATOMIC_CLAIM_KINDS,
@@ -282,6 +283,9 @@ def _normalize_source_claim(
         value = raw_claim.get(key, document.get(key))
         if value is not None and str(value).strip():
             claim[key] = str(value)
+    source_identity_signals = _source_identity_signals(raw_claim, document)
+    if source_identity_signals:
+        claim["source_identity_signals"] = source_identity_signals
     for key in ("promotion_eligible", "source_record_strength"):
         if key in raw_claim:
             claim[key] = raw_claim[key]
@@ -418,13 +422,49 @@ def _canonical_exact_deck_evidence(
     }
     for key in ("candidate_count", "decoded_candidate_count"):
         if key in exact:
-            canonical[key] = int(exact.get(key, 0))
+            count = _nonnegative_int(exact.get(key))
+            if count is not None:
+                canonical[key] = count
     hashes = exact.get("candidate_deck_code_hashes")
     if isinstance(hashes, list):
         canonical["candidate_deck_code_hashes"] = sorted(
             str(value).strip() for value in hashes if str(value).strip()
         )
     return canonical
+
+
+def _source_identity_signals(
+    raw_claim: dict[str, Any],
+    document: dict[str, Any],
+) -> list[dict[str, str]]:
+    signals: list[dict[str, str]] = []
+    for origin, container in (("document", document), ("claim", raw_claim)):
+        for field in PUBLIC_GUIDE_IDENTITY_FIELDS:
+            value = _clean_text(container.get(field, ""))
+            if value:
+                signals.append(
+                    {
+                        "origin": origin,
+                        "field": field,
+                        "value": value,
+                    }
+                )
+    return signals
+
+
+def _nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _globalvalues_source_receipt(

@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.globalvalues_key_authority import authority_for_key
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -392,6 +394,81 @@ def test_contradictory_non_guide_provenance_vetoes_public_guide_identity() -> No
     assert decision.reason == "globalvalues_requires_public_guide_source"
 
 
+@pytest.mark.parametrize(
+    "identity_field",
+    ("source_type", "provenance", "source_type_family"),
+)
+def test_document_non_guide_identity_cannot_be_hidden_by_claim_local_public_guide_alias(
+    identity_field: str,
+) -> None:
+    document = _exact_posture_source_document()
+    document[identity_field] = "official_card_data"
+    document["claims"][0][identity_field] = "public_guide"
+    bundle = build_source_document_bundle(
+        deck_identity=_receipt_deck_identity(),
+        card_metadata={"cards": _receipt_deck_identity()["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+    claim = bundle["claims"][0]
+
+    decision = can_lower_to_globalvalues(
+        claim,
+        deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=bundle["globalvalues_source_receipts"],
+    )
+
+    assert {
+        (signal["origin"], signal["field"], signal["value"])
+        for signal in claim["source_identity_signals"]
+    } >= {
+        ("document", identity_field, "official_card_data"),
+        ("claim", identity_field, "public_guide"),
+    }
+    assert decision.allowed is False
+    assert decision.reason == "globalvalues_requires_public_guide_source"
+
+
+@pytest.mark.parametrize(
+    ("count_field", "invalid_value"),
+    (
+        ("candidate_count", "not-an-int"),
+        ("decoded_candidate_count", []),
+        ("candidate_count", -1),
+        ("decoded_candidate_count", True),
+    ),
+)
+def test_malformed_exact_evidence_counts_fail_closed_to_baseline_suppression(
+    count_field: str,
+    invalid_value: object,
+) -> None:
+    document = _exact_posture_source_document()
+    document["deck_match"]["exact_deck_evidence"][count_field] = invalid_value
+
+    bundle = build_source_document_bundle(
+        deck_identity=_receipt_deck_identity(),
+        card_metadata={"cards": _receipt_deck_identity()["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+    matrix = build_globalvalues_authority_matrix(
+        aggression_profile="aggressive",
+        claims=bundle["claims"],
+        deck_identity={"deck_fingerprint": "target-fingerprint"},
+        verified_source_receipts=bundle["globalvalues_source_receipts"],
+    )
+
+    assert bundle["globalvalues_source_receipts"] == []
+    assert {row["key"] for row in matrix["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row.get("authority") == "source_contract_suppressed"
+        and row.get("reason") == "globalvalues_requires_verified_source_receipt"
+        for row in matrix["blocked_until_runtime_evidence"]
+    )
+
+
 def test_source_less_posture_is_visibly_suppressed_by_matrix() -> None:
     claim = {
         "claim_id": "source-less-posture",
@@ -440,3 +517,45 @@ def test_mismatched_exact_guide_fingerprint_is_visibly_suppressed_by_matrix():
         and row["reason"] == "globalvalues_exact_deck_fingerprint_mismatch"
         for row in matrix["blocked_until_runtime_evidence"]
     )
+
+
+def _receipt_deck_identity() -> dict[str, object]:
+    return {
+        "deck_name": "Receipt Fixture",
+        "deck_fingerprint": "target-fingerprint",
+        "cards": [{"card_id": "CARD_001", "name": "Receipt Card", "count": 1}],
+    }
+
+
+def _exact_posture_source_document() -> dict[str, object]:
+    return {
+        "source_url": "https://example.invalid/exact-receipt",
+        "source_title": "Exact receipt guide",
+        "source_family": "guide",
+        "source_type": "public_guide",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match_scope": "exact_deck_matched",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
+                "matched": True,
+                "matched_deck_fingerprint": "target-fingerprint",
+                "candidate_deck_code_hashes": ["sha256:source-code"],
+            }
+        },
+        "claims": [
+            {
+                "claim_id": "verified-posture",
+                "claim_kind": "gameplan_posture",
+                "cards": ["CARD_001"],
+                "scope": "deck",
+                "stance": "aggressive",
+                "evidence_text_short": "Use the aggressive posture.",
+                "source_confidence": "high",
+                "promotion_eligible": True,
+            }
+        ],
+    }

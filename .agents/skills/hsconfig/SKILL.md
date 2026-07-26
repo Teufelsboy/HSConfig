@@ -30,9 +30,9 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 ## Hard Boundaries
 
 - Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Guide-backed Mulligan claims require `exact_deck_matched`.
-- GlobalValues posture authority requires a canonical non-plan source-document receipt bound to the normalized claim signature and target deck fingerprint.
-  Legacy `--claims-json`, lifecycle metadata, or imported plan rows cannot self-assert it; any official/static/non-guide provenance signal vetoes it.
-  Plan rows are rebuilt from the receipt rather than accepted by Claim ID.
+- GlobalValues posture authority requires a canonical non-plan receipt bound to claim signature and target fingerprint; untyped legacy posture cannot self-assert it.
+- Document and claim identities are additive; any non-guide signal vetoes. Canonical non-plan bundle, receipts, lifecycle, and audit remain truth; plan inputs are diagnostic only.
+- Re-gate plan rows with canonical lifecycle, target fingerprint, and receipts. Suppressions retain key/operation/overlay/value/claim refs; malformed counts fail closed.
 - Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 - `reports/operator_summary.json` remains the only normal apply authority.
 - Runtime apply is guarded by `operator_summary.json`, package structure, fake receipts, and package hashes.

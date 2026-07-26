@@ -1466,3 +1466,49 @@ def test_skill_entrypoint_routes_audited_closure_to_direct_references() -> None:
     assert row_contract["physical_report_parity"]["Shape"] == (
         "physical CardID values versus meaningful card-behavior report rows"
     )
+
+
+def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
+    guide = (SKILL_ROOT / "references/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    rows = _markdown_table(guide, "## GlobalValues Plan Trust Boundary")
+
+    assert rows["legacy_claim_inference"] == {
+        "Boundary": "legacy_claim_inference",
+        "Canonical input": "effective claim kind before authority-field stripping",
+        "Required outcome": "untyped posture text cannot mint a source receipt",
+    }
+    assert rows["identity_signal_layers"]["Canonical input"] == (
+        "document and claim identity signals together"
+    )
+    assert rows["identity_signal_layers"]["Required outcome"] == (
+        "any explicit non-guide signal vetoes public-guide authority"
+    )
+    assert rows["bundle_receipt_truth"]["Canonical input"] == (
+        "non-plan source-document bundle and verified receipts"
+    )
+    assert rows["bundle_receipt_truth"]["Required outcome"] == (
+        "plan bundle and plan receipts cannot replace package truth"
+    )
+    assert rows["plan_input_diagnostics"]["Required outcome"] == (
+        "diagnostic only with runtime_gate_impact=none"
+    )
+    assert rows["plan_revalidation"]["Canonical input"] == (
+        "canonical lifecycle, target fingerprint, and verified receipts"
+    )
+    assert rows["plan_revalidation"]["Required outcome"] == (
+        "only canonical rows may lower"
+    )
+    assert rows["suppression_transparency"]["Canonical input"] == (
+        "key, operation, overlay, value, and claim references"
+    )
+    assert rows["suppression_transparency"]["Required outcome"] == (
+        "rejected plan attempt remains reconstructible"
+    )
+    assert rows["exact_evidence_counts"]["Canonical input"] == (
+        "non-negative integer evidence"
+    )
+    assert rows["exact_evidence_counts"]["Required outcome"] == (
+        "malformed counts fail closed to baseline and visible suppression"
+    )

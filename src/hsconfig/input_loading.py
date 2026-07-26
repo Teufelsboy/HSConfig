@@ -160,10 +160,7 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "claims": [],
             },
         )
-        legacy_claim_kind = (
-            runtime_claim_kind(claim)
-            or str(claim.get("claim_type", "")).strip().lower()
-        )
+        legacy_claim_kind = _effective_legacy_claim_kind(claim)
         if legacy_claim_kind != "gameplan_posture":
             for field in (
                 "source_visibility",
@@ -189,15 +186,7 @@ def _legacy_claim_retrieved_at(claim: dict[str, Any]) -> str:
 def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     text = str(claim.get("claim", ""))
     cards = [str(card) for card in claim.get("cards", [])]
-    lowered = text.lower()
-    claim_kind = runtime_claim_kind(claim)
-    if not claim_kind:
-        if _has_legacy_targeting_signal(lowered):
-            claim_kind = "targeting_rule"
-        elif any(marker in lowered for marker in ("pressure", "aggressive", "aggro", "burn")):
-            claim_kind = "gameplan_posture"
-        else:
-            claim_kind = "card_role"
+    claim_kind = _effective_legacy_claim_kind(claim)
     converted = {
         "claim_kind": claim_kind,
         "cards": cards,
@@ -207,11 +196,12 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     }
     if str(claim.get("claim_confidence", "")).strip():
         converted["claim_confidence"] = str(claim["claim_confidence"]).strip()
-    if "promotion_eligible" in claim:
+    if "promotion_eligible" in claim and claim_kind != "gameplan_posture":
         converted["promotion_eligible"] = claim["promotion_eligible"]
-    for field in ("source_type", "provenance", "source_type_family"):
-        if field in claim:
-            converted[field] = claim[field]
+    if claim_kind != "gameplan_posture":
+        for field in ("source_type", "provenance", "source_type_family"):
+            if field in claim:
+                converted[field] = claim[field]
     if claim_kind == "combo_sequence":
         converted["sequence"] = cards
         for optional_key in ("values", "operator", "timing_kind"):
@@ -221,6 +211,21 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
         if optional_key in claim:
             converted[optional_key] = claim[optional_key]
     return converted
+
+
+def _effective_legacy_claim_kind(claim: dict[str, Any]) -> str:
+    claim_kind = runtime_claim_kind(claim)
+    if claim_kind:
+        return claim_kind
+    legacy_claim_type = str(claim.get("claim_type", "")).strip().lower()
+    if legacy_claim_type == "gameplan_posture":
+        return legacy_claim_type
+    lowered = str(claim.get("claim", "")).lower()
+    if _has_legacy_targeting_signal(lowered):
+        return "targeting_rule"
+    if any(marker in lowered for marker in ("pressure", "aggressive", "aggro", "burn")):
+        return "gameplan_posture"
+    return "card_role"
 
 
 def _legacy_claim_confidence(claim: dict[str, Any]) -> str:

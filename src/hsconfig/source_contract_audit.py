@@ -27,6 +27,7 @@ def build_source_contract_audit(
     config_readiness_report: Mapping[str, Any] | None = None,
     runtime_emission_index: Mapping[str, Mapping[str, Any]] | None = None,
     initial_lifecycle_rows: Sequence[Mapping[str, Any]] | None = None,
+    plan_input_diagnostics: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Explain why source claims did or did not lower into runtime surfaces."""
     deck_identity = deck_identity or {}
@@ -158,7 +159,7 @@ def build_source_contract_audit(
     summary["claim_lifecycle_decision_counts"] = _claim_lifecycle_decision_counts(
         claim_lifecycle_rows
     )
-    return {
+    report = {
         "schema_version": 1,
         "authority": _DIAGNOSTIC_OPERATOR_IMPACT,
         "operator_gate_impact": _DIAGNOSTIC_OPERATOR_IMPACT,
@@ -170,6 +171,9 @@ def build_source_contract_audit(
         "claim_lifecycle_rows": claim_lifecycle_rows,
         "card_rows": card_rows,
     }
+    if plan_input_diagnostics is not None:
+        report["plan_input_diagnostics"] = dict(plan_input_diagnostics)
+    return report
 
 
 def render_source_contract_audit_markdown(report: Mapping[str, Any]) -> str:
