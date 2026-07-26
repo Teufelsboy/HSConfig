@@ -98,6 +98,37 @@ def _covered_claims(card_id: str, coverage_status: str) -> dict:
     }
 
 
+def test_empty_per_card_file_is_visible_but_not_semantically_closed():
+    report = build_config_readiness_report(
+        deck_identity=_one_card_identity("CFM_637"),
+        claim_coverage=_covered_claims(
+            "CFM_637",
+            "source_backed_static_semantics",
+        ),
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "patches-trigger",
+                    "claim_kind": "mechanic_usage",
+                    "cards": ["CFM_637"],
+                    "reason": "semantic_surface_not_expressible",
+                }
+            ],
+        },
+        emitted_cardid_files=["CFM_637.json"],
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        combo_plan={"combos": [], "suppressed": []},
+        gameplan_contract={},
+        global_values_authority_matrix={},
+    )
+
+    card = report["cards"]["CFM_637"]
+    assert card["runtime_surfaces"] == ["CFM_637.json"]
+    assert card["readiness_lane"] == "report_only_supported"
+    assert card["first_missing_link"] == "semantic_surface_not_expressible"
+
+
 def test_runtime_emitted_card_gets_runtime_lane():
     report = build_config_readiness_report(
         deck_identity={

@@ -5,6 +5,7 @@ import hashlib
 from typing import Any
 
 from hsconfig.config_usefulness import build_config_usefulness
+from hsconfig.config_quality_contract import semantic_handoff_projection
 from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
 from hsconfig.report_ownership import build_report_ownership
@@ -332,6 +333,21 @@ def build_operator_summary(
         default_only_runtime_surfaces=default_only_runtime_surfaces,
         closure_profile_verdict=closure_profile_verdict,
     )
+    load_safe_to_install = (
+        technical_status == "VALID_PACKAGE"
+        and runtime_apply_allowed is True
+        and runtime_apply_mode == "load_safe_apply"
+    )
+    semantic_handoff = semantic_handoff_projection(
+        _operator_semantic_handoff_report(
+            card_behavior_plan_report=card_behavior_plan_report or {},
+            globalvalues_profile_report=globalvalues_profile_report or {},
+            source_claim_gap_report=source_claim_gap_report or {},
+            source_to_runtime_explainability_report=(
+                source_to_runtime_explainability_report or {}
+            ),
+        )
+    )
     summary = {
         "schema_version": 1,
         "deck": {
@@ -346,6 +362,10 @@ def build_operator_summary(
         "runtime_apply_mode": runtime_apply_mode,
         "runtime_apply_allowed": runtime_apply_allowed,
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
+        "load_safe_to_install": load_safe_to_install,
+        "use_config_now": load_safe_to_install,
+        "use_config_now_scope": "load_safety_only",
+        **semantic_handoff,
         "runtime_apply_contract": {
             "apply_authority": "reports/operator_summary.json",
         },
@@ -409,6 +429,83 @@ def build_operator_summary(
     }
     summary["operator_guidance"] = build_operator_guidance(summary)
     return summary
+
+
+def _operator_semantic_handoff_report(
+    *,
+    card_behavior_plan_report: dict[str, Any],
+    globalvalues_profile_report: dict[str, Any],
+    source_claim_gap_report: dict[str, Any],
+    source_to_runtime_explainability_report: dict[str, Any],
+) -> dict[str, Any]:
+    semantic_attention = sorted(
+        {
+            str(row.get("reason"))
+            for row in card_behavior_plan_report.get("suppressed", [])
+            if isinstance(row, dict) and str(row.get("reason", "")).strip()
+        }
+    )
+    source_lanes = _operator_source_lanes(
+        source_claim_gap_report,
+        source_to_runtime_explainability_report,
+    )
+    semantic_runtime_rows = len(
+        [
+            row
+            for row in card_behavior_plan_report.get("rows", [])
+            if isinstance(row, dict)
+            and str(row.get("behavior_block", "")).strip()
+            and row.get("meaningful_runtime_surface", True) is not False
+        ]
+    )
+    return {
+        "checks": {
+            "visionai_semantic_surface": {"attention": semantic_attention},
+            "globalvalues": {
+                "missing_overlay_keys": _string_list(
+                    globalvalues_profile_report.get("missing_overlay_keys")
+                )
+            },
+            "source_evidence": {
+                "source_lanes": source_lanes,
+                "semantic_runtime_rows": semantic_runtime_rows,
+            },
+        }
+    }
+
+
+def _operator_source_lanes(*reports: dict[str, Any]) -> list[str]:
+    lanes: set[str] = set()
+    for report in reports:
+        summary = report.get("summary", {})
+        if isinstance(summary, dict):
+            lane_counts = summary.get("source_quality_lane_counts", {})
+            if isinstance(lane_counts, dict):
+                lanes.update(
+                    str(lane)
+                    for lane, count in lane_counts.items()
+                    if _int_value(count) > 0
+                )
+        lanes.update(_nested_source_lanes(report))
+    return sorted(lanes)
+
+
+def _nested_source_lanes(value: Any) -> set[str]:
+    if isinstance(value, dict):
+        lanes = (
+            {str(value["source_lane"])}
+            if str(value.get("source_lane", "")).strip()
+            else set()
+        )
+        for nested in value.values():
+            lanes.update(_nested_source_lanes(nested))
+        return lanes
+    if isinstance(value, list):
+        lanes: set[str] = set()
+        for nested in value:
+            lanes.update(_nested_source_lanes(nested))
+        return lanes
+    return set()
 
 
 def _output_ownership_summary(report: dict[str, Any] | None) -> dict[str, Any]:

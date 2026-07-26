@@ -539,6 +539,84 @@ def test_configure_warning_package_can_fake_apply(tmp_path: Path, monkeypatch, c
     assert payload["receipt"]["runtime_write_performed"] is False
 
 
+def _operator_summary(**overrides) -> dict:
+    summary = {
+        "technical_status": "VALID_PACKAGE",
+        "runtime_apply_allowed": True,
+        "runtime_apply_mode": "load_safe_apply",
+        "runtime_apply_contract": {
+            "apply_authority": "reports/operator_summary.json",
+        },
+        "source_backed_status": "SOURCE_BACKED_PARTIAL",
+        "source_status_apply_blocking": False,
+        "first_missing_source_action": None,
+        "default_only_runtime_surfaces": [],
+    }
+    summary.update(overrides)
+    return summary
+
+
+def test_acceptance_summary_separates_load_safety_from_semantic_attention():
+    operator = _operator_summary(
+        technical_status="VALID_PACKAGE",
+        runtime_apply_allowed=True,
+        runtime_apply_mode="load_safe_apply",
+        source_backed_status="SOURCE_BACKED_STRONG",
+    )
+    quality = {
+        "status": "attention",
+        "checks": {
+            "runtime_row_trace_inventory": {
+                "status": "attention",
+                "unreported_runtime_rows": [{"card_id": "EX1_001"}],
+            },
+            "visionai_semantic_surface": {
+                "status": "attention",
+                "attention": ["semantic_surface_not_expressible"],
+            },
+        },
+    }
+
+    summary = _build_acceptance_summary(
+        operator_summary=operator,
+        validation_status="passed",
+        config_quality_summary=quality,
+        apply_requested=False,
+        apply_status=None,
+    )
+
+    assert summary["load_safe_to_install"] is True
+    assert summary["use_config_now"] is True
+    assert summary["semantic_handoff_status"] == "attention"
+    assert "unreported_runtime_rows" in summary["semantic_handoff_reasons"]
+
+
+def test_source_strong_does_not_imply_semantic_closed():
+    summary = _build_acceptance_summary(
+        operator_summary=_operator_summary(
+            technical_status="VALID_PACKAGE",
+            runtime_apply_allowed=True,
+            runtime_apply_mode="load_safe_apply",
+            source_backed_status="SOURCE_BACKED_STRONG",
+        ),
+        validation_status="passed",
+        config_quality_summary={
+            "status": "attention",
+            "checks": {
+                "visionai_semantic_surface": {
+                    "status": "attention",
+                    "attention": ["missing_target_scope"],
+                }
+            },
+        },
+        apply_requested=False,
+        apply_status=None,
+    )
+
+    assert summary["source_strength"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_handoff_status"] == "attention"
+
+
 def test_build_acceptance_summary_marks_load_safe_package_usable() -> None:
     operator_summary = {
         "technical_status": "VALID_PACKAGE",
@@ -569,7 +647,11 @@ def test_build_acceptance_summary_marks_load_safe_package_usable() -> None:
         config_quality_summary=config_quality_summary,
     ) == {
         "schema_version": 1,
+        "load_safe_to_install": True,
         "use_config_now": True,
+        "use_config_now_scope": "load_safety_only",
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "normal_apply_authority": "reports/operator_summary.json",
         "runtime_apply_allowed": True,
         "runtime_apply_mode": "load_safe_apply",
@@ -934,6 +1016,8 @@ def test_compact_config_quality_summary_reports_clean_status() -> None:
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
     }
 
 
@@ -960,6 +1044,8 @@ def test_compact_config_quality_summary_reports_attention_checks() -> None:
             "card_behavior_semantic_default_visible",
             "source_to_runtime_closure_rows_missing",
         ],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "next_action": "run_contract_doctor_for_details",
     }
 
@@ -986,6 +1072,8 @@ def test_compact_config_quality_summary_includes_semantic_intent_when_present() 
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "semantic_intent_status": "attention",
         "semantic_intent_first_attention": "card_behavior_runtime_row_missing_trace",
     }
@@ -1019,6 +1107,8 @@ def test_compact_config_quality_summary_includes_config_intent_self_audit() -> N
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "config_intent_self_audit_status": "attention",
         "config_intent_first_attention": "runtime_file_without_intent",
         "config_intent_runtime_files_total": 4,
@@ -1053,6 +1143,8 @@ def test_compact_config_quality_summary_includes_clean_visionai_semantic_surface
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "visionai_semantic_surface_status": "clean",
         "visionai_non_targeted_battlecry_target_rows": 0,
         "visionai_effect_only_body_rows": 0,
@@ -1113,6 +1205,8 @@ def test_compact_config_quality_summary_includes_proof_fields() -> None:
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "legacy_surfaces_present": [],
         "forbidden_normal_surfaces_absent": True,
         "forbidden_normal_surfaces_status": "clean",
@@ -1248,6 +1342,8 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "runtime_write_performed": False,
         "problem_count": 0,
         "problem_checks": [],
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "config_intent_self_audit_status": "clean",
         "config_intent_runtime_files_total": 3,
         "config_intent_runtime_files_without_intent": 0,
@@ -1256,7 +1352,11 @@ def test_configure_writes_diagnostic_config_quality_summary(
     }
     assert summary["acceptance_summary"] == {
         "schema_version": 1,
+        "load_safe_to_install": True,
         "use_config_now": True,
+        "use_config_now_scope": "load_safety_only",
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
         "normal_apply_authority": "reports/operator_summary.json",
         "runtime_apply_allowed": True,
         "runtime_apply_mode": "load_safe_apply",
@@ -1375,6 +1475,8 @@ def test_configure_quality_summary_failure_stays_diagnostic_only(
         "runtime_write_performed": False,
         "problem_count": 1,
         "problem_checks": ["config_quality_summary_failed"],
+        "semantic_handoff_status": "insufficient_evidence",
+        "semantic_handoff_reasons": ["semantic_runtime_evidence_missing"],
         "next_action": "run_contract_doctor_for_details",
         "error": "RuntimeError: quality unavailable",
     }

@@ -161,6 +161,45 @@ def test_source_backed_valid_package_is_ready_to_apply():
     assert summary["operator_guidance"]["normal_next_step"] == "apply_or_handoff"
 
 
+def test_operator_summary_keeps_load_apply_allowed_when_semantic_handoff_needs_attention():
+    summary = build_operator_summary(
+        deck_name="Semantic Attention",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 1,
+            "source_evidence": {"warnings_count": 0},
+        },
+        card_behavior_plan_report={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "claim_semantic_gap",
+                    "cards": ["CFM_637"],
+                    "reason": "semantic_surface_not_expressible",
+                }
+            ],
+        },
+        source_claim_gap_report={
+            "summary": {
+                "source_quality_lane_counts": {
+                    "deck_matched_public_guide": 1,
+                }
+            }
+        },
+    )
+
+    assert summary["load_safe_to_install"] is True
+    assert summary["use_config_now"] is True
+    assert summary["use_config_now_scope"] == "load_safety_only"
+    assert summary["semantic_handoff_status"] == "attention"
+    assert summary["semantic_handoff_reasons"] == [
+        "semantic_surface_not_expressible"
+    ]
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_exposes_mechanic_warnings_without_blocking_apply():
     summary = build_operator_summary(
         deck_name="Warning Deck",

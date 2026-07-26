@@ -126,13 +126,94 @@ PUBLIC_GUIDE_SOURCE_TYPES = {
     "public_guide",
 }
 DARKBISHOP_CARD_ID = "SW_448"
+SEMANTIC_HANDOFF_STATUSES = {"closed", "attention", "insufficient_evidence"}
+SEMANTIC_FALLBACK_SOURCE_LANES = {
+    "default_runtime",
+    "decklist_only",
+    "generic_low_confidence",
+    "policy_fallback",
+    "source_unclassified",
+    "statistical_enrichment",
+}
+
+
+def semantic_handoff_projection(report: Mapping[str, Any]) -> dict[str, Any]:
+    existing_status = str(report.get("semantic_handoff_status", ""))
+    existing_reasons = report.get("semantic_handoff_reasons")
+    if existing_status in SEMANTIC_HANDOFF_STATUSES and isinstance(
+        existing_reasons, list
+    ):
+        return {
+            "semantic_handoff_status": existing_status,
+            "semantic_handoff_reasons": sorted(
+                {str(reason) for reason in existing_reasons if str(reason)}
+            ),
+        }
+
+    checks = report.get("checks", {})
+    if not isinstance(checks, Mapping):
+        checks = {}
+
+    reasons: list[str] = []
+    trace = checks.get("runtime_row_trace_inventory", {})
+    if isinstance(trace, Mapping):
+        if trace.get("unreported_runtime_rows"):
+            reasons.append("unreported_runtime_rows")
+        if trace.get("reported_rows_missing_runtime"):
+            reasons.append("reported_rows_missing_runtime")
+
+    surface = checks.get("visionai_semantic_surface", {})
+    if isinstance(surface, Mapping):
+        attention = surface.get("attention", [])
+        if isinstance(attention, list):
+            reasons.extend(str(item) for item in attention if str(item))
+        for reason in (
+            "non_targeted_battlecry_target_rows",
+            "effect_only_body_rows",
+            "unsupported_report_only_runtime_rows",
+            "semantic_default_runtime_rows",
+        ):
+            if surface.get(reason):
+                reasons.append(reason)
+
+    globalvalues = checks.get("globalvalues", {})
+    if isinstance(globalvalues, Mapping) and globalvalues.get("missing_overlay_keys"):
+        reasons.append("missing_globalvalues_overlay_keys")
+
+    status = "closed" if not reasons else "attention"
+    operator = checks.get("operator_summary")
+    if isinstance(operator, Mapping) and operator.get("present") is False:
+        status = "insufficient_evidence"
+        reasons.append("operator_summary_missing_or_invalid")
+
+    source_evidence = checks.get("source_evidence")
+    if isinstance(source_evidence, Mapping):
+        source_lanes = {
+            str(item)
+            for item in _string_list(source_evidence.get("source_lanes"))
+            if str(item)
+        }
+        semantic_runtime_rows = _int_value(
+            source_evidence.get("semantic_runtime_rows", 0)
+        )
+        if (
+            (not source_lanes or source_lanes <= SEMANTIC_FALLBACK_SOURCE_LANES)
+            and semantic_runtime_rows == 0
+        ):
+            status = "insufficient_evidence"
+            reasons.append("semantic_runtime_evidence_missing")
+
+    return {
+        "semantic_handoff_status": status,
+        "semantic_handoff_reasons": sorted(set(reasons)),
+    }
 
 
 def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     package = Path(package)
     operator = _read_json(package / "reports" / "operator_summary.json")
     if not isinstance(operator, Mapping):
-        return {
+        report = {
             "schema_version": 1,
             "status": "attention",
             "authority": "diagnostic_only",
@@ -152,6 +233,8 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
                 }
             ],
         }
+        report.update(semantic_handoff_projection(report))
+        return report
 
     card_behavior = _read_json(package / "reports" / "card_behavior_plan_report.json")
     if not isinstance(card_behavior, Mapping):
@@ -184,6 +267,12 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
     guide_claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
     if not isinstance(guide_claim_bundle, Mapping):
         guide_claim_bundle = {}
+
+    globalvalues_profile = _read_json(
+        package / "reports" / "globalvalues_profile.json"
+    )
+    if not isinstance(globalvalues_profile, Mapping):
+        globalvalues_profile = {}
 
     checks = {
         "operator_summary": _operator_summary_check(operator),
@@ -224,6 +313,12 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
             guide_claim_bundle=guide_claim_bundle,
             semantic_enrichment=semantic_enrichment,
         ),
+        "globalvalues": _globalvalues_handoff_check(globalvalues_profile),
+        "source_evidence": _source_evidence_handoff_check(
+            guide_claim_bundle=guide_claim_bundle,
+            explainability=explainability,
+            card_behavior=card_behavior,
+        ),
     }
     checks["semantic_intent_coverage"] = _semantic_intent_coverage_check(
         card_behavior_check=checks["card_behavior"],
@@ -232,7 +327,7 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         semantic_enrichment=semantic_enrichment,
     )
     problems = _problems(checks)
-    return {
+    report = {
         "schema_version": 1,
         "status": "clean" if not problems else "attention",
         "authority": "diagnostic_only",
@@ -242,6 +337,51 @@ def build_config_quality_report(package: str | Path) -> dict[str, Any]:
         "checks": checks,
         "problems": problems,
     }
+    report.update(semantic_handoff_projection(report))
+    return report
+
+
+def _globalvalues_handoff_check(
+    globalvalues_profile: Mapping[str, Any],
+) -> dict[str, Any]:
+    missing_overlay_keys = _string_list(
+        globalvalues_profile.get("missing_overlay_keys")
+    )
+    return {
+        "present": bool(globalvalues_profile),
+        "missing_overlay_keys": missing_overlay_keys,
+    }
+
+
+def _source_evidence_handoff_check(
+    *,
+    guide_claim_bundle: Mapping[str, Any],
+    explainability: Mapping[str, Any],
+    card_behavior: Mapping[str, Any],
+) -> dict[str, Any]:
+    source_lanes = sorted(
+        _collect_source_lanes(guide_claim_bundle)
+        | _collect_source_lanes(explainability)
+    )
+    return {
+        "source_lanes": source_lanes,
+        "semantic_runtime_rows": len(_meaningful_cardid_rows(card_behavior)),
+    }
+
+
+def _collect_source_lanes(value: Any) -> set[str]:
+    if isinstance(value, Mapping):
+        source_lane = str(value.get("source_lane", "")).strip()
+        lanes = {source_lane} if source_lane else set()
+        for nested in value.values():
+            lanes.update(_collect_source_lanes(nested))
+        return lanes
+    if isinstance(value, list):
+        lanes: set[str] = set()
+        for nested in value:
+            lanes.update(_collect_source_lanes(nested))
+        return lanes
+    return set()
 
 
 def _operator_summary_check(operator: Mapping[str, Any]) -> dict[str, Any]:

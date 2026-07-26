@@ -118,6 +118,11 @@ class PackageContractPreflight:
     semantic_status: str
     runtime_apply_mode: str
     runtime_apply_allowed: bool
+    load_safe_to_install: bool
+    use_config_now: bool
+    use_config_now_scope: str
+    semantic_handoff_status: str
+    semantic_handoff_reasons: list[str]
     default_only_runtime_surfaces: list[str]
     validate_config_package_status: str
     validate_config_package_errors: list[str]
@@ -650,6 +655,11 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
                 semantic_status="",
                 runtime_apply_mode="",
                 runtime_apply_allowed=False,
+                load_safe_to_install=False,
+                use_config_now=False,
+                use_config_now_scope="load_safety_only",
+                semantic_handoff_status="insufficient_evidence",
+                semantic_handoff_reasons=["package_missing"],
                 default_only_runtime_surfaces=[],
                 validate_config_package_status="failed",
                 validate_config_package_errors=validation_errors,
@@ -669,7 +679,10 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
             )
         )
 
-    from hsconfig.config_quality_contract import build_config_quality_report
+    from hsconfig.config_quality_contract import (
+        build_config_quality_report,
+        semantic_handoff_projection,
+    )
     from hsconfig.validate_package import validate_config_package
 
     operator = _as_mapping(_read_json(package_path / normal_authority))
@@ -745,6 +758,13 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
     )
     closure_schema_current = bool(closure.get("closure_schema_current", False))
     cards_missing_closure = _int_value(closure.get("cards_missing_closure", 0))
+    semantic_handoff = semantic_handoff_projection(quality)
+    load_safe_to_install = (
+        technical_status == "VALID_PACKAGE"
+        and runtime_apply_allowed is True
+        and runtime_apply_mode == "load_safe_apply"
+        and validation_status == "passed"
+    )
 
     ready_to_use = (
         technical_status == "VALID_PACKAGE"
@@ -812,6 +832,13 @@ def build_package_contract_preflight(package: str | Path | None) -> dict[str, An
             semantic_status=semantic_status,
             runtime_apply_mode=runtime_apply_mode,
             runtime_apply_allowed=runtime_apply_allowed,
+            load_safe_to_install=load_safe_to_install,
+            use_config_now=load_safe_to_install,
+            use_config_now_scope="load_safety_only",
+            semantic_handoff_status=semantic_handoff["semantic_handoff_status"],
+            semantic_handoff_reasons=semantic_handoff[
+                "semantic_handoff_reasons"
+            ],
             default_only_runtime_surfaces=default_only,
             validate_config_package_status=validation_status,
             validate_config_package_errors=validation_errors,

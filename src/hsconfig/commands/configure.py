@@ -15,7 +15,10 @@ from hsconfig.commands.source_workflow import (
     source_autopilot_payload,
     source_manifest_payload,
 )
-from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.config_quality_contract import (
+    build_config_quality_report,
+    semantic_handoff_projection,
+)
 from hsconfig.configure_source_closure_receipt import (
     build_configure_source_closure_receipt,
 )
@@ -343,6 +346,18 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             {"stage": "validate", **validate_payload_result},
             validate_status,
         )
+    semantic_handoff = semantic_handoff_projection(config_quality_summary)
+    load_safe_to_install = (
+        str(operator_summary.get("technical_status", "")) == "VALID_PACKAGE"
+        and operator_summary.get("runtime_apply_allowed") is True
+        and str(operator_summary.get("runtime_apply_mode", "")) == "load_safe_apply"
+        and validate_status == 0
+    )
+    operator_summary.update(semantic_handoff)
+    operator_summary["load_safe_to_install"] = load_safe_to_install
+    operator_summary["use_config_now"] = load_safe_to_install
+    operator_summary["use_config_now_scope"] = "load_safety_only"
+    write_json(reports_dir / "operator_summary.json", operator_summary)
 
     apply_payload_result: dict[str, Any] | None = None
     apply_status = None
@@ -550,6 +565,7 @@ def _compact_config_quality_summary(report: Mapping[str, Any]) -> dict[str, Any]
         "problem_count": len(problems),
         "problem_checks": problem_checks,
     }
+    summary.update(semantic_handoff_projection(report))
     checks = report.get("checks", {})
     if isinstance(checks, Mapping):
         semantic_intent = checks.get("semantic_intent_coverage")
@@ -750,7 +766,7 @@ def _build_config_quality_summary(package_dir: Path) -> dict[str, Any]:
     try:
         return _compact_config_quality_summary(build_config_quality_report(package_dir))
     except Exception as exc:
-        return {
+        summary = {
             "status": "attention",
             "authority": "diagnostic_only",
             "apply_blocking": False,
@@ -760,15 +776,29 @@ def _build_config_quality_summary(package_dir: Path) -> dict[str, Any]:
             "next_action": "run_contract_doctor_for_details",
             "error": f"{type(exc).__name__}: {exc}",
         }
+        summary.update(
+            semantic_handoff_projection(
+                {
+                    "checks": {
+                        "source_evidence": {
+                            "source_lanes": ["generic_low_confidence"],
+                            "semantic_runtime_rows": 0,
+                        }
+                    }
+                }
+            )
+        )
+        return summary
 
 
 def _build_acceptance_summary(
     *,
     operator_summary: Mapping[str, Any],
-    validate_status: int,
     apply_requested: bool,
     apply_status: int | None,
     config_quality_summary: Mapping[str, Any],
+    validate_status: int | None = None,
+    validation_status: str | None = None,
 ) -> dict[str, Any]:
     runtime_contract = operator_summary.get("runtime_apply_contract", {})
     if not isinstance(runtime_contract, Mapping):
@@ -800,17 +830,20 @@ def _build_acceptance_summary(
         "semantic_intent_first_attention"
     )
 
-    validation_passed = validate_status == 0
-    apply_passed = (not apply_requested) or apply_status == 0
-    use_config_now = (
+    validation_passed = (
+        str(validation_status) == "passed"
+        if validation_status is not None
+        else validate_status == 0
+    )
+    load_safe_to_install = (
         technical_status == "VALID_PACKAGE"
-        and runtime_apply_allowed
+        and runtime_apply_allowed is True
         and runtime_apply_mode == "load_safe_apply"
         and validation_passed
-        and apply_passed
     )
+    semantic_handoff = semantic_handoff_projection(config_quality_summary)
 
-    if not use_config_now:
+    if not load_safe_to_install:
         next_report_to_open = "reports/operator_summary.json"
         interpretation = (
             "Package is not usable now; inspect reports/operator_summary.json first."
@@ -830,7 +863,10 @@ def _build_acceptance_summary(
 
     summary = {
         "schema_version": 1,
-        "use_config_now": use_config_now,
+        "load_safe_to_install": load_safe_to_install,
+        "use_config_now": load_safe_to_install,
+        "use_config_now_scope": "load_safety_only",
+        **semantic_handoff,
         "normal_apply_authority": normal_apply_authority,
         "runtime_apply_allowed": runtime_apply_allowed,
         "runtime_apply_mode": runtime_apply_mode,
@@ -1085,10 +1121,12 @@ def _build_handoff_contract(
     forbidden_normal_surfaces_absent = config_proof_summary.get(
         "forbidden_normal_surfaces_absent"
     )
+    semantic_handoff = semantic_handoff_projection(config_quality_summary)
     status = (
         "clean"
         if (
             bool(acceptance_summary.get("use_config_now"))
+            and semantic_handoff["semantic_handoff_status"] == "closed"
             and normal_apply_authority == "reports/operator_summary.json"
             and not source_status_apply_blocking
             and not source_gaps_apply_blocking
@@ -1121,7 +1159,15 @@ def _build_handoff_contract(
         "single_apply_authority_confirmed": (
             normal_apply_authority == "reports/operator_summary.json"
         ),
+        "load_safe_to_install": bool(
+            acceptance_summary.get(
+                "load_safe_to_install",
+                acceptance_summary.get("use_config_now", False),
+            )
+        ),
         "use_config_now": bool(acceptance_summary.get("use_config_now")),
+        "use_config_now_scope": "load_safety_only",
+        **semantic_handoff,
         "runtime_apply_allowed": bool(
             acceptance_summary.get("runtime_apply_allowed", False)
         ),

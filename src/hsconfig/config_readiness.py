@@ -36,6 +36,7 @@ MISSING_LINKS = (
     "needs_invalid_target_scope",
     "needs_target_surface",
     "needs_mechanic_lowering",
+    "semantic_surface_not_expressible",
 )
 SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "none": "closed",
@@ -48,6 +49,7 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_invalid_target_scope": "invalid_target_scope_gap",
     "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
+    "semantic_surface_not_expressible": "semantic_surface_not_expressible",
 }
 SEMANTIC_SUPPRESSION_MISSING_LINKS = {
     "unsupported_condition": "needs_condition_lowering",
@@ -55,6 +57,7 @@ SEMANTIC_SUPPRESSION_MISSING_LINKS = {
     "no_target_scope": "needs_target_scope",
     "invalid_target_scope": "needs_invalid_target_scope",
     "target_scope_not_encoded": "needs_target_surface",
+    "semantic_surface_not_expressible": "semantic_surface_not_expressible",
 }
 GUIDE_BACKED_COVERAGE_STATUSES = {
     "guide_backed",

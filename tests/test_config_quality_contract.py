@@ -4,10 +4,87 @@ from pathlib import Path
 import pytest
 
 from hsconfig.commands.configure import _compact_config_quality_summary
-from hsconfig.config_quality_contract import build_config_quality_report
+from hsconfig.config_quality_contract import (
+    build_config_quality_report,
+    semantic_handoff_projection,
+)
 
 
 DECK_SLUG = "shadowpriest"
+
+
+def test_semantic_handoff_projection_collects_semantic_parity_reasons() -> None:
+    projection = semantic_handoff_projection(
+        {
+            "checks": {
+                "runtime_row_trace_inventory": {
+                    "unreported_runtime_rows": [{"card_id": "EX1_001"}],
+                    "reported_rows_missing_runtime": [{"card_id": "EX1_002"}],
+                },
+                "visionai_semantic_surface": {
+                    "attention": ["semantic_surface_not_expressible"],
+                },
+                "globalvalues": {
+                    "missing_overlay_keys": ["GlobalMinionAttack"],
+                },
+            }
+        }
+    )
+
+    assert projection == {
+        "semantic_handoff_status": "attention",
+        "semantic_handoff_reasons": [
+            "missing_globalvalues_overlay_keys",
+            "reported_rows_missing_runtime",
+            "semantic_surface_not_expressible",
+            "unreported_runtime_rows",
+        ],
+    }
+
+
+def test_semantic_handoff_projection_marks_fallback_only_evidence_insufficient() -> None:
+    projection = semantic_handoff_projection(
+        {
+            "checks": {
+                "source_evidence": {
+                    "source_lanes": ["generic_low_confidence", "policy_fallback"],
+                    "semantic_runtime_rows": 0,
+                }
+            }
+        }
+    )
+
+    assert projection["semantic_handoff_status"] == "insufficient_evidence"
+    assert "semantic_runtime_evidence_missing" in projection[
+        "semantic_handoff_reasons"
+    ]
+
+
+def test_semantic_handoff_projection_closes_with_semantic_runtime_evidence() -> None:
+    assert semantic_handoff_projection(
+        {
+            "checks": {
+                "source_evidence": {
+                    "source_lanes": ["deck_matched_public_guide"],
+                    "semantic_runtime_rows": 1,
+                }
+            }
+        }
+    ) == {
+        "semantic_handoff_status": "closed",
+        "semantic_handoff_reasons": [],
+    }
+
+
+def test_config_quality_missing_operator_has_insufficient_semantic_handoff(
+    tmp_path: Path,
+) -> None:
+    report = build_config_quality_report(tmp_path / "missing-package")
+
+    assert report["semantic_handoff_status"] == "insufficient_evidence"
+    assert "operator_summary_missing_or_invalid" in report[
+        "semantic_handoff_reasons"
+    ]
 
 
 def write_json(path: Path, payload: dict) -> None:

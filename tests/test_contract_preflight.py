@@ -960,6 +960,11 @@ def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     assert contract["technical_status"] == "VALID_PACKAGE"
     assert contract["runtime_apply_mode"] == "load_safe_apply"
     assert contract["runtime_apply_allowed"] is True
+    assert contract["load_safe_to_install"] is True
+    assert contract["use_config_now"] is True
+    assert contract["use_config_now_scope"] == "load_safety_only"
+    assert contract["semantic_handoff_status"] == "closed"
+    assert contract["semantic_handoff_reasons"] == []
     assert contract["source_status_apply_blocking"] is False
     assert contract["observed_operator_source_status_apply_blocking"] is False
     assert contract["default_only_runtime_surfaces"] == []
@@ -976,6 +981,25 @@ def test_contract_preflight_package_mode_aggregates_runtime_and_quality(
     assert contract["closure_schema_current"] is True
     assert contract["cards_missing_closure"] == 0
     assert contract["next_report_to_open"] == "reports/operator_summary.json"
+
+
+def test_contract_preflight_semantic_attention_does_not_change_apply_authority(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    card_behavior_path = package / "reports" / "card_behavior_plan_report.json"
+    card_behavior = json.loads(card_behavior_path.read_text(encoding="utf-8"))
+    card_behavior["rows"] = []
+    _write_json(card_behavior_path, card_behavior)
+
+    contract = build_package_contract_preflight(package)
+
+    assert contract["load_safe_to_install"] is True
+    assert contract["use_config_now"] is True
+    assert contract["semantic_handoff_status"] == "attention"
+    assert "unreported_runtime_rows" in contract["semantic_handoff_reasons"]
+    assert contract["runtime_apply_allowed"] is True
+    assert contract["runtime_apply_authority"] == "reports/operator_summary.json"
 
 
 def test_contract_preflight_package_mode_surfaces_attention_surface_intent_without_gate(
