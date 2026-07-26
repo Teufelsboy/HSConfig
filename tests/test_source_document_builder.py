@@ -81,9 +81,9 @@ def test_source_document_builder_carries_strong_source_quality_metadata():
     qualified = qualify_source_claim(bundle["claims"][0])
 
     assert bundle["claims"][0]["source_visibility"] == "full_text"
-    assert bundle["claims"][0]["deck_match_scope"] == "deck_or_archetype_matched"
-    assert qualified["source_lane"] == "deck_matched_public_guide"
-    assert qualified["strong_promotion_eligible"] is True
+    assert bundle["claims"][0]["deck_match_scope"] == "archetype_matched"
+    assert qualified["source_lane"] == "archetype_matched_public_guide"
+    assert qualified["strong_promotion_eligible"] is False
 
 
 def test_source_document_builder_blocks_stale_candidate_strong_guide_claims():
@@ -965,3 +965,41 @@ def test_source_document_claim_fields_use_supported_vocabularies():
     assert {
         claim["specificity_status"] for claim in bundle["claims"]
     } <= SUPPORTED_SPECIFICITY_STATUSES
+
+
+def test_explicit_exact_scope_requires_matching_target_fingerprint():
+    bundle = build_source_document_bundle(
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "deck_fingerprint": "target-fingerprint",
+            "cards": [{"card_id": "TOY_381", "count": 2}],
+        },
+        card_metadata={},
+        source_documents=[
+            {
+                "source_url": "https://example.test/guide",
+                "source_title": "ShadowPriest guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "different-fingerprint",
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_kind": "mulligan_keep",
+                        "cards": ["TOY_381"],
+                        "evidence_text_short": "Keep Papercraft Angel.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["deck_match_scope"] == "archetype_matched"

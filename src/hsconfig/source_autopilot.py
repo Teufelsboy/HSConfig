@@ -91,11 +91,17 @@ def rank_public_sources(
             score -= 100
         row["source_visibility"] = _source_visibility_for_documents(row)
         row["source_rank_score"] = score
-        deck_match_scope = _quantitative_deck_match_scope(
-            deck_name_match=deck_name_match,
-            card_overlap=card_overlap,
-            unique_deck_card_count=len(deck_card_ids),
+        deck_match_scope = _deck_match_scope(
+            row,
+            deck_name,
+            deck_identity=deck_identity,
         )
+        if deck_match_scope == "unknown":
+            deck_match_scope = _quantitative_deck_match_scope(
+                deck_name_match=deck_name_match,
+                card_overlap=card_overlap,
+                unique_deck_card_count=len(deck_card_ids),
+            )
         row["deck_match_scope"] = deck_match_scope
         row["source_rank_lane"] = _rank_lane(
             family,
@@ -1046,7 +1052,11 @@ def _source_base(
     if not isinstance(match, Mapping):
         match = {}
     source_rank_lane = _text(source.get("source_rank_lane", ""))
-    deck_match_scope = _deck_match_scope(source, deck_name)
+    deck_match_scope = _deck_match_scope(
+        source,
+        deck_name,
+        deck_identity=deck_identity,
+    )
     source_visibility = _source_visibility_for_documents(source)
     source_for_policy = {**dict(source), "source_visibility": source_visibility}
     policy = classify_source_evidence(
@@ -1163,7 +1173,7 @@ def _rank_lane(
 ) -> str:
     if (
         family in GUIDE_FAMILIES
-        and deck_match_scope == "deck_matched"
+        and deck_match_scope == "exact_deck_matched"
         and current_year is not None
         and _publication_year(source) == current_year
     ):
@@ -1177,7 +1187,7 @@ def _rank_lane(
         return "guide_current_archetype_match"
     if (
         family in GUIDE_FAMILIES
-        and deck_match_scope == "deck_matched"
+        and deck_match_scope == "exact_deck_matched"
         and card_overlap >= 2
         and _is_evergreen_wild_source(source, current_year=current_year)
     ):
@@ -1217,8 +1227,10 @@ def _source_lane_for_rank(source_rank_lane: str, deck_match_scope: str) -> str:
         "guide_current_deck_match",
         "guide_evergreen_wild_archetype",
         "guide_card_overlap",
-    } and deck_match_scope == "deck_matched":
+    } and deck_match_scope == "exact_deck_matched":
         return "deck_matched_public_guide"
+    if deck_match_scope == "archetype_matched" and source_rank_lane.startswith("guide_"):
+        return "archetype_matched_public_guide"
     return source_rank_lane or "unknown"
 
 
@@ -1290,8 +1302,6 @@ def _quantitative_deck_match_scope(
     overlap_ratio = (
         card_overlap / unique_deck_card_count if unique_deck_card_count else 0.0
     )
-    if deck_name_match and overlap_ratio >= 0.80:
-        return "deck_matched"
     if deck_name_match and card_overlap >= 2:
         return "archetype_matched"
     if card_overlap:
@@ -1299,8 +1309,23 @@ def _quantitative_deck_match_scope(
     return "unknown"
 
 
-def _deck_match_scope(source: Mapping[str, Any], deck_name: str) -> str:
-    explicit = _text(source.get("deck_match_scope", ""))
+def _deck_match_scope(
+    source: Mapping[str, Any],
+    deck_name: str,
+    *,
+    deck_identity: Mapping[str, Any],
+) -> str:
+    explicit = _text(source.get("deck_match_scope", "")).lower()
+    if explicit == "exact_deck_matched" and _has_exact_deck_evidence(
+        source, deck_identity
+    ):
+        return explicit
+    if explicit in {
+        "exact_deck_matched",
+        "deck_matched",
+        "deck_or_archetype_matched",
+    }:
+        return "archetype_matched"
     if explicit:
         return explicit
     match = source.get("deck_match", {})
@@ -1308,8 +1333,23 @@ def _deck_match_scope(source: Mapping[str, Any], deck_name: str) -> str:
         match = {}
     matched_ids = _as_list(match.get("matched_card_ids", []))
     if _has_independent_deck_match(source, _norm(deck_name), card_overlap=len(matched_ids)):
-        return "deck_or_archetype_matched"
+        return "archetype_matched"
     return "unknown"
+
+
+def _has_exact_deck_evidence(
+    source: Mapping[str, Any],
+    deck_identity: Mapping[str, Any],
+) -> bool:
+    match = source.get("deck_match", {})
+    if not isinstance(match, Mapping):
+        return False
+    exact = match.get("exact_deck_evidence", {})
+    if not isinstance(exact, Mapping) or exact.get("matched") is not True:
+        return False
+    observed = _text(exact.get("matched_deck_fingerprint", ""))
+    target = _text(deck_identity.get("deck_fingerprint", ""))
+    return bool(observed and target and observed == target)
 
 
 def _is_strong_guide_lane(
@@ -1324,6 +1364,10 @@ def _is_strong_guide_lane_shape(
     current_date: str | date | None,
 ) -> bool:
     if _text(row.get("source_lane", "")) != "deck_matched_public_guide":
+        return False
+    if _text(row.get("deck_match_scope", "")) != "exact_deck_matched":
+        return False
+    if _text(row.get("freshness_status", "")) not in {"", "current"}:
         return False
     source_rank_lane = _text(row.get("source_rank_lane", ""))
     if source_rank_lane not in {

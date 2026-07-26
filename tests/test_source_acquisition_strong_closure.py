@@ -78,10 +78,10 @@ def test_acquisition_marks_full_text_guides_as_candidate_strong():
     assert record["source_category"] == "public_guide"
     assert record["source_document_kind"] == "guide"
     assert record["publication_year"] == 2026
-    assert record["source_record_strength"] == "candidate_strong"
-    assert record["source_strength"] == "candidate_strong"
-    assert record["strong_promotion_eligible"] is True
-    assert record["first_missing_source_action"] == "none"
+    assert record["source_record_strength"] == "partial"
+    assert record["source_strength"] == "partial"
+    assert record["strong_promotion_eligible"] is False
+    assert record["first_missing_source_action"] == "add_exact_deck_matched_source"
 
 
 def test_acquisition_marks_decklist_and_snippets_non_promoting():
@@ -176,7 +176,7 @@ def test_acquisition_prefers_current_publication_year_over_older_history():
 
     record = payload["source_records"][0]
     assert record["publication_year"] == 2026
-    assert record["source_record_strength"] == "candidate_strong"
+    assert record["source_record_strength"] == "partial"
 
 
 def test_acquisition_policy_fields_make_stale_guides_non_strong():

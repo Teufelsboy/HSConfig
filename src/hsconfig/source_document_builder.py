@@ -221,7 +221,10 @@ def _normalize_source_claim(
         source_refs.append(str(document["source_url"]))
     deck_match_scope = _claim_deck_match_scope(raw_claim, document, deck_identity)
     deck_name = _clean_text(document.get("deck_name", ""))
-    if not deck_name and deck_match_scope in {"deck_matched", "deck_or_archetype_matched"}:
+    if not deck_name and deck_match_scope in {
+        "exact_deck_matched",
+        "archetype_matched",
+    }:
         deck_name = _clean_text(deck_identity.get("deck_name", ""))
     claim = {
         "claim_kind": claim_kind,
@@ -337,15 +340,41 @@ def _claim_deck_match_scope(
 ) -> str:
     for container in (raw_claim, document):
         value = _clean_text(container.get("deck_match_scope", ""))
-        if value and value.lower() != "unknown":
+        normalized = value.lower()
+        if normalized == "exact_deck_matched":
+            return (
+                "exact_deck_matched"
+                if _document_has_exact_deck_evidence(document, deck_identity)
+                else "archetype_matched"
+            )
+        if normalized in {"deck_matched", "deck_or_archetype_matched"}:
+            return "archetype_matched"
+        if value and normalized != "unknown":
             return value
     if _clean_text(document.get("deck_name", "")) or _clean_text(
         document.get("archetype", "")
     ):
-        return "deck_or_archetype_matched"
+        return "archetype_matched"
     if _document_matches_deck_identity(document, deck_identity):
-        return "deck_or_archetype_matched"
+        return "archetype_matched"
     return "unknown"
+
+
+def _document_has_exact_deck_evidence(
+    document: dict[str, Any],
+    deck_identity: dict[str, Any],
+) -> bool:
+    deck_match = document.get("deck_match", {})
+    if not isinstance(deck_match, dict):
+        return False
+    exact = deck_match.get("exact_deck_evidence", {})
+    if not isinstance(exact, dict) or exact.get("matched") is not True:
+        return False
+    return (
+        _clean_text(exact.get("matched_deck_fingerprint", ""))
+        == _clean_text(deck_identity.get("deck_fingerprint", ""))
+        != ""
+    )
 
 
 def _document_matches_deck_identity(

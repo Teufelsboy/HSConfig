@@ -61,7 +61,7 @@ def classify_source_evidence(
     family = _source_family(record)
     source_type = _text(record.get("source_type") or record.get("provenance")).lower()
     visibility = _source_visibility(record, family)
-    deck_scope = _deck_match_scope(record, deck_name)
+    deck_scope = _deck_match_scope(record, deck_name, deck_identity=deck_identity)
     publication_year = _publication_year(record)
     current_year = _current_year(current_date)
     source_freshness_lane = _source_freshness_lane(
@@ -114,8 +114,12 @@ def classify_source_evidence(
             "deck_match_scope": deck_scope,
             "publication_year": publication_year,
             "promotion_eligible": promotion_eligible,
-            "strong_promotion_eligible": (
-                promotion_eligible and source_lane == "deck_matched_public_guide"
+            "strong_promotion_eligible": _strong_promotion_eligible(
+                promotion_eligible=promotion_eligible,
+                source_visibility=visibility,
+                source_lane=source_lane,
+                deck_match_scope=deck_scope,
+                freshness_status=provenance["freshness_status"],
             ),
             **static_scope,
             "trust_ceiling": (
@@ -160,10 +164,23 @@ def _source_visibility(record: Mapping[str, Any], family: str) -> str:
     return "unknown"
 
 
-def _deck_match_scope(record: Mapping[str, Any], deck_name: str) -> str:
+def _deck_match_scope(
+    record: Mapping[str, Any],
+    deck_name: str,
+    *,
+    deck_identity: Mapping[str, Any] | None,
+) -> str:
     explicit = _text(record.get("deck_match_scope")).lower()
-    if explicit:
+    if explicit == "exact_deck_matched" and _has_exact_deck_evidence(
+        record, deck_identity=deck_identity
+    ):
         return explicit
+    if explicit in {
+        "exact_deck_matched",
+        "deck_matched",
+        "deck_or_archetype_matched",
+    }:
+        return "archetype_matched"
     match = record.get("deck_match", {})
     if not isinstance(match, Mapping):
         return "unknown"
@@ -172,8 +189,26 @@ def _deck_match_scope(record: Mapping[str, Any], deck_name: str) -> str:
     has_overlap = isinstance(matched_ids, list) and bool(matched_ids)
     source_text = _norm(f"{record.get('source_title', '')} {record.get('normalized_text', '')}")
     if declared == _norm(deck_name) and (has_overlap or _norm(deck_name) in source_text):
-        return "deck_or_archetype_matched"
+        return "archetype_matched"
     return "unknown"
+
+
+def _has_exact_deck_evidence(
+    record: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None,
+) -> bool:
+    match = record.get("deck_match", {})
+    if not isinstance(match, Mapping):
+        return False
+    exact = match.get("exact_deck_evidence", {})
+    if not isinstance(exact, Mapping) or exact.get("matched") is not True:
+        return False
+    fingerprint = _text(exact.get("matched_deck_fingerprint"))
+    if not fingerprint:
+        return False
+    target_fingerprint = _text((deck_identity or {}).get("deck_fingerprint"))
+    return bool(target_fingerprint and fingerprint == target_fingerprint)
 
 
 def _source_rank_lane(
@@ -193,17 +228,24 @@ def _source_rank_lane(
     if (
         family in GUIDE_FAMILIES
         and visibility == "full_text"
-        and deck_scope in {"deck_matched", "deck_or_archetype_matched"}
+        and deck_scope == "exact_deck_matched"
         and source_freshness_lane == "current"
     ):
         return "guide_current_deck_match"
     if (
         family in GUIDE_FAMILIES
         and visibility == "full_text"
-        and deck_scope in {"deck_matched", "deck_or_archetype_matched"}
+        and deck_scope == "exact_deck_matched"
         and source_freshness_lane == "evergreen_wild_archetype"
     ):
         return "guide_evergreen_wild_archetype"
+    if (
+        family in GUIDE_FAMILIES
+        and visibility == "full_text"
+        and deck_scope == "archetype_matched"
+        and source_freshness_lane == "current"
+    ):
+        return "guide_current_archetype_match"
     if family in GUIDE_FAMILIES and visibility == "full_text":
         return "guide_full_text_not_current"
     if family in GUIDE_FAMILIES:
@@ -215,11 +257,10 @@ def _source_lane(source_rank_lane: str, deck_scope: str) -> str:
     if source_rank_lane in {
         "guide_current_deck_match",
         "guide_evergreen_wild_archetype",
-    } and deck_scope in {
-        "deck_matched",
-        "deck_or_archetype_matched",
-    }:
+    } and deck_scope == "exact_deck_matched":
         return "deck_matched_public_guide"
+    if deck_scope == "archetype_matched" and source_rank_lane.startswith("guide_"):
+        return "archetype_matched_public_guide"
     return source_rank_lane or "unknown"
 
 
@@ -252,8 +293,8 @@ def _promotion_blockers(
         blockers.append("missing_acquired_source_text")
     if visibility != "full_text":
         blockers.append(f"source_visibility_{visibility}_not_strong")
-    if deck_scope not in {"deck_matched", "deck_or_archetype_matched"}:
-        blockers.append("deck_match_scope_not_strong")
+    if family in GUIDE_FAMILIES and deck_scope != "exact_deck_matched":
+        blockers.append("exact_deck_match_required")
     if publication_year is None:
         blockers.append("missing_publication_year")
     elif source_rank_lane not in {
@@ -281,8 +322,8 @@ def _first_missing_source_action(blockers: list[str]) -> str:
         return "add_current_or_evergreen_wild_public_guide"
     if any(blocker.startswith("source_visibility_") for blocker in blockers):
         return "add_full_text_public_guide_source"
-    if "deck_match_scope_not_strong" in blockers:
-        return "add_deck_or_archetype_matched_source"
+    if "exact_deck_match_required" in blockers:
+        return "add_exact_deck_matched_source"
     return "add_current_or_evergreen_wild_public_guide"
 
 
@@ -292,6 +333,23 @@ def _trust_ceiling(family: str, visibility: str) -> str:
     if visibility == "decklist_only":
         return "decklist_informed"
     return "source_informed_partial"
+
+
+def _strong_promotion_eligible(
+    *,
+    promotion_eligible: bool,
+    source_visibility: str,
+    source_lane: str,
+    deck_match_scope: str,
+    freshness_status: str,
+) -> bool:
+    return (
+        promotion_eligible
+        and source_visibility == "full_text"
+        and source_lane == "deck_matched_public_guide"
+        and deck_match_scope == "exact_deck_matched"
+        and freshness_status in {"", "current"}
+    )
 
 
 def _static_runtime_surface_scope(record: Mapping[str, Any], family: str) -> dict[str, Any]:

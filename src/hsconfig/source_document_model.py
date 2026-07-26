@@ -246,11 +246,10 @@ def _source_lane(source_type: str, claim: Mapping[str, Any]) -> str:
         explicit_lane = str(claim.get("source_lane") or "")
         if explicit_lane:
             return explicit_lane
-        if str(claim.get("deck_match_scope") or "").lower() in {
-            "deck_matched",
-            "deck_or_archetype_matched",
-        }:
+        if str(claim.get("deck_match_scope") or "").lower() == "exact_deck_matched":
             return "deck_matched_public_guide"
+        if str(claim.get("deck_match_scope") or "").lower() == "archetype_matched":
+            return "archetype_matched_public_guide"
         return "unknown"
     if source_type in STATISTICAL_ENRICHMENT_SOURCE_TYPES:
         return "statistical_enrichment"
@@ -312,10 +311,7 @@ def _strong_promotion_eligible(source_type: str, claim: Mapping[str, Any]) -> bo
         return False
     if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
         return False
-    return _normalized_text(claim.get("deck_match_scope")) in {
-        "deck_matched",
-        "deck_or_archetype_matched",
-    }
+    return _normalized_text(claim.get("deck_match_scope")) == "exact_deck_matched"
 
 
 def _normalized_text(value: Any) -> str:

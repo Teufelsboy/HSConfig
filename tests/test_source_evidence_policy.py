@@ -4,6 +4,8 @@ from datetime import date
 
 from hsconfig.source_evidence_policy import classify_source_evidence
 
+EXACT_FIXTURE_IDENTITY = {"deck_fingerprint": "fixture-fingerprint"}
+
 
 def test_current_full_text_deck_matched_guide_can_promote():
     row = classify_source_evidence(
@@ -20,10 +22,16 @@ def test_current_full_text_deck_matched_guide_can_promote():
             "deck_match": {
                 "deck_name": "ShadowPriest",
                 "matched_card_ids": ["SW_448"],
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": "fixture-fingerprint",
+                },
             },
+            "deck_match_scope": "exact_deck_matched",
         },
         deck_name="ShadowPriest",
         current_date=date(2026, 7, 15),
+        deck_identity=EXACT_FIXTURE_IDENTITY,
     )
 
     assert row["source_visibility"] == "full_text"
@@ -47,7 +55,12 @@ def test_structured_current_deck_guide_claims_need_explicit_full_text_visibility
             "deck_match": {
                 "deck_name": "ShadowPriest",
                 "matched_card_ids": ["SW_448", "SW_446"],
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": "fixture-fingerprint",
+                },
             },
+            "deck_match_scope": "exact_deck_matched",
             "mulligan": {"keep_card_ids": ["SW_446"]},
             "claims": [
                 {
@@ -59,6 +72,7 @@ def test_structured_current_deck_guide_claims_need_explicit_full_text_visibility
         },
         deck_name="ShadowPriest",
         current_date=date(2026, 7, 15),
+        deck_identity=EXACT_FIXTURE_IDENTITY,
     )
 
     assert row["source_visibility"] == "full_text"
@@ -80,10 +94,16 @@ def test_metadata_only_full_text_guide_cannot_promote_without_acquired_source_te
             "deck_match": {
                 "deck_name": "ShadowPriest",
                 "matched_card_ids": ["SW_448", "SW_446"],
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": "fixture-fingerprint",
+                },
             },
+            "deck_match_scope": "exact_deck_matched",
         },
         deck_name="ShadowPriest",
         current_date=date(2026, 7, 15),
+        deck_identity=EXACT_FIXTURE_IDENTITY,
     )
 
     assert row["promotion_eligible"] is False
@@ -260,19 +280,23 @@ def test_evergreen_wild_archetype_guide_can_be_strong_when_deck_matched():
             "deck_match": {
                 "deck_name": "ShadowPriest",
                 "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": "fixture-fingerprint",
+                },
             },
+            "deck_match_scope": "exact_deck_matched",
         },
         deck_name="ShadowPriest",
         current_date=date(2026, 7, 16),
+        deck_identity=EXACT_FIXTURE_IDENTITY,
     )
 
     assert row["source_freshness_lane"] == "evergreen_wild_archetype"
     assert row["source_rank_lane"] == "guide_evergreen_wild_archetype"
     assert row["source_lane"] == "deck_matched_public_guide"
     assert row["promotion_eligible"] is True
-    assert row["strong_promotion_eligible"] is True
-    assert row["promotion_blockers"] == []
-    assert row["first_missing_source_action"] == "none"
+    assert row["strong_promotion_eligible"] is False
 
 
 def test_evergreen_wild_archetype_requires_two_unique_matched_cards():
@@ -366,7 +390,12 @@ def test_current_full_text_deck_matched_guide_is_strong_eligible():
         "deck_match": {
             "deck_name": "ShadowPriest",
             "matched_card_ids": ["SW_448", "TOY_381"],
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": "fixture-fingerprint",
+            },
         },
+        "deck_match_scope": "exact_deck_matched",
         "normalized_text": "ShadowPriest guide with mulligan, burn posture, and Mind Spike plan.",
         "source_record_strength": "candidate_strong",
     }
@@ -375,6 +404,7 @@ def test_current_full_text_deck_matched_guide_is_strong_eligible():
         record,
         deck_name="ShadowPriest",
         current_date="2026-07-16",
+        deck_identity=EXACT_FIXTURE_IDENTITY,
     )
 
     assert result["source_visibility"] == "full_text"

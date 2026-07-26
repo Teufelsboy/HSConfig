@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hsconfig.deck_identity import build_deck_identity
+from hsconfig.deck_identity import build_deck_identity, stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_autopilot import (
@@ -29,6 +29,9 @@ SHADOW_DECK_IDENTITY = {
         {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
     ],
 }
+SHADOW_DECK_IDENTITY["deck_fingerprint"] = stable_deck_fingerprint(
+    (card["card_id"], card["count"]) for card in SHADOW_DECK_IDENTITY["cards"]
+)
 
 
 def _shadowpriest_identity() -> dict:
@@ -44,12 +47,16 @@ def _strong_ranked_source(*, normalized_text: str) -> dict:
         "source_record_strength": "candidate_strong",
         "source_rank_lane": "guide_current_deck_match",
         "source_lane": "deck_matched_public_guide",
-        "deck_match_scope": "deck_matched",
+        "deck_match_scope": "exact_deck_matched",
         "publication_year": 2026,
         "deck_match": {
             "deck_name": "ShadowPriest",
             "archetype": "shadowpriest",
             "matched_card_ids": ["SW_446", "TOY_381"],
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": SHADOW_DECK_IDENTITY["deck_fingerprint"],
+            },
         },
         "normalized_text": normalized_text,
     }
@@ -125,8 +132,8 @@ def test_rank_public_sources_overrides_claimed_exact_scope_without_overlap():
         current_date="2026-07-26",
     )
 
-    assert ranked[0]["deck_match_scope"] == "card_overlap"
-    assert ranked[0]["source_rank_lane"] == "guide_card_overlap"
+    assert ranked[0]["deck_match_scope"] == "archetype_matched"
+    assert ranked[0]["source_rank_lane"] == "guide_current_archetype_match"
 
 
 def _fixture(name: str) -> dict:
@@ -184,18 +191,28 @@ def _current_guide_record(claims: list[dict], *, archetype: str = "aggro_fixture
 
 
 def _profile_report(claims: list[dict], *, archetype: str = "aggro_fixture") -> dict:
+    deck_identity = {
+        "deck_name": "ProfileDeck",
+        "deck_code_hash": "sha256:profile",
+        "deck_slug": "profiledeck",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Fixture One", "cost": 1, "count": 2},
+            {"card_id": "CARD_002", "name": "Fixture Two", "cost": 2, "count": 2},
+        ],
+    }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in deck_identity["cards"]
+    )
+    source = _current_guide_record(claims, archetype=archetype)
+    source["deck_match_scope"] = "exact_deck_matched"
+    source["deck_match"]["exact_deck_evidence"] = {
+        "matched": True,
+        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+    }
     bundle = build_source_autopilot_bundle(
         deck_name="ProfileDeck",
-        deck_identity={
-            "deck_name": "ProfileDeck",
-            "deck_code_hash": "sha256:profile",
-            "deck_slug": "profiledeck",
-            "cards": [
-                {"card_id": "CARD_001", "name": "Fixture One", "cost": 1, "count": 2},
-                {"card_id": "CARD_002", "name": "Fixture Two", "cost": 2, "count": 2},
-            ],
-        },
-        source_search_records=[_current_guide_record(claims, archetype=archetype)],
+        deck_identity=deck_identity,
+        source_search_records=[source],
         current_date="2026-07-15",
     )
     return bundle["source_autopilot_report"]
@@ -213,7 +230,7 @@ def test_rank_public_sources_prefers_current_matching_guides_over_decklists():
     )
 
     assert ranked[0]["source_url"] == guide["source_url"]
-    assert ranked[0]["source_rank_lane"] == "guide_current_deck_match"
+    assert ranked[0]["source_rank_lane"] == "guide_current_archetype_match"
     assert ranked[1]["source_rank_lane"] == "decklist_only"
 
 
@@ -280,13 +297,13 @@ def test_build_source_autopilot_bundle_outputs_strict_source_documents():
 
     report = bundle["source_autopilot_report"]
     assert report["status"] == "OK"
-    assert report["source_rank_summary"]["guide_current_deck_match"] == 1
+    assert report["source_rank_summary"]["guide_current_archetype_match"] == 1
     assert report["claim_kind_counts"]["mulligan_keep"] == 4
     summary = report["strong_closure_summary"]
     assert summary["technical_no_block"] is True
-    assert summary["source_backed_strong_ready"] is True
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert summary["first_missing_source_action"] == "none"
+    assert summary["source_backed_strong_ready"] is False
+    assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert summary["first_missing_source_action"] == "add_current_card_specific_runtime_source"
     preview = report["source_readiness_preview"]
 
     assert preview["authority"] == "diagnostic_source_readiness_preview"
@@ -304,7 +321,7 @@ def test_build_source_autopilot_bundle_outputs_strict_source_documents():
         "not_evaluated_in_source_preflight"
     )
     assert preview["source_backed_strong_ready"] is False
-    assert preview["readiness_lane"] == "runtime_surface_not_evaluated_no_block"
+    assert preview["readiness_lane"] == "source_partial_no_block"
     assert preview["first_missing_source_action"] == report[
         "first_missing_source_action"
     ]
@@ -491,7 +508,7 @@ def test_rank_public_sources_uses_publication_year_field():
         current_date="2026-07-15",
     )
 
-    assert ranked[0]["source_rank_lane"] == "guide_current_deck_match"
+    assert ranked[0]["source_rank_lane"] == "guide_current_archetype_match"
 
 
 def test_source_autopilot_does_not_call_snippet_structured_claims_strong():
@@ -862,10 +879,10 @@ def test_source_autopilot_report_contains_strong_closure_summary_and_surfaces():
 def test_source_autopilot_does_not_require_extra_non_mulligan_surface_when_profile_closed():
     report = run_source_autopilot_fixture("source_search_shadowpriest_2026.json")
 
-    assert report["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert report["first_missing_source_action"] == "none"
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["first_missing_source_action"] == "add_current_card_specific_runtime_source"
     assert report["source_backed_strong_closure"]["closure_profile"] == "aggro_burn_hero_power"
-    assert report["source_backed_strong_closure"]["closure_profile_closed"] is True
+    assert report["source_backed_strong_closure"]["closure_profile_closed"] is False
 
 
 def test_source_autopilot_routes_missing_mulligan_group_through_profile_gap():
@@ -1056,6 +1073,9 @@ def test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane():
             {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
         ],
     }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in deck_identity["cards"]
+    )
 
     ranked = rank_public_sources(
         deck_name="ShadowPriest",
@@ -1076,8 +1096,12 @@ def test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane():
                 "deck_match": {
                     "deck_name": "ShadowPriest",
                     "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                    },
                 },
-                "deck_match_scope": "deck_or_archetype_matched",
+                "deck_match_scope": "exact_deck_matched",
                 "claims": [
                     {
                         "claim_kind": "gameplan_posture",
@@ -1105,7 +1129,7 @@ def test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane():
     assert ranked[0]["source_freshness_lane"] == "evergreen_wild_archetype"
     assert ranked[0]["source_rank_lane"] == "guide_evergreen_wild_archetype"
     assert ranked[0]["source_lane"] == "deck_matched_public_guide"
-    assert ranked[0]["strong_promotion_eligible"] is True
+    assert ranked[0]["strong_promotion_eligible"] is False
 
 
 def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
@@ -1121,6 +1145,9 @@ def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
             {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
         ],
     }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in deck_identity["cards"]
+    )
 
     bundle = build_source_autopilot_bundle(
         deck_name="ShadowPriest",
@@ -1141,8 +1168,12 @@ def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
                 "deck_match": {
                     "deck_name": "ShadowPriest",
                     "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                    },
                 },
-                "deck_match_scope": "deck_or_archetype_matched",
+                "deck_match_scope": "exact_deck_matched",
                 "claims": [
                     {
                         "claim_kind": "gameplan_posture",
@@ -1170,9 +1201,9 @@ def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
     report = bundle["source_autopilot_report"]
     assert bundle["ranked_sources"][0]["source_rank_lane"] == "guide_evergreen_wild_archetype"
     assert report["source_rank_summary"]["guide_evergreen_wild_archetype"] == 1
-    assert report["strong_candidate"] is True
-    assert report["strong_closure_summary"]["source_backed_strong_ready"] is True
-    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert report["strong_candidate"] is False
+    assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
+    assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
 
 
 def test_source_autopilot_routes_imbuemage_source_search_to_hero_power_imbue():
@@ -1304,6 +1335,9 @@ def test_autopilot_extracts_full_text_claims_before_closure_evaluation():
             {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "text": ""},
         ]
     }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card.get("count", 1)) for card in deck_identity["cards"]
+    )
     records = [
         {
             "source_url": "https://example.test/shadowpriest",
@@ -1312,10 +1346,15 @@ def test_autopilot_extracts_full_text_claims_before_closure_evaluation():
             "source_visibility": "full_text",
             "publication_year": 2026,
             "source_record_strength": "candidate_strong",
-            "deck_match": {
-                "deck_name": "ShadowPriest",
-                "matched_card_ids": ["SW_448", "TOY_381"],
-            },
+                "deck_match": {
+                    "deck_name": "ShadowPriest",
+                    "matched_card_ids": ["SW_448", "TOY_381"],
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                    },
+                },
+                "deck_match_scope": "exact_deck_matched",
             "normalized_text": (
                 "Mulligan: keep Papercraft Angel. "
                 "Do not keep any 4-cost or higher card. "

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 from pathlib import Path
 
 from hsconfig import source_acquisition as source_acquisition_module
+from hsconfig.deck_identity import build_deck_identity
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_acquisition import (
     _deck_match_evidence,
     collect_public_source_records,
@@ -13,6 +16,40 @@ from hsconfig.source_acquisition import (
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "source_pages"
+
+SHADOWPRIEST_DECK_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQF"
+    "yKEGxKgG/KgG17oG1cEGAAA="
+)
+DIFFERENT_40_CARD_DECK_CODE = (
+    "AAEBAYsGABQHCAkMoQSRD5G8AumwA7q2A9fOA6P3A633A7v3A4aDBd2kBcihBsSo"
+    "BvyoBte6BtXBBgAA"
+)
+
+
+def _exact_shadowpriest_identity() -> dict:
+    decoded = decode_deck_code(SHADOWPRIEST_DECK_CODE)
+    return build_deck_identity(
+        deck_name="ShadowPriest",
+        deck_code=SHADOWPRIEST_DECK_CODE,
+        cards=decoded["cards"],
+        hero_dbf_id=decoded["hero_dbf_id"],
+        format=decoded["format"],
+        sideboards=decoded["sideboards"],
+    )
+
+
+def _fixture_fetcher(filename: str):
+    page = FIXTURES / filename
+
+    def fetcher(
+        url: str,
+        timeout_seconds: float,
+    ) -> tuple[int, str, bytes]:
+        del url, timeout_seconds
+        return 200, "text/html", page.read_bytes()
+
+    return fetcher
 
 
 def _public_resolver(hostname: str) -> list[str]:
@@ -125,6 +162,75 @@ def test_five_of_sixteen_cards_is_archetype_not_exact_deck_match():
     assert evidence["unique_deck_card_count"] == 16
     assert evidence["card_overlap_ratio"] == 0.3125
     assert scope == "archetype_matched"
+
+
+def test_exact_source_deckstring_promotes_to_exact_deck_scope():
+    shadowpriest_identity = _exact_shadowpriest_identity()
+    report = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=shadowpriest_identity,
+        source_urls=["https://example.test/exact"],
+        current_date="2026-07-26",
+        fetcher=_fixture_fetcher("shadowpriest_current_guide.html"),
+        resolver=_public_resolver,
+    )
+
+    record = report["source_records"][0]
+    assert record["deck_match_scope"] == "exact_deck_matched"
+    exact = record["deck_match"]["exact_deck_evidence"]
+    assert exact["matched"] is True
+    assert exact["matched_deck_fingerprint"] == shadowpriest_identity["deck_fingerprint"]
+    assert "deck_code" not in exact
+    assert "AAEBA" not in json.dumps(record)
+
+
+def test_name_and_card_overlap_remains_archetype_only():
+    shadowpriest_identity = _exact_shadowpriest_identity()
+    report = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=shadowpriest_identity,
+        source_urls=["https://example.test/archetype"],
+        current_date="2026-07-26",
+        fetcher=_fixture_fetcher("shadowpriest_archetype_only_guide.html"),
+        resolver=_public_resolver,
+    )
+
+    record = report["source_records"][0]
+    assert record["deck_match_scope"] == "archetype_matched"
+    assert record["strong_promotion_eligible"] is False
+    assert "exact_deck_match_required" in record["promotion_blockers"]
+
+
+def test_different_40_card_source_deckstring_remains_archetype_only():
+    shadowpriest_identity = _exact_shadowpriest_identity()
+    assert decode_deck_code(DIFFERENT_40_CARD_DECK_CODE)["card_count_total"] == 40
+    html = f"""
+    <html>
+      <head>
+        <meta property="article:published_time" content="2026-07-26T00:00:00Z">
+        <title>Wild ShadowPriest Guide</title>
+      </head>
+      <body>
+        <main>
+          <h1>Wild ShadowPriest Guide</h1>
+          <p>Exact deck code: {DIFFERENT_40_CARD_DECK_CODE}</p>
+          <p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p>
+        </main>
+      </body>
+    </html>
+    """.encode()
+    report = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=shadowpriest_identity,
+        source_urls=["https://example.test/different"],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (200, "text/html", html),
+        resolver=_public_resolver,
+    )
+
+    record = report["source_records"][0]
+    assert record["deck_match_scope"] == "archetype_matched"
+    assert record["deck_match"]["exact_deck_evidence"]["matched"] is False
 
 
 def test_extract_visible_text_removes_markup_and_keeps_title():
@@ -271,8 +377,10 @@ def test_collect_public_source_records_uses_utc_year_when_current_date_is_not_su
 
     record = payload["source_records"][0]
     assert record["publication_year"] == 2026
-    assert record["source_record_strength"] == "candidate_strong"
-    assert record["source_strength"] == "candidate_strong"
+    assert record["source_record_strength"] == "partial"
+    assert record["source_strength"] == "partial"
+    assert record["strong_promotion_eligible"] is False
+    assert "exact_deck_match_required" in record["promotion_blockers"]
 
 
 def test_collect_public_source_records_reports_candidate_registry_url_count():
@@ -358,9 +466,9 @@ def test_reddit_thread_urls_fetch_through_old_reddit_but_preserve_source_url():
     assert seen_fetch_urls == [fetch_url]
     assert record["source_url"] == original_url
     assert record["source_fetch_url"] == fetch_url
-    assert record["source_record_strength"] == "candidate_strong"
-    assert record["strong_promotion_eligible"] is True
-    assert record["first_missing_source_action"] == "none"
+    assert record["source_record_strength"] == "partial"
+    assert record["strong_promotion_eligible"] is False
+    assert record["first_missing_source_action"] == "add_exact_deck_matched_source"
 
 
 def test_decklist_and_stats_sources_are_non_promoting():
@@ -526,8 +634,9 @@ def test_full_text_guide_wins_over_stats_context_markers():
     assert record["source_family"] == "guide"
     assert record["source_visibility"] == "full_text"
     assert record["source_category"] == "public_guide"
-    assert record["promotion_eligible"] is True
-    assert record["strong_promotion_eligible"] is True
+    assert record["promotion_eligible"] is False
+    assert record["strong_promotion_eligible"] is False
+    assert "exact_deck_match_required" in record["promotion_blockers"]
 
 
 def test_collect_public_source_records_keeps_fetch_failures_non_blocking():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from hashlib import sha256
 from html.parser import HTMLParser
 from http.client import HTTPSConnection
 from ipaddress import ip_address
@@ -9,11 +10,17 @@ from socket import create_connection, gaierror, getaddrinfo
 from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
+from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_evidence_policy import classify_source_evidence
 
 
 Fetcher = Callable[[str, float], tuple[int, str, bytes]]
 HostResolver = Callable[[str], Sequence[str]]
+
+DECKSTRING_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{24,}={0,2})(?![A-Za-z0-9+/=])"
+)
 
 
 class _VisibleTextParser(HTMLParser):
@@ -161,6 +168,7 @@ def collect_public_source_records(
             parsed["title"],
             parsed["text"],
         )
+        sanitized_text = _redact_deckstring_tokens(parsed["text"])
         source_family = _infer_source_family(url, parsed["text"])
         visibility = _source_visibility(source_family, parsed["text"])
         publication_year = _publication_year_from_metadata(
@@ -189,7 +197,7 @@ def collect_public_source_records(
             "retrieved_at": retrieved_at,
             "deck_match": deck_match,
             "deck_match_scope": deck_match_scope,
-            "normalized_text": parsed["text"],
+            "normalized_text": sanitized_text,
         }
         if fetch_url != url:
             record["source_fetch_url"] = fetch_url
@@ -197,6 +205,7 @@ def collect_public_source_records(
             record,
             deck_name=deck_name,
             current_date=current_date,
+            deck_identity=deck_identity,
         )
         records.append({**record, **_record_policy_fields(policy)})
 
@@ -326,12 +335,65 @@ def _matched_card_ids(deck_identity: Mapping[str, Any], text: str) -> list[str]:
     return matches
 
 
+def _decoded_deckstring_candidates(text: str) -> dict[str, Any]:
+    tokens = list(dict.fromkeys(DECKSTRING_TOKEN_RE.findall(text)))
+    decoded_candidates: list[dict[str, Any]] = []
+    for token in tokens:
+        try:
+            decoded = decode_deck_code(token)
+        except Exception:
+            continue
+        fingerprint = stable_deck_fingerprint(
+            (str(card["card_id"]), int(card["count"]))
+            for card in decoded["cards"]
+        )
+        decoded_candidates.append(
+            {
+                "deck_code_hash": sha256(token.encode("utf-8")).hexdigest(),
+                "deck_fingerprint": fingerprint,
+                "hero_dbf_id": decoded.get("hero_dbf_id"),
+                "format": decoded.get("format"),
+                "card_count_total": decoded.get("card_count_total"),
+                "sideboard_count": decoded.get("sideboard_count"),
+            }
+        )
+    return {
+        "candidate_count": len(tokens),
+        "decoded_candidates": decoded_candidates,
+    }
+
+
+def _candidate_matches_target_deck(
+    candidate: Mapping[str, Any],
+    deck_identity: Mapping[str, Any],
+) -> bool:
+    if candidate["deck_fingerprint"] != deck_identity.get("deck_fingerprint"):
+        return False
+    for key in ("hero_dbf_id", "format", "card_count_total", "sideboard_count"):
+        target = deck_identity.get(key)
+        observed = candidate.get(key)
+        if target is not None and observed is not None and observed != target:
+            return False
+    return True
+
+
+def _redact_deckstring_tokens(text: str) -> str:
+    return DECKSTRING_TOKEN_RE.sub("[deck-code-redacted]", text)
+
+
 def _deck_match_evidence(
     deck_name: str,
     deck_identity: Mapping[str, Any],
     title: str,
     text: str,
 ) -> tuple[dict[str, Any], str]:
+    candidate_evidence = _decoded_deckstring_candidates(text)
+    candidates = candidate_evidence["decoded_candidates"]
+    matches = [
+        candidate
+        for candidate in candidates
+        if _candidate_matches_target_deck(candidate, deck_identity)
+    ]
     matched_card_ids = _matched_card_ids(deck_identity, text)
     unique_deck_card_ids = {
         str(card.get("card_id", ""))
@@ -347,8 +409,8 @@ def _deck_match_evidence(
     deck_name_evidenced = bool(_norm(deck_name)) and _norm(deck_name) in _norm(
         f"{title} {text}"
     )
-    if deck_name_evidenced and overlap_ratio >= 0.80:
-        scope = "deck_matched"
+    if matches:
+        scope = "exact_deck_matched"
     elif deck_name_evidenced and len(matched_unique) >= 2:
         scope = "archetype_matched"
     elif matched_unique:
@@ -363,6 +425,17 @@ def _deck_match_evidence(
             "matched_card_count": len(matched_unique),
             "unique_deck_card_count": len(unique_deck_card_ids),
             "card_overlap_ratio": overlap_ratio,
+            "exact_deck_evidence": {
+                "candidate_count": candidate_evidence["candidate_count"],
+                "decoded_candidate_count": len(candidates),
+                "matched": bool(matches),
+                "matched_deck_fingerprint": (
+                    str(matches[0]["deck_fingerprint"]) if matches else ""
+                ),
+                "candidate_deck_code_hashes": sorted(
+                    str(candidate["deck_code_hash"]) for candidate in candidates
+                ),
+            },
         },
         scope,
     )
@@ -491,7 +564,7 @@ def _source_record_strength(
     if (
         source_family == "guide"
         and visibility == "full_text"
-        and deck_match_scope == "deck_matched"
+        and deck_match_scope == "exact_deck_matched"
         and publication_year == current_year
     ):
         return "candidate_strong"

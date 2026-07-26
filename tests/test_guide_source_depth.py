@@ -297,7 +297,7 @@ def test_diagnostic_static_report_only_claims_do_not_block_source_backed_depth()
                     "cards": ["CARD_GUIDE"],
                     "source_family": "guide",
                     "source_lane": "deck_matched_public_guide",
-                    "deck_match_scope": "deck_or_archetype_matched",
+                        "deck_match_scope": "exact_deck_matched",
                     "source_visibility": "full_text",
                 },
                 {
@@ -342,7 +342,7 @@ def test_guide_source_depth_separates_strong_lowerable_from_report_only():
                     "cards": ["CARD_A"],
                     "source_family": "guide",
                     "source_lane": "deck_matched_public_guide",
-                    "deck_match_scope": "deck_or_archetype_matched",
+                        "deck_match_scope": "exact_deck_matched",
                     "source_visibility": "full_text",
                 },
                 {

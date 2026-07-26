@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_evidence_policy import classify_source_evidence
@@ -37,6 +38,9 @@ SHADOW_DECK_IDENTITY = {
         {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
     ],
 }
+SHADOW_DECK_IDENTITY["deck_fingerprint"] = stable_deck_fingerprint(
+    (card["card_id"], card["count"]) for card in SHADOW_DECK_IDENTITY["cards"]
+)
 
 
 def _guide_record(claims: list[dict] | None = None) -> dict:
@@ -64,8 +68,12 @@ def _guide_record(claims: list[dict] | None = None) -> dict:
                 "SCH_514",
                 "GVG_009",
             ],
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": SHADOW_DECK_IDENTITY["deck_fingerprint"],
+            },
         },
-        "deck_match_scope": "deck_or_archetype_matched",
+        "deck_match_scope": "exact_deck_matched",
         "mulligan": {
             "keep_card_ids": ["TOY_381", "SW_444", "SCH_514", "GVG_009"],
             "discard_cost_min": 4,
@@ -114,6 +122,7 @@ def test_source_policy_has_strong_only_for_current_public_guides():
         _guide_record(),
         deck_name="ShadowPriest",
         current_date=CURRENT_DATE,
+        deck_identity=SHADOW_DECK_IDENTITY,
     )
     decklist = classify_source_evidence(
         {
@@ -123,11 +132,13 @@ def test_source_policy_has_strong_only_for_current_public_guides():
         },
         deck_name="ShadowPriest",
         current_date=CURRENT_DATE,
+        deck_identity=SHADOW_DECK_IDENTITY,
     )
     stats = classify_source_evidence(
         {**_guide_record(), "source_family": "stats"},
         deck_name="ShadowPriest",
         current_date=CURRENT_DATE,
+        deck_identity=SHADOW_DECK_IDENTITY,
     )
     static = classify_source_evidence(
         {
@@ -137,6 +148,7 @@ def test_source_policy_has_strong_only_for_current_public_guides():
         },
         deck_name="ShadowPriest",
         current_date=CURRENT_DATE,
+        deck_identity=SHADOW_DECK_IDENTITY,
     )
 
     assert strong["trust_ceiling"] == "source_backed_strong"

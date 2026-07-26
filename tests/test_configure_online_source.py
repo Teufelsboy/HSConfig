@@ -279,12 +279,12 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
 
     assert record["source_category"] == "public_guide"
     assert record["source_visibility"] == "full_text"
-    assert record["source_record_strength"] == "candidate_strong"
+    assert record["source_record_strength"] == "partial"
     assert record["retrieved_at"] == "2026-07-18"
-    assert record["promotion_eligible"] is True
-    assert record["strong_promotion_eligible"] is True
-    assert record["first_missing_source_action"] == "none"
-    assert autopilot["strong_candidate"] is True
+    assert record["promotion_eligible"] is False
+    assert record["strong_promotion_eligible"] is False
+    assert record["first_missing_source_action"] == "add_exact_deck_matched_source"
+    assert autopilot["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["source_status_apply_blocking"] is False
 

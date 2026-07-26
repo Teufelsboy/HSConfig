@@ -7,6 +7,13 @@
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "ShadowPriest",
       "archetype": "aggro_burn_hero_power_transform",
+      "deck_match_scope": "exact_deck_matched",
+      "deck_match": {
+        "exact_deck_evidence": {
+          "matched": true,
+          "matched_deck_fingerprint": "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327"
+        }
+      },
       "claims": [
         {
           "claim_kind": "gameplan_posture",

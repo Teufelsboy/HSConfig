@@ -1,0 +1,4 @@
+{
+  "https://example.test/shadowpriest-exact": "tests/fixtures/source_pages/shadowpriest_current_guide.html",
+  "https://example.test/shadowpriest-archetype": "tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html"
+}

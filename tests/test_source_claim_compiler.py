@@ -1021,4 +1021,4 @@ def test_compile_default_runtime_guide_claims_are_non_promoting():
     assert report["strong_candidate"] is False
     assert report["strong_closure_summary"]["semantic_status"] == "SOURCE_BACKED_PARTIAL"
     assert report["strong_closure_summary"]["source_backed_strong_ready"] is False
-    assert "non_promoting_source_type_default_runtime" in report["strong_candidate_blockers"]
+    assert "no_apply_surface_guide_candidate" in report["strong_candidate_blockers"]
