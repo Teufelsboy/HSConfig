@@ -151,11 +151,15 @@ def _assert_expected_roster_rows(raw_rows: object) -> None:
     assert isinstance(raw_rows, list)
     assert len(raw_rows) == len(EXPECTED_CARD_ROWS) == 16
     roster_pairs = [
-        (str(row["card_id"]), int(row["count"]))
+        (row["card_id"], row["count"])
         for row in raw_rows
     ]
-    assert len({card_id for card_id, _ in roster_pairs}) == len(raw_rows)
     assert roster_pairs == EXPECTED_CARD_ROWS
+    assert all(
+        type(card_id) is str and type(count) is int
+        for card_id, count in roster_pairs
+    )
+    assert len({card_id for card_id, _ in roster_pairs}) == len(raw_rows)
     assert sum(count for _, count in roster_pairs) == 30
 
 
@@ -324,6 +328,16 @@ def test_raw_roster_proof_rejects_duplicate_extra_row(package):
 
     with pytest.raises(AssertionError):
         _assert_expected_roster_rows(duplicated_rows)
+
+
+@pytest.mark.parametrize("mutated_count", ["1", 1.0, True])
+def test_raw_roster_proof_rejects_count_type_drift(package, mutated_count):
+    identity = _report(package, "deck_identity.json")
+    mutated_rows = [dict(row) for row in identity["cards"]]
+    mutated_rows[2]["count"] = mutated_count
+
+    with pytest.raises(AssertionError):
+        _assert_expected_roster_rows(mutated_rows)
 
 
 def test_globalvalues_literal_proof_rejects_same_size_key_replacement(package):
