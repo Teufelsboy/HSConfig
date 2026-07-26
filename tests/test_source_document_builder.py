@@ -982,6 +982,7 @@ def test_explicit_exact_scope_requires_matching_target_fingerprint():
                 "source_family": "guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
                 "deck_match_scope": "exact_deck_matched",
+                "source_lane": "deck_matched_public_guide",
                 "deck_match": {
                     "exact_deck_evidence": {
                         "matched": True,
@@ -1003,3 +1004,4 @@ def test_explicit_exact_scope_requires_matching_target_fingerprint():
 
     claim = bundle["claims"][0]
     assert claim["deck_match_scope"] == "archetype_matched"
+    assert claim["source_lane"] == "archetype_matched_public_guide"

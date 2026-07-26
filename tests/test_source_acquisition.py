@@ -8,6 +8,7 @@ from hsconfig import source_acquisition as source_acquisition_module
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_acquisition import (
+    _candidate_matches_target_deck,
     _deck_match_evidence,
     collect_public_source_records,
     extract_visible_text,
@@ -182,6 +183,49 @@ def test_exact_source_deckstring_promotes_to_exact_deck_scope():
     assert exact["matched_deck_fingerprint"] == shadowpriest_identity["deck_fingerprint"]
     assert "deck_code" not in exact
     assert "AAEBA" not in json.dumps(record)
+
+
+def test_source_record_redacts_deckstrings_from_title_and_url_fields():
+    shadowpriest_identity = _exact_shadowpriest_identity()
+    source_url = (
+        "https://www.reddit.com/r/wildhearthstone/comments/1/"
+        f"{SHADOWPRIEST_DECK_CODE}/"
+    )
+    html = f"""
+    <html>
+      <head>
+        <meta property="article:published_time" content="2026-07-26T00:00:00Z">
+        <title>ShadowPriest Guide {SHADOWPRIEST_DECK_CODE}</title>
+      </head>
+      <body><main><p>Mulligan: Keep Papercraft Angel and Twilight Deceptor.</p></main></body>
+    </html>
+    """.encode()
+
+    report = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=shadowpriest_identity,
+        source_urls=[source_url],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (200, "text/html", html),
+        resolver=_public_resolver,
+    )
+
+    record = report["source_records"][0]
+    assert "source_fetch_url" in record
+    assert "AAEBA" not in json.dumps(record)
+
+
+def test_target_hero_requires_observed_candidate_hero():
+    shadowpriest_identity = _exact_shadowpriest_identity()
+    candidate = {
+        "deck_fingerprint": shadowpriest_identity["deck_fingerprint"],
+        "hero_dbf_id": None,
+        "format": shadowpriest_identity["format"],
+        "card_count_total": shadowpriest_identity["card_count_total"],
+        "sideboard_count": shadowpriest_identity["sideboard_count"],
+    }
+
+    assert _candidate_matches_target_deck(candidate, shadowpriest_identity) is False
 
 
 def test_name_and_card_overlap_remains_archetype_only():

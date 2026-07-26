@@ -256,7 +256,7 @@ def _normalize_source_claim(
         "support_status": _support_status_for_readiness(readiness),
         "source_refs": list(dict.fromkeys(source_refs)),
     }
-    source_lane = _claim_source_lane(raw_claim, document)
+    source_lane = _claim_source_lane(raw_claim, document, deck_match_scope)
     if source_lane:
         claim["source_lane"] = source_lane
     for key in ("promotion_eligible", "source_record_strength"):
@@ -325,10 +325,16 @@ def _claim_source_visibility(
 def _claim_source_lane(
     raw_claim: dict[str, Any],
     document: dict[str, Any],
+    deck_match_scope: str,
 ) -> str:
     for container in (raw_claim, document):
         value = _clean_text(container.get("source_lane", ""))
         if value and value.lower() != "unknown":
+            if (
+                deck_match_scope == "archetype_matched"
+                and value.lower() == "deck_matched_public_guide"
+            ):
+                return "archetype_matched_public_guide"
             return value
     return ""
 

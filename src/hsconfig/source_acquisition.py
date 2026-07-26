@@ -21,6 +21,7 @@ HostResolver = Callable[[str], Sequence[str]]
 DECKSTRING_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{24,}={0,2})(?![A-Za-z0-9+/=])"
 )
+PERSISTED_DECKSTRING_RE = re.compile(r"AAE[A-Za-z0-9+/]{21,}={0,2}")
 
 
 class _VisibleTextParser(HTMLParser):
@@ -207,7 +208,9 @@ def collect_public_source_records(
             current_date=current_date,
             deck_identity=deck_identity,
         )
-        records.append({**record, **_record_policy_fields(policy)})
+        records.append(
+            _redact_persisted_deckstrings({**record, **_record_policy_fields(policy)})
+        )
 
     report = {
         "schema_version": 1,
@@ -227,13 +230,13 @@ def collect_public_source_records(
         "failures": failures,
         "first_missing_source_action": _report_first_missing_source_action(records),
     }
-    return {
+    return _redact_persisted_deckstrings({
         "schema_version": 1,
         "deck_name": deck_name,
         "status": "OK",
         "source_records": records,
         "source_acquisition_report": report,
-    }
+    })
 
 
 def _report_first_missing_source_action(records: Sequence[Mapping[str, Any]]) -> str:
@@ -372,13 +375,28 @@ def _candidate_matches_target_deck(
     for key in ("hero_dbf_id", "format", "card_count_total", "sideboard_count"):
         target = deck_identity.get(key)
         observed = candidate.get(key)
-        if target is not None and observed is not None and observed != target:
+        if target is not None and observed != target:
             return False
     return True
 
 
 def _redact_deckstring_tokens(text: str) -> str:
-    return DECKSTRING_TOKEN_RE.sub("[deck-code-redacted]", text)
+    return PERSISTED_DECKSTRING_RE.sub("[deck-code-redacted]", text)
+
+
+def _redact_persisted_deckstrings(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_deckstring_tokens(value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _redact_persisted_deckstrings(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_persisted_deckstrings(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_persisted_deckstrings(item) for item in value)
+    return value
 
 
 def _deck_match_evidence(
