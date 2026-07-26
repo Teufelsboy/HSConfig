@@ -24,6 +24,14 @@ def build_mulligan_plan(**kwargs):
             claim.setdefault("source_visibility", "full_text")
             claim.setdefault("source_lane", "deck_matched_public_guide")
             claim.setdefault(
+                "acquisition_provenance",
+                {
+                    "mode": "live_http",
+                    "content_sha256": "sha256:" + ("a" * 64),
+                    "authority": "live_verified",
+                },
+            )
+            claim.setdefault(
                 "deck_match",
                 {
                     "exact_deck_evidence": {
@@ -43,6 +51,9 @@ def build_mulligan_plan(**kwargs):
                     "matched_deck_fingerprint": _TEST_DECK_FINGERPRINT,
                     "claim_id": str(claim.get("claim_id", "")),
                     "claim_signature": globalvalues_claim_signature(claim),
+                    "acquisition_provenance": claim[
+                        "acquisition_provenance"
+                    ],
                 }
             )
         claims.append(claim)

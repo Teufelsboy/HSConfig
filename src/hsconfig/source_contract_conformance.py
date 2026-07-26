@@ -7,6 +7,7 @@ from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.mulligan_plan import build_mulligan_plan
+from hsconfig.source_acquisition import collect_public_source_records
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import (
@@ -570,6 +571,9 @@ def _verified_gameplan_posture_bundle() -> dict[str, Any]:
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": (
+                    _verified_conformance_acquisition_provenance()
+                ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -620,6 +624,9 @@ def _verified_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": (
+                    _verified_conformance_acquisition_provenance()
+                ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -672,6 +679,9 @@ def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": (
+                    _verified_conformance_acquisition_provenance()
+                ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -712,6 +722,32 @@ def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
         ],
         current_date="2026-07-26",
     )
+
+
+def _verified_conformance_acquisition_provenance() -> dict[str, str]:
+    acquired = collect_public_source_records(
+        deck_name="Conformance",
+        deck_identity={
+            "deck_name": "Conformance",
+            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            "cards": [
+                {
+                    "card_id": "CARD_001",
+                    "name": "Conformance Card",
+                    "count": 1,
+                }
+            ],
+        },
+        source_urls=["https://example.test/conformance-guide"],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (
+            200,
+            "text/html",
+            b"<html><body>Conformance source response.</body></html>",
+        ),
+        resolver=lambda _hostname: ["93.184.216.34"],
+    )
+    return acquired["source_records"][0]["acquisition_provenance"]
 
 
 def _suppressed_result(rows: list[Mapping[str, Any]]) -> dict[str, str]:

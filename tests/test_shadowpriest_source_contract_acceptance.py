@@ -20,7 +20,10 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_configure_shadowpriest_closes_strong_source_contract(tmp_path: Path, monkeypatch):
+def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
+    tmp_path: Path,
+    monkeypatch,
+):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
     _write_shadow_cards_json(cards_json)
@@ -74,23 +77,38 @@ def test_configure_shadowpriest_closes_strong_source_contract(tmp_path: Path, mo
     autopilot = _read_json(out / "03_source_autopilot" / "source_autopilot_report.json")
     package = out / "04_package"
     operator = _read_json(package / "reports" / "operator_summary.json")
+    claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
     deck_dir = next((package / "CustomConfig").iterdir())
     mulligan = _read_json(deck_dir / "Mulligan.json")
     darkbishop = _read_json(deck_dir / "SW_448.json")
 
     assert summary["status"] == "OK"
-    assert autopilot["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert autopilot["strong_candidate"] is True
-    assert autopilot["first_missing_source_action"] == "none"
-    assert autopilot["source_backed_strong_closure"]["closed"] is True
+    assert autopilot["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert autopilot["strong_candidate"] is False
+    assert autopilot["first_missing_source_action"] == (
+        "acquire_strategic_source_via_live_http"
+    )
+    assert autopilot["source_backed_strong_closure"]["closed"] is False
+    assert "strategic_provenance_not_live_verified" in autopilot[
+        "strong_candidate_blockers"
+    ]
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["source_backed_status"] == "SOURCE_BACKED_STRONG"
-    assert operator["source_strong_ready"] is True
-    assert operator["first_missing_source_action"] == "none"
-    assert operator["source_status_reasons"] == ["source_backed_strong_ready"]
-    assert operator["default_only_runtime_surfaces"] == []
+    assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert operator["source_strong_ready"] is False
+    assert operator["first_missing_source_action"] == (
+        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+    )
+    assert operator["source_status_reasons"] == ["default_only_runtime_surface"]
+    assert operator["default_only_runtime_surfaces"] == ["mulligan"]
     assert operator["source_status_apply_blocking"] is False
     assert acquisition["records"][0]["source_visibility"] == "full_text"
+    assert acquisition["records"][0]["acquisition_provenance"]["mode"] == (
+        "fixture_map"
+    )
+    assert acquisition["records"][0]["acquisition_provenance"]["authority"] == (
+        "fixture_only"
+    )
+    assert claim_bundle["canonical_source_receipts"] == []
 
     flat_claims = [
         claim
@@ -113,7 +131,7 @@ def test_configure_shadowpriest_closes_strong_source_contract(tmp_path: Path, mo
     mulligan_text = json.dumps(mulligan, sort_keys=True)
     assert "SW_448" not in mulligan_text
     for expected_card_id in ("SW_446", "TOY_381", "SW_444", "SCH_514", "GVG_009"):
-        assert expected_card_id in mulligan_text
+        assert expected_card_id not in mulligan_text
 
     darkbishop_text = json.dumps(darkbishop, sort_keys=True).lower()
     assert "beforeuseheropowerbonus" in darkbishop_text

@@ -147,7 +147,7 @@ def test_decklist_only_builds_evidence_but_cannot_promote_strong():
     assert bundle["source_autopilot_report"]["first_missing_source_action"] == summary["first_missing_source_action"]
 
 
-def test_current_shadowpriest_guide_can_close_aggro_profile_without_extra_apply_surface(
+def test_captured_shadowpriest_guide_cannot_close_aggro_profile(
     tmp_path: Path, capsys, monkeypatch
 ):
     monkeypatch.setattr(
@@ -183,7 +183,14 @@ def test_current_shadowpriest_guide_can_close_aggro_profile_without_extra_apply_
     assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     closure = summary["source_backed_strong_closure"]
     assert closure["closure_profile"] == "aggro_burn_hero_power"
-    assert closure["closure_profile_closed"] is True
-    assert closure["closure_profile_first_missing_link"] == "none"
+    assert closure["closure_profile_closed"] is False
+    assert (
+        closure["closure_profile_first_missing_link"]
+        == "missing_claim_group:gameplan_posture"
+    )
+    assert closure["closure_profile_missing_claim_groups"] == [
+        "gameplan_posture",
+        "mulligan_keep|mulligan_discard",
+    ]
     assert closure["default_only_runtime_surfaces"] == []
     assert closure["status"] == "needs_source_closure"

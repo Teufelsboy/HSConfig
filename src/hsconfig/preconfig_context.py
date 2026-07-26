@@ -66,8 +66,11 @@ def build_preconfig_context(
     collectible_cards = collectible_cards or []
     full_cards = full_cards or []
     claims = load_claims(getattr(args, "claims_json", None))
-    source_documents_input = load_source_documents(
-        getattr(args, "source_documents_json", None)
+    trusted_source_documents = getattr(args, "trusted_source_documents", None)
+    source_documents_input = (
+        trusted_source_documents
+        if isinstance(trusted_source_documents, list)
+        else load_source_documents(getattr(args, "source_documents_json", None))
     )
     source_evidence_rows = load_source_evidence(getattr(args, "source_evidence_json", None))
     guide_sources = load_guide_sources(getattr(args, "guide_sources_json", None))

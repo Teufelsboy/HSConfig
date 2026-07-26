@@ -12,6 +12,8 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     claim_can_lower_to_runtime,
     source_claim_signature,
+    strategic_provenance_diagnostic,
+    strategic_source_receipt_provenance,
 )
 from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_claim_conflicts import build_claim_conflict_report
@@ -47,6 +49,7 @@ def build_source_document_bundle(
     unsupported_claims: list[dict[str, Any]] = []
     source_evidence_index: list[dict[str, Any]] = []
     canonical_source_receipts: list[dict[str, Any]] = []
+    strategic_receipt_diagnostics: list[dict[str, str]] = []
 
     for source_index, document in enumerate(source_documents, start=1):
         source_ref = f"source:{source_index}"
@@ -141,6 +144,20 @@ def build_source_document_bundle(
             )
             if receipt is not None:
                 canonical_source_receipts.append(receipt)
+            else:
+                diagnostic = _strategic_receipt_diagnostic(
+                    normalized,
+                    document=document,
+                    deck_identity=deck_identity,
+                )
+                if diagnostic is not None:
+                    strategic_receipt_diagnostics.append(
+                        {
+                            "claim_id": str(normalized.get("claim_id", "")),
+                            "source_ref": source_ref,
+                            "code": diagnostic,
+                        }
+                    )
             promoted_count += 1
 
         source_evidence_index.append(
@@ -162,6 +179,7 @@ def build_source_document_bundle(
         "source_evidence_index": source_evidence_index,
         "canonical_source_receipts": canonical_source_receipts,
         "globalvalues_source_receipts": canonical_source_receipts,
+        "strategic_receipt_diagnostics": strategic_receipt_diagnostics,
         "claim_coverage_report": _build_claim_coverage_report(
             deck_identity=deck_identity,
             cards=cards,
@@ -270,6 +288,9 @@ def _normalize_source_claim(
         "support_status": _support_status_for_readiness(readiness),
         "source_refs": list(dict.fromkeys(source_refs)),
     }
+    acquisition_provenance = document.get("acquisition_provenance")
+    if isinstance(acquisition_provenance, dict):
+        claim["acquisition_provenance"] = acquisition_provenance
     source_lane = _claim_source_lane(raw_claim, document, deck_match_scope)
     if source_lane:
         claim["source_lane"] = source_lane
@@ -445,6 +466,9 @@ def _canonical_source_receipt(
         "legacy_claims_json"
     ):
         return None
+    acquisition_provenance = strategic_source_receipt_provenance(claim)
+    if acquisition_provenance is None:
+        return None
     exact = _canonical_exact_deck_evidence(document, deck_identity)
     if not exact:
         return None
@@ -457,7 +481,19 @@ def _canonical_source_receipt(
         ),
         "claim_id": str(claim.get("claim_id", "")),
         "claim_signature": source_claim_signature(claim),
+        "acquisition_provenance": acquisition_provenance,
     }
+
+
+def _strategic_receipt_diagnostic(
+    claim: dict[str, Any],
+    *,
+    document: dict[str, Any],
+    deck_identity: dict[str, Any],
+) -> str | None:
+    if not _canonical_exact_deck_evidence(document, deck_identity):
+        return None
+    return strategic_provenance_diagnostic(claim)
 
 
 def _document_matches_deck_identity(

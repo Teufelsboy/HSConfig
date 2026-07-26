@@ -274,6 +274,11 @@ def _verified_public_guide_posture_claim(
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": {
+                    "mode": "live_http",
+                    "content_sha256": "sha256:" + ("a" * 64),
+                    "authority": "live_verified",
+                },
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -374,7 +379,7 @@ def test_raw_claim_cannot_self_assert_exact_public_guide_authority() -> None:
     )
 
     assert decision.allowed is False
-    assert decision.reason == "globalvalues_requires_verified_source_receipt"
+    assert decision.reason == "strategic_provenance_not_live_verified"
 
 
 def test_contradictory_non_guide_provenance_vetoes_public_guide_identity() -> None:

@@ -205,15 +205,9 @@ def _assert_exact_globalvalues_key_sets(
         (
             "https://example.test/shadowpriest-exact",
             "exact",
-            5,
             0,
-            {
-                "FirstTurnValueWeight",
-                "SecondTurnValueWeight",
-                "GlobalMinionAttack",
-                "GlobalMinionIntrinsicValue",
-                "MyHeroPowerValue",
-            },
+            3,
+            set(),
         ),
         (
             "https://example.test/shadowpriest-archetype",

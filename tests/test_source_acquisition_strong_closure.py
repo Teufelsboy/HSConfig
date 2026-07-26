@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from hsconfig.cli import main
 from hsconfig.source_acquisition import collect_public_source_records
+
+
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
 
 
 def _fetcher(url: str, timeout_seconds: float) -> tuple[int, str, bytes]:
@@ -204,3 +214,76 @@ def test_acquisition_policy_fields_make_stale_guides_non_strong():
     assert record["strong_promotion_eligible"] is False
     assert "source_not_current_or_evergreen_wild" in record["promotion_blockers"]
     assert record["first_missing_source_action"] == "add_current_or_evergreen_wild_public_guide"
+
+
+def test_configure_live_http_preserves_provenance_to_strategic_receipt(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    body = Path(
+        "tests/fixtures/source_pages/shadowpriest_current_guide.html"
+    ).read_bytes()
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition._default_fetcher",
+        lambda _url, _timeout, validated_addresses=None: (
+            200,
+            "text/html",
+            body,
+        ),
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition._default_resolver",
+        lambda _hostname: ["93.184.216.34"],
+    )
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
+    out = tmp_path / "configure"
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--online-source",
+            "--auto-source",
+            "--source-url",
+            "https://example.test/shadowpriest-exact",
+            "--current-date",
+            "2026-07-26",
+            "--json",
+        ]
+    )
+    capsys.readouterr()
+
+    guide_claim_bundle = json.loads(
+        (
+            out / "04_package" / "reports" / "guide_claim_bundle.json"
+        ).read_text(encoding="utf-8")
+    )
+    receipts = guide_claim_bundle["canonical_source_receipts"]
+
+    assert code == 0
+    assert receipts
+    assert {
+        receipt["acquisition_provenance"]["mode"] for receipt in receipts
+    } == {"live_http"}
+    assert {
+        receipt["acquisition_provenance"]["authority"] for receipt in receipts
+    } == {"live_verified"}

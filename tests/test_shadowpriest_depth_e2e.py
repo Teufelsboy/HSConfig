@@ -202,6 +202,9 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
     global_authority = json.loads(
         (reports / "global_values_authority_matrix.json").read_text(encoding="utf-8")
     )
+    source_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
 
     mulligan_values = mulligan["Mulligan"]["values"]
 
@@ -214,8 +217,8 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
     assert "SW_448" not in concrete_keeps
-    assert "SW_446" in concrete_keeps
-    assert mulligan_values[-1]["mulligan"] == "*"
+    assert concrete_keeps == []
+    assert mulligan_values == []
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
     assert set(cardid) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
     assert [row["value"] for row in cardid["OnBoardBonus"]["values"]] == ["10"]
@@ -224,8 +227,17 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         behavior_report["card_rows"]["SW_446"][0]["intent"]
         == "use_aura_according_to_card_text"
     )
-    assert mulligan_report["quality"]["has_concrete_keeps"] is True
-    assert any(row["key"] == "FirstTurnValueWeight" for row in global_authority["allowed_step1_overlays"])
+    assert mulligan_report["quality"]["has_concrete_keeps"] is False
+    assert mulligan_report["quality"]["source_backed_keep_rule_count"] == 0
+    assert any(
+        row["claim_kind"] == "mulligan_keep"
+        and row["surfaces"]["mulligan"]["reason"]
+        == "strategic_provenance_not_live_verified"
+        for row in source_audit["claim_rows"].values()
+    )
+    assert {row["key"] for row in global_authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
 
 
 def test_real_shadowpriest_deckcode_depth_prepare_has_clean_runtime(tmp_path: Path, capsys):

@@ -511,8 +511,7 @@ def test_imbuemage_fixture_marks_hero_power_and_generation_boundaries():
     )
 
 
-def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
-    source_named_imbue_enablers = {"EDR_800", "EDR_852", "EDR_871"}
+def test_imbuemage_fixture_mulligan_claims_remain_diagnostic_without_receipts():
     bundle = _source_bundle_for_fixture("ImbueMage")
     deck_identity = _deck_identity_for_fixture("ImbueMage")
     plan = build_mulligan_plan(
@@ -528,9 +527,13 @@ def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
         if rule.get("action") == "hold" and rule.get("source_type") == "source_claim"
     }
 
-    assert source_claim_holds
-    assert source_claim_holds <= source_named_imbue_enablers
-    assert "BAR_546" not in source_claim_holds
+    assert bundle["canonical_source_receipts"] == []
+    assert source_claim_holds == set()
+    assert {
+        claim["claim_kind"]
+        for claim in bundle["claims"]
+        if claim["claim_kind"].startswith("mulligan_")
+    } == {"mulligan_keep"}
 
 
 def test_ctapaladin_fixture_covers_recruit_board_flood():

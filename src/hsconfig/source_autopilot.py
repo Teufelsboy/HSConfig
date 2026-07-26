@@ -4,6 +4,10 @@ from collections import Counter
 from datetime import date, datetime
 from typing import Any, Mapping, Sequence
 
+from hsconfig.source_acquisition_provenance import (
+    STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+    strategic_source_provenance_is_verified,
+)
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_policy import classify_source_evidence
@@ -451,7 +455,9 @@ def _build_strong_closure_summary(
     source_backed_strong_ready = (
         strong_candidate and bool(strong_rows) and profile_verdict.closed
     )
-    if profile_verdict.closed:
+    if STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED in blockers:
+        first_missing_source_action = "acquire_strategic_source_via_live_http"
+    elif profile_verdict.closed:
         first_missing_source_action = "none"
     else:
         first_missing_source_action = (
@@ -516,6 +522,8 @@ def _action_from_profile_gap(first_missing_link: str) -> str:
 def _source_policy_missing_action(evidence_rows: Sequence[Mapping[str, Any]]) -> str:
     for row in evidence_rows:
         blockers = {_text(blocker) for blocker in _as_list(row.get("promotion_blockers", []))}
+        if STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED in blockers:
+            return "acquire_strategic_source_via_live_http"
         if "source_not_current_or_evergreen_wild" in blockers:
             return "add_current_or_evergreen_wild_public_guide"
     return ""
@@ -1087,6 +1095,9 @@ def _source_base(
         "deck_name": _text(match.get("deck_name", "")),
         "archetype": _text(match.get("archetype", "")),
     }
+    acquisition_provenance = source.get("acquisition_provenance")
+    if isinstance(acquisition_provenance, Mapping):
+        base["acquisition_provenance"] = acquisition_provenance
     base.update(_policy_fields(policy, include_rank_lane=False))
     base["source_rank_lane"] = source_rank_lane
     base["source_visibility"] = source_visibility
@@ -1326,9 +1337,6 @@ def _quantitative_deck_match_scope(
     card_overlap: int,
     unique_deck_card_count: int,
 ) -> str:
-    overlap_ratio = (
-        card_overlap / unique_deck_card_count if unique_deck_card_count else 0.0
-    )
     if deck_name_match and card_overlap >= 2:
         return "archetype_matched"
     if card_overlap:
@@ -1417,6 +1425,10 @@ def _is_strong_guide_lane_shape(
 
 def _strong_lane_blockers(row: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
+    if not strategic_source_provenance_is_verified(
+        row.get("acquisition_provenance")
+    ):
+        blockers.append(STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED)
     if row.get("promotion_eligible") is False:
         blockers.append("promotion_explicitly_disabled")
     if row.get("strong_promotion_eligible") is False:

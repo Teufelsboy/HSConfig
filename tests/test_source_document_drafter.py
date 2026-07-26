@@ -44,6 +44,11 @@ def _exact_mulligan_evidence_row(
         "source_title": "Strict Count Guide",
         "source_family": "guide",
         "retrieved_at": "2026-07-26T00:00:00Z",
+        "acquisition_provenance": {
+            "mode": "live_http",
+            "content_sha256": "sha256:" + ("a" * 64),
+            "authority": "live_verified",
+        },
         "deck_name": "StrictCountDeck",
         "archetype": "strictcountdeck",
         "source_lane": "deck_matched_public_guide",
@@ -60,6 +65,70 @@ def _exact_mulligan_evidence_row(
         "evidence_text_short": "Keep Fixture One.",
         "source_confidence": "high",
     }
+
+
+@pytest.mark.parametrize(
+    ("mode", "authority", "expected_receipt_count"),
+    [
+        ("live_http", "live_verified", 1),
+        ("captured_record", "captured_unverified", 0),
+    ],
+)
+def test_strategic_receipt_minting_is_bound_to_acquisition_provenance(
+    mode,
+    authority,
+    expected_receipt_count,
+):
+    content_provenance = {
+        "mode": mode,
+        "content_sha256": (
+            "sha256:ee777040a572d64f2d71e67d68539986e003b924be839a5875"
+            "adda224e19a665"
+        ),
+        "authority": authority,
+    }
+    fingerprint = "sha256:provenance-target"
+    deck_identity = {
+        "deck_name": "ProvenanceDeck",
+        "deck_fingerprint": fingerprint,
+        "cards": [{"card_id": "EX1_001", "name": "Fixture One", "count": 1}],
+    }
+    row = _exact_mulligan_evidence_row(
+        fingerprint=fingerprint,
+        count_field="candidate_count",
+        count_value=1,
+    )
+    row["acquisition_provenance"] = content_provenance
+
+    draft = draft_source_documents(
+        deck_name="ProvenanceDeck",
+        deck_identity=deck_identity,
+        evidence_rows=[row],
+    )
+    document = draft["source_documents"][0]
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+
+    assert document["acquisition_provenance"] == content_provenance
+    assert bundle["claims"][0]["acquisition_provenance"] == content_provenance
+    assert len(bundle["canonical_source_receipts"]) == expected_receipt_count
+    if expected_receipt_count:
+        assert bundle["canonical_source_receipts"][0][
+            "acquisition_provenance"
+        ] == content_provenance
+        assert bundle["strategic_receipt_diagnostics"] == []
+    else:
+        assert bundle["strategic_receipt_diagnostics"] == [
+            {
+                "claim_id": bundle["claims"][0]["claim_id"],
+                "source_ref": "source:1",
+                "code": "strategic_provenance_not_live_verified",
+            }
+        ]
 
 
 def test_drafter_preserves_consensus_exact_deck_evidence():

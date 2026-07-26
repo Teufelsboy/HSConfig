@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from datetime import datetime
+import importlib
 import json
 from pathlib import Path
+
+import pytest
 
 from hsconfig import source_acquisition as source_acquisition_module
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.input_loading import (
+    load_claims,
+    load_guide_sources,
+    load_source_documents,
+    load_source_evidence,
+    load_source_search_records,
+)
 from hsconfig.source_acquisition import (
     _candidate_matches_target_deck,
     _deck_match_evidence,
@@ -96,6 +106,197 @@ def _identity_with_unique_cards(card_count: int) -> dict:
             for index in range(card_count)
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("mode", "authority"),
+    [
+        ("live_http", "live_verified"),
+        ("captured_record", "captured_unverified"),
+        ("manual_evidence", "manual_unverified"),
+        ("fixture_map", "fixture_only"),
+        ("legacy_claims_json", "legacy_unverified"),
+    ],
+)
+def test_acquisition_provenance_classifies_mode_with_canonical_digest(
+    mode,
+    authority,
+):
+    provenance_module = importlib.import_module(
+        "hsconfig.source_acquisition_provenance"
+    )
+
+    first = provenance_module.build_acquisition_provenance(
+        mode=mode,
+        content=b"same content",
+    )
+    second = provenance_module.build_acquisition_provenance(
+        mode=mode,
+        content="same content",
+    )
+
+    assert first == second == {
+        "mode": mode,
+        "content_sha256": (
+            "sha256:a636bd7cd42060a4d07fa1bfbcc010eb7794c2ba721e1e3e4c"
+            "20335a15b66eaf"
+        ),
+        "authority": authority,
+    }
+    assert json.dumps(first, separators=(",", ":"), sort_keys=True) == json.dumps(
+        second,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+
+
+def test_acquisition_provenance_digest_changes_with_one_content_byte():
+    provenance_module = importlib.import_module(
+        "hsconfig.source_acquisition_provenance"
+    )
+
+    original = provenance_module.build_acquisition_provenance(
+        mode="live_http",
+        content=b"same content",
+    )
+    changed = provenance_module.build_acquisition_provenance(
+        mode="live_http",
+        content=b"same contenU",
+    )
+
+    assert original["content_sha256"] == (
+        "sha256:a636bd7cd42060a4d07fa1bfbcc010eb7794c2ba721e1e3e4c"
+        "20335a15b66eaf"
+    )
+    assert changed["content_sha256"] == (
+        "sha256:ed4201a9f7d47bc1044061ede0ceb596caa754f7c5789c86f"
+        "73633f6ab9bef6b"
+    )
+    assert original["content_sha256"] != changed["content_sha256"]
+
+
+def test_acquisition_provenance_rejects_unknown_mode():
+    provenance_module = importlib.import_module(
+        "hsconfig.source_acquisition_provenance"
+    )
+
+    with pytest.raises(ValueError, match="unknown acquisition provenance mode"):
+        provenance_module.build_acquisition_provenance(
+            mode="caller_claimed_live",
+            content=b"same content",
+        )
+
+
+def test_successful_direct_http_fetch_records_live_verified_provenance():
+    body = b"<html><body><main>ShadowPriest guide text.</main></body></html>"
+
+    result = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        source_urls=["https://example.test/guide"],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (200, "text/html", body),
+        resolver=_public_resolver,
+    )
+
+    assert result["source_records"][0]["acquisition_provenance"] == {
+        "mode": "live_http",
+        "content_sha256": (
+            "sha256:ddf17db1bed3db3ec0e6aac3669a50508e9995afe53759b3f0"
+            "d9d5ca80e51c63"
+        ),
+        "authority": "live_verified",
+    }
+
+
+@pytest.mark.parametrize(
+    ("loader", "payload", "expected_mode", "expected_authority"),
+    [
+        (
+            load_claims,
+            {"claims": [{"claim_kind": "mulligan_keep"}]},
+            "legacy_claims_json",
+            "legacy_unverified",
+        ),
+        (
+            load_source_evidence,
+            {"evidence_rows": [{"claim_kind": "mulligan_keep"}]},
+            "manual_evidence",
+            "manual_unverified",
+        ),
+        (
+            load_guide_sources,
+            {"sources": [{"claims": []}]},
+            "manual_evidence",
+            "manual_unverified",
+        ),
+        (
+            load_source_documents,
+            {"source_documents": [{"claims": []}]},
+            "captured_record",
+            "captured_unverified",
+        ),
+        (
+            load_source_search_records,
+            {"records": [{"claims": []}]},
+            "captured_record",
+            "captured_unverified",
+        ),
+    ],
+)
+def test_import_loaders_overwrite_forged_live_provenance(
+    tmp_path,
+    loader,
+    payload,
+    expected_mode,
+    expected_authority,
+):
+    rows = next(value for value in payload.values() if isinstance(value, list))
+    rows[0]["acquisition_provenance"] = {
+        "mode": "live_http",
+        "content_sha256": "sha256:" + ("f" * 64),
+        "authority": "live_verified",
+    }
+    path = tmp_path / f"{expected_mode}.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = loader(str(path))
+
+    assert loaded[0]["acquisition_provenance"]["mode"] == expected_mode
+    assert loaded[0]["acquisition_provenance"]["authority"] == expected_authority
+    assert loaded[0]["acquisition_provenance"]["content_sha256"].startswith(
+        "sha256:"
+    )
+    assert loaded[0]["acquisition_provenance"]["content_sha256"] != (
+        "sha256:" + ("f" * 64)
+    )
+
+
+def test_fixture_transport_overwrites_forged_live_provenance():
+    body = json.dumps(
+        {
+            "acquisition_provenance": {
+                "mode": "live_http",
+                "content_sha256": "sha256:" + ("f" * 64),
+                "authority": "live_verified",
+            }
+        }
+    ).encode("utf-8")
+
+    result = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        source_urls=["https://example.test/fixture"],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (200, "text/html", body),
+        resolver=_public_resolver,
+        acquisition_mode="fixture_map",
+    )
+
+    provenance = result["source_records"][0]["acquisition_provenance"]
+    assert provenance["mode"] == "fixture_map"
+    assert provenance["authority"] == "fixture_only"
+    assert provenance["content_sha256"] != "sha256:" + ("f" * 64)
 
 
 def test_footer_year_does_not_make_old_guide_current():

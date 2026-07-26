@@ -12,6 +12,10 @@ from urllib.parse import urlparse
 
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.source_acquisition_provenance import (
+    LIVE_HTTP,
+    build_acquisition_provenance,
+)
 from hsconfig.source_evidence_policy import classify_source_evidence
 
 
@@ -119,6 +123,7 @@ def collect_public_source_records(
     resolver: HostResolver | None = None,
     timeout_seconds: float = 6.0,
     candidate_registry_url_count: int = 0,
+    acquisition_mode: str = LIVE_HTTP,
 ) -> dict[str, Any]:
     resolve = resolver or _default_resolver
     records: list[dict[str, Any]] = []
@@ -199,6 +204,10 @@ def collect_public_source_records(
             "deck_match": deck_match,
             "deck_match_scope": deck_match_scope,
             "normalized_text": sanitized_text,
+            "acquisition_provenance": build_acquisition_provenance(
+                mode=acquisition_mode,
+                content=body,
+            ),
         }
         if fetch_url != url:
             record["source_fetch_url"] = fetch_url

@@ -231,7 +231,7 @@ def test_semantically_gated_shadowpriest_has_no_known_semantic_intent_fallbacks(
     assert quality["checks"]["card_behavior"]["semantic_default_rows"] == []
 
 
-def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_unique(
+def test_captured_shadowpriest_mulligan_runtime_rows_are_policy_unique(
     tmp_path: Path, monkeypatch
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
@@ -266,8 +266,9 @@ def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_un
 
     assert code == 0
     assert runtime_keys == [
-        ("SW_446", "*", "hold"),
-        ("GVG_009", "*", "hold"),
+        ("SCH_514", "*", "hold"),
+        ("NX2_019", "*", "hold"),
+        ("VAC_419", "*", "hold"),
         ("*", "*", "discard"),
     ]
     assert len(runtime_keys) == len(set(runtime_keys))
@@ -276,7 +277,11 @@ def test_source_backed_strong_shadowpriest_mulligan_runtime_rows_are_semantic_un
         for row in runtime_rows
     )
     assert plan_report["quality"]["merged_duplicate_rule_count"] == 0
-    assert plan_report["quality"]["source_backed_keep_rule_count"] == 2
+    assert plan_report["quality"]["source_backed_keep_rule_count"] == 0
+    assert plan_report["quality"]["policy_backed_keep_rule_count"] == 3
+    assert plan_report["quality"]["suppressed_reasons"][
+        "strategic_provenance_not_live_verified"
+    ] == 2
     assert plan_report["quality"]["default_only"] is False
 
 

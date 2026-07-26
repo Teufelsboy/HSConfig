@@ -12,6 +12,10 @@ from hsconfig.role_tokens import (
     has_explicit_opening_hand_mulligan_intent,
 )
 from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
+from hsconfig.source_acquisition_provenance import (
+    STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+    strategic_source_provenance_is_verified,
+)
 from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
 
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
@@ -100,6 +104,15 @@ GLOBALVALUES_RUNTIME_EVIDENCE_CLAIM_KINDS = frozenset({"globalvalue_numeric_tuni
 MULLIGAN_SURFACE_CLAIM_KINDS = frozenset({"mulligan_keep", "mulligan_discard"})
 GLOBALVALUES_SURFACE_CLAIM_KINDS = frozenset({"gameplan_posture"})
 COMBO_SURFACE_CLAIM_KINDS = frozenset({"combo_sequence"})
+STRATEGIC_SOURCE_CLAIM_KINDS = frozenset(
+    {
+        *MULLIGAN_SURFACE_CLAIM_KINDS,
+        *GLOBALVALUES_SURFACE_CLAIM_KINDS,
+        *COMBO_SURFACE_CLAIM_KINDS,
+        "globalvalue_numeric_tuning",
+        "targeting_rule",
+    }
+)
 CARDID_SURFACE_CLAIM_KINDS = frozenset(
     {
         "card_role",
@@ -531,6 +544,13 @@ def can_lower_to_mulligan(
             claim_kind,
             "mulligan",
         )
+    if strategic_source_receipt_provenance(claim) is None:
+        return SurfaceGateDecision(
+            False,
+            STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+            claim_kind,
+            "mulligan",
+        )
     if not _has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
@@ -620,6 +640,13 @@ def can_lower_to_globalvalues(
             claim_kind,
             "globalvalues",
         )
+    if strategic_source_receipt_provenance(claim) is None:
+        return SurfaceGateDecision(
+            False,
+            STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+            claim_kind,
+            "globalvalues",
+        )
     if not _has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
@@ -695,12 +722,35 @@ def globalvalues_claim_signature(claim: Mapping[str, Any]) -> str:
     return source_claim_signature(claim)
 
 
+def strategic_source_receipt_provenance(
+    claim: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    value = claim.get("acquisition_provenance")
+    if not strategic_source_provenance_is_verified(value):
+        return None
+    assert isinstance(value, Mapping)
+    return value
+
+
+def strategic_provenance_diagnostic(
+    claim: Mapping[str, Any],
+) -> str | None:
+    if normalized_claim_kind(claim) not in STRATEGIC_SOURCE_CLAIM_KINDS:
+        return None
+    if strategic_source_receipt_provenance(claim) is None:
+        return STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED
+    return None
+
+
 def _has_verified_source_receipt(
     claim: Mapping[str, Any],
     *,
     target_fingerprint: str,
     verified_source_receipts: Iterable[Mapping[str, Any]] | None,
 ) -> bool:
+    claim_provenance = strategic_source_receipt_provenance(claim)
+    if claim_provenance is None:
+        return False
     signature = source_claim_signature(claim)
     claim_id = str(claim.get("claim_id", "")).strip()
     for receipt in verified_source_receipts or ():
@@ -713,6 +763,8 @@ def _has_verified_source_receipt(
         if str(receipt.get("claim_id", "")).strip() != claim_id:
             continue
         if str(receipt.get("claim_signature", "")).strip() != signature:
+            continue
+        if receipt.get("acquisition_provenance") != claim_provenance:
             continue
         return True
     return False
@@ -829,6 +881,13 @@ def can_lower_to_combo(
         return SurfaceGateDecision(
             False,
             "combo_requires_complete_exact_deck_evidence",
+            claim_kind,
+            "combo",
+        )
+    if strategic_source_receipt_provenance(claim) is None:
+        return SurfaceGateDecision(
+            False,
+            STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
             claim_kind,
             "combo",
         )

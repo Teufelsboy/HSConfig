@@ -244,14 +244,19 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
 
     deck_dir = out / "CustomConfig" / "linked_combo"
     reports = out / "reports"
-    combo = read_json(deck_dir / "Combo.json")
     card_behavior = read_json(reports / "card_behavior_plan_report.json")
     suppression = read_json(reports / "card_behavior_suppression_report.json")
+    source_audit = read_json(reports / "source_contract_audit.json")
     discover = read_json(deck_dir / "EX1_001.json")
 
     assert code == 0
-    assert combo["ComboList"]["values"][0]["combo"] == "EX1_003>>EX1_004"
-    assert combo["ComboList"]["values"][0]["value"] == "8>>14"
+    assert not (deck_dir / "Combo.json").exists()
+    assert any(
+        row["claim_kind"] == "combo_sequence"
+        and row["surfaces"]["combo"]["reason"]
+        == "strategic_provenance_not_live_verified"
+        for row in source_audit["claim_rows"].values()
+    )
     assert card_behavior["option_resolution"][0]["status"] == "resolved"
     assert suppression == [
         {

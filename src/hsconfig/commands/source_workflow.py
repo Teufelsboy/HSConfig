@@ -12,12 +12,14 @@ from hsconfig.input_loading import (
     fixture_row_for,
     load_cards,
     load_source_evidence,
+    load_source_search_records,
 )
 from hsconfig.io import read_json, write_json
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_status_sync import build_research_status_sync_report
 from hsconfig.source_acquisition import collect_public_source_records, fetchable_source_url
+from hsconfig.source_acquisition_provenance import FIXTURE_MAP, LIVE_HTTP
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_closure_optimizer import build_source_closure_optimizer_report
@@ -180,6 +182,7 @@ def draft_source_documents_payload(
         "deck_name": args.deck_name,
         "source_documents": draft["source_documents"],
     }
+    args.trusted_source_documents = draft["source_documents"]
     report = {
         "schema_version": 1,
         "deck_name": args.deck_name,
@@ -221,12 +224,12 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
-    source_payload = read_json(args.source_search_results_json)
-    source_records = source_payload.get("records", source_payload) if isinstance(source_payload, dict) else source_payload
-    if not isinstance(source_records, list):
-        raise ValueError(
-            "--source-search-results-json must contain a list or an object with a records list"
-        )
+    trusted_source_records = getattr(args, "trusted_source_search_records", None)
+    source_records = (
+        trusted_source_records
+        if isinstance(trusted_source_records, list)
+        else load_source_search_records(args.source_search_results_json)
+    )
 
     bundle = build_source_autopilot_bundle(
         deck_name=args.deck_name,
@@ -245,6 +248,9 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         {"schema_version": 1, "evidence_rows": bundle["source_evidence_rows"]},
     )
     write_json(source_path, bundle["source_documents_payload"])
+    args.trusted_source_documents = bundle["source_documents_payload"][
+        "source_documents"
+    ]
     write_json(draft_report_path, bundle["source_document_draft_report"])
     write_json(report_path, bundle["source_autopilot_report"])
     return (
@@ -288,17 +294,19 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
+    fixture_map_path = getattr(args, "source_fixture_url_map_json", None)
     acquired = collect_public_source_records(
         deck_name=args.deck_name,
         deck_identity=deck_identity,
         source_urls=source_urls,
         current_date=getattr(args, "current_date", None),
-        fetcher=_fixture_fetcher(getattr(args, "source_fixture_url_map_json", None)),
-        resolver=_fixture_resolver(getattr(args, "source_fixture_url_map_json", None)),
+        fetcher=_fixture_fetcher(fixture_map_path),
+        resolver=_fixture_resolver(fixture_map_path),
         timeout_seconds=float(getattr(args, "source_fetch_timeout_seconds", 6.0)),
         candidate_registry_url_count=int(
             getattr(args, "candidate_registry_url_count", 0) or 0
         ),
+        acquisition_mode=FIXTURE_MAP if fixture_map_path else LIVE_HTTP,
     )
     compiled = compile_source_search_records(
         deck_name=args.deck_name,
@@ -306,6 +314,15 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         acquired_records=acquired["source_records"],
         current_date=getattr(args, "current_date", None),
     )
+    for acquired_record, compiled_record in zip(
+        acquired["source_records"],
+        compiled["records"],
+        strict=True,
+    ):
+        compiled_record["acquisition_provenance"] = acquired_record[
+            "acquisition_provenance"
+        ]
+    args.trusted_source_search_records = compiled["records"]
 
     acquisition_path = out / "source_acquisition_report.json"
     compiler_path = out / "source_claim_compiler_report.json"
@@ -496,7 +513,6 @@ def _assert_safe_diagnostic_json_output(
 
 
 def _assert_safe_closure_optimizer_output(path: Path) -> None:
-    lowered_parts = {part.lower() for part in path.parts}
     name = path.name.lower()
     if name == "operator_summary.json":
         raise ValueError(

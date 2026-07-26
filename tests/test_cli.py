@@ -1925,7 +1925,7 @@ def test_build_contradictory_source_identity_vetoes_globalvalues_public_guide(
     )
 
 
-def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
+def test_build_plan_reports_cannot_rebuild_authority_from_captured_source_document(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
@@ -2043,20 +2043,13 @@ def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
     assert code == 0
     assert payload["status"] == "passed"
     assert "GlobalHeroHealth" not in allowed_by_key
-    assert "MyHeroPowerValue" in allowed_by_key
-    assert allowed_by_key["MyHeroPowerValue"]["operation"] == "increase"
-    assert allowed_by_key["MyHeroPowerValue"]["reason"] == (
-        "aggressive_source_backed_posture"
-    )
+    assert set(allowed_by_key) == {"baseline"}
     assert globalvalues["GlobalHeroHealth"]["values"][0]["value"] == "1.14"
     canonical_claim_ids = {
         claim["claim_id"] for claim in persisted_claim_bundle["claims"]
     }
     assert "forged-plan-posture" not in canonical_claim_ids
-    assert {
-        receipt["claim_id"]
-        for receipt in persisted_claim_bundle["globalvalues_source_receipts"]
-    } <= canonical_claim_ids
+    assert persisted_claim_bundle["globalvalues_source_receipts"] == []
     assert set(source_contract_audit["claim_rows"]) == canonical_claim_ids
     assert {
         row["claim_id"] for row in source_contract_audit["claim_lifecycle_rows"]
@@ -2094,7 +2087,7 @@ def test_build_plan_reports_rebuilds_globalvalues_from_canonical_source_receipt(
     assert suppressed_attempt["claim_refs"] == ["forged-plan-posture"]
 
 
-def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
+def test_build_plan_reports_dir_rejects_captured_exact_globalvalues_overlay(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
@@ -2195,15 +2188,14 @@ def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert "MyHeroPowerValue" in {
+    assert "MyHeroPowerValue" not in {
         row["key"] for row in authority["allowed_step1_overlays"]
     }
-    assert not any(
-        row.get("authority") == "source_contract_suppressed"
+    assert any(
+        row.get("reason") == "globalvalues_plan_row_not_canonical"
         for row in authority["blocked_until_runtime_evidence"]
     )
-    assert profile["status"] == "overlay_changed"
-    assert "MyHeroPowerValue" in profile["changed_keys"]
+    assert "MyHeroPowerValue" not in profile["changed_keys"]
 
 
 def test_build_empty_plan_reports_dir_does_not_serialize_fallbacks_as_imports(
@@ -2863,9 +2855,6 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     suppressed_card_config = json.loads(
         (deck_dir / "EX1_003.json").read_text(encoding="utf-8")
     )
-    combo_config = json.loads(
-        (deck_dir / "Combo.json").read_text(encoding="utf-8")
-    )
     mulligan_report = json.loads(
         (reports_dir / "mulligan_plan_report.json").read_text(encoding="utf-8")
     )
@@ -2901,13 +2890,14 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert len(canonical_mulligan_rules) == 1
-    assert canonical_mulligan_rules[0]["card"] == "EX1_001"
-    assert canonical_mulligan_rules[0]["action"] == "hold"
-    assert not any(
-        row.get("mulligan") == "EX1_004"
+    assert canonical_mulligan_rules == []
+    assert {
+        (row.get("mulligan"), row.get("condition"), row.get("value"))
         for row in mulligan_config["Mulligan"]["values"]
-    )
+    } == {
+        ("EX1_004", "*", "hold"),
+        ("*", "*", "discard"),
+    }
     assert len(canonical_card_rows) == 1
     assert canonical_card_rows[0]["card_id"] == "EX1_002"
     assert canonical_card_rows[0]["behavior_block"] == (
@@ -2915,14 +2905,8 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     )
     assert card_config["BeforeUseHeroPowerBonus"]["values"][0]["value"] == "13"
     assert "BeforePlayCardBonus" not in suppressed_card_config
-    assert len(canonical_combo_rows) == 1
-    assert canonical_combo_rows[0]["cards"] == ["EX1_001", "EX1_002"]
-    assert len(combo_config["ComboList"]["values"]) == 1
-    assert combo_config["ComboList"]["values"][0]["condition"] == "*"
-    assert combo_config["ComboList"]["values"][0]["combo"] == (
-        "EX1_001>>EX1_002"
-    )
-    assert combo_config["ComboList"]["values"][0]["value"] == "7>>9"
+    assert canonical_combo_rows == []
+    assert not (deck_dir / "Combo.json").exists()
     assert mulligan_report["quality"]["status"] != "IMPORTED_STALE_QUALITY"
     assert "summary" not in mulligan_report
     assert "EX1_004" not in card_report["card_rows"]
@@ -3014,7 +2998,7 @@ def test_build_legacy_claims_json_cannot_mint_source_backed_mulligan_authority(
     )
     assert any(
         row.get("claim_id") == canonical_claim_id
-        and row.get("reason") == "mulligan_requires_verified_source_receipt"
+        and row.get("reason") == "strategic_provenance_not_live_verified"
         for row in mulligan_report["suppressed_rules"]
     )
 

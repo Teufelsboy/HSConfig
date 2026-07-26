@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_semantic_qualifiers import QUALIFIER_KEYS
@@ -15,7 +15,7 @@ def draft_source_documents(
 ) -> dict[str, Any]:
     del current_date
     name_map = _card_name_map(deck_identity)
-    grouped: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[str, ...], dict[str, Any]] = {}
     unresolved_mentions: list[dict[str, Any]] = []
     resolved_claims = 0
     dropped_claims = 0
@@ -26,6 +26,7 @@ def draft_source_documents(
             str(row.get("source_title", "")),
             str(row.get("source_family", "guide")),
             str(row.get("retrieved_at", "")),
+            *_acquisition_provenance_key(row.get("acquisition_provenance")),
         )
         document = grouped.setdefault(
             key,
@@ -46,6 +47,9 @@ def draft_source_documents(
                 "claims": [],
             },
         )
+        acquisition_provenance = row.get("acquisition_provenance")
+        if isinstance(acquisition_provenance, Mapping):
+            document["acquisition_provenance"] = acquisition_provenance
         _merge_document_deck_match(document, row, deck_identity=deck_identity)
         cards, unresolved = _resolve_mentions(row, name_map)
         unresolved_mentions.extend(
@@ -207,10 +211,21 @@ def _claim_from_row(row: dict[str, Any], cards: list[str]) -> dict[str, Any]:
         "first_missing_source_action",
         "source_record_strength",
         *QUALIFIER_KEYS,
+        "acquisition_provenance",
     ):
         if key in row:
             claim[key] = row[key]
     return claim
+
+
+def _acquisition_provenance_key(value: Any) -> tuple[str, str, str]:
+    if not isinstance(value, Mapping):
+        return ("", "", "")
+    return (
+        str(value.get("mode", "")),
+        str(value.get("content_sha256", "")),
+        str(value.get("authority", "")),
+    )
 
 
 def _as_list(value: Any) -> list[Any]:

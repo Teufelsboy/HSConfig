@@ -45,7 +45,7 @@ def prepare_fixture_package(
     return package_dir
 
 
-def test_source_evidence_closure_reports_profile_verdict(tmp_path: Path):
+def test_source_evidence_closure_reports_captured_profile_gap(tmp_path: Path):
     package_dir = prepare_fixture_package(
         tmp_path,
         deck_name="ShadowPriest",
@@ -55,8 +55,11 @@ def test_source_evidence_closure_reports_profile_verdict(tmp_path: Path):
     report = read_json(package_dir / "reports" / "source_evidence_closure.json")
 
     assert report["closure_profile"] == "aggro_burn_hero_power"
-    assert report["closure_profile_closed"] is True
-    assert report["closure_profile_first_missing_link"] == "none"
+    assert report["closure_profile_closed"] is False
+    assert (
+        report["closure_profile_first_missing_link"]
+        == "missing_claim_group:gameplan_posture"
+    )
     assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert report["source_strong_ready"] is False
     assert report["first_missing_source_action"] == "add_explicit_target_scope"

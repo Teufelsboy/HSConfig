@@ -61,6 +61,11 @@ def _canonical_mulligan_receipt_bundle(
         "source_title": "Canonical Mulligan Guide",
         "source_family": "guide",
         "retrieved_at": "2026-07-26T00:00:00Z",
+        "acquisition_provenance": {
+            "mode": "live_http",
+            "content_sha256": "sha256:" + ("a" * 64),
+            "authority": "live_verified",
+        },
         "source_visibility": "full_text",
         "source_lane": "deck_matched_public_guide",
         "deck_match_scope": "exact_deck_matched",
@@ -361,6 +366,11 @@ def test_globalvalues_lifecycle_accepts_verified_exact_public_guide_posture():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": {
+                    "mode": "live_http",
+                    "content_sha256": "sha256:" + ("a" * 64),
+                    "authority": "live_verified",
+                },
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -823,7 +833,47 @@ def test_legacy_claims_json_cannot_mint_canonical_mulligan_receipt():
 
     assert bundle["globalvalues_source_receipts"] == []
     assert decision.allowed is False
-    assert decision.reason == "mulligan_requires_verified_source_receipt"
+    assert decision.reason == "strategic_provenance_not_live_verified"
+
+
+@pytest.mark.parametrize(
+    ("mode", "authority"),
+    [
+        ("captured_record", "captured_unverified"),
+        ("manual_evidence", "manual_unverified"),
+        ("fixture_map", "fixture_only"),
+        ("legacy_claims_json", "legacy_unverified"),
+    ],
+)
+def test_unverified_acquisition_modes_cannot_mint_canonical_mulligan_receipt(
+    mode,
+    authority,
+):
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        document_overrides={
+            "acquisition_provenance": {
+                "mode": mode,
+                "content_sha256": "sha256:" + ("b" * 64),
+                "authority": authority,
+            }
+        }
+    )
+
+    decision = surface_gate_decision(
+        bundle["claims"][0],
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["canonical_source_receipts"],
+        },
+    )
+
+    assert bundle["canonical_source_receipts"] == []
+    assert bundle["strategic_receipt_diagnostics"][0]["code"] == (
+        "strategic_provenance_not_live_verified"
+    )
+    assert decision.allowed is False
+    assert decision.reason == "strategic_provenance_not_live_verified"
 
 
 def test_canonical_exact_public_guide_receipt_allows_source_backed_mulligan():

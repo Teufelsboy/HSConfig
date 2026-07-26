@@ -189,6 +189,11 @@ def _current_guide_record(claims: list[dict], *, archetype: str = "aggro_fixture
         "source_family": "guide",
         "source_visibility": "full_text",
         "publication_year": 2026,
+        "acquisition_provenance": {
+            "mode": "live_http",
+            "content_sha256": "sha256:" + ("a" * 64),
+            "authority": "live_verified",
+        },
         "normalized_text": (
             "Profile Fixture Guide 2026 explains current mulligan decisions, "
             "gameplan posture, target priorities, combo sequence planning, "
@@ -274,6 +279,11 @@ def _strict_count_autopilot_fixture(
         "source_record_strength": "candidate_strong",
         "source_lane": "deck_matched_public_guide",
         "source_rank_lane": "guide_current_deck_match",
+        "acquisition_provenance": {
+            "mode": "live_http",
+            "content_sha256": "sha256:" + ("a" * 64),
+            "authority": "live_verified",
+        },
         "deck_match_scope": "exact_deck_matched",
         "deck_match": {
             "deck_name": "StrictCountDeck",
@@ -291,6 +301,56 @@ def _strict_count_autopilot_fixture(
         ),
     }
     return deck_identity, record
+
+
+def test_fixture_provenance_keeps_diagnostic_claims_but_mints_no_strategic_receipt():
+    deck_identity, record = _strict_count_autopilot_fixture(
+        count_field="candidate_count",
+        count_value=1,
+    )
+    record["acquisition_provenance"] = {
+        "mode": "fixture_map",
+        "content_sha256": (
+            "sha256:c6d0c3944dcf75fdae82b0bf055bf02c90e6a35bf7df439b"
+            "acf671a119c7f828"
+        ),
+        "authority": "fixture_only",
+    }
+
+    autopilot = build_source_autopilot_bundle(
+        deck_name="StrictCountDeck",
+        deck_identity=deck_identity,
+        source_search_records=[record],
+        current_date="2026-07-26",
+    )
+    document = autopilot["source_documents_payload"]["source_documents"][0]
+    source_bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+
+    assert document["acquisition_provenance"] == record["acquisition_provenance"]
+    assert source_bundle["claims"]
+    assert source_bundle["canonical_source_receipts"] == []
+    diagnostics = source_bundle["strategic_receipt_diagnostics"]
+    assert {
+        diagnostic["claim_id"] for diagnostic in diagnostics
+    } == {
+        claim["claim_id"]
+        for claim in source_bundle["claims"]
+        if claim["claim_kind"] in {"mulligan_keep", "gameplan_posture"}
+    }
+    assert {
+        diagnostic["code"] for diagnostic in diagnostics
+    } == {"strategic_provenance_not_live_verified"}
+    report = autopilot["source_autopilot_report"]
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert report["strong_candidate"] is False
+    assert "strategic_provenance_not_live_verified" in report[
+        "strong_candidate_blockers"
+    ]
 
 
 @pytest.mark.parametrize(

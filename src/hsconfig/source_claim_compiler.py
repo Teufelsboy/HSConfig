@@ -55,6 +55,9 @@ def compile_source_search_records(
             "claims": [],
             "source_claim_compiler_index": index,
         }
+        acquisition_provenance = acquired.get("acquisition_provenance")
+        if isinstance(acquisition_provenance, Mapping):
+            compiled["acquisition_provenance"] = acquisition_provenance
         for key in (
             "source_type",
             "provenance",

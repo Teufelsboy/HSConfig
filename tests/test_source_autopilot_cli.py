@@ -72,6 +72,14 @@ def test_source_autopilot_command_writes_inspected_source_artifacts(tmp_path):
     ]
     docs = json.loads((out / "source_documents.json").read_text(encoding="utf-8"))
 
-    assert report["strong_candidate"] is True
+    assert report["strong_candidate"] is False
+    assert report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert (
+        report["first_missing_source_action"]
+        == "acquire_strategic_source_via_live_http"
+    )
     assert any(row["claim_kind"] == "hero_power_transform" for row in rows)
     assert docs["source_documents"][0]["claims"]
+    assert docs["source_documents"][0]["acquisition_provenance"]["mode"] == (
+        "captured_record"
+    )

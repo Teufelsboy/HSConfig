@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
+from hsconfig.source_acquisition_provenance import (
+    CAPTURED_RECORD,
+    LEGACY_CLAIMS_JSON,
+    MANUAL_EVIDENCE,
+    acquisition_provenance_is_canonical,
+    build_acquisition_provenance,
+)
 from hsconfig.source_document_model import runtime_claim_kind
 
 LEGACY_CLAIMS_RETRIEVED_AT = "1970-01-01T00:00:00Z"
@@ -70,11 +78,15 @@ def load_claims(claims_json: str | None) -> list[dict[str, Any]]:
         payload = payload.get("claims")
     if not isinstance(payload, list):
         raise ValueError("--claims-json must contain a list or an object with a claims list")
+    provenance = _file_acquisition_provenance(
+        claims_json,
+        mode=LEGACY_CLAIMS_JSON,
+    )
     claims = []
     for claim in payload:
         if not isinstance(claim, dict):
             raise ValueError("Every claim row must be an object")
-        claims.append(dict(claim))
+        claims.append(_with_acquisition_provenance(claim, provenance))
     return claims
 
 
@@ -86,11 +98,15 @@ def load_guide_sources(guide_sources_json: str | None) -> list[dict[str, Any]]:
         payload = payload.get("sources", payload.get("documents", payload.get("guide_sources")))
     if not isinstance(payload, list):
         raise ValueError("--guide-sources-json must contain a list or an object with a sources list")
+    provenance = _file_acquisition_provenance(
+        guide_sources_json,
+        mode=MANUAL_EVIDENCE,
+    )
     sources = []
     for source in payload:
         if not isinstance(source, dict):
             raise ValueError("Every guide source row must be an object")
-        sources.append(dict(source))
+        sources.append(_with_acquisition_provenance(source, provenance))
     return sources
 
 
@@ -104,11 +120,15 @@ def load_source_documents(source_documents_json: str | None) -> list[dict[str, A
         raise ValueError(
             "--source-documents-json must contain a list or an object with a source_documents list"
         )
+    provenance = _file_acquisition_provenance(
+        source_documents_json,
+        mode=CAPTURED_RECORD,
+    )
     documents = []
     for document in payload:
         if not isinstance(document, dict):
             raise ValueError("Every source document row must be an object")
-        documents.append(dict(document))
+        documents.append(_with_acquisition_provenance(document, provenance))
     return documents
 
 
@@ -122,12 +142,38 @@ def load_source_evidence(source_evidence_json: str | None) -> list[dict[str, Any
         raise ValueError(
             "--source-evidence-json must contain a list or an object with an evidence_rows list"
         )
+    provenance = _file_acquisition_provenance(
+        source_evidence_json,
+        mode=MANUAL_EVIDENCE,
+    )
     rows = []
     for row in payload:
         if not isinstance(row, dict):
             raise ValueError("Every source evidence row must be an object")
-        rows.append(dict(row))
+        rows.append(_with_acquisition_provenance(row, provenance))
     return rows
+
+
+def load_source_search_records(
+    source_search_results_json: str,
+) -> list[dict[str, Any]]:
+    payload = read_json(source_search_results_json)
+    if isinstance(payload, dict):
+        payload = payload.get("records", payload)
+    if not isinstance(payload, list):
+        raise ValueError(
+            "--source-search-results-json must contain a list or an object with a records list"
+        )
+    provenance = _file_acquisition_provenance(
+        source_search_results_json,
+        mode=CAPTURED_RECORD,
+    )
+    records = []
+    for record in payload:
+        if not isinstance(record, dict):
+            raise ValueError("Every source search record must be an object")
+        records.append(_with_acquisition_provenance(record, provenance))
+    return records
 
 
 def fixture_row_for(deck_name: str) -> dict[str, Any] | None:
@@ -145,8 +191,20 @@ def fixture_row_for(deck_name: str) -> dict[str, Any] | None:
 def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not claims:
         return []
+    fallback_provenance = build_acquisition_provenance(
+        mode=LEGACY_CLAIMS_JSON,
+        content=json.dumps(
+            claims,
+            separators=(",", ":"),
+            sort_keys=True,
+        ),
+    )
     documents: dict[tuple[str, str, str], dict[str, Any]] = {}
     for claim in claims:
+        acquisition_provenance = _trusted_unverified_provenance(
+            claim.get("acquisition_provenance"),
+            mode=LEGACY_CLAIMS_JSON,
+        ) or fallback_provenance
         source_url = str(claim.get("url", ""))
         source_title = str(claim.get("source_title", claim.get("source", "legacy claims")))
         legacy_claim_kind = _effective_legacy_claim_kind(claim)
@@ -164,6 +222,7 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "source_family": str(claim.get("source", "legacy_claims")),
                 "retrieved_at": _legacy_claim_retrieved_at(claim),
                 "source_document_origin": "legacy_claims_json",
+                "acquisition_provenance": acquisition_provenance,
                 "claims": [],
             },
         )
@@ -180,7 +239,12 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
             ):
                 if field in claim and field not in document:
                     document[field] = claim[field]
-        document["claims"].append(_legacy_claim_to_guide_claim(claim))
+        document["claims"].append(
+            _legacy_claim_to_guide_claim(
+                claim,
+                acquisition_provenance=acquisition_provenance,
+            )
+        )
     return list(documents.values())
 
 
@@ -189,7 +253,11 @@ def _legacy_claim_retrieved_at(claim: dict[str, Any]) -> str:
     return retrieved_at or LEGACY_CLAIMS_RETRIEVED_AT
 
 
-def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
+def _legacy_claim_to_guide_claim(
+    claim: dict[str, Any],
+    *,
+    acquisition_provenance: Mapping[str, str],
+) -> dict[str, Any]:
     text = str(claim.get("claim", ""))
     cards = [str(card) for card in claim.get("cards", [])]
     claim_kind = _effective_legacy_claim_kind(claim)
@@ -199,6 +267,7 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
         "stance": _legacy_stance(claim_kind, text),
         "evidence_text_short": text,
         "source_confidence": _legacy_claim_confidence(claim),
+        "acquisition_provenance": acquisition_provenance,
     }
     if str(claim.get("claim_confidence", "")).strip():
         converted["claim_confidence"] = str(claim["claim_confidence"]).strip()
@@ -217,6 +286,37 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
         if optional_key in claim:
             converted[optional_key] = claim[optional_key]
     return converted
+
+
+def _file_acquisition_provenance(
+    path_value: str,
+    *,
+    mode: str,
+) -> dict[str, str]:
+    return build_acquisition_provenance(
+        mode=mode,
+        content=Path(path_value).read_bytes(),
+    )
+
+
+def _with_acquisition_provenance(
+    row: Mapping[str, Any],
+    provenance: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        **dict(row),
+        "acquisition_provenance": provenance,
+    }
+
+
+def _trusted_unverified_provenance(
+    value: Any,
+    *,
+    mode: str,
+) -> Mapping[str, str] | None:
+    if acquisition_provenance_is_canonical(value, mode=mode):
+        return value
+    return None
 
 
 def _effective_legacy_claim_kind(claim: dict[str, Any]) -> str:

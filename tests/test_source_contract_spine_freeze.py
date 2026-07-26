@@ -47,6 +47,11 @@ def _canonical_posture_bundle():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": {
+                    "mode": "live_http",
+                    "content_sha256": "sha256:" + ("a" * 64),
+                    "authority": "live_verified",
+                },
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -95,6 +100,11 @@ def _canonical_combo_bundle():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": {
+                    "mode": "live_http",
+                    "content_sha256": "sha256:" + ("a" * 64),
+                    "authority": "live_verified",
+                },
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

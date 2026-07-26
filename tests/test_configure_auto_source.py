@@ -143,7 +143,12 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     assert summary["status"] == "OK"
     assert summary["source_autopilot_path"] == str(out / "02_source_autopilot")
     assert summary["source_documents_json"] == str(out / "02_source_autopilot" / "source_documents.json")
-    assert autopilot_report["strong_candidate"] is True
+    assert autopilot_report["strong_candidate"] is False
+    assert autopilot_report["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert (
+        autopilot_report["first_missing_source_action"]
+        == "acquire_strategic_source_via_live_http"
+    )
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["runtime_apply_mode"] == "load_safe_apply"

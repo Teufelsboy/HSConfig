@@ -31,6 +31,11 @@ def _authorized_mulligan_claim(
         "promotion_eligible": True,
         "source_visibility": "full_text",
         "source_lane": "deck_matched_public_guide",
+        "acquisition_provenance": {
+            "mode": "live_http",
+            "content_sha256": "sha256:" + ("a" * 64),
+            "authority": "live_verified",
+        },
         "deck_match": {
             "exact_deck_evidence": {
                 "candidate_count": 1,
@@ -55,6 +60,9 @@ def _mulligan_context(*claims: dict) -> dict:
                 "matched_deck_fingerprint": _MULLIGAN_FINGERPRINT,
                 "claim_id": claim["claim_id"],
                 "claim_signature": globalvalues_claim_signature(claim),
+                "acquisition_provenance": claim[
+                    "acquisition_provenance"
+                ],
             }
             for claim in claims
         ],

@@ -98,8 +98,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     source_acquisition_path = None
     source_documents_json = None
+    trusted_source_documents = None
     source_autopilot_path = None
     source_closure_intake_receipt_path = None
+    trusted_source_search_records = None
     source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
     explicit_source_urls = dedupe_acquisition_urls(
         list(getattr(args, "source_url", []) or [])
@@ -128,22 +130,28 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             if url not in explicit_source_urls and url in source_urls
         ]
         try:
+            acquisition_args = SimpleNamespace(
+                **{**common, "source_url": source_urls},
+                candidate_registry_url_count=len(surviving_registry_urls),
+                source_fixture_url_map_json=getattr(
+                    args,
+                    "source_fixture_url_map_json",
+                    None,
+                ),
+                source_fetch_timeout_seconds=getattr(
+                    args,
+                    "source_fetch_timeout_seconds",
+                    6.0,
+                ),
+                out=str(source_acquisition_dir),
+            )
             acquire_payload, acquire_status = source_acquire_payload(
-                SimpleNamespace(
-                    **{**common, "source_url": source_urls},
-                    candidate_registry_url_count=len(surviving_registry_urls),
-                    source_fixture_url_map_json=getattr(
-                        args,
-                        "source_fixture_url_map_json",
-                        None,
-                    ),
-                    source_fetch_timeout_seconds=getattr(
-                        args,
-                        "source_fetch_timeout_seconds",
-                        6.0,
-                    ),
-                    out=str(source_acquisition_dir),
-                )
+                acquisition_args
+            )
+            trusted_source_search_records = getattr(
+                acquisition_args,
+                "trusted_source_search_records",
+                None,
             )
         except Exception as exc:
             return _finish_stage_exception(out, "source-acquire", exc)
@@ -172,12 +180,19 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 1,
             )
         try:
+            autopilot_args = SimpleNamespace(
+                **common,
+                source_search_results_json=args.source_search_results_json,
+                trusted_source_search_records=trusted_source_search_records,
+                out=str(autopilot_dir),
+            )
             autopilot_payload, autopilot_status = source_autopilot_payload(
-                SimpleNamespace(
-                    **common,
-                    source_search_results_json=args.source_search_results_json,
-                    out=str(autopilot_dir),
-                )
+                autopilot_args
+            )
+            trusted_source_documents = getattr(
+                autopilot_args,
+                "trusted_source_documents",
+                None,
             )
         except Exception as exc:
             return _finish_stage_exception(out, "source-autopilot", exc)
@@ -192,12 +207,18 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         source_documents_json = autopilot_dir / "source_documents.json"
     elif getattr(args, "source_evidence_json", None):
         try:
+            draft_args = SimpleNamespace(
+                **common,
+                source_evidence_json=args.source_evidence_json,
+                out=str(draft_dir),
+            )
             draft_payload, draft_status = draft_source_documents_payload(
-                SimpleNamespace(
-                    **common,
-                    source_evidence_json=args.source_evidence_json,
-                    out=str(draft_dir),
-                )
+                draft_args
+            )
+            trusted_source_documents = getattr(
+                draft_args,
+                "trusted_source_documents",
+                None,
             )
         except Exception as exc:
             return _finish_stage_exception(out, "draft-source-documents", exc)
@@ -219,6 +240,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 **common,
                 out=str(research_dir),
                 source_documents_json=str(source_documents_json) if source_documents_json else None,
+                trusted_source_documents=trusted_source_documents,
                 source_evidence_json=research_source_evidence_json,
                 guide_sources_json=None,
                 claims_json=None,
@@ -247,6 +269,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 source_documents_json=(
                     str(source_documents_json) if source_documents_json else None
                 ),
+                trusted_source_documents=trusted_source_documents,
                 cards_json=getattr(args, "cards_json", None),
                 collectible_cards_json=getattr(args, "collectible_cards_json", None),
                 full_cards_json=getattr(args, "full_cards_json", None),

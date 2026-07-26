@@ -912,28 +912,21 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
     payload = json.loads(capsys.readouterr().out)
     deck_dir = package / "CustomConfig" / "timed_combo"
     reports = package / "reports"
-    combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
     combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
-    combo_suppressions = json.loads(
-        (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
+    source_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
     )
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert combo["ComboList"]["values"] == [
-        {
-            "comment": "Timed Combo: " + combo_plan["combos"][0]["rule_id"],
-            "condition": "*",
-            "combo": "EX1_001>>EX1_002",
-            "value": "8>>14",
-        }
-    ]
-    assert combo_plan["combos"][0]["operator"] == ">>"
-    assert combo_plan["combos"][0]["source_refs"] == [
-        "source:1",
-        "https://example.invalid/timed-combo",
-    ]
-    assert combo_suppressions == []
+    assert combo_plan["combos"] == []
+    assert not (deck_dir / "Combo.json").exists()
+    assert any(
+        row["claim_kind"] == "combo_sequence"
+        and row["surfaces"]["combo"]["reason"]
+        == "strategic_provenance_not_live_verified"
+        for row in source_audit["claim_rows"].values()
+    )
 
 
 def test_prepare_no_auto_research_fallback_requests_research_before_strong_config(
@@ -1096,9 +1089,8 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     allowed = {row["key"] for row in authority["allowed_step1_overlays"]}
 
     assert code == 0
-    assert authority["posture"] == "weapon_pressure"
-    assert "MyWeaponValue" in allowed
-    assert "MyHeroPowerValue" not in allowed
+    assert authority["posture"] == "baseline"
+    assert allowed == {"baseline"}
     assert key_profile_report == globalvalues_profile
     assert key_profile_report["schema_version"] == 1
     assert key_profile_report["status"] in {
@@ -1113,9 +1105,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert key_profile_report["summary"]["unchanged_key_count"] == len(
         key_profile_report["unchanged_keys"]
     )
-    assert key_profile_report["keys"]["MyWeaponValue"]["authority_category"] == (
-        "step1_posture_overlay_allowed"
-    )
+    assert "MyWeaponValue" not in key_profile_report["keys"]
     assert (reports / "card_behavior_plan_report.json").exists()
     assert (reports / "combo_plan_report.json").exists()
     assert (reports / "global_values_authority_matrix.json").exists()

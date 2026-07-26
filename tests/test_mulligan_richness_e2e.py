@@ -11,7 +11,7 @@ CARDS = [
 ]
 
 
-def test_prepare_with_rich_mulligan_sources_emits_rich_applyable_package(
+def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     tmp_path: Path, capsys, monkeypatch
 ):
     result = _run_prepare(
@@ -29,10 +29,17 @@ def test_prepare_with_rich_mulligan_sources_emits_rich_applyable_package(
     assert result["payload"]["status"] == "passed"
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert mulligan_surface["status"] == "rich"
-    assert mulligan_surface["source_backed_rule_count"] >= 4
-    assert {row["mulligan"] for row in mulligan_values} >= {"TEST_001", "TEST_002", "TEST_003"}
-    assert "*" in {row["mulligan"] for row in mulligan_values}
+    assert mulligan_surface["status"] == "policy_backed"
+    assert mulligan_surface["source_backed_rule_count"] == 0
+    assert mulligan_surface["suppressed_reasons"][
+        "strategic_provenance_not_live_verified"
+    ] == 4
+    assert {
+        (row["mulligan"], row["value"]) for row in mulligan_values
+    } == {
+        ("TEST_003", "hold"),
+        ("*", "discard"),
+    }
 
 
 def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
