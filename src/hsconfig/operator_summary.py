@@ -9,6 +9,10 @@ from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.config_quality_contract import semantic_handoff_projection
 from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
 from hsconfig.operator_guidance import build_operator_guidance
+from hsconfig.package_derivation_receipt import (
+    derivation_schema_version_supported,
+    package_authority_context_verified,
+)
 from hsconfig.report_ownership import build_report_ownership
 from hsconfig.source_status_resolver import SourceStatusResolution, resolve_source_status
 from hsconfig.strict_package_validation import strict_validation_passed
@@ -160,6 +164,7 @@ def build_operator_summary(
     output_ownership_manifest: dict[str, Any] | None = None,
     gameplan_contract: dict[str, Any] | None = None,
     package_derivation: dict[str, Any] | None = None,
+    package_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -182,6 +187,7 @@ def build_operator_summary(
     technical_status = _technical_status(
         technical_validation,
         package_derivation=package_derivation,
+        package_authority=package_authority,
     )
     effective_config_readiness_summary = _effective_config_readiness_summary(
         config_readiness_summary,
@@ -896,6 +902,7 @@ def _technical_status(
     report: dict[str, Any],
     *,
     package_derivation: dict[str, Any] | None = None,
+    package_authority: dict[str, Any] | None = None,
 ) -> str:
     if not strict_validation_passed(report):
         return "INVALID_PACKAGE"
@@ -906,11 +913,15 @@ def _technical_status(
         return "VALID_PACKAGE"
     receipt_sha256 = str(package_derivation.get("receipt_sha256", ""))
     derivation_verified = (
-        package_derivation.get("schema_version") == 1
+        derivation_schema_version_supported(
+            package_derivation.get("schema_version")
+        )
         and package_derivation.get("receipt_path")
         == "package_derivation_receipt.json"
         and package_derivation.get("verified") is True
         and re.fullmatch(r"sha256:[0-9a-f]{64}", receipt_sha256) is not None
+        and package_authority_context_verified(package_authority)
+        and package_authority.get("receipt_sha256") == receipt_sha256
     )
     return "VALID_PACKAGE" if derivation_verified else "INVALID_PACKAGE"
 

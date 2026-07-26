@@ -243,7 +243,8 @@ nicht abgeschwächt.
 - Receipt und Summary sind gegenseitig nicht zirkulär.
 - Logisch identische Pakete in unterschiedlichen Temp-Roots erzeugen
   identische Receipt-Inhalte und Digests.
-- Absolute Pfade und volatile Zeitwerte verändern die Quittung nicht.
+- Explizit deklarierte Standort- und volatile Zeitfelder verändern die
+  Quittung nicht; andere semantische Werte bleiben vollständig gebunden.
 - `operator_summary.json` bleibt die einzige human-facing Apply-Authority.
 - Die Quittung ist eine maschinenprüfbare Integritätsabhängigkeit, kein
   zweites menschliches Gate.
@@ -303,4 +304,125 @@ Vorgesehener Task-Commit:
 
 ```text
 fix: bind apply authority to package derivation receipt
+```
+
+## Fix-Runde 1: Authority-Edge-Cases
+
+Ein nachgelagertes Controller-Review identifizierte drei Important Findings:
+
+1. Python-Gleichheit akzeptierte `true`, `1` und `1.0` an einzelnen
+   Schema-/Boolean-Grenzen als gleichwertig.
+2. Die offizielle Builder-Summary leitete `VALID_PACKAGE` aus strikter
+   Validierung plus formal gültigen Receipt-Metadaten ab, ohne die
+   builderseitig tatsächlich neu berechneten Deck-, Source- und
+   Receipt-Ergebnisse zu konsumieren.
+3. Die Root-Unabhängigkeit entfernte rekursiv jeden absolut-pfadartig
+   aussehenden String. Dadurch konnten semantische Werte wie `/Alpha` und
+   `/Beta` fälschlich aus der Authority-Projektion verschwinden.
+
+### TDD RED
+
+Vor der Produktionsänderung wurden acht neue Regressionen ausgeführt:
+
+```text
+8 failed, 19 deselected in 8.33s
+```
+
+Die Fehler reproduzierten exakt:
+
+- `summary.package_derivation.schema_version=true` wurde erlaubt;
+- Receipt plus Summary mit `schema_version=true` beziehungsweise `1.0`
+  verifizierten nach Aktualisierung des Digests;
+- `verified=1` wurde wie `verified=true` behandelt;
+- `/Alpha -> /Beta` in Deck Identity veränderte die Quittung nicht;
+- die Builder-Summary meldete bei vorhandener negativer Deck-Eligibility,
+  ungültiger Source-Authority und einem post-Receipt-Mismatch weiterhin
+  `VALID_PACKAGE`, während das Apply-Gate bereits blockierte.
+
+### Typstrenge
+
+Receipt-Verifier, Apply-Gate und Summary-Status verwenden nun dasselbe
+typstrenge Schema-Prädikat:
+
+```python
+type(value) is int and value == 1
+```
+
+Das Summary-Feld `verified` muss mit `is True` exakt ein Boolean sein.
+Dictionary-Gleichheit kann diese Grenzen damit nicht mehr über
+`True == 1 == 1.0` umgehen.
+
+### Builderseitige Authority für die Human Summary
+
+Nach dem Schreiben der Quittung berechnet der Builder einen internen
+Authority-Kontext aus dem tatsächlichen Paket:
+
+- gemeinsames Ergebnis der strikten Paketvalidierung;
+- gemeinsame optionale Deck-Input-Eligibility;
+- gemeinsame erforderliche Source-Authority;
+- vollständige Receipt-Neuberechnung;
+- Digest der tatsächlich gelesenen Receipt-Datei.
+
+`operator_summary._technical_status()` verlangt bei offiziellen
+Builder-Ausgaben alle vier Ergebnisse exakt `True` und gleicht den
+tatsächlichen Receipt-Digest mit den Summary-Metadaten ab. Dadurch kann die
+human-facing Summary nicht mehr `VALID_PACKAGE` melden, wenn dieselben
+Task-4-Bedingungen das Apply-Gate blockieren.
+
+Direkte isolierte Summary-Diagnostik ohne Package-Derivation bleibt
+kompatibel. Sie erhält weiterhin keine Apply-Authority, weil ein reales
+Paket ohne Receipt-/Summary-Bindung am Gate blockiert.
+
+Task 5 wurde nicht vorweggenommen: Fehlt eine Deck-Input-Verifikation, bleibt
+das aktuelle Format kompatibel. Nur ein bereits vorhandenes negatives
+`runtime_apply_eligible`-Verdict blockiert.
+
+### Feldbasierte Root-Unabhängigkeit
+
+Die rekursive wertbasierte Pfaderkennung wurde entfernt. Ausgeschlossen
+werden nur noch explizit deklarierte Top-Level-Felder pro autoritativem
+Dokument:
+
+- bekannte Standortfelder des Input Manifests;
+- bekannte volatile Zeitfelder der jeweiligen Report-Schemas.
+
+Alle übrigen Strings werden unabhängig von ihrer Form gehasht. Insbesondere
+ist ein Deckname `/Alpha` semantische Authority; eine Änderung auf `/Beta`
+verändert die Receipt und blockiert Apply mit
+`package_derivation_mismatch`.
+
+### GREEN und vollständige Verifikation
+
+Neue Edge-Case-Regressionen:
+
+```text
+8 passed, 19 deselected in 8.39s
+```
+
+Erweiterte Task-4-Apply-Boundary-Suite:
+
+```text
+148 passed in 26.56s
+```
+
+Betroffene Builder-, Summary-, Configure- und Acceptance-Suite:
+
+```text
+169 passed in 14.88s
+```
+
+Vollständige Repository-Suite:
+
+```text
+2418 passed, 11 skipped in 263.75s
+```
+
+Ruff auf allen geänderten Python-Dateien und `git diff --check` waren sauber.
+Es wurden keine Runtime-, HSTuner-, Hearthstone-, Desktop- oder privaten
+Evidence-Dateien geschrieben.
+
+Vorgesehener Fix-Commit:
+
+```text
+fix: close derivation authority edge cases
 ```

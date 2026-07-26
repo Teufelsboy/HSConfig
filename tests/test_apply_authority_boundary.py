@@ -382,6 +382,74 @@ def test_apply_gate_blocks_unknown_derivation_receipt_schema(
     assert _first_reason_code(gate) == "package_derivation_receipt_schema_unsupported"
 
 
+def test_apply_gate_rejects_boolean_summary_schema_version(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"]["schema_version"] = True
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "operator_summary_derivation_inconsistent"
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0])
+def test_receipt_verifier_and_apply_gate_reject_non_integer_schema_versions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    schema_version: object,
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        package_derivation_receipt_sha256,
+        verify_package_derivation_receipt,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    receipt_path = package / "package_derivation_receipt.json"
+    receipt = read_json(receipt_path)
+    receipt["schema_version"] = schema_version
+    write_json(receipt_path, receipt)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"]["schema_version"] = schema_version
+    summary["package_derivation"]["receipt_sha256"] = (
+        package_derivation_receipt_sha256(receipt)
+    )
+    write_json(summary_path, summary)
+
+    verified, reasons = verify_package_derivation_receipt(package, receipt)
+    gate = evaluate_apply_gate(package)
+
+    assert verified is False
+    assert reasons[0]["code"] == "package_derivation_receipt_schema_unsupported"
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_receipt_schema_unsupported"
+
+
+def test_apply_gate_rejects_integer_verified_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"]["verified"] = 1
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "operator_summary_derivation_inconsistent"
+
+
 def test_apply_gate_blocks_derivation_receipt_digest_mismatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -472,12 +540,109 @@ def test_derivation_receipt_excludes_volatile_timestamps_and_absolute_paths(
     identity_path = package / "reports" / "deck_identity.json"
     identity = read_json(identity_path)
     identity["generated_at"] = "2030-01-15T12:00:00Z"
-    identity["opaque_reference"] = str(tmp_path / "private" / "deck.json")
     write_json(identity_path, identity)
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest["runtime_root"] = str(tmp_path / "different-runtime-root")
+    write_json(manifest_path, manifest)
 
     after = build_package_derivation_receipt(package)
 
     assert after == before
+
+
+def test_path_like_deck_identity_is_semantic_and_mutation_evident(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        build_package_derivation_receipt,
+        refresh_package_derivation_authority,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    identity_path = package / "reports" / "deck_identity.json"
+    identity = read_json(identity_path)
+    identity["deck_name"] = "/Alpha"
+    write_json(identity_path, identity)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"] = refresh_package_derivation_authority(package)
+    write_json(summary_path, summary)
+    before = build_package_derivation_receipt(package)
+
+    identity["deck_name"] = "/Beta"
+    write_json(identity_path, identity)
+    after = build_package_derivation_receipt(package)
+    gate = evaluate_apply_gate(package)
+
+    assert after != before
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_gate_code"),
+    [
+        ("negative_deck_eligibility", "deck_input_not_verified"),
+        ("invalid_source_authority", "source_authority_receipt_invalid"),
+        ("receipt_mismatch", "package_derivation_mismatch"),
+    ],
+)
+def test_builder_summary_never_claims_valid_when_task4_authority_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+    expected_gate_code: str,
+) -> None:
+    from hsconfig import package_builder
+
+    original_refresh = package_builder.refresh_package_derivation_authority
+
+    def refresh_with_authority_mutation(package_root: Path) -> dict:
+        package = Path(package_root)
+        if mutation == "negative_deck_eligibility":
+            write_json(
+                package / "reports" / "deck_input_verification.json",
+                {"runtime_apply_eligible": False},
+            )
+        elif mutation == "invalid_source_authority":
+            bundle_path = package / "reports" / "guide_claim_bundle.json"
+            bundle = read_json(bundle_path)
+            bundle["canonical_source_receipts"] = [
+                {
+                    "receipt_kind": "canonical_exact_deck_source_document",
+                    "acquisition_provenance": {
+                        "mode": "manual_evidence",
+                        "content_sha256": "sha256:" + ("0" * 64),
+                        "authority": "manual_unverified",
+                    },
+                }
+            ]
+            write_json(bundle_path, bundle)
+        authority = original_refresh(package)
+        if mutation == "receipt_mismatch":
+            identity_path = package / "reports" / "deck_identity.json"
+            identity = read_json(identity_path)
+            identity["tampered_after_receipt"] = True
+            write_json(identity_path, identity)
+        return authority
+
+    monkeypatch.setattr(
+        package_builder,
+        "refresh_package_derivation_authority",
+        refresh_with_authority_mutation,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    summary = read_json(package / "reports" / "operator_summary.json")
+    gate = evaluate_apply_gate(package)
+
+    assert summary["technical_status"] == "INVALID_PACKAGE"
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == expected_gate_code
 
 
 def test_derivation_receipt_is_non_circular(

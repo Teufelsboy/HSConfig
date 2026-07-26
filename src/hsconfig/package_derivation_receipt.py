@@ -4,10 +4,13 @@ from collections.abc import Mapping, Sequence
 import hashlib
 import json
 from pathlib import Path
-import re
 from typing import Any
 
 from hsconfig.io import read_json
+from hsconfig.source_acquisition_provenance import (
+    strategic_source_provenance_is_verified,
+)
+from hsconfig.strict_package_validation import strict_validation_passed
 
 
 DERIVATION_RECEIPT_SCHEMA_VERSION = 1
@@ -21,15 +24,41 @@ _AUTHORITATIVE_JSON_PATHS = (
     "reports/globalvalues_profile.json",
     "reports/output_ownership_manifest.json",
 )
-_MANIFEST_LOCATION_KEYS = {
-    "runtime_root",
-    "cards_json",
-    "claims_json",
-    "guide_sources_json",
-    "source_documents_json",
-    "plan_reports_dir",
+_AUTHORITY_EXCLUDED_TOP_LEVEL_FIELDS = {
+    "reports/input_manifest.json": frozenset(
+        {
+            "runtime_root",
+            "cards_json",
+            "claims_json",
+            "guide_sources_json",
+            "source_documents_json",
+            "plan_reports_dir",
+            "timestamp",
+            "created_at",
+            "generated_at",
+            "updated_at",
+        }
+    ),
+    "reports/deck_identity.json": frozenset(
+        {"timestamp", "created_at", "generated_at", "updated_at"}
+    ),
+    "reports/deck_fingerprint.json": frozenset(
+        {"timestamp", "created_at", "generated_at", "updated_at"}
+    ),
+    "reports/globalvalues_baseline.json": frozenset(
+        {"timestamp", "created_at", "generated_at", "updated_at"}
+    ),
+    "reports/globalvalues_profile.json": frozenset(
+        {"timestamp", "created_at", "generated_at", "updated_at"}
+    ),
+    "reports/output_ownership_manifest.json": frozenset(
+        {"timestamp", "created_at", "generated_at", "updated_at"}
+    ),
 }
-_WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def derivation_schema_version_supported(value: Any) -> bool:
+    return type(value) is int and value == DERIVATION_RECEIPT_SCHEMA_VERSION
 
 
 def build_package_derivation_receipt(
@@ -47,7 +76,7 @@ def verify_package_derivation_receipt(
     package_root: Path,
     receipt: Mapping[str, Any],
 ) -> tuple[bool, list[dict[str, str]]]:
-    if receipt.get("schema_version") != DERIVATION_RECEIPT_SCHEMA_VERSION:
+    if not derivation_schema_version_supported(receipt.get("schema_version")):
         return False, [
             {
                 "code": "package_derivation_receipt_schema_unsupported",
@@ -118,6 +147,138 @@ def refresh_package_derivation_authority(
     return authority
 
 
+def deck_input_apply_eligibility_reasons(
+    package_root: str | Path,
+) -> list[dict[str, str]]:
+    package = Path(package_root)
+    manifest_path = package / "reports" / "input_manifest.json"
+    try:
+        manifest = read_json(manifest_path)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(manifest, dict):
+        return []
+    verification = manifest.get("deck_input_verification")
+    verification_path = package / "reports" / "deck_input_verification.json"
+    if verification_path.is_file():
+        try:
+            verification = read_json(verification_path)
+        except ValueError:
+            verification = {"runtime_apply_eligible": False}
+    if not isinstance(verification, dict):
+        return []
+    if verification.get("runtime_apply_eligible") is True:
+        return []
+    return [
+        {
+            "reason": "deck_input_not_verified",
+            "code": "deck_input_not_verified",
+            "detail": "Deck input is not eligible for runtime apply.",
+        }
+    ]
+
+
+def source_authority_reasons(
+    package_root: str | Path,
+) -> list[dict[str, str]]:
+    package = Path(package_root)
+    bundle_path = package / "reports" / "guide_claim_bundle.json"
+    if not bundle_path.is_file():
+        return []
+    try:
+        bundle = read_json(bundle_path)
+    except ValueError:
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipt container is invalid.",
+            }
+        ]
+    if not isinstance(bundle, dict):
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipt container is invalid.",
+            }
+        ]
+    receipts = bundle.get(
+        "canonical_source_receipts",
+        bundle.get("globalvalues_source_receipts", []),
+    )
+    if not isinstance(receipts, list):
+        return [
+            {
+                "reason": "source_authority_receipt_invalid",
+                "code": "source_authority_receipt_invalid",
+                "detail": "Canonical source receipts must be a list.",
+            }
+        ]
+    for receipt in receipts:
+        if (
+            not isinstance(receipt, dict)
+            or receipt.get("receipt_kind")
+            != "canonical_exact_deck_source_document"
+            or not strategic_source_provenance_is_verified(
+                receipt.get("acquisition_provenance")
+            )
+        ):
+            return [
+                {
+                    "reason": "source_authority_receipt_invalid",
+                    "code": "source_authority_receipt_invalid",
+                    "detail": "Canonical source receipt is not live verified.",
+                }
+            ]
+    return []
+
+
+def build_package_authority_context(
+    package_root: str | Path,
+    *,
+    strict_validation_report: dict[str, Any],
+) -> dict[str, Any]:
+    package = Path(package_root)
+    receipt_verified = False
+    receipt_sha256: str | None = None
+    try:
+        receipt = read_json(package / DERIVATION_RECEIPT_PATH)
+    except (OSError, ValueError):
+        receipt = None
+    if isinstance(receipt, Mapping):
+        receipt_sha256 = package_derivation_receipt_sha256(receipt)
+        receipt_verified, _reasons = verify_package_derivation_receipt(
+            package,
+            receipt,
+        )
+    return {
+        "strict_validation_passed": strict_validation_passed(
+            strict_validation_report
+        ),
+        "deck_input_apply_eligible": not deck_input_apply_eligibility_reasons(
+            package
+        ),
+        "source_authority_verified": not source_authority_reasons(package),
+        "derivation_receipt_verified": receipt_verified,
+        "receipt_sha256": receipt_sha256,
+    }
+
+
+def package_authority_context_verified(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    return all(
+        value.get(key) is True
+        for key in (
+            "strict_validation_passed",
+            "deck_input_apply_eligible",
+            "source_authority_verified",
+            "derivation_receipt_verified",
+        )
+    )
+
+
 def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     inputs: dict[str, str] = {}
     manifest: Mapping[str, Any] | None = None
@@ -128,9 +289,7 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
             raise ValueError(f"Authoritative package input must be an object: {path}")
         if relative_path == "reports/input_manifest.json":
             manifest = payload
-            payload = _stable_manifest_projection(payload)
-        else:
-            payload = _stable_authority_value(payload)
+        payload = _stable_authority_document(relative_path, payload)
         inputs[relative_path] = _canonical_json_sha256(payload)
 
     guide_bundle_path = package_root / "reports" / "guide_claim_bundle.json"
@@ -179,12 +338,18 @@ def _runtime_file_digests(package_root: Path) -> dict[str, str]:
     return runtime_files
 
 
-def _stable_manifest_projection(manifest: Mapping[str, Any]) -> dict[str, Any]:
+def _stable_authority_document(
+    relative_path: str,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    excluded_fields = _AUTHORITY_EXCLUDED_TOP_LEVEL_FIELDS.get(
+        relative_path,
+        frozenset(),
+    )
     return {
         str(key): _stable_authority_value(value)
-        for key, value in sorted(manifest.items(), key=lambda item: str(item[0]))
-        if str(key) not in _MANIFEST_LOCATION_KEYS
-        and not _volatile_key(str(key))
+        for key, value in sorted(payload.items(), key=lambda item: str(item[0]))
+        if str(key) not in excluded_fields
     }
 
 
@@ -193,8 +358,6 @@ def _stable_authority_value(value: Any) -> Any:
         return {
             str(key): _stable_authority_value(nested)
             for key, nested in sorted(value.items(), key=lambda item: str(item[0]))
-            if not _volatile_key(str(key))
-            and not _absolute_path_string(nested)
         }
     if isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
@@ -202,7 +365,6 @@ def _stable_authority_value(value: Any) -> Any:
         return [
             _stable_authority_value(item)
             for item in value
-            if not _absolute_path_string(item)
         ]
     return value
 
@@ -214,24 +376,6 @@ def _canonical_receipt_sequence(value: Any) -> list[Any]:
         raise ValueError("Canonical source receipts must be a list.")
     receipts = [_stable_authority_value(item) for item in value]
     return sorted(receipts, key=_canonical_json_bytes)
-
-
-def _volatile_key(key: str) -> bool:
-    lowered = key.strip().lower()
-    return (
-        lowered in {"timestamp", "created_at", "generated_at", "updated_at"}
-        or lowered.endswith("_timestamp")
-    )
-
-
-def _absolute_path_string(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    return bool(
-        _WINDOWS_ABSOLUTE_PATH.match(value)
-        or value.startswith("\\\\")
-        or value.startswith("/")
-    )
 
 
 def _canonical_json_sha256(value: Any) -> str:

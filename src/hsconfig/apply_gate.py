@@ -7,11 +7,11 @@ from hsconfig.io import read_json
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     DERIVATION_RECEIPT_SCHEMA_VERSION,
+    deck_input_apply_eligibility_reasons,
+    derivation_schema_version_supported,
     package_derivation_receipt_sha256,
+    source_authority_reasons,
     verify_package_derivation_receipt,
-)
-from hsconfig.source_acquisition_provenance import (
-    strategic_source_provenance_is_verified,
 )
 from hsconfig.strict_package_validation import (
     strict_validation_passed,
@@ -81,13 +81,13 @@ def evaluate_apply_gate(
     if strict_reasons:
         return _blocked(operator_path, *strict_reasons)
 
-    deck_input_reasons = _deck_input_apply_eligibility_reasons(package)
+    deck_input_reasons = deck_input_apply_eligibility_reasons(package)
     if deck_input_reasons:
         return _blocked(operator_path, *deck_input_reasons)
 
-    source_authority_reasons = _source_authority_reasons(package)
-    if source_authority_reasons:
-        return _blocked(operator_path, *source_authority_reasons)
+    source_reasons = source_authority_reasons(package)
+    if source_reasons:
+        return _blocked(operator_path, *source_reasons)
 
     derivation_reasons = _package_derivation_reasons(package, summary)
     if derivation_reasons:
@@ -159,89 +159,6 @@ def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
     ]
 
 
-def _deck_input_apply_eligibility_reasons(
-    package: Path,
-) -> list[dict[str, str]]:
-    manifest_path = package / "reports" / "input_manifest.json"
-    try:
-        manifest = read_json(manifest_path)
-    except (OSError, ValueError):
-        return []
-    if not isinstance(manifest, dict):
-        return []
-    verification = manifest.get("deck_input_verification")
-    verification_path = package / "reports" / "deck_input_verification.json"
-    if verification_path.is_file():
-        try:
-            verification = read_json(verification_path)
-        except ValueError:
-            verification = {"runtime_apply_eligible": False}
-    if not isinstance(verification, dict):
-        return []
-    if verification.get("runtime_apply_eligible") is True:
-        return []
-    return [
-        {
-            "reason": "deck_input_not_verified",
-            "code": "deck_input_not_verified",
-            "detail": "Deck input is not eligible for runtime apply.",
-        }
-    ]
-
-
-def _source_authority_reasons(package: Path) -> list[dict[str, str]]:
-    bundle_path = package / "reports" / "guide_claim_bundle.json"
-    if not bundle_path.is_file():
-        return []
-    try:
-        bundle = read_json(bundle_path)
-    except ValueError:
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipt container is invalid.",
-            }
-        ]
-    if not isinstance(bundle, dict):
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipt container is invalid.",
-            }
-        ]
-    receipts = bundle.get(
-        "canonical_source_receipts",
-        bundle.get("globalvalues_source_receipts", []),
-    )
-    if not isinstance(receipts, list):
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipts must be a list.",
-            }
-        ]
-    for receipt in receipts:
-        if (
-            not isinstance(receipt, dict)
-            or receipt.get("receipt_kind")
-            != "canonical_exact_deck_source_document"
-            or not strategic_source_provenance_is_verified(
-                receipt.get("acquisition_provenance")
-            )
-        ):
-            return [
-                {
-                    "reason": "source_authority_receipt_invalid",
-                    "code": "source_authority_receipt_invalid",
-                    "detail": "Canonical source receipt is not live verified.",
-                }
-            ]
-    return []
-
-
 def _package_derivation_reasons(
     package: Path,
     summary: dict[str, Any],
@@ -282,12 +199,25 @@ def _package_derivation_reasons(
                 "detail": "Package derivation receipt must be an object.",
             }
         ]
-    if receipt.get("schema_version") != DERIVATION_RECEIPT_SCHEMA_VERSION:
+    if not derivation_schema_version_supported(receipt.get("schema_version")):
         return [
             {
                 "reason": "package_derivation_receipt_schema_unsupported",
                 "code": "package_derivation_receipt_schema_unsupported",
                 "detail": "Package derivation receipt schema version is not supported.",
+            }
+        ]
+    if (
+        not derivation_schema_version_supported(
+            summary_derivation.get("schema_version")
+        )
+        or summary_derivation.get("verified") is not True
+    ):
+        return [
+            {
+                "reason": "operator_summary_derivation_inconsistent",
+                "code": "operator_summary_derivation_inconsistent",
+                "detail": "Operator summary derivation metadata is inconsistent.",
             }
         ]
     actual_digest = package_derivation_receipt_sha256(receipt)

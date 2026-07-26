@@ -29,6 +29,7 @@ from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
+    build_package_authority_context,
     refresh_package_derivation_authority,
 )
 from hsconfig.package_io import prepare_research_output_dir
@@ -576,10 +577,15 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
     write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
     package_derivation = refresh_package_derivation_authority(out)
+    package_authority = build_package_authority_context(
+        out,
+        strict_validation_report=report,
+    )
     operator_summary = build_operator_summary(
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,
         package_derivation=package_derivation,
+        package_authority=package_authority,
         **operator_summary_kwargs,
     )
     (reports_dir / "card_semantic_audit.md").write_text(
