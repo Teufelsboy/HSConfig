@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -15,6 +16,22 @@ ACTIVE_SKILL_REFERENCE_FILES = [
 OLD_PRESUME_CONCEDE_NORMAL_OUTPUTS = (
     "Presume/Concede are " + "documented normal outputs"
 )
+SEMANTIC_SAFETY_WAVE_FILES = [
+    SKILL_ROOT / "SKILL.md",
+    SKILL_ROOT / "references" / "card-behavior-policy.md",
+    SKILL_ROOT / "references" / "guide-research-policy.md",
+    SKILL_ROOT / "references" / "contract-compiler-checklist.md",
+]
+SEMANTIC_SAFETY_WAVE_SENTINELS = [
+    "`SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.",
+    "Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.",
+    "Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.",
+    "Reject the whole runtime row when any structured condition atom is unsupported.",
+    "Targeting claims count as closed only when target scope and a compatible target surface are both encoded.",
+    "Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.",
+    "`reports/operator_summary.json` remains the only normal apply authority.",
+    "`semantic_handoff_status` is diagnostic and never creates a second apply gate.",
+]
 
 
 def _skill_entrypoint_text() -> str:
@@ -180,6 +197,13 @@ def test_skill_content_sets_direct_config_boundary():
         assert phrase in text
     assert "per-card" in text
     assert "<CARDID>.json" in text
+
+
+def test_skill_contract_states_semantic_safety_wave_in_every_owned_file():
+    for path in SEMANTIC_SAFETY_WAVE_FILES:
+        text = path.read_text(encoding="utf-8")
+        for sentinel in SEMANTIC_SAFETY_WAVE_SENTINELS:
+            assert sentinel in text, f"{path}: {sentinel}"
 
 
 def test_active_skill_docs_keep_detailed_policy_vocabulary():
@@ -876,7 +900,9 @@ def test_operator_docs_explain_source_depth_closure_without_expanding_scope():
     assert second_clause in operator_lower
 
     assert negative_scope in operator_lower
-    assert operator_lower.count("replay") == negative_scope.count("replay")
+    assert len(re.findall(r"\breplays?\b", operator_lower)) == len(
+        re.findall(r"\breplays?\b", negative_scope)
+    )
     assert operator_lower.count("winrate") == negative_scope.count("winrate")
 
     closure_sentence = (
@@ -939,7 +965,7 @@ def test_docs_explain_config_usefulness_without_making_it_a_blocker():
     assert "next_report_to_open" in combined
     assert "HSTuner" in combined
     assert "does not parse replays" in operator_readme
-    assert operator_readme.lower().count("replay") == 1
+    assert len(re.findall(r"\breplays?\b", operator_readme.lower())) == 1
 
 
 def test_docs_and_skill_explain_mechanic_visibility_without_blocking_apply():

@@ -6,6 +6,22 @@ from hsconfig.skill_sync_status import build_installed_skill_sync_status
 
 
 SCRIPT = Path("scripts/sync_installed_skill.py")
+SEMANTIC_SAFETY_WAVE_RELATIVE_PATHS = [
+    Path("SKILL.md"),
+    Path("references/card-behavior-policy.md"),
+    Path("references/guide-research-policy.md"),
+    Path("references/contract-compiler-checklist.md"),
+]
+SEMANTIC_SAFETY_WAVE_SENTINELS = [
+    "`SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.",
+    "Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.",
+    "Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.",
+    "Reject the whole runtime row when any structured condition atom is unsupported.",
+    "Targeting claims count as closed only when target scope and a compatible target surface are both encoded.",
+    "Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.",
+    "`reports/operator_summary.json` remains the only normal apply authority.",
+    "`semantic_handoff_status` is diagnostic and never creates a second apply gate.",
+]
 
 
 def test_skill_sync_check_passes_when_installed_copy_matches(tmp_path: Path):
@@ -37,6 +53,29 @@ def test_skill_sync_check_passes_when_installed_copy_matches(tmp_path: Path):
     )
     assert check.returncode == 0, check.stdout + check.stderr
     assert "in sync" in check.stdout.lower()
+
+
+def test_skill_sync_propagates_semantic_safety_wave_contract(tmp_path: Path):
+    install_root = tmp_path / "codex" / "skills"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    installed_root = install_root / "hsconfig"
+    for relative_path in SEMANTIC_SAFETY_WAVE_RELATIVE_PATHS:
+        text = (installed_root / relative_path).read_text(encoding="utf-8")
+        for sentinel in SEMANTIC_SAFETY_WAVE_SENTINELS:
+            assert sentinel in text, f"{relative_path}: {sentinel}"
 
 
 def test_skill_sync_check_fails_when_installed_copy_drifts(tmp_path: Path):

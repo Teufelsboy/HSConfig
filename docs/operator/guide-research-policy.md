@@ -151,6 +151,17 @@ outcome -> emitted runtime row or suppression reason. source_contract_audit.json
 Quarantined claims suppress unsafe runtime rows, stay visible in reports, and do
 not block load-safe valid packages.
 
+Semantic handoff safety:
+
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
+
 `Presume.json` and `Concede.json` are legacy/diagnostic VisionAI surfaces outside the normal HSConfig output path. Their absence never blocks a valid load-safe package, and their presence in a normal package is treated as drift.
 
 Open `reports/operator_summary.json` first. Other reports explain source quality, mechanic coverage, ownership, and missing links. They do not grant apply permission.

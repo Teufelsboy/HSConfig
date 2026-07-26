@@ -281,7 +281,7 @@
           "claim_kind": "card_role",
           "cards": ["TOY_381"],
           "stance": "hero_power_support",
-          "runtime_block": "BeforeUseHeroPowerBonus",
+          "runtime_block": "OnBoardBonus",
           "evidence_text_short": "Papercraft Angel makes your Hero Power cost (0).",
           "source_confidence": "high"
         }

@@ -26,13 +26,18 @@ ACTIVE_DOC_PATHS = [
 
 
 def test_active_docs_describe_legacy_surfaces_as_non_normal_only():
+    allowed_diagnostic_boundary = (
+        "`semantic_handoff_status` is diagnostic and never creates a second apply gate."
+    )
     for path in ACTIVE_DOC_PATHS:
         text = path.read_text(encoding="utf-8")
         assert "operator_summary.json" in text
         assert "legacy/diagnostic" in text or "outside the normal HSConfig output path" in text
         assert "emit Presume.json" not in text
         assert "emit Concede.json" not in text
-        assert "second apply gate" not in text.lower()
+        assert "second apply gate" not in text.replace(
+            allowed_diagnostic_boundary, ""
+        ).lower()
 
 
 def test_contract_spine_sentinel_covers_subtractive_contract_polish():

@@ -13,6 +13,17 @@ Use this checklist before generated config handoff, source-depth work, or runtim
 9. Darkbishop gate: preserve `SW_448` hero-power-transform semantics, but do not emit a Mulligan keep without explicit opening-hand source text.
 10. Boundary gate: do not add `Presume.json`, `Concede.json`, aggregate `CardBehavior.json`, replay parsing, winrate analysis, HSTuner tuning, or gameplay sequencing logic.
 
+## Semantic Handoff Safety
+
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
+
 ## Report Order
 
 1. `reports/operator_summary.json`

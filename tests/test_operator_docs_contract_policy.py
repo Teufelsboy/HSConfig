@@ -19,6 +19,21 @@ TASK7_OPERATOR_DOCS = [
     "docs/operator/source-backed-strong-closure.md",
     "docs/operator/guide-research-policy.md",
 ]
+TASK9_OPERATOR_DOCS = [
+    "docs/operator/README.md",
+    "docs/operator/guide-research-policy.md",
+    "docs/operator/universal-wild-no-block-contract.md",
+]
+SEMANTIC_SAFETY_WAVE_SENTINELS = [
+    "`SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.",
+    "Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.",
+    "Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.",
+    "Reject the whole runtime row when any structured condition atom is unsupported.",
+    "Targeting claims count as closed only when target scope and a compatible target surface are both encoded.",
+    "Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.",
+    "`reports/operator_summary.json` remains the only normal apply authority.",
+    "`semantic_handoff_status` is diagnostic and never creates a second apply gate.",
+]
 
 SOURCE_BACKED_STRONG_TASK7_SENTINELS = [
     "Source-candidate registries are acquisition seeds only, not promotion authority.",
@@ -162,6 +177,13 @@ def test_source_backed_strong_operator_docs_state_task7_contracts():
             raise AssertionError(
                 f"{relative_path} is missing one or more Task 7 sentinels"
             ) from exc
+
+
+def test_operator_docs_state_semantic_safety_wave_contracts():
+    for relative_path in TASK9_OPERATOR_DOCS:
+        text = (ROOT / relative_path).read_text(encoding="utf-8")
+        for sentinel in SEMANTIC_SAFETY_WAVE_SENTINELS:
+            assert sentinel in text, f"{relative_path}: {sentinel}"
 
 
 def test_runtime_match_is_post_apply_install_integrity_only() -> None:

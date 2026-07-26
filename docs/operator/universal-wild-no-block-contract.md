@@ -80,6 +80,14 @@ Acceptance-loop wording:
 HSConfig emits runtime keys only when the source evidence is both source-backed
 and semantically compatible with the HearthRanger VisionAI surface.
 
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
 - Non-targeted Battlecry evidence lowers to play timing, not target bonus.
 - Target bonus surfaces require explicit target evidence.
 - Start-of-game and deckbuilding effects are effect value, not automatic

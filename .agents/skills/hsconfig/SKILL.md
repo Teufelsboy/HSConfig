@@ -42,16 +42,20 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
   `matched` for a successful install. For read-only checks use
   `python -m hsconfig.cli runtime-match --package <package> --runtime-root <runtime> --json`.
   This is an install-integrity check, not a source/semantic apply gate.
-- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate.
+- `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate. `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
 - `source_status_apply_blocking` must remain `false` for source-quality work.
 - No hidden default-only runtime success.
 - Every expected surface must be emitted, explicitly suppressed, or reported as a visible source/action gap.
 - Normal output remains `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` only for exact ordered combo evidence.
 - `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are outside the normal HSConfig output path.
-- Effect semantics are not opening-hand mulligan keeps.
+- Effect semantics are not opening-hand mulligan keeps. Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
 - Preserve Darkbishop Benedictus / `SW_448` hero-power-transform semantics, but do not emit a Mulligan keep without explicit opening-hand source text.
-- Card-intent taxonomy is diagnostic-only.
-- It explains per-card config signals but does not encode HearthRanger gameplay sequencing or create another apply gate.
+- Card-intent taxonomy is diagnostic-only. It explains per-card config signals but does not encode HearthRanger gameplay sequencing or create another apply gate.
 
 ## Source Contract
 

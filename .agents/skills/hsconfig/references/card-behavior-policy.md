@@ -58,6 +58,17 @@ syntax.
 Card behavior reports support `operator_summary.json`; they do not create an independent apply gate.
 Do not emit `Presume.json`, `Concede.json`, or aggregate `CardBehavior.json` in the normal HSConfig path.
 
+## Semantic Handoff Safety
+
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
+
 ## Diagnostic Intent Taxonomy
 
 Card intent taxonomy is diagnostic and scoring-only. It may choose stronger

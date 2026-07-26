@@ -206,6 +206,18 @@ Open `reports/operator_summary.json` first.
 No-silent-default-only policy: default-only or thin runtime surfaces are visible quality debt, not an apply blocker. `operator_summary.json` remains the only normal apply authority. When `default_only_runtime_surfaces` is non-empty, open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` to see the first missing source-to-runtime link before improving guide claims or policy-backed defaults.
 
 Contract invariant closure means: single apply authority, no silent default-only success, claim-kind surface discipline, and effect-not-mulligan canary coverage. It is diagnostic proof, not another runtime apply gate. `operator_summary.json remains the only normal apply authority`.
+
+Semantic handoff safety:
+
+- `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
+- Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed.
+- Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
+- Reject the whole runtime row when any structured condition atom is unsupported.
+- Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
+- Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
+- `reports/operator_summary.json` remains the only normal apply authority.
+- `semantic_handoff_status` is diagnostic and never creates a second apply gate.
+
 - `config_usefulness.surfaces.mulligan` separates runtime load safety from Mulligan richness. A present `Mulligan.json` can satisfy the load-safe gate while `status=thin`, `first_gap_reason`, or `next_source_need=source_backed_or_policy_backed_mulligan_keeps` tells the operator that more keep/discard evidence or autonomous policy coverage would improve the package.
 - A thin package may still be applied. Thin means the operator should inspect the named `next_report_to_open`, not that HSConfig should stop.
 - A thin Mulligan means guide evidence and autonomous policy did not find enough safe keeps. It is a source-quality signal, not a HearthRanger load error. When no source-backed keep can be emitted, `policy_backed_autonomous_mulligan` may still emit a small low-curve keep set, but it remains weaker than source-backed guide evidence, cannot promote the deck to `SOURCE_BACKED_STRONG`, vetoes cards with explicit, suppressed, or quarantined Mulligan source intent, and must not keep non-hand start-of-game enablers such as Darkbishop Benedictus without explicit opening-hand source text.
