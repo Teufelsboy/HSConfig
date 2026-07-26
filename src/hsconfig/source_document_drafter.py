@@ -93,7 +93,19 @@ def _exact_deck_match_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
     fingerprint = str(exact.get("matched_deck_fingerprint", "")).strip()
     if not fingerprint:
         return None
-    return {"exact_deck_evidence": dict(exact)}
+    return {
+        "exact_deck_evidence": {
+            "candidate_count": int(exact.get("candidate_count", 0)),
+            "decoded_candidate_count": int(exact.get("decoded_candidate_count", 0)),
+            "matched": True,
+            "matched_deck_fingerprint": fingerprint,
+            "candidate_deck_code_hashes": sorted(
+                str(value).strip()
+                for value in _as_list(exact.get("candidate_deck_code_hashes", []))
+                if str(value).strip()
+            ),
+        }
+    }
 
 
 def _merge_document_deck_match(

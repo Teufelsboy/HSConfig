@@ -62,6 +62,62 @@ def test_drafter_preserves_consensus_exact_deck_evidence():
     assert "AAEBA" not in str(document)
 
 
+def test_drafter_excludes_raw_deckstring_from_exact_evidence():
+    fingerprint = "sha256:exact-shadowpriest"
+    raw_deckstring = (
+        "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+        "KgG17oG1cEGAAA="
+    )
+    row = {
+        "source_url": "https://example.test/shadowpriest-exact",
+        "source_title": "Exact ShadowPriest Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "deck_name": "ShadowPriest",
+        "archetype": "shadowpriest",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "deck_match_scope": "exact_deck_matched",
+        "source_visibility": "full_text",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
+                "matched": True,
+                "matched_deck_fingerprint": fingerprint,
+                "candidate_deck_code_hashes": ["sha256:source-code"],
+                "raw_deckstring": raw_deckstring,
+            }
+        },
+        "claim_kind": "mulligan_keep",
+        "cards": ["TOY_381"],
+        "scope": "card",
+        "stance": "keep",
+        "evidence_text_short": "Keep Papercraft Angel.",
+        "source_confidence": "high",
+    }
+
+    result = draft_source_documents(
+        deck_name="ShadowPriest",
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "deck_fingerprint": fingerprint,
+            "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel"}],
+        },
+        evidence_rows=[row],
+    )
+
+    exact = result["source_documents"][0]["deck_match"]["exact_deck_evidence"]
+    assert exact == {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": fingerprint,
+        "candidate_deck_code_hashes": ["sha256:source-code"],
+    }
+    assert raw_deckstring not in str(result)
+
+
 def test_drafter_downgrades_conflicting_exact_evidence():
     rows = []
     for fingerprint in ("sha256:first", "sha256:second"):
