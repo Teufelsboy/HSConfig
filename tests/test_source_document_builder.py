@@ -1005,3 +1005,50 @@ def test_explicit_exact_scope_requires_matching_target_fingerprint():
     claim = bundle["claims"][0]
     assert claim["deck_match_scope"] == "archetype_matched"
     assert claim["source_lane"] == "archetype_matched_public_guide"
+
+
+def test_matching_exact_scope_carries_canonical_fingerprint_evidence_to_claim():
+    bundle = build_source_document_bundle(
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "deck_fingerprint": "target-fingerprint",
+            "cards": [{"card_id": "TOY_381", "count": 2}],
+        },
+        card_metadata={},
+        source_documents=[
+            {
+                "source_url": "https://example.test/guide",
+                "source_title": "ShadowPriest guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "deck_match_scope": "exact_deck_matched",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "target-fingerprint",
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_kind": "gameplan_posture",
+                        "scope": "deck",
+                        "stance": "aggressive",
+                        "promotion_eligible": True,
+                        "evidence_text_short": "Pressure the opponent early.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+    claim = bundle["claims"][0]
+    assert claim["deck_match_scope"] == "exact_deck_matched"
+    assert claim["deck_match"] == {
+        "exact_deck_evidence": {
+            "matched": True,
+            "matched_deck_fingerprint": "target-fingerprint",
+        }
+    }

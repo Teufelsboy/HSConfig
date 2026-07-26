@@ -23,6 +23,30 @@ REQUIRED_LIFECYCLE_FIELDS = {
 }
 
 
+def _verified_posture_claim(claim_id: str = "posture_claim") -> dict:
+    return {
+        "claim_id": claim_id,
+        "claim_kind": "gameplan_posture",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_candidate",
+        "cards": [],
+        "source_type": "public_guide",
+        "source_family": "guide",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": "fixture-deck-fingerprint",
+            }
+        },
+        "source_title": "Fixture Guide",
+        "evidence_text_short": "Use a more aggressive posture.",
+    }
+
+
 def test_source_contract_audit_explains_surface_gate_lanes():
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
@@ -396,6 +420,7 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
         deck_name="FixtureDeck",
         deck_identity={
             "deck_name": "FixtureDeck",
+            "deck_fingerprint": "fixture-deck-fingerprint",
             "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2}],
         },
         guide_claim_bundle={
@@ -409,15 +434,7 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Keep CARD_KEEP.",
                 },
-                {
-                    "claim_id": "posture_claim",
-                    "claim_kind": "gameplan_posture",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": [],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Use an aggressive Hero Power posture.",
-                },
+                _verified_posture_claim(),
             ]
         },
         mulligan_plan={
@@ -726,19 +743,13 @@ def test_source_contract_audit_policy_matrix_failure_is_nonblocking(monkeypatch)
 def test_claim_lifecycle_marks_allowed_claim_without_builder_emission_as_not_seen_by_builder():
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
-        deck_identity={"deck_name": "FixtureDeck", "cards": []},
+        deck_identity={
+            "deck_name": "FixtureDeck",
+            "deck_fingerprint": "fixture-deck-fingerprint",
+            "cards": [],
+        },
         guide_claim_bundle={
-            "claims": [
-                {
-                    "claim_id": "posture_claim",
-                    "claim_kind": "gameplan_posture",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": [],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Use a more aggressive posture.",
-                }
-            ]
+            "claims": [_verified_posture_claim()]
         },
         mulligan_plan={"rules": [], "suppressed_rules": []},
         card_behavior_plan={"rows": [], "suppressed": []},
@@ -767,6 +778,7 @@ def test_source_contract_audit_summarizes_claim_lifecycle_decisions():
         deck_name="FixtureDeck",
         deck_identity={
             "deck_name": "FixtureDeck",
+            "deck_fingerprint": "fixture-deck-fingerprint",
             "cards": [{"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2}],
         },
         guide_claim_bundle={
@@ -780,15 +792,7 @@ def test_source_contract_audit_summarizes_claim_lifecycle_decisions():
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Keep CARD_KEEP.",
                 },
-                {
-                    "claim_id": "posture_claim",
-                    "claim_kind": "gameplan_posture",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": [],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Use a more aggressive posture.",
-                },
+                _verified_posture_claim(),
                 {
                     "claim_id": "numeric_claim",
                     "claim_kind": "globalvalue_numeric_tuning",

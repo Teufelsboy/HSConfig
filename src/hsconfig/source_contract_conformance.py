@@ -16,6 +16,7 @@ from hsconfig.source_document_model import (
 
 SURFACES = ("mulligan", "globalvalues", "cardid", "combo")
 OPERATOR_GATE_IMPACT = "diagnostic_only"
+_CONFORMANCE_DECK_FINGERPRINT = "conformance-deck-fingerprint"
 
 _BUILDER_ROUTER_EXPECTATIONS = {
     "archetype": {"surface": None, "runner": "not_seen_by_builder", "outcome": "not_seen_by_builder"},
@@ -259,6 +260,11 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
             }
         }
     }
+    if claim_kind == "gameplan_posture":
+        claim.update(_verified_gameplan_posture_authority())
+        context["deck_identity"] = {
+            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        }
     gates = {
         surface: _decision_row(surface_gate_decision(claim, surface, context=context))
         for surface in SURFACES
@@ -443,7 +449,12 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
             "values": ["6"] * len(cards),
         }
     if claim_kind == "gameplan_posture":
-        return {**claim, "cards": [], "stance": "aggro_burn"}
+        return {
+            **claim,
+            **_verified_gameplan_posture_authority(),
+            "cards": [],
+            "stance": "aggro_burn",
+        }
     if claim_kind == "globalvalue_numeric_tuning":
         return {**claim, "cards": [], "key": "LowHpBoardValuePenalty"}
     if claim_kind == "card_role":
@@ -493,6 +504,9 @@ def _builder_runner_result(
         plan = build_globalvalues_authority_matrix(
             aggression_profile="baseline",
             claims=[claim],
+            deck_identity={
+                "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            },
         )
         if any(claim["claim_id"] in row.get("claim_refs", []) for row in plan["allowed_step1_overlays"]):
             return {"outcome": "emitted", "reason": "emitted"}
@@ -506,6 +520,23 @@ def _builder_runner_result(
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["suppressed"])
     raise RuntimeError(f"Unsupported conformance runner: {runner}")
+
+
+def _verified_gameplan_posture_authority() -> dict[str, Any]:
+    return {
+        "source_type": "public_guide",
+        "source_family": "guide",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            }
+        },
+    }
 
 
 def _suppressed_result(rows: list[Mapping[str, Any]]) -> dict[str, str]:

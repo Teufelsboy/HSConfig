@@ -81,6 +81,11 @@ Darkbishop opening-hand keep from its start-of-game effect.
 The same four exact public-guide fields gate `gameplan_posture` before it can
 authorize a GlobalValues posture overlay. Archetype-only posture claims remain
 visible with a stable suppression reason and preserve the validated baseline.
+For this surface, `deck_match_scope=exact_deck_matched` is accepted only when
+the normalized claim also carries
+`deck_match.exact_deck_evidence.matched=true` and its
+`matched_deck_fingerprint` equals the current target
+`deck_identity["deck_fingerprint"]`. A missing target fingerprint fails closed.
 
 Short evidence row shape for `--source-evidence-json`:
 

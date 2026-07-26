@@ -89,6 +89,18 @@ def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_
         "claim_readiness": "guide_backed",
         "trust_ceiling": "runtime_candidate",
         "stance": "aggro_burn",
+        "source_type": "public_guide",
+        "source_family": "guide",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": "fixture-deck-fingerprint",
+            }
+        },
     }
     tuning = {
         "claim_kind": "globalvalue_numeric_tuning",
@@ -97,7 +109,10 @@ def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_
         "key": "LowHpBoardValuePenalty",
     }
 
-    assert can_lower_to_globalvalues(posture).allowed is True
+    assert can_lower_to_globalvalues(
+        posture,
+        deck_identity={"deck_fingerprint": "fixture-deck-fingerprint"},
+    ).allowed is True
     decision = can_lower_to_globalvalues(tuning)
     assert decision.allowed is False
     assert decision.reason == "requires_runtime_evidence"
@@ -197,11 +212,34 @@ def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
             "trust_ceiling": "runtime_candidate",
             "cards": ["CARD_001"],
         }
+        context = {"card_roles": card_roles}
+        if claim_kind == "gameplan_posture":
+            claim.update(
+                {
+                    "source_type": "public_guide",
+                    "source_family": "guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "promotion_eligible": True,
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "matched": True,
+                            "matched_deck_fingerprint": (
+                                "fixture-deck-fingerprint"
+                            ),
+                        }
+                    },
+                }
+            )
+            context["deck_identity"] = {
+                "deck_fingerprint": "fixture-deck-fingerprint"
+            }
         for surface in surfaces:
             decision = surface_gate_decision(
                 claim,
                 surface,
-                context={"card_roles": card_roles},
+                context=context,
             )
             expected_unconditional = surface in unconditional_allowed.get(claim_kind, ())
             if expected_unconditional:

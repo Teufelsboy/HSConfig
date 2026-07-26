@@ -55,6 +55,26 @@ def test_surface_gate_matches_policy_matrix(claim_kind, expected):
             }
         }
     }
+    if claim_kind == "gameplan_posture":
+        claim.update(
+            {
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "fixture-deck-fingerprint",
+                    }
+                },
+            }
+        )
+        context["deck_identity"] = {
+            "deck_fingerprint": "fixture-deck-fingerprint"
+        }
 
     for surface in ("mulligan", "globalvalues", "cardid", "combo"):
         decision = surface_gate_decision(claim, surface, context=context)

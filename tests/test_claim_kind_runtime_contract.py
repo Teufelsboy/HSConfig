@@ -14,6 +14,10 @@ from hsconfig.source_document_model import (
     runtime_claim_kind,
     surface_gate_decision,
 )
+from hsconfig.source_claim_lifecycle import (
+    build_initial_lifecycle_rows,
+    select_claims_for_surface,
+)
 
 
 def test_broad_legacy_mulligan_claim_type_does_not_create_hold():
@@ -148,17 +152,171 @@ def test_globalvalue_numeric_tuning_is_valid_but_requires_runtime_evidence():
     assert decision.reason == "requires_runtime_evidence"
 
 
-def test_gameplan_posture_can_lower_to_globalvalues_when_runtime_lowerable():
+def test_source_less_gameplan_posture_cannot_lower_to_globalvalues():
     claim = {
         "claim_kind": "gameplan_posture",
         "claim_readiness": "guide_backed",
         "trust_ceiling": "runtime_candidate",
     }
 
-    decision = surface_gate_decision(claim, "globalvalues")
+    decision = surface_gate_decision(
+        claim,
+        "globalvalues",
+        context={"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+    )
 
-    assert decision.allowed is True
-    assert decision.reason == "allowed"
+    assert decision.allowed is False
+    assert decision.reason == "globalvalues_requires_public_guide_source"
+
+
+@pytest.mark.parametrize(
+    ("claim", "context", "reason"),
+    [
+        (
+            {
+                "source_type": "official_card_data",
+                "source_family": "card_text",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "target-fingerprint",
+                    }
+                },
+            },
+            {"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+            "globalvalues_requires_public_guide_source",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "archetype_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "archetype_matched_public_guide",
+            },
+            {"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+            "globalvalues_requires_exact_deck_match",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+            },
+            {"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+            "globalvalues_requires_verified_exact_deck_evidence",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "different-fingerprint",
+                    }
+                },
+            },
+            {"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+            "globalvalues_exact_deck_fingerprint_mismatch",
+        ),
+        (
+            {
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "target-fingerprint",
+                    }
+                },
+            },
+            {"deck_identity": {}},
+            "globalvalues_requires_target_deck_fingerprint",
+        ),
+    ],
+)
+def test_globalvalues_lifecycle_rejects_unverified_posture_authority(
+    claim, context, reason
+):
+    lifecycle_rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "posture-claim",
+                "claim_kind": "gameplan_posture",
+                "stance": "aggressive",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                **claim,
+            }
+        ]
+    )
+
+    selection = select_claims_for_surface(
+        lifecycle_rows,
+        "globalvalues",
+        context=context,
+    )
+
+    assert selection["accepted_claims"] == []
+    assert len(selection["rejected_claims"]) == 1
+    assert selection["rejected_claims"][0]["_claim_lifecycle"][
+        "surface_gate_reason"
+    ] == reason
+
+
+def test_globalvalues_lifecycle_accepts_verified_exact_public_guide_posture():
+    lifecycle_rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "verified-posture",
+                "claim_kind": "gameplan_posture",
+                "stance": "aggressive",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_candidate",
+                "source_type": "public_guide",
+                "source_family": "guide",
+                "deck_match_scope": "exact_deck_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "target-fingerprint",
+                    }
+                },
+            }
+        ]
+    )
+
+    selection = select_claims_for_surface(
+        lifecycle_rows,
+        "globalvalues",
+        context={"deck_identity": {"deck_fingerprint": "target-fingerprint"}},
+    )
+
+    assert len(selection["accepted_claims"]) == 1
+    assert selection["rejected_claims"] == []
+    assert selection["accepted_claims"][0]["_claim_lifecycle"][
+        "surface_gate_reason"
+    ] == "allowed"
 
 
 def test_mulligan_claim_does_not_lower_to_cardid_or_globalvalues():

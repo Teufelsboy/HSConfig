@@ -146,6 +146,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     globalvalues_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "globalvalues",
+        context={"deck_identity": deck_identity},
     )
     globalvalues_claims = globalvalues_selection["accepted_claims"]
     globalvalues_decision_claims = [
@@ -189,6 +190,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     global_values_authority_matrix = build_globalvalues_authority_matrix(
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
         claims=globalvalues_authority_claims,
+        deck_identity=deck_identity,
     )
     plan_reports_dir = getattr(args, "plan_reports_dir", None)
     if plan_reports_dir is not None:
@@ -230,6 +232,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             combo_plan=combo_plan,
             global_values_authority_matrix=global_values_authority_matrix,
             card_roles=card_roles,
+            deck_identity=deck_identity,
         )
     gameplan_contract = {
         **gameplan_contract,
@@ -670,7 +673,17 @@ def _filter_plan_reports_by_lifecycle(
     combo_plan: dict[str, Any],
     global_values_authority_matrix: dict[str, Any],
     card_roles: dict[str, Any],
+    deck_identity: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    globalvalues_selection = select_claims_for_surface(
+        initial_lifecycle_rows,
+        "globalvalues",
+        context={"deck_identity": deck_identity},
+    )
+    globalvalues_decision_claims = [
+        *globalvalues_selection["accepted_claims"],
+        *globalvalues_selection["rejected_claims"],
+    ]
     allowed_claim_ids = {
         "mulligan": _runtime_claim_ids_for_surface(
             initial_lifecycle_rows,
@@ -682,8 +695,14 @@ def _filter_plan_reports_by_lifecycle(
         "globalvalues": _runtime_claim_ids_for_surface(
             initial_lifecycle_rows,
             "globalvalues",
+            deck_identity=deck_identity,
         ),
     }
+    globalvalues_diagnostics = build_globalvalues_authority_matrix(
+        aggression_profile="baseline",
+        claims=globalvalues_decision_claims,
+        deck_identity=deck_identity,
+    )
     return (
         _filter_mulligan_plan(mulligan_plan, allowed_claim_ids["mulligan"]),
         _filter_card_behavior_plan(card_behavior_plan, allowed_claim_ids["cardid"]),
@@ -691,6 +710,7 @@ def _filter_plan_reports_by_lifecycle(
         _filter_globalvalues_authority_matrix(
             global_values_authority_matrix,
             allowed_claim_ids["globalvalues"],
+            diagnostic_matrix=globalvalues_diagnostics,
         ),
     )
 
@@ -700,10 +720,17 @@ def _runtime_claim_ids_for_surface(
     surface: str,
     *,
     card_roles: dict[str, Any] | None = None,
+    deck_identity: dict[str, Any] | None = None,
 ) -> set[str]:
+    context = (
+        {"deck_identity": deck_identity}
+        if deck_identity is not None
+        else None
+    )
     claims = runtime_claims_for_surface(
         lifecycle_rows,
         surface,
+        context=context,
         card_roles=card_roles,
     )
     claim_ids: set[str] = set()
@@ -808,12 +835,39 @@ def _filter_combo_plan(
 def _filter_globalvalues_authority_matrix(
     matrix: dict[str, Any],
     allowed_claim_ids: set[str],
+    *,
+    diagnostic_matrix: dict[str, Any],
 ) -> dict[str, Any]:
     result = dict(matrix)
-    result["allowed_step1_overlays"] = _filter_runtime_rows_by_claim_ids(
+    allowed_rows = _filter_runtime_rows_by_claim_ids(
         matrix.get("allowed_step1_overlays", []),
         allowed_claim_ids,
     )
+    diagnostic_blocked = [
+        row
+        for row in diagnostic_matrix.get("blocked_until_runtime_evidence", [])
+        if isinstance(row, dict)
+    ]
+    has_source_contract_suppression = any(
+        row.get("authority") == "source_contract_suppressed"
+        for row in diagnostic_blocked
+    )
+    if not allowed_rows and has_source_contract_suppression:
+        allowed_rows = [
+            dict(row)
+            for row in diagnostic_matrix.get("allowed_step1_overlays", [])
+            if isinstance(row, dict)
+        ]
+    blocked_rows = [
+        dict(row)
+        for row in matrix.get("blocked_until_runtime_evidence", [])
+        if isinstance(row, dict)
+    ]
+    for row in diagnostic_blocked:
+        if row not in blocked_rows:
+            blocked_rows.append(dict(row))
+    result["allowed_step1_overlays"] = allowed_rows
+    result["blocked_until_runtime_evidence"] = blocked_rows
     return result
 
 

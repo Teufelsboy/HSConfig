@@ -259,6 +259,14 @@ def _normalize_source_claim(
     source_lane = _claim_source_lane(raw_claim, document, deck_match_scope)
     if source_lane:
         claim["source_lane"] = source_lane
+    exact_deck_evidence = _canonical_exact_deck_evidence(
+        document,
+        deck_identity,
+    )
+    if deck_match_scope == "exact_deck_matched" and exact_deck_evidence:
+        claim["deck_match"] = {
+            "exact_deck_evidence": exact_deck_evidence,
+        }
     for key in ("source_type", "provenance", "source_type_family"):
         value = raw_claim.get(key, document.get(key))
         if value is not None and str(value).strip():
@@ -374,17 +382,29 @@ def _document_has_exact_deck_evidence(
     document: dict[str, Any],
     deck_identity: dict[str, Any],
 ) -> bool:
+    return bool(_canonical_exact_deck_evidence(document, deck_identity))
+
+
+def _canonical_exact_deck_evidence(
+    document: dict[str, Any],
+    deck_identity: dict[str, Any],
+) -> dict[str, Any]:
     deck_match = document.get("deck_match", {})
     if not isinstance(deck_match, dict):
-        return False
+        return {}
     exact = deck_match.get("exact_deck_evidence", {})
     if not isinstance(exact, dict) or exact.get("matched") is not True:
-        return False
-    return (
-        _clean_text(exact.get("matched_deck_fingerprint", ""))
-        == _clean_text(deck_identity.get("deck_fingerprint", ""))
-        != ""
+        return {}
+    evidence_fingerprint = _clean_text(
+        exact.get("matched_deck_fingerprint", "")
     )
+    target_fingerprint = _clean_text(deck_identity.get("deck_fingerprint", ""))
+    if not evidence_fingerprint or evidence_fingerprint != target_fingerprint:
+        return {}
+    return {
+        "matched": True,
+        "matched_deck_fingerprint": target_fingerprint,
+    }
 
 
 def _document_matches_deck_identity(

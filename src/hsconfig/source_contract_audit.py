@@ -73,7 +73,10 @@ def build_source_contract_audit(
                 surface_gate_decision(
                     claim,
                     surface,
-                    context={"card_roles": card_roles},
+                    context={
+                        "card_roles": card_roles,
+                        "deck_identity": deck_identity,
+                    },
                 )
             )
             for surface in SURFACES

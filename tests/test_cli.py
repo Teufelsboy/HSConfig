@@ -1123,6 +1123,202 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert lifecycle_by_id["rejected_combo"]["builder_or_router_decision"] != "emitted"
 
 
+def test_build_plan_reports_dir_suppresses_unverified_exact_globalvalues_overlay(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    source_documents = tmp_path / "source_documents.json"
+    _write_minimal_source_documents(source_documents)
+    plan_reports = tmp_path / "plan_reports"
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=["EX1_001"],
+            claims=[
+                {
+                    "claim_id": "unverified-posture",
+                    "claim_kind": "gameplan_posture",
+                    "scope": "deck",
+                    "stance": "aggressive",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "source_type": "public_guide",
+                    "source_family": "guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "promotion_eligible": True,
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "evidence_text_short": "Play an aggressive plan.",
+                }
+            ],
+        ),
+        globalvalue_rows=[
+            {
+                "key": "MyHeroPowerValue",
+                "overlay": "increase",
+                "operation": "increase",
+                "value": None,
+                "authority": "step1_source_backed_posture",
+                "claim_id": "unverified-posture",
+                "claim_refs": ["unverified-posture"],
+                "reason": "aggressive_source_backed_posture",
+            }
+        ],
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    profile = json.loads(
+        (out / "reports" / "globalvalues_profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "baseline"
+    }
+    assert any(
+        row.get("claim_id") == "unverified-posture"
+        and row.get("authority") == "source_contract_suppressed"
+        and row.get("reason")
+        == "globalvalues_requires_verified_exact_deck_evidence"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert profile["status"] == "baseline_confirmed"
+    assert profile["changed_keys"] == []
+
+
+def test_build_plan_reports_dir_keeps_verified_exact_globalvalues_overlay(
+    tmp_path: Path, capsys
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    source_documents = tmp_path / "source_documents.json"
+    _write_minimal_source_documents(source_documents)
+    plan_reports = tmp_path / "plan_reports"
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=["EX1_001"],
+            claims=[
+                {
+                    "claim_id": "verified-posture",
+                    "claim_kind": "gameplan_posture",
+                    "scope": "deck",
+                    "stance": "aggressive",
+                    "claim_readiness": "guide_backed",
+                    "trust_ceiling": "runtime_candidate",
+                    "source_confidence": "high",
+                    "source_type": "public_guide",
+                    "source_family": "guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "promotion_eligible": True,
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "matched": True,
+                            "matched_deck_fingerprint": (
+                                "d67c567a5517bca54096abf526bf608155b45cf6822548dde"
+                                "49bd21ae47d8a84"
+                            ),
+                        }
+                    },
+                    "evidence_text_short": "Play an aggressive plan.",
+                }
+            ],
+        ),
+        globalvalue_rows=[
+            {
+                "key": "MyHeroPowerValue",
+                "overlay": "increase",
+                "operation": "increase",
+                "value": None,
+                "authority": "step1_source_backed_posture",
+                "claim_id": "verified-posture",
+                "claim_refs": ["verified-posture"],
+                "reason": "aggressive_source_backed_posture",
+            }
+        ],
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Plan GlobalValues",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    authority = json.loads(
+        (out / "reports" / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    profile = json.loads(
+        (out / "reports" / "globalvalues_profile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert {row["key"] for row in authority["allowed_step1_overlays"]} == {
+        "MyHeroPowerValue"
+    }
+    assert not any(
+        row.get("authority") == "source_contract_suppressed"
+        for row in authority["blocked_until_runtime_evidence"]
+    )
+    assert profile["status"] == "overlay_changed"
+    assert "MyHeroPowerValue" in profile["changed_keys"]
+
+
 def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     tmp_path: Path, capsys
 ):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from hsconfig.globalvalues_key_authority import RUNTIME_EVIDENCE_KEYS, authority_for_key
@@ -54,9 +55,16 @@ def build_globalvalues_authority_matrix(
     *,
     aggression_profile: str,
     claims: list[dict[str, Any]],
+    deck_identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     claim_decisions = [
-        (claim, can_lower_to_globalvalues(claim))
+        (
+            claim,
+            can_lower_to_globalvalues(
+                claim,
+                deck_identity=deck_identity,
+            ),
+        )
         for claim in claims
     ]
     lowerable_claims = [
@@ -114,7 +122,7 @@ def build_globalvalues_authority_matrix(
         if (
             normalized_claim_kind(claim) == "gameplan_posture"
             and not decision.allowed
-            and decision.reason.startswith("globalvalues_requires_")
+            and decision.reason.startswith("globalvalues_")
         ):
             blocked.append(_source_contract_suppressed_row(claim, decision.reason))
     return {

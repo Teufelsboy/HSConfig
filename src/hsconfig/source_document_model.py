@@ -378,7 +378,10 @@ def surface_gate_decision(
     if normalized_surface == "mulligan":
         return can_lower_to_mulligan(claim, card_roles=(context or {}).get("card_roles"))
     if normalized_surface == "globalvalues":
-        return can_lower_to_globalvalues(claim)
+        return can_lower_to_globalvalues(
+            claim,
+            deck_identity=(context or {}).get("deck_identity"),
+        )
     if normalized_surface == "combo":
         return can_lower_to_combo(claim)
     if normalized_surface == "cardid":
@@ -455,7 +458,11 @@ def can_lower_to_mulligan(
     return SurfaceGateDecision(True, "allowed", claim_kind, "mulligan")
 
 
-def can_lower_to_globalvalues(claim: Mapping[str, Any]) -> SurfaceGateDecision:
+def can_lower_to_globalvalues(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+) -> SurfaceGateDecision:
     claim_kind = normalized_claim_kind(claim)
     if claim_kind in GLOBALVALUES_RUNTIME_EVIDENCE_CLAIM_KINDS:
         return SurfaceGateDecision(False, "requires_runtime_evidence", claim_kind, "globalvalues")
@@ -465,36 +472,95 @@ def can_lower_to_globalvalues(claim: Mapping[str, Any]) -> SurfaceGateDecision:
         )
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "globalvalues")
-    if is_public_guide_claim(claim):
-        if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
-            return SurfaceGateDecision(
-                False,
-                "globalvalues_requires_exact_deck_match",
-                claim_kind,
-                "globalvalues",
-            )
-        if not _bool_value(claim.get("promotion_eligible")):
-            return SurfaceGateDecision(
-                False,
-                "globalvalues_requires_promotion_eligible_source",
-                claim_kind,
-                "globalvalues",
-            )
-        if _normalized_text(claim.get("source_visibility")) != "full_text":
-            return SurfaceGateDecision(
-                False,
-                "globalvalues_requires_full_text_source",
-                claim_kind,
-                "globalvalues",
-            )
-        if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
-            return SurfaceGateDecision(
-                False,
-                "globalvalues_requires_deck_matched_public_guide_lane",
-                claim_kind,
-                "globalvalues",
-            )
+    if not _is_globalvalues_public_guide_source(claim):
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_public_guide_source",
+            claim_kind,
+            "globalvalues",
+        )
+    if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_exact_deck_match",
+            claim_kind,
+            "globalvalues",
+        )
+    target_fingerprint = _normalized_text(
+        (deck_identity or {}).get("deck_fingerprint")
+    )
+    if not target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_target_deck_fingerprint",
+            claim_kind,
+            "globalvalues",
+        )
+    deck_match = claim.get("deck_match", {})
+    exact_evidence = (
+        deck_match.get("exact_deck_evidence", {})
+        if isinstance(deck_match, Mapping)
+        else {}
+    )
+    evidence_fingerprint = (
+        _normalized_text(exact_evidence.get("matched_deck_fingerprint"))
+        if isinstance(exact_evidence, Mapping)
+        else ""
+    )
+    if (
+        not isinstance(exact_evidence, Mapping)
+        or exact_evidence.get("matched") is not True
+        or not evidence_fingerprint
+    ):
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_verified_exact_deck_evidence",
+            claim_kind,
+            "globalvalues",
+        )
+    if evidence_fingerprint != target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_exact_deck_fingerprint_mismatch",
+            claim_kind,
+            "globalvalues",
+        )
+    if not _bool_value(claim.get("promotion_eligible")):
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_promotion_eligible_source",
+            claim_kind,
+            "globalvalues",
+        )
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_full_text_source",
+            claim_kind,
+            "globalvalues",
+        )
+    if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+        return SurfaceGateDecision(
+            False,
+            "globalvalues_requires_deck_matched_public_guide_lane",
+            claim_kind,
+            "globalvalues",
+        )
     return SurfaceGateDecision(True, "allowed", claim_kind, "globalvalues")
+
+
+def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
+    explicit_source_type = _normalized_text(
+        claim.get("source_type")
+        or claim.get("provenance")
+        or claim.get("source_type_family")
+    )
+    if (
+        explicit_source_type
+        and explicit_source_type not in PUBLIC_GUIDE_SOURCE_FAMILIES
+    ):
+        return False
+    return is_public_guide_claim(claim)
 
 
 def can_lower_to_combo(claim: Mapping[str, Any]) -> SurfaceGateDecision:
