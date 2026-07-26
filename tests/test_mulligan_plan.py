@@ -281,6 +281,45 @@ def test_mulligan_plan_suppresses_unsupported_conditions_instead_of_broadening_t
     assert plan["quality"]["first_gap_reason"] == "unsupported_mulligan_condition"
 
 
+def test_mulligan_plan_reports_lifecycle_rejected_claim_without_compiling_rule():
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[
+            {
+                "claim_id": "archetype-guide-keep",
+                "claim_kind": "mulligan_keep",
+                "source_family": "guide",
+                "cards": ["TOY_381"],
+                "deck_match_scope": "archetype_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "archetype_matched_public_guide",
+                "claim_readiness": "guide_backed",
+                "_claim_lifecycle": {
+                    "claim_id": "archetype-guide-keep",
+                    "surface": "mulligan",
+                    "policy_lane": "runtime_lowerable",
+                    "surface_gate_allowed": False,
+                    "surface_gate_reason": "mulligan_requires_exact_deck_match",
+                },
+            }
+        ],
+        card_roles={},
+    )
+
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"] == [
+        {
+            "card": "TOY_381",
+            "action": "hold",
+            "reason": "mulligan_requires_exact_deck_match",
+            "source_claim_ids": ["archetype-guide-keep"],
+            "claim_id": "archetype-guide-keep",
+        }
+    ]
+    assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
+
+
 def test_mulligan_plan_rejects_runtime_condition_wrapper_with_condition_sibling():
     claims = [
         {

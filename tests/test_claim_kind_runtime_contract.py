@@ -8,6 +8,7 @@ from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.source_document_model import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
+    can_lower_to_mulligan,
     qualify_source_claim,
     runtime_claim_kind,
     surface_gate_decision,
@@ -185,6 +186,78 @@ def test_mulligan_discard_can_lower_to_mulligan_surface():
     }
 
     decision = surface_gate_decision(claim, "mulligan")
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+@pytest.mark.parametrize(
+    ("override", "reason"),
+    [
+        (
+            {"deck_match_scope": "archetype_matched"},
+            "mulligan_requires_exact_deck_match",
+        ),
+        (
+            {"promotion_eligible": False},
+            "mulligan_requires_promotion_eligible_source",
+        ),
+        (
+            {"source_visibility": "snippet_only"},
+            "mulligan_requires_full_text_source",
+        ),
+        (
+            {"source_lane": "archetype_matched_public_guide"},
+            "mulligan_requires_deck_matched_public_guide_lane",
+        ),
+    ],
+)
+def test_public_guide_mulligan_requires_exact_authority(override, reason):
+    claim = {
+        "claim_kind": "mulligan_keep",
+        "source_family": "guide",
+        "cards": ["TOY_381"],
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "claim_readiness": "guide_backed",
+        **override,
+    }
+
+    decision = can_lower_to_mulligan(claim)
+
+    assert decision.allowed is False
+    assert decision.reason == reason
+
+
+def test_public_guide_mulligan_with_exact_authority_can_lower():
+    decision = can_lower_to_mulligan(
+        {
+            "claim_kind": "mulligan_keep",
+            "source_family": "guide",
+            "cards": ["TOY_381"],
+            "deck_match_scope": "exact_deck_matched",
+            "promotion_eligible": True,
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "claim_readiness": "guide_backed",
+        }
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
+
+
+def test_legacy_guide_mulligan_without_public_authority_fields_stays_compatible():
+    decision = can_lower_to_mulligan(
+        {
+            "claim_kind": "mulligan_keep",
+            "source_family": "guide",
+            "cards": ["TOY_381"],
+            "claim_readiness": "guide_backed",
+        }
+    )
 
     assert decision.allowed is True
     assert decision.reason == "allowed"

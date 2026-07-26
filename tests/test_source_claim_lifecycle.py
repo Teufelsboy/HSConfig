@@ -1,3 +1,5 @@
+import hsconfig.source_claim_lifecycle as lifecycle
+
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     runtime_claims_for_surface,
@@ -158,6 +160,35 @@ def test_lifecycle_mulligan_surface_suppresses_start_of_game_transform_roles():
     assert rows[0]["claim_id"] == "darkbishop_keep"
     assert rows[0]["runtime_eligibility"] == "runtime_candidate"
     assert runtime_claims == []
+
+
+def test_surface_selection_keeps_rejected_mulligan_claim_visible():
+    rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "claim-archetype-guide",
+                "claim_kind": "mulligan_keep",
+                "source_family": "guide",
+                "cards": ["TOY_381"],
+                "deck_match_scope": "archetype_matched",
+                "promotion_eligible": True,
+                "source_visibility": "full_text",
+                "source_lane": "archetype_matched_public_guide",
+                "claim_readiness": "guide_backed",
+            }
+        ]
+    )
+
+    selection = lifecycle.select_claims_for_surface(rows, "mulligan")
+
+    assert selection["accepted_claims"] == []
+    assert selection["rejected_claims"][0]["_claim_lifecycle"] == {
+        "claim_id": "claim-archetype-guide",
+        "surface": "mulligan",
+        "policy_lane": "runtime_lowerable",
+        "surface_gate_allowed": False,
+        "surface_gate_reason": "mulligan_requires_exact_deck_match",
+    }
 
 
 def test_lifecycle_mulligan_surface_normalizes_top_level_non_hand_qualifiers():

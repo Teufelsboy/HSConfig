@@ -39,6 +39,7 @@ from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     runtime_claims_for_surface,
+    select_claims_for_surface,
 )
 from hsconfig.source_contract_audit import (
     build_source_contract_audit,
@@ -113,11 +114,16 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         conflict_report=source_claim_conflict_report,
     )
     card_roles = runtime_research_bundle.get("card_role_map", {})
-    mulligan_claims = runtime_claims_for_surface(
+    mulligan_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "mulligan",
         card_roles=card_roles,
     )
+    mulligan_runtime_claims = mulligan_selection["accepted_claims"]
+    mulligan_report_claims = [
+        *mulligan_runtime_claims,
+        *mulligan_selection["rejected_claims"],
+    ]
     cardid_claims = runtime_claims_for_surface(initial_lifecycle_rows, "cardid")
     combo_claims = runtime_claims_for_surface(initial_lifecycle_rows, "combo")
     globalvalues_claims = runtime_claims_for_surface(
@@ -130,7 +136,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     ]
     mulligan_plan = build_mulligan_plan(
         deck_name=args.deck_name,
-        claims=mulligan_claims,
+        claims=mulligan_report_claims,
         card_roles=card_roles,
         deck_cards=_policy_mulligan_deck_cards(
             gameplan_contract.get("cards", {}),

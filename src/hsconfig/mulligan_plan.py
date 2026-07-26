@@ -11,6 +11,10 @@ from hsconfig.source_document_model import can_lower_to_mulligan, normalized_cla
 
 SURFACE_REJECTION_REASONS = {
     "claim_kind_not_mulligan_surface",
+    "mulligan_requires_exact_deck_match",
+    "mulligan_requires_promotion_eligible_source",
+    "mulligan_requires_full_text_source",
+    "mulligan_requires_deck_matched_public_guide_lane",
 }
 
 def build_mulligan_plan(
@@ -30,6 +34,22 @@ def build_mulligan_plan(
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
         claim_cards = _claim_cards(claim)
+        lifecycle = claim.get("_claim_lifecycle")
+        if isinstance(lifecycle, dict) and lifecycle.get("surface_gate_allowed") is False:
+            reason = str(lifecycle.get("surface_gate_reason") or "surface_gate_rejected")
+            if claim_cards:
+                suppressed_rules.append(
+                    _with_claim_id(
+                        {
+                            "card": claim_cards[0],
+                            "action": "hold" if claim_kind == "mulligan_keep" else "none",
+                            "reason": reason,
+                            "source_claim_ids": _source_claim_ids(claim),
+                        },
+                        claim,
+                    )
+                )
+            continue
         gate = can_lower_to_mulligan(claim, card_roles=card_roles)
         if not gate.allowed:
             if claim_cards:

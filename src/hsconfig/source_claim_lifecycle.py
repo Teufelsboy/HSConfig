@@ -35,6 +35,7 @@ def build_initial_lifecycle_rows(
         source_confidence = str(
             migrated_claim.get("source_confidence")
             or migrated_claim.get("confidence")
+            or migrated_claim.get("claim_readiness")
             or "unknown"
         )
         quarantine_reason = quarantined.get(claim_id)
@@ -64,17 +65,19 @@ def build_initial_lifecycle_rows(
     return rows
 
 
-def runtime_claims_for_surface(
+def select_claims_for_surface(
     rows: Sequence[Mapping[str, Any]],
     surface: str,
     *,
     context: Mapping[str, Any] | None = None,
     card_roles: Mapping[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, list[dict[str, Any]]]:
+    """Return accepted and rejected runtime-eligible claims with lifecycle reasons."""
     gate_context = dict(context or {})
     if card_roles is not None:
         gate_context["card_roles"] = card_roles
-    runtime_claims: list[dict[str, Any]] = []
+    accepted_claims: list[dict[str, Any]] = []
+    rejected_claims: list[dict[str, Any]] = []
     for row in rows:
         if row.get("quarantine_status") == "quarantined":
             continue
@@ -85,17 +88,37 @@ def runtime_claims_for_surface(
         if not claim_kind:
             continue
         decision = surface_gate_decision(claim, surface, context=gate_context)
-        if not decision.allowed:
-            continue
         claim["claim_kind"] = claim_kind
         claim["_claim_lifecycle"] = {
             "claim_id": row.get("claim_id"),
             "surface": surface,
             "policy_lane": row.get("policy_lane"),
+            "surface_gate_allowed": decision.allowed,
             "surface_gate_reason": decision.reason,
         }
-        runtime_claims.append(claim)
-    return runtime_claims
+        if decision.allowed:
+            accepted_claims.append(claim)
+        else:
+            rejected_claims.append(claim)
+    return {
+        "accepted_claims": accepted_claims,
+        "rejected_claims": rejected_claims,
+    }
+
+
+def runtime_claims_for_surface(
+    rows: Sequence[Mapping[str, Any]],
+    surface: str,
+    *,
+    context: Mapping[str, Any] | None = None,
+    card_roles: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return select_claims_for_surface(
+        rows,
+        surface,
+        context=context,
+        card_roles=card_roles,
+    )["accepted_claims"]
 
 
 def lifecycle_claim_id(claim: Mapping[str, Any]) -> str:
