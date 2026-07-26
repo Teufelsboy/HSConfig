@@ -13,6 +13,7 @@ from hsconfig.mechanic_support import (
 from hsconfig.semantic_intent_score import score_card_behavior_claim
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
+from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 from hsconfig.visionai_registry import CARD_BEHAVIOR_BLOCKS
 
 
@@ -35,6 +36,8 @@ TARGET_SCOPE_RUNTIME_CONDITIONS = {
     "friendly_hero": "my_target(count(),hero=true) > 0",
     "friendly_minion": "my_target(count(),minion=true) > 0",
 }
+TARGETABLE_SCOPES = frozenset(TARGET_SCOPE_RUNTIME_CONDITIONS)
+NON_TARGET_SCOPES = frozenset({"no_target"})
 INTENT_BLOCKS = {
     "in_hand_value": "InHandBonus",
     "on_board_value": "OnBoardBonus",
@@ -137,9 +140,10 @@ def route_card_behavior_surfaces(
             )
 
         if claim_kind == "targeting_rule":
-            if not _is_target_backed_claim(claim):
+            _, target_scope_error = _target_scope(claim)
+            if target_scope_error is not None:
                 suppressed.append(
-                    _suppressed_row(claim, claim_kind, cards, "missing_target_scope")
+                    _suppressed_row(claim, claim_kind, cards, target_scope_error)
                 )
                 continue
             if explicit_block not in TARGET_RUNTIME_BLOCKS:
@@ -423,24 +427,25 @@ def _claim_intent(claim: dict[str, Any], *, fallback: str) -> str:
     return str(claim.get("stance") or claim.get("intent") or fallback)
 
 
-def _is_target_backed_claim(claim: dict[str, Any]) -> bool:
-    return _target_scope(claim) is not None
-
-
-def _target_scope(claim: dict[str, Any]) -> str | None:
-    if claim.get("target_scope"):
-        return str(claim["target_scope"])
-    qualifiers = claim.get("semantic_qualifiers")
-    if isinstance(qualifiers, dict) and qualifiers.get("target_scope"):
-        return str(qualifiers["target_scope"])
-    return None
+def _target_scope(claim: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return a documented target scope or a precise fail-closed reason."""
+    target_scope = normalize_semantic_qualifiers(claim).get("target_scope")
+    if target_scope is None:
+        return None, "missing_target_scope"
+    if not isinstance(target_scope, str) or not target_scope:
+        return None, "invalid_target_scope"
+    if target_scope in NON_TARGET_SCOPES:
+        return None, "no_target_scope"
+    if target_scope not in TARGETABLE_SCOPES:
+        return None, "invalid_target_scope"
+    return target_scope, None
 
 
 def _documented_target_scope_condition(claim: dict[str, Any]) -> str | None:
-    target_scope = _target_scope(claim)
-    if target_scope is None:
+    target_scope, target_scope_error = _target_scope(claim)
+    if target_scope_error is not None or target_scope is None:
         return None
-    expected = TARGET_SCOPE_RUNTIME_CONDITIONS.get(target_scope.lower())
+    expected = TARGET_SCOPE_RUNTIME_CONDITIONS.get(target_scope)
     if expected is None:
         return None
     raw_condition = claim.get("conditions", claim.get("condition", "*"))

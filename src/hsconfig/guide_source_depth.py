@@ -59,6 +59,15 @@ def build_guide_source_depth_report(
     cards_needing_runtime_surface = sum(
         1 for warning in warnings if warning["reason"] == "needs_runtime_surface"
     )
+    cards_needing_target_scope = sum(
+        1 for warning in warnings if warning["reason"] == "needs_target_scope"
+    )
+    cards_needing_invalid_target_scope = sum(
+        1 for warning in warnings if warning["reason"] == "needs_invalid_target_scope"
+    )
+    cards_needing_target_surface = sum(
+        1 for warning in warnings if warning["reason"] == "needs_target_surface"
+    )
     depth_status = "usable"
     if total_cards > 0 and supported_cards == 0 and cards_needing_guide_claims == 0:
         depth_status = "insufficient"
@@ -93,6 +102,9 @@ def build_guide_source_depth_report(
             "supported_cards": supported_cards,
             "cards_needing_guide_claims": cards_needing_guide_claims,
             "cards_needing_runtime_surface": cards_needing_runtime_surface,
+            "cards_needing_target_scope": cards_needing_target_scope,
+            "cards_needing_invalid_target_scope": cards_needing_invalid_target_scope,
+            "cards_needing_target_surface": cards_needing_target_surface,
             "warnings_count": len(warnings),
         },
         "source_families": dict(sorted(source_families.items())),

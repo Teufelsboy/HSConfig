@@ -306,6 +306,32 @@ def test_targeting_suppression_does_not_count_as_runtime_closed():
 
     assert report["cards"]["NX2_019"]["readiness_lane"] != "runtime_emitted"
     assert report["cards"]["NX2_019"]["first_missing_link"] == "needs_target_scope"
+    assert report["summary"]["cards_needing_target_scope"] == 1
+
+
+def test_invalid_target_scope_suppression_is_visible_in_readiness():
+    report = build_config_readiness_report(
+        deck_identity=_one_card_identity("NX2_019"),
+        claim_coverage=_covered_claims("NX2_019", "guide_backed"),
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "target-invalid-scope",
+                    "claim_kind": "targeting_rule",
+                    "cards": ["NX2_019"],
+                    "reason": "invalid_target_scope",
+                }
+            ],
+        },
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        combo_plan={"combos": [], "suppressed": []},
+        gameplan_contract={},
+        global_values_authority_matrix={},
+    )
+
+    assert report["cards"]["NX2_019"]["first_missing_link"] == "needs_invalid_target_scope"
+    assert report["summary"]["cards_needing_invalid_target_scope"] == 1
 
 
 def test_non_cardid_diagnostic_row_does_not_count_as_runtime_surface():

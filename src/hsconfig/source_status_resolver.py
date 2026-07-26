@@ -246,6 +246,12 @@ def _source_action_for_missing_link(chain: Mapping[str, object]) -> str:
         return "add_explicit_mulligan_source"
     if missing_link == "needs_runtime_surface":
         return "add_runtime_lowerable_claim_or_router_support"
+    if missing_link == "needs_target_scope":
+        return "add_explicit_target_scope"
+    if missing_link == "needs_invalid_target_scope":
+        return "replace_invalid_target_scope_with_documented_scope"
+    if missing_link == "needs_target_surface":
+        return "add_documented_target_runtime_surface"
     if missing_link == "needs_guide_claim":
         return "add_card_specific_source_claim"
     if missing_link == "runtime_evidence":
@@ -279,6 +285,12 @@ def _source_action_for_blocker(code: str) -> str:
         return "add_explicit_mulligan_source"
     if code == "cards_need_runtime_surface":
         return "add_runtime_lowerable_claim_or_router_support"
+    if code == "cards_need_target_scope":
+        return "add_explicit_target_scope"
+    if code == "cards_need_invalid_target_scope":
+        return "replace_invalid_target_scope_with_documented_scope"
+    if code == "cards_need_target_surface":
+        return "add_documented_target_runtime_surface"
     if code == "cards_need_guide_claims":
         return "add_card_specific_source_claim"
     return FALLBACK_SOURCE_ACTION

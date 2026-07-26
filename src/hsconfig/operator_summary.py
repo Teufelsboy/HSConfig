@@ -29,6 +29,9 @@ SOURCE_BACKED_STRONG_REQUIREMENTS = [
     "cards_needing_mulligan_claims=0",
     "cards_needing_combo_sequence=0",
     "cards_needing_condition_lowering=0",
+    "cards_needing_target_scope=0",
+    "cards_needing_invalid_target_scope=0",
+    "cards_needing_target_surface=0",
     "cards_needing_mechanic_lowering=0",
     "positive_strong_source_quality_lane>0_when_lane_summary_present",
 ]
@@ -38,6 +41,9 @@ READINESS_GAP_SUMMARY_KEYS = (
     "cards_needing_mulligan_claims",
     "cards_needing_combo_sequence",
     "cards_needing_condition_lowering",
+    "cards_needing_target_scope",
+    "cards_needing_invalid_target_scope",
+    "cards_needing_target_surface",
     "cards_needing_mechanic_lowering",
 )
 SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS = [
@@ -51,6 +57,9 @@ SOURCE_INFORMED_BLOCKING_REASONS = {
     "cards_need_runtime_surface",
     "cards_need_combo_sequence",
     "cards_need_condition_lowering",
+    "cards_need_target_scope",
+    "cards_need_invalid_target_scope",
+    "cards_need_target_surface",
     "cards_need_mechanic_lowering",
     "claim_conflicts_present",
     "unsupported_conditions_present",
@@ -61,6 +70,9 @@ READINESS_SUMMARY_KEY_BY_BLOCKER_REASON = {
     "cards_need_mulligan_claims": "cards_needing_mulligan_claims",
     "cards_need_combo_sequence": "cards_needing_combo_sequence",
     "cards_need_condition_lowering": "cards_needing_condition_lowering",
+    "cards_need_target_scope": "cards_needing_target_scope",
+    "cards_need_invalid_target_scope": "cards_needing_invalid_target_scope",
+    "cards_need_target_surface": "cards_needing_target_surface",
     "cards_need_mechanic_lowering": "cards_needing_mechanic_lowering",
 }
 SURFACE_REJECTION_REASONS = {
@@ -1694,6 +1706,15 @@ def _guide_strength_summary(
         "cards_needing_condition_lowering": _int_value(
             config_readiness_summary.get("cards_needing_condition_lowering", 0)
         ),
+        "cards_needing_target_scope": _int_value(
+            config_readiness_summary.get("cards_needing_target_scope", 0)
+        ),
+        "cards_needing_invalid_target_scope": _int_value(
+            config_readiness_summary.get("cards_needing_invalid_target_scope", 0)
+        ),
+        "cards_needing_target_surface": _int_value(
+            config_readiness_summary.get("cards_needing_target_surface", 0)
+        ),
         "cards_needing_mechanic_lowering": _int_value(
             config_readiness_summary.get("cards_needing_mechanic_lowering", 0)
         ),
@@ -1718,6 +1739,12 @@ def _semantic_blockers(
         "needs_mulligan_claim": ("cards_need_mulligan_claims", "report_visible_gap"),
         "needs_combo_sequence": ("cards_need_combo_sequence", "report_visible_gap"),
         "needs_condition_lowering": ("cards_need_condition_lowering", "report_visible_gap"),
+        "needs_target_scope": ("cards_need_target_scope", "blocks_source_backed_strong"),
+        "needs_invalid_target_scope": (
+            "cards_need_invalid_target_scope",
+            "blocks_source_backed_strong",
+        ),
+        "needs_target_surface": ("cards_need_target_surface", "blocks_source_backed_strong"),
         "needs_mechanic_lowering": ("cards_need_mechanic_lowering", "report_visible_gap"),
     }
     for missing_link, (reason, strength) in missing_link_reasons.items():
@@ -1963,6 +1990,11 @@ def _effective_config_readiness_summary(
         "cards_needing_mulligan_claims": missing_links["needs_mulligan_claim"],
         "cards_needing_combo_sequence": missing_links["needs_combo_sequence"],
         "cards_needing_condition_lowering": missing_links["needs_condition_lowering"],
+        "cards_needing_target_scope": missing_links["needs_target_scope"],
+        "cards_needing_invalid_target_scope": missing_links[
+            "needs_invalid_target_scope"
+        ],
+        "cards_needing_target_surface": missing_links["needs_target_surface"],
         "cards_needing_mechanic_lowering": missing_links["needs_mechanic_lowering"],
     }
 

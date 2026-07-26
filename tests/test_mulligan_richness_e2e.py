@@ -54,7 +54,7 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
     assert operator["config_usefulness"]["blocking"] is False
-    assert operator["config_usefulness"]["first_usefulness_gap"] == "mulligan_gap"
+    assert operator["config_usefulness"]["first_usefulness_gap"] == "target_scope_gap"
     assert mulligan_surface["status"] == "thin"
     assert (
         mulligan_surface["first_gap_reason"]

@@ -84,6 +84,38 @@ def test_targeting_claim_without_target_scope_is_suppressed():
     ]
 
 
+def test_targeting_claim_with_no_target_scope_is_suppressed():
+    claim = {
+        "claim_id": "target-no-target-scope",
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "target_scope": "no_target",
+        "runtime_block": "BeforeBattlecryTargetBonus",
+        "source_claim_ids": ["target-no-target-scope"],
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["rows"] == []
+    assert report["suppressed"][0]["reason"] == "no_target_scope"
+
+
+def test_targeting_claim_with_unknown_target_scope_is_suppressed():
+    claim = {
+        "claim_id": "target-unknown-scope",
+        "claim_kind": "targeting_rule",
+        "cards": ["NX2_019"],
+        "target_scope": "random_target_category",
+        "runtime_block": "BeforeBattlecryTargetBonus",
+        "source_claim_ids": ["target-unknown-scope"],
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["rows"] == []
+    assert report["suppressed"][0]["reason"] == "invalid_target_scope"
+
+
 def test_targeting_claim_requires_compatible_target_block():
     claim = {
         "claim_id": "target-wrong-block",

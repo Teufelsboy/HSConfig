@@ -16,6 +16,9 @@ GAP_REPORTS = {
     "runtime_surface_gap": "reports/per_card_config_readiness_report.json",
     "combo_gap": "reports/combo_plan_report.json",
     "condition_gap": "reports/per_card_config_readiness_report.json",
+    "target_scope_gap": "reports/per_card_config_readiness_report.json",
+    "invalid_target_scope_gap": "reports/per_card_config_readiness_report.json",
+    "target_surface_gap": "reports/per_card_config_readiness_report.json",
     "mechanic_gap": "reports/per_card_config_readiness_report.json",
     "guide_claim_gap": "reports/source_claim_gap_report.json",
     "globalvalues_thin": "reports/global_values_key_profile_report.json",
@@ -250,6 +253,12 @@ def _first_gap(
         return "combo_gap"
     if _int(summary.get("cards_needing_condition_lowering")):
         return "condition_gap"
+    if _int(summary.get("cards_needing_target_scope")):
+        return "target_scope_gap"
+    if _int(summary.get("cards_needing_invalid_target_scope")):
+        return "invalid_target_scope_gap"
+    if _int(summary.get("cards_needing_target_surface")):
+        return "target_surface_gap"
     if _int(summary.get("cards_needing_mechanic_lowering")):
         return "mechanic_gap"
     if _int(summary.get("cards_needing_mulligan_claims")) and mulligan["status"] != "policy_backed":

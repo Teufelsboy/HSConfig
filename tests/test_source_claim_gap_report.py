@@ -108,6 +108,39 @@ def test_report_uses_none_when_card_is_ready():
     assert report["cards"]["CARD_READY"]["next_action"] == "card_ready_for_strong_gate"
 
 
+def test_target_scope_gap_has_visible_targeting_action():
+    report = build_source_claim_gap_report(
+        deck_name="Example",
+        config_readiness_report={
+            "cards": {
+                "CARD_TARGET": {
+                    "card_id": "CARD_TARGET",
+                    "name": "Target Card",
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_target_scope",
+                    "runtime_surfaces": [],
+                }
+            }
+        },
+        claim_coverage_report={
+            "cards": {
+                "CARD_TARGET": {
+                    "coverage_status": "guide_backed",
+                    "source_claim_ids": ["target-claim"],
+                }
+            }
+        },
+        card_behavior_plan={"rows": [], "suppressed": []},
+        mulligan_plan={"rules": []},
+        combo_plan={"combos": []},
+    )
+
+    assert report["summary"]["needs_target_scope"] == 1
+    assert report["cards"]["CARD_TARGET"]["recommended_source_claim_kind"] == "targeting_rule"
+    assert report["cards"]["CARD_TARGET"]["next_action"] == "add_explicit_target_scope"
+    assert report["summary"]["first_missing_chain"]["next_action"] == "add_explicit_target_scope"
+
+
 def test_gap_report_threads_source_depth_lane_into_first_missing_chain():
     report = build_source_claim_gap_report(
         deck_name="Kingslayer",

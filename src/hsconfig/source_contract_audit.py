@@ -777,6 +777,12 @@ def _first_missing_link_for_suppression(reason: str | None) -> str | None:
     if not reason:
         return None
     lowered = reason.lower()
+    if lowered in {"missing_target_scope", "no_target_scope"}:
+        return "needs_target_scope"
+    if lowered == "invalid_target_scope":
+        return "needs_invalid_target_scope"
+    if lowered == "target_scope_not_encoded":
+        return "needs_target_surface"
     if "runtime_evidence" in lowered or "requires_runtime_evidence" in lowered:
         return "runtime_evidence"
     if "source" in lowered or "guide" in lowered:

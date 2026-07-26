@@ -33,6 +33,7 @@ MISSING_LINKS = (
     "needs_combo_sequence",
     "needs_condition_lowering",
     "needs_target_scope",
+    "needs_invalid_target_scope",
     "needs_target_surface",
     "needs_mechanic_lowering",
 )
@@ -44,12 +45,15 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_combo_sequence": "combo_sequence_gap",
     "needs_condition_lowering": "condition_lowering_gap",
     "needs_target_scope": "target_scope_gap",
+    "needs_invalid_target_scope": "invalid_target_scope_gap",
     "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
 }
 SEMANTIC_SUPPRESSION_MISSING_LINKS = {
     "unsupported_condition": "needs_condition_lowering",
     "missing_target_scope": "needs_target_scope",
+    "no_target_scope": "needs_target_scope",
+    "invalid_target_scope": "needs_invalid_target_scope",
     "target_scope_not_encoded": "needs_target_surface",
 }
 GUIDE_BACKED_COVERAGE_STATUSES = {
@@ -446,6 +450,11 @@ def _summary(
         "cards_needing_mulligan_claims": missing_counter["needs_mulligan_claim"],
         "cards_needing_combo_sequence": missing_counter["needs_combo_sequence"],
         "cards_needing_condition_lowering": missing_counter["needs_condition_lowering"],
+        "cards_needing_target_scope": missing_counter["needs_target_scope"],
+        "cards_needing_invalid_target_scope": missing_counter[
+            "needs_invalid_target_scope"
+        ],
+        "cards_needing_target_surface": missing_counter["needs_target_surface"],
         "cards_needing_mechanic_lowering": missing_counter["needs_mechanic_lowering"],
         "mechanic_support": summarize_mechanic_support(rows),
         "mechanic_visibility": summarize_mechanic_visibility(rows),

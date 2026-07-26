@@ -595,6 +595,9 @@ def test_operator_summary_marks_valid_package_not_guide_strong_when_claims_confl
         "cards_needing_mulligan_claims",
         "cards_needing_combo_sequence",
         "cards_needing_condition_lowering",
+        "cards_needing_target_scope",
+        "cards_needing_invalid_target_scope",
+        "cards_needing_target_surface",
         "cards_needing_mechanic_lowering",
     ],
 )
@@ -648,6 +651,63 @@ def test_operator_summary_demotes_when_readiness_gaps_remain(summary_key):
         assert summary["runtime_apply_allowed"] is True
         assert summary["runtime_apply_requires_flag"] is None
     assert summary["guide_strength_summary"][summary_key] == 1
+
+
+def test_target_scope_gap_prevents_strong_status_with_visible_source_action():
+    summary = build_operator_summary(
+        deck_name="Fixture",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        unsupported_conditions=[],
+        globalvalue_authority={"blocked_until_runtime_evidence": []},
+        generated_files=["CustomConfig/fixture/GlobalValues.json"],
+        mulligan_plan_report=_source_backed_mulligan_plan_report(),
+        claim_coverage_report={
+            "summary": {
+                "guide_backed": 3,
+                "static_semantics_backfilled": 0,
+                "uncovered_low_confidence": 0,
+            },
+            "uncovered_cards": [],
+        },
+        config_readiness_report={
+            "cards": {
+                "CARD_TARGET": {
+                    "card_id": "CARD_TARGET",
+                    "name": "Target Card",
+                    "readiness_lane": "report_only_supported",
+                    "first_missing_link": "needs_target_scope",
+                }
+            }
+        },
+        source_claim_gap_report={
+            "summary": {
+                "blocked_cards": 1,
+                "first_missing_chain": {
+                    "card_id": "CARD_TARGET",
+                    "first_missing_link": "needs_target_scope",
+                    "next_action": "add_explicit_target_scope",
+                },
+            }
+        },
+    )
+
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert summary["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
+    assert summary["first_missing_source_action"] == "add_explicit_target_scope"
+    assert {
+        "reason": "cards_need_target_scope",
+        "count": 1,
+        "blocking_strength": "blocks_source_backed_strong",
+        "report": "reports/per_card_config_readiness_report.json",
+        "affected_cards": [{"card_id": "CARD_TARGET", "name": "Target Card"}],
+    } in summary["semantic_blockers"]
+    assert summary["runtime_apply_allowed"] is True
 
 
 def test_operator_summary_demotes_from_per_card_report_when_summary_is_omitted():
@@ -828,6 +888,9 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
         "cards_needing_mulligan_claims": 0,
         "cards_needing_combo_sequence": 0,
         "cards_needing_condition_lowering": 0,
+        "cards_needing_target_scope": 0,
+        "cards_needing_invalid_target_scope": 0,
+        "cards_needing_target_surface": 0,
         "cards_needing_mechanic_lowering": 0,
         "source_backed_strong_requires": [
             "technical_status=VALID_PACKAGE",
@@ -842,6 +905,9 @@ def test_operator_summary_explains_valid_but_not_guide_strong_with_semantic_bloc
             "cards_needing_mulligan_claims=0",
             "cards_needing_combo_sequence=0",
             "cards_needing_condition_lowering=0",
+            "cards_needing_target_scope=0",
+            "cards_needing_invalid_target_scope=0",
+            "cards_needing_target_surface=0",
             "cards_needing_mechanic_lowering=0",
             "positive_strong_source_quality_lane>0_when_lane_summary_present",
         ],

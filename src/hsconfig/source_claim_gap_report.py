@@ -24,6 +24,9 @@ COVERAGE_STATUS_TO_QUALITY_LANE = {
 CONTRACT_GAP_MISSING_LINKS = {
     "needs_runtime_surface",
     "needs_condition_lowering",
+    "needs_target_scope",
+    "needs_invalid_target_scope",
+    "needs_target_surface",
     "needs_mechanic_lowering",
     "unsupported_claim_kind",
     "surface_gate_rejected",
@@ -37,6 +40,9 @@ RECOMMENDED_CLAIM_KIND_BY_MISSING_LINK = {
     "needs_mulligan_claim": "mulligan_claim",
     "needs_combo_sequence": "combo_sequence",
     "needs_condition_lowering": "targeting_rule",
+    "needs_target_scope": "targeting_rule",
+    "needs_invalid_target_scope": "targeting_rule",
+    "needs_target_surface": "targeting_rule",
     "needs_mechanic_lowering": "mechanic_usage",
 }
 
@@ -47,6 +53,9 @@ NEXT_ACTION_BY_MISSING_LINK = {
     "needs_mulligan_claim": "add_mulligan_keep_or_discard_claim",
     "needs_combo_sequence": "add_exact_combo_sequence_claim",
     "needs_condition_lowering": "rewrite_condition_to_supported_visionai_syntax",
+    "needs_target_scope": "add_explicit_target_scope",
+    "needs_invalid_target_scope": "replace_invalid_target_scope_with_documented_scope",
+    "needs_target_surface": "add_documented_target_runtime_surface",
     "needs_mechanic_lowering": "add_documented_mechanic_runtime_lowering",
 }
 
@@ -56,6 +65,9 @@ BASE_PRIORITY_BY_MISSING_LINK = {
     "needs_runtime_surface": 80,
     "needs_combo_sequence": 75,
     "needs_condition_lowering": 70,
+    "needs_target_scope": 70,
+    "needs_invalid_target_scope": 70,
+    "needs_target_surface": 70,
     "needs_mechanic_lowering": 65,
     "needs_guide_claim": 50,
 }
@@ -67,6 +79,9 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_mulligan_claim": "mulligan_claim_gap",
     "needs_combo_sequence": "combo_sequence_gap",
     "needs_condition_lowering": "condition_lowering_gap",
+    "needs_target_scope": "target_scope_gap",
+    "needs_invalid_target_scope": "invalid_target_scope_gap",
+    "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
 }
 
@@ -176,6 +191,9 @@ def build_source_claim_gap_report(
             "needs_combo_sequence": counts["needs_combo_sequence"],
             "needs_mulligan_claim": counts["needs_mulligan_claim"],
             "needs_condition_lowering": counts["needs_condition_lowering"],
+            "needs_target_scope": counts["needs_target_scope"],
+            "needs_invalid_target_scope": counts["needs_invalid_target_scope"],
+            "needs_target_surface": counts["needs_target_surface"],
             "needs_mechanic_lowering": counts["needs_mechanic_lowering"],
             "first_missing_chain": first_missing_chain,
             "next_source_builder_action": (
@@ -229,6 +247,12 @@ def _is_generic_first_missing_link(value: str) -> bool:
 
 
 def _normalized_missing_link(reason: str) -> str | None:
+    if reason in {"missing_target_scope", "no_target_scope"}:
+        return "needs_target_scope"
+    if reason == "invalid_target_scope":
+        return "needs_invalid_target_scope"
+    if reason == "target_scope_not_encoded":
+        return "needs_target_surface"
     if reason in {"requires_runtime_evidence", "globalvalue_runtime_evidence_required"}:
         return "runtime_evidence"
     if reason in {"requires_exact_option_identity", "unresolved_option_identity"}:
@@ -372,7 +396,13 @@ def _source_quality_lane(
 def _recommended_next_claim_kind(first_missing_link: str, lane: str) -> str:
     if first_missing_link in {"missing_source_claim", "missing_card_specific_source", "needs_guide_claim"}:
         return "card_role"
-    if first_missing_link in {"missing_targeting_claim", "needs_runtime_surface"}:
+    if first_missing_link in {
+        "missing_targeting_claim",
+        "needs_runtime_surface",
+        "needs_target_scope",
+        "needs_invalid_target_scope",
+        "needs_target_surface",
+    }:
         return "targeting_rule"
     if first_missing_link in {"missing_mulligan_claim", "needs_mulligan_claim"}:
         return "mulligan_claim"
