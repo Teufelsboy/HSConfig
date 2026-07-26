@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.compile_globalvalues import compile_globalvalues
 from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.io import write_json
@@ -155,6 +157,89 @@ def test_validate_package_allows_legacy_globalvalues_profile_when_profile_is_not
     )
 
     assert report["status"] == "passed"
+
+
+def _required_globalvalues_fixture(tmp_path: Path) -> tuple[dict, dict, dict]:
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+    }
+    result = compile_globalvalues(
+        baseline,
+        {
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "FirstTurnValueWeight",
+                        "operation": "set",
+                        "value": "0.75",
+                        "reason": "source-backed posture",
+                    }
+                ]
+            }
+        },
+    )
+    write_json(tmp_path / "CustomConfig" / "deck" / "GlobalValues.json", result["config"])
+    return baseline, result["config"], result["profile"]
+
+
+def test_validate_package_accepts_required_profile_with_emitted_expected_overlay(
+    tmp_path: Path,
+):
+    baseline, _, profile = _required_globalvalues_fixture(tmp_path)
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        (
+            lambda profile: profile.update({"missing_overlay_keys": ["GlobalMinionAttack"]}),
+            "missing_overlay_keys must be an empty list",
+        ),
+        (
+            lambda profile: profile.pop("missing_overlay_keys"),
+            "missing_overlay_keys must be an empty list",
+        ),
+        (
+            lambda profile: profile.update({"missing_overlay_keys": "none"}),
+            "missing_overlay_keys must be an empty list",
+        ),
+        (
+            lambda profile: (
+                profile.update({"expected_overlay_keys": ["GlobalMinionAttack"]}),
+                profile["keys"].update({"GlobalMinionAttack": {}}),
+            ),
+            "expected overlay key GlobalMinionAttack is not emitted or generated",
+        ),
+    ],
+)
+def test_validate_package_rejects_required_profile_overlay_coverage_mutations(
+    tmp_path: Path,
+    mutation,
+    expected_error: str,
+):
+    baseline, _, profile = _required_globalvalues_fixture(tmp_path)
+    mutation(profile)
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(expected_error in error for error in report["errors"])
 
 
 def test_compile_globalvalues_preserves_and_profiles_every_key(tmp_path: Path):

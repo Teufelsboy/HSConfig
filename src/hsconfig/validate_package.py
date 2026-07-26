@@ -292,12 +292,9 @@ def _validate_globalvalues(
         for key in sorted(extra_keys):
             errors.append(f"{path}: GlobalValues unexpected key {key}")
     if profile is not None:
-        if (
-            require_profile
-            and profile.get("summary", {}).get("all_expected_overlay_keys_accounted_for") is not True
-        ):
-            errors.append(
-                f"{path}: GlobalValues profile does not account for every expected overlay key"
+        if require_profile:
+            errors.extend(
+                _validate_required_globalvalues_overlay_coverage(path, data, profile)
             )
         generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
         expected_key_count = (
@@ -313,6 +310,55 @@ def _validate_globalvalues(
         missing_profiles = runtime_keys - profiled_keys
         for key in sorted(missing_profiles):
             errors.append(f"{path}: GlobalValues profile missing key {key}")
+    return errors
+
+
+def _validate_required_globalvalues_overlay_coverage(
+    path: Path,
+    data: dict[str, Any],
+    profile: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    summary = profile.get("summary")
+    if (
+        not isinstance(summary, Mapping)
+        or summary.get("all_expected_overlay_keys_accounted_for") is not True
+    ):
+        errors.append(
+            f"{path}: GlobalValues profile does not account for every expected overlay key"
+        )
+
+    missing_overlay_keys = profile.get("missing_overlay_keys")
+    if not isinstance(missing_overlay_keys, list) or missing_overlay_keys:
+        errors.append(f"{path}: GlobalValues profile missing_overlay_keys must be an empty list")
+
+    expected_overlay_keys = profile.get("expected_overlay_keys")
+    if not isinstance(expected_overlay_keys, list):
+        errors.append(f"{path}: GlobalValues profile expected_overlay_keys must be a list")
+        return errors
+
+    profile_keys = profile.get("keys")
+    if not isinstance(profile_keys, Mapping):
+        errors.append(f"{path}: GlobalValues profile keys must be an object")
+        return errors
+
+    generated_overlay_keys = profile.get("generated_overlay_keys", [])
+    if not isinstance(generated_overlay_keys, list):
+        errors.append(f"{path}: GlobalValues profile generated_overlay_keys must be a list")
+        return errors
+
+    emitted_keys = set(data)
+    generated_keys = {str(key) for key in generated_overlay_keys}
+    for key in expected_overlay_keys:
+        if not isinstance(key, str):
+            errors.append(f"{path}: GlobalValues profile expected overlay key must be a string")
+            continue
+        if key not in profile_keys:
+            errors.append(f"{path}: GlobalValues profile expected overlay key {key} is not profiled")
+        if key not in emitted_keys and key not in generated_keys:
+            errors.append(
+                f"{path}: GlobalValues profile expected overlay key {key} is not emitted or generated"
+            )
     return errors
 
 
