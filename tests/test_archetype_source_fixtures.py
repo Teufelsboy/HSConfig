@@ -521,8 +521,8 @@ def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
         if rule.get("action") == "hold" and rule.get("source_type") == "source_claim"
     }
 
-    assert source_claim_holds == set()
-    assert source_named_imbue_enablers
+    assert source_claim_holds
+    assert source_claim_holds <= source_named_imbue_enablers
     assert "BAR_546" not in source_claim_holds
 
 

@@ -149,6 +149,13 @@ PUBLIC_GUIDE_SOURCE_FAMILIES = frozenset(
         "community_guide",
     }
 )
+PUBLIC_GUIDE_IDENTITY_FIELDS = (
+    "source_family",
+    "source_type",
+    "provenance",
+    "source",
+    "source_type_family",
+)
 STATISTICAL_ENRICHMENT_SOURCE_TYPES = frozenset(
     {
         "replay_stat_aggregate",
@@ -320,6 +327,14 @@ def _normalized_text(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def is_public_guide_claim(claim: Mapping[str, Any]) -> bool:
+    """Return whether any accepted provenance representation identifies a public guide."""
+    return any(
+        _normalized_text(claim.get(field)) in PUBLIC_GUIDE_SOURCE_FAMILIES
+        for field in PUBLIC_GUIDE_IDENTITY_FIELDS
+    )
+
+
 def _bool_value(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -396,9 +411,7 @@ def can_lower_to_mulligan(
         return SurfaceGateDecision(False, "claim_kind_not_mulligan_surface", claim_kind, "mulligan")
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "mulligan")
-    source_family = _normalized_text(claim.get("source_family"))
-    public_guide = source_family in PUBLIC_GUIDE_SOURCE_FAMILIES
-    if public_guide:
+    if is_public_guide_claim(claim):
         if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
             return SurfaceGateDecision(
                 False,

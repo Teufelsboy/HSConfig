@@ -5,6 +5,8 @@
       "source_title": "Shadowburst Priest - Wild Hearthstone Full Deck & Guide on the Wildest of Thursdays - Out of Games",
       "source_family": "guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
+      "source_visibility": "full_text",
+      "source_lane": "deck_matched_public_guide",
       "deck_name": "ShadowPriest",
       "archetype": "aggro_burn_hero_power_transform",
       "deck_match_scope": "exact_deck_matched",
@@ -21,7 +23,8 @@
           "cards": [],
           "stance": "aggro_burn_hero_power_transform",
           "evidence_text_short": "Shadow Priest uses Darkbishop Benedictus, Shadowform, and direct damage as a hyper aggro burst plan.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "hero_power_transform",
@@ -42,7 +45,8 @@
           "roles": ["mulligan_keep"],
           "condition": "*",
           "evidence_text_short": "The guide's Mulligans section identifies Voidtouched Attendant as an always-good keep.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "mulligan_keep",
@@ -51,7 +55,8 @@
           "roles": ["mulligan_keep"],
           "condition": "*",
           "evidence_text_short": "The guide's Mulligans section identifies Shadowbomber as a good keep.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         }
       ]
     },

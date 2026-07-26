@@ -5,6 +5,15 @@
       "source_title": "Mulligan Rich Fixture Guide",
       "source_family": "mulligan_guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
+      "source_visibility": "full_text",
+      "source_lane": "deck_matched_public_guide",
+      "deck_match_scope": "exact_deck_matched",
+      "deck_match": {
+        "exact_deck_evidence": {
+          "matched": true,
+          "matched_deck_fingerprint": "5d9c07b3219445ee331946787149e7a1ce347b6382b30febcf039037954da393"
+        }
+      },
       "claims": [
         {
           "claim_kind": "mulligan_keep",
@@ -12,7 +21,8 @@
           "selector_kind": "card",
           "selector": "TEST_001",
           "evidence_text_short": "Always keep Card A in the opener.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "mulligan_keep",
@@ -20,7 +30,8 @@
           "selector": "TEST_002",
           "condition": {"coin": true},
           "evidence_text_short": "Keep Card B with the Coin.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "mulligan_keep",
@@ -28,14 +39,16 @@
           "selector": "TEST_001+TEST_002",
           "condition": {"hand_contains": "TEST_002"},
           "evidence_text_short": "Keep Card A together with Card B.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         },
         {
           "claim_kind": "mulligan_discard",
           "cards": ["TEST_003"],
           "selector": "TEST_003",
           "evidence_text_short": "Throw Card C from the opener.",
-          "source_confidence": "high"
+          "source_confidence": "high",
+          "promotion_eligible": true
         }
       ]
     }

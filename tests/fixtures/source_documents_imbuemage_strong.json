@@ -6,6 +6,15 @@
       "source_family": "guide",
       "retrieved_at": "2026-07-07T00:00:00Z",
       "deck_name": "ImbueMage",
+      "source_visibility": "full_text",
+      "source_lane": "deck_matched_public_guide",
+      "deck_match_scope": "exact_deck_matched",
+      "deck_match": {
+        "exact_deck_evidence": {
+          "matched": true,
+          "matched_deck_fingerprint": "24d0fdb97228f6bafca4441dc0d0c032f7280a4e24198a924e0e1040391096a7"
+        }
+      },
       "claims": [
         {
           "claim_kind": "gameplan_posture",
@@ -14,6 +23,7 @@
           "stance": "hero_power_pressure",
           "evidence_text_short": "ImbueMage builds around Hero Power pressure, spell support, and generated Wisp resources.",
           "source_confidence": "medium",
+          "promotion_eligible": true,
           "source_refs": [
             "https://www.hsguru.com/deck/28773511",
             "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage",
@@ -54,6 +64,7 @@
           "stance": "keep",
           "evidence_text_short": "Keep Bitterbloom Knight as a key Imbue enabler named by the guide's mulligan strategy.",
           "source_confidence": "medium",
+          "promotion_eligible": true,
           "source_refs": [
             "https://www.hearthpwn.com/decks/1462266-wild-imbue-mage"
           ]

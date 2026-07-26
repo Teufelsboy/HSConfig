@@ -160,6 +160,15 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "claims": [],
             },
         )
+        for field in (
+            "source_visibility",
+            "source_lane",
+            "deck_match_scope",
+            "deck_match",
+            "deck_name",
+        ):
+            if field in claim and field not in document:
+                document[field] = claim[field]
         document["claims"].append(_legacy_claim_to_guide_claim(claim))
     return list(documents.values())
 
@@ -190,6 +199,8 @@ def _legacy_claim_to_guide_claim(claim: dict[str, Any]) -> dict[str, Any]:
     }
     if str(claim.get("claim_confidence", "")).strip():
         converted["claim_confidence"] = str(claim["claim_confidence"]).strip()
+    if "promotion_eligible" in claim:
+        converted["promotion_eligible"] = claim["promotion_eligible"]
     if claim_kind == "combo_sequence":
         converted["sequence"] = cards
         for optional_key in ("values", "operator", "timing_kind"):

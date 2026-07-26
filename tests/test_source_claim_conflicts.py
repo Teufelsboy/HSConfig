@@ -182,6 +182,9 @@ def test_package_keeps_conflicted_mulligan_claims_visible_but_not_lowered(tmp_pa
     conflict_report = json.loads(
         (out / "reports" / "claim_conflict_report.json").read_text(encoding="utf-8")
     )
+    mulligan_plan = json.loads(
+        (out / "reports" / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert conflict_report["conflict_count"] == 1
@@ -193,6 +196,19 @@ def test_package_keeps_conflicted_mulligan_claims_visible_but_not_lowered(tmp_pa
         for row in audit["claim_lifecycle_rows"]
         if row["claim_id"] in conflict_claim_ids
     )
-    assert not any(
+    source_claim_rules = [
+        row
+        for row in mulligan_plan["rules"]
+        if row.get("card") == "CARD_001" and row.get("source_type") == "source_claim"
+    ]
+    policy_rules = [
+        row
+        for row in mulligan_plan["rules"]
+        if row.get("card") == "CARD_001"
+        and row.get("source_type") == "policy_backed_autonomous_mulligan"
+    ]
+    assert source_claim_rules == []
+    assert policy_rules
+    assert any(
         row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"]
     )

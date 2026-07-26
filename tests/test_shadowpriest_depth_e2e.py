@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
 
 
 SHADOWPRIEST_CODE = (
@@ -140,6 +141,30 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         ),
         encoding="utf-8",
     )
+    guide_sources = tmp_path / "shadowpriest_guide_sources.json"
+    guide_payload = json.loads(
+        Path("tests/fixtures/shadowpriest_guide_sources.json").read_text(encoding="utf-8")
+    )
+    guide_document = guide_payload[0]
+    guide_document.update(
+        {
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "deck_match_scope": "exact_deck_matched",
+            "deck_match": {
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": stable_deck_fingerprint(
+                        [("SW_448", 1), ("TOY_518", 2), ("SW_446", 1)]
+                    ),
+                }
+            },
+        }
+    )
+    for claim in guide_document["claims"]:
+        if claim["claim_kind"] == "mulligan_keep":
+            claim["promotion_eligible"] = True
+    guide_sources.write_text(json.dumps(guide_payload), encoding="utf-8")
     package = tmp_path / "package"
 
     code = main(
@@ -156,7 +181,7 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
             "--cards-json",
             str(cards_json),
             "--guide-sources-json",
-            "tests/fixtures/shadowpriest_guide_sources.json",
+            str(guide_sources),
             "--json",
         ]
     )
@@ -184,12 +209,13 @@ def test_shadowpriest_guide_depth_package_has_real_plans_and_clean_runtime(tmp_p
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
     assert "SW_448" not in concrete_keeps
-    assert "SW_446" not in concrete_keeps
+    assert "SW_446" in concrete_keeps
+    assert mulligan_values[-1]["mulligan"] == "*"
     assert all(set(row) == {"comment", "mulligan", "condition", "value"} for row in mulligan_values)
     assert "BeforePlayCardBonus" in cardid
     assert all("source_claim_ids" not in row for block in cardid.values() if isinstance(block, dict) for row in block.get("values", []))
     assert behavior_report["card_rows"]["SW_446"][0]["intent"] == "prefer_enemy_hero"
-    assert mulligan_report["quality"]["source_backed_keep_rule_count"] == 0
+    assert mulligan_report["quality"]["has_concrete_keeps"] is True
     assert any(row["key"] == "FirstTurnValueWeight" for row in global_authority["allowed_step1_overlays"])
 
 

@@ -144,7 +144,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         ),
         allow_policy_backed=True,
         policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
-            initial_lifecycle_rows
+            mulligan_runtime_claims
         ),
     )
     card_behavior_plan = route_card_behavior_claims(
@@ -589,14 +589,11 @@ def _policy_mulligan_deck_cards(
 
 
 def _policy_mulligan_excluded_card_ids(
-    lifecycle_rows: list[dict[str, Any]],
+    accepted_mulligan_claims: list[dict[str, Any]],
 ) -> set[str]:
     cards: set[str] = set()
-    for row in lifecycle_rows:
-        if str(row.get("claim_kind", "")) not in {"mulligan_keep", "mulligan_discard"}:
-            continue
-        claim = row.get("claim", {})
-        if not isinstance(claim, dict):
+    for claim in accepted_mulligan_claims:
+        if str(claim.get("claim_kind", "")) not in {"mulligan_keep", "mulligan_discard"}:
             continue
         cards.update(_claim_card_ids(claim))
     return cards

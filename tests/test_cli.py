@@ -9,6 +9,7 @@ import pytest
 from hsconfig.commands.common import emit_result, run_payload_command
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.cli_parser import build_parser
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 
@@ -538,6 +539,9 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
         ),
         encoding="utf-8",
     )
+    deck_fingerprint = stable_deck_fingerprint(
+        [("EX1_001", 2), ("EX1_002", 1)]
+    )
     claims_json = tmp_path / "claims.json"
     claims_json.write_text(
         json.dumps(
@@ -548,6 +552,16 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
                     "claim": "Always keep Pressure One and push face damage early.",
                     "cards": ["EX1_001"],
                     "claim_type": "mulligan_keep",
+                    "promotion_eligible": True,
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "matched": True,
+                            "matched_deck_fingerprint": deck_fingerprint,
+                        }
+                    },
                 },
                 {
                     "source": "guide",
@@ -612,7 +626,7 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert card_role_map["EX1_001"]["confidence"] == "guide_backed"
     assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
     assert globalvalue_intent["pressure_bias"] == "high"
-    assert mulligan["Mulligan"]["values"] == []
+    assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
     assert not (deck_dir / "Combo.json").exists()
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]

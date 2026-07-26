@@ -276,6 +276,30 @@ def test_public_guide_mulligan_without_authority_fields_is_rejected():
     assert decision.reason == "mulligan_requires_exact_deck_match"
 
 
+@pytest.mark.parametrize(
+    ("identity_field", "identity_value"),
+    [
+        ("source_type", "public_guide"),
+        ("provenance", "public_guide"),
+        ("source", "guide"),
+    ],
+)
+def test_public_guide_alias_identity_without_authority_is_rejected(
+    identity_field, identity_value
+):
+    decision = can_lower_to_mulligan(
+        {
+            "claim_kind": "mulligan_keep",
+            identity_field: identity_value,
+            "cards": ["TOY_381"],
+            "claim_readiness": "guide_backed",
+        }
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_exact_deck_match"
+
+
 def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():
     claim = {
         "claim_kind": "hero_power_transform",

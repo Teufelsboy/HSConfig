@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
 from tests.helpers.fixture_prepare import load_archetype_matrix
 
 
@@ -24,7 +25,6 @@ ALLOWED_EXPECTED_RUNTIME_SURFACE_STATUSES = {
     "not_expected",
     "suppressed_with_reason",
     "explicit_gap",
-    "default_only",
 }
 
 
@@ -127,14 +127,17 @@ def _runtime_card_files(deck_dir: Path) -> dict[str, dict]:
 
 
 def _source_claims(fixture: dict) -> list[dict]:
-    return [
-        {
+    claims = []
+    for claim in fixture["claims"]:
+        source_claim = {
             field: claim[field]
             for field in SOURCE_CLAIM_FIELDS
             if field in claim
         }
-        for claim in fixture["claims"]
-    ]
+        if claim["claim_kind"] in {"mulligan_keep", "mulligan_discard"}:
+            source_claim["promotion_eligible"] = True
+        claims.append(source_claim)
+    return claims
 
 
 def _runtime_config_surface_files(deck_dir: Path) -> set[str]:
@@ -184,12 +187,18 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
         assert card_file["GameCardId"] == card_id
         assert card_id in gameplan_contract["cards"]
 
+    expected_keep_ids = {
+        claim["card_id"]
+        for claim in fixture["claims"]
+        if claim["claim_kind"] == "mulligan_keep"
+    }
     effect_only_ids = {
         claim["card_id"]
         for claim in fixture["claims"]
         if claim["claim_kind"] == "hero_power_transform"
         and claim.get("semantic_qualifiers", {}).get("timing") == "start_of_game"
     }
+    assert expected_keep_ids <= hold_ids
     assert not hold_ids & effect_only_ids
 
     for claim in fixture["claims"]:
@@ -220,20 +229,13 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
                     or claim_id in rule.get("source_claim_ids", [])
                 )
             ]
-            lifecycle_emitted = any(
+            assert matching_rules, f"no generated Mulligan rule for {claim_id}"
+            assert any(
                 row["builder_or_router_decision"] == "emitted"
                 and "Mulligan.json" in row["emitted_files"]
                 and row["final_runtime_effect"] == "emitted_runtime_row"
                 for row in lifecycle_rows
             )
-            if lifecycle_emitted:
-                assert matching_rules, f"no generated Mulligan rule for {claim_id}"
-            else:
-                assert matching_rules == []
-                assert all(
-                    row["final_runtime_effect"] != "emitted_runtime_row"
-                    for row in lifecycle_rows
-                )
         elif claim["claim_kind"] == "mechanic_usage":
             assert any(
                 f"{card_id}.json" in row["emitted_files"]
@@ -321,6 +323,9 @@ def _write_fixture(tmp_path: Path, fixture: dict) -> tuple[Path, Path]:
     cards_path = tmp_path / f"{fixture['deck_name']}_cards.json"
     cards_path.write_text(json.dumps({"cards": fixture["cards"]}), encoding="utf-8")
     sources_path = tmp_path / f"{fixture['deck_name']}_sources.json"
+    deck_fingerprint = stable_deck_fingerprint(
+        (card["card_id"], card.get("count", 1)) for card in fixture["cards"]
+    )
     sources_path.write_text(
         json.dumps(
             [
@@ -329,6 +334,15 @@ def _write_fixture(tmp_path: Path, fixture: dict) -> tuple[Path, Path]:
                     "source_title": f"{fixture['deck_name']} Guide Fixture",
                     "source_family": "guide_fixture",
                     "retrieved_at": "2026-07-14T00:00:00Z",
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "matched": True,
+                            "matched_deck_fingerprint": deck_fingerprint,
+                        }
+                    },
                     "claims": _source_claims(fixture),
                 }
             ]
@@ -438,10 +452,8 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_allowed"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert all(
-        row["status"] != "default_only" or row["surface"] == "mulligan"
-        for row in operator["surface_status_ledger"]
-    )
+    assert operator["default_only_runtime_surfaces"] == []
+    assert all(row["status"] != "default_only" for row in operator["surface_status_ledger"])
     assert all(
         row["apply_blocking"] is False
         for row in operator["surface_status_ledger"]
@@ -451,13 +463,8 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
     assert not (deck_dir / "Combo.json").exists()
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
-    mulligan_surface = next(
-        row for row in operator["surface_status_ledger"] if row["surface"] == "mulligan"
-    )
-    if mulligan_surface["status"] == "default_only":
-        assert mulligan["Mulligan"]["values"] == []
-    else:
-        assert mulligan["Mulligan"]["values"]
+    assert operator["mulligan_policy_status"]["default_only"] is False
+    assert mulligan["Mulligan"]["values"], "Mulligan output must not be default-only for representative archetypes"
     assert global_values_profile["key_count"] == len(global_values)
     assert set(global_values_profile["keys"]) == set(global_values)
     assert global_values_profile["key_count"] == len(global_values_profile["keys"])

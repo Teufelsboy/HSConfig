@@ -87,6 +87,8 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
         )
     elif target_card_row["first_missing_link"] == "semantic_surface_not_expressible":
         assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
+    elif target_card_row["first_missing_link"] == "runtime_surface":
+        assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
     else:
         assert target_card_row["first_missing_link"] == "source_eligibility"
         assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
