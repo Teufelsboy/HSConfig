@@ -242,6 +242,116 @@ def test_validate_package_rejects_required_profile_overlay_coverage_mutations(
     assert any(expected_error in error for error in report["errors"])
 
 
+def _empty_required_globalvalues_fixture(tmp_path: Path) -> tuple[dict, dict, dict]:
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+    result = compile_globalvalues(baseline, {})
+    write_json(tmp_path / "CustomConfig" / "deck" / "GlobalValues.json", result["config"])
+    return baseline, result["config"], result["profile"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("generated_overlay_keys", None, "generated_overlay_keys must be a list"),
+        ("generated_overlay_keys", 1, "generated_overlay_keys must be a list"),
+        ("generated_overlay_keys", {"MyHeroPowerValue": {}}, "generated_overlay_keys must be a list"),
+        (
+            "generated_overlay_keys",
+            ["MyHeroPowerValue", 1],
+            "generated_overlay_keys item must be a non-empty string",
+        ),
+        ("keys", None, "profile keys must be an object"),
+        ("keys", 1, "profile keys must be an object"),
+        ("keys", [], "profile keys must be an object"),
+        ({"keys": {1: {}}}, None, "profile keys must use non-empty string names"),
+    ],
+)
+def test_validate_package_rejects_malformed_required_profile_ledger_types(
+    tmp_path: Path,
+    field: str | dict,
+    value: object,
+    expected_error: str,
+):
+    baseline, _, profile = _empty_required_globalvalues_fixture(tmp_path)
+    if isinstance(field, dict):
+        profile.update(field)
+    else:
+        profile[field] = value
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(expected_error in error for error in report["errors"])
+
+
+def test_validate_package_rejects_generated_overlay_injection_not_expected_or_known(
+    tmp_path: Path,
+):
+    baseline, config, profile = _empty_required_globalvalues_fixture(tmp_path)
+    config["InjectedKey"] = {"values": [{"condition": "*", "value": "1.00"}]}
+    profile["generated_overlay_keys"].append("InjectedKey")
+    profile["keys"]["InjectedKey"] = {"status": "baseline_confirmed"}
+    write_json(tmp_path / "CustomConfig" / "deck" / "GlobalValues.json", config)
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(
+        "generated overlay key InjectedKey is neither expected nor known generated default"
+        in error
+        for error in report["errors"]
+    )
+
+
+def test_validate_package_accepts_known_generated_hero_power_overlay_exception(tmp_path: Path):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+    result = compile_globalvalues(
+        baseline,
+        {
+            "aggression_profile": {
+                "global_value_overlays": {"MyHeroPowerValue": "increase"}
+            },
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "baseline",
+                        "operation": "none",
+                        "reason": "no_source_backed_posture_overlay",
+                    }
+                ]
+            },
+        },
+    )
+    write_json(tmp_path / "CustomConfig" / "deck" / "GlobalValues.json", result["config"])
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=result["profile"],
+        require_globalvalues_profile=True,
+    )
+
+    assert result["profile"]["expected_overlay_keys"] == []
+    assert result["profile"]["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert report["status"] == "passed"
+
+
 def test_compile_globalvalues_preserves_and_profiles_every_key(tmp_path: Path):
     default_values = json.loads(
         Path("tests/fixtures/default_globalvalues.json").read_text(encoding="utf-8")

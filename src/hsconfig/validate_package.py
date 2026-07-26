@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from hsconfig.compile_globalvalues import _numeric_value
+from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS, _numeric_value
 from hsconfig.condition_format import classify_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
@@ -281,10 +281,14 @@ def _validate_globalvalues(
 ) -> list[str]:
     errors = _validate_values_blocks(path, data)
     errors.extend(_validate_globalvalues_rows(path, data))
+    generated_overlay_keys: set[str] = set()
+    profiled_keys: set[str] = set()
+    if profile is not None:
+        generated_overlay_keys, profiled_keys, ledger_errors = _normalize_globalvalues_profile_ledgers(
+            path, profile
+        )
+        errors.extend(ledger_errors)
     if baseline is not None:
-        generated_overlay_keys = set()
-        if profile is not None:
-            generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
         for key in baseline:
             if key not in data:
                 errors.append(f"{path}: GlobalValues missing baseline key {key}")
@@ -293,10 +297,23 @@ def _validate_globalvalues(
             errors.append(f"{path}: GlobalValues unexpected key {key}")
     if profile is not None:
         if require_profile:
-            errors.extend(
-                _validate_required_globalvalues_overlay_coverage(path, data, profile)
+            coverage_errors, expected_overlay_keys = _validate_required_globalvalues_overlay_coverage(
+                path,
+                data,
+                profile,
+                generated_overlay_keys,
+                profiled_keys,
             )
-        generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
+            errors.extend(coverage_errors)
+            errors.extend(
+                _validate_required_generated_overlay_keys(
+                    path,
+                    data,
+                    generated_overlay_keys,
+                    profiled_keys,
+                    expected_overlay_keys,
+                )
+            )
         expected_key_count = (
             len(baseline) + len(generated_overlay_keys) if baseline is not None else len(data)
         )
@@ -305,7 +322,6 @@ def _validate_globalvalues(
                 f"{path}: GlobalValues profile key_count mismatch: "
                 f"expected {expected_key_count}, got {profile.get('key_count')}"
             )
-        profiled_keys = set(profile.get("keys", {}))
         runtime_keys = set(data)
         missing_profiles = runtime_keys - profiled_keys
         for key in sorted(missing_profiles):
@@ -317,7 +333,9 @@ def _validate_required_globalvalues_overlay_coverage(
     path: Path,
     data: dict[str, Any],
     profile: dict[str, Any],
-) -> list[str]:
+    generated_overlay_keys: set[str],
+    profiled_keys: set[str],
+) -> tuple[list[str], set[str]]:
     errors: list[str] = []
     summary = profile.get("summary")
     if (
@@ -335,31 +353,84 @@ def _validate_required_globalvalues_overlay_coverage(
     expected_overlay_keys = profile.get("expected_overlay_keys")
     if not isinstance(expected_overlay_keys, list):
         errors.append(f"{path}: GlobalValues profile expected_overlay_keys must be a list")
-        return errors
+        return errors, set()
 
-    profile_keys = profile.get("keys")
-    if not isinstance(profile_keys, Mapping):
-        errors.append(f"{path}: GlobalValues profile keys must be an object")
-        return errors
-
-    generated_overlay_keys = profile.get("generated_overlay_keys", [])
-    if not isinstance(generated_overlay_keys, list):
-        errors.append(f"{path}: GlobalValues profile generated_overlay_keys must be a list")
-        return errors
-
+    expected_keys: set[str] = set()
     emitted_keys = set(data)
-    generated_keys = {str(key) for key in generated_overlay_keys}
     for key in expected_overlay_keys:
-        if not isinstance(key, str):
-            errors.append(f"{path}: GlobalValues profile expected overlay key must be a string")
+        if not _is_safe_globalvalues_key(key):
+            errors.append(
+                f"{path}: GlobalValues profile expected overlay key must be a non-empty string"
+            )
             continue
-        if key not in profile_keys:
+        expected_keys.add(key)
+        if key not in profiled_keys:
             errors.append(f"{path}: GlobalValues profile expected overlay key {key} is not profiled")
-        if key not in emitted_keys and key not in generated_keys:
+        if key not in emitted_keys and key not in generated_overlay_keys:
             errors.append(
                 f"{path}: GlobalValues profile expected overlay key {key} is not emitted or generated"
             )
+    return errors, expected_keys
+
+
+def _normalize_globalvalues_profile_ledgers(
+    path: Path,
+    profile: dict[str, Any],
+) -> tuple[set[str], set[str], list[str]]:
+    errors: list[str] = []
+    generated_overlay_keys: set[str] = set()
+    raw_generated_overlay_keys = profile.get("generated_overlay_keys", [])
+    if not isinstance(raw_generated_overlay_keys, list):
+        errors.append(f"{path}: GlobalValues profile generated_overlay_keys must be a list")
+    else:
+        for key in raw_generated_overlay_keys:
+            if not _is_safe_globalvalues_key(key):
+                errors.append(
+                    f"{path}: GlobalValues profile generated_overlay_keys item must be a non-empty string"
+                )
+                continue
+            generated_overlay_keys.add(key)
+
+    profiled_keys: set[str] = set()
+    raw_profile_keys = profile.get("keys", {})
+    if not isinstance(raw_profile_keys, Mapping):
+        errors.append(f"{path}: GlobalValues profile keys must be an object")
+    else:
+        for key in raw_profile_keys:
+            if not _is_safe_globalvalues_key(key):
+                errors.append(
+                    f"{path}: GlobalValues profile keys must use non-empty string names")
+                continue
+            profiled_keys.add(key)
+    return generated_overlay_keys, profiled_keys, errors
+
+
+def _validate_required_generated_overlay_keys(
+    path: Path,
+    data: dict[str, Any],
+    generated_overlay_keys: set[str],
+    profiled_keys: set[str],
+    expected_overlay_keys: set[str],
+) -> list[str]:
+    errors: list[str] = []
+    emitted_keys = set(data)
+    for key in sorted(generated_overlay_keys):
+        if key not in emitted_keys:
+            errors.append(f"{path}: GlobalValues profile generated overlay key {key} is not emitted")
+        if key not in profiled_keys:
+            errors.append(f"{path}: GlobalValues profile generated overlay key {key} is not profiled")
+        if (
+            key not in expected_overlay_keys
+            and key not in KNOWN_GENERATED_OVERLAY_DEFAULTS
+        ):
+            errors.append(
+                f"{path}: GlobalValues profile generated overlay key {key} is neither expected nor known generated default"
+            )
     return errors
+
+
+def _is_safe_globalvalues_key(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _validate_named_values_blocks(
