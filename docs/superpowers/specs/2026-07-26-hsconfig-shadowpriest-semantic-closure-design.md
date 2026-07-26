@@ -181,7 +181,7 @@ Mulligan retains its existing selector-aware signature and provenance merge.
 `validate`, package `contract-preflight`, and `apply` load:
 
 - `globalvalues_baseline.json`;
-- `global_values_key_profile_report.json`;
+- `globalvalues_profile.json`;
 - `require_complete_package=True`;
 - `require_globalvalues_profile=True`.
 

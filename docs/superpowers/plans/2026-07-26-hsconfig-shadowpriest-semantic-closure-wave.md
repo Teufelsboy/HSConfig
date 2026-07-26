@@ -2,1918 +2,2069 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the ShadowPriest package semantically honest and as complete as the documented HearthRanger VisionAI surfaces allow: bind Darkbishop to the deckwide Mind Spike plan, apply source-authorized GlobalValues posture, require exact-deck evidence for guide mulligans, emit only safe per-card behavior, deduplicate runtime rows, and make readiness/reporting reflect physical runtime truth.
+**Goal:** Make source authority, Mulligan lowering, CardID behavior, GlobalValues posture, physical runtime rows, validation, and operator reporting semantically honest for the exact 30-card ShadowPriest deck.
 
-**Architecture:** Keep the existing source-document → lifecycle → gameplan → surface compiler → operator-summary pipeline. Move `hero_power_transform` from the physical Darkbishop CardID surface to `GlobalValues.json`, introduce exact deck-code evidence as the only guide authority for exact mulligan promotion, and preserve fail-closed reporting for state-dependent effects that the current condition grammar cannot express. The implementation must not add a second apply gate or a new gameplay simulator.
+**Architecture:** Preserve the existing source-document → lifecycle → gameplan → surface compiler → operator-summary pipeline. Add canonical exact-deck evidence at acquisition, fail closed at each surface gate, keep Darkbishop on its existing CardID/linked-identity boundary, deduplicate physical rows through one shared identity helper, and make read-only preflight use the same strict validator inputs as `validate` and `apply`.
 
-**Tech Stack:** Python 3.12+, pytest, existing `hsconfig` package, HearthRanger VisionAI JSON surfaces, JSON/Markdown operator reports, PowerShell verification commands.
+**Tech Stack:** Python 3.12+, pytest, standard-library `html.parser`, HearthSim `hearthstone.deckstrings`, existing `hsconfig` package, HearthRanger VisionAI JSON, PowerShell.
+
+**Design reference:** `docs/superpowers/specs/2026-07-26-hsconfig-shadowpriest-semantic-closure-design.md`
 
 ## Global Constraints
 
 - Work only in `C:\Users\darbo\Documents\HSConfig`.
-- Work directly on the single `main` line. Do not create a branch, linked worktree, pull request, or parallel version.
-- Before implementation:
+- Work directly on the single `main` line. Do not create a branch, worktree, pull request, or second version.
+- Before the first implementation task, run:
+
   ```powershell
   git fetch --all --prune --tags
   git status --short --branch
   git rev-list --left-right --count main...origin/main
   python scripts/check_hsconfig_currentness.py --cwd . --json
+  gh pr list --repo Teufelsboy/HSConfig --state open --json number,title,headRefName
   ```
-- Required starting state: clean `main`, `0 0` divergence from `origin/main`, no open pull request.
+
+- Required starting state: clean `main`, `0 0` divergence, only remote branch `main`, no open pull request.
 - Do not use HSTuner.
-- Do not add a new dependency.
-- Do not add unsupported VisionAI keys or broaden the runtime-condition grammar without public documentation and an explicit test fixture for the exact syntax.
-- Preserve the normal runtime surfaces: `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` only for an exact ordered sequence.
+- Do not add a dependency.
+- Do not add undocumented VisionAI keys or new runtime-condition atoms.
+- Preserve the normal runtime surfaces:
+  - `GlobalValues.json`
+  - `Mulligan.json`
+  - per-card `<CARDID>.json`
+  - `Combo.json` only for an exact, ordered, timing-complete sequence
 - `reports/operator_summary.json` remains the only normal apply authority.
-- `semantic_handoff_status` remains diagnostic and must not become a second apply gate.
-- Runtime writes remain possible only through the existing explicit apply path. This plan does not execute `hsconfig apply` or `hsconfig configure --apply`.
-- Generated packages, runtime logs, `Power.log`, `.hdtreplay`, `.hsreplay`, HDT exports, caches, and private evidence must not be committed.
-- Preserve exact ShadowPriest identity:
+- `semantic_handoff_status`, config quality, and the new assurance projection remain diagnostic. They must not become a second apply gate.
+- This plan must not execute `hsconfig apply`, `write-runtime`, `configure --apply`, or any direct runtime copy.
+- Do not commit generated packages, HearthRanger/Hearthstone logs, replay files, HDT exports, private runtime evidence, caches, or temporary audit directories.
+- Every behavior-changing task follows RED → minimal GREEN → focused regression → diff review → commit → push.
+- Push `main` after each commit so local and GitHub remain one version.
+- Preserve exact deck identity:
+
   ```text
   Deck name: ShadowPriest
   Deck code: AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=
   Deck-code SHA-256: fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2
-  Card count: 30
+  Main-deck cards: 30
   Unique CardIDs: 16
+  Hero DBF ID: 813
+  Format: FT_WILD
+  Sideboards: 0
   ```
-- A card file containing only `GameCardId` and `ConfigComment` is valid report-only output, not evidence of a meaningful runtime row.
-- Exact guide absence is an honest partial result. Do not fabricate `SOURCE_BACKED_STRONG`, exact mulligan authority, conditions, combo timing, or in-client optimality.
-- Every behavior-changing implementation task follows RED → GREEN → focused regression → commit. The fixture-only Task 1 must remain green.
-- Before each commit, inspect `git diff --check` and the task-specific diff.
-- After every commit, push `main` so GitHub and local state remain one version.
+
+- A metadata-only CardID file is valid output but is not `runtime_emitted`.
+- Exact-guide absence is an honest partial result. Never fabricate exact Mulligan authority, `SOURCE_BACKED_STRONG`, unsupported conditions, combo timing, or in-client optimality.
 
 ---
 
-## Desired Final Contract
+## Locked File And Interface Map
 
-For the exact ShadowPriest deck:
-
-- `SW_448.json` contains metadata only. It must not contain `BeforeUseHeroPowerBonus`, `BeforePlayCardBonus`, `InHandPlayPriority`, or a mulligan keep.
-- The linked effect `SW_448 Darkbishop Benedictus -> EX1_625t Mind Spike` authorizes a deckwide `MyHeroPowerValue` overlay through `GlobalValues.json`.
-- `hero_power_transform` is routed to `globalvalues`, not `cardid`, in the source-contract matrix and lifecycle.
-- An exact-deck `aggro_burn` posture authorizes:
-  - `FirstTurnValueWeight = 0.75`
-  - `SecondTurnValueWeight = 0.25`
-  - an increase to `GlobalMinionAttack`
-  - an increase to `GlobalMinionIntrinsicValue`
-  - an increase to `MyHeroPowerValue`
-- A partial/archetype-only guide does not gain exact mulligan authority.
-- If no exact-deck guide exists, the package remains load-safe and explicitly partial; policy-backed mulligan rows may still exist, but are not source-strong.
-- Safe static per-card runtime rows are limited to semantics that map directly to documented surfaces:
-  - direct or reciprocal hero burn → `BeforePlayCardBonus`
-  - deployable location → `BeforePlayCardBonus`
-  - persistent damage/cost/summon engine → `OnBoardBonus`
-  - damage aura may also retain its supported play bonus
-- These cards remain report-only until a documented condition exists:
-  - `CFM_637` Patches the Pirate
-  - `DRG_056` Parachute Brigand
-  - `YOD_032` Frenzied Felwing
-  - `SCH_514` Raise Dead
-  - `SW_444` Twilight Deceptor card-play timing
-  - `NX2_019` Mind Sear target-kill timing
-  - `VAC_512` Brain Masseuse liability timing
-- Identical runtime signatures are emitted once. Signature:
-  ```python
-  (card_id, behavior_block, condition, value)
-  ```
-- `runtime_emitted` is derived only from parsed per-card payloads containing at least one non-metadata `values` row.
-- Reports distinguish:
-  - metadata enrichment complete,
-  - runtime semantic closure,
-  - load safety,
-  - in-client behavior not proven by a pre-run package.
-- A current partial-source build and an exact-source fixture build are both tested. Only the exact-source fixture may become `SOURCE_BACKED_STRONG`.
-
----
-
-## File Map
-
-### Hero-power and GlobalValues ownership
-
-- Modify: `src/hsconfig/source_contract_matrix.py`
-  - Change `hero_power_transform` allowed surface from `cardid` to `globalvalues`.
-- Modify: `src/hsconfig/source_document_model.py`
-  - Route `hero_power_transform` through the GlobalValues gate and update runtime-lowering metadata.
-- Modify: `src/hsconfig/card_behavior_surface_router.py`
-  - Treat `hero_power_transform` as a dedicated non-CardID claim and remove its CardID intent mapping.
-- Modify: `src/hsconfig/semantic_runtime_gate.py`
-  - Remove the static Darkbishop-local `BeforeUseHeroPowerBonus` allowance.
-- Modify: `src/hsconfig/globalvalues_authority.py`
-  - Add linked-hero-power overlay authority and canonical posture aliases.
-- Modify: `src/hsconfig/package_builder.py`
-  - Pass deckwide effect identity into GlobalValues authority construction.
-
-### Exact-deck source and mulligan authority
+### Source content isolation
 
 - Modify: `src/hsconfig/source_acquisition.py`
-  - Detect an exact deck-code hash match and report `exact_deck_matched`.
-- Modify: `src/hsconfig/source_evidence_policy.py`
-  - Recognize exact match as strongest guide scope.
-- Modify: `src/hsconfig/source_autopilot.py`
-  - Preserve exact match through autopilot normalization.
-- Modify: `src/hsconfig/source_document_model.py`
-  - Require exact public-guide evidence for guide-backed `mulligan_keep`.
-- Modify: `tests/fixtures/source_pages/shadowpriest_current_guide.html`
-  - Make the strong fixture explicitly contain the exact deck code.
-- Create: `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`
-  - Represent the current real-world failure mode: archetype advice without the exact deck code.
+  - `extract_visible_text(html: str) -> dict[str, Any]`
+  - `_VisibleTextParser`
+- Test: `tests/test_source_acquisition.py`
 
-### Safe card mechanics and deduplication
+### Exact deck identity and promotion
+
+- Modify: `src/hsconfig/source_acquisition.py`
+  - `_deck_match_evidence(...)`
+  - new `_decoded_deckstring_candidates(...)`
+  - new `_candidate_matches_target_deck(...)`
+- Modify: `src/hsconfig/source_evidence_policy.py`
+  - exact-guide lane and strong-promotion decisions
+- Modify: `src/hsconfig/source_autopilot.py`
+  - exact-scope preservation and strong-lane checks
+- Modify: `src/hsconfig/source_document_model.py`
+  - source lane and strong-promotion normalization
+- Modify: `src/hsconfig/source_document_builder.py`
+  - verify exact-scope evidence against the target deck fingerprint
+- Modify: `tests/fixtures/source_pages/shadowpriest_current_guide.html`
+- Create: `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`
+- Create: `tests/fixtures/source_pages/shadowpriest_source_url_map.json`
+- Modify: `tests/fixtures/source_documents_shadowpriest_strong.json`
+- Test: `tests/test_source_acquisition.py`
+- Test: `tests/test_source_evidence_policy.py`
+- Test: `tests/test_source_autopilot.py`
+- Test: `tests/test_source_document_builder.py`
+- Test: `tests/test_source_acquisition_strong_closure.py`
+- Test: `tests/test_configure_online_source.py`
+- Test: `tests/test_guide_source_depth.py`
+- Test: `tests/test_lean_source_backed_strong_autopilot.py`
+- Test: `tests/test_source_claim_compiler.py`
+- Test: `tests/test_source_claim_lifecycle.py`
+
+### Mulligan surface gate
+
+- Modify: `src/hsconfig/source_document_model.py`
+  - `can_lower_to_mulligan(...)`
+- Test: `tests/test_claim_kind_runtime_contract.py`
+- Test: `tests/test_mulligan_plan.py`
+- Test: `tests/test_shadowpriest_source_contract_acceptance.py`
+- Create: `tests/test_shadowpriest_partial_source_acceptance.py`
+
+### Safe static card semantics
 
 - Modify: `src/hsconfig/card_intent_taxonomy.py`
-  - Add `summon_trigger_board_engine`.
 - Modify: `src/hsconfig/static_semantics.py`
-  - Emit the specific mechanic for persistent summon-trigger engines.
 - Modify: `src/hsconfig/mechanic_support.py`
-  - Map the new mechanic to `OnBoardBonus`.
 - Modify: `src/hsconfig/semantic_runtime_gate.py`
-  - Allow the exact safe static pairs for Papercraft and summon-trigger engines.
+- Test: `tests/test_card_intent_taxonomy.py`
+- Test: `tests/test_static_semantics.py`
+- Test: `tests/test_semantic_runtime_gate.py`
+- Test: `tests/test_card_behavior_router.py`
+- Test: `tests/test_shadowpriest_semantic_safety_wave.py`
+- Test: `tests/test_shadowpriest_visionai_semantic_surface_contract.py`
+
+### Runtime-row identity and physical readiness
+
+- Create: `src/hsconfig/runtime_row_identity.py`
 - Modify: `src/hsconfig/card_behavior_surface_router.py`
-  - Deduplicate identical runtime signatures while merging provenance.
-
-### Physical readiness and operator language
-
+- Modify: `src/hsconfig/compile_cardid.py`
 - Modify: `src/hsconfig/config_readiness.py`
-  - Require a payload mapping and remove filename-only runtime inference.
-- Modify: `src/hsconfig/semantic_audit.py`
-  - Separate metadata completeness from runtime semantic closure.
-- Modify: `src/hsconfig/package_builder.py`
-  - Pass readiness into semantic-audit rendering.
+- Test: `tests/test_runtime_row_identity.py`
+- Test: `tests/test_card_behavior_router.py`
+- Test: `tests/test_compile_cardid.py`
+- Test: `tests/test_config_readiness.py`
+- Test: `tests/test_shadowpriest_semantic_safety_wave.py`
+
+### Strict preflight parity
+
+- Modify: `src/hsconfig/contract_preflight.py`
+- Test: `tests/test_contract_preflight.py`
+
+### Assurance and documentation
+
 - Modify: `src/hsconfig/operator_summary.py`
-  - Add a non-gating configuration-assurance projection.
 - Modify: `src/hsconfig/operator_guidance.py`
-  - Surface the same assurance scope to the operator.
-
-### Tests and documentation
-
-- Modify: `tests/test_claim_kind_runtime_contract.py`
-- Modify: `tests/test_source_contract_spine_freeze.py`
-- Modify: `tests/test_globalvalues_authority.py`
-- Modify: `tests/test_compile_globalvalues.py`
-- Modify: `tests/test_card_behavior_router.py`
-- Modify: `tests/test_semantic_runtime_gate.py`
-- Modify: `tests/test_config_readiness.py`
-- Modify: `tests/test_source_acquisition.py`
-- Modify: `tests/test_source_evidence_policy.py`
-- Modify: `tests/test_source_autopilot.py`
-- Modify: `tests/test_semantic_audit.py`
-- Modify: `tests/test_operator_summary.py`
-- Modify: `tests/test_operator_guidance.py`
-- Modify: `tests/test_shadowpriest_visionai_semantic_surface_contract.py`
-- Modify: `tests/test_shadowpriest_semantic_safety_wave.py`
-- Modify: `tests/test_shadowpriest_source_contract_acceptance.py`
-- Create: `tests/test_shadowpriest_partial_source_acceptance.py`
-- Modify: `tests/fixtures/source_documents_shadowpriest_strong.json`
+- Modify: `src/hsconfig/semantic_audit.py`
+- Modify: `src/hsconfig/package_builder.py`
+- Modify: `docs/operator/README.md`
 - Modify: `docs/operator/source-contract-spine.md`
 - Modify: `docs/operator/guide-research-policy.md`
-- Modify: `docs/operator/README.md`
 - Modify: `.agents/skills/hsconfig/SKILL.md`
 - Modify: `.agents/skills/hsconfig/references/guide-research-policy.md`
 - Modify: `.agents/skills/hsconfig/references/globalvalues-policy.md`
 - Modify: `.agents/skills/hsconfig/references/card-behavior-policy.md`
+- Test: `tests/test_operator_summary.py`
+- Test: `tests/test_operator_guidance.py`
+- Test: `tests/test_semantic_audit.py`
+- Test: `tests/test_docs_active_path.py`
+- Test: `tests/test_operator_docs_contract_policy.py`
+- Test: `tests/test_skill_files.py`
+- Test: `tests/test_skill_sync.py`
 
 ---
 
-### Task 1: Add Exact And Partial Source Fixtures
+### Task 1: Isolate Guide Content From Page Chrome
 
 **Files:**
-- Create: `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`
-- Modify: `tests/fixtures/source_pages/shadowpriest_current_guide.html`
-- Modify: `tests/fixtures/source_documents_shadowpriest_strong.json`
+
+- Modify: `src/hsconfig/source_acquisition.py`
+- Test: `tests/test_source_acquisition.py`
 
 **Interfaces:**
-- Consumes: existing `hsconfig.cli.main`, exact ShadowPriest deck code, package report layout.
-- Produces: two deterministic source inputs:
-  - exact-deck source fixture,
-  - archetype-only partial source fixture.
 
-- [ ] **Step 1: Add exact deck identity to the strong HTML fixture**
-
-Add this paragraph to `tests/fixtures/source_pages/shadowpriest_current_guide.html` directly below the `<h1>`:
-
-```html
-<p>
-  Exact deck code:
-  AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=
-</p>
-```
-
-- [ ] **Step 2: Create the archetype-only fixture**
-
-Create `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`:
-
-```html
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta property="article:published_time" content="2026-07-15T00:00:00Z">
-    <title>Wild Aggro Shadow Priest Archetype Guide 2026</title>
-  </head>
-  <body>
-    <main>
-      <h1>Wild Aggro Shadow Priest Archetype Guide 2026</h1>
-      <p>
-        Shadow Priest is an aggressive burn archetype that uses cheap minions,
-        direct damage, and the Shadow hero power to pressure the enemy hero.
-      </p>
-      <h2>Mulligan</h2>
-      <p>Keep Papercraft Angel and Twilight Deceptor.</p>
-      <h2>Hero Power</h2>
-      <p>
-        Darkbishop Benedictus changes the starting Hero Power to Mind Spike.
-        This start-of-game effect is not an opening-hand keep.
-      </p>
-    </main>
-  </body>
-</html>
-```
-
-- [ ] **Step 3: Change the strong package expectations**
-
-In the first guide document of
-`tests/fixtures/source_documents_shadowpriest_strong.json`, add:
-
-```json
-"deck_match_scope": "exact_deck_matched",
-"deck_match": {
-  "deck_code_hash_match": true,
-  "deck_code_hash": "fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2"
-}
-```
-
-This is test metadata for the exact-source branch. Do not add the raw deck
-code to generated production reports.
-
-- [ ] **Step 4: Verify both fixtures remain schema-compatible**
-
-Run:
-
-```powershell
-pytest tests/test_archetype_source_fixtures.py tests/test_source_document_builder.py tests/test_source_acquisition.py -q
-```
-
-Expected: all existing tests pass. Task 1 changes only deterministic test inputs.
-
-- [ ] **Step 5: Commit and push**
-
-```powershell
-git diff --check
-git add tests/fixtures/source_pages/shadowpriest_current_guide.html tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html tests/fixtures/source_documents_shadowpriest_strong.json
-git commit -m "test: add exact and partial ShadowPriest sources"
-git push origin main
-```
-
----
-
-### Task 2: Move Darkbishop Hero-Power Semantics To GlobalValues
-
-**Files:**
-- Modify: `src/hsconfig/source_contract_matrix.py`
-- Modify: `src/hsconfig/source_document_model.py`
-- Modify: `src/hsconfig/card_behavior_surface_router.py`
-- Modify: `src/hsconfig/semantic_runtime_gate.py`
-- Modify: `src/hsconfig/globalvalues_authority.py`
-- Modify: `src/hsconfig/package_builder.py`
-- Modify: `tests/test_source_contract_spine_freeze.py`
-- Modify: `tests/test_claim_kind_runtime_contract.py`
-- Modify: `tests/test_card_behavior_router.py`
-- Modify: `tests/test_semantic_runtime_gate.py`
-- Modify: `tests/test_globalvalues_authority.py`
-- Modify: `tests/test_compile_globalvalues.py`
-
-**Interfaces:**
-- Consumes:
-  - `gameplan_contract["deckwide_effects"]`
-  - `hero_power_transform` source claims
-  - `build_globalvalues_authority_matrix(aggression_profile=..., claims=...)`
+- Consumes: raw HTML passed to `extract_visible_text(html)`.
 - Produces:
+
   ```python
-  build_globalvalues_authority_matrix(
-      *,
-      aggression_profile: str,
-      claims: list[dict[str, Any]],
-      deckwide_effects: list[dict[str, Any]] | None = None,
-  ) -> dict[str, Any]
+  {
+      "title": str,
+      "text": str,
+      "publication_values": list[str],
+      "content_scope": "main_or_article" | "visible_body_fallback",
+  }
   ```
-  with a `MyHeroPowerValue` Step1 overlay only when an exact linked transformed Hero Power exists.
 
-- [ ] **Step 1: Write source-contract routing tests**
+- Downstream matching and extraction continue consuming `parsed["text"]`.
 
-Add imports for `source_contract_vocabulary_rows` and then add to
-`tests/test_source_contract_spine_freeze.py`:
+- [ ] **Step 1: Write the failing primary-content test**
 
-```python
-def test_hero_power_transform_owns_globalvalues_not_cardid():
-    policy = source_contract_policy_by_claim_kind()["hero_power_transform"]
-    vocabulary = {
-        row["claim_kind"]: row for row in source_contract_vocabulary_rows()
-    }
+  Add to `tests/test_source_acquisition.py`:
 
-    assert policy["allowed_surfaces"] == ("globalvalues",)
-    assert policy["runtime_lowerable"] is True
-    assert vocabulary["hero_power_transform"]["runtime_files"] == (
-        "GlobalValues.json",
-    )
-```
+  ```python
+  from hsconfig.source_acquisition import extract_visible_text
 
-Import `can_lower_to_cardid` and `can_lower_to_globalvalues` from
-`hsconfig.source_document_model`, then add to
-`tests/test_claim_kind_runtime_contract.py`:
 
-```python
-def test_hero_power_transform_lowers_only_to_globalvalues():
-    claim = {
-        "claim_kind": "hero_power_transform",
-        "cards": ["SW_448"],
-        "claim_readiness": "source_backed_static_semantics",
-        "source_confidence": "medium",
-    }
+  def test_visible_text_prefers_main_and_excludes_page_chrome():
+      parsed = extract_visible_text(
+          """
+          <html>
+            <head>
+              <title>ShadowPriest Guide</title>
+              <meta property="article:published_time" content="2026-07-25T00:00:00Z">
+            </head>
+            <body>
+              <header>Help Sign In</header>
+              <nav>Decks Cards Forums</nav>
+              <main>
+                <h1>Exact ShadowPriest plan</h1>
+                <p>Keep the documented one-drop against slow decks.</p>
+              </main>
+              <aside>Follow Us On Twitter</aside>
+              <footer>Privacy Terms</footer>
+            </body>
+          </html>
+          """
+      )
 
-    assert can_lower_to_globalvalues(claim).allowed is True
-    assert can_lower_to_cardid(claim).allowed is False
-```
+      assert parsed["title"] == "ShadowPriest Guide"
+      assert parsed["content_scope"] == "main_or_article"
+      assert "Exact ShadowPriest plan" in parsed["text"]
+      assert "Keep the documented one-drop" in parsed["text"]
+      assert "Help Sign In" not in parsed["text"]
+      assert "Follow Us On Twitter" not in parsed["text"]
+      assert parsed["publication_values"] == ["2026-07-25T00:00:00Z"]
+  ```
 
-- [ ] **Step 2: Write GlobalValues identity tests**
+- [ ] **Step 2: Write the failing sanitized fallback test**
 
-Add to `tests/test_globalvalues_authority.py`:
+  ```python
+  def test_visible_text_uses_sanitized_body_when_primary_content_is_absent():
+      parsed = extract_visible_text(
+          """
+          <html>
+            <head><title>Legacy guide</title></head>
+            <body>
+              <nav>Help Sign In</nav>
+              <section><h1>Mulligan</h1><p>Keep CARD_A.</p></section>
+              <footer>Follow Us On Twitter</footer>
+            </body>
+          </html>
+          """
+      )
 
-```python
-def test_linked_hero_power_transform_authorizes_deckwide_value_overlay():
-    matrix = build_globalvalues_authority_matrix(
-        aggression_profile="aggro",
-        claims=[
-            {
-                "claim_id": "claim-darkbishop-transform",
-                "claim_kind": "hero_power_transform",
-                "cards": ["SW_448"],
-                "claim_readiness": "source_backed_static_semantics",
-                "source_confidence": "medium",
-                "source_refs": ["hearthstonejson_static_semantics"],
-            }
-        ],
-        deckwide_effects=[
-            {
-                "source_card_id": "SW_448",
-                "effect": "replace_starting_hero_power",
-                "target_card_id": "EX1_625t",
-                "target_name": "Mind Spike",
-            }
-        ],
-    )
+      assert parsed["content_scope"] == "visible_body_fallback"
+      assert parsed["text"] == "Mulligan Keep CARD_A."
+  ```
 
-    hero_power_rows = [
-        row
-        for row in matrix["allowed_step1_overlays"]
-        if row["key"] == "MyHeroPowerValue"
-    ]
-    assert len(hero_power_rows) == 1
-    assert hero_power_rows[0]["operation"] == "increase"
-    assert hero_power_rows[0]["claim_id"] == "claim-darkbishop-transform"
-    assert hero_power_rows[0]["reason"] == "linked_hero_power_transform"
-```
+- [ ] **Step 3: Run the tests and verify RED**
 
-Add the fail-closed companion:
+  ```powershell
+  pytest tests/test_source_acquisition.py -q
+  ```
 
-```python
-def test_unlinked_hero_power_transform_does_not_authorize_runtime_overlay():
-    matrix = build_globalvalues_authority_matrix(
-        aggression_profile="aggro",
-        claims=[
-            {
-                "claim_id": "claim-unlinked-transform",
-                "claim_kind": "hero_power_transform",
-                "cards": ["UNKNOWN_001"],
-                "claim_readiness": "source_backed_static_semantics",
-                "source_confidence": "medium",
-            }
-        ],
-        deckwide_effects=[],
-    )
+  Expected failure: `content_scope` is absent and page-chrome text is retained.
 
-    assert [
-        row
-        for row in matrix["allowed_step1_overlays"]
-        if row["key"] == "MyHeroPowerValue"
-    ] == []
-```
+- [ ] **Step 4: Implement scoped visible-text collection**
 
-- [ ] **Step 3: Verify RED**
+  In `_VisibleTextParser`, add:
 
-```powershell
-pytest tests/test_source_contract_spine_freeze.py tests/test_claim_kind_runtime_contract.py tests/test_globalvalues_authority.py -q
-```
+  ```python
+  PRIMARY_CONTENT_TAGS = {"main", "article"}
+  EXCLUDED_CONTENT_TAGS = {
+      "nav",
+      "header",
+      "footer",
+      "aside",
+      "form",
+      "script",
+      "style",
+      "noscript",
+  }
+  ```
 
-Expected: the claim still routes to CardID and the authority builder does not accept `deckwide_effects`.
+  Track:
 
-- [ ] **Step 4: Change source-surface ownership**
+  ```python
+  self.primary_text_parts: list[str] = []
+  self.fallback_text_parts: list[str] = []
+  self._primary_depth = 0
+  self._excluded_depth = 0
+  ```
 
-In `src/hsconfig/source_contract_matrix.py`, change the `hero_power_transform` policy to:
+  Update start/end handling so excluded content is ignored and visible text
+  inside `<main>` or `<article>` is also added to `primary_text_parts`.
+  `handle_data()` must retain title handling and then use:
 
-```python
-"hero_power_transform": {
-    "lane": "runtime_lowerable",
-    "allowed_surfaces": ("globalvalues",),
-    "operator_meaning": (
-        "Preserve the exact linked hero-power transform through deckwide "
-        "GlobalValues posture; it is neither a card-body action nor a mulligan keep."
-    ),
-},
-```
+  ```python
+  if self._excluded_depth:
+      return
+  self.fallback_text_parts.append(text)
+  if self._primary_depth:
+      self.primary_text_parts.append(text)
+  ```
 
-Change its `_POLICY_DETAILS` default suppression reason to:
+  Update `extract_visible_text()`:
 
-```python
-"claim_kind_not_globalvalues_surface"
-```
+  ```python
+  primary = " ".join(parser.primary_text_parts).strip()
+  fallback = " ".join(parser.fallback_text_parts).strip()
+  return {
+      "title": " ".join(parser.title_parts).strip(),
+      "text": primary or fallback,
+      "publication_values": parser.publication_values,
+      "content_scope": (
+          "main_or_article" if primary else "visible_body_fallback"
+      ),
+  }
+  ```
 
-In `src/hsconfig/source_document_model.py`:
+  Ensure title text is not also appended to fallback content.
 
-```python
-GLOBALVALUES_SURFACE_CLAIM_KINDS = frozenset(
-    {"gameplan_posture", "hero_power_transform"}
-)
-```
+- [ ] **Step 5: Run focused regressions**
 
-Remove `hero_power_transform` from `CARDID_SURFACE_CLAIM_KINDS`. Update `_runtime_lowering()` so:
+  ```powershell
+  pytest tests/test_source_acquisition.py tests/test_configure_online_source.py tests/test_source_document_builder.py -q
+  ```
 
-```python
-if claim_kind in {"gameplan_posture", "hero_power_transform"}:
-    return "globalvalues_or_contract_only"
-```
+  Expected: all pass; source titles and publication metadata remain unchanged.
 
-- [ ] **Step 5: Remove the Darkbishop-local route**
+- [ ] **Step 6: Review, commit, and push**
 
-In `src/hsconfig/card_behavior_surface_router.py`:
-
-- Remove `"hero_power_transform": "BeforeUseHeroPowerBonus"` from `INTENT_BLOCKS`.
-- Add `"hero_power_transform"` to `_belongs_to_dedicated_non_cardid_surface()`.
-
-In `src/hsconfig/semantic_runtime_gate.py`, remove the `hero_power_transform` entry from `STATIC_ACTION_SURFACES`.
-
-Update `tests/test_card_behavior_router.py`:
-
-```python
-def test_hero_power_transform_is_not_a_cardid_action():
-    report = route_card_behavior_surfaces(
-        [
-            {
-                "claim_id": "claim-darkbishop",
-                "claim_kind": "hero_power_transform",
-                "cards": ["SW_448"],
-                "claim_readiness": "source_backed_static_semantics",
-                "source_confidence": "medium",
-                "source_refs": ["hearthstonejson_static_semantics"],
-            }
-        ]
-    )
-
-    assert report["rows"] == []
-    assert report["suppressed"] == []
-```
-
-Remove `hero_power_transform` from the supported static CardID parameter set in `tests/test_semantic_runtime_gate.py`.
-
-- [ ] **Step 6: Implement linked GlobalValues authority**
-
-Change the function signature in `src/hsconfig/globalvalues_authority.py`:
-
-```python
-def build_globalvalues_authority_matrix(
-    *,
-    aggression_profile: str,
-    claims: list[dict[str, Any]],
-    deckwide_effects: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-```
-
-Add:
-
-```python
-def _linked_hero_power_transform_claim(
-    claims: list[dict[str, Any]],
-    deckwide_effects: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    transformed_source_ids = {
-        str(effect.get("source_card_id"))
-        for effect in deckwide_effects
-        if effect.get("effect") == "replace_starting_hero_power"
-        and str(effect.get("target_card_id", "")).strip()
-    }
-    for claim in claims:
-        if normalized_claim_kind(claim) != "hero_power_transform":
-            continue
-        claim_cards = {
-            str(card_id)
-            for card_id in claim.get("cards", [])
-            if str(card_id)
-        }
-        if claim_cards & transformed_source_ids:
-            return claim
-    return None
-```
-
-After posture rows are built, append or merge:
-
-```python
-transform_claim = _linked_hero_power_transform_claim(
-    lowerable_claims,
-    list(deckwide_effects or []),
-)
-if transform_claim is not None:
-    transform_row = _allowed_row(
-        key="MyHeroPowerValue",
-        operation="increase",
-        value=None,
-        reason="linked_hero_power_transform",
-        claim_refs=_claim_refs([transform_claim]),
-        claim_id=lifecycle_claim_id(transform_claim),
-    )
-    allowed = _merge_allowed_overlay_rows([*allowed, transform_row])
-```
-
-Implement `_merge_allowed_overlay_rows()` so a duplicate key/operation/value keeps one row and merges `claim_refs` in stable order.
-
-- [ ] **Step 7: Thread deckwide effects from package builder**
-
-In `src/hsconfig/package_builder.py`:
-
-```python
-global_values_authority_matrix = build_globalvalues_authority_matrix(
-    aggression_profile=str(
-        gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")
-    ),
-    claims=globalvalues_authority_claims,
-    deckwide_effects=list(gameplan_contract.get("deckwide_effects", [])),
-)
-```
-
-- [ ] **Step 8: Update the package-level Darkbishop assertions**
-
-In `tests/test_shadowpriest_visionai_semantic_surface_contract.py`, replace
-the Darkbishop-local expectation with:
-
-```python
-darkbishop = read_card_json(package_root, "SW_448")
-globalvalues = read_card_json(package_root, "GlobalValues")
-
-assert set(darkbishop) == {"GameCardId", "ConfigComment"}
-assert globalvalues["MyHeroPowerValue"]["values"] == [
-    {"condition": "*", "value": "1.15"}
-]
-```
-
-In `tests/test_shadowpriest_semantic_safety_wave.py`, replace
-`test_darkbishop_effect_does_not_become_mulligan_or_body_priority` with:
-
-```python
-def test_darkbishop_effect_is_deckwide_not_card_local(package):
-    mulligan = _card(package, "Mulligan")
-    darkbishop = _card(package, "SW_448")
-    globalvalues = _card(package, "GlobalValues")
-
-    selectors = [
-        row["mulligan"]
-        for row in mulligan["Mulligan"]["values"]
-        if row["value"] == "hold"
-    ]
-    assert "SW_448" not in selectors
-    assert set(darkbishop) == {"GameCardId", "ConfigComment"}
-    assert globalvalues["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
-```
-
-- [ ] **Step 9: Verify GREEN**
-
-```powershell
-pytest tests/test_source_contract_spine_freeze.py tests/test_claim_kind_runtime_contract.py tests/test_card_behavior_router.py tests/test_semantic_runtime_gate.py tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py -q
-pytest tests/test_shadowpriest_visionai_semantic_surface_contract.py -q
-```
-
-Expected: all pass; `SW_448.json` is metadata-only and `MyHeroPowerValue` becomes `1.15`.
-
-- [ ] **Step 10: Commit and push**
-
-```powershell
-git diff --check
-git add src/hsconfig/source_contract_matrix.py src/hsconfig/source_document_model.py src/hsconfig/card_behavior_surface_router.py src/hsconfig/semantic_runtime_gate.py src/hsconfig/globalvalues_authority.py src/hsconfig/package_builder.py tests/test_source_contract_spine_freeze.py tests/test_claim_kind_runtime_contract.py tests/test_card_behavior_router.py tests/test_semantic_runtime_gate.py tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py tests/test_shadowpriest_visionai_semantic_surface_contract.py tests/test_shadowpriest_semantic_safety_wave.py
-git commit -m "fix: bind hero power transform to GlobalValues"
-git push origin main
-```
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/source_acquisition.py tests/test_source_acquisition.py
+  git add src/hsconfig/source_acquisition.py tests/test_source_acquisition.py
+  git commit -m "fix: isolate guide content from page chrome"
+  git push origin main
+  ```
 
 ---
 
-### Task 3: Require Exact Deck Evidence For Guide Mulligans
+### Task 2: Establish Canonical Exact-Deck Source Identity
 
 **Files:**
+
 - Modify: `src/hsconfig/source_acquisition.py`
 - Modify: `src/hsconfig/source_evidence_policy.py`
 - Modify: `src/hsconfig/source_autopilot.py`
 - Modify: `src/hsconfig/source_document_model.py`
-- Modify: `tests/test_source_acquisition.py`
-- Modify: `tests/test_source_evidence_policy.py`
-- Modify: `tests/test_source_autopilot.py`
-- Modify: `tests/test_claim_kind_runtime_contract.py`
-- Modify: `tests/test_shadowpriest_source_contract_acceptance.py`
+- Modify: `src/hsconfig/source_document_builder.py`
+- Modify: `tests/fixtures/source_pages/shadowpriest_current_guide.html`
+- Create: `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`
+- Create: `tests/fixtures/source_pages/shadowpriest_source_url_map.json`
+- Modify: `tests/fixtures/source_documents_shadowpriest_strong.json`
+- Test: `tests/test_source_acquisition.py`
+- Test: `tests/test_source_evidence_policy.py`
+- Test: `tests/test_source_autopilot.py`
+- Test: `tests/test_source_document_builder.py`
+- Test: `tests/test_source_acquisition_strong_closure.py`
+- Test: `tests/test_configure_online_source.py`
+- Test: `tests/test_guide_source_depth.py`
+- Test: `tests/test_lean_source_backed_strong_autopilot.py`
+- Test: `tests/test_source_claim_compiler.py`
+- Test: `tests/test_source_claim_lifecycle.py`
+
+**Interfaces:**
+
+- Produces `deck_match_scope="exact_deck_matched"` only from a successfully
+  decoded source deckstring whose canonical main-deck fingerprint equals
+  `deck_identity["deck_fingerprint"]`.
+- Name plus card overlap produces `archetype_matched`, never an exact scope.
+- `deck_match["exact_deck_evidence"]` contains only counts, fingerprints,
+  hashes, and match booleans; it never contains a raw deckstring.
+
+- [ ] **Step 1: Create exact and archetype-only guide fixtures**
+
+  Add this line inside the `<main>` content of
+  `tests/fixtures/source_pages/shadowpriest_current_guide.html`:
+
+  ```html
+  <p>Exact deck code: AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=</p>
+  ```
+
+  Create `tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`:
+
+  ```html
+  <!doctype html>
+  <html lang="en">
+    <head>
+      <meta property="article:published_time" content="2026-07-25T00:00:00Z">
+      <title>Wild Aggro Shadow Priest Archetype Guide</title>
+    </head>
+    <body>
+      <main>
+        <h1>Wild Aggro Shadow Priest Archetype Guide</h1>
+        <p>Mind Blast and Papercraft Angel support aggressive hero pressure.</p>
+        <h2>Mulligan</h2>
+        <p>Keep Papercraft Angel and Twilight Deceptor.</p>
+      </main>
+    </body>
+  </html>
+  ```
+
+  Create `tests/fixtures/source_pages/shadowpriest_source_url_map.json`:
+
+  ```json
+  {
+    "https://example.test/shadowpriest-exact": "tests/fixtures/source_pages/shadowpriest_current_guide.html",
+    "https://example.test/shadowpriest-archetype": "tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html"
+  }
+  ```
+
+  In the first guide document in
+  `tests/fixtures/source_documents_shadowpriest_strong.json`, add:
+
+  ```json
+  "deck_match_scope": "exact_deck_matched",
+  "deck_match": {
+    "exact_deck_evidence": {
+      "matched": true,
+      "matched_deck_fingerprint": "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327"
+    }
+  }
+  ```
+
+  This fixture intentionally models the exact-source acceptance branch. Do not
+  add exact evidence to real archetype-only fixtures.
+
+- [ ] **Step 2: Write exact-match and wrong-list acquisition tests**
+
+  Add these imports and helpers to `tests/test_source_acquisition.py`:
+
+  ```python
+  import json
+
+  from hsconfig.deck_identity import build_deck_identity
+  from hsconfig.deckstring_decode import decode_deck_code
+
+
+  SHADOWPRIEST_DECK_CODE = (
+      "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQF"
+      "yKEGxKgG/KgG17oG1cEGAAA="
+  )
+
+
+  def _exact_shadowpriest_identity() -> dict:
+      decoded = decode_deck_code(SHADOWPRIEST_DECK_CODE)
+      return build_deck_identity(
+          deck_name="ShadowPriest",
+          deck_code=SHADOWPRIEST_DECK_CODE,
+          cards=decoded["cards"],
+          hero_dbf_id=decoded["hero_dbf_id"],
+          format=decoded["format"],
+          sideboards=decoded["sideboards"],
+      )
+
+
+  def _fixture_fetcher(filename: str):
+      page = FIXTURES / filename
+
+      def fetcher(
+          url: str,
+          timeout_seconds: float,
+      ) -> tuple[int, str, bytes]:
+          del url, timeout_seconds
+          return 200, "text/html", page.read_bytes()
+
+      return fetcher
+  ```
+
+  Then add:
+
+  ```python
+  def test_exact_source_deckstring_promotes_to_exact_deck_scope():
+      shadowpriest_identity = _exact_shadowpriest_identity()
+      report = collect_public_source_records(
+          deck_name="ShadowPriest",
+          deck_identity=shadowpriest_identity,
+          source_urls=["https://example.test/exact"],
+          current_date="2026-07-26",
+          fetcher=_fixture_fetcher("shadowpriest_current_guide.html"),
+          resolver=_public_resolver,
+      )
+
+      record = report["source_records"][0]
+      assert record["deck_match_scope"] == "exact_deck_matched"
+      exact = record["deck_match"]["exact_deck_evidence"]
+      assert exact["matched"] is True
+      assert exact["matched_deck_fingerprint"] == shadowpriest_identity["deck_fingerprint"]
+      assert "deck_code" not in exact
+      assert "AAEBA" not in json.dumps(record)
+  ```
+
+  Add:
+
+  ```python
+  def test_name_and_card_overlap_remains_archetype_only():
+      shadowpriest_identity = _exact_shadowpriest_identity()
+      report = collect_public_source_records(
+          deck_name="ShadowPriest",
+          deck_identity=shadowpriest_identity,
+          source_urls=["https://example.test/archetype"],
+          current_date="2026-07-26",
+          fetcher=_fixture_fetcher("shadowpriest_archetype_only_guide.html"),
+          resolver=_public_resolver,
+      )
+
+      record = report["source_records"][0]
+      assert record["deck_match_scope"] == "archetype_matched"
+      assert record["strong_promotion_eligible"] is False
+      assert "exact_deck_match_required" in record["promotion_blockers"]
+  ```
+
+  Add a test with a valid but different 40-card deckstring and assert
+  `archetype_matched`, not `exact_deck_matched`.
+
+  Add to `tests/test_source_document_builder.py`:
+
+  ```python
+  def test_explicit_exact_scope_requires_matching_target_fingerprint():
+      bundle = build_source_document_bundle(
+          deck_identity={
+              "deck_name": "ShadowPriest",
+              "deck_fingerprint": "target-fingerprint",
+              "cards": [{"card_id": "TOY_381", "count": 2}],
+          },
+          card_metadata={},
+          source_documents=[
+              {
+                  "source_url": "https://example.test/guide",
+                  "source_title": "ShadowPriest guide",
+                  "source_family": "guide",
+                  "retrieved_at": "2026-07-26T00:00:00Z",
+                  "deck_match_scope": "exact_deck_matched",
+                  "deck_match": {
+                      "exact_deck_evidence": {
+                          "matched": True,
+                          "matched_deck_fingerprint": "different-fingerprint",
+                      }
+                  },
+                  "claims": [
+                      {
+                          "claim_kind": "mulligan_keep",
+                          "cards": ["TOY_381"],
+                          "evidence_text_short": "Keep Papercraft Angel.",
+                          "source_confidence": "high",
+                      }
+                  ],
+              }
+          ],
+          current_date="2026-07-26",
+      )
+
+      claim = bundle["claims"][0]
+      assert claim["deck_match_scope"] == "archetype_matched"
+  ```
+
+- [ ] **Step 3: Run the acquisition tests and verify RED**
+
+  ```powershell
+  pytest tests/test_source_acquisition.py -q
+  ```
+
+  Expected: the current overlap heuristic returns `deck_matched` or lacks
+  exact-deck evidence.
+
+- [ ] **Step 4: Add decoded candidate extraction**
+
+  In `src/hsconfig/source_acquisition.py`, import:
+
+  ```python
+  from hashlib import sha256
+
+  from hsconfig.deck_identity import stable_deck_fingerprint
+  from hsconfig.deckstring_decode import decode_deck_code
+  ```
+
+  Add:
+
+  ```python
+  DECKSTRING_TOKEN_RE = re.compile(
+      r"(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{24,}={0,2})(?![A-Za-z0-9+/=])"
+  )
+  ```
+
+  Add a helper with this return shape:
+
+  ```python
+  def _decoded_deckstring_candidates(text: str) -> dict[str, Any]:
+      tokens = list(dict.fromkeys(DECKSTRING_TOKEN_RE.findall(text)))
+      decoded_candidates: list[dict[str, Any]] = []
+      for token in tokens:
+          try:
+              decoded = decode_deck_code(token)
+          except Exception:
+              continue
+          fingerprint = stable_deck_fingerprint(
+              (str(card["card_id"]), int(card["count"]))
+              for card in decoded["cards"]
+          )
+          decoded_candidates.append(
+              {
+                  "deck_code_hash": sha256(token.encode("utf-8")).hexdigest(),
+                  "deck_fingerprint": fingerprint,
+                  "hero_dbf_id": decoded.get("hero_dbf_id"),
+                  "format": decoded.get("format"),
+                  "card_count_total": decoded.get("card_count_total"),
+                  "sideboard_count": decoded.get("sideboard_count"),
+              }
+          )
+      return {
+          "candidate_count": len(tokens),
+          "decoded_candidates": decoded_candidates,
+      }
+  ```
+
+  Add:
+
+  ```python
+  def _candidate_matches_target_deck(
+      candidate: Mapping[str, Any],
+      deck_identity: Mapping[str, Any],
+  ) -> bool:
+      if candidate["deck_fingerprint"] != deck_identity.get("deck_fingerprint"):
+          return False
+      for key in ("hero_dbf_id", "format", "card_count_total", "sideboard_count"):
+          target = deck_identity.get(key)
+          observed = candidate.get(key)
+          if target is not None and observed is not None and observed != target:
+              return False
+      return True
+  ```
+
+- [ ] **Step 5: Replace overlap-as-exact matching**
+
+  In `_deck_match_evidence(...)`:
+
+  - call `_decoded_deckstring_candidates()` on sanitized text;
+  - set `candidates = candidate_evidence["decoded_candidates"]`;
+  - collect candidates matching the target;
+  - set `scope="exact_deck_matched"` when at least one candidate matches;
+  - otherwise set `archetype_matched` when the deck name and two or more cards
+    overlap;
+  - otherwise retain `card_overlap` or `unknown`.
+
+  Add this diagnostic object:
+
+  ```python
+  "exact_deck_evidence": {
+      "candidate_count": candidate_evidence["candidate_count"],
+      "decoded_candidate_count": len(candidates),
+      "matched": bool(matches),
+      "matched_deck_fingerprint": (
+          str(matches[0]["deck_fingerprint"]) if matches else ""
+      ),
+      "candidate_deck_code_hashes": sorted(
+          str(candidate["deck_code_hash"]) for candidate in candidates
+      ),
+  }
+  ```
+
+  Do not return the raw candidate token.
+
+- [ ] **Step 6: Make exact scope the only strong guide scope**
+
+  In `source_evidence_policy.py`, `source_autopilot.py`, and
+  `source_document_model.py`:
+
+  - replace strong checks accepting `deck_matched` or
+    `deck_or_archetype_matched` with `exact_deck_matched`;
+  - map exact public guides to `deck_matched_public_guide`;
+  - map overlap-only guides to `archetype_matched_public_guide`;
+  - attach blocker `exact_deck_match_required` when a full-text guide is
+    otherwise current but not exact;
+  - keep static official-card semantics unchanged.
+
+  The strong predicate must be equivalent to:
+
+  ```python
+  return (
+      promotion_eligible
+      and source_visibility == "full_text"
+      and source_lane == "deck_matched_public_guide"
+      and deck_match_scope == "exact_deck_matched"
+      and freshness_status in {"", "current"}
+  )
+  ```
+
+  In `source_document_builder.py`, add:
+
+  ```python
+  def _document_has_exact_deck_evidence(
+      document: dict[str, Any],
+      deck_identity: dict[str, Any],
+  ) -> bool:
+      deck_match = document.get("deck_match", {})
+      if not isinstance(deck_match, dict):
+          return False
+      exact = deck_match.get("exact_deck_evidence", {})
+      if not isinstance(exact, dict) or exact.get("matched") is not True:
+          return False
+      return (
+          _clean_text(exact.get("matched_deck_fingerprint", ""))
+          == _clean_text(deck_identity.get("deck_fingerprint", ""))
+          != ""
+      )
+  ```
+
+  Change `_claim_deck_match_scope()` so an explicit
+  `exact_deck_matched` value is preserved only when
+  `_document_has_exact_deck_evidence()` returns true. Otherwise downgrade it to
+  `archetype_matched`. Legacy `deck_matched` and
+  `deck_or_archetype_matched` values also normalize to
+  `archetype_matched`. Update the deck-name inheritance check to accept the new
+  `exact_deck_matched` and `archetype_matched` scopes.
+
+- [ ] **Step 7: Run source-policy regressions**
+
+  ```powershell
+  pytest tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_source_document_builder.py tests/test_source_acquisition_strong_closure.py tests/test_configure_online_source.py tests/test_guide_source_depth.py tests/test_lean_source_backed_strong_autopilot.py tests/test_source_claim_compiler.py tests/test_source_claim_lifecycle.py -q
+  ```
+
+  Expected:
+
+  - exact fixture is exact and promotion-eligible;
+  - archetype-only and different-deck fixtures are not strong;
+  - static semantics remain eligible for their existing non-guide lane.
+
+- [ ] **Step 8: Review, commit, and push**
+
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/source_acquisition.py src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py src/hsconfig/source_document_model.py src/hsconfig/source_document_builder.py tests/fixtures/source_pages tests/fixtures/source_documents_shadowpriest_strong.json tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_source_document_builder.py tests/test_source_acquisition_strong_closure.py tests/test_configure_online_source.py tests/test_guide_source_depth.py tests/test_lean_source_backed_strong_autopilot.py tests/test_source_claim_compiler.py tests/test_source_claim_lifecycle.py
+  git add src/hsconfig/source_acquisition.py src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py src/hsconfig/source_document_model.py src/hsconfig/source_document_builder.py tests/fixtures/source_pages/shadowpriest_current_guide.html tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html tests/fixtures/source_pages/shadowpriest_source_url_map.json tests/fixtures/source_documents_shadowpriest_strong.json tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_source_document_builder.py tests/test_source_acquisition_strong_closure.py tests/test_configure_online_source.py tests/test_guide_source_depth.py tests/test_lean_source_backed_strong_autopilot.py tests/test_source_claim_compiler.py tests/test_source_claim_lifecycle.py
+  git commit -m "fix: require canonical exact deck source identity"
+  git push origin main
+  ```
+
+---
+
+### Task 3: Gate Guide Mulligan Claims On Exact Deck Evidence
+
+**Files:**
+
+- Modify: `src/hsconfig/source_document_model.py`
+- Test: `tests/test_claim_kind_runtime_contract.py`
+- Test: `tests/test_mulligan_plan.py`
+- Test: `tests/test_shadowpriest_source_contract_acceptance.py`
 - Create: `tests/test_shadowpriest_partial_source_acceptance.py`
 
 **Interfaces:**
-- Consumes:
-  - `deck_identity["deck_code_hash"]`
-  - normalized source text
-  - guide claim `deck_match_scope`
-- Produces:
-  ```python
-  deck_match["deck_code_hash_match"]: bool
-  deck_match_scope: "exact_deck_matched" | "archetype_matched" | "card_overlap" | "unknown"
+
+- Public-guide Mulligan claims lower only when:
+
+  ```text
+  deck_match_scope == exact_deck_matched
+  promotion_eligible == true
+  source_visibility == full_text
+  source_lane == deck_matched_public_guide
   ```
 
-- [ ] **Step 1: Write exact-match acquisition tests**
+- Rejected guide claims use stable reasons:
+  - `guide_mulligan_requires_exact_deck_match`
+  - `guide_mulligan_claim_not_promotion_eligible`
+  - `guide_mulligan_requires_full_text`
+- Policy-backed autonomous Mulligan remains independent and labeled.
 
-Add to `tests/test_source_acquisition.py`:
+- [ ] **Step 1: Write direct surface-gate tests**
 
-```python
-def test_exact_deck_code_promotes_source_scope_to_exact_match():
-    identity = {
-        "deck_code_hash": (
-            "fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2"
-        ),
-        "cards": [
-            {"card_id": "SW_448", "name": "Darkbishop Benedictus"},
-            {"card_id": "TOY_381", "name": "Papercraft Angel"},
-        ],
-    }
-    text = (
-        "ShadowPriest guide "
-        "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
-        "KgG17oG1cEGAAA="
-    )
+  Add to `tests/test_claim_kind_runtime_contract.py`:
 
-    match, scope = _deck_match_evidence(
-        "ShadowPriest",
-        identity,
-        "ShadowPriest guide",
-        text,
-    )
-
-    assert scope == "exact_deck_matched"
-    assert match["deck_code_hash_match"] is True
-```
-
-Add:
-
-```python
-def test_card_overlap_without_exact_code_stays_archetype_matched():
-    identity = {
-        "deck_code_hash": (
-            "fd7afada1f4a7f60bb269dc56188ddf83603e4bb0147a163d3e337be388917f2"
-        ),
-        "cards": [
-            {"card_id": "SW_448", "name": "Darkbishop Benedictus"},
-            {"card_id": "TOY_381", "name": "Papercraft Angel"},
-        ],
-    }
-
-    match, scope = _deck_match_evidence(
-        "ShadowPriest",
-        identity,
-        "ShadowPriest guide",
-        "ShadowPriest uses Darkbishop Benedictus and Papercraft Angel.",
-    )
-
-    assert scope == "archetype_matched"
-    assert match["deck_code_hash_match"] is False
-```
-
-- [ ] **Step 2: Write mulligan surface-gate tests**
-
-Import `can_lower_to_mulligan` from `hsconfig.source_document_model`, then add
-to `tests/test_claim_kind_runtime_contract.py`:
-
-```python
-def test_archetype_only_public_guide_cannot_lower_exact_mulligan_keep():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "cards": ["TOY_381"],
-        "claim_readiness": "guide_backed",
-        "source_confidence": "high",
-        "source_family": "guide",
-        "deck_match_scope": "archetype_matched",
-    }
-
-    decision = can_lower_to_mulligan(claim)
-
-    assert decision.allowed is False
-    assert decision.reason == "mulligan_keep_requires_exact_deck_match"
-```
-
-Add:
-
-```python
-def test_exact_deck_public_guide_can_lower_mulligan_keep():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "cards": ["TOY_381"],
-        "claim_readiness": "guide_backed",
-        "source_confidence": "high",
-        "source_family": "guide",
-        "deck_match_scope": "exact_deck_matched",
-    }
-
-    assert can_lower_to_mulligan(claim).allowed is True
-```
-
-- [ ] **Step 3: Verify RED**
-
-```powershell
-pytest tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_claim_kind_runtime_contract.py -q
-```
-
-- [ ] **Step 4: Implement hash-only exact identity detection**
-
-In `src/hsconfig/source_acquisition.py`, add:
-
-```python
-DECK_CODE_CANDIDATE_RE = re.compile(
-    r"(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{40,}={0,2})(?![A-Za-z0-9+/=])"
-)
+  ```python
+  def _guide_keep(**overrides):
+      claim = {
+          "claim_kind": "mulligan_keep",
+          "cards": ["TOY_381"],
+          "source_type": "public_guide",
+          "source_lane": "deck_matched_public_guide",
+          "source_visibility": "full_text",
+          "deck_match_scope": "exact_deck_matched",
+          "promotion_eligible": True,
+          "claim_readiness": "guide_backed",
+          "trust_ceiling": "runtime_lowerable",
+      }
+      claim.update(overrides)
+      return claim
 
 
-def _has_exact_deck_code_match(text: str, expected_hash: str) -> bool:
-    normalized_hash = str(expected_hash).removeprefix("sha256:").strip().lower()
-    if not normalized_hash:
-        return False
-    return any(
-        hashlib.sha256(candidate.encode("utf-8")).hexdigest() == normalized_hash
-        for candidate in DECK_CODE_CANDIDATE_RE.findall(text)
-    )
-```
+  def test_exact_public_guide_keep_can_lower_to_mulligan():
+      assert can_lower_to_mulligan(_guide_keep()).allowed is True
 
-Import `hashlib`. In `_deck_match_evidence()`:
 
-```python
-deck_code_hash_match = _has_exact_deck_code_match(
-    f"{title} {text}",
-    str(deck_identity.get("deck_code_hash", "")),
-)
-if deck_code_hash_match:
-    scope = "exact_deck_matched"
-elif deck_name_evidenced and len(matched_unique) >= 2:
-    scope = "archetype_matched"
-elif matched_unique:
-    scope = "card_overlap"
-else:
-    scope = "unknown"
-```
+  def test_archetype_only_public_guide_keep_is_report_only():
+      decision = can_lower_to_mulligan(
+          _guide_keep(
+              source_lane="archetype_matched_public_guide",
+              deck_match_scope="archetype_matched",
+              promotion_eligible=False,
+          )
+      )
 
-Add `"deck_code_hash_match": deck_code_hash_match` to `deck_match`.
+      assert decision.allowed is False
+      assert decision.reason == "guide_mulligan_requires_exact_deck_match"
 
-In `_source_record_strength()`, treat the exact scope as the strongest current
-guide shape:
 
-```python
-and deck_match_scope in {"exact_deck_matched", "deck_matched"}
-```
+  def test_non_promoting_exact_guide_keep_is_report_only():
+      decision = can_lower_to_mulligan(
+          _guide_keep(promotion_eligible=False)
+      )
 
-- [ ] **Step 5: Preserve exact scope through evidence policy**
+      assert decision.allowed is False
+      assert decision.reason == "guide_mulligan_claim_not_promotion_eligible"
+  ```
 
-In `src/hsconfig/source_evidence_policy.py`, include `exact_deck_matched` wherever current/strong guide scope is accepted:
+- [ ] **Step 2: Write Mulligan-plan provenance tests**
 
-```python
-STRONG_DECK_SCOPES = {
-    "exact_deck_matched",
-    "deck_matched",
-    "deck_or_archetype_matched",
-}
-```
+  Add to `tests/test_mulligan_plan.py`:
 
-Use `STRONG_DECK_SCOPES` in `_source_rank_lane()`, `_source_lane()`, and `_promotion_blockers()`.
+  ```python
+  def test_archetype_guide_keep_is_suppressed_before_policy_fallback():
+      plan = build_mulligan_plan(
+          deck_name="ShadowPriest",
+          claims=[
+              {
+                  "claim_id": "wrong-guide-keep",
+                  "claim_kind": "mulligan_keep",
+                  "cards": ["SW_444"],
+                  "source_type": "public_guide",
+                  "source_lane": "archetype_matched_public_guide",
+                  "source_visibility": "full_text",
+                  "deck_match_scope": "archetype_matched",
+                  "promotion_eligible": False,
+                  "claim_readiness": "guide_backed",
+              }
+          ],
+          card_roles={},
+          deck_cards=[],
+          allow_policy_backed=False,
+      )
 
-In `src/hsconfig/source_autopilot.py`:
+      assert plan["rules"] == []
+      assert plan["suppressed_rules"][0]["reason"] == (
+          "guide_mulligan_requires_exact_deck_match"
+      )
+      assert plan["quality"]["source_backed_keep_rule_count"] == 0
+  ```
 
-- Preserve an explicit `exact_deck_matched`.
-- Change the quantitative helper to:
+- [ ] **Step 3: Run tests and verify RED**
 
-```python
-def _quantitative_deck_match_scope(
-    *,
-    deck_name_match: bool,
-    card_overlap: int,
-    unique_deck_card_count: int,
-    deck_code_hash_match: bool = False,
-) -> str:
-    if deck_code_hash_match:
-        return "exact_deck_matched"
-    overlap_ratio = (
-        card_overlap / unique_deck_card_count
-        if unique_deck_card_count
-        else 0.0
-    )
-    if deck_name_match and overlap_ratio >= 0.80:
-        return "deck_matched"
-    if deck_name_match and card_overlap >= 2:
-        return "archetype_matched"
-    if card_overlap:
-        return "card_overlap"
-    return "unknown"
-```
+  ```powershell
+  pytest tests/test_claim_kind_runtime_contract.py tests/test_mulligan_plan.py -q
+  ```
 
-- Pass `bool(match.get("deck_code_hash_match"))` at every call site.
-- Do not upgrade archetype overlap to exact scope.
+  Expected: archetype-only guide claims currently lower.
 
-- [ ] **Step 6: Gate guide-backed mulligan keeps**
+- [ ] **Step 4: Implement the public-guide Mulligan gate**
 
-In `src/hsconfig/source_document_model.py`, add:
+  In `source_document_model.py`, add:
 
-```python
-def _is_public_guide_claim(claim: Mapping[str, Any]) -> bool:
-    source_family = _normalized_text(
-        claim.get("source_family") or claim.get("source_type")
-    )
-    return source_family in PUBLIC_GUIDE_SOURCE_FAMILIES
-```
+  ```python
+  def _is_public_guide_claim(claim: Mapping[str, Any]) -> bool:
+      return _source_type(claim) in {"community_guide", "public_guide"}
 
-Include `exact_deck_matched` in the public-guide scope sets used by
-`_source_lane()` and `_strong_promotion_eligible()`, so the exact source keeps
-the canonical `deck_matched_public_guide` lane.
 
-In `can_lower_to_mulligan()` before the start-of-game check:
+  def _guide_mulligan_gate_reason(claim: Mapping[str, Any]) -> str | None:
+      if not _is_public_guide_claim(claim):
+          return None
+      if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
+          return "guide_mulligan_requires_exact_deck_match"
+      if not _bool_value(claim.get("promotion_eligible", False)):
+          return "guide_mulligan_claim_not_promotion_eligible"
+      if _normalized_text(claim.get("source_visibility")) != "full_text":
+          return "guide_mulligan_requires_full_text"
+      if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+          return "guide_mulligan_requires_exact_deck_match"
+      return None
+  ```
 
-```python
-if (
-    claim_kind == "mulligan_keep"
-    and _is_public_guide_claim(claim)
-    and _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched"
-):
-    return SurfaceGateDecision(
-        False,
-        "mulligan_keep_requires_exact_deck_match",
-        claim_kind,
-        "mulligan",
-    )
-```
+  In `can_lower_to_mulligan()`, after the claim-kind check and before the
+  generic runtime gate:
 
-This must not block policy-backed rows generated by `build_policy_backed_mulligan_rules()`.
+  ```python
+  guide_reason = _guide_mulligan_gate_reason(claim)
+  if guide_reason is not None:
+      return SurfaceGateDecision(False, guide_reason, claim_kind, "mulligan")
+  ```
 
-- [ ] **Step 7: Verify GREEN**
+- [ ] **Step 5: Add exact-versus-partial acceptance coverage**
 
-```powershell
-pytest tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_claim_kind_runtime_contract.py -q
-```
+  Extend `tests/test_shadowpriest_source_contract_acceptance.py` so the exact
+  guide fixture proves:
 
-Expected:
+  ```python
+  assert source_record["deck_match_scope"] == "exact_deck_matched"
+  assert plan["quality"]["source_backed_keep_rule_count"] >= 1
+  assert "TOY_381" in {
+      row["card"] for row in plan["rules"] if row["action"] == "hold"
+  }
+  ```
 
-- exact unit fixture: exact scope is preserved,
-- archetype unit fixture: scope remains partial,
-- archetype-only guide keeps fail the exact Mulligan surface gate.
+  Create `tests/test_shadowpriest_partial_source_acceptance.py` and build the
+  package with `shadowpriest_archetype_only_guide.html`. Assert:
 
-- [ ] **Step 8: Add exact and partial package acceptance**
+  ```python
+  assert source_record["deck_match_scope"] == "archetype_matched"
+  assert source_record["strong_promotion_eligible"] is False
+  assert mulligan_plan["quality"]["source_backed_keep_rule_count"] == 0
+  assert "guide_mulligan_requires_exact_deck_match" in {
+      row["reason"] for row in mulligan_plan["suppressed_rules"]
+  }
+  assert operator["source_backed_status"] != "SOURCE_BACKED_STRONG"
+  ```
 
-In `tests/test_shadowpriest_source_contract_acceptance.py`, assert:
+  If policy-backed Mulligan is enabled by the package fixture, assert every
+  concrete keep has:
 
-```python
-assert acquisition["records"][0]["deck_match_scope"] == "exact_deck_matched"
-assert acquisition["records"][0]["deck_match"]["deck_code_hash_match"] is True
-```
+  ```python
+  assert row["source_type"] == "policy_backed_autonomous_mulligan"
+  ```
 
-Create `tests/test_shadowpriest_partial_source_acceptance.py` using the
-fixture-map and `_stub_empty_fetches()` pattern from the exact-source test,
-but map the source URL to
-`tests/fixtures/source_pages/shadowpriest_archetype_only_guide.html`. Assert:
+- [ ] **Step 6: Run focused acceptance**
 
-```python
-assert acquisition["records"][0]["deck_match_scope"] == "archetype_matched"
-assert acquisition["records"][0]["promotion_eligible"] is False
-assert operator["technical_status"] == "VALID_PACKAGE"
-assert operator["runtime_apply_allowed"] is True
-assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
-assert operator["source_status_apply_blocking"] is False
-assert operator["semantic_handoff_status"] in {"attention", "insufficient_evidence"}
+  ```powershell
+  pytest tests/test_claim_kind_runtime_contract.py tests/test_mulligan_plan.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py -q
+  ```
 
-guide_keep_claims = [
-    claim
-    for document in source_documents["source_documents"]
-    for claim in document.get("claims", [])
-    if claim.get("claim_kind") == "mulligan_keep"
-]
-assert guide_keep_claims
-assert all(
-    claim["deck_match_scope"] == "archetype_matched"
-    for claim in guide_keep_claims
-)
+- [ ] **Step 7: Review, commit, and push**
 
-holds = {
-    row["mulligan"]
-    for row in mulligan["Mulligan"]["values"]
-    if row["value"] == "hold"
-}
-assert "SW_448" not in holds
-assert operator["mulligan_policy_status"]["status"] != "guide_backed"
-```
-
-Run:
-
-```powershell
-pytest tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py -q
-```
-
-- [ ] **Step 9: Commit and push**
-
-```powershell
-git diff --check
-git add src/hsconfig/source_acquisition.py src/hsconfig/source_evidence_policy.py src/hsconfig/source_autopilot.py src/hsconfig/source_document_model.py tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_claim_kind_runtime_contract.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py
-git commit -m "fix: require exact deck evidence for mulligan guides"
-git push origin main
-```
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/source_document_model.py tests/test_claim_kind_runtime_contract.py tests/test_mulligan_plan.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py
+  git add src/hsconfig/source_document_model.py tests/test_claim_kind_runtime_contract.py tests/test_mulligan_plan.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py
+  git commit -m "fix: require exact guide authority for mulligan"
+  git push origin main
+  ```
 
 ---
 
-### Task 4: Apply Source-Authorized Aggro GlobalValues Posture
+### Task 4: Lower Only The Safe Static Card Surfaces
 
 **Files:**
-- Modify: `src/hsconfig/globalvalues_authority.py`
-- Modify: `tests/test_globalvalues_authority.py`
-- Modify: `tests/test_compile_globalvalues.py`
-- Modify: `tests/test_shadowpriest_source_contract_acceptance.py`
-- Modify: `tests/test_shadowpriest_partial_source_acceptance.py`
 
-**Interfaces:**
-- Consumes: `gameplan_posture.stance`.
-- Produces canonical posture:
-  ```python
-  "aggressive_burn_pressure" -> "aggro_burn"
-  "aggro_burn_pressure" -> "aggro_burn"
-  "aggressive_burn" -> "aggro_burn"
-  ```
-
-- [ ] **Step 1: Write posture-alias tests**
-
-Add to `tests/test_globalvalues_authority.py`:
-
-```python
-@pytest.mark.parametrize(
-    "stance",
-    [
-        "aggro_burn",
-        "aggressive_burn",
-        "aggro_burn_pressure",
-        "aggressive_burn_pressure",
-        "aggro_burn_hero_power_transform",
-    ],
-)
-def test_aggro_burn_posture_aliases_emit_same_step1_overlays(stance):
-    matrix = build_globalvalues_authority_matrix(
-        aggression_profile="aggro",
-        claims=[
-            {
-                "claim_id": "claim-aggro-burn",
-                "claim_kind": "gameplan_posture",
-                "stance": stance,
-                "claim_readiness": "guide_backed",
-                "source_confidence": "high",
-                "source_refs": ["https://example.test/exact-shadowpriest"],
-            }
-        ],
-        deckwide_effects=[],
-    )
-
-    rows = {row["key"]: row for row in matrix["allowed_step1_overlays"]}
-    assert rows["FirstTurnValueWeight"]["value"] == "0.75"
-    assert rows["SecondTurnValueWeight"]["value"] == "0.25"
-    assert rows["GlobalMinionAttack"]["operation"] == "increase"
-    assert rows["GlobalMinionIntrinsicValue"]["operation"] == "increase"
-    assert rows["MyHeroPowerValue"]["operation"] == "increase"
-```
-
-Add a non-aggro fail-closed test:
-
-```python
-def test_draw_engine_plan_does_not_silently_become_aggro_numeric_posture():
-    matrix = build_globalvalues_authority_matrix(
-        aggression_profile="aggro",
-        claims=[
-            {
-                "claim_id": "claim-draw-engine",
-                "claim_kind": "gameplan_posture",
-                "stance": "draw_engine_plan",
-                "claim_readiness": "guide_backed",
-                "source_confidence": "high",
-            }
-        ],
-        deckwide_effects=[],
-    )
-
-    assert matrix["posture"] == "baseline"
-    assert matrix["allowed_step1_overlays"][0]["key"] == "baseline"
-```
-
-- [ ] **Step 2: Verify RED**
-
-```powershell
-pytest tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py -q
-```
-
-- [ ] **Step 3: Add explicit aliases**
-
-In `src/hsconfig/globalvalues_authority.py`:
-
-```python
-POSTURE_ALIASES = {
-    "aggressive": "aggro",
-    "tempo": "aggro",
-    "aggressive_burn": "aggro_burn",
-    "aggro_burn_pressure": "aggro_burn",
-    "aggressive_burn_pressure": "aggro_burn",
-    "aggro_burn_hero_power_transform": "aggro_burn",
-}
-```
-
-Do not map `draw_engine_plan` or a generic `pressure` token to `aggro_burn`.
-
-- [ ] **Step 4: Assert exact generated values**
-
-In `tests/test_compile_globalvalues.py`, add:
-
-```python
-def test_aggro_burn_authority_compiles_exact_turn_weights_and_hero_power_value():
-    result = compile_globalvalues(
-        baseline={
-            "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
-            "SecondTurnValueWeight": {"values": [{"condition": "*", "value": "1.0"}]},
-            "GlobalMinionAttack": {"values": [{"condition": "*", "value": "0.81"}]},
-            "GlobalMinionIntrinsicValue": {
-                "values": [{"condition": "*", "value": "3.32 + 2"}]
-            },
-        },
-        contract={
-            "aggression_profile": {
-                "global_value_overlays": {
-                    "FirstTurnValueWeight": "set:0.75",
-                    "SecondTurnValueWeight": "set:0.25",
-                    "GlobalMinionAttack": "increase",
-                    "GlobalMinionIntrinsicValue": "increase",
-                    "MyHeroPowerValue": "increase",
-                }
-            },
-            "global_values_authority_matrix": {
-                "allowed_step1_overlays": [
-                    {
-                        "key": "FirstTurnValueWeight",
-                        "operation": "set",
-                        "value": "0.75",
-                        "reason": "aggro_burn_prioritizes_early_damage",
-                    },
-                    {
-                        "key": "SecondTurnValueWeight",
-                        "operation": "set",
-                        "value": "0.25",
-                        "reason": "aggro_burn_prioritizes_early_damage",
-                    },
-                    {
-                        "key": "MyHeroPowerValue",
-                        "operation": "increase",
-                        "value": None,
-                        "reason": "linked_hero_power_transform",
-                    },
-                ]
-            },
-        },
-    )
-
-    assert result["config"]["FirstTurnValueWeight"]["values"][0]["value"] == "0.75"
-    assert result["config"]["SecondTurnValueWeight"]["values"][0]["value"] == "0.25"
-    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
-```
-
-- [ ] **Step 5: Update package-level posture assertions**
-
-In the exact source acceptance test:
-
-```python
-assert globalvalues["FirstTurnValueWeight"]["values"][0]["value"] == "0.75"
-assert globalvalues["SecondTurnValueWeight"]["values"][0]["value"] == "0.25"
-assert globalvalues["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
-```
-
-In the archetype-only partial acceptance test:
-
-```python
-assert globalvalues["FirstTurnValueWeight"]["values"][0]["value"] == "0"
-assert globalvalues["SecondTurnValueWeight"]["values"][0]["value"] == "1.0"
-assert globalvalues["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
-```
-
-The partial build keeps baseline turn weights because the live guide claim says `draw_engine_plan`, but it still receives the static linked Mind Spike overlay.
-
-- [ ] **Step 6: Verify GREEN**
-
-```powershell
-pytest tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py -q
-```
-
-- [ ] **Step 7: Commit and push**
-
-```powershell
-git diff --check
-git add src/hsconfig/globalvalues_authority.py tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py
-git commit -m "feat: compile source-authorized aggro posture"
-git push origin main
-```
-
----
-
-### Task 5: Close Only The Safe Persistent Card Mechanics
-
-**Files:**
 - Modify: `src/hsconfig/card_intent_taxonomy.py`
 - Modify: `src/hsconfig/static_semantics.py`
 - Modify: `src/hsconfig/mechanic_support.py`
 - Modify: `src/hsconfig/semantic_runtime_gate.py`
-- Modify: `tests/test_card_intent_taxonomy.py`
-- Modify: `tests/test_card_behavior_router.py`
-- Modify: `tests/test_mechanic_support.py`
-- Modify: `tests/test_semantic_runtime_gate.py`
+- Test: `tests/test_card_intent_taxonomy.py`
+- Test: `tests/test_static_semantics.py`
+- Test: `tests/test_semantic_runtime_gate.py`
+- Test: `tests/test_card_behavior_router.py`
+- Test: `tests/test_shadowpriest_semantic_safety_wave.py`
+- Test: `tests/test_shadowpriest_visionai_semantic_surface_contract.py`
 
 **Interfaces:**
-- Consumes: exact static card text.
-- Produces:
+
+- Adds semantic family `summon_trigger_board_engine`.
+- It maps only to `CARDID.json:OnBoardBonus`.
+- `reciprocal_hero_burn` becomes report-only until a proven health condition
+  exists.
+- `damage_aura_amplifier` keeps only `OnBoardBonus`; its unconditional
+  `BeforePlayCardBonus` is removed.
+- Existing Darkbishop ownership remains:
+  - one `BeforeUseHeroPowerBonus`
+  - no body priority
+  - no Mulligan keep
+- A separate `gameplan_posture` claim remains the only GlobalValues authority.
+
+- [ ] **Step 1: Write trigger-engine classification tests**
+
+  Add to `tests/test_card_intent_taxonomy.py`:
+
   ```python
-  CardIntentClassification(
-      reason="summon_trigger_board_engine",
-      value="8",
-      band="medium",
+  @pytest.mark.parametrize(
+      ("card_id", "text"),
+      [
+          ("TOY_518", "After you summon a Pirate, give it +1 Attack."),
+          ("WON_065", "After you summon a minion, give it +1 Health."),
+      ],
   )
+  def test_summon_trigger_board_engines_are_not_classified_as_summoners(
+      card_id,
+      text,
+  ):
+      result = classify_card_intent(text, card_identity=card_id)
+
+      assert result.reason == "summon_trigger_board_engine"
+      assert result.value == "8"
   ```
-  and `OnBoardBonus` for persistent summon-trigger engines.
 
-- [ ] **Step 1: Write taxonomy tests**
+- [ ] **Step 2: Write static-semantics tests**
 
-Add to `tests/test_card_intent_taxonomy.py`:
+  Add to `tests/test_static_semantics.py`:
 
-```python
-@pytest.mark.parametrize(
-    ("card_id", "text"),
-    [
-        ("WON_065", "After you summon a minion, give it +1 Health."),
-        ("TOY_518", "After you summon a Pirate, give it +1 Attack."),
-    ],
-)
-def test_persistent_summon_trigger_engines_get_precise_intent(card_id, text):
-    result = classify_card_intent(text, card_identity=card_id)
+  ```python
+  @pytest.mark.parametrize(
+      ("card_id", "text"),
+      [
+          ("TOY_518", "After you summon a Pirate, give it +1 Attack."),
+          ("WON_065", "After you summon a minion, give it +1 Health."),
+      ],
+  )
+  def test_summon_trigger_engine_claim_uses_on_board_surface(card_id, text):
+      records = build_static_semantics_source_records(
+          {
+              "deck_name": "ShadowPriest",
+              "cards": [{"card_id": card_id, "count": 2}],
+          },
+          {
+              card_id: {
+                  "card_id": card_id,
+                  "name": card_id,
+                  "type": "MINION",
+                  "text": text,
+              }
+          },
+          build_id="fixture",
+      )
 
-    assert result.reason == "summon_trigger_board_engine"
-    assert result.value == "8"
-    assert result.band == "medium"
-```
+      claim = next(
+          claim
+          for claim in records[0]["claims"]
+          if claim.get("mechanic") == "summon_trigger_board_engine"
+      )
+      assert claim["runtime_block"] == "OnBoardBonus"
+      assert claim["trust_ceiling"] == "static_semantics"
+  ```
 
-Add a boundary:
+- [ ] **Step 3: Write runtime-gate safety tests**
 
-```python
-def test_one_shot_summon_text_is_not_a_persistent_board_engine():
-    result = classify_card_intent(
-        "Battlecry: Summon a 1/1 Pirate.",
-        card_identity="TEST_001",
-    )
+  Add to `tests/test_semantic_runtime_gate.py`:
 
-    assert result.reason != "summon_trigger_board_engine"
-```
+  ```python
+  def test_summon_trigger_engine_allows_only_on_board_value():
+      allowed = decide_semantic_runtime(
+          semantic_reason="summon_trigger_board_engine",
+          source_lane="official_static_semantics",
+          condition="*",
+          runtime_block="OnBoardBonus",
+          claim_kind="mechanic_usage",
+      )
+      rejected = decide_semantic_runtime(
+          semantic_reason="summon_trigger_board_engine",
+          source_lane="official_static_semantics",
+          condition="*",
+          runtime_block="BeforePlayCardBonus",
+          claim_kind="mechanic_usage",
+      )
 
-- [ ] **Step 2: Write safe-router tests**
+      assert allowed.allowed is True
+      assert rejected == SemanticRuntimeDecision(
+          False,
+          "semantic_surface_not_expressible",
+      )
 
-Add to `tests/test_card_behavior_router.py`:
 
-```python
-@pytest.mark.parametrize(
-    ("card_id", "mechanic", "text", "expected_value"),
-    [
-        ("TOY_381", "aura", "Your Hero Power costs (0).", "8"),
-        (
-            "WON_065",
-            "summon_trigger_board_engine",
-            "After you summon a minion, give it +1 Health.",
-            "8",
-        ),
-        (
-            "TOY_518",
-            "summon_trigger_board_engine",
-            "After you summon a Pirate, give it +1 Attack.",
-            "8",
-        ),
-    ],
-)
-def test_safe_persistent_engines_route_to_on_board_bonus(
-    card_id,
-    mechanic,
-    text,
-    expected_value,
-):
-    report = route_card_behavior_surfaces(
-        [
-            {
-                "claim_id": f"claim-{card_id}",
-                "claim_kind": "mechanic_usage",
-                "cards": [card_id],
-                "mechanic": mechanic,
-                "evidence_text_short": text,
-                "claim_readiness": "source_backed_static_semantics",
-                "source_confidence": "medium",
-                "source_refs": ["hearthstonejson_static_semantics"],
-            }
-        ]
-    )
+  @pytest.mark.parametrize("reason", ["reciprocal_hero_burn"])
+  def test_health_dependent_static_burn_stays_report_only(reason):
+      decision = decide_semantic_runtime(
+          semantic_reason=reason,
+          source_lane="official_static_semantics",
+          condition="*",
+          runtime_block="BeforePlayCardBonus",
+          claim_kind="mechanic_usage",
+      )
 
-    assert report["suppressed"] == []
-    assert len(report["rows"]) == 1
-    assert report["rows"][0]["behavior_block"] == "OnBoardBonus"
-    assert report["rows"][0]["value"] == expected_value
-```
+      assert decision.allowed is False
+      assert decision.reason == "semantic_surface_not_expressible"
+  ```
 
-- [ ] **Step 3: Preserve risky report-only boundaries**
+  Add a second parameterized call using
+  `source_lane="deck_matched_public_guide"` and assert the wildcard reciprocal
+  burn row is still rejected. Add a test proving `damage_aura_amplifier`
+  allows `OnBoardBonus` but rejects `BeforePlayCardBonus` for both official
+  static and exact-guide lanes. Recognized card semantics must not bypass the
+  safety surface merely because the guide itself is exact.
 
-Add:
+- [ ] **Step 4: Run tests and verify RED**
 
-```python
-@pytest.mark.parametrize(
-    ("card_id", "mechanic", "text"),
-    [
-        (
-            "SCH_514",
-            "damage",
-            "Deal 3 damage to your hero. Return two friendly minions that died this game.",
-        ),
-        (
-            "YOD_032",
-            "damage",
-            "Costs (1) less for each damage dealt to your opponent this turn.",
-        ),
-        (
-            "NX2_019",
-            "damage",
-            "Deal 2 damage to a minion. If it dies, deal 3 damage to the enemy hero.",
-        ),
-    ],
-)
-def test_state_dependent_static_cards_remain_report_only(card_id, mechanic, text):
-    report = route_card_behavior_surfaces(
-        [
-            {
-                "claim_id": f"claim-{card_id}",
-                "claim_kind": "mechanic_usage",
-                "cards": [card_id],
-                "mechanic": mechanic,
-                "evidence_text_short": text,
-                "claim_readiness": "source_backed_static_semantics",
-                "source_confidence": "medium",
-                "source_refs": ["hearthstonejson_static_semantics"],
-            }
-        ]
-    )
+  ```powershell
+  pytest tests/test_card_intent_taxonomy.py tests/test_static_semantics.py tests/test_semantic_runtime_gate.py -q
+  ```
 
-    assert report["rows"] == []
-    assert report["suppressed"][0]["reason"] == "semantic_surface_not_expressible"
-```
+- [ ] **Step 5: Add the trigger-engine semantic family**
 
-- [ ] **Step 4: Verify RED**
+  In `card_intent_taxonomy.py`, before generic summon handling, add:
 
-```powershell
-pytest tests/test_card_intent_taxonomy.py tests/test_card_behavior_router.py tests/test_mechanic_support.py tests/test_semantic_runtime_gate.py -q
-```
+  ```python
+  if (
+      _has_any(normalized, ("after you summon", "whenever you summon"))
+      and _has_any(normalized, ("give it +", "give that minion +"))
+  ) or identity_reason == "summon_trigger_board_engine":
+      return CardIntentClassification(
+          reason="summon_trigger_board_engine",
+          value="8",
+          band="medium",
+          matched_signals=_signals(
+              ("after_you_summon", "after you summon" in normalized),
+              ("pirate_trigger", "pirate" in normalized),
+              ("persistent_buff_engine", "give it +" in normalized),
+          ),
+      )
+  ```
 
-- [ ] **Step 5: Add the precise semantic reason**
+  Extend `_card_identity_reason()`:
 
-In `src/hsconfig/card_intent_taxonomy.py`, insert before generic `board_tempo`:
+  ```python
+  "TOY_518".lower(): "summon_trigger_board_engine",
+  "treasure distributor": "summon_trigger_board_engine",
+  "WON_065".lower(): "summon_trigger_board_engine",
+  "ship's chirurgeon": "summon_trigger_board_engine",
+  "ship’s chirurgeon": "summon_trigger_board_engine",
+  ```
 
-```python
-if _has_summon_trigger_board_engine(normalized):
-    return CardIntentClassification(
-        reason="summon_trigger_board_engine",
-        value="8",
-        band="medium",
-        matched_signals=_signals(
-            ("after_you_summon", "after you summon" in normalized),
-            ("persistent_buff", "give it +" in normalized),
-        ),
-    )
-```
+  In `static_semantics.py`, detect:
 
-Add:
+  ```python
+  if (
+      _contains(lowered, "after you summon")
+      and _contains(lowered, "give")
+  ):
+      _add(
+          families,
+          evidence,
+          "summon_trigger_board_engine",
+          "text",
+          "persistent post-summon buff trigger",
+      )
+  ```
 
-```python
-def _has_summon_trigger_board_engine(text: str) -> bool:
-    return (
-        "after you summon" in text
-        and "give it +" in text
-        and "battlecry:" not in text
-    )
-```
+- [ ] **Step 6: Register the documented OnBoard surface**
 
-- [ ] **Step 6: Emit the precise mechanic from static semantics**
+  Add to `MECHANIC_SUPPORT` in `mechanic_support.py`:
 
-In `src/hsconfig/static_semantics.py`, when the exact text matches `_has_summon_trigger_board_engine`, add `summon_trigger_board_engine` to semantic/mechanic families in addition to retaining the general `summon` metadata family. The generated source claim used for runtime lowering must set:
+  ```python
+  "summon_trigger_board_engine": {
+      "support_level": "partial",
+      "normal_path_surfaces": ["CARDID.json:OnBoardBonus"],
+      "warning_boundary": (
+          "Board value is representable; exact summon sequencing and "
+          "trigger eligibility remain broader bot evaluation."
+      ),
+  },
+  ```
 
-```python
-"mechanic": "summon_trigger_board_engine"
-```
+  In `semantic_runtime_gate.py`:
 
-Do not emit a second generic `summon` runtime-candidate claim for the same
-text. Keep `summon` only in metadata/evidence so the precise engine claim is
-the single surface candidate. Do not rewrite unrelated `summon` claims.
+  - add `reciprocal_hero_burn` to
+    `REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE`;
+  - remove its `STATIC_ACTION_SURFACES` entry;
+  - change `damage_aura_amplifier` to allow only:
 
-- [ ] **Step 7: Register safe runtime support**
+    ```python
+    {
+        ("OnBoardBonus", "card_role", "*"),
+        ("OnBoardBonus", "mechanic_usage", "*"),
+    }
+    ```
 
-In `src/hsconfig/mechanic_support.py`:
+  - add:
 
-```python
-"summon_trigger_board_engine": {
-    "support_level": "partial",
-    "normal_path_surfaces": ["CARDID.json:OnBoardBonus"],
-    "warning_boundary": (
-        "The persistent engine can be preserved on board; individual summon "
-        "ordering and generated target value remain broader bot evaluation."
-    ),
-},
-```
+    ```python
+    "summon_trigger_board_engine": {
+        ("OnBoardBonus", "card_role", "*"),
+        ("OnBoardBonus", "mechanic_usage", "*"),
+    },
+    ```
 
-In `src/hsconfig/semantic_runtime_gate.py`:
+  Change `decide_semantic_runtime()` so recognized semantic reasons are locked
+  before the general guide-lane allowance:
 
-```python
-"summon_trigger_board_engine": {
-    ("OnBoardBonus", "mechanic_usage", "*"),
-},
-```
+  ```python
+  if semantic_reason in REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE:
+      return SemanticRuntimeDecision(
+          False,
+          "semantic_surface_not_expressible",
+      )
 
-Extend `hero_power_cost_aura` with:
+  allowed_surfaces = STATIC_ACTION_SURFACES.get(semantic_reason)
+  if allowed_surfaces is not None:
+      if (runtime_block, claim_kind, condition) in allowed_surfaces:
+          return SemanticRuntimeDecision(
+              True,
+              "semantic_surface_supported",
+          )
+      return SemanticRuntimeDecision(
+          False,
+          "semantic_surface_not_expressible",
+      )
 
-```python
-("OnBoardBonus", "mechanic_usage", "*"),
-```
+  if source_lane in STATIC_SOURCE_LANES:
+      return SemanticRuntimeDecision(
+          False,
+          "semantic_surface_not_proven",
+      )
+  if source_lane in GUIDE_SOURCE_LANES:
+      return SemanticRuntimeDecision(True, "guide_surface_supported")
+  return SemanticRuntimeDecision(False, "semantic_surface_not_proven")
+  ```
 
-Keep the existing report-only set for conditional draw, conditional cost reduction, conditional self-damage resource, conditional target-kill burn, automatic summons, liability bodies, and location activation.
+  This preserves guide lowering for semantics that do not have a recognized
+  locked contract while preventing exact guides from reintroducing known unsafe
+  wildcard rows.
 
-- [ ] **Step 8: Add package-level persistent-engine assertions**
+- [ ] **Step 7: Lock the ShadowPriest semantic surface**
 
-In `tests/test_shadowpriest_visionai_semantic_surface_contract.py`, add:
+  Replace duplicate-oriented expectations in
+  `tests/test_shadowpriest_semantic_safety_wave.py` with semantic ownership
+  expectations. Before Task 5 deduplication, assert presence by set rather than
+  exact row count:
 
-```python
-papercraft = read_card_json(package_root, "TOY_381")
-chirurgeon = read_card_json(package_root, "WON_065")
-distributor = read_card_json(package_root, "TOY_518")
+  ```python
+  SAFE_ACTIVE_SURFACES = {
+      "DS1_233": {"BeforePlayCardBonus"},
+      "REV_290": {"BeforePlayCardBonus"},
+      "SW_446": {"OnBoardBonus"},
+      "SW_448": {"BeforeUseHeroPowerBonus"},
+      "TOY_381": {"OnBoardBonus"},
+      "TOY_518": {"OnBoardBonus"},
+      "WON_065": {"OnBoardBonus"},
+  }
 
-assert [
-    (row["condition"], row["value"])
-    for row in papercraft["OnBoardBonus"]["values"]
-] == [("*", "8")]
-assert [
-    (row["condition"], row["value"])
-    for row in chirurgeon["OnBoardBonus"]["values"]
-] == [("*", "8")]
-assert [
-    (row["condition"], row["value"])
-    for row in distributor["OnBoardBonus"]["values"]
-] == [("*", "8")]
-```
+  REPORT_ONLY_CARD_IDS = {
+      "CFM_637",
+      "DRG_056",
+      "GVG_009",
+      "NX2_019",
+      "SCH_514",
+      "SW_444",
+      "VAC_419",
+      "VAC_512",
+      "YOD_032",
+  }
+  ```
 
-- [ ] **Step 9: Verify GREEN**
+  Assert that report-only payloads contain only:
 
-```powershell
-pytest tests/test_card_intent_taxonomy.py tests/test_card_behavior_router.py tests/test_mechanic_support.py tests/test_semantic_runtime_gate.py -q
-pytest tests/test_shadowpriest_visionai_semantic_surface_contract.py tests/test_shadowpriest_semantic_safety_wave.py -q
-```
+  ```python
+  {"GameCardId", "ConfigComment"}
+  ```
 
-- [ ] **Step 10: Commit and push**
+  Assert:
 
-```powershell
-git diff --check
-git add src/hsconfig/card_intent_taxonomy.py src/hsconfig/static_semantics.py src/hsconfig/mechanic_support.py src/hsconfig/semantic_runtime_gate.py tests/test_card_intent_taxonomy.py tests/test_card_behavior_router.py tests/test_mechanic_support.py tests/test_semantic_runtime_gate.py tests/test_shadowpriest_visionai_semantic_surface_contract.py
-git commit -m "feat: lower safe persistent card engines"
-git push origin main
-```
+  - no `InHandPlayPriority` in any ShadowPriest CardID file;
+  - no `BeforeBattlecryTargetBonus` for `GVG_009` or `SW_444`;
+  - no `BeforePlayCardBonus` for `SW_448`;
+  - `SW_448` is absent from Mulligan holds;
+  - partial-source GlobalValues have no changed posture keys.
+
+- [ ] **Step 8: Run focused semantic tests**
+
+  ```powershell
+  pytest tests/test_card_intent_taxonomy.py tests/test_static_semantics.py tests/test_semantic_runtime_gate.py tests/test_card_behavior_router.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_visionai_semantic_surface_contract.py -q
+  ```
+
+- [ ] **Step 9: Review, commit, and push**
+
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/card_intent_taxonomy.py src/hsconfig/static_semantics.py src/hsconfig/mechanic_support.py src/hsconfig/semantic_runtime_gate.py tests/test_card_intent_taxonomy.py tests/test_static_semantics.py tests/test_semantic_runtime_gate.py tests/test_card_behavior_router.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_visionai_semantic_surface_contract.py
+  git add src/hsconfig/card_intent_taxonomy.py src/hsconfig/static_semantics.py src/hsconfig/mechanic_support.py src/hsconfig/semantic_runtime_gate.py tests/test_card_intent_taxonomy.py tests/test_static_semantics.py tests/test_semantic_runtime_gate.py tests/test_card_behavior_router.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_visionai_semantic_surface_contract.py
+  git commit -m "fix: lower only safe ShadowPriest semantics"
+  git push origin main
+  ```
 
 ---
 
-### Task 6: Deduplicate Runtime Rows And Harden Physical Readiness
+### Task 5: Deduplicate Runtime Rows And Derive Readiness From Physical Payloads
 
 **Files:**
+
+- Create: `src/hsconfig/runtime_row_identity.py`
 - Modify: `src/hsconfig/card_behavior_surface_router.py`
+- Modify: `src/hsconfig/compile_cardid.py`
 - Modify: `src/hsconfig/config_readiness.py`
+- Create: `tests/test_runtime_row_identity.py`
 - Modify: `tests/test_card_behavior_router.py`
-- Modify: `tests/test_config_readiness.py`
 - Modify: `tests/test_compile_cardid.py`
+- Modify: `tests/test_config_readiness.py`
 - Modify: `tests/test_shadowpriest_semantic_safety_wave.py`
 
 **Interfaces:**
+
 - Produces:
+
   ```python
-  _dedupe_runtime_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]
+  card_behavior_signature(row) -> tuple[str, str, str, str]
+  card_behavior_surface_key(row) -> tuple[str, str, str]
+  deduplicate_card_behavior_rows(
+      rows: Iterable[Mapping[str, Any]],
+  ) -> CardBehaviorDedupeResult
   ```
-  keyed by `(card_id, behavior_block, condition, value)`.
-- Changes:
+
+- `CardBehaviorDedupeResult.rows` contains unique rows.
+- Exact duplicates merge provenance.
+- Same card/block/condition with different values produces a conflict and no
+  physical row for that surface.
+- `build_config_readiness_report()` accepts a mapping of filename to parsed
+  payload; filename-only collections are rejected.
+
+- [ ] **Step 1: Write the shared-identity unit tests**
+
+  Create `tests/test_runtime_row_identity.py`:
+
   ```python
-  build_config_readiness_report(
-      *,
-      ...,
-      emitted_cardid_files: Mapping[str, Any],
-  ) -> dict[str, Any]
+  import pytest
+
+  from hsconfig.runtime_row_identity import (
+      card_behavior_signature,
+      deduplicate_card_behavior_rows,
+  )
+
+
+  def _row(value="8", claim_id="claim-a"):
+      return {
+          "card_id": "REV_290",
+          "behavior_block": "BeforePlayCardBonus",
+          "condition": "*",
+          "value": value,
+          "claim_id": claim_id,
+          "source_claim_ids": [claim_id],
+          "source_refs": [f"source-{claim_id}"],
+      }
+
+
+  def test_exact_runtime_duplicates_merge_provenance_once():
+      result = deduplicate_card_behavior_rows(
+          [_row(claim_id="claim-a"), _row(claim_id="claim-b")]
+      )
+
+      assert result.conflicts == []
+      assert result.merged_duplicate_count == 1
+      assert len(result.rows) == 1
+      assert card_behavior_signature(result.rows[0]) == (
+          "REV_290",
+          "BeforePlayCardBonus",
+          "*",
+          "8",
+      )
+      assert result.rows[0]["source_claim_ids"] == ["claim-a", "claim-b"]
+      assert result.rows[0]["merged_claim_ids"] == ["claim-a", "claim-b"]
+
+
+  def test_conflicting_values_fail_closed_for_the_surface():
+      result = deduplicate_card_behavior_rows(
+          [_row(value="6", claim_id="claim-a"), _row(value="8", claim_id="claim-b")]
+      )
+
+      assert result.rows == []
+      assert result.conflicts == [
+          {
+              "card_id": "REV_290",
+              "behavior_block": "BeforePlayCardBonus",
+              "condition": "*",
+              "values": ["6", "8"],
+              "reason": "conflicting_runtime_values",
+              "claim_ids": ["claim-a", "claim-b"],
+          }
+      ]
   ```
-  with no filename-only compatibility path.
 
-- [ ] **Step 1: Write row-deduplication tests**
+- [ ] **Step 2: Run the new test and verify RED**
 
-Import `_dedupe_runtime_rows` beside `route_card_behavior_surfaces`, then add
-to `tests/test_card_behavior_router.py`:
+  ```powershell
+  pytest tests/test_runtime_row_identity.py -q
+  ```
 
-```python
-def test_identical_runtime_signatures_merge_provenance_once():
-    claims = [
-        {
-            "claim_id": "claim-damage",
-            "claim_kind": "mechanic_usage",
-            "cards": ["GVG_009"],
-            "mechanic": "damage",
-            "evidence_text_short": "Deal 3 damage to each hero.",
-            "claim_readiness": "source_backed_static_semantics",
-            "source_confidence": "medium",
-            "source_refs": ["card-text"],
-        },
-        {
-            "claim_id": "claim-battlecry",
-            "claim_kind": "mechanic_usage",
-            "cards": ["GVG_009"],
-            "mechanic": "battlecry",
-            "evidence_text_short": "Battlecry: Deal 3 damage to each hero.",
-            "runtime_block": "BeforePlayCardBonus",
-            "runtime_value": "10",
-            "claim_readiness": "source_backed_static_semantics",
-            "source_confidence": "medium",
-            "source_refs": ["mechanic-tag"],
-        },
-    ]
+  Expected: module import fails.
 
-    report = route_card_behavior_surfaces(claims)
-    rows = [
-        row
-        for row in report["rows"]
-        if row["card_id"] == "GVG_009"
-        and row["behavior_block"] == "BeforePlayCardBonus"
-        and row["condition"] == "*"
-        and row["value"] == "10"
-    ]
+- [ ] **Step 3: Implement the shared row-identity module**
 
-    assert len(rows) == 1
-    assert rows[0]["source_claim_ids"] == ["claim-damage", "claim-battlecry"]
-    assert rows[0]["source_refs"] == ["card-text", "mechanic-tag"]
-    assert rows[0]["merged_runtime_row_count"] == 2
-```
+  Create `src/hsconfig/runtime_row_identity.py` with:
 
-Add:
+  ```python
+  from __future__ import annotations
 
-```python
-def test_different_runtime_values_do_not_merge():
-    rows = [
-        {
-            "card_id": "GVG_009",
-            "behavior_block": "BeforePlayCardBonus",
-            "condition": "*",
-            "value": "8",
-            "source_claim_ids": ["claim-eight"],
-            "source_refs": ["source-eight"],
-        },
-        {
-            "card_id": "GVG_009",
-            "behavior_block": "BeforePlayCardBonus",
-            "condition": "*",
-            "value": "10",
-            "source_claim_ids": ["claim-ten"],
-            "source_refs": ["source-ten"],
-        },
-    ]
+  from dataclasses import dataclass
+  from typing import Any, Iterable, Mapping
 
-    assert len(_dedupe_runtime_rows(rows)) == 2
-```
 
-- [ ] **Step 2: Write readiness API rejection tests**
+  @dataclass(frozen=True)
+  class CardBehaviorDedupeResult:
+      rows: list[dict[str, Any]]
+      conflicts: list[dict[str, Any]]
+      merged_duplicate_count: int
 
-Add `import pytest` and
-`from collections.abc import Mapping` to
-`tests/test_config_readiness.py`. Add this payload helper:
 
-```python
-def _effect_payloads(*filenames: str) -> dict[str, dict]:
-    return {
-        filename: {
-            "GameCardId": filename.removesuffix(".json"),
-            "BeforePlayCardBonus": {
-                "values": [{"condition": "*", "value": "6"}]
-            },
-        }
-        for filename in filenames
-    }
-```
+  def card_behavior_signature(
+      row: Mapping[str, Any],
+  ) -> tuple[str, str, str, str]:
+      return (
+          str(row["card_id"]),
+          str(row["behavior_block"]),
+          str(row.get("condition", "*")),
+          str(row["value"]),
+      )
 
-Change `_report_for_card()` to accept
-`emitted_cardid_files: Mapping[str, object] | None = None` and pass
-`emitted_cardid_files or {}` to `build_config_readiness_report()`. Add
-`emitted_cardid_files={}` to `_two_card_readiness_report()`.
 
-Replace filename-only success inputs such as
-`["CFM_637.json"]` with `_effect_payloads("CFM_637.json")`. Use an explicit
-metadata-only payload in tests that prove report-only behavior.
+  def card_behavior_surface_key(
+      row: Mapping[str, Any],
+  ) -> tuple[str, str, str]:
+      signature = card_behavior_signature(row)
+      return signature[:3]
+  ```
 
-Add:
+  Implement `deduplicate_card_behavior_rows()` in two passes:
 
-```python
-@pytest.mark.parametrize(
-    "emitted_cardid_files",
-    [None, ["EX1_001.json"], ("EX1_001.json",), {"EX1_001.json"}],
-)
-def test_readiness_requires_payload_mapping(emitted_cardid_files):
-    with pytest.raises(TypeError, match="emitted_cardid_files must be a mapping"):
-        build_config_readiness_report(
-            deck_identity=_one_card_identity("EX1_001"),
-            claim_coverage=_covered_claims("EX1_001", "guide_backed"),
-            gameplan_contract={
-                "cards": {
-                    "EX1_001": {
-                        "card_id": "EX1_001",
-                        "name": "EX1_001",
-                        "roles": ["pressure"],
-                        "source_claim_ids": ["claim-ex1"],
-                    }
-                }
-            },
-            mulligan_plan={"rules": []},
-            card_behavior_plan={"rows": []},
-            combo_plan={"combos": []},
-            global_values_authority_matrix={"allowed_step1_overlays": []},
-            emitted_cardid_files=emitted_cardid_files,
-        )
-```
+  1. group by `card_behavior_surface_key`;
+  2. when a group has more than one value, add one sorted conflict and emit no
+     row for that surface;
+  3. otherwise preserve the first row, merge sorted unique
+     `source_claim_ids`, `source_refs`, and `claim_id` values into
+     `merged_claim_ids`;
+  4. sort output rows by `card_behavior_signature`.
 
-Add:
+  Use this implementation:
 
-```python
-def test_metadata_only_payload_is_not_runtime_emitted():
-    report = build_config_readiness_report(
-        deck_identity=_one_card_identity("EX1_001"),
-        claim_coverage=_covered_claims("EX1_001", "guide_backed"),
-        gameplan_contract={
-            "cards": {
-                "EX1_001": {
-                    "card_id": "EX1_001",
-                    "name": "EX1_001",
-                    "roles": ["pressure"],
-                    "source_claim_ids": ["claim-ex1"],
-                }
-            }
-        },
-        mulligan_plan={"rules": []},
-        card_behavior_plan={"rows": []},
-        combo_plan={"combos": []},
-        global_values_authority_matrix={"allowed_step1_overlays": []},
-        emitted_cardid_files={
-            "EX1_001.json": {
-                "GameCardId": "EX1_001",
-                "ConfigComment": "metadata only",
-            }
-        },
-    )
+  ```python
+  def _string_values(value: Any) -> list[str]:
+      if isinstance(value, list):
+          return [str(item) for item in value if str(item)]
+      if value is None or not str(value):
+          return []
+      return [str(value)]
 
-    assert report["summary"]["runtime_emitted"] == 0
-```
 
-- [ ] **Step 3: Verify RED**
+  def deduplicate_card_behavior_rows(
+      rows: Iterable[Mapping[str, Any]],
+  ) -> CardBehaviorDedupeResult:
+      groups: dict[
+          tuple[str, str, str],
+          list[dict[str, Any]],
+      ] = {}
+      for raw_row in rows:
+          row = dict(raw_row)
+          groups.setdefault(
+              card_behavior_surface_key(row),
+              [],
+          ).append(row)
 
-```powershell
-pytest tests/test_card_behavior_router.py tests/test_config_readiness.py tests/test_compile_cardid.py -q
-```
+      unique_rows: list[dict[str, Any]] = []
+      conflicts: list[dict[str, Any]] = []
+      merged_duplicate_count = 0
 
-- [ ] **Step 4: Implement stable deduplication**
+      for surface_key in sorted(groups):
+          group = groups[surface_key]
+          values = sorted({str(row["value"]) for row in group})
+          claim_ids = sorted(
+              {
+                  claim_id
+                  for row in group
+                  for claim_id in (
+                      _string_values(row.get("claim_id"))
+                      + _string_values(row.get("merged_claim_ids"))
+                  )
+              }
+          )
+          if len(values) > 1:
+              card_id, behavior_block, condition = surface_key
+              conflicts.append(
+                  {
+                      "card_id": card_id,
+                      "behavior_block": behavior_block,
+                      "condition": condition,
+                      "values": values,
+                      "reason": "conflicting_runtime_values",
+                      "claim_ids": claim_ids,
+                  }
+              )
+              continue
 
-In `src/hsconfig/card_behavior_surface_router.py`, change the return to:
+          merged = dict(group[0])
+          merged["source_claim_ids"] = sorted(
+              {
+                  item
+                  for row in group
+                  for item in _string_values(
+                      row.get("source_claim_ids")
+                  )
+              }
+          )
+          merged["source_refs"] = sorted(
+              {
+                  item
+                  for row in group
+                  for item in _string_values(row.get("source_refs"))
+              }
+          )
+          merged["merged_claim_ids"] = claim_ids
+          merged_duplicate_count += len(group) - 1
+          unique_rows.append(merged)
 
-```python
-return {
-    "rows": _dedupe_runtime_rows(rows),
-    "suppressed": suppressed,
-    "option_resolution": option_resolution,
-}
-```
+      unique_rows.sort(key=card_behavior_signature)
+      return CardBehaviorDedupeResult(
+          rows=unique_rows,
+          conflicts=conflicts,
+          merged_duplicate_count=merged_duplicate_count,
+      )
+  ```
 
-Add:
+  Export:
 
-```python
-def _dedupe_runtime_rows(
-    rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-    order: list[tuple[str, str, str, str]] = []
-    for row in rows:
-        signature = (
-            str(row.get("card_id", "")),
-            str(row.get("behavior_block", "")),
-            str(row.get("condition", "")),
-            str(row.get("value", "")),
-        )
-        existing = merged.get(signature)
-        if existing is None:
-            copied = dict(row)
-            copied["source_claim_ids"] = list(
-                dict.fromkeys(str(item) for item in row.get("source_claim_ids", []))
-            )
-            copied["source_refs"] = list(
-                dict.fromkeys(str(item) for item in row.get("source_refs", []))
-            )
-            copied["merged_runtime_row_count"] = 1
-            merged[signature] = copied
-            order.append(signature)
-            continue
-        existing["source_claim_ids"] = list(
-            dict.fromkeys(
-                [
-                    *existing.get("source_claim_ids", []),
-                    *[str(item) for item in row.get("source_claim_ids", [])],
-                ]
-            )
-        )
-        existing["source_refs"] = list(
-            dict.fromkeys(
-                [
-                    *existing.get("source_refs", []),
-                    *[str(item) for item in row.get("source_refs", [])],
-                ]
-            )
-        )
-        existing["merged_runtime_row_count"] = int(
-            existing.get("merged_runtime_row_count", 1)
-        ) + 1
-    return [merged[signature] for signature in order]
-```
+  ```python
+  __all__ = (
+      "CardBehaviorDedupeResult",
+      "card_behavior_signature",
+      "card_behavior_surface_key",
+      "deduplicate_card_behavior_rows",
+  )
+  ```
 
-The compiler continues to ignore diagnostic provenance fields when writing runtime JSON.
+- [ ] **Step 4: Apply dedupe in the semantic router**
 
-- [ ] **Step 5: Remove filename-only readiness inference**
+  At the end of `route_card_behavior_surfaces()`:
 
-In `src/hsconfig/config_readiness.py`:
+  ```python
+  dedupe = deduplicate_card_behavior_rows(rows)
+  suppressed.extend(dedupe.conflicts)
+  return {
+      "rows": dedupe.rows,
+      "suppressed": suppressed,
+      "option_resolution": option_resolution,
+      "merged_duplicate_row_count": dedupe.merged_duplicate_count,
+      "conflicting_runtime_rows": dedupe.conflicts,
+  }
+  ```
 
-- Make `emitted_cardid_files` required and typed as `Mapping[str, Any]`.
-- Remove the `fallback_cardids` argument.
-- Remove the `None` branch and `payloads is None` branch.
-- Add:
+  Update `tests/test_card_behavior_router.py` to prove:
 
-```python
-if not isinstance(emitted_cardid_files, Mapping):
-    raise TypeError("emitted_cardid_files must be a mapping of filename to payload")
-```
+  - Cathedral duplicate claims produce one physical-plan row;
+  - identical Darkbishop claims produce one row;
+  - conflicting values produce no row and one suppression reason.
 
-- Add a CardID to `meaningful_cardids` only when `_has_runtime_effect_rows(payload)` is true.
-- Update the remaining `build_config_readiness_report()` test callers to pass
-  `{}` when no physical CardID file is present and `_effect_payloads(...)`
-  when a meaningful physical row is expected.
-- Do not change `src/hsconfig/package_builder.py`; it already passes `cardid_behavior_files`.
+- [ ] **Step 5: Add defensive physical compiler enforcement**
 
-- [ ] **Step 6: Replace package duplicate-row expectations**
+  In `compile_cardid.py`, deduplicate the combined behavior rows before
+  `_append_explicit_behavior_rows()`:
 
-In `tests/test_shadowpriest_semantic_safety_wave.py`, replace multi-row
-identical signatures with:
+  ```python
+  dedupe = deduplicate_card_behavior_rows(
+      [
+          {**dict(row), "card_id": card_id}
+          for row in card.get("behavior_rows", [])
+      ]
+  )
+  if dedupe.conflicts:
+      raise ValueError(
+          f"{card_id}: conflicting runtime values: {dedupe.conflicts}"
+      )
+  _append_explicit_behavior_rows(
+      config,
+      deck_name,
+      card_id,
+      dedupe.rows,
+  )
+  ```
 
-```python
-@pytest.mark.parametrize(
-    ("card_id", "block_name", "expected_signatures"),
-    [
-        ("DS1_233", "BeforePlayCardBonus", [("*", "12")]),
-        ("GVG_009", "BeforePlayCardBonus", [("*", "10")]),
-        ("REV_290", "BeforePlayCardBonus", [("*", "8")]),
-        ("SW_446", "OnBoardBonus", [("*", "10")]),
-        ("TOY_381", "OnBoardBonus", [("*", "8")]),
-        ("WON_065", "OnBoardBonus", [("*", "8")]),
-        ("TOY_518", "OnBoardBonus", [("*", "8")]),
-        ("VAC_419", "BeforePlayCardBonus", [("*", "10")]),
-    ],
-)
-def test_supported_runtime_rows_are_unique(
-    package,
-    card_id,
-    block_name,
-    expected_signatures,
-):
-    _assert_runtime_rows(_card(package, card_id), block_name, expected_signatures)
-```
+  Add compiler tests proving exact duplicates emit one JSON value row and
+  conflicts raise before a package can be written.
 
-- [ ] **Step 7: Verify GREEN and physical/report parity**
+- [ ] **Step 6: Reject filename-only readiness**
 
-```powershell
-pytest tests/test_card_behavior_router.py tests/test_config_readiness.py tests/test_compile_cardid.py tests/test_shadowpriest_semantic_safety_wave.py -q
-```
+  Change `build_config_readiness_report()` to:
 
-Expected:
+  ```python
+  emitted_cardid_files: Mapping[str, Mapping[str, Any]] | None = None,
+  ```
 
-- no duplicate physical rows,
-- no duplicate reported rows,
-- `physical_cardid_runtime_rows == reported_cardid_runtime_rows`,
-- metadata-only files never count as `runtime_emitted`.
+  Change `_emitted_cardid_file_map()`:
 
-- [ ] **Step 8: Commit and push**
+  ```python
+  if emitted_cardid_files is None:
+      return {}, set()
+  if not isinstance(emitted_cardid_files, Mapping):
+      raise TypeError(
+          "emitted_cardid_files must map filename to parsed payload"
+      )
+  ```
 
-```powershell
-git diff --check
-git add src/hsconfig/card_behavior_surface_router.py src/hsconfig/config_readiness.py tests/test_card_behavior_router.py tests/test_config_readiness.py tests/test_compile_cardid.py tests/test_shadowpriest_semantic_safety_wave.py
-git commit -m "fix: derive readiness from unique physical rows"
-git push origin main
-```
+  A card enters `meaningful_cardids` only when
+  `_has_runtime_effect_rows(payload)` returns true.
+
+  Update all test callers:
+
+  - use `{}` when no physical file exists;
+  - use `{"CARD_A.json": payload}` for a meaningful file;
+  - assert metadata-only payloads do not count;
+  - assert a list such as `["CARD_A.json"]` raises `TypeError`.
+
+- [ ] **Step 7: Replace duplicate expectations with exact uniqueness**
+
+  In `tests/test_shadowpriest_semantic_safety_wave.py`, assert:
+
+  ```python
+  EXPECTED_RUNTIME_ROWS = {
+      ("DS1_233", "BeforePlayCardBonus", "*", "12"),
+      ("REV_290", "BeforePlayCardBonus", "*", "8"),
+      ("SW_446", "OnBoardBonus", "*", "10"),
+      ("SW_448", "BeforeUseHeroPowerBonus", "*", "10"),
+      ("TOY_381", "OnBoardBonus", "*", "8"),
+      ("TOY_518", "OnBoardBonus", "*", "8"),
+      ("WON_065", "OnBoardBonus", "*", "8"),
+  }
+  ```
+
+  Build signatures from every physical CardID `values` row and assert:
+
+  ```python
+  assert set(signatures) == EXPECTED_RUNTIME_ROWS
+  assert len(signatures) == len(set(signatures))
+  ```
+
+  Keep the existing runtime-row trace parity assertion:
+
+  ```python
+  assert trace["physical_cardid_runtime_rows"] == trace["reported_cardid_runtime_rows"]
+  assert trace["unreported_runtime_rows"] == []
+  assert trace["reported_rows_missing_runtime"] == []
+  ```
+
+- [ ] **Step 8: Run focused row/readiness tests**
+
+  ```powershell
+  pytest tests/test_runtime_row_identity.py tests/test_card_behavior_router.py tests/test_compile_cardid.py tests/test_config_readiness.py tests/test_shadowpriest_semantic_safety_wave.py -q
+  ```
+
+- [ ] **Step 9: Review, commit, and push**
+
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/runtime_row_identity.py src/hsconfig/card_behavior_surface_router.py src/hsconfig/compile_cardid.py src/hsconfig/config_readiness.py tests/test_runtime_row_identity.py tests/test_card_behavior_router.py tests/test_compile_cardid.py tests/test_config_readiness.py tests/test_shadowpriest_semantic_safety_wave.py
+  git add src/hsconfig/runtime_row_identity.py src/hsconfig/card_behavior_surface_router.py src/hsconfig/compile_cardid.py src/hsconfig/config_readiness.py tests/test_runtime_row_identity.py tests/test_card_behavior_router.py tests/test_compile_cardid.py tests/test_config_readiness.py tests/test_shadowpriest_semantic_safety_wave.py
+  git commit -m "fix: deduplicate physical CardID runtime rows"
+  git push origin main
+  ```
 
 ---
 
-### Task 7: Make Operator Reports State Assurance Precisely
+### Task 6: Make Contract Preflight Match Strict Validate And Apply
 
 **Files:**
-- Modify: `src/hsconfig/semantic_audit.py`
-- Modify: `src/hsconfig/package_builder.py`
-- Modify: `src/hsconfig/operator_summary.py`
-- Modify: `src/hsconfig/operator_guidance.py`
-- Modify: `tests/test_semantic_audit.py`
-- Modify: `tests/test_operator_summary.py`
-- Modify: `tests/test_operator_guidance.py`
+
+- Modify: `src/hsconfig/contract_preflight.py`
+- Modify: `tests/test_contract_preflight.py`
 
 **Interfaces:**
+
+- `build_package_contract_preflight(package)` loads the same baseline/profile
+  artifacts and calls `validate_config_package()` with the same strict flags as
+  `validate_payload()` and `apply_payload()`.
+- `ready_to_use_from_operator_summary` is true only when validation passes,
+  config quality is clean, and existing operator authority fields agree.
+- No change to `evaluate_apply_gate()` or any write path.
+
+- [ ] **Step 1: Write strict parity tests**
+
+  Add this helper to `tests/test_contract_preflight.py`:
+
+  ```python
+  def _write_strict_globalvalues_reports(package: Path) -> None:
+      globalvalues_path = (
+          package
+          / "CustomConfig"
+          / "shadowpriest"
+          / "GlobalValues.json"
+      )
+      globalvalues = json.loads(
+          globalvalues_path.read_text(encoding="utf-8")
+      )
+      _write_json(
+          package / "reports" / "globalvalues_baseline.json",
+          globalvalues,
+      )
+      _write_json(
+          package / "reports" / "globalvalues_profile.json",
+          {
+              "key_count": len(globalvalues),
+              "keys": {
+                  key: {"status": "baseline_confirmed"}
+                  for key in globalvalues
+              },
+              "generated_overlay_keys": [],
+              "expected_overlay_keys": [],
+              "missing_overlay_keys": [],
+              "summary": {
+                  "all_expected_overlay_keys_accounted_for": True
+              },
+          },
+      )
+  ```
+
+  Add:
+
+  ```python
+  def test_package_preflight_fails_when_required_globalvalues_profile_is_missing(
+      tmp_path,
+  ):
+      package = _contract_preflight_clean_package(tmp_path)
+      _write_strict_globalvalues_reports(package)
+      (package / "reports" / "globalvalues_profile.json").unlink()
+
+      report = build_package_contract_preflight(package)
+
+      assert report["validate_config_package_status"] == "failed"
+      assert report["ready_to_use_from_operator_summary"] is False
+      assert "validate_config_package_failed" in report["failures"]
+
+
+  def test_package_preflight_ready_requires_clean_quality(
+      tmp_path,
+      monkeypatch,
+  ):
+      package = _contract_preflight_clean_package(tmp_path)
+      _write_strict_globalvalues_reports(package)
+      monkeypatch.setattr(
+          "hsconfig.config_quality_contract.build_config_quality_report",
+          lambda package: {
+              "status": "attention",
+              "checks": {},
+              "problems": [{"check": "fixture_attention"}],
+          },
+      )
+
+      report = build_package_contract_preflight(package)
+
+      assert report["validate_config_package_status"] == "passed"
+      assert report["config_quality_status"] == "attention"
+      assert report["ready_to_use_from_operator_summary"] is False
+  ```
+
+  Add a command-level parity test using the existing command payload instead of
+  stdout parsing:
+
+  ```python
+  from hsconfig.commands.apply import validate_payload
+
+
+  def test_validate_payload_and_preflight_agree_on_missing_profile(tmp_path):
+      package = _contract_preflight_clean_package(tmp_path)
+      _write_strict_globalvalues_reports(package)
+      (package / "reports" / "globalvalues_profile.json").unlink()
+
+      validation, exit_code = validate_payload(
+          Namespace(package=str(package))
+      )
+      preflight = build_package_contract_preflight(package)
+
+      assert exit_code == 1
+      assert validation["status"] == "failed"
+      assert preflight["validate_config_package_status"] == "failed"
+      assert preflight["ready_to_use_from_operator_summary"] is False
+  ```
+
+- [ ] **Step 2: Run tests and verify RED**
+
+  ```powershell
+  pytest tests/test_contract_preflight.py -q
+  ```
+
+- [ ] **Step 3: Load the required package validation artifacts**
+
+  In `contract_preflight.py`, import:
+
+  ```python
+  from hsconfig.package_io import read_optional_profile, read_required_baseline
+  ```
+
+  Replace the preflight validation call with:
+
+  ```python
+  baseline = read_required_baseline(package_path)
+  profile = read_optional_profile(package_path)
+  validation = validate_config_package(
+      package_path,
+      globalvalues_baseline=baseline,
+      globalvalues_profile=profile,
+      require_complete_package=True,
+      require_globalvalues_profile=True,
+  )
+  ```
+
+  Keep the existing exception-to-failed-report boundary.
+
+- [ ] **Step 4: Make readiness include validation and quality**
+
+  Replace the readiness projection with:
+
+  ```python
+  ready_to_use = (
+      validation_status == "passed"
+      and config_quality_status == "clean"
+      and technical_status == "VALID_PACKAGE"
+      and runtime_apply_mode == "load_safe_apply"
+      and runtime_apply_allowed is True
+      and runtime_apply_authority == normal_authority
+  )
+  ```
+
+  Do not use this field inside the runtime apply gate.
+
+- [ ] **Step 5: Run focused parity and apply-boundary tests**
+
+  ```powershell
+  pytest tests/test_contract_preflight.py tests/test_apply_gate.py tests/test_apply_authority_boundary.py tests/test_runtime_apply.py -q
+  ```
+
+  Expected:
+
+  - preflight and validate agree;
+  - apply authority remains `operator_summary.json`;
+  - no config-quality or semantic-handoff field becomes a write gate.
+
+- [ ] **Step 6: Review, commit, and push**
+
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/contract_preflight.py tests/test_contract_preflight.py
+  git add src/hsconfig/contract_preflight.py tests/test_contract_preflight.py
+  git commit -m "fix: align preflight with strict package validation"
+  git push origin main
+  ```
+
+---
+
+### Task 7: Separate Load Safety, Source Authority, Semantic Closure, And Optimality
+
+**Files:**
+
+- Modify: `src/hsconfig/operator_summary.py`
+- Modify: `src/hsconfig/operator_guidance.py`
+- Modify: `src/hsconfig/semantic_audit.py`
+- Modify: `src/hsconfig/package_builder.py`
+- Test: `tests/test_operator_summary.py`
+- Test: `tests/test_operator_guidance.py`
+- Test: `tests/test_semantic_audit.py`
+
+**Interfaces:**
+
 - Produces:
+
   ```python
   operator_summary["configuration_assurance"] = {
       "load_safety": "proven" | "not_proven",
+      "source_authority": "exact_deck" | "archetype_only" | "partial" | "unproven",
       "semantic_closure": "closed" | "attention" | "insufficient_evidence",
       "in_client_behavior": "not_proven_by_pre_run_contract",
       "optimality_claim_allowed": False,
+      "runtime_gate_impact": "none",
   }
   ```
-- Does not affect `runtime_apply_allowed`, `runtime_apply_mode`, or `apply_policy`.
 
-- [ ] **Step 1: Write semantic-audit rendering tests**
+- Does not alter `runtime_apply_allowed`, `runtime_apply_mode`,
+  `runtime_apply_contract`, or `apply_policy`.
+- Semantic audit reports metadata completeness separately from physical runtime
+  coverage.
 
-Add to `tests/test_semantic_audit.py`:
+- [ ] **Step 1: Write operator-assurance tests**
 
-```python
-def test_semantic_audit_separates_metadata_from_runtime_closure():
-    markdown = render_semantic_audit_markdown(
-        {
-            "semantic_enrichment_status": "complete",
-            "deckwide_effects": [],
-            "cards": [],
-            "semantic_enrichment_warnings": [],
-        },
-        config_readiness_report={
-            "summary": {
-                "total_cards": 16,
-                "runtime_emitted": 8,
-                "report_only_supported": 7,
-                "globalvalues_only": 1,
-            }
-        },
-    )
+  Add to `tests/test_operator_summary.py`:
 
-    assert "Metadata enrichment status: `complete`" in markdown
-    assert "Runtime-emitted cards: `8/16`" in markdown
-    assert "Report-only supported cards: `7`" in markdown
-    assert "GlobalValues-only cards: `1`" in markdown
-    assert "\nStatus: `complete`\n" not in markdown
-```
+  ```python
+  def test_partial_load_safe_package_does_not_claim_optimality():
+      summary = build_operator_summary(
+          deck_name="ShadowPriest",
+          deck_code="fixture",
+          technical_validation={"status": "passed"},
+          guide_source_depth={
+              "source_depth_status": "static_semantics_only",
+              "claim_count": 1,
+          },
+          generated_files=[
+              "CustomConfig/shadowpriest/GlobalValues.json",
+              "CustomConfig/shadowpriest/Mulligan.json",
+          ],
+          source_claim_gap_report={
+              "summary": {
+                  "first_missing_chain": {
+                      "card_id": "VAC_419",
+                      "first_missing_link": "needs_condition_lowering",
+                      "next_action": "add_documented_health_condition",
+                  },
+                  "source_quality_lane_counts": {
+                      "official_static_semantics": 1
+                  },
+              }
+          },
+          card_behavior_plan_report={
+              "rows": [],
+              "suppressed": [
+                  {"reason": "semantic_surface_not_expressible"}
+              ],
+          },
+      )
 
-Update the existing rendering test:
+      assurance = summary["configuration_assurance"]
+      assert assurance["load_safety"] == "proven"
+      assert assurance["source_authority"] == "partial"
+      assert assurance["semantic_closure"] == "attention"
+      assert assurance["in_client_behavior"] == (
+          "not_proven_by_pre_run_contract"
+      )
+      assert assurance["optimality_claim_allowed"] is False
+      assert assurance["runtime_gate_impact"] == "none"
+      assert summary["runtime_apply_allowed"] is True
+  ```
 
-```python
-assert "Metadata enrichment status: `partial`" in markdown
-```
+  Add exact and archetype-only mappings:
 
-Remove its old `assert "Status: `partial`" in markdown` assertion.
+  ```python
+  from hsconfig.operator_summary import _configuration_source_authority
 
-- [ ] **Step 2: Write operator-assurance tests**
 
-Add to `tests/test_operator_summary.py`:
+  @pytest.mark.parametrize(
+      ("source_status", "source_lanes", "expected"),
+      [
+          (
+              "SOURCE_BACKED_STRONG",
+              ["deck_matched_public_guide"],
+              "exact_deck",
+          ),
+          (
+              "SOURCE_BACKED_PARTIAL",
+              ["archetype_matched_public_guide"],
+              "archetype_only",
+          ),
+          (
+              "SOURCE_BACKED_PARTIAL",
+              ["official_static_semantics"],
+              "partial",
+          ),
+          ("SOURCE_NEEDED", [], "unproven"),
+      ],
+  )
+  def test_assurance_source_authority_mapping(
+      source_status,
+      source_lanes,
+      expected,
+  ):
+      assert _configuration_source_authority(
+          source_status,
+          source_lanes,
+      ) == expected
+  ```
 
-```python
-def test_load_safe_attention_summary_does_not_claim_optimality():
-    summary = build_operator_summary(
-        technical_validation={"status": "passed"},
-        generated_files=[
-            "CustomConfig/shadowpriest/GlobalValues.json",
-            "CustomConfig/shadowpriest/Mulligan.json",
-        ],
-        card_behavior_plan_report={
-            "rows": [],
-            "suppressed": [
-                {"reason": "semantic_surface_not_expressible"}
-            ],
-        },
-    )
+- [ ] **Step 2: Write semantic-audit rendering tests**
 
-    assurance = summary["configuration_assurance"]
-    assert assurance["load_safety"] == "proven"
-    assert assurance["semantic_closure"] == "attention"
-    assert assurance["in_client_behavior"] == "not_proven_by_pre_run_contract"
-    assert assurance["optimality_claim_allowed"] is False
-    assert summary["runtime_apply_allowed"] is True
-```
+  Add to `tests/test_semantic_audit.py`:
 
-Extend the existing
-`test_source_backed_valid_package_is_ready_to_apply()`:
+  ```python
+  def test_semantic_audit_separates_metadata_from_runtime_coverage():
+      markdown = render_semantic_audit_markdown(
+          {
+              "semantic_enrichment_status": "complete",
+              "deckwide_effects": [],
+              "cards": [],
+              "semantic_enrichment_warnings": [],
+          },
+          config_readiness_report={
+              "summary": {
+                  "total_cards": 16,
+                  "runtime_emitted": 7,
+                  "report_only_supported": 9,
+                  "globalvalues_only": 0,
+              }
+          },
+      )
 
-```python
-assurance = summary["configuration_assurance"]
-assert assurance == {
-    "load_safety": "proven",
-    "semantic_closure": "closed",
-    "in_client_behavior": "not_proven_by_pre_run_contract",
-    "optimality_claim_allowed": False,
-    "runtime_gate_impact": "none",
-}
-assert summary["operator_guidance"]["configuration_assurance"] == assurance
-```
+      assert "Metadata enrichment status: `complete`" in markdown
+      assert "Runtime-emitted cards: `7/16`" in markdown
+      assert "Report-only supported cards: `9`" in markdown
+      assert "In-client behavior: `not proven`" in markdown
+  ```
 
-- [ ] **Step 3: Verify RED**
+- [ ] **Step 3: Run tests and verify RED**
 
-```powershell
-pytest tests/test_semantic_audit.py tests/test_operator_summary.py tests/test_operator_guidance.py -q
-```
+  ```powershell
+  pytest tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_semantic_audit.py -q
+  ```
 
-- [ ] **Step 4: Extend semantic audit renderer**
+- [ ] **Step 4: Add the non-gating assurance projection**
 
-Change:
+  In `operator_summary.py`, derive source authority with:
 
-```python
-def render_semantic_audit_markdown(
-    report: dict[str, Any],
-    *,
-    config_readiness_report: dict[str, Any] | None = None,
-) -> str:
-```
+  ```python
+  def _configuration_source_authority(
+      source_status: str,
+      source_lanes: list[str],
+  ) -> str:
+      if (
+          source_status == "SOURCE_BACKED_STRONG"
+          and "deck_matched_public_guide" in source_lanes
+      ):
+          return "exact_deck"
+      if "archetype_matched_public_guide" in source_lanes:
+          return "archetype_only"
+      if source_status == "SOURCE_BACKED_PARTIAL":
+          return "partial"
+      return "unproven"
+  ```
 
-Render:
+  After the existing semantic-handoff projection, add:
 
-```markdown
-Metadata enrichment status: `<status>`
+  ```python
+  source_lanes = _operator_source_lanes(
+      source_claim_gap_report or {},
+      source_to_runtime_explainability_report or {},
+  )
+  configuration_assurance = {
+      "load_safety": (
+          "proven" if load_safe_to_install else "not_proven"
+      ),
+      "source_authority": _configuration_source_authority(
+          source_status_resolution.source_backed_status,
+          source_lanes,
+      ),
+      "semantic_closure": str(
+          semantic_handoff.get(
+              "semantic_handoff_status",
+              "insufficient_evidence",
+          )
+      ),
+      "in_client_behavior": "not_proven_by_pre_run_contract",
+      "optimality_claim_allowed": False,
+      "runtime_gate_impact": "none",
+  }
+  ```
 
-## Runtime Semantic Closure
+  Add it to the summary and project it unchanged through
+  `operator_guidance.py`. Do not reference it from apply-gate code.
 
-- Runtime-emitted cards: `{runtime}/{total}`
-- Report-only supported cards: `<report_only>`
-- GlobalValues-only cards: `<globalvalues_only>`
-```
+- [ ] **Step 5: Extend semantic audit with physical readiness**
 
-In `src/hsconfig/package_builder.py`, pass the already-built `config_readiness_report`.
+  Change:
 
-- [ ] **Step 5: Add non-gating assurance projection**
+  ```python
+  def render_semantic_audit_markdown(
+      report: dict[str, Any],
+      *,
+      config_readiness_report: dict[str, Any] | None = None,
+  ) -> str:
+  ```
 
-In `src/hsconfig/operator_summary.py`, after `semantic_handoff` is built:
+  Render:
 
-```python
-configuration_assurance = {
-    "load_safety": "proven" if load_safe_to_install else "not_proven",
-    "semantic_closure": str(
-        semantic_handoff.get("semantic_handoff_status", "insufficient_evidence")
-    ),
-    "in_client_behavior": "not_proven_by_pre_run_contract",
-    "optimality_claim_allowed": False,
-    "runtime_gate_impact": "none",
-}
-```
+  ```markdown
+  Metadata enrichment status: `<status>`
 
-Add it to the summary. Do not use it inside `_runtime_apply_contract()`, `evaluate_apply_gate()`, or any write path.
+  ## Runtime Semantic Coverage
 
-In `src/hsconfig/operator_guidance.py`, project:
+  - Runtime-emitted cards: `<runtime>/<total>`
+  - Report-only supported cards: `<report_only>`
+  - GlobalValues-only cards: `<globalvalues_only>`
+  - In-client behavior: `not proven`
+  ```
 
-```python
-"configuration_assurance": summary.get(
-    "configuration_assurance",
-    {
-        "load_safety": "not_proven",
-        "semantic_closure": "insufficient_evidence",
-        "in_client_behavior": "not_proven_by_pre_run_contract",
-        "optimality_claim_allowed": False,
-        "runtime_gate_impact": "none",
-    },
-),
-```
+  In `package_builder.py`, pass the already-built
+  `config_readiness_report` into the renderer.
 
-- [ ] **Step 6: Verify GREEN and apply-boundary invariants**
+- [ ] **Step 6: Run operator and apply-boundary regressions**
 
-```powershell
-pytest tests/test_semantic_audit.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_apply_authority_boundary.py tests/test_apply_gate.py tests/test_runtime_apply.py -q
-```
+  ```powershell
+  pytest tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_semantic_audit.py tests/test_apply_gate.py tests/test_apply_authority_boundary.py tests/test_runtime_apply.py -q
+  ```
 
-- [ ] **Step 7: Commit and push**
+- [ ] **Step 7: Review, commit, and push**
 
-```powershell
-git diff --check
-git add src/hsconfig/semantic_audit.py src/hsconfig/package_builder.py src/hsconfig/operator_summary.py src/hsconfig/operator_guidance.py tests/test_semantic_audit.py tests/test_operator_summary.py tests/test_operator_guidance.py
-git commit -m "docs: distinguish load safety from semantic assurance"
-git push origin main
-```
+  ```powershell
+  git diff --check
+  git diff -- src/hsconfig/operator_summary.py src/hsconfig/operator_guidance.py src/hsconfig/semantic_audit.py src/hsconfig/package_builder.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_semantic_audit.py
+  git add src/hsconfig/operator_summary.py src/hsconfig/operator_guidance.py src/hsconfig/semantic_audit.py src/hsconfig/package_builder.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_semantic_audit.py
+  git commit -m "docs: separate configuration assurance dimensions"
+  git push origin main
+  ```
 
 ---
 
-### Task 8: Update Operator And Skill Contracts
+### Task 8: Update Operator And Installed Skill Contracts
 
 **Files:**
+
+- Modify: `docs/operator/README.md`
 - Modify: `docs/operator/source-contract-spine.md`
 - Modify: `docs/operator/guide-research-policy.md`
-- Modify: `docs/operator/README.md`
 - Modify: `.agents/skills/hsconfig/SKILL.md`
 - Modify: `.agents/skills/hsconfig/references/guide-research-policy.md`
 - Modify: `.agents/skills/hsconfig/references/globalvalues-policy.md`
@@ -1924,288 +2075,464 @@ git push origin main
 - Modify: `tests/test_skill_sync.py`
 
 **Interfaces:**
-- Documents the code contracts from Tasks 2–7.
-- Keeps `reports/operator_summary.json` as the single apply authority.
 
-- [ ] **Step 1: Write docs contract tests**
+- Documents the code contracts established in Tasks 1–7.
+- Preserves `operator_summary.json` as the only normal apply authority.
+- Installed skill remains byte-for-byte synchronized through the existing sync
+  script.
 
-Add exact required phrases to the docs/skill tests:
+- [ ] **Step 1: Add exact documentation contract tests**
 
-```python
-REQUIRED_SEMANTIC_CLOSURE_PHRASES = (
-    "`hero_power_transform` lowers through deckwide `GlobalValues.json`, not the physical start-of-game card.",
-    "Guide-backed Mulligan keeps require `exact_deck_matched` evidence.",
-    "Archetype-only Mulligan guidance may remain policy context but is not exact-deck authority.",
-    "A metadata-only CardID file is not a `runtime_emitted` card.",
-    "Load safety does not prove in-client optimality.",
-)
-```
+  Add this shared phrase tuple to the appropriate docs/skill tests:
 
-Assert every phrase in:
+  ```python
+  REQUIRED_SEMANTIC_CLOSURE_PHRASES = (
+      "`exact_deck_matched` requires a decoded canonical deck fingerprint match.",
+      "Guide-backed Mulligan claims require `exact_deck_matched`.",
+      "`hero_power_transform` remains a CardID-linked effect and does not authorize aggressive GlobalValues by itself.",
+      "A metadata-only CardID file is not `runtime_emitted`.",
+      "Load safety does not prove in-client optimality.",
+      "`configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.",
+  )
+  ```
 
-- `docs/operator/README.md`,
-- `.agents/skills/hsconfig/SKILL.md` or the directly linked reference named by the skill.
+  Assert all six statements appear in `docs/operator/README.md` or its directly
+  linked policy page, and in `.agents/skills/hsconfig/SKILL.md` or its directly
+  linked references.
 
-- [ ] **Step 2: Verify RED**
+- [ ] **Step 2: Run docs tests and verify RED**
 
-```powershell
-pytest tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py -q
-```
+  ```powershell
+  pytest tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py -q
+  ```
 
-- [ ] **Step 3: Update source-contract documentation**
+- [ ] **Step 3: Document source and Mulligan authority**
 
-In `docs/operator/source-contract-spine.md`, change the `hero_power_transform` row to:
+  In `docs/operator/guide-research-policy.md` and the matching skill reference,
+  document:
 
-```markdown
-| `hero_power_transform` | runtime_lowerable | `GlobalValues.json` | Requires an exact linked transformed Hero Power; never becomes a card-body action or mulligan keep by itself. |
-```
+  - source deckstring decoding;
+  - canonical main-deck fingerprint equality;
+  - exact versus archetype-only scope;
+  - exact-guide Mulligan authority;
+  - policy-backed fallback labeling;
+  - why a different 40-card guide cannot authorize the target 30-card deck.
 
-In `docs/operator/guide-research-policy.md`, document:
+  Update the source-contract matrix row:
 
-- exact deck-code hash evidence,
-- exact versus archetype match,
-- exact mulligan authority,
-- policy-backed fallback when exact evidence is absent,
-- no strong promotion from a 40-card guide for a different 30-card deck.
+  ```markdown
+  | `mulligan_keep` | runtime_lowerable | `Mulligan.json` | Public-guide claims require `exact_deck_matched`; policy-backed fallback remains separately labeled. |
+  ```
 
-- [ ] **Step 4: Update GlobalValues and card behavior documentation**
+- [ ] **Step 4: Document Darkbishop and GlobalValues ownership**
 
-Document:
+  Keep the `hero_power_transform` row on the CardID surface:
 
-- linked Mind Spike effect → `MyHeroPowerValue`,
-- exact source posture → `0.75 / 0.25`,
-- partial `draw_engine_plan` source does not change turn weights,
-- Papercraft/Chirurgeon/Distributor → `OnBoardBonus`,
-- state-dependent cards stay report-only,
-- identical runtime signatures deduplicate,
-- filename-only readiness is invalid.
+  ```markdown
+  | `hero_power_transform` | suppressed_or_conditional | per-card CardID | May prioritize the exactly linked transformed Hero Power; never creates body priority or a Mulligan keep by itself. |
+  ```
 
-- [ ] **Step 5: Update operator assurance wording**
+  In the GlobalValues policy, state:
 
-In `docs/operator/README.md` and `.agents/skills/hsconfig/SKILL.md`, include the exact statement:
+  - only `gameplan_posture` authorizes posture overlays;
+  - archetype-only source leaves posture values at baseline;
+  - a neutral generated `MyHeroPowerValue=1.00` is not an aggressive overlay;
+  - numeric runtime tuning still requires runtime evidence.
 
-```markdown
-Load safety does not prove in-client optimality.
-```
+- [ ] **Step 5: Document card and row boundaries**
 
-Document `configuration_assurance` as diagnostic-only with `runtime_gate_impact=none`.
+  In the card behavior policy, document:
 
-- [ ] **Step 6: Sync the installed skill**
+  - `summon_trigger_board_engine -> OnBoardBonus`;
+  - reciprocal burn without a proven health condition is report-only;
+  - state-dependent mechanics remain report-only;
+  - runtime signature
+    `(card_id, behavior_block, condition, value)`;
+  - exact duplicate provenance merge;
+  - conflicting values fail closed;
+  - metadata-only files do not count as runtime-emitted.
 
-Run:
+- [ ] **Step 6: Document assurance language**
 
-```powershell
-python scripts/sync_installed_skill.py
-python scripts/sync_installed_skill.py --check
-```
+  Add the exact sentence:
 
-Expected:
+  ```markdown
+  Load safety does not prove in-client optimality.
+  ```
 
-```text
-HSConfig skill is in sync
-```
+  Explain the six `configuration_assurance` fields and explicitly state that
+  `runtime_gate_impact=none`.
 
-- [ ] **Step 7: Verify GREEN**
+- [ ] **Step 7: Sync and test the installed skill**
 
-```powershell
-pytest tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py -q
-```
+  ```powershell
+  python scripts/sync_installed_skill.py
+  python scripts/sync_installed_skill.py --check
+  pytest tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py -q
+  ```
 
-- [ ] **Step 8: Commit and push**
+  Expected:
 
-```powershell
-git diff --check
-git add docs/operator/source-contract-spine.md docs/operator/guide-research-policy.md docs/operator/README.md .agents/skills/hsconfig/SKILL.md .agents/skills/hsconfig/references/guide-research-policy.md .agents/skills/hsconfig/references/globalvalues-policy.md .agents/skills/hsconfig/references/card-behavior-policy.md tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py
-git commit -m "docs: define semantic closure operator contract"
-git push origin main
-```
+  ```text
+  HSConfig skill is in sync
+  ```
+
+- [ ] **Step 8: Review, commit, and push**
+
+  ```powershell
+  git diff --check
+  git diff -- docs/operator .agents/skills/hsconfig tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py
+  git add docs/operator/README.md docs/operator/source-contract-spine.md docs/operator/guide-research-policy.md .agents/skills/hsconfig/SKILL.md .agents/skills/hsconfig/references/guide-research-policy.md .agents/skills/hsconfig/references/globalvalues-policy.md .agents/skills/hsconfig/references/card-behavior-policy.md tests/test_docs_active_path.py tests/test_operator_docs_contract_policy.py tests/test_skill_files.py tests/test_skill_sync.py
+  git commit -m "docs: define exact semantic closure contract"
+  git push origin main
+  ```
 
 ---
 
-### Task 9: Run Full Package And Repository Verification
+### Task 9: Prove The Exact And Partial ShadowPriest Packages Read-Only
 
 **Files:**
-- Modify only if a test exposes a causal defect in Tasks 2–8.
-- Do not add generated package output to git.
+
+- Modify only the Task 1–8 owner file when a verification failure identifies a
+  causal defect.
+- Do not commit generated package output.
 
 **Interfaces:**
-- Produces verified code and a read-only package under an ignored output directory.
+
+- Produces complete repository verification and two temporary read-only
+  packages:
+  - exact-source fixture package;
+  - current archetype-only source package.
 - Performs no runtime write.
 
-- [ ] **Step 1: Run the focused semantic suite**
+- [ ] **Step 1: Run the focused semantic closure suite**
 
-```powershell
-pytest tests/test_shadowpriest_visionai_semantic_surface_contract.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py tests/test_claim_kind_runtime_contract.py tests/test_source_contract_spine_freeze.py tests/test_globalvalues_authority.py tests/test_compile_globalvalues.py tests/test_card_behavior_router.py tests/test_semantic_runtime_gate.py tests/test_config_readiness.py tests/test_semantic_audit.py tests/test_operator_summary.py tests/test_operator_guidance.py -q
-```
+  ```powershell
+  pytest tests/test_source_acquisition.py tests/test_source_evidence_policy.py tests/test_source_autopilot.py tests/test_claim_kind_runtime_contract.py tests/test_mulligan_plan.py tests/test_card_intent_taxonomy.py tests/test_static_semantics.py tests/test_semantic_runtime_gate.py tests/test_runtime_row_identity.py tests/test_card_behavior_router.py tests/test_compile_cardid.py tests/test_config_readiness.py tests/test_contract_preflight.py tests/test_operator_summary.py tests/test_operator_guidance.py tests/test_semantic_audit.py tests/test_shadowpriest_visionai_semantic_surface_contract.py tests/test_shadowpriest_semantic_safety_wave.py tests/test_shadowpriest_source_contract_acceptance.py tests/test_shadowpriest_partial_source_acceptance.py -q
+  ```
 
-Expected: all pass.
+  Expected: all pass.
 
 - [ ] **Step 2: Run contract guardrails**
 
-```powershell
-python scripts/check_contract_guardrails.py
-```
+  ```powershell
+  python scripts/check_contract_guardrails.py
+  python scripts/sync_installed_skill.py --check
+  ```
 
-Expected: contract clean; all focused guardrail groups pass.
+  Expected: contract spine clean and installed skill in sync.
 
 - [ ] **Step 3: Run the complete suite**
 
-```powershell
-$env:PYTHONDONTWRITEBYTECODE = '1'
-pytest -q -p no:cacheprovider
-```
+  ```powershell
+  $env:PYTHONDONTWRITEBYTECODE = '1'
+  pytest -q -p no:cacheprovider
+  ```
 
-Expected: all tests pass; documented skips only.
+  Expected: all tests pass; only documented skips.
 
-- [ ] **Step 4: Generate a fresh read-only ShadowPriest package**
+- [ ] **Step 4: Create validated temporary output paths**
 
-Resolve the exact output path first:
+  ```powershell
+  $exactOut = 'C:\Users\darbo\AppData\Local\Temp\hsconfig-shadowpriest-exact-20260726'
+  $partialOut = 'C:\Users\darbo\AppData\Local\Temp\hsconfig-shadowpriest-partial-20260726'
+  $tempParent = (Resolve-Path -LiteralPath 'C:\Users\darbo\AppData\Local\Temp').Path
+  foreach ($target in @($exactOut, $partialOut)) {
+      $candidateParent = [System.IO.Path]::GetFullPath(
+          [System.IO.Path]::GetDirectoryName($target)
+      )
+      if ($candidateParent -ne $tempParent) {
+          throw "Unexpected audit output parent: $target"
+      }
+      if (Test-Path -LiteralPath $target) {
+          throw "Audit output already exists: $target"
+      }
+  }
+  ```
 
-```powershell
-$auditOut = 'C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726'
-if (-not $auditOut.StartsWith('C:\Users\darbo\Documents\HSConfig\outputs\')) {
-    throw "Unexpected output path: $auditOut"
-}
-```
+- [ ] **Step 5: Generate the exact fixture package without apply**
 
-Run without `--apply`:
+  Run the deterministic exact-source fixture through the normal configure
+  surface:
 
-```powershell
-hsconfig configure --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out "C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726" --online-source --auto-source --json
-```
+  ```powershell
+  hsconfig configure --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out "$exactOut" --auto-source --source-url "https://example.test/shadowpriest-exact" --source-fixture-url-map-json "tests\fixtures\source_pages\shadowpriest_source_url_map.json" --current-date "2026-07-26" --json
+  ```
 
-Expected:
+  The command intentionally omits `--apply`.
 
-- `status=OK`,
-- `runtime_write_performed=false`,
-- exact deck identity,
-- package validation passed.
+  Validate:
 
-- [ ] **Step 5: Validate and inspect the package**
+  ```powershell
+  hsconfig validate --package "$exactOut\04_package" --json
+  hsconfig contract-preflight --package "$exactOut\04_package" --json
+  python -m hsconfig.cli runtime-match --package "$exactOut\04_package" --runtime-root "C:\Users\darbo\Desktop\HS" --json
+  ```
 
-```powershell
-hsconfig validate --package "C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726\04_package" --json
-hsconfig contract-doctor --package "C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726\04_package" --json
-python -m hsconfig.cli runtime-match --package "C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726\04_package" --runtime-root "C:\Users\darbo\Desktop\HS" --json
-```
+  Expected:
 
-Expected:
+  - validation passed;
+  - `package_contract_current=true`;
+  - runtime-match is read-only;
+  - exact-source authority is visible;
+  - no runtime write receipt exists.
 
-- validation passes,
-- contract doctor reports clean physical/report parity,
-- runtime-match performs no write,
-- a mismatch is acceptable because this plan does not apply the package.
+- [ ] **Step 6: Generate the current partial-source package without apply**
 
-- [ ] **Step 6: Assert the fresh package invariants**
+  Run:
 
-Run:
+  ```powershell
+  hsconfig configure --deck-name "ShadowPriest" --deck-code "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/KgG17oG1cEGAAA=" --runtime-root "C:\Users\darbo\Desktop\HS" --out "$partialOut" --auto-source --source-url "https://example.test/shadowpriest-archetype" --source-fixture-url-map-json "tests\fixtures\source_pages\shadowpriest_source_url_map.json" --current-date "2026-07-26" --json
+  ```
 
-```powershell
-@'
-import json
-from pathlib import Path
+  Do not add `--apply`.
 
-package = Path(r"C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726\04_package")
-deck = package / "CustomConfig" / "shadowpriest"
-reports = package / "reports"
+  Validate:
 
-darkbishop = json.loads((deck / "SW_448.json").read_text(encoding="utf-8"))
-globalvalues = json.loads((deck / "GlobalValues.json").read_text(encoding="utf-8"))
-readiness = json.loads(
-    (reports / "per_card_config_readiness_report.json").read_text(encoding="utf-8")
-)
-operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+  ```powershell
+  hsconfig validate --package "$partialOut\04_package" --json
+  hsconfig contract-preflight --package "$partialOut\04_package" --json
+  python -m hsconfig.cli runtime-match --package "$partialOut\04_package" --runtime-root "C:\Users\darbo\Desktop\HS" --json
+  ```
 
-assert set(darkbishop) == {"GameCardId", "ConfigComment"}
-assert globalvalues["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
-assert readiness["summary"]["runtime_emitted"] >= 8
-assert readiness["summary"]["report_only_supported"] >= 6
-assert operator["runtime_apply_allowed"] is True
-assert operator["use_config_now_scope"] == "load_safety_only"
-assert operator["configuration_assurance"]["optimality_claim_allowed"] is False
-assert operator["configuration_assurance"]["in_client_behavior"] == "not_proven_by_pre_run_contract"
-print("ShadowPriest semantic closure package invariants passed")
-'@ | python -
-```
+  Expected:
 
-- [ ] **Step 7: Remove the generated audit package**
+  - validation passed;
+  - source authority is archetype-only or partial, never exact;
+  - guide-backed Mulligan count is zero;
+  - aggressive GlobalValues are unchanged;
+  - runtime-match may show differences but performs no write.
 
-Verify the resolved path, then remove only that directory:
+- [ ] **Step 7: Assert exact physical package invariants**
 
-```powershell
-$auditOut = (Resolve-Path -LiteralPath 'C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726').Path
-if ($auditOut -ne 'C:\Users\darbo\Documents\HSConfig\outputs\semantic-closure-shadowpriest-20260726') {
-    throw "Unexpected resolved output path: $auditOut"
-}
-Remove-Item -LiteralPath $auditOut -Recurse
-```
+  Define one invariant script and run it for both package roots:
 
-- [ ] **Step 8: Run final currentness and cleanliness checks**
+  ```powershell
+  $cardInvariantScript = @'
+  import json
+  import sys
+  from pathlib import Path
 
-```powershell
-python scripts/sync_installed_skill.py --check
-python scripts/check_hsconfig_currentness.py --cwd . --json
-git diff --check
-git status --short --branch
-git rev-list --left-right --count main...origin/main
-gh api repos/Teufelsboy/HSConfig/branches --paginate --jq '.[].name'
-gh pr list --repo Teufelsboy/HSConfig --state open --json number,title,headRefName
-```
+  from hsconfig.config_quality_contract import build_config_quality_report
 
-Expected:
+  package = Path(sys.argv[1])
+  expected_rows = {
+      ("DS1_233", "BeforePlayCardBonus", "*", "12"),
+      ("REV_290", "BeforePlayCardBonus", "*", "8"),
+      ("SW_446", "OnBoardBonus", "*", "10"),
+      ("SW_448", "BeforeUseHeroPowerBonus", "*", "10"),
+      ("TOY_381", "OnBoardBonus", "*", "8"),
+      ("TOY_518", "OnBoardBonus", "*", "8"),
+      ("WON_065", "OnBoardBonus", "*", "8"),
+  }
+  report_only = {
+      "CFM_637",
+      "DRG_056",
+      "GVG_009",
+      "NX2_019",
+      "SCH_514",
+      "SW_444",
+      "VAC_419",
+      "VAC_512",
+      "YOD_032",
+  }
+  deck = package / "CustomConfig" / "shadowpriest"
+  reports = package / "reports"
 
-- installed skill in sync,
-- clean `main`,
-- `0 0` divergence,
-- only branch `main`,
-- no open pull requests.
+  signatures = []
+  for path in sorted(deck.glob("*.json")):
+      if path.name in {"GlobalValues.json", "Mulligan.json", "Combo.json"}:
+          continue
+      payload = json.loads(path.read_text(encoding="utf-8-sig"))
+      card_id = str(payload["GameCardId"])
+      for block, block_payload in payload.items():
+          if block in {"GameCardId", "ConfigComment"}:
+              continue
+          for row in block_payload.get("values", []):
+              signatures.append(
+                  (
+                      card_id,
+                      block,
+                      str(row.get("condition", "*")),
+                      str(row["value"]),
+                  )
+              )
+      if card_id in report_only:
+          assert set(payload) == {"GameCardId", "ConfigComment"}, card_id
 
-- [ ] **Step 9: Commit any final causal correction and push**
+  assert set(signatures) == expected_rows
+  assert len(signatures) == len(set(signatures))
 
-If Step 1–8 required a causal correction:
+  darkbishop = json.loads(
+      (deck / "SW_448.json").read_text(encoding="utf-8-sig")
+  )
+  assert set(darkbishop) == {
+      "GameCardId",
+      "ConfigComment",
+      "BeforeUseHeroPowerBonus",
+  }
 
-1. Return the correction to the task that owns the affected files.
-2. Repeat that task's exact RED/GREEN and focused regression commands.
-3. Stage only the exact paths listed by that task.
-4. Use that task's commit message and push command.
+  readiness = json.loads(
+      (reports / "per_card_config_readiness_report.json").read_text(
+          encoding="utf-8"
+      )
+  )
+  operator = json.loads(
+      (reports / "operator_summary.json").read_text(encoding="utf-8")
+  )
+  quality = build_config_quality_report(package)
 
-If no correction was required, do not create an empty commit.
+  assert readiness["summary"]["runtime_emitted"] == 7
+  assert readiness["summary"]["report_only_supported"] == 9
+  assert operator["configuration_assurance"]["optimality_claim_allowed"] is False
+  assert operator["configuration_assurance"]["runtime_gate_impact"] == "none"
+  trace = quality["checks"]["runtime_row_trace_inventory"]
+  assert trace["unreported_runtime_rows"] == []
+  assert trace["reported_rows_missing_runtime"] == []
+  assert trace["physical_cardid_runtime_rows"] == trace["reported_cardid_runtime_rows"]
+  print(f"ShadowPriest invariants passed: {package}")
+'@
+
+  $cardInvariantScript | python - "$exactOut\04_package"
+  $cardInvariantScript | python - "$partialOut\04_package"
+
+  @'
+  import json
+  import sys
+  from pathlib import Path
+
+  package = Path(sys.argv[1])
+  reports = package / "reports"
+  operator = json.loads(
+      (reports / "operator_summary.json").read_text(encoding="utf-8")
+  )
+  global_profile = json.loads(
+      (reports / "globalvalues_profile.json").read_text(
+          encoding="utf-8"
+      )
+  )
+  mulligan_plan = json.loads(
+      (reports / "mulligan_plan_report.json").read_text(
+          encoding="utf-8"
+      )
+  )
+
+  assert operator["configuration_assurance"]["source_authority"] in {
+      "archetype_only",
+      "partial",
+  }
+  assert operator["source_backed_status"] != "SOURCE_BACKED_STRONG"
+  assert global_profile["changed_keys"] == []
+  assert mulligan_plan["quality"]["source_backed_keep_rule_count"] == 0
+  for row in mulligan_plan["rules"]:
+      if row["action"] == "hold":
+          assert row["source_type"] == "policy_backed_autonomous_mulligan"
+  print(f"ShadowPriest partial-source invariants passed: {package}")
+  '@ | python - "$partialOut\04_package"
+  ```
+
+- [ ] **Step 8: Remove only the two validated temporary directories**
+
+  Resolve and verify each exact path before removal:
+
+  ```powershell
+  foreach ($target in @($exactOut, $partialOut)) {
+      if (-not (Test-Path -LiteralPath $target)) {
+          continue
+      }
+      $resolved = (Resolve-Path -LiteralPath $target).Path
+      if (
+          $resolved -notin @(
+              'C:\Users\darbo\AppData\Local\Temp\hsconfig-shadowpriest-exact-20260726',
+              'C:\Users\darbo\AppData\Local\Temp\hsconfig-shadowpriest-partial-20260726'
+          )
+      ) {
+          throw "Unexpected removal target: $resolved"
+      }
+      [System.IO.Directory]::Delete($resolved, $true)
+  }
+  ```
+
+- [ ] **Step 9: Run final repository and GitHub checks**
+
+  ```powershell
+  python scripts/sync_installed_skill.py --check
+  python scripts/check_hsconfig_currentness.py --cwd . --json
+  git diff --check
+  git status --short --branch
+  git rev-list --left-right --count main...origin/main
+  git branch --all
+  git ls-remote --heads origin
+  gh pr list --repo Teufelsboy/HSConfig --state open --json number,title,headRefName,baseRefName,url
+  ```
+
+  Expected:
+
+  - installed skill in sync;
+  - clean `main`;
+  - `0 0` divergence;
+  - only branch `main`;
+  - no open pull requests;
+  - temporary package directories absent.
+
+- [ ] **Step 10: Handle verification defects without an omnibus commit**
+
+  If Steps 1–9 expose a defect:
+
+  1. identify the earliest task that owns the defective contract;
+  2. add or tighten that task's failing test;
+  3. make the minimal causal correction in that task's listed files;
+  4. rerun that task's focused suite;
+  5. rerun Steps 1–9;
+  6. commit with that task's commit message and push `main`.
+
+  If no defect exists, do not create an empty commit.
 
 ---
 
 ## Final Acceptance Matrix
 
-| Contract | Exact-source fixture | Current partial source |
+| Contract | Exact-source fixture | Current archetype-only source |
 |---|---:|---:|
-| Exact 30-card identity | Required | Required |
-| JSON/package validation | Pass | Pass |
-| Runtime apply allowed | `true` | `true` |
+| Exact 30-card target identity | Pass | Pass |
+| Source guide scope | `exact_deck_matched` | `archetype_matched` or partial |
+| Strict package validation | Pass | Pass |
+| Preflight validation parity | Pass | Pass |
 | Runtime write during implementation | `false` | `false` |
-| Darkbishop mulligan keep | Absent | Absent |
-| Darkbishop CardID action row | Absent | Absent |
-| Linked Mind Spike `MyHeroPowerValue` | `1.15` | `1.15` |
-| First/second turn weights | `0.75 / 0.25` for exact `aggro_burn` posture | Baseline unless the acquired claim is canonical and eligible |
-| Exact guide-backed Mulligan | Allowed | Forbidden |
-| Policy-backed Mulligan fallback | Optional | Allowed and labeled |
-| Papercraft `OnBoardBonus` | Present once | Present once |
-| Chirurgeon `OnBoardBonus` | Present once | Present once |
-| Treasure Distributor `OnBoardBonus` | Present once | Present once |
-| Raise Dead/Felwing/Mind Sear conditional action | Report-only | Report-only |
-| Duplicate runtime signatures | Zero | Zero |
-| Filename-only readiness | Rejected | Rejected |
-| `SOURCE_BACKED_STRONG` | Allowed when all strong closure requirements pass | Forbidden |
-| Operator optimality claim | `false` | `false` |
+| Guide-backed Mulligan | Allowed | Forbidden |
+| Policy-backed Mulligan fallback | Optional and labeled | Optional and labeled |
+| Darkbishop Mulligan keep | Absent | Absent |
+| Darkbishop body priority | Absent | Absent |
+| Darkbishop Hero Power row | Present once | Present once |
+| Aggressive GlobalValues | Only with separate exact `gameplan_posture` | Baseline |
+| Mind Blast play row | Present once | Present once |
+| Cathedral deploy row | Present once | Present once |
+| Voidtouched OnBoard row | Present once | Present once |
+| Papercraft OnBoard row | Present once | Present once |
+| Treasure Distributor OnBoard row | Present once | Present once |
+| Ship's Chirurgeon OnBoard row | Present once | Present once |
+| Reciprocal burn wildcard play rows | Absent | Absent |
+| State-dependent wildcard action rows | Absent | Absent |
+| Runtime-emitted cards | 7 | 7 |
+| Report-only cards | 9 | 9 |
+| Duplicate physical signatures | 0 | 0 |
+| Conflicting runtime values | 0 | 0 |
+| Physical/report row parity | Exact | Exact |
+| `SOURCE_BACKED_STRONG` | Allowed only when all exact closure checks pass | Forbidden |
+| Optimality claim allowed | `false` | `false` |
+| Runtime apply in this plan | Never | Never |
 
 ## Out Of Scope
 
-- Runtime apply.
+- Applying either generated package.
 - HSTuner.
-- Win-rate claims.
-- Matchup-specific tuning.
-- Low-HP numeric tuning.
-- New unsupported condition atoms for graveyard, damage-this-turn, exact lethal, or location activation.
-- Exact minion target selection for Mind Sear.
-- Exact same-turn sequencing unless an existing complete `combo_sequence` claim proves it.
+- Win-rate, matchup, or gameplay-improvement claims.
+- Low-health numeric tuning.
+- New condition atoms for graveyard state, damage this turn, current cost,
+  exact lethal, minion death, target-kill, or location activation.
+- New VisionAI keys.
+- Moving `hero_power_transform` away from the existing CardID/linked-identity
+  boundary.
 - Treating a different 40-card guide as exact evidence for the 30-card deck.
 
 ## Implementation Completion Criteria
@@ -2213,12 +2540,18 @@ If no correction was required, do not create an empty commit.
 Implementation is complete only when:
 
 1. Tasks 1–9 are checked.
-2. Every task-specific test is green.
-3. Contract guardrails are green.
-4. The complete pytest suite is green.
-5. The fresh read-only package passes validation and invariant checks.
-6. Runtime-match performed no write.
-7. The generated audit package was removed.
-8. The installed HSConfig skill matches the repo source.
-9. Git is clean on `main`, local and `origin/main` are `0 0`, only `main` exists, and no PR is open.
-10. No report or final message claims in-client optimality from pre-run artifacts alone.
+2. Every task-specific RED test was observed before its implementation.
+3. Every focused regression suite passes.
+4. Contract guardrails pass.
+5. The complete pytest suite passes.
+6. Exact and partial read-only packages pass strict validation.
+7. Preflight and validate agree for valid and invalid packages.
+8. Runtime-match performs no write.
+9. The exact seven active and nine report-only card contracts hold physically.
+10. Duplicate and conflicting runtime rows are zero.
+11. Generated temporary packages are removed.
+12. The installed HSConfig skill is synchronized.
+13. Git is clean on `main`, local and `origin/main` are `0 0`, only `main`
+    exists, and no pull request is open.
+14. No report, documentation, or final message claims in-client optimality from
+    pre-run artifacts.
