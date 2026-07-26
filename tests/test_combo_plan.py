@@ -1,21 +1,21 @@
 from hsconfig.combo_plan import build_combo_plan as _build_combo_plan
-from tests.combo_authority_fixtures import canonical_combo_plan_inputs
+from tests.combo_authority_fixtures import build_canonical_combo_case
 
 
-def build_combo_plan(*, deck_cards, claim_ids):
-    claims, deck_identity, receipts = canonical_combo_plan_inputs(claim_ids)
+def build_authorized_combo_case(*, deck_cards, case_id):
+    bundle, deck_identity = build_canonical_combo_case(case_id)
     return _build_combo_plan(
         deck_cards=deck_cards,
-        claims=claims,
+        claims=bundle["claims"],
         deck_identity=deck_identity,
-        verified_source_receipts=receipts,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
 
 def test_exact_sequence_claim_becomes_combo_plan():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"CARD_A", "CARD_B"},
-        claim_ids=["claim_same_turn"],
+        case_id="claim_same_turn",
     )
 
     assert plan["combos"][0]["combo"] == "CARD_A>>CARD_B"
@@ -52,9 +52,9 @@ def test_static_combo_claim_cannot_emit_runtime_combo_row():
 
 
 def test_combo_with_unsupported_condition_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"EX1_001", "EX1_002"},
-        claim_ids=["combo-condition"],
+        case_id="combo-condition",
     )
 
     assert plan["combos"] == []
@@ -68,9 +68,9 @@ def test_combo_with_unsupported_condition_is_suppressed():
 
 
 def test_combo_rejects_runtime_condition_wrapper_with_condition_sibling():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"EX1_001", "EX1_002"},
-        claim_ids=["combo-wrapped-condition"],
+        case_id="combo-wrapped-condition",
     )
 
     assert plan["combos"] == []
@@ -84,9 +84,9 @@ def test_combo_rejects_runtime_condition_wrapper_with_condition_sibling():
 
 
 def test_combo_with_falsey_structured_card_operand_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"EX1_001", "EX1_002"},
-        claim_ids=["combo-falsey-condition"],
+        case_id="combo-falsey-condition",
     )
 
     assert plan["combos"] == []
@@ -100,9 +100,9 @@ def test_combo_with_falsey_structured_card_operand_is_suppressed():
 
 
 def test_combo_with_falsey_combo_partner_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"EX1_001", "EX1_002"},
-        claim_ids=["combo-falsey-partner"],
+        case_id="combo-falsey-partner",
     )
 
     assert plan["combos"] == []
@@ -116,9 +116,9 @@ def test_combo_with_falsey_combo_partner_is_suppressed():
 
 
 def test_combo_with_wrong_type_hand_contains_any_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"EX1_001", "EX1_002"},
-        claim_ids=["combo-wrong-type-any"],
+        case_id="combo-wrong-type-any",
     )
 
     assert plan["combos"] == []
@@ -132,9 +132,13 @@ def test_combo_with_wrong_type_hand_contains_any_is_suppressed():
 
 
 def test_combo_plan_rows_use_lifecycle_claim_id_without_rewriting_source_claim_ids():
-    claims, deck_identity, receipts = canonical_combo_plan_inputs(
-        ["raw_combo", "raw_missing"]
-    )
+    emitted_bundle, deck_identity = build_canonical_combo_case("raw_combo")
+    suppressed_bundle, _ = build_canonical_combo_case("raw_missing")
+    claims = [*emitted_bundle["claims"], *suppressed_bundle["claims"]]
+    receipts = [
+        *emitted_bundle["canonical_source_receipts"],
+        *suppressed_bundle["canonical_source_receipts"],
+    ]
     lifecycle_ids = {
         "raw_combo": "lifecycle_combo",
         "raw_missing": "lifecycle_missing",
@@ -162,9 +166,9 @@ def test_combo_plan_rows_use_lifecycle_claim_id_without_rewriting_source_claim_i
 
 
 def test_missing_deck_card_sequence_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"CARD_A"},
-        claim_ids=["claim_missing"],
+        case_id="claim_missing",
     )
 
     assert plan["combos"] == []
@@ -172,9 +176,9 @@ def test_missing_deck_card_sequence_is_suppressed():
 
 
 def test_vague_combo_claim_without_ordered_sequence_is_suppressed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"CARD_A", "CARD_B"},
-        claim_ids=["claim_vague_no_sequence"],
+        case_id="claim_vague_no_sequence",
     )
 
     assert plan["combos"] == []
@@ -182,9 +186,9 @@ def test_vague_combo_claim_without_ordered_sequence_is_suppressed():
 
 
 def test_combo_plan_suppresses_vague_combo_without_timing():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"CARD_A", "CARD_B"},
-        claim_ids=["claim_vague"],
+        case_id="claim_vague",
     )
 
     assert plan["combos"] == []
@@ -192,9 +196,9 @@ def test_combo_plan_suppresses_vague_combo_without_timing():
 
 
 def test_combo_plan_emits_cross_turn_operator_when_source_backed():
-    plan = build_combo_plan(
+    plan = build_authorized_combo_case(
         deck_cards={"CARD_A", "CARD_B"},
-        claim_ids=["claim_cross_turn"],
+        case_id="claim_cross_turn",
     )
 
     assert plan["combos"][0]["operator"] == ">->"

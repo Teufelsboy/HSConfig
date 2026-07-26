@@ -9,16 +9,16 @@ from hsconfig.source_document_model import (
     can_lower_to_mulligan,
     surface_gate_decision,
 )
-from tests.combo_authority_fixtures import canonical_combo_plan_inputs
+from tests.combo_authority_fixtures import build_canonical_combo_case
 
 
-def build_combo_plan(*, deck_cards, claim_ids):
-    claims, deck_identity, receipts = canonical_combo_plan_inputs(claim_ids)
+def build_authorized_combo_case(*, deck_cards, case_id):
+    bundle, deck_identity = build_canonical_combo_case(case_id)
     return _build_combo_plan(
         deck_cards=deck_cards,
-        claims=claims,
+        claims=bundle["claims"],
         deck_identity=deck_identity,
-        verified_source_receipts=receipts,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
 
@@ -78,9 +78,9 @@ def test_unresolved_discover_choice_stays_suppressed_until_option_identity_is_li
 
 
 def test_vague_combo_sequence_without_two_cards_stays_suppressed():
-    result = build_combo_plan(
+    result = build_authorized_combo_case(
         deck_cards={"CARD_001"},
-        claim_ids=["vague_combo"],
+        case_id="vague_combo",
     )
 
     assert result["combos"] == []
@@ -186,9 +186,9 @@ def test_discover_choice_without_option_identity_is_suppressed_not_lowered():
 
 
 def test_one_card_or_vague_combo_sequence_does_not_emit_combo_json_rows():
-    combo = build_combo_plan(
+    combo = build_authorized_combo_case(
         deck_cards={"CARD_001"},
-        claim_ids=["vague_combo"],
+        case_id="vague_combo",
     )
 
     assert combo["combos"] == []

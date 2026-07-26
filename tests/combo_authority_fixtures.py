@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import Any
 
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -178,7 +177,16 @@ _CANONICAL_COMBO_CLAIMS = (
 )
 
 
-def build_canonical_combo_bundle() -> tuple[dict[str, Any], dict[str, Any]]:
+def build_canonical_combo_case(
+    claim_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    matching_claims = [
+        claim
+        for claim in _CANONICAL_COMBO_CLAIMS
+        if claim["claim_id"] == claim_id
+    ]
+    if len(matching_claims) != 1:
+        raise KeyError(f"unknown canonical combo case: {claim_id}")
     deck_identity = {
         "deck_name": "CanonicalComboFixture",
         "deck_fingerprint": COMBO_AUTHORITY_FINGERPRINT,
@@ -215,24 +223,16 @@ def build_canonical_combo_bundle() -> tuple[dict[str, Any], dict[str, Any]]:
                         ],
                     }
                 },
-                "claims": list(_CANONICAL_COMBO_CLAIMS),
+                "claims": matching_claims,
             }
         ],
         current_date="2026-07-26",
     )
+    if (
+        len(bundle["claims"]) != 1
+        or len(bundle["canonical_source_receipts"]) != 1
+    ):
+        raise AssertionError(
+            f"canonical combo case must yield one claim and one receipt: {claim_id}"
+        )
     return bundle, deck_identity
-
-
-def canonical_combo_plan_inputs(
-    claim_ids: Sequence[str],
-) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
-    bundle, deck_identity = build_canonical_combo_bundle()
-    claims_by_id = {
-        str(claim["claim_id"]): claim
-        for claim in bundle["claims"]
-    }
-    return (
-        [claims_by_id[claim_id] for claim_id in claim_ids],
-        deck_identity,
-        list(bundle["canonical_source_receipts"]),
-    )
