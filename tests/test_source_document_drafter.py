@@ -15,6 +15,97 @@ DECK_IDENTITY = {
 }
 
 
+def test_drafter_preserves_consensus_exact_deck_evidence():
+    fingerprint = "sha256:exact-shadowpriest"
+    row = {
+        "source_url": "https://example.test/shadowpriest-exact",
+        "source_title": "Exact ShadowPriest Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "deck_name": "ShadowPriest",
+        "archetype": "shadowpriest",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "deck_match_scope": "exact_deck_matched",
+        "source_visibility": "full_text",
+        "promotion_eligible": True,
+        "strong_promotion_eligible": True,
+        "deck_match": {
+            "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
+                "matched": True,
+                "matched_deck_fingerprint": fingerprint,
+                "candidate_deck_code_hashes": ["sha256:source-code"],
+            }
+        },
+        "claim_kind": "mulligan_keep",
+        "cards": ["TOY_381"],
+        "scope": "card",
+        "stance": "keep",
+        "evidence_text_short": "Keep Papercraft Angel.",
+        "source_confidence": "high",
+    }
+
+    result = draft_source_documents(
+        deck_name="ShadowPriest",
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "deck_fingerprint": fingerprint,
+            "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel"}],
+        },
+        evidence_rows=[row],
+    )
+
+    document = result["source_documents"][0]
+    assert document["deck_match"] == row["deck_match"]
+    assert "AAEBA" not in str(document)
+
+
+def test_drafter_downgrades_conflicting_exact_evidence():
+    rows = []
+    for fingerprint in ("sha256:first", "sha256:second"):
+        rows.append(
+            {
+                "source_url": "https://example.test/shared-guide",
+                "source_title": "Shared Guide",
+                "source_family": "guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "deck_name": "ShadowPriest",
+                "archetype": "shadowpriest",
+                "source_lane": "deck_matched_public_guide",
+                "source_rank_lane": "guide_current_deck_match",
+                "deck_match_scope": "exact_deck_matched",
+                "source_visibility": "full_text",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": fingerprint,
+                    }
+                },
+                "claim_kind": "mulligan_keep",
+                "cards": ["TOY_381"],
+                "scope": "card",
+                "stance": "keep",
+                "source_confidence": "high",
+            }
+        )
+
+    result = draft_source_documents(
+        deck_name="ShadowPriest",
+        deck_identity={
+            "deck_name": "ShadowPriest",
+            "cards": [{"card_id": "TOY_381", "name": "Papercraft Angel"}],
+        },
+        evidence_rows=rows,
+    )
+
+    document = result["source_documents"][0]
+    assert document["deck_match_scope"] == "archetype_matched"
+    assert document["source_lane"] == "archetype_matched_public_guide"
+    assert "deck_match" not in document
+
+
 def test_drafter_resolves_card_mentions_to_strict_source_documents():
     draft = draft_source_documents(
         deck_name="ShadowPriest",
@@ -178,7 +269,13 @@ def test_drafter_preserves_evidence_policy_fields():
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "source_rank_lane": "guide_current_deck_match",
-                "deck_match_scope": "deck_or_archetype_matched",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "matched": True,
+                        "matched_deck_fingerprint": "sha256:shadow",
+                    }
+                },
                 "source_record_strength": "candidate_strong",
                 "promotion_eligible": True,
                 "strong_promotion_eligible": True,

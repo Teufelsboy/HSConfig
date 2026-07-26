@@ -13,6 +13,7 @@ from tests.test_configure_auto_source import (
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
+SOURCE_MATCHING_SHADOWPRIEST_CODE = "AAEBAa0GAbv3AwWRD9fOA6P3A633A8SoBgAA"
 
 
 def _read_json(path: Path) -> dict:
@@ -25,12 +26,19 @@ def test_configure_shadowpriest_closes_strong_source_contract(tmp_path: Path, mo
     _write_shadow_cards_json(cards_json)
     out = tmp_path / "configure"
     source_url = "https://example.test/current-shadowpriest-guide"
+    source_fixture = tmp_path / "shadowpriest_current_guide.html"
+    source_fixture.write_text(
+        (FIXTURES / "source_pages" / "shadowpriest_current_guide.html")
+        .read_text(encoding="utf-8")
+        .replace(SHADOWPRIEST_CODE, SOURCE_MATCHING_SHADOWPRIEST_CODE),
+        encoding="utf-8",
+    )
     fixture_map = tmp_path / "fixture_map.json"
     fixture_map.write_text(
         json.dumps(
             {
                 source_url: str(
-                    FIXTURES / "source_pages" / "shadowpriest_current_guide.html"
+                    source_fixture
                 )
             }
         ),
@@ -43,7 +51,7 @@ def test_configure_shadowpriest_closes_strong_source_contract(tmp_path: Path, mo
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            SOURCE_MATCHING_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

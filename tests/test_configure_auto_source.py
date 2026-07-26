@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import build_deck_identity
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -85,6 +86,20 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     cards_json = tmp_path / "cards.json"
     _write_shadow_cards_json(cards_json)
     out = tmp_path / "configure"
+    source_records = _read_json(FIXTURES / "source_search_shadowpriest_2026.json")
+    deck_identity = build_deck_identity(
+        deck_name="ShadowPriest",
+        deck_code=SHADOWPRIEST_CODE,
+        cards=_read_json(cards_json)["cards"],
+    )
+    source_record = source_records["records"][0]
+    source_record["deck_match_scope"] = "exact_deck_matched"
+    source_record["deck_match"]["exact_deck_evidence"] = {
+        "matched": True,
+        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+    }
+    source_records_path = tmp_path / "source_search_shadowpriest_exact.json"
+    source_records_path.write_text(json.dumps(source_records), encoding="utf-8")
 
     code = main(
         [
@@ -101,7 +116,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
             str(cards_json),
             "--auto-source",
             "--source-search-results-json",
-            str(FIXTURES / "source_search_shadowpriest_2026.json"),
+            str(source_records_path),
             "--json",
         ]
     )

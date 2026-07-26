@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import build_deck_identity
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -27,6 +28,22 @@ def test_source_autopilot_command_writes_inspected_source_artifacts(tmp_path):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(json.dumps(cards_payload), encoding="utf-8")
     out = tmp_path / "source"
+    source_records = json.loads(
+        (FIXTURES / "source_search_shadowpriest_2026.json").read_text(encoding="utf-8")
+    )
+    deck_identity = build_deck_identity(
+        deck_name="ShadowPriest",
+        deck_code=SHADOWPRIEST_CODE,
+        cards=cards_payload["cards"],
+    )
+    source_record = source_records["records"][0]
+    source_record["deck_match_scope"] = "exact_deck_matched"
+    source_record["deck_match"]["exact_deck_evidence"] = {
+        "matched": True,
+        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+    }
+    source_records_path = tmp_path / "source_search_shadowpriest_exact.json"
+    source_records_path.write_text(json.dumps(source_records), encoding="utf-8")
 
     status = main(
         [
@@ -38,7 +55,7 @@ def test_source_autopilot_command_writes_inspected_source_artifacts(tmp_path):
             "--cards-json",
             str(cards_json),
             "--source-search-results-json",
-            str(FIXTURES / "source_search_shadowpriest_2026.json"),
+            str(source_records_path),
             "--out",
             str(out),
             "--json",

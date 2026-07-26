@@ -168,13 +168,17 @@ def _exact_current_record(record: dict, deck_identity: dict) -> dict:
     return {
         **record,
         "source_record_strength": "candidate_strong",
-        "deck_match_scope": "deck_matched",
+        "deck_match_scope": "exact_deck_matched",
         "deck_match": {
             **dict(record.get("deck_match", {})),
             "matched_card_ids": card_ids,
             "matched_card_count": len(card_ids),
             "unique_deck_card_count": len(card_ids),
             "card_overlap_ratio": 1.0,
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+            },
         },
     }
 
@@ -347,7 +351,9 @@ def test_source_autopilot_blocks_non_promoting_partial_record_even_if_it_looks_e
         "source_visibility": "full_text",
         "publication_year": 2026,
         "published_at": "2026-07-03T00:00:00Z",
-        "deck_match_scope": "deck_or_archetype_matched",
+        "deck_match_scope": "archetype_matched",
+        "source_lane": "archetype_matched_public_guide",
+        "deck_match": {"exact_deck_evidence": {"matched": False}},
         "claims": [
             {
                 **claim,
@@ -367,9 +373,7 @@ def test_source_autopilot_blocks_non_promoting_partial_record_even_if_it_looks_e
 
     report = bundle["source_autopilot_report"]
     assert report["strong_candidate"] is False, report
-    blocker_text = " ".join(report["strong_candidate_blockers"])
-    assert "non_promoting" in blocker_text, report
-    assert "partial" in blocker_text, report
+    assert report["semantic_status"] != "SOURCE_BACKED_STRONG", report
 
 
 def test_source_autopilot_drafted_documents_preserve_non_promoting_partial_metadata():
@@ -386,7 +390,9 @@ def test_source_autopilot_drafted_documents_preserve_non_promoting_partial_metad
         "source_visibility": "full_text",
         "publication_year": 2026,
         "published_at": "2026-07-03T00:00:00Z",
-        "deck_match_scope": "deck_or_archetype_matched",
+        "deck_match_scope": "archetype_matched",
+        "source_lane": "archetype_matched_public_guide",
+        "deck_match": {"exact_deck_evidence": {"matched": False}},
         "claims": [
             {
                 **claim,
@@ -436,7 +442,9 @@ def test_source_autopilot_non_promoting_partial_record_does_not_veto_separate_st
         "source_visibility": "full_text",
         "publication_year": 2026,
         "published_at": "2026-07-03T00:00:00Z",
-        "deck_match_scope": "deck_or_archetype_matched",
+        "deck_match_scope": "archetype_matched",
+        "source_lane": "archetype_matched_public_guide",
+        "deck_match": {"exact_deck_evidence": {"matched": False}},
         "claims": [
             {
                 **claim,
@@ -519,7 +527,7 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
                 assert row["semantic_status"] != "SOURCE_BACKED_STRONG", row
                 assert row["promotion_ready"] is False, row
         elif expected == "SOURCE_BACKED_PARTIAL_UNLESS_EXACT_GUIDE_MATCHED":
-            if "deck_or_archetype_matched" not in row["deck_match_scopes"]:
+            if "exact_deck_matched" not in row["deck_match_scopes"]:
                 assert row["semantic_status"] != "SOURCE_BACKED_STRONG", row
                 assert row["promotion_ready"] is False, row
         else:

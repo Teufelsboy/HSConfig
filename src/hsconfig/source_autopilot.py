@@ -1083,6 +1083,31 @@ def _source_base(
     base["source_visibility"] = source_visibility
     base["deck_match_scope"] = deck_match_scope
     base["source_lane"] = _text(source.get("source_lane", "")) or base["source_lane"]
+    exact_evidence = match.get("exact_deck_evidence", {})
+    if (
+        deck_match_scope == "exact_deck_matched"
+        and isinstance(exact_evidence, Mapping)
+        and exact_evidence.get("matched") is True
+    ):
+        base["deck_match"] = {
+            "exact_deck_evidence": {
+                "candidate_count": int(exact_evidence.get("candidate_count", 0)),
+                "decoded_candidate_count": int(
+                    exact_evidence.get("decoded_candidate_count", 0)
+                ),
+                "matched": True,
+                "matched_deck_fingerprint": _text(
+                    exact_evidence.get("matched_deck_fingerprint", "")
+                ),
+                "candidate_deck_code_hashes": sorted(
+                    _text(value)
+                    for value in _as_list(
+                        exact_evidence.get("candidate_deck_code_hashes", [])
+                    )
+                    if _text(value)
+                ),
+            }
+        }
     source_record_strength = _text(source.get("source_record_strength", ""))
     if source_record_strength:
         base["source_record_strength"] = source_record_strength

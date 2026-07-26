@@ -40,7 +40,7 @@ def _resolver(hostname: str) -> list[str]:
     return ["93.184.216.34"]
 
 
-def test_shadowpriest_full_source_chain_promotes_without_benedictus_keep():
+def test_shadowpriest_archetype_only_source_chain_does_not_promote_without_benedictus_keep():
     deck_identity = {
         "deck_name": "ShadowPriest",
         "deck_slug": "shadowpriest",
@@ -94,9 +94,9 @@ def test_shadowpriest_full_source_chain_promotes_without_benedictus_keep():
     report = bundle["source_autopilot_report"]
     summary = report["strong_closure_summary"]
     assert summary["technical_no_block"] is True
-    assert summary["source_backed_strong_ready"] is True
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
-    assert summary["first_missing_source_action"] == "none"
+    assert summary["source_backed_strong_ready"] is False
+    assert summary["semantic_status"] == "SOURCE_BACKED_PARTIAL"
+    assert summary["first_missing_source_action"] == "add_current_card_specific_runtime_source"
     assert report["first_missing_source_action"] == summary["first_missing_source_action"]
 
 

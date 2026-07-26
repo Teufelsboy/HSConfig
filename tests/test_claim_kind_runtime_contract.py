@@ -245,7 +245,13 @@ def test_source_family_public_guides_promote_when_their_deck_match_is_evidenced(
             "source_family": source_family,
             "cards": ["EX1_001"],
             "source_visibility": "full_text",
-            "deck_match_scope": "deck_or_archetype_matched",
+            "deck_match_scope": "exact_deck_matched",
+            "deck_match": {
+                "exact_deck_evidence": {
+                    "matched": True,
+                    "matched_deck_fingerprint": "sha256:claim-test",
+                }
+            },
         }
     )
 
@@ -258,8 +264,8 @@ def test_source_family_public_guides_promote_when_their_deck_match_is_evidenced(
 @pytest.mark.parametrize(
     "metadata",
     [
-        {"source_visibility": "snippet_only", "deck_match_scope": "deck_or_archetype_matched"},
-        {"source_visibility": "unknown", "deck_match_scope": "deck_or_archetype_matched"},
+        {"source_visibility": "snippet_only", "deck_match_scope": "archetype_matched"},
+        {"source_visibility": "unknown", "deck_match_scope": "archetype_matched"},
         {"source_lane": "source_unclassified", "deck_match_scope": "unknown"},
         {"source_type": "policy_backed_autonomous_mulligan"},
         {"source_type": "generated_default"},

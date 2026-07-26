@@ -45,6 +45,7 @@ def draft_source_documents(
                 "claims": [],
             },
         )
+        _merge_document_deck_match(document, row)
         cards, unresolved = _resolve_mentions(row, name_map)
         unresolved_mentions.extend(
             {
@@ -65,6 +66,8 @@ def draft_source_documents(
         resolved_claims += 1
 
     documents = list(grouped.values())
+    for document in documents:
+        document.pop("_deck_match_conflict", None)
     return {
         "schema_version": 1,
         "deck_name": deck_name,
@@ -78,6 +81,44 @@ def draft_source_documents(
             "unresolved_mentions": len(unresolved_mentions),
         },
     }
+
+
+def _exact_deck_match_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    deck_match = row.get("deck_match")
+    if not isinstance(deck_match, dict):
+        return None
+    exact = deck_match.get("exact_deck_evidence")
+    if not isinstance(exact, dict) or exact.get("matched") is not True:
+        return None
+    fingerprint = str(exact.get("matched_deck_fingerprint", "")).strip()
+    if not fingerprint:
+        return None
+    return {"exact_deck_evidence": dict(exact)}
+
+
+def _merge_document_deck_match(
+    document: dict[str, Any],
+    row: dict[str, Any],
+) -> None:
+    if document.get("_deck_match_conflict") is True:
+        return
+    candidate = _exact_deck_match_from_row(row)
+    if candidate is None:
+        if document.get("deck_match_scope") == "exact_deck_matched":
+            document.pop("deck_match", None)
+            document["deck_match_scope"] = "archetype_matched"
+            document["source_lane"] = "archetype_matched_public_guide"
+            document["_deck_match_conflict"] = True
+        return
+    existing = document.get("deck_match")
+    if existing is None:
+        document["deck_match"] = candidate
+        return
+    if existing != candidate:
+        document.pop("deck_match", None)
+        document["deck_match_scope"] = "archetype_matched"
+        document["source_lane"] = "archetype_matched_public_guide"
+        document["_deck_match_conflict"] = True
 
 
 def _card_name_map(deck_identity: dict[str, Any]) -> dict[str, str]:
