@@ -186,6 +186,15 @@ def semantic_handoff_projection(report: Mapping[str, Any]) -> dict[str, Any]:
         status = "insufficient_evidence"
         reasons.append("operator_summary_missing_or_invalid")
 
+    problems = report.get("problems", [])
+    if isinstance(problems, list) and any(
+        isinstance(problem, Mapping)
+        and str(problem.get("check", "")) == "config_quality_exception"
+        for problem in problems
+    ):
+        status = "insufficient_evidence"
+        reasons.append("config_quality_exception")
+
     source_evidence = checks.get("source_evidence")
     if isinstance(source_evidence, Mapping):
         source_lanes = {
@@ -1076,6 +1085,13 @@ def _visionai_semantic_surface_check(
         unsupported_report_only_runtime_rows
     )
     semantic_default_runtime_rows = _dedupe_sorted_rows(semantic_default_runtime_rows)
+    attention = sorted(
+        {
+            str(row.get("reason"))
+            for row in card_behavior.get("suppressed", [])
+            if isinstance(row, Mapping) and str(row.get("reason", "")).strip()
+        }
+    )
     failed = bool(
         non_targeted_battlecry_target_rows
         or effect_only_body_rows
@@ -1083,11 +1099,12 @@ def _visionai_semantic_surface_check(
         or semantic_default_runtime_rows
     )
     return {
-        "status": "failed" if failed else "clean",
+        "status": "failed" if failed else "attention" if attention else "clean",
         "non_targeted_battlecry_target_rows": non_targeted_battlecry_target_rows,
         "effect_only_body_rows": effect_only_body_rows,
         "unsupported_report_only_runtime_rows": unsupported_report_only_runtime_rows,
         "semantic_default_runtime_rows": semantic_default_runtime_rows,
+        "attention": attention,
     }
 
 

@@ -122,16 +122,24 @@ def test_shadowpriest_report_only_claims_do_not_create_runtime_gaps(shadowpriest
     assert "trigger_visual" not in warning_only
 
 
-def test_shadowpriest_quality_report_has_clean_visionai_semantic_surface_check(
+def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
     shadowpriest_package,
 ):
-    package_root, _reports = shadowpriest_package
+    package_root, reports = shadowpriest_package
 
     quality = build_config_quality_report(package_root)
     check = quality["checks"]["visionai_semantic_surface"]
 
-    assert check["status"] == "clean"
+    assert check["status"] == "attention"
     assert check["non_targeted_battlecry_target_rows"] == []
     assert check["effect_only_body_rows"] == []
     assert check["unsupported_report_only_runtime_rows"] == []
     assert check["semantic_default_runtime_rows"] == []
+    assert check["attention"] == [
+        "missing_target_scope",
+        "semantic_surface_not_expressible",
+        "semantic_surface_not_proven",
+    ]
+    assert quality["semantic_handoff_status"] == "attention"
+    assert quality["semantic_handoff_reasons"] == check["attention"]
+    assert reports["operator_summary"]["runtime_apply_allowed"] is True

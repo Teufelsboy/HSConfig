@@ -346,7 +346,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             {"stage": "validate", **validate_payload_result},
             validate_status,
         )
-    semantic_handoff = semantic_handoff_projection(config_quality_summary)
+    semantic_handoff = _configure_semantic_handoff(
+        operator_summary,
+        config_quality_summary,
+    )
     load_safe_to_install = (
         str(operator_summary.get("technical_status", "")) == "VALID_PACKAGE"
         and operator_summary.get("runtime_apply_allowed") is True
@@ -841,7 +844,10 @@ def _build_acceptance_summary(
         and runtime_apply_mode == "load_safe_apply"
         and validation_passed
     )
-    semantic_handoff = semantic_handoff_projection(config_quality_summary)
+    semantic_handoff = _configure_semantic_handoff(
+        operator_summary,
+        config_quality_summary,
+    )
 
     if not load_safe_to_install:
         next_report_to_open = "reports/operator_summary.json"
@@ -1121,7 +1127,10 @@ def _build_handoff_contract(
     forbidden_normal_surfaces_absent = config_proof_summary.get(
         "forbidden_normal_surfaces_absent"
     )
-    semantic_handoff = semantic_handoff_projection(config_quality_summary)
+    semantic_handoff = _configure_semantic_handoff(
+        operator_summary,
+        config_quality_summary,
+    )
     status = (
         "clean"
         if (
@@ -1268,6 +1277,20 @@ def _build_handoff_contract(
             or "reports/operator_summary.json"
         ),
     }
+
+
+def _configure_semantic_handoff(
+    operator_summary: Mapping[str, Any],
+    config_quality_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    quality_projection = semantic_handoff_projection(config_quality_summary)
+    operator_projection = semantic_handoff_projection(operator_summary)
+    if (
+        quality_projection["semantic_handoff_status"] == "closed"
+        and operator_projection["semantic_handoff_status"] != "closed"
+    ):
+        return operator_projection
+    return quality_projection
 
 
 def _first_source_status_reason(operator_summary: dict[str, Any]) -> str:

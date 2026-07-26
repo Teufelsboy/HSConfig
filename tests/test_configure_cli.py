@@ -617,6 +617,28 @@ def test_source_strong_does_not_imply_semantic_closed():
     assert summary["semantic_handoff_status"] == "attention"
 
 
+def test_acceptance_preserves_operator_semantic_attention_when_quality_is_incomplete():
+    summary = _build_acceptance_summary(
+        operator_summary=_operator_summary(
+            semantic_handoff_status="attention",
+            semantic_handoff_reasons=["semantic_surface_not_expressible"],
+        ),
+        validation_status="passed",
+        config_quality_summary={
+            "status": "clean",
+            "problems": [],
+        },
+        apply_requested=False,
+        apply_status=None,
+    )
+
+    assert summary["load_safe_to_install"] is True
+    assert summary["semantic_handoff_status"] == "attention"
+    assert summary["semantic_handoff_reasons"] == [
+        "semantic_surface_not_expressible"
+    ]
+
+
 def test_build_acceptance_summary_marks_load_safe_package_usable() -> None:
     operator_summary = {
         "technical_status": "VALID_PACKAGE",
@@ -1355,8 +1377,11 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "load_safe_to_install": True,
         "use_config_now": True,
         "use_config_now_scope": "load_safety_only",
-        "semantic_handoff_status": "closed",
-        "semantic_handoff_reasons": [],
+        "semantic_handoff_status": "attention",
+        "semantic_handoff_reasons": [
+            "semantic_surface_not_expressible",
+            "semantic_surface_not_proven",
+        ],
         "normal_apply_authority": "reports/operator_summary.json",
         "runtime_apply_allowed": True,
         "runtime_apply_mode": "load_safe_apply",
@@ -1407,6 +1432,11 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert handoff["normal_apply_authority"] == "reports/operator_summary.json"
     assert handoff["single_apply_authority_confirmed"] is True
     assert handoff["use_config_now"] is True
+    assert handoff["semantic_handoff_status"] == "attention"
+    assert handoff["semantic_handoff_reasons"] == [
+        "semantic_surface_not_expressible",
+        "semantic_surface_not_proven",
+    ]
     assert handoff["source_status_apply_blocking"] is False
     assert handoff["source_gaps_apply_blocking"] is False
     assert handoff["default_only_clean"] is True

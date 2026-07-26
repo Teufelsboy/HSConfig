@@ -1002,6 +1002,58 @@ def test_contract_preflight_semantic_attention_does_not_change_apply_authority(
     assert contract["runtime_apply_authority"] == "reports/operator_summary.json"
 
 
+def test_contract_preflight_projects_explicit_semantic_suppression_without_gate(
+    tmp_path: Path,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+    card_behavior_path = package / "reports" / "card_behavior_plan_report.json"
+    card_behavior = json.loads(card_behavior_path.read_text(encoding="utf-8"))
+    card_behavior["suppressed"] = [
+        {
+            "claim_id": "claim_patches_trigger",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CFM_637"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
+    _write_json(card_behavior_path, card_behavior)
+
+    contract = build_package_contract_preflight(package)
+
+    assert contract["load_safe_to_install"] is True
+    assert contract["use_config_now"] is True
+    assert contract["semantic_handoff_status"] == "attention"
+    assert contract["semantic_handoff_reasons"] == [
+        "semantic_surface_not_expressible"
+    ]
+    assert contract["runtime_apply_allowed"] is True
+    assert contract["apply_blocking"] is False
+
+
+def test_contract_preflight_quality_exception_is_insufficient_without_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    package = _contract_preflight_clean_package(tmp_path)
+
+    def raise_quality(_package: Path) -> dict[str, object]:
+        raise RuntimeError("quality unavailable")
+
+    monkeypatch.setattr(
+        "hsconfig.config_quality_contract.build_config_quality_report",
+        raise_quality,
+    )
+
+    contract = build_package_contract_preflight(package)
+
+    assert contract["load_safe_to_install"] is True
+    assert contract["use_config_now"] is True
+    assert contract["semantic_handoff_status"] == "insufficient_evidence"
+    assert contract["semantic_handoff_reasons"] == ["config_quality_exception"]
+    assert contract["runtime_apply_allowed"] is True
+    assert contract["apply_blocking"] is False
+
+
 def test_contract_preflight_package_mode_surfaces_attention_surface_intent_without_gate(
     tmp_path: Path,
 ) -> None:

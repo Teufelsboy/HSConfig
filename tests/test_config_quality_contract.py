@@ -87,6 +87,41 @@ def test_config_quality_missing_operator_has_insufficient_semantic_handoff(
     ]
 
 
+def test_config_quality_projects_suppressed_semantic_surface_attention(
+    tmp_path: Path,
+) -> None:
+    package = minimal_clean_package(tmp_path)
+    card_behavior_path = package / "reports" / "card_behavior_plan_report.json"
+    card_behavior = json.loads(card_behavior_path.read_text(encoding="utf-8"))
+    card_behavior["suppressed"] = [
+        {
+            "claim_id": "claim_patches_trigger",
+            "claim_kind": "mechanic_usage",
+            "cards": ["CFM_637"],
+            "reason": "semantic_surface_not_expressible",
+        },
+        {
+            "claim_id": "claim_target_scope",
+            "claim_kind": "targeting_rule",
+            "cards": ["NX2_019"],
+            "reason": "missing_target_scope",
+        },
+    ]
+    write_json(card_behavior_path, card_behavior)
+
+    report = build_config_quality_report(package)
+
+    assert report["checks"]["visionai_semantic_surface"]["attention"] == [
+        "missing_target_scope",
+        "semantic_surface_not_expressible",
+    ]
+    assert report["semantic_handoff_status"] == "attention"
+    assert report["semantic_handoff_reasons"] == [
+        "missing_target_scope",
+        "semantic_surface_not_expressible",
+    ]
+
+
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -440,6 +475,7 @@ def test_config_quality_report_is_clean_for_source_backed_runtime_lean_package(
         "effect_only_body_rows": [],
         "unsupported_report_only_runtime_rows": [],
         "semantic_default_runtime_rows": [],
+        "attention": [],
     }
     assert report["checks"]["closure_freshness"] == {
         "present": True,
