@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.io import read_json, write_json
 
 
@@ -167,6 +168,9 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
             ]
         },
     )
+    target_fingerprint = stable_deck_fingerprint(
+        [("EX1_001", 2), ("EX1_003", 2), ("EX1_004", 2)]
+    )
     source_documents = tmp_path / "source_documents.json"
     write_json(
         source_documents,
@@ -176,7 +180,22 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
                     "source_url": "https://example.invalid/depth-matrix",
                     "source_title": "Depth Matrix Fixture",
                     "source_family": "guide",
+                    "source_type": "public_guide",
                     "retrieved_at": "2026-07-07T00:00:00Z",
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match_scope": "exact_deck_matched",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "candidate_count": 1,
+                            "decoded_candidate_count": 1,
+                            "matched": True,
+                            "matched_deck_fingerprint": target_fingerprint,
+                            "candidate_deck_code_hashes": [
+                                "sha256:depth-matrix-combo-source"
+                            ],
+                        }
+                    },
                     "claims": [
                         {
                             "claim_kind": "discover_choice",
@@ -195,6 +214,7 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
                             "values": ["8", "14"],
                             "evidence_text_short": "Play Combo A into Combo B on the same turn.",
                             "source_confidence": "high",
+                            "promotion_eligible": True,
                         },
                     ],
                 }

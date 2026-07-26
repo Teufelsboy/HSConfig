@@ -47,6 +47,7 @@ def _source_backed_mulligan_plan_report():
 
 
 def _strong_candidate_with_lane_counts(lane_counts):
+    profile_lane = next(iter(lane_counts), "deck_matched_public_guide")
     return build_operator_summary(
         deck_name="LaneCountFixture",
         deck_code="AAE=",
@@ -82,7 +83,8 @@ def _strong_candidate_with_lane_counts(lane_counts):
             "summary": {"source_quality_lane_counts": lane_counts}
         },
         source_to_runtime_explainability_report=_guide_backed_profile_report(
-            ["gameplan_posture"]
+            ["gameplan_posture"],
+            source_lane=profile_lane,
         ),
         generated_files=[
             "CustomConfig/lanecountfixture/GlobalValues.json",
@@ -115,11 +117,21 @@ def test_operator_summary_does_not_allow_optimality_claim_for_archetype_only_sou
     assert summary["configuration_assurance"]["optimality_claim_allowed"] is False
 
 
-def _guide_backed_profile_report(claim_kinds):
+def _guide_backed_profile_report(
+    claim_kinds,
+    *,
+    source_lane="deck_matched_public_guide",
+):
     return {
         "summary": {"cards_with_first_missing_link": 0},
         "claim_lifecycle_rows": [
-            {"claim_kind": claim_kind, "source_lane": "guide_backed"}
+            {
+                "claim_kind": claim_kind,
+                "source_lane": source_lane,
+                "strategic_receipt_verified": (
+                    source_lane == "deck_matched_public_guide"
+                ),
+            }
             for claim_kind in claim_kinds
         ],
         "card_rows": [],
@@ -2176,12 +2188,12 @@ def test_empty_present_lane_summary_blocks_strong():
     assert "missing_positive_strong_source_lane" in _semantic_blocker_codes(summary)
 
 
-def test_guide_backed_lane_count_allows_strong_promotion():
+def test_guide_backed_lane_count_without_exact_claim_receipt_cannot_promote():
     summary = _strong_candidate_with_lane_counts({"guide_backed": 1})
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["runtime_apply_allowed"] is True
-    assert summary["semantic_status"] == "SOURCE_BACKED_STRONG"
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
 def test_source_informed_blocked_readiness_is_diagnostic_only_for_load_safe_apply():
@@ -2986,17 +2998,19 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
                 {
                     "claim_kind": "gameplan_posture",
                     "promotion_eligible": True,
-                    "source_lane": "guide_backed",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
                 },
                 {
                     "claim_kind": "mulligan_keep",
                     "promotion_eligible": True,
-                    "source_lane": "guide_backed",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
                 },
                 {
                     "claim_kind": "hero_power_transform",
                     "promotion_eligible": True,
-                    "source_lane": "guide_backed",
+                    "source_lane": "deck_matched_public_guide",
                 },
             ],
             "card_rows": [],
@@ -3022,6 +3036,7 @@ def test_operator_summary_exposes_strong_closure_without_apply_gate_change():
         "closure_profile_missing_claim_groups": [],
         "closure_profile_missing_surfaces": [],
         "closure_profile_apply_blocking": False,
+        "strong_closure_diagnostics": [],
     }
     assert summary["source_backed_status"] == "SOURCE_BACKED_STRONG"
     assert summary["source_strong_ready"] is True
@@ -3052,12 +3067,14 @@ def test_operator_summary_profile_miss_stays_non_apply_blocking():
                 {
                     "claim_kind": "gameplan_posture",
                     "promotion_eligible": True,
-                    "source_lane": "guide_backed",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
                 },
                 {
                     "claim_kind": "mulligan_keep",
                     "promotion_eligible": True,
-                    "source_lane": "guide_backed",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
                 },
             ],
             "card_rows": [],
@@ -3115,6 +3132,8 @@ def _profile_claim_rows(*, source_lane=None, promotion_eligible=None):
         row["source_lane"] = source_lane
     if promotion_eligible is not None:
         row["promotion_eligible"] = promotion_eligible
+    if source_lane == "deck_matched_public_guide":
+        row["strategic_receipt_verified"] = True
     return [
         {"claim_kind": "gameplan_posture", **row},
         {"claim_kind": "mulligan_keep", **row},
@@ -3233,7 +3252,7 @@ def test_operator_summary_missing_claim_evidence_fails_closed_for_strong_confide
 
 def test_operator_summary_allowed_strong_lane_closes_profile_without_promotion_flag():
     summary = _source_backed_profile_summary(
-        _profile_claim_rows(source_lane="guide_backed")
+        _profile_claim_rows(source_lane="deck_matched_public_guide")
     )
 
     closure = summary["source_backed_strong_closure"]
@@ -3241,6 +3260,47 @@ def test_operator_summary_allowed_strong_lane_closes_profile_without_promotion_f
     assert closure["closure_profile_closed"] is True
     assert closure["promotion_ready"] is True
     assert summary["runtime_apply_allowed"] is True
+
+
+def test_static_combo_lane_cannot_satisfy_strong_closure():
+    rows = [
+        {
+            "claim_id": "guide-gameplan",
+            "claim_kind": "gameplan_posture",
+            "source_lane": "deck_matched_public_guide",
+            "strategic_receipt_verified": True,
+        },
+        {
+            "claim_id": "combo-static-bypass",
+            "claim_kind": "combo_sequence",
+            "source_lane": "source_backed_static_semantics",
+            "strategic_receipt_verified": False,
+        },
+        {
+            "claim_id": "guide-mulligan",
+            "claim_kind": "mulligan_keep",
+            "source_lane": "deck_matched_public_guide",
+            "strategic_receipt_verified": True,
+        },
+    ]
+
+    summary = _source_backed_profile_summary(
+        rows,
+        gameplan_contract={"archetype": "combo_setup", "primary_mechanics": ["combo"]},
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert closure["closure_profile_closed"] is False
+    assert closure["closure_profile_first_missing_link"] == (
+        "missing_claim_group:combo_sequence|card_role"
+    )
+    assert closure["strong_closure_diagnostics"] == [
+        {
+            "claim_id": "combo-static-bypass",
+            "reason": "strong_closure_claim_not_eligible",
+        }
+    ]
 
 
 @pytest.mark.parametrize("confidence_key", ["source_confidence", "claim_confidence"])
@@ -3333,7 +3393,8 @@ def test_operator_summary_card_rows_low_confidence_source_lane_cannot_close_prof
                 {
                     "card_id": "CARD_ONLY",
                     "closure": {
-                        "source_lane": "guide_backed",
+                        "source_lane": "deck_matched_public_guide",
+                        "strategic_receipt_verified": True,
                         confidence_key: "low",
                         "claim_kinds": [
                             "gameplan_posture",
@@ -3371,7 +3432,8 @@ def test_operator_summary_card_rows_explicit_source_lane_can_close_profile():
                 {
                     "card_id": "CARD_ONLY",
                     "closure": {
-                        "source_lane": "guide_backed",
+                        "source_lane": "deck_matched_public_guide",
+                        "strategic_receipt_verified": True,
                         "claim_kinds": [
                             "gameplan_posture",
                             "mulligan_keep",
@@ -3460,7 +3522,8 @@ def test_operator_summary_uses_gameplan_contract_for_profile_selection(
         {
             "claim_kind": claim_kind,
             "promotion_eligible": True,
-            "source_lane": "guide_backed",
+            "source_lane": "deck_matched_public_guide",
+            "strategic_receipt_verified": True,
         }
         for claim_kind in claim_kinds
     ]

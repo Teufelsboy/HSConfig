@@ -469,6 +469,7 @@ def _write_canonical_runtime_plan_source_document(
                                     "Play EX1_001 before EX1_002 in the same turn."
                                 ),
                                 "source_confidence": "high",
+                                "promotion_eligible": True,
                             },
                         ],
                     }
@@ -935,6 +936,9 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     combo_suppressions = json.loads(
         (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
     )
+    source_contract_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -946,7 +950,15 @@ def test_build_accepts_claims_json_without_minting_mulligan_authority(
     assert not (deck_dir / "Combo.json").exists()
     assert combo_plan["combos"] == []
     assert combo_suppressions == combo_plan["suppressed"]
-    assert combo_suppressions[0]["reason"] == "missing_timing"
+    assert combo_suppressions == []
+    combo_claim = next(
+        row
+        for row in source_contract_audit["claim_rows"].values()
+        if row["claim_kind"] == "combo_sequence"
+    )
+    assert combo_claim["surfaces"]["combo"]["reason"] == (
+        "combo_requires_exact_deck_match"
+    )
     assert "combo" not in operator_summary["default_only_runtime_surfaces"]
 
 
@@ -2448,7 +2460,10 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     )
 
 
-def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
+def test_build_claims_json_timed_combo_cannot_mint_combo_authority(
+    tmp_path: Path,
+    capsys,
+):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
@@ -2503,18 +2518,27 @@ def test_build_claims_json_timed_combo_emits_combo_json(tmp_path: Path, capsys):
     payload = json.loads(capsys.readouterr().out)
     deck_dir = out / "CustomConfig" / "guide_cards"
     reports = out / "reports"
-    combo = json.loads((deck_dir / "Combo.json").read_text(encoding="utf-8"))
     combo_plan = json.loads((reports / "combo_plan_report.json").read_text(encoding="utf-8"))
     combo_suppressions = json.loads(
         (reports / "combo_suppression_report.json").read_text(encoding="utf-8")
     )
+    source_contract_audit = json.loads(
+        (reports / "source_contract_audit.json").read_text(encoding="utf-8")
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert combo_plan["combos"][0]["operator"] == ">>"
-    assert combo["ComboList"]["values"][0]["combo"] == "EX1_001>>EX1_002"
-    assert combo["ComboList"]["values"][0]["value"] == "8>>14"
+    assert not (deck_dir / "Combo.json").exists()
+    assert combo_plan["combos"] == []
     assert combo_suppressions == []
+    combo_claim = next(
+        row
+        for row in source_contract_audit["claim_rows"].values()
+        if row["claim_kind"] == "combo_sequence"
+    )
+    assert combo_claim["surfaces"]["combo"]["reason"] == (
+        "combo_requires_exact_deck_match"
+    )
 
 
 def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(

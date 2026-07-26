@@ -2,13 +2,56 @@ import pytest
 
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
-from hsconfig.combo_plan import build_combo_plan
+from hsconfig.combo_plan import build_combo_plan as _build_combo_plan
 from hsconfig.static_semantics import infer_static_semantics
 from hsconfig.source_document_model import (
     can_lower_to_globalvalues,
     can_lower_to_mulligan,
+    source_claim_signature,
     surface_gate_decision,
 )
+
+
+_COMBO_TEST_FINGERPRINT = "semantic-boundary-combo-fingerprint"
+
+
+def build_combo_plan(*, deck_cards, claims):
+    authoritative_claims = [
+        {
+            **claim,
+            "source_family": "guide",
+            "source_type": "public_guide",
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "deck_match_scope": "exact_deck_matched",
+            "promotion_eligible": True,
+            "deck_match": {
+                "exact_deck_evidence": {
+                    "candidate_count": 1,
+                    "decoded_candidate_count": 1,
+                    "matched": True,
+                    "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
+                    "candidate_deck_code_hashes": ["sha256:semantic-boundary-combo"],
+                }
+            },
+        }
+        for claim in claims
+    ]
+    receipts = [
+        {
+            "receipt_kind": "canonical_exact_deck_source_document",
+            "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
+            "claim_id": str(claim.get("claim_id", "")),
+            "claim_signature": source_claim_signature(claim),
+        }
+        for claim in authoritative_claims
+    ]
+    return _build_combo_plan(
+        deck_cards=deck_cards,
+        claims=authoritative_claims,
+        deck_identity={"deck_fingerprint": _COMBO_TEST_FINGERPRINT},
+        verified_source_receipts=receipts,
+    )
 
 
 def test_start_of_game_hero_power_transform_does_not_lower_to_mulligan_keep():

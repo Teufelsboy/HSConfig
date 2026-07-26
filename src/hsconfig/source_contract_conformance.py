@@ -279,6 +279,15 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         context["verified_source_receipts"] = bundle[
             "canonical_source_receipts"
         ]
+    elif claim_kind == "combo_sequence":
+        bundle = _verified_combo_bundle()
+        claim = bundle["claims"][0]
+        context["deck_identity"] = {
+            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        }
+        context["verified_source_receipts"] = bundle[
+            "canonical_source_receipts"
+        ]
     gates = {
         surface: _decision_row(surface_gate_decision(claim, surface, context=context))
         for surface in SURFACES
@@ -453,15 +462,7 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
         "cards": ["CARD_001"],
     }
     if claim_kind == "combo_sequence":
-        cards = ["CARD_001"] if incomplete else ["CARD_001", "CARD_002"]
-        return {
-            **claim,
-            "cards": cards,
-            "sequence": cards,
-            "timing_kind": "same_turn",
-            "operator": ">>",
-            "values": ["6"] * len(cards),
-        }
+        return _verified_combo_bundle(incomplete=incomplete)["claims"][0]
     if claim_kind == "gameplan_posture":
         return _verified_gameplan_posture_bundle()["claims"][0]
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
@@ -495,9 +496,16 @@ def _builder_runner_result(
     if runner == "not_seen_by_builder":
         return {"outcome": "not_seen_by_builder", "reason": "no_runtime_builder"}
     if runner == "build_combo_plan":
+        verified_bundle = _verified_combo_bundle(
+            incomplete=len(claim.get("cards", [])) < 2
+        )
         plan = build_combo_plan(
             deck_cards={str(card) for card in claim.get("cards", [])},
             claims=[claim],
+            deck_identity={
+                "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            },
+            verified_source_receipts=verified_bundle["canonical_source_receipts"],
         )
         if plan["combos"]:
             return {"outcome": "emitted", "reason": "emitted"}
@@ -582,6 +590,60 @@ def _verified_gameplan_posture_bundle() -> dict[str, Any]:
                         "scope": "deck",
                         "stance": "aggro_burn",
                         "evidence_text_short": "Use the aggro burn posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+
+def _verified_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
+    cards = ["CARD_001"] if incomplete else ["CARD_001", "CARD_002"]
+    deck_identity = {
+        "deck_name": "Conformance",
+        "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        "cards": [
+            {"card_id": card_id, "name": card_id, "count": 1}
+            for card_id in cards
+        ],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/conformance-combo-guide",
+                "source_title": "Conformance exact-deck Combo guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+                        "candidate_deck_code_hashes": ["sha256:conformance-combo-source"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "conformance_combo_sequence",
+                        "claim_kind": "combo_sequence",
+                        "cards": cards,
+                        "sequence": cards,
+                        "scope": "card",
+                        "stance": "ordered_combo_sequence",
+                        "timing_kind": "same_turn",
+                        "operator": ">>",
+                        "values": ["6"] * len(cards),
+                        "evidence_text_short": "Play CARD_001 before CARD_002.",
                         "source_confidence": "high",
                         "promotion_eligible": True,
                     }

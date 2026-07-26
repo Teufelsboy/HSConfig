@@ -227,11 +227,7 @@ def qualify_source_claim(claim: Mapping[str, Any]) -> dict[str, Any]:
         in {
             "hero_power_transform",
             "card_role",
-            "gameplan_posture",
-            "targeting_rule",
-            "combo_sequence",
-            "mulligan_keep",
-            "mulligan_discard",
+            "mechanic_usage",
         }
     )
     return normalized
@@ -396,7 +392,13 @@ def surface_gate_decision(
             ),
         )
     if normalized_surface == "combo":
-        return can_lower_to_combo(claim)
+        return can_lower_to_combo(
+            claim,
+            deck_identity=(context or {}).get("deck_identity"),
+            verified_source_receipts=(context or {}).get(
+                "verified_source_receipts"
+            ),
+        )
     if normalized_surface == "cardid":
         return can_lower_to_cardid(claim)
     if normalized_surface == "card_behavior":
@@ -681,7 +683,8 @@ def source_claim_signature(claim: Mapping[str, Any]) -> str:
     payload = {
         str(key): value
         for key, value in claim.items()
-        if not str(key).startswith("_") and key != "claim_type"
+        if not str(key).startswith("_")
+        and key not in {"claim_type", "strategic_receipt_verified"}
     }
     canonical = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     return f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
@@ -734,12 +737,112 @@ def _has_verified_globalvalues_source_receipt(
     )
 
 
-def can_lower_to_combo(claim: Mapping[str, Any]) -> SurfaceGateDecision:
+def can_lower_to_combo(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
+) -> SurfaceGateDecision:
     claim_kind = normalized_claim_kind(claim)
     if claim_kind not in COMBO_SURFACE_CLAIM_KINDS:
         return SurfaceGateDecision(False, "claim_kind_not_combo_surface", claim_kind, "combo")
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "combo")
+    if not _is_canonical_public_guide_source(claim):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_public_guide_source",
+            claim_kind,
+            "combo",
+        )
+    if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_exact_deck_match",
+            claim_kind,
+            "combo",
+        )
+    if not _bool_value(claim.get("promotion_eligible")):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_promotion_eligible_source",
+            claim_kind,
+            "combo",
+        )
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_full_text_source",
+            claim_kind,
+            "combo",
+        )
+    if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_deck_matched_public_guide_lane",
+            claim_kind,
+            "combo",
+        )
+    target_fingerprint = _normalized_text(
+        (deck_identity or {}).get("deck_fingerprint")
+    )
+    if not target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_target_deck_fingerprint",
+            claim_kind,
+            "combo",
+        )
+    deck_match = claim.get("deck_match")
+    exact_evidence = (
+        deck_match.get("exact_deck_evidence")
+        if isinstance(deck_match, Mapping)
+        else None
+    )
+    evidence_fingerprint = (
+        _normalized_text(exact_evidence.get("matched_deck_fingerprint"))
+        if isinstance(exact_evidence, Mapping)
+        else ""
+    )
+    if (
+        not isinstance(exact_evidence, Mapping)
+        or exact_evidence.get("matched") is not True
+        or not evidence_fingerprint
+    ):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_verified_exact_deck_evidence",
+            claim_kind,
+            "combo",
+        )
+    if evidence_fingerprint != target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "combo_exact_deck_fingerprint_mismatch",
+            claim_kind,
+            "combo",
+        )
+    if not canonical_exact_deck_evidence(
+        exact_evidence,
+        target_fingerprint=target_fingerprint,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_complete_exact_deck_evidence",
+            claim_kind,
+            "combo",
+        )
+    if not _has_verified_source_receipt(
+        claim,
+        target_fingerprint=target_fingerprint,
+        verified_source_receipts=verified_source_receipts,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "combo_requires_verified_source_receipt",
+            claim_kind,
+            "combo",
+        )
     return SurfaceGateDecision(True, "allowed", claim_kind, "combo")
 
 

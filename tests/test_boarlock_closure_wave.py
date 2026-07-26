@@ -116,9 +116,22 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
 
     assert promotion["promotion_ready"] is False
     assert promotion["next_action"] == "close_first_missing_chain"
-    assert "Combo.json" in result["generated_files"]
+    assert "Combo.json" not in result["generated_files"]
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
+    source_contract_audit = json.loads(
+        (result["out"] / "reports" / "source_contract_audit.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    combo_claim = next(
+        row
+        for row in source_contract_audit["claim_rows"].values()
+        if row["claim_kind"] == "combo_sequence"
+    )
+    assert combo_claim["surfaces"]["combo"]["reason"] == (
+        "combo_requires_public_guide_source"
+    )
 
     assert gap_report["summary"]["first_missing_chain"] is not None
     assert gap_report["summary"]["blocked_cards"] > 0
@@ -230,7 +243,6 @@ def test_boarlock_closure_does_not_widen_runtime_surfaces(tmp_path, monkeypatch)
     allowed_non_card_surfaces = {
         "GlobalValues.json",
         "Mulligan.json",
-        "Combo.json",
     }
     allowed_card_surfaces = {
         f"{card['card_id']}.json" for card in deck_identity["cards"]

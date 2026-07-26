@@ -890,7 +890,9 @@ def test_source_family_card_text_hero_power_transform_promotes_as_official_stati
 
 
 @pytest.mark.parametrize("source_family", ["guide", "mulligan_guide"])
-def test_source_family_public_guides_promote_when_their_deck_match_is_evidenced(source_family):
+def test_source_family_public_guides_are_not_reclassified_as_static_strong_claims(
+    source_family,
+):
     claim = qualify_source_claim(
         {
             "claim_id": f"claim-public-guide-{source_family}",
@@ -910,7 +912,7 @@ def test_source_family_public_guides_promote_when_their_deck_match_is_evidenced(
 
     assert claim["source_lane"] == "deck_matched_public_guide"
     assert claim["promotion_eligible"] is True
-    assert claim["strong_static_claim"] is True
+    assert claim["strong_static_claim"] is False
     assert claim["strong_promotion_eligible"] is True
 
 

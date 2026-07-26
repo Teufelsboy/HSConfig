@@ -61,6 +61,59 @@ def _canonical_posture_bundle():
     )
 
 
+def _canonical_combo_bundle():
+    deck_identity = {
+        "deck_name": "ComboFixtureDeck",
+        "deck_fingerprint": "combo-fixture-deck-fingerprint",
+        "cards": [
+            {"card_id": "EX1_001", "name": "First Combo Card", "count": 1},
+            {"card_id": "EX1_002", "name": "Second Combo Card", "count": 1},
+        ],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/combo-fixture-guide",
+                "source_title": "Combo fixture exact-deck guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": "combo-fixture-deck-fingerprint",
+                        "candidate_deck_code_hashes": ["sha256:combo-fixture-source"],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "combo-exact-guide-claim",
+                        "claim_kind": "combo_sequence",
+                        "cards": ["EX1_001", "EX1_002"],
+                        "sequence": ["EX1_001", "EX1_002"],
+                        "scope": "card",
+                        "stance": "ordered_combo_sequence",
+                        "timing_kind": "same_turn",
+                        "operator": ">>",
+                        "values": ["7", "9"],
+                        "evidence_text_short": "Play First Combo Card before Second Combo Card.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+
 def test_normalized_claim_kind_keeps_exact_legacy_compatibility():
     assert normalized_claim_kind({"claim_type": "combo"}) == "combo_sequence"
     assert normalized_claim_kind({"claim_type": "bad_pattern"}) == "known_bad_pattern"
@@ -163,12 +216,8 @@ def test_globalvalues_surface_accepts_only_gameplan_posture_and_reports_numeric_
 
 
 def test_combo_surface_accepts_only_combo_sequences():
-    combo = {
-        "claim_kind": "combo_sequence",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["A", "B"],
-    }
+    bundle = _canonical_combo_bundle()
+    combo = bundle["claims"][0]
     card_role = {
         "claim_kind": "card_role",
         "claim_readiness": "guide_backed",
@@ -176,10 +225,58 @@ def test_combo_surface_accepts_only_combo_sequences():
         "cards": ["A"],
     }
 
-    assert can_lower_to_combo(combo).allowed is True
+    assert can_lower_to_combo(
+        combo,
+        deck_identity={"deck_fingerprint": "combo-fixture-deck-fingerprint"},
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    ).allowed is True
     decision = can_lower_to_combo(card_role)
     assert decision.allowed is False
     assert decision.reason == "claim_kind_not_combo_surface"
+
+
+def test_static_combo_claim_cannot_bypass_public_guide_authority():
+    claim = {
+        "claim_id": "combo-static-bypass",
+        "claim_kind": "combo_sequence",
+        "source_lane": "source_backed_static_semantics",
+        "source_card_ids": ["EX1_001", "EX1_002"],
+        "runtime_lowering": {
+            "surface": "Combo",
+            "sequence": ["EX1_001", "EX1_002"],
+        },
+    }
+
+    decision = can_lower_to_combo(claim)
+
+    assert decision.allowed is False
+    assert decision.reason == "combo_requires_public_guide_source"
+
+
+def test_combo_receipt_for_another_deck_fingerprint_is_rejected():
+    bundle = _canonical_combo_bundle()
+
+    decision = can_lower_to_combo(
+        bundle["claims"][0],
+        deck_identity={"deck_fingerprint": "other-deck-fingerprint"},
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "combo_exact_deck_fingerprint_mismatch"
+
+
+def test_exact_guide_combo_claim_with_verified_receipt_is_lowerable():
+    bundle = _canonical_combo_bundle()
+
+    decision = can_lower_to_combo(
+        bundle["claims"][0],
+        deck_identity={"deck_fingerprint": "combo-fixture-deck-fingerprint"},
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
 
 
 def test_cardid_surface_accepts_behavior_claims_but_not_mulligan_or_globalvalues():
@@ -278,6 +375,15 @@ def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
             }
             context["verified_source_receipts"] = bundle[
                 "globalvalues_source_receipts"
+            ]
+        elif claim_kind == "combo_sequence":
+            bundle = _canonical_combo_bundle()
+            claim = bundle["claims"][0]
+            context["deck_identity"] = {
+                "deck_fingerprint": "combo-fixture-deck-fingerprint"
+            }
+            context["verified_source_receipts"] = bundle[
+                "canonical_source_receipts"
             ]
         for surface in surfaces:
             decision = surface_gate_decision(

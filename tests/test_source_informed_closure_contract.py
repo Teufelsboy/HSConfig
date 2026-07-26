@@ -16,9 +16,13 @@ TARGETS = {
         "expected_runtime_surfaces": {
             "GlobalValues.json",
             "Mulligan.json",
+        },
+        "forbidden_surfaces": {
+            "Presume.json",
+            "Concede.json",
+            "CardBehavior.json",
             "Combo.json",
         },
-        "forbidden_surfaces": {"Presume.json", "Concede.json", "CardBehavior.json"},
     },
     "Kingslayer": {
         "first_card_id": "DEEP_014",

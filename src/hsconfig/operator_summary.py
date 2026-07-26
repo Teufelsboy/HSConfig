@@ -13,6 +13,7 @@ from hsconfig.source_status_resolver import SourceStatusResolution, resolve_sour
 from hsconfig.strong_closure_profiles import (
     ClosureProfileVerdict,
     evaluate_closure_profile,
+    lane_can_satisfy_strong_closure,
 )
 
 
@@ -605,6 +606,7 @@ def _closure_profile_summary_fields(
         "closure_profile_missing_claim_groups": list(verdict.missing_claim_groups),
         "closure_profile_missing_surfaces": list(verdict.missing_surfaces),
         "closure_profile_apply_blocking": verdict.apply_blocking,
+        "strong_closure_diagnostics": list(verdict.strong_closure_diagnostics),
     }
 
 
@@ -1012,13 +1014,25 @@ def _closure_profile_verdict(
         primary_mechanics=primary_mechanics,
         gameplan_contract=gameplan_contract,
     )
-    return evaluate_closure_profile(
+    base_verdict = evaluate_closure_profile(
         archetype_bucket=archetype_bucket,
         primary_mechanics=primary_mechanics,
         source_claim_kinds=source_claim_kinds,
         emitted_surfaces=_runtime_surface_filenames(generated_files),
         default_only_surfaces=default_only_runtime_surfaces,
         suppressed_claim_kinds=suppressed_claim_kinds,
+    )
+    return ClosureProfileVerdict(
+        profile_name=base_verdict.profile_name,
+        closed=base_verdict.closed,
+        strong_eligible=base_verdict.strong_eligible,
+        first_missing_link=base_verdict.first_missing_link,
+        missing_claim_groups=base_verdict.missing_claim_groups,
+        missing_surfaces=base_verdict.missing_surfaces,
+        apply_blocking=base_verdict.apply_blocking,
+        strong_closure_diagnostics=tuple(
+            _strong_closure_diagnostics(claim_rows)
+        ),
     )
 
 
@@ -1088,6 +1102,7 @@ def _claim_row_from_card_row(
         "operator_impact",
         "source_confidence",
         "claim_confidence",
+        "strategic_receipt_verified",
     ):
         if key in card_row:
             row[key] = card_row[key]
@@ -1101,6 +1116,7 @@ def _claim_row_from_card_row(
             "operator_impact",
             "source_confidence",
             "claim_confidence",
+            "strategic_receipt_verified",
         ):
             if key in closure and key not in row:
                 row[key] = closure[key]
@@ -1139,9 +1155,45 @@ def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
         return False
     if any(lane in NON_STRONG_CLOSURE_PROFILE_LANES for lane in lane_values):
         return False
-    if row.get("reconstructed_from_card_row") is True:
-        return str(row.get("source_lane") or "") in STRONG_SOURCE_QUALITY_LANES
-    return any(lane in STRONG_SOURCE_QUALITY_LANES for lane in lane_values)
+    return lane_can_satisfy_strong_closure(
+        claim_kind=str(row.get("claim_kind") or ""),
+        source_lane=str(row.get("source_lane") or ""),
+        strategic_receipt_verified=row.get("strategic_receipt_verified") is True,
+    )
+
+
+def _strong_closure_diagnostics(claim_rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    diagnostics: list[dict[str, str]] = []
+    claim_ids: list[str] = []
+    rows_by_claim_id: dict[str, list[dict[str, Any]]] = {}
+    for row in claim_rows:
+        claim_id = str(row.get("claim_id") or "").strip()
+        if not claim_id:
+            continue
+        if claim_id not in rows_by_claim_id:
+            claim_ids.append(claim_id)
+            rows_by_claim_id[claim_id] = []
+        rows_by_claim_id[claim_id].append(row)
+
+    for claim_id in claim_ids:
+        if any(
+            lane_can_satisfy_strong_closure(
+                claim_kind=str(row.get("claim_kind") or ""),
+                source_lane=str(row.get("source_lane") or ""),
+                strategic_receipt_verified=(
+                    row.get("strategic_receipt_verified") is True
+                ),
+            )
+            for row in rows_by_claim_id[claim_id]
+        ):
+            continue
+        diagnostics.append(
+            {
+                "claim_id": claim_id,
+                "reason": "strong_closure_claim_not_eligible",
+            }
+        )
+    return diagnostics
 
 
 def _closure_profile_claim_is_suppressed(row: dict[str, Any]) -> bool:

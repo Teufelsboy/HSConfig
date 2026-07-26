@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
@@ -12,13 +13,19 @@ def build_combo_plan(
     *,
     deck_cards: set[str],
     claims: list[dict[str, Any]],
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     combos: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
 
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
-        gate = can_lower_to_combo(claim)
+        gate = can_lower_to_combo(
+            claim,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
         if not gate.allowed:
             if _is_combo_surface_candidate(claim, claim_kind):
                 suppressed.append(

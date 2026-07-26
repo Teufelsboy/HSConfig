@@ -20,6 +20,7 @@ class ClosureProfileVerdict:
     missing_claim_groups: tuple[str, ...]
     missing_surfaces: tuple[str, ...]
     apply_blocking: bool = False
+    strong_closure_diagnostics: tuple[dict[str, str], ...] = ()
 
 
 PROFILE_REQUIREMENTS: dict[str, ClosureProfileRequirement] = {
@@ -92,6 +93,31 @@ PROFILE_REQUIREMENTS: dict[str, ClosureProfileRequirement] = {
         required_surfaces=("GlobalValues.json", "Mulligan.json"),
     ),
 }
+
+
+def lane_can_satisfy_strong_closure(
+    *,
+    claim_kind: str,
+    source_lane: str,
+    strategic_receipt_verified: bool,
+) -> bool:
+    strategic_claim_kinds = {
+        "combo_sequence",
+        "mulligan_keep",
+        "mulligan_discard",
+        "targeting_rule",
+        "gameplan_posture",
+        "globalvalue_numeric_tuning",
+    }
+    if claim_kind in strategic_claim_kinds:
+        return (
+            source_lane == "deck_matched_public_guide"
+            and strategic_receipt_verified
+        )
+    return source_lane in {
+        "deck_matched_public_guide",
+        "source_backed_static_semantics",
+    }
 
 
 def profile_for_archetype(archetype_bucket: str, mechanics: Iterable[str]) -> str:

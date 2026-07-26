@@ -1,4 +1,47 @@
-from hsconfig.combo_plan import build_combo_plan
+from hsconfig.combo_plan import build_combo_plan as _build_combo_plan
+from hsconfig.source_document_model import source_claim_signature
+
+
+_COMBO_TEST_FINGERPRINT = "combo-plan-test-fingerprint"
+
+
+def build_combo_plan(*, deck_cards, claims):
+    authoritative_claims = [
+        {
+            **claim,
+            "source_family": "guide",
+            "source_type": "public_guide",
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "deck_match_scope": "exact_deck_matched",
+            "promotion_eligible": True,
+            "deck_match": {
+                "exact_deck_evidence": {
+                    "candidate_count": 1,
+                    "decoded_candidate_count": 1,
+                    "matched": True,
+                    "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
+                    "candidate_deck_code_hashes": ["sha256:combo-plan-test"],
+                }
+            },
+        }
+        for claim in claims
+    ]
+    receipts = [
+        {
+            "receipt_kind": "canonical_exact_deck_source_document",
+            "matched_deck_fingerprint": _COMBO_TEST_FINGERPRINT,
+            "claim_id": str(claim.get("claim_id", "")),
+            "claim_signature": source_claim_signature(claim),
+        }
+        for claim in authoritative_claims
+    ]
+    return _build_combo_plan(
+        deck_cards=deck_cards,
+        claims=authoritative_claims,
+        deck_identity={"deck_fingerprint": _COMBO_TEST_FINGERPRINT},
+        verified_source_receipts=receipts,
+    )
 
 
 def test_exact_sequence_claim_becomes_combo_plan():
@@ -23,6 +66,34 @@ def test_exact_sequence_claim_becomes_combo_plan():
     assert plan["combos"][0]["combo"] == "CARD_A>>CARD_B"
     assert plan["combos"][0]["value"] > 0
     assert plan["suppressed"] == []
+
+
+def test_static_combo_claim_cannot_emit_runtime_combo_row():
+    claim = {
+        "claim_id": "combo-static-bypass",
+        "claim_kind": "combo_sequence",
+        "claim_readiness": "source_backed_static_semantics",
+        "source_lane": "source_backed_static_semantics",
+        "cards": ["EX1_001", "EX1_002"],
+        "sequence": ["EX1_001", "EX1_002"],
+        "timing_kind": "same_turn",
+        "operator": ">>",
+        "values": ["7", "9"],
+    }
+
+    plan = _build_combo_plan(
+        deck_cards={"EX1_001", "EX1_002"},
+        claims=[claim],
+    )
+
+    assert [row.get("combo") for row in plan["combos"]] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "combo-static-bypass",
+            "cards": ["EX1_001", "EX1_002"],
+            "reason": "combo_requires_public_guide_source",
+        }
+    ]
 
 
 def test_combo_with_unsupported_condition_is_suppressed():

@@ -76,6 +76,63 @@ def _canonical_posture_bundle():
     )
 
 
+def _canonical_combo_bundle():
+    deck_identity = {
+        "deck_name": "FixtureDeck",
+        "deck_fingerprint": "fixture-deck-fingerprint",
+        "cards": [
+            {"card_id": "CARD_001", "name": "Fixture Card One", "count": 1},
+            {"card_id": "CARD_002", "name": "Fixture Card Two", "count": 1},
+        ],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/fixture-combo-guide",
+                "source_title": "Fixture exact-deck Combo guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": "fixture-deck-fingerprint",
+                        "candidate_deck_code_hashes": [
+                            "sha256:fixture-combo-source"
+                        ],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "fixture-combo-sequence",
+                        "claim_kind": "combo_sequence",
+                        "cards": ["CARD_001", "CARD_002"],
+                        "sequence": ["CARD_001", "CARD_002"],
+                        "scope": "card",
+                        "stance": "ordered_combo_sequence",
+                        "timing_kind": "same_turn",
+                        "operator": ">>",
+                        "values": ["6", "6"],
+                        "evidence_text_short": (
+                            "Play Fixture Card One before Fixture Card Two."
+                        ),
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+
 def test_supported_claim_kinds_match_frozen_policy():
     policy = source_contract_policy_by_claim_kind()
 
@@ -126,6 +183,15 @@ def test_surface_gate_matches_policy_matrix(claim_kind, expected):
         }
         context["verified_source_receipts"] = bundle[
             "globalvalues_source_receipts"
+        ]
+    elif claim_kind == "combo_sequence":
+        bundle = _canonical_combo_bundle()
+        claim = bundle["claims"][0]
+        context["deck_identity"] = {
+            "deck_fingerprint": "fixture-deck-fingerprint"
+        }
+        context["verified_source_receipts"] = bundle[
+            "canonical_source_receipts"
         ]
 
     for surface in ("mulligan", "globalvalues", "cardid", "combo"):

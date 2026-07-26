@@ -3,6 +3,7 @@ import hsconfig.source_claim_lifecycle as lifecycle
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     runtime_claims_for_surface,
+    select_claims_for_surface,
 )
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
@@ -78,7 +79,14 @@ def test_lifecycle_migrates_legacy_claim_type_once_and_stores_claim_kind():
     assert rows[0]["claim_kind"] == "combo_sequence"
     assert rows[0]["legacy_claim_type"] == "combo"
     assert rows[0]["migration_status"] == "legacy_claim_type_migrated"
-    assert "claim_type" not in runtime_claims_for_surface(rows, "combo")[0]
+    selection = select_claims_for_surface(rows, "combo")
+    assert selection["accepted_claims"] == []
+    assert len(selection["rejected_claims"]) == 1
+    rejected = selection["rejected_claims"][0]
+    assert "claim_type" not in rejected
+    assert rejected["_claim_lifecycle"]["surface_gate_reason"] == (
+        "combo_requires_public_guide_source"
+    )
 
 
 def test_strict_claim_kind_requires_stored_modern_claim_kind_after_ingestion():

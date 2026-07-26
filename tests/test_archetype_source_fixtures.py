@@ -688,7 +688,7 @@ def test_boarlock_fixture_covers_combo_resource_setup():
     assert {"card_role", "gameplan_posture"} <= kinds
 
 
-def test_boarlock_fixture_has_exact_runtime_lowerable_combo_sequence():
+def test_boarlock_static_combo_claim_stays_diagnostic_only_without_exact_receipt():
     bundle = _source_bundle_for_fixture("Boarlock")
     combo_claims = [
         claim for claim in bundle["claims"] if claim["claim_kind"] == "combo_sequence"
@@ -723,24 +723,15 @@ def test_boarlock_fixture_has_exact_runtime_lowerable_combo_sequence():
     }
     combo_plan = build_combo_plan(deck_cards=deck_cards, claims=combo_claims)
 
-    combo_row = next(
-        (
-            combo
-            for combo in combo_plan["combos"]
-            if combo.get("combo") == "SW_075>>UNG_832>>DINO_402>>ULD_717"
-        ),
-        None,
+    assert not any(
+        combo.get("combo") == "SW_075>>UNG_832>>DINO_402>>ULD_717"
+        for combo in combo_plan["combos"]
     )
-    assert combo_row is not None
-    assert combo_row["operator"] == ">>"
-    assert combo_row["values"] == ["1", "4", "8", "1"]
-    assert combo_row["condition"] == "*"
-    assert combo_row["value"] == 1
-    assert combo_row["source_refs"][0].startswith("source:")
-    assert combo_row["source_refs"][1:3] == [
-        "https://www.hearthpwn.com/decks/1455610-elwynn-boar-sneak-attack-otk",
-        "https://www.hsguru.com/deck/34322767",
-    ]
+    assert {
+        "claim_id": matching_claim["claim_id"],
+        "cards": ["SW_075", "UNG_832", "DINO_402", "ULD_717"],
+        "reason": "combo_requires_public_guide_source",
+    } in combo_plan["suppressed"]
 
 
 def test_piratedh_fixture_covers_pirate_hero_attack_pressure():

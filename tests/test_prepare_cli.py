@@ -840,6 +840,9 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
         ),
         encoding="utf-8",
     )
+    target_fingerprint = stable_deck_fingerprint(
+        [("EX1_001", 2), ("EX1_002", 2)]
+    )
     source_documents = tmp_path / "source_documents.json"
     source_documents.write_text(
         json.dumps(
@@ -849,7 +852,22 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
                         "source_url": "https://example.invalid/timed-combo",
                         "source_title": "Timed Combo Guide",
                         "source_family": "guide",
+                        "source_type": "public_guide",
                         "retrieved_at": "2026-07-06T00:00:00Z",
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match_scope": "exact_deck_matched",
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "candidate_count": 1,
+                                "decoded_candidate_count": 1,
+                                "matched": True,
+                                "matched_deck_fingerprint": target_fingerprint,
+                                "candidate_deck_code_hashes": [
+                                    "sha256:timed-combo-source"
+                                ],
+                            }
+                        },
                         "deck_name": "Timed Combo",
                         "claims": [
                             {
@@ -861,6 +879,7 @@ def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, ca
                                 "values": ["8", "14"],
                                 "evidence_text_short": "Play Card A into Card B on the same turn.",
                                 "source_confidence": "high",
+                                "promotion_eligible": True,
                             }
                         ],
                     }

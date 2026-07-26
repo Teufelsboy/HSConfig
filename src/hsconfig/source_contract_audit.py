@@ -125,6 +125,9 @@ def build_source_contract_audit(
             "evidence_text_short": str(claim.get("evidence_text_short", "")),
             "source_type": str(claim.get("source_type", "")),
             "source_lane": str(claim.get("source_lane", "")),
+            "strategic_receipt_verified": (
+                claim.get("strategic_receipt_verified") is True
+            ),
             "cards": cards,
             "lane": lane,
             "policy_lane": policy_lane,

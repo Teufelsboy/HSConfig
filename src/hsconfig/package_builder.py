@@ -50,10 +50,57 @@ from hsconfig.source_evidence_closure import build_source_evidence_closure_repor
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
-from hsconfig.source_document_model import claim_can_lower_to_runtime, normalized_claim_kind
+from hsconfig.source_document_model import (
+    claim_can_lower_to_runtime,
+    normalized_claim_kind,
+    source_claim_signature,
+)
 from hsconfig.strict_package_validation import validate_complete_package
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
+
+
+_STRATEGIC_STRONG_CLOSURE_CLAIM_KINDS = {
+    "combo_sequence",
+    "mulligan_keep",
+    "mulligan_discard",
+    "targeting_rule",
+    "gameplan_posture",
+    "globalvalue_numeric_tuning",
+}
+
+
+def _with_strategic_receipt_verification(
+    claims: Any,
+    *,
+    deck_identity: dict[str, Any],
+    verified_source_receipts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    target_fingerprint = str(deck_identity.get("deck_fingerprint", "")).strip().lower()
+    verified_claim_signatures = {
+        (
+            str(receipt.get("claim_id", "")).strip(),
+            str(receipt.get("claim_signature", "")).strip(),
+        )
+        for receipt in verified_source_receipts
+        if isinstance(receipt, dict)
+        and receipt.get("receipt_kind") == "canonical_exact_deck_source_document"
+        and str(receipt.get("matched_deck_fingerprint", "")).strip().lower()
+        == target_fingerprint
+    }
+    result: list[dict[str, Any]] = []
+    for claim in claims if isinstance(claims, list) else []:
+        if not isinstance(claim, dict):
+            continue
+        normalized = dict(claim)
+        if normalized_claim_kind(normalized) in _STRATEGIC_STRONG_CLOSURE_CLAIM_KINDS:
+            normalized["strategic_receipt_verified"] = (
+                str(normalized.get("claim_id", "")).strip(),
+                source_claim_signature(normalized),
+            ) in verified_claim_signatures
+        result.append(normalized)
+    return result
+
 
 def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     payload, code = build_package_payload(args)
@@ -97,7 +144,15 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             canonical_guide_claim_bundle.get("globalvalues_source_receipts", []),
         )
     )
-    plan_claims = list(guide_claim_bundle.get("claims", []))
+    plan_claims = _with_strategic_receipt_verification(
+        guide_claim_bundle.get("claims", []),
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
+    )
+    authority_guide_claim_bundle = {
+        **guide_claim_bundle,
+        "claims": plan_claims,
+    }
     source_claim_conflict_report = guide_claim_bundle.get(
         "claim_conflict_report",
         {"conflict_count": 0, "conflicts": []},
@@ -153,7 +208,14 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         *mulligan_selection["rejected_claims"],
     ]
     cardid_claims = runtime_claims_for_surface(initial_lifecycle_rows, "cardid")
-    combo_claims = runtime_claims_for_surface(initial_lifecycle_rows, "combo")
+    combo_claims = runtime_claims_for_surface(
+        initial_lifecycle_rows,
+        "combo",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": verified_source_receipts,
+        },
+    )
     globalvalues_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "globalvalues",
@@ -202,6 +264,8 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     combo_plan = build_combo_plan(
         deck_cards=set(gameplan_contract.get("cards", {})),
         claims=combo_claims,
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
     )
     global_values_authority_matrix = build_globalvalues_authority_matrix(
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
@@ -409,7 +473,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     source_contract_audit_report = build_source_contract_audit(
         deck_name=args.deck_name,
         deck_identity=deck_identity,
-        guide_claim_bundle=guide_claim_bundle,
+        guide_claim_bundle=authority_guide_claim_bundle,
         mulligan_plan=mulligan_plan,
         card_behavior_plan=card_behavior_plan,
         combo_plan=combo_plan,
