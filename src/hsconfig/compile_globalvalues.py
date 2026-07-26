@@ -59,14 +59,25 @@ def compile_globalvalues(
         overlays = dict(aggression_profile.get("global_value_overlays", {}))
         overlays.update(aggression_profile.get("mechanic_priorities", {}))
         overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
+    generated_overlay_candidates = set(overlays)
+    if has_authority_overlays:
+        generated_overlay_candidates.update(
+            aggression_profile.get("global_value_overlays", {})
+        )
     generated_overlay_keys = sorted(
         key
-        for key in overlays
+        for key in generated_overlay_candidates
         if key not in default_values and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
     )
     expected_overlay_keys = sorted(
         key for key in overlays if key not in TOP_LEVEL_KEYS
     )
+    missing_overlay_keys = sorted(
+        key
+        for key in expected_overlay_keys
+        if key not in default_values and key not in generated_overlay_keys
+    )
+    all_expected_overlay_keys_accounted_for = not missing_overlay_keys
 
     config = {
         key: deepcopy(value) if key in TOP_LEVEL_KEYS else _values_block(value)
@@ -132,7 +143,13 @@ def compile_globalvalues(
             unchanged_keys.append(key)
         key_profiles[key] = decision
 
-    status = "overlay_changed" if changed_keys else "baseline_confirmed"
+    status = (
+        "attention"
+        if missing_overlay_keys
+        else "overlay_changed"
+        if changed_keys
+        else "baseline_confirmed"
+    )
     summary = {
         "status": status,
         "runtime_permission_impact": "none",
@@ -142,6 +159,8 @@ def compile_globalvalues(
         "expected_overlay_key_count": len(expected_overlay_keys),
         "generated_overlay_key_count": len(generated_overlay_keys),
         "all_baseline_keys_accounted_for": True,
+        "all_expected_overlay_keys_accounted_for": all_expected_overlay_keys_accounted_for,
+        "missing_overlay_keys": missing_overlay_keys,
     }
 
     return {
@@ -154,6 +173,8 @@ def compile_globalvalues(
             "key_count": len(profile_keys),
             "generated_overlay_keys": generated_overlay_keys,
             "expected_overlay_keys": expected_overlay_keys,
+            "missing_overlay_keys": missing_overlay_keys,
+            "all_expected_overlay_keys_accounted_for": all_expected_overlay_keys_accounted_for,
             "changed_keys": changed_keys,
             "unchanged_keys": unchanged_keys,
             "keys": key_profiles,

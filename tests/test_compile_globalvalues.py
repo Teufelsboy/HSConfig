@@ -2,8 +2,159 @@ import json
 from pathlib import Path
 
 from hsconfig.compile_globalvalues import compile_globalvalues
+from hsconfig.globalvalues_baseline import load_globalvalues_baseline
 from hsconfig.io import write_json
 from hsconfig.validate_package import validate_config_package
+
+
+def test_fallback_contains_current_runtime_key_families():
+    baseline = load_globalvalues_baseline(None)
+
+    assert baseline["source"] == "bundled_fallback"
+    assert baseline["snapshot_status"] == "known_runtime_snapshot"
+    assert baseline["snapshot_date"] == "2026-07-25"
+    keys = set(baseline["baseline"])
+    assert {
+        "GlobalMinionAttack",
+        "GlobalMinionIntrinsicValue",
+        "GlobalLocationHealth",
+        "GlobalLocationIntrinsicValue",
+        "OppGlobalMinionAttack",
+        "OppGlobalMinionIntrinsicValue",
+        "OppGlobalLocationHealth",
+        "OppGlobalLocationIntrinsicValue",
+    } <= keys
+
+
+def test_compile_globalvalues_reports_authorized_overlay_missing_from_baseline():
+    result = compile_globalvalues(
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "thin",
+            "FirstTurnValueWeight": {
+                "values": [{"condition": "*", "value": "0"}]
+            },
+        },
+        {
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "GlobalMinionAttack",
+                        "operation": "increase",
+                        "reason": "aggro",
+                    }
+                ]
+            }
+        },
+    )
+
+    assert result["profile"]["summary"]["all_expected_overlay_keys_accounted_for"] is False
+    assert result["profile"]["missing_overlay_keys"] == ["GlobalMinionAttack"]
+    assert result["profile"]["status"] == "attention"
+
+
+def test_compile_globalvalues_exposes_overlay_coverage_in_profile_and_summary():
+    result = compile_globalvalues(
+        {
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "thin",
+        },
+        {
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "GlobalMinionAttack",
+                        "operation": "increase",
+                        "reason": "aggro",
+                    }
+                ]
+            }
+        },
+    )
+
+    assert result["profile"]["all_expected_overlay_keys_accounted_for"] is False
+    assert result["profile"]["summary"]["missing_overlay_keys"] == ["GlobalMinionAttack"]
+
+
+def test_compile_globalvalues_keeps_known_hero_power_overlay_in_profile_when_authority_is_baseline():
+    baseline = load_globalvalues_baseline(None)["baseline"]
+    result = compile_globalvalues(
+        baseline,
+        {
+            "aggression_profile": {
+                "global_value_overlays": {"MyHeroPowerValue": "increase"}
+            },
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "baseline",
+                        "operation": "none",
+                        "reason": "no_source_backed_posture_overlay",
+                    }
+                ]
+            },
+        },
+    )
+
+    assert "MyHeroPowerValue" not in baseline
+    assert result["profile"]["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["keys"]["MyHeroPowerValue"]["decision"] == "baseline_confirmed"
+    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.00"
+
+
+def test_validate_package_rejects_required_globalvalues_profile_with_missing_overlay_coverage(
+    tmp_path: Path,
+):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {"values": [{"condition": "*", "value": "0"}]},
+    }
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(deck_dir / "GlobalValues.json", baseline)
+    profile = {
+        "key_count": len(baseline),
+        "generated_overlay_keys": [],
+        "keys": {key: {} for key in baseline},
+        "summary": {"all_expected_overlay_keys_accounted_for": False},
+    }
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(
+        "GlobalValues profile does not account for every expected overlay key" in error
+        for error in report["errors"]
+    )
+
+
+def test_validate_package_allows_legacy_globalvalues_profile_when_profile_is_not_required(
+    tmp_path: Path,
+):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+    deck_dir = tmp_path / "CustomConfig" / "deck"
+    write_json(deck_dir / "GlobalValues.json", baseline)
+    profile = {
+        "key_count": len(baseline),
+        "generated_overlay_keys": [],
+        "keys": {key: {} for key in baseline},
+    }
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+    )
+
+    assert report["status"] == "passed"
 
 
 def test_compile_globalvalues_preserves_and_profiles_every_key(tmp_path: Path):

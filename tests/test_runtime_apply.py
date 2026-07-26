@@ -17,6 +17,7 @@ def _write_validation_reports(package: Path, globalvalues: dict) -> None:
             "key_count": len(globalvalues),
             "keys": {key: {"status": "unchanged"} for key in globalvalues},
             "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
         },
     )
 
@@ -533,6 +534,7 @@ def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
             "key_count": len(globalvalues),
             "keys": {key: {"status": "unchanged"} for key in globalvalues},
             "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
         },
     )
 

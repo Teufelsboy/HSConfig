@@ -87,6 +87,7 @@ def validate_config_package(
                     data,
                     globalvalues_baseline=globalvalues_baseline,
                     globalvalues_profile=globalvalues_profile,
+                    require_globalvalues_profile=require_globalvalues_profile,
                 )
             )
         if require_globalvalues_profile and globalvalues_profile is None:
@@ -127,6 +128,7 @@ def _validate_blocks(
     *,
     globalvalues_baseline: dict[str, Any] | None,
     globalvalues_profile: dict[str, Any] | None,
+    require_globalvalues_profile: bool,
 ) -> list[str]:
     if path.name == "Mulligan.json":
         return _validate_mulligan(path, data)
@@ -137,7 +139,13 @@ def _validate_blocks(
     if path.name == "Concede.json":
         return _validate_named_values_blocks(path, data, {"ExtraConcdeSettings"})
     if path.name == "GlobalValues.json":
-        return _validate_globalvalues(path, data, globalvalues_baseline, globalvalues_profile)
+        return _validate_globalvalues(
+            path,
+            data,
+            globalvalues_baseline,
+            globalvalues_profile,
+            require_profile=require_globalvalues_profile,
+        )
     if path.name in SPECIAL_SURFACE_NAMES:
         return _validate_values_blocks(path, data)
     return _validate_card_behavior_blocks(path, data)
@@ -268,6 +276,8 @@ def _validate_globalvalues(
     data: dict[str, Any],
     baseline: dict[str, Any] | None,
     profile: dict[str, Any] | None,
+    *,
+    require_profile: bool,
 ) -> list[str]:
     errors = _validate_values_blocks(path, data)
     errors.extend(_validate_globalvalues_rows(path, data))
@@ -282,6 +292,13 @@ def _validate_globalvalues(
         for key in sorted(extra_keys):
             errors.append(f"{path}: GlobalValues unexpected key {key}")
     if profile is not None:
+        if (
+            require_profile
+            and profile.get("summary", {}).get("all_expected_overlay_keys_accounted_for") is not True
+        ):
+            errors.append(
+                f"{path}: GlobalValues profile does not account for every expected overlay key"
+            )
         generated_overlay_keys = {str(key) for key in profile.get("generated_overlay_keys", [])}
         expected_key_count = (
             len(baseline) + len(generated_overlay_keys) if baseline is not None else len(data)
