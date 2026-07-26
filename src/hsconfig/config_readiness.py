@@ -64,6 +64,12 @@ GUIDE_BACKED_COVERAGE_STATUSES = {
     "source_backed",
     "source_backed_static_semantics",
 }
+MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = {
+    "mulligan_requires_exact_deck_match",
+    "mulligan_requires_promotion_eligible_source",
+    "mulligan_requires_full_text_source",
+    "mulligan_requires_deck_matched_public_guide_lane",
+}
 GLOBALVALUES_SUFFICIENT_ROLES = {"hero_power_transform"}
 READINESS_MECHANIC_SUPPORT_INTERNAL_KEYS = {"role", "support_bucket"}
 
@@ -94,7 +100,14 @@ def build_config_readiness_report(
         card_behavior_plan
     )
     mulligan_cards = _cards_from_mulligan(mulligan_plan)
-    suppressed_mulligan_cards = _cards_from_suppressed_mulligan(mulligan_plan)
+    suppressed_mulligan_cards = _cards_from_suppressed_mulligan(
+        mulligan_plan,
+        reasons={"claim_not_runtime_lowerable"},
+    )
+    mulligan_authority_gap_cards = _cards_from_suppressed_mulligan(
+        mulligan_plan,
+        reasons=MULLIGAN_AUTHORITY_SUPPRESSION_REASONS,
+    )
     combo_cards = _cards_from_combos(combo_plan)
     globalvalue_cards = _cards_from_globalvalues(
         gameplan_contract,
@@ -123,6 +136,7 @@ def build_config_readiness_report(
             semantic_suppression_missing_links=semantic_suppression_missing_links,
             mulligan_cards=mulligan_cards,
             suppressed_mulligan_cards=suppressed_mulligan_cards,
+            mulligan_authority_gap_cards=mulligan_authority_gap_cards,
             combo_cards=combo_cards,
             globalvalue_cards=globalvalue_cards,
         )
@@ -314,12 +328,16 @@ def _cards_from_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
     return cards
 
 
-def _cards_from_suppressed_mulligan(mulligan_plan: dict[str, Any]) -> set[str]:
+def _cards_from_suppressed_mulligan(
+    mulligan_plan: dict[str, Any],
+    *,
+    reasons: set[str],
+) -> set[str]:
     cards: set[str] = set()
     for row in mulligan_plan.get("suppressed_rules", []):
         if not isinstance(row, dict):
             continue
-        if row.get("reason") != "claim_not_runtime_lowerable":
+        if str(row.get("reason", "")) not in reasons:
             continue
         selector_cards = _normalize_card_list(row.get("selector_cards", row.get("cards", [])))
         if selector_cards:
@@ -402,6 +420,7 @@ def _lane_and_missing_link(
     semantic_suppression_missing_links: dict[str, str],
     mulligan_cards: set[str],
     suppressed_mulligan_cards: set[str],
+    mulligan_authority_gap_cards: set[str],
     combo_cards: set[str],
     globalvalue_cards: set[str],
 ) -> tuple[str, str]:
@@ -409,7 +428,12 @@ def _lane_and_missing_link(
     roles = {str(role).lower() for role in card.get("roles", [])}
     is_guide_backed = coverage in GUIDE_BACKED_COVERAGE_STATUSES
 
-    if card_id in uncovered or coverage == "generic_low_confidence":
+    has_generic_coverage_gap = (
+        card_id in uncovered or coverage == "generic_low_confidence"
+    )
+    if card_id in mulligan_authority_gap_cards and has_generic_coverage_gap:
+        return "report_only_supported", "needs_mulligan_claim"
+    if has_generic_coverage_gap:
         return "generic_low_confidence", "needs_guide_claim"
     if coverage == "archetype_inferred":
         return "archetype_inferred", "needs_guide_claim"

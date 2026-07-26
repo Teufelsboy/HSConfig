@@ -815,6 +815,8 @@ def _next_source_action(
     reason = _normalized_empty(why_not_emitted)
     if first_missing_link is None and reason is None:
         return "none"
+    if reason == "mulligan_requires_exact_deck_match":
+        return "add_exact_deck_matched_source"
     if first_missing_link in NEXT_ACTION_BY_MISSING_LINK:
         return NEXT_ACTION_BY_MISSING_LINK[first_missing_link]
     if first_missing_link == "opening_hand_mulligan_intent":
