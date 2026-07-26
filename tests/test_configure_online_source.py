@@ -354,8 +354,8 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert "cards_need_guide_claims" in blocker_reasons
     assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
     assert any(
-        row["first_missing_link"] == "needs_mulligan_claim"
-        and row["first_missing_source_action"] == "add_mulligan_keep_or_discard_claim"
+        row["first_missing_link"] == "needs_guide_claim"
+        and row["first_missing_source_action"] == "add_card_specific_source_claim"
         for row in explainability["operator_attention"]
     )
     assert operator["default_only_runtime_surfaces"] == []

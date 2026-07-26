@@ -259,6 +259,10 @@ def _normalize_source_claim(
     source_lane = _claim_source_lane(raw_claim, document, deck_match_scope)
     if source_lane:
         claim["source_lane"] = source_lane
+    for key in ("source_type", "provenance", "source_type_family"):
+        value = raw_claim.get(key, document.get(key))
+        if value is not None and str(value).strip():
+            claim[key] = str(value)
     for key in ("promotion_eligible", "source_record_strength"):
         if key in raw_claim:
             claim[key] = raw_claim[key]

@@ -100,6 +100,59 @@ def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
     )
 
 
+def test_prepare_rejected_guide_claim_does_not_create_policy_role_evidence(
+    tmp_path: Path, capsys, monkeypatch
+):
+    source_documents = tmp_path / "rejected-guide-no-policy-evidence.json"
+    source_documents.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/untrusted-guide",
+                        "source_title": "Untrusted Guide",
+                        "source_family": "guide",
+                        "retrieved_at": "2026-07-07T00:00:00Z",
+                        "claims": [
+                            {
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["REJECTED_001"],
+                                "evidence_text_short": "Keep Rejected Candidate.",
+                                "source_confidence": "high",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _run_prepare(
+        tmp_path,
+        capsys,
+        monkeypatch,
+        source_documents=str(source_documents),
+        cards=[
+            {
+                "card_id": "REJECTED_001",
+                "dbf_id": 4,
+                "count": 1,
+                "name": "Rejected Candidate",
+                "cost": 4,
+                "type": "MINION",
+            }
+        ],
+    )
+
+    assert "mulligan_anchor" not in result["research_card_roles"]["REJECTED_001"]["roles"]
+    assert not any(
+        row.get("mulligan") == "REJECTED_001"
+        and row.get("value") == "hold"
+        for row in result["mulligan_json"]["Mulligan"]["values"]
+    )
+
+
 def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     tmp_path: Path, capsys, monkeypatch
 ):
@@ -137,10 +190,11 @@ def _run_prepare(
     monkeypatch,
     *,
     source_documents: str,
+    cards: list[dict] | None = None,
 ) -> dict:
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
     cards_json = tmp_path / "cards.json"
-    cards_json.write_text(json.dumps({"cards": CARDS}), encoding="utf-8")
+    cards_json.write_text(json.dumps({"cards": cards or CARDS}), encoding="utf-8")
     package = tmp_path / "package"
     exit_code = main(
         [
@@ -169,6 +223,7 @@ def _run_prepare(
         "operator_summary": _read_json(reports / "operator_summary.json"),
         "mulligan_json": _read_json(mulligan_path),
         "mulligan_plan": _read_json(reports / "mulligan_plan_report.json"),
+        "research_card_roles": _read_json(reports / "research" / "card_role_map.json"),
     }
 
 

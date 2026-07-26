@@ -49,7 +49,7 @@ from hsconfig.source_evidence_closure import build_source_evidence_closure_repor
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
-from hsconfig.source_document_model import claim_can_lower_to_runtime
+from hsconfig.source_document_model import claim_can_lower_to_runtime, normalized_claim_kind
 from hsconfig.strong_promotion_report import build_strong_promotion_report
 from hsconfig.surface_intent import build_surface_intent
 from hsconfig.validate_package import validate_config_package
@@ -88,7 +88,6 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     card_metadata = context["card_metadata"]
     semantic_report = context["semantic_report"]
     guide_claim_bundle = context["guide_claim_bundle"]
-    research_bundle = context["research_bundle"]
     guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
     plan_claims = list(guide_claim_bundle.get("claims", []))
     source_claim_conflict_report = guide_claim_bundle.get(
@@ -96,8 +95,35 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         {"conflict_count": 0, "conflicts": []},
     )
     runtime_claims = [claim for claim in plan_claims if claim_can_lower_to_runtime(claim)]
-    runtime_source_claims = {"claims": runtime_claims, "claim_count": len(runtime_claims)}
-    runtime_research_bundle = build_research_contract_bundle(
+    initial_lifecycle_rows = build_initial_lifecycle_rows(
+        plan_claims,
+        conflict_report=source_claim_conflict_report,
+    )
+    non_mulligan_runtime_claims = [
+        claim
+        for claim in runtime_claims
+        if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}
+    ]
+    preliminary_research_bundle = build_research_contract_bundle(
+        deck_identity=deck_identity,
+        card_metadata=card_metadata,
+        source_claims={
+            "claims": non_mulligan_runtime_claims,
+            "claim_count": len(non_mulligan_runtime_claims),
+        },
+        guide_claim_bundle=guide_claim_bundle,
+    )
+    mulligan_selection = select_claims_for_surface(
+        initial_lifecycle_rows,
+        "mulligan",
+        card_roles=preliminary_research_bundle.get("card_role_map", {}),
+    )
+    mulligan_runtime_claims = mulligan_selection["accepted_claims"]
+    runtime_source_claims = {
+        "claims": [*non_mulligan_runtime_claims, *mulligan_runtime_claims],
+        "claim_count": len(non_mulligan_runtime_claims) + len(mulligan_runtime_claims),
+    }
+    research_bundle = build_research_contract_bundle(
         deck_identity=deck_identity,
         card_metadata=card_metadata,
         source_claims=runtime_source_claims,
@@ -107,19 +133,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         deck_identity=deck_identity,
         card_metadata=card_metadata,
         source_claims=runtime_source_claims,
-        research_bundle=runtime_research_bundle,
+        research_bundle=research_bundle,
     )
-    initial_lifecycle_rows = build_initial_lifecycle_rows(
-        plan_claims,
-        conflict_report=source_claim_conflict_report,
-    )
-    card_roles = runtime_research_bundle.get("card_role_map", {})
-    mulligan_selection = select_claims_for_surface(
-        initial_lifecycle_rows,
-        "mulligan",
-        card_roles=card_roles,
-    )
-    mulligan_runtime_claims = mulligan_selection["accepted_claims"]
+    card_roles = research_bundle.get("card_role_map", {})
     mulligan_report_claims = [
         *mulligan_runtime_claims,
         *mulligan_selection["rejected_claims"],

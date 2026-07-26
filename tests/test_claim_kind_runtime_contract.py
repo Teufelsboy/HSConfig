@@ -6,6 +6,7 @@ from hsconfig.guide_research import normalize_source_claims
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.research_contract import build_research_contract_bundle
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import (
     START_OF_GAME_NON_HAND_EFFECT_ROLES,
     can_lower_to_mulligan,
@@ -282,6 +283,7 @@ def test_public_guide_mulligan_without_authority_fields_is_rejected():
         ("source_type", "public_guide"),
         ("provenance", "public_guide"),
         ("source", "guide"),
+        ("source_type_family", "public_guide"),
     ],
 )
 def test_public_guide_alias_identity_without_authority_is_rejected(
@@ -296,6 +298,42 @@ def test_public_guide_alias_identity_without_authority_is_rejected(
         }
     )
 
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_exact_deck_match"
+
+
+@pytest.mark.parametrize(
+    "identity_field",
+    ["source_type", "provenance", "source_type_family"],
+)
+def test_legacy_alias_identity_survives_document_bundle_and_requires_authority(
+    identity_field,
+):
+    documents = guide_documents_from_legacy_claims(
+        [
+            {
+                "source": "stats",
+                identity_field: "public_guide",
+                "url": "https://example.invalid/legacy-guide",
+                "claim": "Always keep Legacy Candidate.",
+                "cards": ["LEGACY_001"],
+                "claim_type": "mulligan_keep",
+            }
+        ]
+    )
+    bundle = build_source_document_bundle(
+        deck_identity={
+            "deck_name": "LegacyFixture",
+            "cards": [{"card_id": "LEGACY_001", "count": 1}],
+        },
+        card_metadata={"cards": [{"card_id": "LEGACY_001", "count": 1}]},
+        source_documents=documents,
+        current_date="2026-07-26",
+    )
+    claim = bundle["claims"][0]
+
+    assert claim[identity_field] == "public_guide"
+    decision = can_lower_to_mulligan(claim)
     assert decision.allowed is False
     assert decision.reason == "mulligan_requires_exact_deck_match"
 
