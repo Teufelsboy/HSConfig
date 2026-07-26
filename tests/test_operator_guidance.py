@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from hsconfig.operator_guidance import build_operator_guidance
+from hsconfig.operator_summary import build_operator_summary
 
 
 def test_operator_docs_point_to_research_index_without_making_it_operator_path():
@@ -152,6 +153,25 @@ def test_guidance_preserves_configuration_assurance_and_operator_report_authorit
 
     assert guidance["first_report_to_open"] == "reports/operator_summary.json"
     assert guidance["configuration_assurance"] == assurance
+
+
+def test_operator_summary_guidance_copies_configuration_assurance():
+    summary = build_operator_summary(
+        deck_name="AssuranceIsolation",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+    )
+    canonical_assurance = summary["configuration_assurance"]
+    guidance_assurance = summary["operator_guidance"]["configuration_assurance"]
+
+    assert guidance_assurance == canonical_assurance
+    assert guidance_assurance is not canonical_assurance
+
+    guidance_assurance["runtime_gate_impact"] = "mutated_guidance_only"
+    guidance_assurance["load_safety"] = "mutated_guidance_only"
+
+    assert canonical_assurance["runtime_gate_impact"] == "none"
+    assert canonical_assurance["load_safety"] == "validated"
 
 
 def test_guidance_for_load_safe_warning_package():

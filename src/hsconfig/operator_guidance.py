@@ -123,7 +123,7 @@ def _configuration_assurance_fields(summary: dict[str, Any]) -> dict[str, Any]:
     assurance = summary.get("configuration_assurance")
     if not isinstance(assurance, dict):
         return {}
-    return {"configuration_assurance": assurance}
+    return {"configuration_assurance": dict(assurance)}
 
 
 def _source_informed_scope_fields(summary: dict[str, Any]) -> dict[str, Any]:
