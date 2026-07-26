@@ -6,6 +6,10 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     surface_gate_decision,
 )
+from tests.mulligan_authority_fixtures import (
+    build_canonical_mulligan_bundle,
+    canonical_mulligan_gate_context,
+)
 
 
 EXPECTED_POLICY = {
@@ -101,7 +105,20 @@ def test_surface_gate_matches_policy_matrix(claim_kind, expected):
             }
         }
     }
-    if claim_kind == "gameplan_posture":
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        bundle, deck_identity = build_canonical_mulligan_bundle(
+            [
+                {
+                    "claim_kind": claim_kind,
+                    "cards": ["CARD_001"],
+                }
+            ]
+        )
+        claim = bundle["claims"][0]
+        context.update(
+            canonical_mulligan_gate_context(bundle, deck_identity)
+        )
+    elif claim_kind == "gameplan_posture":
         bundle = _canonical_posture_bundle()
         claim = bundle["claims"][0]
         context["deck_identity"] = {

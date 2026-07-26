@@ -176,8 +176,11 @@ def _exact_current_record(record: dict, deck_identity: dict) -> dict:
             "unique_deck_card_count": len(card_ids),
             "card_overlap_ratio": 1.0,
             "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
                 "matched": True,
                 "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                "candidate_deck_code_hashes": ["sha256:multideck-source"],
             },
         },
     }

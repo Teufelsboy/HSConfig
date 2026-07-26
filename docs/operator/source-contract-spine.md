@@ -49,15 +49,28 @@ Load safety does not prove in-client optimality.
 | `bundle_receipt_truth` | non-plan source-document bundle and verified receipts | plan bundle and plan receipts cannot replace package truth |
 | `plan_input_diagnostics` | imported plan claims, rows, and receipts | diagnostic only with `runtime_gate_impact=none` |
 | `plan_revalidation` | canonical lifecycle, target fingerprint, and verified receipts | only canonical rows may lower |
+| `canonical_runtime_plans` | freshly rebuilt Mulligan, CardID, and Combo plans | sole runtime truth; imported same-ID rows cannot replace or restore |
+| `imported_runtime_plan_payloads` | actual imported Mulligan, CardID, and Combo report payloads | diagnostic only in `plan_input_diagnostics` with `runtime_gate_impact=none` |
+| `legacy_mulligan_receipt` | synthetic `--claims-json` source documents | cannot mint a canonical exact source receipt |
 | `suppression_transparency` | key, operation, overlay, value, and claim references | rejected plan attempt remains reconstructible |
-| `exact_evidence_counts` | non-negative integer evidence | malformed counts fail closed to baseline and visible suppression |
+| `exact_evidence_counts` | both count fields parsed by one strict non-negative integer parser | integer or decimal string accepted; bool, float, container, negative, or malformed rejected without exception |
+| `exact_evidence_authority` | positive candidate counts and non-empty code-hash list | otherwise no receipt and a visible exact-source gap |
+
+One shared `parse_strict_nonnegative_int` parser is used by
+`source_document_drafter`, `source_autopilot`, and `source_document_builder`.
+Decimal strings are ASCII digits only after surrounding whitespace is trimmed;
+signs, decimal points, and exponents are rejected. Count rejection preserves a
+load-safe package with `SOURCE_BACKED_PARTIAL`, exposes the exact-source gap,
+and mints no receipt.
 
 The canonical non-plan `guide_claim_bundle.json`, verified source receipts,
 claim lifecycle, and `source_contract_audit.json` remain package truth. An
 imported plan bundle is recorded separately as input diagnosis and never
-replaces those surfaces. A plan row that does match canonical truth must pass
-the same lifecycle, target-fingerprint, and receipt gate; the import path must
-not add a false missing-receipt suppression to that valid row.
+replaces those surfaces. The freshly rebuilt Mulligan, CardID, and Combo plans
+are the only runtime inputs for those surfaces; the full imported payloads,
+including `quality`, `card_rows`, and summaries, remain reconstructible only in
+`plan_input_diagnostics.json`. Imported GlobalValues attempts remain
+fail-closed diagnostics against the canonical authority matrix.
 
 ## ShadowPriest Runtime Surfaces
 

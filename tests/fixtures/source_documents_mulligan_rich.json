@@ -10,8 +10,11 @@
       "deck_match_scope": "exact_deck_matched",
       "deck_match": {
         "exact_deck_evidence": {
+          "candidate_count": 1,
+          "decoded_candidate_count": 1,
           "matched": true,
-          "matched_deck_fingerprint": "5d9c07b3219445ee331946787149e7a1ce347b6382b30febcf039037954da393"
+          "matched_deck_fingerprint": "5d9c07b3219445ee331946787149e7a1ce347b6382b30febcf039037954da393",
+          "candidate_deck_code_hashes": ["sha256:mulligan-rich-source-code"]
         }
       },
       "claims": [

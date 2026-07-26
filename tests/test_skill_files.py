@@ -88,6 +88,15 @@ def test_skill_and_workflow_stay_compact_and_canonical():
         "docs/operator/README.md",
         "Preferred normal path: `hsconfig configure`.",
         "`reports/operator_summary.json` remains the only normal apply authority.",
+        (
+            "Guide-backed Mulligan authority requires consistent public-guide "
+            "identity, complete exact evidence, the current target fingerprint, "
+            "and a matching canonical source receipt."
+        ),
+        (
+            "Freshly rebuilt Mulligan, CardID, and Combo plans are the sole "
+            "runtime truth; imported plan payloads are diagnostic only."
+        ),
     ]:
         assert phrase in skill
     for text in (workflow, active_docs):
@@ -1472,8 +1481,35 @@ def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
     guide = (SKILL_ROOT / "references/guide-research-policy.md").read_text(
         encoding="utf-8"
     )
+    mulligan_gate = _markdown_table(
+        guide,
+        "## Exact Public-Guide Mulligan Gate",
+    )
     rows = _markdown_table(guide, "## GlobalValues Plan Trust Boundary")
 
+    assert {
+        check: row["Required value"] for check, row in mulligan_gate.items()
+    } == {
+        "public_guide_identity": (
+            "all populated document and claim identity signals are guide"
+        ),
+        "deck_match_scope": "exact_deck_matched",
+        "target_deck_fingerprint": (
+            "present and equal to matched_deck_fingerprint"
+        ),
+        "exact_deck_evidence": (
+            "matched=true; both counts >=1; non-empty code-hash list"
+        ),
+        "source_receipt": (
+            "matching claim_id, claim signature, and target fingerprint"
+        ),
+        "promotion_eligible": "true",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+    }
+    assert {
+        row["Failure outcome"] for row in mulligan_gate.values()
+    } == {"suppress with visible reason"}
     assert rows["legacy_claim_inference"] == {
         "Boundary": "legacy_claim_inference",
         "Canonical input": "effective claim kind before authority-field stripping",
@@ -1500,6 +1536,27 @@ def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
     assert rows["plan_revalidation"]["Required outcome"] == (
         "only canonical rows may lower"
     )
+    assert rows["canonical_runtime_plans"] == {
+        "Boundary": "canonical_runtime_plans",
+        "Canonical input": "freshly rebuilt Mulligan, CardID, and Combo plans",
+        "Required outcome": (
+            "sole runtime truth; imported same-ID rows cannot replace or restore"
+        ),
+    }
+    assert rows["imported_runtime_plan_payloads"] == {
+        "Boundary": "imported_runtime_plan_payloads",
+        "Canonical input": (
+            "actual imported Mulligan, CardID, and Combo report payloads"
+        ),
+        "Required outcome": (
+            "diagnostic only in plan_input_diagnostics with runtime_gate_impact=none"
+        ),
+    }
+    assert rows["legacy_mulligan_receipt"] == {
+        "Boundary": "legacy_mulligan_receipt",
+        "Canonical input": "synthetic --claims-json source documents",
+        "Required outcome": "cannot mint a canonical exact source receipt",
+    }
     assert rows["suppression_transparency"]["Canonical input"] == (
         "key, operation, overlay, value, and claim references"
     )
@@ -1507,8 +1564,28 @@ def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
         "rejected plan attempt remains reconstructible"
     )
     assert rows["exact_evidence_counts"]["Canonical input"] == (
-        "non-negative integer evidence"
+        "both count fields parsed by one strict non-negative integer parser"
     )
     assert rows["exact_evidence_counts"]["Required outcome"] == (
-        "malformed counts fail closed to baseline and visible suppression"
+        "integer or decimal string accepted; bool, float, container, negative, or malformed rejected without exception"
     )
+    assert rows["exact_evidence_authority"]["Canonical input"] == (
+        "positive candidate counts and non-empty code-hash list"
+    )
+    assert rows["exact_evidence_authority"]["Required outcome"] == (
+        "otherwise no receipt and a visible exact-source gap"
+    )
+    assert (
+        "One shared `parse_strict_nonnegative_int` parser is used by "
+        "`source_document_drafter`, `source_autopilot`, and "
+        "`source_document_builder`."
+    ) in guide
+    assert (
+        "Decimal strings are ASCII digits only after surrounding whitespace "
+        "is trimmed; signs, decimal points, and exponents are rejected."
+    ) in guide
+    assert (
+        "Count rejection preserves a load-safe package with "
+        "`SOURCE_BACKED_PARTIAL`, exposes the exact-source gap, and mints no "
+        "receipt."
+    ) in guide

@@ -10,6 +10,10 @@ from hsconfig.source_document_model import (
     runtime_claim_kind,
     surface_gate_decision,
 )
+from tests.mulligan_authority_fixtures import (
+    build_canonical_mulligan_bundle,
+    canonical_mulligan_gate_context,
+)
 
 
 def _canonical_posture_bundle():
@@ -66,12 +70,10 @@ def test_normalized_claim_kind_keeps_exact_legacy_compatibility():
 
 
 def test_mulligan_surface_accepts_only_explicit_mulligan_claims():
-    keep = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_001"],
-    }
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [{"claim_kind": "mulligan_keep", "cards": ["CARD_001"]}]
+    )
+    keep = bundle["claims"][0]
     effect = {
         "claim_kind": "hero_power_transform",
         "claim_readiness": "source_backed_static_semantics",
@@ -79,7 +81,11 @@ def test_mulligan_surface_accepts_only_explicit_mulligan_claims():
         "cards": ["SW_448"],
     }
 
-    assert can_lower_to_mulligan(keep).allowed is True
+    assert can_lower_to_mulligan(
+        keep,
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    ).allowed is True
     decision = can_lower_to_mulligan(effect)
     assert decision.allowed is False
     assert decision.reason == "claim_kind_not_mulligan_surface"
@@ -108,13 +114,18 @@ def test_effect_only_start_of_game_transform_is_not_opening_hand_keep():
 
 
 def test_explicit_opening_hand_start_of_game_transform_can_be_mulligan_keep():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_START"],
-        "evidence_text_short": "Always keep CARD_START in your opening hand.",
-    }
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_START"],
+                "evidence_text_short": (
+                    "Always keep CARD_START in your opening hand."
+                ),
+            }
+        ]
+    )
+    claim = bundle["claims"][0]
     decision = can_lower_to_mulligan(
         claim,
         card_roles={
@@ -123,6 +134,8 @@ def test_explicit_opening_hand_start_of_game_transform_can_be_mulligan_keep():
                 "semantic_families": ["start_of_game", "hero_power_transform"],
             }
         },
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
     assert decision.allowed is True
@@ -244,7 +257,20 @@ def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
             "cards": ["CARD_001"],
         }
         context = {"card_roles": card_roles}
-        if claim_kind == "gameplan_posture":
+        if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+            bundle, deck_identity = build_canonical_mulligan_bundle(
+                [
+                    {
+                        "claim_kind": claim_kind,
+                        "cards": ["CARD_001"],
+                    }
+                ]
+            )
+            claim = bundle["claims"][0]
+            context.update(
+                canonical_mulligan_gate_context(bundle, deck_identity)
+            )
+        elif claim_kind == "gameplan_posture":
             bundle = _canonical_posture_bundle()
             claim = bundle["claims"][0]
             context["deck_identity"] = {

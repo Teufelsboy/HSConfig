@@ -69,8 +69,11 @@ def _guide_record(claims: list[dict] | None = None) -> dict:
                 "GVG_009",
             ],
             "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
                 "matched": True,
                 "matched_deck_fingerprint": SHADOW_DECK_IDENTITY["deck_fingerprint"],
+                "candidate_deck_code_hashes": ["sha256:lean-autopilot-source"],
             },
         },
         "deck_match_scope": "exact_deck_matched",

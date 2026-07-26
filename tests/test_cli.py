@@ -176,7 +176,8 @@ def _write_minimal_source_documents(
                                 "claim_kind": "targeting_rule",
                                 "cards": [card_id],
                                 "stance": "prefer_enemy_hero",
-                                "runtime_block": "BeforePlayCardBonus",
+                                "target_scope": "enemy_hero",
+                                "runtime_block": "BeforeBattlecryTargetBonus",
                                 "runtime_value": "12",
                                 "evidence_text_short": "Fixture runtime claim.",
                                 "source_confidence": "high",
@@ -206,7 +207,8 @@ def _write_conflicting_target_source_documents(path: Path) -> None:
                                 "claim_kind": "targeting_rule",
                                 "cards": ["EX1_001"],
                                 "stance": "prefer_enemy_hero",
-                                "runtime_block": "BeforePlayCardBonus",
+                                "target_scope": "enemy_hero",
+                                "runtime_block": "BeforeBattlecryTargetBonus",
                                 "runtime_value": "12",
                                 "source_confidence": "high",
                                 "evidence_text_short": (
@@ -218,7 +220,8 @@ def _write_conflicting_target_source_documents(path: Path) -> None:
                                 "claim_kind": "targeting_rule",
                                 "cards": ["EX1_002"],
                                 "stance": "prefer_enemy_hero",
-                                "runtime_block": "BeforePlayCardBonus",
+                                "target_scope": "enemy_hero",
+                                "runtime_block": "BeforeBattlecryTargetBonus",
                                 "runtime_value": "12",
                                 "source_confidence": "high",
                                 "evidence_text_short": (
@@ -230,7 +233,8 @@ def _write_conflicting_target_source_documents(path: Path) -> None:
                                 "claim_kind": "targeting_rule",
                                 "cards": ["EX1_002"],
                                 "stance": "prefer_friendly_minion",
-                                "runtime_block": "BeforePlayCardBonus",
+                                "target_scope": "friendly_minion",
+                                "runtime_block": "BeforeBattlecryTargetBonus",
                                 "runtime_value": "-12",
                                 "source_confidence": "high",
                                 "evidence_text_short": (
@@ -375,6 +379,97 @@ def _write_exact_posture_source_document(
                                 "source_confidence": "high",
                                 "promotion_eligible": True,
                             }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_canonical_runtime_plan_source_document(
+    path: Path,
+    *,
+    fingerprint: str,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "source_documents": [
+                    {
+                        "source_url": "https://example.invalid/canonical-plan-guide",
+                        "source_title": "Canonical Plan Guide",
+                        "source_family": "guide",
+                        "source_type": "public_guide",
+                        "retrieved_at": "2026-07-26T00:00:00Z",
+                        "source_visibility": "full_text",
+                        "source_lane": "deck_matched_public_guide",
+                        "deck_match_scope": "exact_deck_matched",
+                        "deck_match": {
+                            "exact_deck_evidence": {
+                                "candidate_count": 1,
+                                "decoded_candidate_count": 1,
+                                "matched": True,
+                                "matched_deck_fingerprint": fingerprint,
+                                "candidate_deck_code_hashes": [
+                                    "sha256:canonical-plan-source-code"
+                                ],
+                            }
+                        },
+                        "claims": [
+                            {
+                                "claim_id": "canonical-mulligan",
+                                "claim_kind": "mulligan_keep",
+                                "cards": ["EX1_001"],
+                                "scope": "card",
+                                "stance": "keep",
+                                "condition": "*",
+                                "promotion_eligible": True,
+                                "evidence_text_short": (
+                                    "Keep Fixture EX1_001 in the opening hand."
+                                ),
+                                "source_confidence": "high",
+                            },
+                            {
+                                "claim_id": "canonical-card",
+                                "claim_kind": "hero_power_transform",
+                                "cards": ["EX1_002"],
+                                "scope": "card",
+                                "stance": "use_transformed_hero_power",
+                                "runtime_value": "13",
+                                "evidence_text_short": (
+                                    "Use the transformed hero power with EX1_002."
+                                ),
+                                "source_confidence": "high",
+                            },
+                            {
+                                "claim_id": "canonical-suppressed-card",
+                                "claim_kind": "known_bad_pattern",
+                                "cards": ["EX1_003"],
+                                "scope": "card",
+                                "stance": "avoid_without_runtime_surface",
+                                "evidence_text_short": (
+                                    "Avoid the documented pattern for EX1_003."
+                                ),
+                                "source_confidence": "high",
+                            },
+                            {
+                                "claim_id": "canonical-combo",
+                                "claim_kind": "combo_sequence",
+                                "cards": ["EX1_001", "EX1_002"],
+                                "sequence": ["EX1_001", "EX1_002"],
+                                "scope": "card",
+                                "stance": "ordered_combo_sequence",
+                                "operator": ">>",
+                                "values": ["7", "9"],
+                                "timing_kind": "same_turn",
+                                "condition": "*",
+                                "evidence_text_short": (
+                                    "Play EX1_001 before EX1_002 in the same turn."
+                                ),
+                                "source_confidence": "high",
+                            },
                         ],
                     }
                 ]
@@ -739,7 +834,9 @@ def test_legacy_claims_still_match_real_face_targeting_phrases():
     ]
 
 
-def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsys):
+def test_build_accepts_claims_json_without_minting_mulligan_authority(
+    tmp_path: Path, capsys
+):
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
         json.dumps(
@@ -843,7 +940,7 @@ def test_build_accepts_claims_json_for_guide_backed_config(tmp_path: Path, capsy
     assert payload["status"] == "passed"
     assert archetype_research["confidence"] == "guide_backed"
     assert card_role_map["EX1_001"]["confidence"] == "guide_backed"
-    assert mulligan_anchor_map["EX1_001"]["intent"] == "hold"
+    assert mulligan_anchor_map["EX1_001"]["intent"] == "neutral"
     assert globalvalue_intent["pressure_bias"] == "high"
     assert mulligan["Mulligan"]["values"][0]["mulligan"] == "EX1_001"
     assert not (deck_dir / "Combo.json").exists()
@@ -1349,7 +1446,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert valid_card["BeforePlayCardBonus"]["values"]
+    assert valid_card["BeforeBattlecryTargetBonus"]["values"]
     assert "BeforePlayCardBonus" not in report_only_card
     assert "BeforePlayCardBonus" not in unreferenced_card
     assert not any(
@@ -1745,7 +1842,7 @@ def test_build_legacy_posture_cannot_inherit_exact_authority_from_sibling(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert targeting_claim["claim_id"] in receipt_claim_ids
+    assert targeting_claim["claim_id"] not in receipt_claim_ids
     assert posture_claim["claim_id"] not in receipt_claim_ids
     assert authority["allowed_step1_overlays"] == [
         _canonical_globalvalues_baseline_row()
@@ -2332,7 +2429,7 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert valid_card["BeforePlayCardBonus"]["values"]
+    assert valid_card["BeforeBattlecryTargetBonus"]["values"]
     assert "BeforePlayCardBonus" not in quarantined_card
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is True
@@ -2562,7 +2659,13 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert mulligan["Mulligan"]["values"] == []
+    assert [
+        (row["mulligan"], row["value"])
+        for row in mulligan["Mulligan"]["values"]
+    ] == [
+        ("EX1_001", "hold"),
+        ("*", "discard"),
+    ]
     canonical_claim_ids = {
         claim["claim_id"] for claim in guide_claim_bundle["claims"]
     }
@@ -2578,6 +2681,318 @@ def test_build_consumes_plan_rows_without_replacing_canonical_claim_truth(
             "runtime_gate_impact": "none",
         }
     ]
+
+
+def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
+    tmp_path: Path,
+    capsys,
+):
+    card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004"]
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, card_ids)
+    target_fingerprint = stable_deck_fingerprint(
+        (card_id, 1) for card_id in card_ids
+    )
+    source_documents = tmp_path / "source_documents.json"
+    _write_canonical_runtime_plan_source_document(
+        source_documents,
+        fingerprint=target_fingerprint,
+    )
+    imported_mulligan_rows = [
+        {
+            "card": "EX1_004",
+            "selector_kind": "card",
+            "selector": "EX1_004",
+            "action": "hold",
+            "condition": "coin",
+            "reason": "imported same-id mutation",
+            "claim_id": "canonical-mulligan",
+            "source_claim_ids": ["canonical-mulligan"],
+        },
+        {
+            "card": "EX1_004",
+            "selector_kind": "card",
+            "selector": "EX1_004",
+            "action": "hold",
+            "condition": "*",
+            "reason": "imported no-id policy mutation",
+            "source_type": "policy_backed_autonomous_mulligan",
+        },
+    ]
+    imported_card_rows = [
+        {
+            "card_id": "EX1_004",
+            "surface_family": "CARDID.json",
+            "surface": "CARDID.json",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "coin",
+            "value": "999",
+            "meaningful_runtime_surface": True,
+            "claim_id": "canonical-card",
+            "source_claim_ids": ["canonical-card"],
+        },
+        {
+            "card_id": "EX1_003",
+            "surface_family": "CARDID.json",
+            "surface": "CARDID.json",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": "777",
+            "meaningful_runtime_surface": True,
+            "claim_id": "canonical-suppressed-card",
+            "source_claim_ids": ["canonical-suppressed-card"],
+        },
+    ]
+    imported_combo_rows = [
+        {
+            "rule_id": "imported-same-id-combo",
+            "cards": ["EX1_002", "EX1_001"],
+            "operator": ">>",
+            "values": ["99", "88"],
+            "combo": "EX1_002>>EX1_001",
+            "value": 99,
+            "condition": "coin",
+            "claim_id": "canonical-combo",
+            "source_claim_ids": ["canonical-combo"],
+        }
+    ]
+    plan_reports = tmp_path / "plan_reports"
+    _write_plan_override_reports(
+        plan_reports,
+        guide_claim_bundle=_claim_bundle_for_override(
+            card_ids=card_ids,
+            claims=[],
+        ),
+        mulligan_rules=imported_mulligan_rows,
+        card_behavior_rows=imported_card_rows,
+        combo_rows=imported_combo_rows,
+    )
+    imported_payloads = {
+        "mulligan_plan_report.json": json.loads(
+            (plan_reports / "mulligan_plan_report.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+        "card_behavior_plan_report.json": json.loads(
+            (plan_reports / "card_behavior_plan_report.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+        "combo_plan_report.json": json.loads(
+            (plan_reports / "combo_plan_report.json").read_text(
+                encoding="utf-8"
+            )
+        ),
+    }
+    imported_payloads["mulligan_plan_report.json"]["quality"] = {
+        "status": "IMPORTED_STALE_QUALITY"
+    }
+    imported_payloads["mulligan_plan_report.json"]["summary"] = {
+        "status": "IMPORTED_STALE_SUMMARY"
+    }
+    imported_payloads["card_behavior_plan_report.json"]["card_rows"] = {
+        "EX1_004": [{"status": "IMPORTED_STALE_CARD_ROWS"}]
+    }
+    imported_payloads["card_behavior_plan_report.json"]["summary"] = {
+        "status": "IMPORTED_STALE_SUMMARY"
+    }
+    imported_payloads["combo_plan_report.json"]["summary"] = {
+        "status": "IMPORTED_STALE_SUMMARY"
+    }
+    for filename, payload in imported_payloads.items():
+        (plan_reports / filename).write_text(
+            json.dumps(payload),
+            encoding="utf-8",
+        )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Canonical Plan Truth",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--source-documents-json",
+            str(source_documents),
+            "--plan-reports-dir",
+            str(plan_reports),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    deck_dir = out / "CustomConfig" / "canonical_plan_truth"
+    reports_dir = out / "reports"
+    mulligan_config = json.loads(
+        (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
+    )
+    card_config = json.loads(
+        (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
+    )
+    suppressed_card_config = json.loads(
+        (deck_dir / "EX1_003.json").read_text(encoding="utf-8")
+    )
+    combo_config = json.loads(
+        (deck_dir / "Combo.json").read_text(encoding="utf-8")
+    )
+    mulligan_report = json.loads(
+        (reports_dir / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
+    card_report = json.loads(
+        (reports_dir / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    combo_report = json.loads(
+        (reports_dir / "combo_plan_report.json").read_text(encoding="utf-8")
+    )
+    diagnostics = json.loads(
+        (reports_dir / "plan_input_diagnostics.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    canonical_mulligan_rules = [
+        row
+        for row in mulligan_report["rules"]
+        if row.get("claim_id") == "canonical-mulligan"
+    ]
+    canonical_card_rows = [
+        row
+        for row in card_report["rows"]
+        if row.get("claim_id") == "canonical-card"
+    ]
+    canonical_combo_rows = [
+        row
+        for row in combo_report["combos"]
+        if row.get("claim_id") == "canonical-combo"
+    ]
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert len(canonical_mulligan_rules) == 1
+    assert canonical_mulligan_rules[0]["card"] == "EX1_001"
+    assert canonical_mulligan_rules[0]["action"] == "hold"
+    assert not any(
+        row.get("mulligan") == "EX1_004"
+        for row in mulligan_config["Mulligan"]["values"]
+    )
+    assert len(canonical_card_rows) == 1
+    assert canonical_card_rows[0]["card_id"] == "EX1_002"
+    assert canonical_card_rows[0]["behavior_block"] == (
+        "BeforeUseHeroPowerBonus"
+    )
+    assert card_config["BeforeUseHeroPowerBonus"]["values"][0]["value"] == "13"
+    assert "BeforePlayCardBonus" not in suppressed_card_config
+    assert len(canonical_combo_rows) == 1
+    assert canonical_combo_rows[0]["cards"] == ["EX1_001", "EX1_002"]
+    assert len(combo_config["ComboList"]["values"]) == 1
+    assert combo_config["ComboList"]["values"][0]["condition"] == "*"
+    assert combo_config["ComboList"]["values"][0]["combo"] == (
+        "EX1_001>>EX1_002"
+    )
+    assert combo_config["ComboList"]["values"][0]["value"] == "7>>9"
+    assert mulligan_report["quality"]["status"] != "IMPORTED_STALE_QUALITY"
+    assert "summary" not in mulligan_report
+    assert "EX1_004" not in card_report["card_rows"]
+    assert "summary" not in card_report
+    assert "summary" not in combo_report
+    assert diagnostics["imported_plan_reports"] == imported_payloads
+    assert diagnostics["runtime_gate_impact"] == "none"
+
+
+def test_build_legacy_claims_json_cannot_mint_source_backed_mulligan_authority(
+    tmp_path: Path,
+    capsys,
+):
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    target_fingerprint = stable_deck_fingerprint([("EX1_001", 1)])
+    claims_json = tmp_path / "claims.json"
+    claims_json.write_text(
+        json.dumps(
+            [
+                {
+                    "claim_id": "legacy-self-declared-mulligan",
+                    "source": "guide",
+                    "source_type": "public_guide",
+                    "source_title": "Legacy self-declared guide",
+                    "url": "https://example.invalid/legacy-self-declared",
+                    "retrieved_at": "2026-07-26T00:00:00Z",
+                    "claim": "Mulligan: always keep Fixture EX1_001.",
+                    "cards": ["EX1_001"],
+                    "claim_type": "mulligan_keep",
+                    "source_confidence": "high",
+                    "deck_match_scope": "exact_deck_matched",
+                    "promotion_eligible": True,
+                    "source_visibility": "full_text",
+                    "source_lane": "deck_matched_public_guide",
+                    "deck_match": {
+                        "exact_deck_evidence": {
+                            "candidate_count": 1,
+                            "decoded_candidate_count": 1,
+                            "matched": True,
+                            "matched_deck_fingerprint": target_fingerprint,
+                            "candidate_deck_code_hashes": [
+                                "sha256:legacy-self-declared"
+                            ],
+                        }
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "package"
+
+    code = main(
+        [
+            "build",
+            "--deck-name",
+            "Legacy Mulligan Receipt",
+            "--deck-code",
+            "fixture-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--claims-json",
+            str(claims_json),
+            "--json",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    reports_dir = out / "reports"
+    claim_bundle = json.loads(
+        (reports_dir / "guide_claim_bundle.json").read_text(encoding="utf-8")
+    )
+    mulligan_report = json.loads(
+        (reports_dir / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
+    canonical_claim_id = claim_bundle["claims"][0]["claim_id"]
+
+    assert code == 0
+    assert payload["status"] == "passed"
+    assert claim_bundle["globalvalues_source_receipts"] == []
+    assert not any(
+        row.get("claim_id") == canonical_claim_id
+        for row in mulligan_report["rules"]
+    )
+    assert any(
+        row.get("claim_id") == canonical_claim_id
+        and row.get("reason") == "mulligan_requires_verified_source_receipt"
+        for row in mulligan_report["suppressed_rules"]
+    )
 
 
 def test_command_common_emit_result_prints_json(capsys):

@@ -261,14 +261,23 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
             }
         }
     }
-    if claim_kind == "gameplan_posture":
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        bundle = _verified_mulligan_bundle(claim_kind)
+        claim = bundle["claims"][0]
+        context["deck_identity"] = {
+            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        }
+        context["verified_source_receipts"] = bundle[
+            "canonical_source_receipts"
+        ]
+    elif claim_kind == "gameplan_posture":
         bundle = _verified_gameplan_posture_bundle()
         claim = bundle["claims"][0]
         context["deck_identity"] = {
             "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
         }
         context["verified_source_receipts"] = bundle[
-            "globalvalues_source_receipts"
+            "canonical_source_receipts"
         ]
     gates = {
         surface: _decision_row(surface_gate_decision(claim, surface, context=context))
@@ -455,6 +464,8 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
         }
     if claim_kind == "gameplan_posture":
         return _verified_gameplan_posture_bundle()["claims"][0]
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        return _verified_mulligan_bundle(claim_kind)["claims"][0]
     if claim_kind == "globalvalue_numeric_tuning":
         return {**claim, "cards": [], "key": "LowHpBoardValuePenalty"}
     if claim_kind == "card_role":
@@ -492,10 +503,17 @@ def _builder_runner_result(
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["suppressed"])
     if runner == "build_mulligan_plan":
+        verified_bundle = _verified_mulligan_bundle(claim_kind)
         plan = build_mulligan_plan(
             deck_name="Conformance",
             claims=[claim],
             card_roles={"CARD_001": {"roles": ["mulligan_anchor"]}},
+            deck_identity={
+                "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            },
+            verified_source_receipts=verified_bundle[
+                "canonical_source_receipts"
+            ],
         )
         if any(row.get("source_claim_ids") == [claim["claim_id"]] for row in plan["rules"]):
             return {"outcome": "emitted", "reason": "emitted"}
@@ -564,6 +582,66 @@ def _verified_gameplan_posture_bundle() -> dict[str, Any]:
                         "scope": "deck",
                         "stance": "aggro_burn",
                         "evidence_text_short": "Use the aggro burn posture.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+
+def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
+    deck_identity = {
+        "deck_name": "Conformance",
+        "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        "cards": [
+            {"card_id": "CARD_001", "name": "Conformance Card", "count": 1}
+        ],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/conformance-mulligan-guide",
+                "source_title": "Conformance exact-deck Mulligan guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": (
+                            _CONFORMANCE_DECK_FINGERPRINT
+                        ),
+                        "candidate_deck_code_hashes": [
+                            "sha256:conformance-mulligan-source"
+                        ],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": f"conformance_{claim_kind}",
+                        "claim_kind": claim_kind,
+                        "cards": ["CARD_001"],
+                        "scope": "card",
+                        "stance": (
+                            "keep"
+                            if claim_kind == "mulligan_keep"
+                            else "discard"
+                        ),
+                        "evidence_text_short": (
+                            "Keep the card in the opening hand."
+                            if claim_kind == "mulligan_keep"
+                            else "Discard the card from the opening hand."
+                        ),
                         "source_confidence": "high",
                         "promotion_eligible": True,
                     }

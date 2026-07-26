@@ -7,6 +7,7 @@ from typing import Any, Mapping, Sequence
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_evidence_policy import classify_source_evidence
+from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_evidence_verifier import verify_source_documents
 from hsconfig.source_readiness_preview import build_source_readiness_preview
 from hsconfig.source_text_claim_extractor import extract_text_claims
@@ -91,6 +92,10 @@ def rank_public_sources(
             score -= 100
         row["source_visibility"] = _source_visibility_for_documents(row)
         row["source_rank_score"] = score
+        requested_exact_scope = (
+            _text(row.get("deck_match_scope", "")).lower()
+            == "exact_deck_matched"
+        )
         deck_match_scope = _deck_match_scope(
             row,
             deck_name,
@@ -103,6 +108,10 @@ def rank_public_sources(
                 unique_deck_card_count=len(deck_card_ids),
             )
         row["deck_match_scope"] = deck_match_scope
+        if requested_exact_scope and deck_match_scope != "exact_deck_matched":
+            row["first_missing_source_action"] = (
+                "add_exact_deck_matched_source"
+            )
         row["source_rank_lane"] = _rank_lane(
             family,
             card_overlap,
@@ -1083,30 +1092,23 @@ def _source_base(
     base["source_visibility"] = source_visibility
     base["deck_match_scope"] = deck_match_scope
     base["source_lane"] = _text(source.get("source_lane", "")) or base["source_lane"]
-    exact_evidence = match.get("exact_deck_evidence", {})
     if (
-        deck_match_scope == "exact_deck_matched"
-        and isinstance(exact_evidence, Mapping)
-        and exact_evidence.get("matched") is True
+        _text(source.get("first_missing_source_action", ""))
+        == "add_exact_deck_matched_source"
+        and deck_match_scope != "exact_deck_matched"
     ):
+        base["source_lane"] = "archetype_matched_public_guide"
+        base["first_missing_source_action"] = (
+            "add_exact_deck_matched_source"
+        )
+    exact_evidence = match.get("exact_deck_evidence", {})
+    canonical_exact = canonical_exact_deck_evidence(
+        exact_evidence,
+        target_fingerprint=deck_identity.get("deck_fingerprint"),
+    )
+    if deck_match_scope == "exact_deck_matched" and canonical_exact:
         base["deck_match"] = {
-            "exact_deck_evidence": {
-                "candidate_count": int(exact_evidence.get("candidate_count", 0)),
-                "decoded_candidate_count": int(
-                    exact_evidence.get("decoded_candidate_count", 0)
-                ),
-                "matched": True,
-                "matched_deck_fingerprint": _text(
-                    exact_evidence.get("matched_deck_fingerprint", "")
-                ),
-                "candidate_deck_code_hashes": sorted(
-                    _text(value)
-                    for value in _as_list(
-                        exact_evidence.get("candidate_deck_code_hashes", [])
-                    )
-                    if _text(value)
-                ),
-            }
+            "exact_deck_evidence": canonical_exact
         }
     source_record_strength = _text(source.get("source_record_strength", ""))
     if source_record_strength:
@@ -1369,12 +1371,12 @@ def _has_exact_deck_evidence(
     match = source.get("deck_match", {})
     if not isinstance(match, Mapping):
         return False
-    exact = match.get("exact_deck_evidence", {})
-    if not isinstance(exact, Mapping) or exact.get("matched") is not True:
-        return False
-    observed = _text(exact.get("matched_deck_fingerprint", ""))
-    target = _text(deck_identity.get("deck_fingerprint", ""))
-    return bool(observed and target and observed == target)
+    return bool(
+        canonical_exact_deck_evidence(
+            match.get("exact_deck_evidence"),
+            target_fingerprint=deck_identity.get("deck_fingerprint"),
+        )
+    )
 
 
 def _is_strong_guide_lane(

@@ -7,6 +7,7 @@ from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
 )
+from tests.mulligan_authority_fixtures import build_canonical_mulligan_bundle
 
 
 REQUIRED_LIFECYCLE_FIELDS = {
@@ -74,27 +75,34 @@ def _verified_posture_bundle(claim_id: str = "posture_claim") -> dict:
     )
 
 
+def _verified_mulligan_bundle(*claims: dict) -> tuple[dict, dict]:
+    return build_canonical_mulligan_bundle(
+        claims,
+        deck_fingerprint="fixture-deck-fingerprint",
+    )
+
+
 def test_source_contract_audit_explains_surface_gate_lanes():
+    mulligan_bundle, mulligan_identity = _verified_mulligan_bundle(
+        {
+            "claim_id": "keep_claim",
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_KEEP"],
+            "evidence_text_short": "Keep CARD_KEEP.",
+        }
+    )
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
         deck_identity={
-            "deck_name": "FixtureDeck",
+            **mulligan_identity,
             "cards": [
                 {"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2},
                 {"card_id": "CARD_NUM", "name": "Numeric Card", "count": 1},
             ],
         },
-            guide_claim_bundle={
-                "claims": [
-                {
-                    "claim_id": "keep_claim",
-                    "claim_kind": "mulligan_keep",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": ["CARD_KEEP"],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Keep CARD_KEEP.",
-                },
+        guide_claim_bundle={
+            "claims": [
+                mulligan_bundle["claims"][0],
                 {
                     "claim_id": "numeric_claim",
                     "claim_kind": "globalvalue_numeric_tuning",
@@ -104,7 +112,10 @@ def test_source_contract_audit_explains_surface_gate_lanes():
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Tune LowHpBoardValuePenalty later.",
                 },
-            ]
+            ],
+            "canonical_source_receipts": mulligan_bundle[
+                "canonical_source_receipts"
+            ],
         },
         mulligan_plan={
             "rules": [
@@ -163,10 +174,18 @@ def test_source_contract_audit_explains_surface_gate_lanes():
 
 
 def test_claim_lifecycle_rows_explain_static_policy_and_runtime_outcome():
+    mulligan_bundle, mulligan_identity = _verified_mulligan_bundle(
+        {
+            "claim_id": "keep_claim",
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_KEEP"],
+            "evidence_text_short": "Keep CARD_KEEP.",
+        }
+    )
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
         deck_identity={
-            "deck_name": "FixtureDeck",
+            **mulligan_identity,
             "cards": [
                 {"card_id": "CARD_KEEP", "name": "Keep Card", "count": 2},
                 {"card_id": "CARD_NUM", "name": "Numeric Card", "count": 1},
@@ -174,15 +193,7 @@ def test_claim_lifecycle_rows_explain_static_policy_and_runtime_outcome():
         },
         guide_claim_bundle={
             "claims": [
-                {
-                    "claim_id": "keep_claim",
-                    "claim_kind": "mulligan_keep",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": ["CARD_KEEP"],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Keep CARD_KEEP.",
-                },
+                mulligan_bundle["claims"][0],
                 {
                     "claim_id": "numeric_claim",
                     "claim_kind": "globalvalue_numeric_tuning",
@@ -192,7 +203,10 @@ def test_claim_lifecycle_rows_explain_static_policy_and_runtime_outcome():
                     "source_title": "Fixture Guide",
                     "evidence_text_short": "Tune LowHpBoardValuePenalty after games.",
                 },
-            ]
+            ],
+            "canonical_source_receipts": mulligan_bundle[
+                "canonical_source_receipts"
+            ],
         },
         mulligan_plan={
             "rules": [
@@ -443,6 +457,15 @@ def test_initial_policy_report_only_claim_keeps_claim_kind_policy_reason():
 
 
 def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
+    mulligan_bundle, _ = _verified_mulligan_bundle(
+        {
+            "claim_id": "keep_claim",
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_KEEP"],
+            "evidence_text_short": "Keep CARD_KEEP.",
+        }
+    )
+    posture_bundle = _verified_posture_bundle()
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
         deck_identity={
@@ -452,21 +475,14 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
         },
         guide_claim_bundle={
             "claims": [
-                {
-                    "claim_id": "keep_claim",
-                    "claim_kind": "mulligan_keep",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": ["CARD_KEEP"],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Keep CARD_KEEP.",
-                },
-                    _verified_posture_claim(),
-                ],
-                "globalvalues_source_receipts": _verified_posture_bundle()[
-                    "globalvalues_source_receipts"
-                ],
-            },
+                mulligan_bundle["claims"][0],
+                posture_bundle["claims"][0],
+            ],
+            "canonical_source_receipts": [
+                *mulligan_bundle["canonical_source_receipts"],
+                *posture_bundle["canonical_source_receipts"],
+            ],
+        },
         mulligan_plan={
             "rules": [
                 {
@@ -510,29 +526,28 @@ def test_source_contract_audit_matches_real_source_claim_ids_and_claim_refs():
 
 
 def test_source_contract_audit_counts_merged_mulligan_claim_ids_as_emitted():
+    mulligan_bundle, mulligan_identity = _verified_mulligan_bundle(
+        {
+            "claim_id": "keep_claim_a",
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_KEEP"],
+            "evidence_text_short": "Keep CARD_KEEP.",
+        },
+        {
+            "claim_id": "keep_claim_b",
+            "claim_kind": "mulligan_keep",
+            "cards": ["CARD_KEEP"],
+            "evidence_text_short": "CARD_KEEP is also a keep.",
+        },
+    )
     report = build_source_contract_audit(
         deck_name="FixtureDeck",
+        deck_identity=mulligan_identity,
         guide_claim_bundle={
-            "claims": [
-                {
-                    "claim_id": "keep_claim_a",
-                    "claim_kind": "mulligan_keep",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": ["CARD_KEEP"],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "Keep CARD_KEEP.",
-                },
-                {
-                    "claim_id": "keep_claim_b",
-                    "claim_kind": "mulligan_keep",
-                    "claim_readiness": "guide_backed",
-                    "trust_ceiling": "runtime_candidate",
-                    "cards": ["CARD_KEEP"],
-                    "source_title": "Fixture Guide",
-                    "evidence_text_short": "CARD_KEEP is also a keep.",
-                },
-            ]
+            "claims": mulligan_bundle["claims"],
+            "canonical_source_receipts": mulligan_bundle[
+                "canonical_source_receipts"
+            ],
         },
         mulligan_plan={
             "rules": [

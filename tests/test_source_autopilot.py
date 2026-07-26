@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from hsconfig.deck_identity import build_deck_identity, stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -33,6 +35,16 @@ SHADOW_DECK_IDENTITY["deck_fingerprint"] = stable_deck_fingerprint(
     (card["card_id"], card["count"]) for card in SHADOW_DECK_IDENTITY["cards"]
 )
 
+INVALID_EXACT_COUNT_VALUES = [
+    pytest.param("not-an-int", id="nonnumeric-string"),
+    pytest.param(True, id="boolean"),
+    pytest.param(-1, id="negative"),
+    pytest.param([], id="list"),
+    pytest.param({}, id="dictionary"),
+    pytest.param(1.5, id="float"),
+    pytest.param("9" * 5000, id="oversized-decimal-string"),
+]
+
 
 def _shadowpriest_identity() -> dict:
     return SHADOW_DECK_IDENTITY
@@ -54,8 +66,11 @@ def _strong_ranked_source(*, normalized_text: str) -> dict:
             "archetype": "shadowpriest",
             "matched_card_ids": ["SW_446", "TOY_381"],
             "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
                 "matched": True,
                 "matched_deck_fingerprint": SHADOW_DECK_IDENTITY["deck_fingerprint"],
+                "candidate_deck_code_hashes": ["sha256:shadow-source-code"],
             },
         },
         "normalized_text": normalized_text,
@@ -206,8 +221,11 @@ def _profile_report(claims: list[dict], *, archetype: str = "aggro_fixture") -> 
     source = _current_guide_record(claims, archetype=archetype)
     source["deck_match_scope"] = "exact_deck_matched"
     source["deck_match"]["exact_deck_evidence"] = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
         "matched": True,
         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+        "candidate_deck_code_hashes": ["sha256:profile-source-code"],
     }
     bundle = build_source_autopilot_bundle(
         deck_name="ProfileDeck",
@@ -216,6 +234,140 @@ def _profile_report(claims: list[dict], *, archetype: str = "aggro_fixture") -> 
         current_date="2026-07-15",
     )
     return bundle["source_autopilot_report"]
+
+
+def _strict_count_autopilot_fixture(
+    *,
+    count_field: str,
+    count_value,
+) -> tuple[dict, dict]:
+    deck_identity = {
+        "deck_name": "StrictCountDeck",
+        "deck_slug": "strictcountdeck",
+        "cards": [
+            {
+                "card_id": "CARD_001",
+                "name": "Fixture One",
+                "cost": 1,
+                "count": 2,
+            }
+        ],
+    }
+    deck_identity["deck_fingerprint"] = stable_deck_fingerprint(
+        (card["card_id"], card["count"]) for card in deck_identity["cards"]
+    )
+    exact = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+        "candidate_deck_code_hashes": ["sha256:strict-count-source-code"],
+    }
+    exact[count_field] = count_value
+    record = {
+        "source_url": "https://example.test/strict-count-guide",
+        "source_title": "StrictCountDeck Guide 2026",
+        "source_family": "guide",
+        "source_type": "public_guide",
+        "source_visibility": "full_text",
+        "publication_year": 2026,
+        "source_record_strength": "candidate_strong",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "deck_match_scope": "exact_deck_matched",
+        "deck_match": {
+            "deck_name": "StrictCountDeck",
+            "archetype": "strictcountdeck",
+            "matched_card_ids": ["CARD_001"],
+            "exact_deck_evidence": exact,
+        },
+        "mulligan": {
+            "keep_card_ids": ["CARD_001"],
+            "evidence_text_short": "Keep Fixture One.",
+        },
+        "normalized_text": (
+            "StrictCountDeck Guide 2026. Mulligan: keep Fixture One. "
+            "Use Fixture One as the opening pressure card."
+        ),
+    }
+    return deck_identity, record
+
+
+@pytest.mark.parametrize(
+    "count_field",
+    ["candidate_count", "decoded_candidate_count"],
+)
+@pytest.mark.parametrize("invalid_value", INVALID_EXACT_COUNT_VALUES)
+def test_autopilot_invalid_exact_counts_fail_closed_without_exception(
+    count_field,
+    invalid_value,
+):
+    deck_identity, record = _strict_count_autopilot_fixture(
+        count_field=count_field,
+        count_value=invalid_value,
+    )
+
+    try:
+        autopilot = build_source_autopilot_bundle(
+            deck_name="StrictCountDeck",
+            deck_identity=deck_identity,
+            source_search_records=[record],
+            current_date="2026-07-26",
+        )
+    except (TypeError, ValueError) as exc:
+        pytest.fail(f"invalid exact evidence must fail closed, not raise: {exc}")
+
+    ranked = autopilot["ranked_sources"][0]
+    document = autopilot["source_documents_payload"]["source_documents"][0]
+    source_bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+
+    assert ranked["deck_match_scope"] == "archetype_matched"
+    assert document["deck_match_scope"] == "archetype_matched"
+    assert document["source_lane"] == "archetype_matched_public_guide"
+    assert document["first_missing_source_action"] == (
+        "add_exact_deck_matched_source"
+    )
+    assert "deck_match" not in document
+    assert source_bundle["globalvalues_source_receipts"] == []
+
+
+@pytest.mark.parametrize(
+    "accepted_value",
+    [pytest.param(1, id="integer"), pytest.param("1", id="decimal-string")],
+)
+def test_autopilot_accepts_strict_positive_integer_count_forms(accepted_value):
+    deck_identity, record = _strict_count_autopilot_fixture(
+        count_field="candidate_count",
+        count_value=accepted_value,
+    )
+
+    autopilot = build_source_autopilot_bundle(
+        deck_name="StrictCountDeck",
+        deck_identity=deck_identity,
+        source_search_records=[record],
+        current_date="2026-07-26",
+    )
+    document = autopilot["source_documents_payload"]["source_documents"][0]
+    source_bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+
+    assert document["deck_match_scope"] == "exact_deck_matched"
+    assert source_bundle["globalvalues_source_receipts"]
+    assert {
+        receipt["claim_id"]
+        for receipt in source_bundle["globalvalues_source_receipts"]
+    } == {
+        claim["claim_id"] for claim in source_bundle["claims"]
+    }
 
 
 def test_rank_public_sources_prefers_current_matching_guides_over_decklists():
@@ -1097,8 +1249,13 @@ def test_rank_public_sources_accepts_evergreen_wild_archetype_as_strong_lane():
                     "deck_name": "ShadowPriest",
                     "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                        "candidate_deck_code_hashes": [
+                            "sha256:evergreen-shadow-source"
+                        ],
                     },
                 },
                 "deck_match_scope": "exact_deck_matched",
@@ -1169,8 +1326,13 @@ def test_source_autopilot_evergreen_wild_guide_can_close_strong_summary():
                     "deck_name": "ShadowPriest",
                     "matched_card_ids": ["SW_448", "SW_446", "GVG_009"],
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                        "candidate_deck_code_hashes": [
+                            "sha256:evergreen-shadow-source"
+                        ],
                     },
                 },
                 "deck_match_scope": "exact_deck_matched",
@@ -1350,8 +1512,13 @@ def test_autopilot_extracts_full_text_claims_before_closure_evaluation():
                     "deck_name": "ShadowPriest",
                     "matched_card_ids": ["SW_448", "TOY_381"],
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+                        "candidate_deck_code_hashes": [
+                            "sha256:full-text-shadow-source"
+                        ],
                     },
                 },
                 "deck_match_scope": "exact_deck_matched",

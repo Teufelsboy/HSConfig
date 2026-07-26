@@ -12,8 +12,11 @@
       "deck_match_scope": "exact_deck_matched",
       "deck_match": {
         "exact_deck_evidence": {
+          "candidate_count": 1,
+          "decoded_candidate_count": 1,
           "matched": true,
-          "matched_deck_fingerprint": "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327"
+          "matched_deck_fingerprint": "831b989cf8d076bff87848b4d0d6f382c9d306fddea7619017f0c361bfc92327",
+          "candidate_deck_code_hashes": ["sha256:shadowpriest-source-code"]
         }
       },
       "claims": [

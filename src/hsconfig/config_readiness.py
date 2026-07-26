@@ -66,7 +66,13 @@ GUIDE_BACKED_COVERAGE_STATUSES = {
     "source_backed_static_semantics",
 }
 MULLIGAN_AUTHORITY_SUPPRESSION_REASONS = {
+    "mulligan_requires_public_guide_source",
     "mulligan_requires_exact_deck_match",
+    "mulligan_requires_target_deck_fingerprint",
+    "mulligan_requires_verified_exact_deck_evidence",
+    "mulligan_exact_deck_fingerprint_mismatch",
+    "mulligan_requires_complete_exact_deck_evidence",
+    "mulligan_requires_verified_source_receipt",
     "mulligan_requires_promotion_eligible_source",
     "mulligan_requires_full_text_source",
     "mulligan_requires_deck_matched_public_guide_lane",

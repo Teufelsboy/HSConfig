@@ -6,7 +6,58 @@ from hsconfig.source_claim_lifecycle import (
 )
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
-from hsconfig.source_document_model import strict_claim_kind
+from hsconfig.source_document_model import (
+    globalvalues_claim_signature,
+    strict_claim_kind,
+)
+
+
+_MULLIGAN_FINGERPRINT = "sha256:lifecycle-mulligan-fixture"
+
+
+def _authorized_mulligan_claim(
+    claim_id: str,
+    card_id: str,
+    **overrides,
+) -> dict:
+    return {
+        "claim_id": claim_id,
+        "claim_kind": "mulligan_keep",
+        "cards": [card_id],
+        "source_confidence": "guide_backed",
+        "source_family": "guide",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
+                "matched": True,
+                "matched_deck_fingerprint": _MULLIGAN_FINGERPRINT,
+                "candidate_deck_code_hashes": [
+                    "sha256:lifecycle-mulligan-source"
+                ],
+            }
+        },
+        **overrides,
+    }
+
+
+def _mulligan_context(*claims: dict) -> dict:
+    return {
+        "deck_identity": {"deck_fingerprint": _MULLIGAN_FINGERPRINT},
+        "verified_source_receipts": [
+            {
+                "receipt_kind": "canonical_exact_deck_source_document",
+                "matched_deck_fingerprint": _MULLIGAN_FINGERPRINT,
+                "claim_id": claim["claim_id"],
+                "claim_signature": globalvalues_claim_signature(claim),
+            }
+            for claim in claims
+        ],
+    }
 
 
 def test_lifecycle_migrates_legacy_claim_type_once_and_stores_claim_kind():
@@ -36,20 +87,12 @@ def test_strict_claim_kind_requires_stored_modern_claim_kind_after_ingestion():
 
 
 def test_runtime_claims_for_surface_excludes_quarantined_report_only_claims():
+    keep_1 = _authorized_mulligan_claim("keep_1", "CARD_001")
+    keep_2 = _authorized_mulligan_claim("keep_2", "CARD_002")
     rows = build_initial_lifecycle_rows(
         [
-            {
-                "claim_id": "keep_1",
-                "claim_kind": "mulligan_keep",
-                "card_id": "CARD_001",
-                "source_confidence": "guide_backed",
-            },
-            {
-                "claim_id": "keep_2",
-                "claim_kind": "mulligan_keep",
-                "card_id": "CARD_002",
-                "source_confidence": "guide_backed",
-            },
+            keep_1,
+            keep_2,
             {
                 "claim_id": "role_1",
                 "claim_kind": "card_role",
@@ -67,7 +110,14 @@ def test_runtime_claims_for_surface_excludes_quarantined_report_only_claims():
         },
     )
 
-    runtime_claims = runtime_claims_for_surface(rows, "mulligan")
+    runtime_claims = runtime_claims_for_surface(
+        rows,
+        "mulligan",
+        context=_mulligan_context(
+            rows[0]["claim"],
+            rows[1]["claim"],
+        ),
+    )
     assert [claim["claim_id"] for claim in runtime_claims] == ["keep_1"]
     by_id = {row["claim_id"]: row for row in rows}
     assert by_id["keep_2"]["quarantine_status"] == "quarantined"
@@ -215,21 +265,22 @@ def test_lifecycle_mulligan_surface_normalizes_top_level_non_hand_qualifiers():
 
 
 def test_lifecycle_mulligan_surface_preserves_top_level_opening_hand_intent():
+    claim = _authorized_mulligan_claim(
+        "highlander_opening_hand_keep",
+        "HIGH_001",
+        deck_evaluation="No Duplicates",
+        timing="Opening Hand",
+        evidence_text_short="This is a specific opening hand keep.",
+    )
     rows = build_initial_lifecycle_rows(
-        [
-            {
-                "claim_id": "highlander_opening_hand_keep",
-                "claim_kind": "mulligan_keep",
-                "cards": ["HIGH_001"],
-                "deck_evaluation": "No Duplicates",
-                "timing": "Opening Hand",
-                "source_confidence": "guide_backed",
-                "evidence_text_short": "This is a specific opening hand keep.",
-            }
-        ]
+        [claim]
     )
 
-    runtime_claims = runtime_claims_for_surface(rows, "mulligan")
+    runtime_claims = runtime_claims_for_surface(
+        rows,
+        "mulligan",
+        context=_mulligan_context(rows[0]["claim"]),
+    )
 
     assert rows[0]["semantic_qualifiers"] == {
         "timing": "mulligan",

@@ -1025,8 +1025,13 @@ def test_matching_exact_scope_carries_canonical_fingerprint_evidence_to_claim():
                 "source_lane": "deck_matched_public_guide",
                 "deck_match": {
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": "target-fingerprint",
+                        "candidate_deck_code_hashes": [
+                            "sha256:builder-exact-source"
+                        ],
                     }
                 },
                 "claims": [
@@ -1048,7 +1053,10 @@ def test_matching_exact_scope_carries_canonical_fingerprint_evidence_to_claim():
     assert claim["deck_match_scope"] == "exact_deck_matched"
     assert claim["deck_match"] == {
         "exact_deck_evidence": {
+            "candidate_count": 1,
+            "decoded_candidate_count": 1,
             "matched": True,
             "matched_deck_fingerprint": "target-fingerprint",
+            "candidate_deck_code_hashes": ["sha256:builder-exact-source"],
         }
     }

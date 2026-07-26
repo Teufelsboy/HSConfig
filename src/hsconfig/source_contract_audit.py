@@ -52,8 +52,8 @@ def build_source_contract_audit(
     )
     card_roles = _card_roles_from_readiness(config_readiness_report)
     verified_source_receipts = guide_claim_bundle.get(
-        "globalvalues_source_receipts",
-        [],
+        "canonical_source_receipts",
+        guide_claim_bundle.get("globalvalues_source_receipts", []),
     )
     runtime_emission_index = runtime_emission_index or _runtime_emission_index(
         mulligan_plan=mulligan_plan,

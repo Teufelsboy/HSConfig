@@ -3,6 +3,9 @@ from hsconfig.source_document_model import can_lower_to_mulligan
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 from hsconfig.source_evidence_verifier import claim_evidence_status
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
+from tests.mulligan_authority_fixtures import (
+    build_canonical_mulligan_bundle,
+)
 
 
 def test_normalize_semantic_qualifiers_keeps_known_fields_and_drops_empty_values():
@@ -144,20 +147,29 @@ def test_start_of_game_qualifier_blocks_mulligan_keep_without_opening_hand_text(
 
 
 def test_start_of_game_qualifier_allows_explicit_opening_hand_text():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["START_EFFECT"],
-        "evidence_text_short": "Always keep START_EFFECT in your opening hand.",
-        "semantic_qualifiers": {
-            "timing": "start_of_game",
-            "zone_scope": "deck",
-            "state_requirements": ["hero_power_transform"],
-        },
-    }
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["START_EFFECT"],
+                "evidence_text_short": (
+                    "Always keep START_EFFECT in your opening hand."
+                ),
+                "semantic_qualifiers": {
+                    "timing": "start_of_game",
+                    "zone_scope": "deck",
+                    "state_requirements": ["hero_power_transform"],
+                },
+            }
+        ]
+    )
+    claim = bundle["claims"][0]
 
-    decision = can_lower_to_mulligan(claim)
+    decision = can_lower_to_mulligan(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
 
     assert decision.allowed is True
 
@@ -235,40 +247,56 @@ def test_generated_qualifier_blocks_mulligan_keep_without_opening_hand_text():
 
 
 def test_deck_evaluation_qualifier_allows_explicit_opening_hand_text():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["DECK_MODIFIER"],
-        "evidence_text_short": "Always keep DECK_MODIFIER in your opening hand.",
-        "semantic_qualifiers": {
-            "deck_evaluation": "highlander",
-        },
-    }
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["DECK_MODIFIER"],
+                "evidence_text_short": (
+                    "Always keep DECK_MODIFIER in your opening hand."
+                ),
+                "semantic_qualifiers": {
+                    "deck_evaluation": "highlander",
+                },
+            }
+        ]
+    )
+    claim = bundle["claims"][0]
 
-    decision = can_lower_to_mulligan(claim)
+    decision = can_lower_to_mulligan(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
 
     assert decision.allowed is True
 
 
 def test_opening_hand_qualifier_allows_deck_evaluation_keep_without_prose_marker():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["DECK_MODIFIER"],
-        "evidence_text_short": "Always keep this card.",
-        "semantic_qualifiers": normalize_semantic_qualifiers(
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [
             {
-                "semantic_qualifiers": {
-                    "timing": "Opening Hand",
-                    "deck_evaluation": "No Duplicates",
-                }
+                "claim_kind": "mulligan_keep",
+                "cards": ["DECK_MODIFIER"],
+                "evidence_text_short": "Always keep this card.",
+                "semantic_qualifiers": normalize_semantic_qualifiers(
+                    {
+                        "semantic_qualifiers": {
+                            "timing": "Opening Hand",
+                            "deck_evaluation": "No Duplicates",
+                        }
+                    }
+                ),
             }
-        ),
-    }
+        ]
+    )
+    claim = bundle["claims"][0]
 
-    decision = can_lower_to_mulligan(claim)
+    decision = can_lower_to_mulligan(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
 
     assert claim["semantic_qualifiers"]["timing"] == "mulligan"
     assert decision.allowed is True

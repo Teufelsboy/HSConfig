@@ -69,16 +69,26 @@ main-deck multiset fingerprint must equal the target
 and sideboard count when both sides expose them. A 40-card guide cannot become
 exact authority for a 30-card target deck.
 
-Guide-backed Mulligan claims require `exact_deck_matched` and all four gate
-values: `deck_match_scope=exact_deck_matched`, `promotion_eligible=true`,
-`source_visibility=full_text`, and
-`source_lane=deck_matched_public_guide`. A failing claim is suppressed with a
-stable visible reason. It does not block the
+## Exact Public-Guide Mulligan Gate
+
+| Check | Required value | Failure outcome |
+| --- | --- | --- |
+| `public_guide_identity` | all populated document and claim identity signals are guide | suppress with visible reason |
+| `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
+| `target_deck_fingerprint` | present and equal to `matched_deck_fingerprint` | suppress with visible reason |
+| `exact_deck_evidence` | `matched=true`; both counts `>=1`; non-empty code-hash list | suppress with visible reason |
+| `source_receipt` | matching `claim_id`, claim signature, and target fingerprint | suppress with visible reason |
+| `promotion_eligible` | `true` | suppress with visible reason |
+| `source_visibility` | `full_text` | suppress with visible reason |
+| `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
+
+Guide-backed Mulligan claims must pass every gate above. A failing claim is
+suppressed with a stable visible reason. It does not block the
 `policy_backed_autonomous_mulligan` fallback; fallback rows remain labeled
 `policy_backed`, never count as exact guide evidence, and cannot infer a
 Darkbishop opening-hand keep from its start-of-game effect.
 
-The same four exact public-guide fields gate `gameplan_posture` before it can
+The same canonical exact-source fields gate `gameplan_posture` before it can
 authorize a GlobalValues posture overlay. Archetype-only posture claims remain
 visible with a stable suppression reason and preserve the validated baseline.
 For this surface, `deck_match_scope=exact_deck_matched` is accepted only when
@@ -96,8 +106,12 @@ the normalized claim also carries
 | `bundle_receipt_truth` | non-plan source-document bundle and verified receipts | plan bundle and plan receipts cannot replace package truth |
 | `plan_input_diagnostics` | imported plan claims, rows, and receipts | diagnostic only with `runtime_gate_impact=none` |
 | `plan_revalidation` | canonical lifecycle, target fingerprint, and verified receipts | only canonical rows may lower |
+| `canonical_runtime_plans` | freshly rebuilt Mulligan, CardID, and Combo plans | sole runtime truth; imported same-ID rows cannot replace or restore |
+| `imported_runtime_plan_payloads` | actual imported Mulligan, CardID, and Combo report payloads | diagnostic only in `plan_input_diagnostics` with `runtime_gate_impact=none` |
+| `legacy_mulligan_receipt` | synthetic `--claims-json` source documents | cannot mint a canonical exact source receipt |
 | `suppression_transparency` | key, operation, overlay, value, and claim references | rejected plan attempt remains reconstructible |
-| `exact_evidence_counts` | non-negative integer evidence | malformed counts fail closed to baseline and visible suppression |
+| `exact_evidence_counts` | both count fields parsed by one strict non-negative integer parser | integer or decimal string accepted; bool, float, container, negative, or malformed rejected without exception |
+| `exact_evidence_authority` | positive candidate counts and non-empty code-hash list | otherwise no receipt and a visible exact-source gap |
 
 Infer the effective legacy claim kind before stripping authority fields.
 Untyped `aggressive`, `aggro`, `burn`, or `pressure` prose is posture, so a
@@ -107,17 +121,24 @@ additive signals; any explicit official, static, statistical, or otherwise
 non-guide signal vetoes public-guide authority.
 
 Keep the canonical non-plan `guide_claim_bundle.json`, verified receipts, claim
-lifecycle, and `source_contract_audit.json` as package truth. Preserve imported
-plan claims, rows, and receipts separately in `plan_input_diagnostics.json`
-under `imported_claims`, `imported_rows`, and `imported_source_receipts`, with
-`runtime_gate_impact=none`; never substitute them for canonical truth.
-Re-gate plan rows with the canonical lifecycle, current target fingerprint, and
-verified receipts. A valid canonical row must not gain a false
-missing-receipt suppression. A rejected row must retain key, operation,
-overlay, value, `claim_id`, and `claim_refs`, including an attempted `set:999`.
-Malformed, boolean, negative, or container-shaped exact-evidence
-`candidate_count` or `decoded_candidate_count` values fail closed to baseline
-plus visible suppression instead of aborting the build.
+lifecycle, and `source_contract_audit.json` as package truth. The freshly
+rebuilt Mulligan, CardID, and Combo reports are the sole runtime plans.
+Preserve the actual imported report payloads, including `quality`, `card_rows`,
+and summaries, under `imported_plan_reports` in
+`plan_input_diagnostics.json`, with `runtime_gate_impact=none`; never
+substitute them for canonical truth or use a shared claim ID to restore a
+canonical suppression. Imported GlobalValues attempts are still compared
+against canonical lifecycle, target fingerprint, and verified receipts and
+remain reconstructible with key, operation, overlay, value, `claim_id`, and
+`claim_refs`. Synthetic legacy `--claims-json` documents cannot mint a source
+receipt. One strict parser accepts non-negative integers and decimal strings
+for both exact-evidence count fields; boolean, float, container, negative, and
+malformed values downgrade exact authority, expose the exact-source gap, and do
+not abort the build. Receipt authority additionally requires both counts to be
+positive and the code-hash list to be non-empty.
+One shared `parse_strict_nonnegative_int` parser is used by `source_document_drafter`, `source_autopilot`, and `source_document_builder`.
+Decimal strings are ASCII digits only after surrounding whitespace is trimmed; signs, decimal points, and exponents are rejected.
+Count rejection preserves a load-safe package with `SOURCE_BACKED_PARTIAL`, exposes the exact-source gap, and mints no receipt.
 
 Short evidence row shape for `--source-evidence-json`:
 

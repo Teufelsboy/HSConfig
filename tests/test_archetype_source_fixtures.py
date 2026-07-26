@@ -60,10 +60,10 @@ def _core_matrix_rows() -> list[dict]:
     return rows
 
 
-def _source_bundle_for_fixture(deck_name: str) -> dict:
+def _deck_identity_for_fixture(deck_name: str) -> dict:
     row = next(row for row in _matrix()["decks"] if row["deck_name"] == deck_name)
     decoded_deck = decode_deck_code(row["deck_code"])
-    deck_identity = build_deck_identity(
+    return build_deck_identity(
         deck_name=row["deck_name"],
         deck_code=row["deck_code"],
         cards=decoded_deck["cards"],
@@ -71,10 +71,14 @@ def _source_bundle_for_fixture(deck_name: str) -> dict:
         format=decoded_deck["format"],
         sideboards=decoded_deck["sideboards"],
     )
+
+
+def _source_bundle_for_fixture(deck_name: str) -> dict:
+    deck_identity = _deck_identity_for_fixture(deck_name)
     return build_source_document_bundle(
         deck_identity=deck_identity,
-        card_metadata={"cards": decoded_deck["cards"]},
-        source_documents=_documents(FIXTURES[row["deck_name"]]),
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=_documents(FIXTURES[deck_name]),
         current_date="2026-07-07",
     )
 
@@ -510,10 +514,13 @@ def test_imbuemage_fixture_marks_hero_power_and_generation_boundaries():
 def test_imbuemage_mulligan_keeps_use_source_named_imbue_enablers():
     source_named_imbue_enablers = {"EDR_800", "EDR_852", "EDR_871"}
     bundle = _source_bundle_for_fixture("ImbueMage")
+    deck_identity = _deck_identity_for_fixture("ImbueMage")
     plan = build_mulligan_plan(
         deck_name="ImbueMage",
         claims=bundle["claims"],
         card_roles={},
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
     source_claim_holds = {
         rule.get("card")

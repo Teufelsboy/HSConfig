@@ -339,8 +339,13 @@ def _write_fixture(tmp_path: Path, fixture: dict) -> tuple[Path, Path]:
                     "deck_match_scope": "exact_deck_matched",
                     "deck_match": {
                         "exact_deck_evidence": {
+                            "candidate_count": 1,
+                            "decoded_candidate_count": 1,
                             "matched": True,
                             "matched_deck_fingerprint": deck_fingerprint,
+                            "candidate_deck_code_hashes": [
+                                "sha256:semantic-archetype-source"
+                            ],
                         }
                     },
                     "claims": _source_claims(fixture),

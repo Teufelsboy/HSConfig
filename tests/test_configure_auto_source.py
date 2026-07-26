@@ -95,8 +95,11 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     source_record = source_records["records"][0]
     source_record["deck_match_scope"] = "exact_deck_matched"
     source_record["deck_match"]["exact_deck_evidence"] = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
         "matched": True,
         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+        "candidate_deck_code_hashes": ["sha256:configure-auto-source"],
     }
     source_records_path = tmp_path / "source_search_shadowpriest_exact.json"
     source_records_path.write_text(json.dumps(source_records), encoding="utf-8")
@@ -190,6 +193,82 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         == "diagnostic"
     )
     assert ownership_rows["reports/source_evidence_closure.json"]["can_block_apply"] is False
+
+
+def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_shadow_cards_json(cards_json)
+    out = tmp_path / "configure"
+    source_records = _read_json(FIXTURES / "source_search_shadowpriest_2026.json")
+    deck_identity = build_deck_identity(
+        deck_name="ShadowPriest",
+        deck_code=SHADOWPRIEST_CODE,
+        cards=_read_json(cards_json)["cards"],
+    )
+    source_record = source_records["records"][0]
+    source_record["deck_match_scope"] = "exact_deck_matched"
+    source_record["deck_match"]["exact_deck_evidence"] = {
+        "candidate_count": "not-an-integer",
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+        "candidate_deck_code_hashes": ["sha256:invalid-count-source"],
+    }
+    source_records_path = tmp_path / "source_search_invalid_count.json"
+    source_records_path.write_text(
+        json.dumps(source_records),
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--auto-source",
+            "--source-search-results-json",
+            str(source_records_path),
+            "--json",
+        ]
+    )
+
+    summary = _read_json(out / "configure_summary.json")
+    autopilot = _read_json(
+        out / "02_source_autopilot" / "source_autopilot_report.json"
+    )
+    source_documents = _read_json(
+        out / "02_source_autopilot" / "source_documents.json"
+    )["source_documents"]
+    package_reports = out / "04_package" / "reports"
+    guide_bundle = _read_json(package_reports / "guide_claim_bundle.json")
+    operator = _read_json(package_reports / "operator_summary.json")
+
+    assert code == 0
+    assert summary["status"] == "OK"
+    assert summary["config_proof_summary"]["runtime_write_performed"] is False
+    assert autopilot["strong_candidate"] is False
+    assert source_documents[0]["deck_match_scope"] == "archetype_matched"
+    assert source_documents[0]["first_missing_source_action"] == (
+        "add_exact_deck_matched_source"
+    )
+    assert "deck_match" not in source_documents[0]
+    assert guide_bundle["canonical_source_receipts"] == []
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_load_safe"] is True
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
 
 
 def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(

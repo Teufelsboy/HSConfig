@@ -59,12 +59,16 @@ does not become exact authority for a 30-card target deck.
 
 ### Exact Public-Guide Mulligan Gate
 
-Guide-backed Mulligan claims require `exact_deck_matched`. All four checks must
-pass:
+Guide-backed Mulligan claims require canonical exact-deck source authority. All
+checks must pass:
 
 | Check | Required value | Failure outcome |
 | --- | --- | --- |
+| `public_guide_identity` | all populated document and claim identity signals are guide | suppress with visible reason |
 | `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
+| `target_deck_fingerprint` | present and equal to `matched_deck_fingerprint` | suppress with visible reason |
+| `exact_deck_evidence` | `matched=true`; both counts `>=1`; non-empty code-hash list | suppress with visible reason |
+| `source_receipt` | matching `claim_id`, claim signature, and target fingerprint | suppress with visible reason |
 | `promotion_eligible` | `true` | suppress with visible reason |
 | `source_visibility` | `full_text` | suppress with visible reason |
 | `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
@@ -76,15 +80,21 @@ explicitly `policy_backed`, never count as exact guide evidence, and still
 exclude non-hand start-of-game effects such as Darkbishop Benedictus unless
 separate exact opening-hand authority exists.
 
-The same four exact public-guide fields gate `gameplan_posture` before it can
+The same canonical exact-source fields gate `gameplan_posture` before it can
 authorize a GlobalValues posture overlay. Archetype-only posture claims remain
 visible with a stable suppression reason and leave validated baseline posture
-values unchanged. GlobalValues additionally requires a non-plan source-document
-receipt produced by the canonical source builder. That receipt binds the
-normalized claim signature to decoded exact-deck evidence and the current target
-fingerprint. Claim fields, legacy `--claims-json`, and an imported lifecycle or
-plan report cannot create this authority. A missing receipt or target
+values unchanged. The receipt is produced only by the canonical source builder
+and binds the normalized claim signature to complete decoded exact-deck evidence
+and the current target fingerprint. Claim fields, synthetic legacy
+`--claims-json` documents, and imported lifecycle or plan reports cannot create
+this authority. A missing receipt, incomplete evidence, or missing target
 fingerprint fails closed.
+One shared `parse_strict_nonnegative_int` parser is used by
+`source_document_drafter`, `source_autopilot`, and `source_document_builder`.
+Decimal strings are ASCII digits only after surrounding whitespace is trimmed;
+signs, decimal points, and exponents are rejected. Count rejection preserves a
+load-safe package with `SOURCE_BACKED_PARTIAL`, exposes the exact-source gap,
+and mints no receipt.
 
 All populated source identity fields are evaluated together. An explicit
 official, static, statistical, or otherwise non-guide identity vetoes public

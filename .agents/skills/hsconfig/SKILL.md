@@ -30,16 +30,16 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 ## Hard Boundaries
 
 - Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Guide-backed Mulligan claims require `exact_deck_matched`.
+- Guide-backed Mulligan authority requires consistent public-guide identity, complete exact evidence, the current target fingerprint, and a matching canonical source receipt.
 - GlobalValues posture authority requires a canonical non-plan receipt bound to claim signature and target fingerprint; untyped legacy posture cannot self-assert it.
 - Document and claim identities are additive; any non-guide signal vetoes. Canonical non-plan bundle, receipts, lifecycle, and audit remain truth; plan inputs are diagnostic only.
+- Freshly rebuilt Mulligan, CardID, and Combo plans are the sole runtime truth; imported plan payloads are diagnostic only.
 - Re-gate plan rows with canonical lifecycle, target fingerprint, and receipts. Suppressions retain key/operation/overlay/value/claim refs; malformed counts fail closed.
 - Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 - `reports/operator_summary.json` remains the only normal apply authority.
 - Runtime apply is guarded by `operator_summary.json`, package structure, fake receipts, and package hashes.
-- After runtime apply, inspect `receipt.runtime_package_match.status`. It must be
-  `matched` for a successful install. For read-only checks use
-  `python -m hsconfig.cli runtime-match --package <package> --runtime-root <runtime> --json`.
-  This is an install-integrity check, not a source/semantic apply gate.
+- After runtime apply, inspect `receipt.runtime_package_match.status`; it must be `matched` for a successful install.
+  For read-only checks use `python -m hsconfig.cli runtime-match --package <package> --runtime-root <runtime> --json`. This is an install-integrity check, not a source/semantic apply gate.
 - `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate. `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
   Load safety does not prove in-client optimality.
 - Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed. `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.

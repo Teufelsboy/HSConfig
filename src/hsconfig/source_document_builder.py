@@ -11,8 +11,9 @@ from hsconfig.source_document_model import (
     REQUIRED_SOURCE_KEYS,
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     claim_can_lower_to_runtime,
-    globalvalues_claim_signature,
+    source_claim_signature,
 )
+from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_claim_conflicts import build_claim_conflict_report
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
 
@@ -45,7 +46,7 @@ def build_source_document_bundle(
     claims: list[dict[str, Any]] = []
     unsupported_claims: list[dict[str, Any]] = []
     source_evidence_index: list[dict[str, Any]] = []
-    globalvalues_source_receipts: list[dict[str, Any]] = []
+    canonical_source_receipts: list[dict[str, Any]] = []
 
     for source_index, document in enumerate(source_documents, start=1):
         source_ref = f"source:{source_index}"
@@ -132,14 +133,14 @@ def build_source_document_bundle(
                 continue
             assert normalized is not None
             claims.append(normalized)
-            receipt = _globalvalues_source_receipt(
+            receipt = _canonical_source_receipt(
                 normalized,
                 document=document,
                 deck_identity=deck_identity,
                 source_ref=source_ref,
             )
             if receipt is not None:
-                globalvalues_source_receipts.append(receipt)
+                canonical_source_receipts.append(receipt)
             promoted_count += 1
 
         source_evidence_index.append(
@@ -159,7 +160,8 @@ def build_source_document_bundle(
     return {
         "claims": claims,
         "source_evidence_index": source_evidence_index,
-        "globalvalues_source_receipts": globalvalues_source_receipts,
+        "canonical_source_receipts": canonical_source_receipts,
+        "globalvalues_source_receipts": canonical_source_receipts,
         "claim_coverage_report": _build_claim_coverage_report(
             deck_identity=deck_identity,
             cards=cards,
@@ -404,33 +406,13 @@ def _canonical_exact_deck_evidence(
     document: dict[str, Any],
     deck_identity: dict[str, Any],
 ) -> dict[str, Any]:
-    deck_match = document.get("deck_match", {})
+    deck_match = document.get("deck_match")
     if not isinstance(deck_match, dict):
         return {}
-    exact = deck_match.get("exact_deck_evidence", {})
-    if not isinstance(exact, dict) or exact.get("matched") is not True:
-        return {}
-    evidence_fingerprint = _clean_text(
-        exact.get("matched_deck_fingerprint", "")
+    return canonical_exact_deck_evidence(
+        deck_match.get("exact_deck_evidence"),
+        target_fingerprint=deck_identity.get("deck_fingerprint"),
     )
-    target_fingerprint = _clean_text(deck_identity.get("deck_fingerprint", ""))
-    if not evidence_fingerprint or evidence_fingerprint != target_fingerprint:
-        return {}
-    canonical = {
-        "matched": True,
-        "matched_deck_fingerprint": target_fingerprint,
-    }
-    for key in ("candidate_count", "decoded_candidate_count"):
-        if key in exact:
-            count = _nonnegative_int(exact.get(key))
-            if count is not None:
-                canonical[key] = count
-    hashes = exact.get("candidate_deck_code_hashes")
-    if isinstance(hashes, list):
-        canonical["candidate_deck_code_hashes"] = sorted(
-            str(value).strip() for value in hashes if str(value).strip()
-        )
-    return canonical
 
 
 def _source_identity_signals(
@@ -452,34 +434,19 @@ def _source_identity_signals(
     return signals
 
 
-def _nonnegative_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        parsed = value
-    elif isinstance(value, str):
-        try:
-            parsed = int(value.strip())
-        except ValueError:
-            return None
-    else:
-        return None
-    return parsed if parsed >= 0 else None
-
-
-def _globalvalues_source_receipt(
+def _canonical_source_receipt(
     claim: dict[str, Any],
     *,
     document: dict[str, Any],
     deck_identity: dict[str, Any],
     source_ref: str,
 ) -> dict[str, Any] | None:
-    exact = _canonical_exact_deck_evidence(document, deck_identity)
-    if (
-        int(exact.get("candidate_count", 0)) < 1
-        or int(exact.get("decoded_candidate_count", 0)) < 1
-        or not exact.get("candidate_deck_code_hashes")
+    if str(document.get("source_document_origin", "")).strip() == (
+        "legacy_claims_json"
     ):
+        return None
+    exact = _canonical_exact_deck_evidence(document, deck_identity)
+    if not exact:
         return None
     return {
         "receipt_kind": "canonical_exact_deck_source_document",
@@ -489,7 +456,7 @@ def _globalvalues_source_receipt(
             exact["matched_deck_fingerprint"]
         ),
         "claim_id": str(claim.get("claim_id", "")),
-        "claim_signature": globalvalues_claim_signature(claim),
+        "claim_signature": source_claim_signature(claim),
     }
 
 

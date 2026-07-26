@@ -11,7 +11,13 @@ from hsconfig.source_document_model import can_lower_to_mulligan, normalized_cla
 
 SURFACE_REJECTION_REASONS = {
     "claim_kind_not_mulligan_surface",
+    "mulligan_requires_public_guide_source",
     "mulligan_requires_exact_deck_match",
+    "mulligan_requires_target_deck_fingerprint",
+    "mulligan_requires_verified_exact_deck_evidence",
+    "mulligan_exact_deck_fingerprint_mismatch",
+    "mulligan_requires_complete_exact_deck_evidence",
+    "mulligan_requires_verified_source_receipt",
     "mulligan_requires_promotion_eligible_source",
     "mulligan_requires_full_text_source",
     "mulligan_requires_deck_matched_public_guide_lane",
@@ -25,6 +31,8 @@ def build_mulligan_plan(
     deck_cards: dict[str, Any] | list[dict[str, Any]] | None = None,
     allow_policy_backed: bool = False,
     policy_excluded_card_ids: set[str] | None = None,
+    deck_identity: dict[str, Any] | None = None,
+    verified_source_receipts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     suppressed_rules: list[dict[str, Any]] = []
@@ -50,7 +58,12 @@ def build_mulligan_plan(
                     )
                 )
             continue
-        gate = can_lower_to_mulligan(claim, card_roles=card_roles)
+        gate = can_lower_to_mulligan(
+            claim,
+            card_roles=card_roles,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
         if not gate.allowed:
             if claim_cards:
                 suppressed_rules.append(

@@ -91,8 +91,11 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     guide_claim_bundle = context["guide_claim_bundle"]
     guide_claim_bundle = _normalize_claim_conflict_report(guide_claim_bundle)
     canonical_guide_claim_bundle = guide_claim_bundle
-    verified_globalvalues_source_receipts = list(
-        canonical_guide_claim_bundle.get("globalvalues_source_receipts", [])
+    verified_source_receipts = list(
+        canonical_guide_claim_bundle.get(
+            "canonical_source_receipts",
+            canonical_guide_claim_bundle.get("globalvalues_source_receipts", []),
+        )
     )
     plan_claims = list(guide_claim_bundle.get("claims", []))
     source_claim_conflict_report = guide_claim_bundle.get(
@@ -121,6 +124,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     mulligan_selection = select_claims_for_surface(
         initial_lifecycle_rows,
         "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": verified_source_receipts,
+        },
         card_roles=preliminary_research_bundle.get("card_role_map", {}),
     )
     mulligan_runtime_claims = mulligan_selection["accepted_claims"]
@@ -152,7 +159,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         "globalvalues",
         context={
             "deck_identity": deck_identity,
-            "verified_source_receipts": verified_globalvalues_source_receipts,
+            "verified_source_receipts": verified_source_receipts,
         },
     )
     globalvalues_claims = globalvalues_selection["accepted_claims"]
@@ -185,6 +192,8 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         policy_excluded_card_ids=_policy_mulligan_excluded_card_ids(
             mulligan_runtime_claims
         ),
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
     )
     card_behavior_plan = route_card_behavior_claims(
         cardid_claims,
@@ -198,7 +207,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         aggression_profile=str(gameplan_contract.get("aggression_profile", {}).get("speed", "balanced")),
         claims=globalvalues_authority_claims,
         deck_identity=deck_identity,
-        verified_source_receipts=verified_globalvalues_source_receipts,
+        verified_source_receipts=verified_source_receipts,
     )
     canonical_global_values_authority_matrix = global_values_authority_matrix
     plan_input_diagnostics: dict[str, Any] | None = None
@@ -230,12 +239,6 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             plan_dir,
             "global_values_authority_matrix.json",
         )
-        if imported_mulligan_plan is not None:
-            mulligan_plan = imported_mulligan_plan
-        if imported_card_behavior_plan is not None:
-            card_behavior_plan = imported_card_behavior_plan
-        if imported_combo_plan is not None:
-            combo_plan = imported_combo_plan
         if imported_global_values_authority_matrix is not None:
             global_values_authority_matrix = (
                 imported_global_values_authority_matrix
@@ -243,9 +246,9 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         plan_input_diagnostics = _build_plan_input_diagnostics(
             canonical_guide_claim_bundle=canonical_guide_claim_bundle,
             imported_guide_claim_bundle=imported_plan_guide_claim_bundle,
-            imported_mulligan_plan=imported_mulligan_plan or {},
-            imported_card_behavior_plan=imported_card_behavior_plan or {},
-            imported_combo_plan=imported_combo_plan or {},
+            imported_mulligan_plan=imported_mulligan_plan,
+            imported_card_behavior_plan=imported_card_behavior_plan,
+            imported_combo_plan=imported_combo_plan,
             imported_global_values_authority_matrix=(
                 imported_global_values_authority_matrix or {}
             ),
@@ -266,7 +269,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             ),
             card_roles=card_roles,
             deck_identity=deck_identity,
-            verified_source_receipts=verified_globalvalues_source_receipts,
+            verified_source_receipts=verified_source_receipts,
         )
     gameplan_contract = {
         **gameplan_contract,
@@ -651,11 +654,14 @@ def _build_plan_input_diagnostics(
     *,
     canonical_guide_claim_bundle: dict[str, Any],
     imported_guide_claim_bundle: dict[str, Any],
-    imported_mulligan_plan: dict[str, Any],
-    imported_card_behavior_plan: dict[str, Any],
-    imported_combo_plan: dict[str, Any],
+    imported_mulligan_plan: dict[str, Any] | None,
+    imported_card_behavior_plan: dict[str, Any] | None,
+    imported_combo_plan: dict[str, Any] | None,
     imported_global_values_authority_matrix: dict[str, Any],
 ) -> dict[str, Any]:
+    imported_mulligan_payload = imported_mulligan_plan or {}
+    imported_card_behavior_payload = imported_card_behavior_plan or {}
+    imported_combo_payload = imported_combo_plan or {}
     canonical_claim_ids = {
         str(claim.get("claim_id", ""))
         for claim in canonical_guide_claim_bundle.get("claims", [])
@@ -687,17 +693,17 @@ def _build_plan_input_diagnostics(
         (
             "mulligan_plan_report.json",
             "rules",
-            imported_mulligan_plan.get("rules", []),
+            imported_mulligan_payload.get("rules", []),
         ),
         (
             "card_behavior_plan_report.json",
             "rows",
-            imported_card_behavior_plan.get("rows", []),
+            imported_card_behavior_payload.get("rows", []),
         ),
         (
             "combo_plan_report.json",
             "combos",
-            imported_combo_plan.get("combos", []),
+            imported_combo_payload.get("combos", []),
         ),
         (
             "global_values_authority_matrix.json",
@@ -729,9 +735,21 @@ def _build_plan_input_diagnostics(
         )
 
     imported_receipts = imported_guide_claim_bundle.get(
-        "globalvalues_source_receipts",
-        [],
+        "canonical_source_receipts",
+        imported_guide_claim_bundle.get("globalvalues_source_receipts", []),
     )
+    imported_plan_reports = {
+        filename: dict(payload)
+        for filename, payload in (
+            ("mulligan_plan_report.json", imported_mulligan_plan),
+            (
+                "card_behavior_plan_report.json",
+                imported_card_behavior_plan,
+            ),
+            ("combo_plan_report.json", imported_combo_plan),
+        )
+        if payload is not None
+    }
     return {
         "authority": "diagnostic_only",
         "runtime_gate_impact": "none",
@@ -754,6 +772,7 @@ def _build_plan_input_diagnostics(
         "ignored_claims": ignored_claims,
         "imported_row_count": len(imported_rows),
         "imported_rows": imported_rows,
+        "imported_plan_reports": imported_plan_reports,
     }
 
 
@@ -842,15 +861,7 @@ def _filter_plan_reports_by_lifecycle(
         *globalvalues_selection["accepted_claims"],
         *globalvalues_selection["rejected_claims"],
     ]
-    allowed_claim_ids = {
-        "mulligan": _runtime_claim_ids_for_surface(
-            initial_lifecycle_rows,
-            "mulligan",
-            card_roles=card_roles,
-        ),
-        "cardid": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "cardid"),
-        "combo": _runtime_claim_ids_for_surface(initial_lifecycle_rows, "combo"),
-    }
+    del card_roles
     globalvalues_diagnostics = build_globalvalues_authority_matrix(
         aggression_profile="baseline",
         claims=globalvalues_decision_claims,
@@ -858,9 +869,9 @@ def _filter_plan_reports_by_lifecycle(
         verified_source_receipts=verified_source_receipts,
     )
     return (
-        _filter_mulligan_plan(mulligan_plan, allowed_claim_ids["mulligan"]),
-        _filter_card_behavior_plan(card_behavior_plan, allowed_claim_ids["cardid"]),
-        _filter_combo_plan(combo_plan, allowed_claim_ids["combo"]),
+        mulligan_plan,
+        card_behavior_plan,
+        combo_plan,
         _filter_globalvalues_authority_matrix(
             global_values_authority_matrix,
             canonical_matrix=canonical_global_values_authority_matrix,

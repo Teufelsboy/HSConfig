@@ -11,8 +11,11 @@
       "deck_match_scope": "exact_deck_matched",
       "deck_match": {
         "exact_deck_evidence": {
+          "candidate_count": 1,
+          "decoded_candidate_count": 1,
           "matched": true,
-          "matched_deck_fingerprint": "24d0fdb97228f6bafca4441dc0d0c032f7280a4e24198a924e0e1040391096a7"
+          "matched_deck_fingerprint": "24d0fdb97228f6bafca4441dc0d0c032f7280a4e24198a924e0e1040391096a7",
+          "candidate_deck_code_hashes": ["sha256:imbuemage-source-code"]
         }
       },
       "claims": [

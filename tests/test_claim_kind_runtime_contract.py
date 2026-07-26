@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
@@ -18,6 +20,66 @@ from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     select_claims_for_surface,
 )
+
+
+MULLIGAN_RECEIPT_FINGERPRINT = "sha256:mulligan-receipt-target"
+
+
+def _canonical_mulligan_receipt_bundle(
+    *,
+    card_id="EX1_001",
+    claim_kind="mulligan_keep",
+    evidence_overrides=None,
+    claim_overrides=None,
+    document_overrides=None,
+):
+    evidence = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+        "candidate_deck_code_hashes": ["sha256:mulligan-source-code"],
+        **(evidence_overrides or {}),
+    }
+    raw_claim = {
+        "claim_id": "canonical-mulligan-keep",
+        "claim_kind": claim_kind,
+        "cards": [card_id],
+        "scope": "card",
+        "stance": "keep" if claim_kind == "mulligan_keep" else "discard",
+        "evidence_text_short": (
+            "Keep Fixture One in the opening hand."
+            if claim_kind == "mulligan_keep"
+            else "Discard Fixture One from the opening hand."
+        ),
+        "source_confidence": "high",
+        "promotion_eligible": True,
+        **(claim_overrides or {}),
+    }
+    document = {
+        "source_url": "https://example.test/canonical-mulligan-guide",
+        "source_title": "Canonical Mulligan Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match_scope": "exact_deck_matched",
+        "deck_match": {"exact_deck_evidence": evidence},
+        "claims": [raw_claim],
+        **(document_overrides or {}),
+    }
+    deck_identity = {
+        "deck_name": "ReceiptDeck",
+        "deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+        "cards": [{"card_id": card_id, "name": "Fixture One", "count": 1}],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[document],
+        current_date="2026-07-26",
+    )
+    return bundle, deck_identity
 
 
 def test_broad_legacy_mulligan_claim_type_does_not_create_hold():
@@ -92,7 +154,7 @@ def test_explicit_mulligan_keep_claim_kind_creates_hold():
     assert contract["mulligan_anchors"][0]["card_id"] == "EX1_001"
 
 
-def test_legacy_exact_mulligan_keep_claim_type_is_accepted_for_runtime():
+def test_legacy_exact_mulligan_keep_claim_type_requires_canonical_source_authority():
     plan = build_mulligan_plan(
         deck_name="FixtureDeck",
         claims=[
@@ -106,8 +168,10 @@ def test_legacy_exact_mulligan_keep_claim_type_is_accepted_for_runtime():
         card_roles={},
     )
 
-    assert plan["rules"][0]["card"] == "EX1_001"
-    assert plan["rules"][0]["action"] == "hold"
+    assert plan["rules"] == []
+    assert plan["suppressed_rules"][0]["reason"] == (
+        "mulligan_requires_public_guide_source"
+    )
 
 
 def test_broad_legacy_mulligan_claim_type_is_not_accepted_for_runtime():
@@ -363,14 +427,19 @@ def test_mulligan_claim_does_not_lower_to_cardid_or_globalvalues():
 
 
 def test_mulligan_discard_can_lower_to_mulligan_surface():
-    claim = {
-        "claim_kind": "mulligan_discard",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["EX1_001"],
-    }
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        claim_kind="mulligan_discard",
+    )
+    claim = bundle["claims"][0]
 
-    decision = surface_gate_decision(claim, "mulligan")
+    decision = surface_gate_decision(
+        claim,
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["canonical_source_receipts"],
+        },
+    )
 
     assert decision.allowed is True
     assert decision.reason == "allowed"
@@ -430,17 +499,13 @@ def test_public_guide_mulligan_requires_exact_authority(
 
 
 def test_public_guide_mulligan_with_exact_authority_can_lower():
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        card_id="TOY_381",
+    )
     decision = can_lower_to_mulligan(
-        {
-            "claim_kind": "mulligan_keep",
-            "source_family": "guide",
-            "cards": ["TOY_381"],
-            "deck_match_scope": "exact_deck_matched",
-            "promotion_eligible": True,
-            "source_visibility": "full_text",
-            "source_lane": "deck_matched_public_guide",
-            "claim_readiness": "guide_backed",
-        }
+        bundle["claims"][0],
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
     assert decision.allowed is True
@@ -519,7 +584,263 @@ def test_legacy_alias_identity_survives_document_bundle_and_requires_authority(
     assert claim[identity_field] == "public_guide"
     decision = can_lower_to_mulligan(claim)
     assert decision.allowed is False
-    assert decision.reason == "mulligan_requires_exact_deck_match"
+    assert decision.reason == "mulligan_requires_public_guide_source"
+
+
+def test_public_guide_mulligan_four_labels_without_exact_evidence_is_rejected():
+    claim = {
+        "claim_id": "labels-only-keep",
+        "claim_kind": "mulligan_keep",
+        "source_family": "guide",
+        "cards": ["EX1_001"],
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "claim_readiness": "guide_backed",
+    }
+
+    decision = surface_gate_decision(
+        claim,
+        "mulligan",
+        context={
+            "deck_identity": {
+                "deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+            },
+            "verified_source_receipts": [],
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_verified_exact_deck_evidence"
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {
+            "claim_id": "missing-guide-identity",
+            "claim_kind": "mulligan_keep",
+            "cards": ["EX1_001"],
+            "deck_match_scope": "exact_deck_matched",
+            "promotion_eligible": True,
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "claim_readiness": "guide_backed",
+        },
+        {
+            "claim_id": "mixed-guide-identity",
+            "claim_kind": "mulligan_keep",
+            "source_family": "guide",
+            "provenance": "official_card_data",
+            "source_identity_signals": [
+                {
+                    "origin": "document",
+                    "field": "source_family",
+                    "value": "official_card_data",
+                },
+                {
+                    "origin": "claim",
+                    "field": "source_type",
+                    "value": "public_guide",
+                },
+            ],
+            "cards": ["EX1_001"],
+            "deck_match_scope": "exact_deck_matched",
+            "promotion_eligible": True,
+            "source_visibility": "full_text",
+            "source_lane": "deck_matched_public_guide",
+            "claim_readiness": "guide_backed",
+        },
+    ],
+    ids=["no-guide-identity", "mixed-guide-and-non-guide-identity"],
+)
+def test_source_backed_mulligan_requires_consistent_public_guide_identity(claim):
+    decision = surface_gate_decision(
+        claim,
+        "mulligan",
+        context={
+            "deck_identity": {
+                "deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+            },
+            "verified_source_receipts": [],
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_public_guide_source"
+
+
+@pytest.mark.parametrize(
+    ("deck_identity", "reason"),
+    [
+        ({}, "mulligan_requires_target_deck_fingerprint"),
+        (
+            {"deck_fingerprint": "sha256:different-target"},
+            "mulligan_exact_deck_fingerprint_mismatch",
+        ),
+    ],
+)
+def test_source_backed_mulligan_requires_current_target_fingerprint(
+    deck_identity,
+    reason,
+):
+    bundle, _ = _canonical_mulligan_receipt_bundle()
+    claim = bundle["claims"][0]
+
+    decision = surface_gate_decision(
+        claim,
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["globalvalues_source_receipts"],
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == reason
+
+
+@pytest.mark.parametrize(
+    "evidence_overrides",
+    [
+        {"candidate_count": 0},
+        {"decoded_candidate_count": 0},
+        {"candidate_count": True},
+        {"decoded_candidate_count": 1.5},
+        {"candidate_deck_code_hashes": []},
+        {"candidate_deck_code_hashes": "sha256:not-a-list"},
+    ],
+    ids=[
+        "zero-candidates",
+        "zero-decoded-candidates",
+        "boolean-count",
+        "float-count",
+        "missing-hashes",
+        "malformed-hashes",
+    ],
+)
+def test_source_backed_mulligan_requires_complete_canonical_exact_evidence(
+    evidence_overrides,
+):
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        evidence_overrides=evidence_overrides,
+    )
+    claim = bundle["claims"][0]
+
+    decision = surface_gate_decision(
+        claim,
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["globalvalues_source_receipts"],
+        },
+    )
+
+    assert bundle["globalvalues_source_receipts"] == []
+    assert decision.allowed is False
+    assert decision.reason in {
+        "mulligan_requires_exact_deck_match",
+        "mulligan_requires_verified_exact_deck_evidence",
+        "mulligan_requires_complete_exact_deck_evidence",
+    }
+
+
+@pytest.mark.parametrize(
+    ("receipt_field", "replacement"),
+    [
+        ("claim_id", "different-claim"),
+        ("claim_signature", "sha256:different-signature"),
+        ("matched_deck_fingerprint", "sha256:different-target"),
+    ],
+)
+def test_source_backed_mulligan_requires_matching_canonical_receipt_binding(
+    receipt_field,
+    replacement,
+):
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle()
+    receipts = deepcopy(bundle["globalvalues_source_receipts"])
+    receipts[0][receipt_field] = replacement
+
+    decision = surface_gate_decision(
+        bundle["claims"][0],
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": receipts,
+        },
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_verified_source_receipt"
+
+
+def test_legacy_claims_json_cannot_mint_canonical_mulligan_receipt():
+    raw_claim = {
+        "claim_id": "legacy-self-declared-keep",
+        "source": "guide",
+        "source_type": "public_guide",
+        "source_title": "Legacy self-declared guide",
+        "url": "https://example.invalid/legacy-self-declared",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "claim": "Always keep Fixture One.",
+        "cards": ["EX1_001"],
+        "claim_type": "mulligan_keep",
+        "deck_match_scope": "exact_deck_matched",
+        "promotion_eligible": True,
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "candidate_count": 1,
+                "decoded_candidate_count": 1,
+                "matched": True,
+                "matched_deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+                "candidate_deck_code_hashes": ["sha256:legacy-self-declared"],
+            }
+        },
+    }
+    deck_identity = {
+        "deck_name": "ReceiptDeck",
+        "deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+        "cards": [{"card_id": "EX1_001", "name": "Fixture One", "count": 1}],
+    }
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=guide_documents_from_legacy_claims([raw_claim]),
+        current_date="2026-07-26",
+    )
+
+    decision = surface_gate_decision(
+        bundle["claims"][0],
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["globalvalues_source_receipts"],
+        },
+    )
+
+    assert bundle["globalvalues_source_receipts"] == []
+    assert decision.allowed is False
+    assert decision.reason == "mulligan_requires_verified_source_receipt"
+
+
+def test_canonical_exact_public_guide_receipt_allows_source_backed_mulligan():
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle()
+
+    decision = surface_gate_decision(
+        bundle["claims"][0],
+        "mulligan",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": bundle["globalvalues_source_receipts"],
+        },
+    )
+
+    assert len(bundle["globalvalues_source_receipts"]) == 1
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
 
 
 def test_runtime_valid_non_mulligan_claim_does_not_lower_to_mulligan_surface():
@@ -692,17 +1013,23 @@ def test_darkbishop_static_effect_and_guide_mulligan_keep_are_independent_claims
         "cards": ["SW_448"],
         "runtime_block": "BeforeUseHeroPowerBonus",
     }
-    guide_keep_claim = {
-        "claim_id": "voidtouched-guide-keep",
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["SW_446"],
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        card_id="SW_446",
+        claim_overrides={"claim_id": "voidtouched-guide-keep"},
+    )
+    guide_keep_claim = bundle["claims"][0]
+    mulligan_context = {
+        "deck_identity": deck_identity,
+        "verified_source_receipts": bundle["canonical_source_receipts"],
     }
 
     darkbishop_mulligan = surface_gate_decision(static_effect_claim, "mulligan")
     darkbishop_cardid = surface_gate_decision(static_effect_claim, "cardid")
-    voidtouched_mulligan = surface_gate_decision(guide_keep_claim, "mulligan")
+    voidtouched_mulligan = surface_gate_decision(
+        guide_keep_claim,
+        "mulligan",
+        mulligan_context,
+    )
     routed = route_card_behavior_surfaces([static_effect_claim, guide_keep_claim])
 
     assert darkbishop_mulligan.allowed is False
@@ -845,14 +1172,18 @@ def test_explicit_start_of_game_mulligan_keep_is_suppressed():
 
 
 def test_explicit_opening_hand_start_of_game_mulligan_claim_can_lower():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_START"],
-        "evidence_text_short": "Always keep CARD_START in your opening hand.",
-    }
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        card_id="CARD_START",
+        claim_overrides={
+            "evidence_text_short": (
+                "Always keep CARD_START in your opening hand."
+            ),
+        },
+    )
+    claim = bundle["claims"][0]
     context = {
+        "deck_identity": deck_identity,
+        "verified_source_receipts": bundle["canonical_source_receipts"],
         "card_roles": {
             "CARD_START": {
                 "roles": ["start_of_game", "hero_power_transform"],
@@ -892,24 +1223,26 @@ def test_negated_opening_hand_text_does_not_allow_start_of_game_mulligan_keep():
 
 
 def test_explicit_opening_hand_start_of_game_claim_builds_mulligan_rule():
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        card_id="CARD_START",
+        claim_overrides={
+            "claim_id": "explicit_opening_hand_start_effect",
+            "evidence_text_short": (
+                "Always keep CARD_START in your opening hand."
+            ),
+        },
+    )
     plan = build_mulligan_plan(
         deck_name="FixtureDeck",
-        claims=[
-            {
-                "claim_kind": "mulligan_keep",
-                "claim_readiness": "guide_backed",
-                "trust_ceiling": "runtime_candidate",
-                "cards": ["CARD_START"],
-                "claim_id": "explicit_opening_hand_start_effect",
-                "evidence_text_short": "Always keep CARD_START in your opening hand.",
-            }
-        ],
+        claims=bundle["claims"],
         card_roles={
             "CARD_START": {
                 "roles": ["start_of_game", "hero_power_transform"],
                 "confidence": "source_backed_static_semantics",
             }
         },
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
     )
 
     assert any(
@@ -1016,13 +1349,13 @@ def test_start_of_game_without_mulligan_anchor_suppresses_mulligan_keep():
 
 
 def test_start_of_game_with_mulligan_anchor_allows_explicit_mulligan_keep():
-    claim = {
-        "claim_kind": "mulligan_keep",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_001"],
-    }
+    bundle, deck_identity = _canonical_mulligan_receipt_bundle(
+        card_id="CARD_001",
+    )
+    claim = bundle["claims"][0]
     context = {
+        "deck_identity": deck_identity,
+        "verified_source_receipts": bundle["canonical_source_receipts"],
         "card_roles": {
             "CARD_001": {
                 "roles": ["start_of_game", "mulligan_anchor"],

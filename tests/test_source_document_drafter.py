@@ -14,6 +14,53 @@ DECK_IDENTITY = {
     ],
 }
 
+INVALID_EXACT_COUNT_VALUES = [
+    pytest.param("not-an-int", id="nonnumeric-string"),
+    pytest.param(True, id="boolean"),
+    pytest.param(-1, id="negative"),
+    pytest.param([], id="list"),
+    pytest.param({}, id="dictionary"),
+    pytest.param(1.5, id="float"),
+    pytest.param("9" * 5000, id="oversized-decimal-string"),
+]
+
+
+def _exact_mulligan_evidence_row(
+    *,
+    fingerprint: str,
+    count_field: str,
+    count_value,
+):
+    exact = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": fingerprint,
+        "candidate_deck_code_hashes": ["sha256:source-code"],
+    }
+    exact[count_field] = count_value
+    return {
+        "source_url": "https://example.test/strict-count-guide",
+        "source_title": "Strict Count Guide",
+        "source_family": "guide",
+        "retrieved_at": "2026-07-26T00:00:00Z",
+        "deck_name": "StrictCountDeck",
+        "archetype": "strictcountdeck",
+        "source_lane": "deck_matched_public_guide",
+        "source_rank_lane": "guide_current_deck_match",
+        "deck_match_scope": "exact_deck_matched",
+        "source_visibility": "full_text",
+        "promotion_eligible": True,
+        "first_missing_source_action": "none",
+        "deck_match": {"exact_deck_evidence": exact},
+        "claim_kind": "mulligan_keep",
+        "cards": ["EX1_001"],
+        "scope": "card",
+        "stance": "keep",
+        "evidence_text_short": "Keep Fixture One.",
+        "source_confidence": "high",
+    }
+
 
 def test_drafter_preserves_consensus_exact_deck_evidence():
     fingerprint = "sha256:exact-shadowpriest"
@@ -116,6 +163,84 @@ def test_drafter_excludes_raw_deckstring_from_exact_evidence():
         "candidate_deck_code_hashes": ["sha256:source-code"],
     }
     assert raw_deckstring not in str(result)
+
+
+@pytest.mark.parametrize(
+    "count_field",
+    ["candidate_count", "decoded_candidate_count"],
+)
+@pytest.mark.parametrize("invalid_value", INVALID_EXACT_COUNT_VALUES)
+def test_drafter_invalid_exact_counts_fail_closed_without_exception(
+    count_field,
+    invalid_value,
+):
+    fingerprint = "sha256:strict-count-target"
+    deck_identity = {
+        "deck_name": "StrictCountDeck",
+        "deck_fingerprint": fingerprint,
+        "cards": [{"card_id": "EX1_001", "name": "Fixture One", "count": 1}],
+    }
+    try:
+        draft = draft_source_documents(
+            deck_name="StrictCountDeck",
+            deck_identity=deck_identity,
+            evidence_rows=[
+                _exact_mulligan_evidence_row(
+                    fingerprint=fingerprint,
+                    count_field=count_field,
+                    count_value=invalid_value,
+                )
+            ],
+        )
+    except (TypeError, ValueError) as exc:
+        pytest.fail(f"invalid exact evidence must fail closed, not raise: {exc}")
+
+    document = draft["source_documents"][0]
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=draft["source_documents"],
+        current_date="2026-07-26",
+    )
+
+    assert document["deck_match_scope"] == "archetype_matched"
+    assert document["source_lane"] == "archetype_matched_public_guide"
+    assert document["first_missing_source_action"] == "add_exact_deck_matched_source"
+    assert "deck_match" not in document
+    assert bundle["globalvalues_source_receipts"] == []
+
+
+@pytest.mark.parametrize(
+    "accepted_value",
+    [pytest.param(1, id="integer"), pytest.param("1", id="decimal-string")],
+)
+def test_drafter_accepts_strict_positive_integer_count_forms(accepted_value):
+    fingerprint = "sha256:strict-count-target"
+    deck_identity = {
+        "deck_name": "StrictCountDeck",
+        "deck_fingerprint": fingerprint,
+        "cards": [{"card_id": "EX1_001", "name": "Fixture One", "count": 1}],
+    }
+    draft = draft_source_documents(
+        deck_name="StrictCountDeck",
+        deck_identity=deck_identity,
+        evidence_rows=[
+            _exact_mulligan_evidence_row(
+                fingerprint=fingerprint,
+                count_field="candidate_count",
+                count_value=accepted_value,
+            )
+        ],
+    )
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=draft["source_documents"],
+        current_date="2026-07-26",
+    )
+
+    assert draft["source_documents"][0]["deck_match_scope"] == "exact_deck_matched"
+    assert len(bundle["globalvalues_source_receipts"]) == 1
 
 
 def test_drafter_downgrades_conflicting_exact_evidence():
@@ -310,7 +435,10 @@ def test_drafter_preserves_non_hand_semantic_qualifiers_through_mulligan_gate():
 def test_drafter_preserves_evidence_policy_fields():
     draft = draft_source_documents(
         deck_name="ShadowPriest",
-        deck_identity=DECK_IDENTITY,
+        deck_identity={
+            **DECK_IDENTITY,
+            "deck_fingerprint": "sha256:shadow",
+        },
         evidence_rows=[
             {
                 "source_url": "https://example.invalid/shadow-priest",
@@ -328,8 +456,13 @@ def test_drafter_preserves_evidence_policy_fields():
                 "deck_match_scope": "exact_deck_matched",
                 "deck_match": {
                     "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
                         "matched": True,
                         "matched_deck_fingerprint": "sha256:shadow",
+                        "candidate_deck_code_hashes": [
+                            "sha256:shadow-source-code"
+                        ],
                     }
                 },
                 "source_record_strength": "candidate_strong",

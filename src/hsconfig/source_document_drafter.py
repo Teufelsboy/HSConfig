@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_semantic_qualifiers import QUALIFIER_KEYS
 
 
@@ -45,7 +46,7 @@ def draft_source_documents(
                 "claims": [],
             },
         )
-        _merge_document_deck_match(document, row)
+        _merge_document_deck_match(document, row, deck_identity=deck_identity)
         cards, unresolved = _resolve_mentions(row, name_map)
         unresolved_mentions.extend(
             {
@@ -83,43 +84,44 @@ def draft_source_documents(
     }
 
 
-def _exact_deck_match_from_row(row: dict[str, Any]) -> dict[str, Any] | None:
+def _exact_deck_match_from_row(
+    row: dict[str, Any],
+    *,
+    deck_identity: dict[str, Any],
+) -> dict[str, Any] | None:
     deck_match = row.get("deck_match")
     if not isinstance(deck_match, dict):
         return None
     exact = deck_match.get("exact_deck_evidence")
-    if not isinstance(exact, dict) or exact.get("matched") is not True:
+    canonical = canonical_exact_deck_evidence(
+        exact,
+        target_fingerprint=deck_identity.get("deck_fingerprint"),
+    )
+    if not canonical:
         return None
-    fingerprint = str(exact.get("matched_deck_fingerprint", "")).strip()
-    if not fingerprint:
-        return None
-    return {
-        "exact_deck_evidence": {
-            "candidate_count": int(exact.get("candidate_count", 0)),
-            "decoded_candidate_count": int(exact.get("decoded_candidate_count", 0)),
-            "matched": True,
-            "matched_deck_fingerprint": fingerprint,
-            "candidate_deck_code_hashes": sorted(
-                str(value).strip()
-                for value in _as_list(exact.get("candidate_deck_code_hashes", []))
-                if str(value).strip()
-            ),
-        }
-    }
+    return {"exact_deck_evidence": canonical}
 
 
 def _merge_document_deck_match(
     document: dict[str, Any],
     row: dict[str, Any],
+    *,
+    deck_identity: dict[str, Any],
 ) -> None:
     if document.get("_deck_match_conflict") is True:
         return
-    candidate = _exact_deck_match_from_row(row)
+    candidate = _exact_deck_match_from_row(
+        row,
+        deck_identity=deck_identity,
+    )
     if candidate is None:
         if document.get("deck_match_scope") == "exact_deck_matched":
             document.pop("deck_match", None)
             document["deck_match_scope"] = "archetype_matched"
             document["source_lane"] = "archetype_matched_public_guide"
+            document["first_missing_source_action"] = (
+                "add_exact_deck_matched_source"
+            )
             document["_deck_match_conflict"] = True
         return
     existing = document.get("deck_match")
@@ -130,6 +132,9 @@ def _merge_document_deck_match(
         document.pop("deck_match", None)
         document["deck_match_scope"] = "archetype_matched"
         document["source_lane"] = "archetype_matched_public_guide"
+        document["first_missing_source_action"] = (
+            "add_exact_deck_matched_source"
+        )
         document["_deck_match_conflict"] = True
 
 

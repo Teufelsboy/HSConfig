@@ -11,6 +11,7 @@ from hsconfig.role_tokens import (
     card_role_tokens,
     has_explicit_opening_hand_mulligan_intent,
 )
+from hsconfig.source_exact_evidence import canonical_exact_deck_evidence
 from hsconfig.source_semantic_qualifiers import has_qualifier, qualifier_values
 
 SUPPORTED_ATOMIC_CLAIM_KINDS = frozenset(
@@ -378,7 +379,14 @@ def surface_gate_decision(
 ) -> SurfaceGateDecision:
     normalized_surface = surface.strip().lower()
     if normalized_surface == "mulligan":
-        return can_lower_to_mulligan(claim, card_roles=(context or {}).get("card_roles"))
+        return can_lower_to_mulligan(
+            claim,
+            card_roles=(context or {}).get("card_roles"),
+            deck_identity=(context or {}).get("deck_identity"),
+            verified_source_receipts=(context or {}).get(
+                "verified_source_receipts"
+            ),
+        )
     if normalized_surface == "globalvalues":
         return can_lower_to_globalvalues(
             claim,
@@ -413,47 +421,126 @@ def can_lower_to_mulligan(
     claim: Mapping[str, Any],
     *,
     card_roles: Mapping[str, Any] | None = None,
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
 ) -> SurfaceGateDecision:
     claim_kind = normalized_claim_kind(claim)
     if claim_kind not in MULLIGAN_SURFACE_CLAIM_KINDS:
         return SurfaceGateDecision(False, "claim_kind_not_mulligan_surface", claim_kind, "mulligan")
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "mulligan")
-    if is_public_guide_claim(claim):
-        if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
-            return SurfaceGateDecision(
-                False,
-                "mulligan_requires_exact_deck_match",
-                claim_kind,
-                "mulligan",
-            )
-        if not _bool_value(claim.get("promotion_eligible")):
-            return SurfaceGateDecision(
-                False,
-                "mulligan_requires_promotion_eligible_source",
-                claim_kind,
-                "mulligan",
-            )
-        if _normalized_text(claim.get("source_visibility")) != "full_text":
-            return SurfaceGateDecision(
-                False,
-                "mulligan_requires_full_text_source",
-                claim_kind,
-                "mulligan",
-            )
-        if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
-            return SurfaceGateDecision(
-                False,
-                "mulligan_requires_deck_matched_public_guide_lane",
-                claim_kind,
-                "mulligan",
-            )
     cards = _claim_cards_from_mapping(claim)
-    if claim_kind == "mulligan_keep" and _contains_start_of_game_non_hand_effect(
-        cards,
-        card_roles or {},
-        claim,
+    start_of_game_non_hand_effect = (
+        claim_kind == "mulligan_keep"
+        and _contains_start_of_game_non_hand_effect(
+            cards,
+            card_roles or {},
+            claim,
+        )
+    )
+    if not _is_canonical_public_guide_source(claim):
+        if start_of_game_non_hand_effect:
+            return SurfaceGateDecision(
+                False,
+                "start_of_game_effect_does_not_require_opening_hand",
+                claim_kind,
+                "mulligan",
+            )
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_public_guide_source",
+            claim_kind,
+            "mulligan",
+        )
+    if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_exact_deck_match",
+            claim_kind,
+            "mulligan",
+        )
+    if not _bool_value(claim.get("promotion_eligible")):
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_promotion_eligible_source",
+            claim_kind,
+            "mulligan",
+        )
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_full_text_source",
+            claim_kind,
+            "mulligan",
+        )
+    if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_deck_matched_public_guide_lane",
+            claim_kind,
+            "mulligan",
+        )
+    target_fingerprint = _normalized_text(
+        (deck_identity or {}).get("deck_fingerprint")
+    )
+    if not target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_target_deck_fingerprint",
+            claim_kind,
+            "mulligan",
+        )
+    deck_match = claim.get("deck_match")
+    exact_evidence = (
+        deck_match.get("exact_deck_evidence")
+        if isinstance(deck_match, Mapping)
+        else None
+    )
+    evidence_fingerprint = (
+        _normalized_text(exact_evidence.get("matched_deck_fingerprint"))
+        if isinstance(exact_evidence, Mapping)
+        else ""
+    )
+    if (
+        not isinstance(exact_evidence, Mapping)
+        or exact_evidence.get("matched") is not True
+        or not evidence_fingerprint
     ):
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_verified_exact_deck_evidence",
+            claim_kind,
+            "mulligan",
+        )
+    if evidence_fingerprint != target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "mulligan_exact_deck_fingerprint_mismatch",
+            claim_kind,
+            "mulligan",
+        )
+    if not canonical_exact_deck_evidence(
+        exact_evidence,
+        target_fingerprint=target_fingerprint,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_complete_exact_deck_evidence",
+            claim_kind,
+            "mulligan",
+        )
+    if not _has_verified_source_receipt(
+        claim,
+        target_fingerprint=target_fingerprint,
+        verified_source_receipts=verified_source_receipts,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "mulligan_requires_verified_source_receipt",
+            claim_kind,
+            "mulligan",
+        )
+    if start_of_game_non_hand_effect:
         return SurfaceGateDecision(
             False,
             "start_of_game_effect_does_not_require_opening_hand",
@@ -478,7 +565,7 @@ def can_lower_to_globalvalues(
         )
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "globalvalues")
-    if not _is_globalvalues_public_guide_source(claim):
+    if not _is_canonical_public_guide_source(claim):
         return SurfaceGateDecision(
             False,
             "globalvalues_requires_public_guide_source",
@@ -531,7 +618,7 @@ def can_lower_to_globalvalues(
             claim_kind,
             "globalvalues",
         )
-    if not _has_verified_globalvalues_source_receipt(
+    if not _has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
@@ -566,7 +653,7 @@ def can_lower_to_globalvalues(
     return SurfaceGateDecision(True, "allowed", claim_kind, "globalvalues")
 
 
-def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
+def _is_canonical_public_guide_source(claim: Mapping[str, Any]) -> bool:
     identities = [
         _normalized_text(claim.get(field))
         for field in PUBLIC_GUIDE_IDENTITY_FIELDS
@@ -590,7 +677,7 @@ def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
     )
 
 
-def globalvalues_claim_signature(claim: Mapping[str, Any]) -> str:
+def source_claim_signature(claim: Mapping[str, Any]) -> str:
     payload = {
         str(key): value
         for key, value in claim.items()
@@ -600,13 +687,18 @@ def globalvalues_claim_signature(claim: Mapping[str, Any]) -> str:
     return f"sha256:{sha256(canonical.encode('utf-8')).hexdigest()}"
 
 
-def _has_verified_globalvalues_source_receipt(
+def globalvalues_claim_signature(claim: Mapping[str, Any]) -> str:
+    """Compatibility alias for the canonical source claim signature."""
+    return source_claim_signature(claim)
+
+
+def _has_verified_source_receipt(
     claim: Mapping[str, Any],
     *,
     target_fingerprint: str,
     verified_source_receipts: Iterable[Mapping[str, Any]] | None,
 ) -> bool:
-    signature = globalvalues_claim_signature(claim)
+    signature = source_claim_signature(claim)
     claim_id = str(claim.get("claim_id", "")).strip()
     for receipt in verified_source_receipts or ():
         if not isinstance(receipt, Mapping):
@@ -621,6 +713,25 @@ def _has_verified_globalvalues_source_receipt(
             continue
         return True
     return False
+
+
+def _is_globalvalues_public_guide_source(claim: Mapping[str, Any]) -> bool:
+    """Compatibility alias for callers using the earlier surface-specific name."""
+    return _is_canonical_public_guide_source(claim)
+
+
+def _has_verified_globalvalues_source_receipt(
+    claim: Mapping[str, Any],
+    *,
+    target_fingerprint: str,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None,
+) -> bool:
+    """Compatibility alias for callers using the earlier surface-specific name."""
+    return _has_verified_source_receipt(
+        claim,
+        target_fingerprint=target_fingerprint,
+        verified_source_receipts=verified_source_receipts,
+    )
 
 
 def can_lower_to_combo(claim: Mapping[str, Any]) -> SurfaceGateDecision:

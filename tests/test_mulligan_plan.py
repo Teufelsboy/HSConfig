@@ -1,5 +1,61 @@
 from hsconfig.compile_mulligan import compile_mulligan
-from hsconfig.mulligan_plan import build_mulligan_plan
+from hsconfig.mulligan_plan import build_mulligan_plan as _build_mulligan_plan
+from hsconfig.source_document_model import (
+    globalvalues_claim_signature,
+    normalized_claim_kind,
+)
+
+
+_TEST_DECK_FINGERPRINT = "sha256:mulligan-plan-unit-fixture"
+
+
+def build_mulligan_plan(**kwargs):
+    claims = []
+    receipts = []
+    for raw_claim in kwargs.get("claims", []):
+        claim = dict(raw_claim)
+        if normalized_claim_kind(claim) in {
+            "mulligan_keep",
+            "mulligan_discard",
+        }:
+            claim.setdefault("source_family", "guide")
+            claim.setdefault("deck_match_scope", "exact_deck_matched")
+            claim.setdefault("promotion_eligible", True)
+            claim.setdefault("source_visibility", "full_text")
+            claim.setdefault("source_lane", "deck_matched_public_guide")
+            claim.setdefault(
+                "deck_match",
+                {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": _TEST_DECK_FINGERPRINT,
+                        "candidate_deck_code_hashes": [
+                            "sha256:mulligan-plan-unit-source"
+                        ],
+                    }
+                },
+            )
+            receipts.append(
+                {
+                    "receipt_kind": "canonical_exact_deck_source_document",
+                    "matched_deck_fingerprint": _TEST_DECK_FINGERPRINT,
+                    "claim_id": str(claim.get("claim_id", "")),
+                    "claim_signature": globalvalues_claim_signature(claim),
+                }
+            )
+        claims.append(claim)
+    return _build_mulligan_plan(
+        **{
+            **kwargs,
+            "claims": claims,
+            "deck_identity": {
+                "deck_fingerprint": _TEST_DECK_FINGERPRINT,
+            },
+            "verified_source_receipts": receipts,
+        }
+    )
 
 
 def test_mulligan_plan_reports_non_mulligan_claim_surface_rejection():

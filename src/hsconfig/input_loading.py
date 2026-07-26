@@ -163,6 +163,7 @@ def guide_documents_from_legacy_claims(claims: list[dict[str, Any]]) -> list[dic
                 "source_title": source_title,
                 "source_family": str(claim.get("source", "legacy_claims")),
                 "retrieved_at": _legacy_claim_retrieved_at(claim),
+                "source_document_origin": "legacy_claims_json",
                 "claims": [],
             },
         )

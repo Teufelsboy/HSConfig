@@ -20,7 +20,23 @@ CLAIM_KIND_RANK = {
     "mechanic_usage": 90,
 }
 MULLIGAN_AUTHORITY_ACTION_BY_REASON = {
+    "mulligan_requires_public_guide_source": "add_public_guide_source",
     "mulligan_requires_exact_deck_match": "add_exact_deck_matched_source",
+    "mulligan_requires_target_deck_fingerprint": (
+        "decode_current_target_deck_fingerprint"
+    ),
+    "mulligan_requires_verified_exact_deck_evidence": (
+        "add_exact_deck_matched_source"
+    ),
+    "mulligan_exact_deck_fingerprint_mismatch": (
+        "replace_source_with_current_target_deck_match"
+    ),
+    "mulligan_requires_complete_exact_deck_evidence": (
+        "add_complete_exact_deck_decode_evidence"
+    ),
+    "mulligan_requires_verified_source_receipt": (
+        "rebuild_source_documents_for_verified_receipt"
+    ),
     "mulligan_requires_promotion_eligible_source": "add_promotion_eligible_source",
     "mulligan_requires_full_text_source": "add_full_text_public_guide_source",
     "mulligan_requires_deck_matched_public_guide_lane": (

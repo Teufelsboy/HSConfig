@@ -4,7 +4,7 @@ from pathlib import Path
 from hsconfig.cli import main
 
 
-def test_card_behavior_report_persists_compiler_only_runtime_conflicts(
+def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     tmp_path: Path,
     capsys,
 ):
@@ -170,15 +170,27 @@ def test_card_behavior_report_persists_compiler_only_runtime_conflicts(
     operator = json.loads(
         (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
+    diagnostics = json.loads(
+        (package / "reports" / "plan_input_diagnostics.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert code == 0
     assert persisted["runtime_row_conflicts"] == []
-    assert persisted["compiler_runtime_row_conflicts"][0]["key"] == [
-        "REV_290",
-        "BeforePlayCardBonus",
-        "*",
-    ]
-    assert persisted["compiler_runtime_row_conflicts"][0]["values"] == ["6", "8"]
+    assert persisted["compiler_runtime_row_conflicts"] == []
     assert persisted["compiler_merged_duplicate_runtime_row_count"] == 0
-    assert set(physical) == {"GameCardId", "ConfigComment"}
+    assert diagnostics["imported_plan_reports"][
+        "card_behavior_plan_report.json"
+    ] == reports["card_behavior_plan_report.json"]
+    assert diagnostics["runtime_gate_impact"] == "none"
+    assert set(physical) == {
+        "GameCardId",
+        "ConfigComment",
+        "BeforePlayCardBonus",
+    }
+    assert len(persisted["rows"]) == 1
+    assert physical["BeforePlayCardBonus"]["values"][0]["value"] == (
+        persisted["rows"][0]["value"]
+    )
     assert operator["runtime_apply_allowed"] is True

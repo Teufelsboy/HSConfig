@@ -843,16 +843,34 @@ def test_exact_guide_mulligan_gate_is_machine_readable_and_fail_closed() -> None
     gate = _markdown_table(policy, "### Exact Public-Guide Mulligan Gate")
 
     assert set(gate) == {
+        "public_guide_identity",
         "deck_match_scope",
+        "target_deck_fingerprint",
+        "exact_deck_evidence",
+        "source_receipt",
         "promotion_eligible",
         "source_visibility",
         "source_lane",
     }
-    assert {row["Required value"] for row in gate.values()} == {
-        "exact_deck_matched",
-        "true",
-        "full_text",
-        "deck_matched_public_guide",
+    assert {
+        check: row["Required value"] for check, row in gate.items()
+    } == {
+        "public_guide_identity": (
+            "all populated document and claim identity signals are guide"
+        ),
+        "deck_match_scope": "exact_deck_matched",
+        "target_deck_fingerprint": (
+            "present and equal to matched_deck_fingerprint"
+        ),
+        "exact_deck_evidence": (
+            "matched=true; both counts >=1; non-empty code-hash list"
+        ),
+        "source_receipt": (
+            "matching claim_id, claim signature, and target fingerprint"
+        ),
+        "promotion_eligible": "true",
+        "source_visibility": "full_text",
+        "source_lane": "deck_matched_public_guide",
     }
     assert {row["Failure outcome"] for row in gate.values()} == {
         "suppress with visible reason"
@@ -942,6 +960,31 @@ def test_operator_contract_names_globalvalues_plan_trust_boundaries() -> None:
             ),
             "Required outcome": "only canonical rows may lower",
         },
+        "canonical_runtime_plans": {
+            "Boundary": "canonical_runtime_plans",
+            "Canonical input": (
+                "freshly rebuilt Mulligan, CardID, and Combo plans"
+            ),
+            "Required outcome": (
+                "sole runtime truth; imported same-ID rows cannot replace or restore"
+            ),
+        },
+        "imported_runtime_plan_payloads": {
+            "Boundary": "imported_runtime_plan_payloads",
+            "Canonical input": (
+                "actual imported Mulligan, CardID, and Combo report payloads"
+            ),
+            "Required outcome": (
+                "diagnostic only in plan_input_diagnostics with runtime_gate_impact=none"
+            ),
+        },
+        "legacy_mulligan_receipt": {
+            "Boundary": "legacy_mulligan_receipt",
+            "Canonical input": "synthetic --claims-json source documents",
+            "Required outcome": (
+                "cannot mint a canonical exact source receipt"
+            ),
+        },
         "suppression_transparency": {
             "Boundary": "suppression_transparency",
             "Canonical input": (
@@ -951,9 +994,30 @@ def test_operator_contract_names_globalvalues_plan_trust_boundaries() -> None:
         },
         "exact_evidence_counts": {
             "Boundary": "exact_evidence_counts",
-            "Canonical input": "non-negative integer evidence",
+            "Canonical input": (
+                "both count fields parsed by one strict non-negative integer parser"
+            ),
             "Required outcome": (
-                "malformed counts fail closed to baseline and visible suppression"
+                "integer or decimal string accepted; bool, float, container, negative, or malformed rejected without exception"
+            ),
+        },
+        "exact_evidence_authority": {
+            "Boundary": "exact_evidence_authority",
+            "Canonical input": (
+                "positive candidate counts and non-empty code-hash list"
+            ),
+            "Required outcome": (
+                "otherwise no receipt and a visible exact-source gap"
             ),
         },
     }
+    assert (
+        "One shared `parse_strict_nonnegative_int` parser is used by\n"
+        "`source_document_drafter`, `source_autopilot`, and "
+        "`source_document_builder`."
+    ) in spine
+    assert (
+        "Count rejection preserves a\nload-safe package with "
+        "`SOURCE_BACKED_PARTIAL`, exposes the exact-source gap,\nand mints no "
+        "receipt."
+    ) in spine

@@ -39,8 +39,11 @@ def test_source_autopilot_command_writes_inspected_source_artifacts(tmp_path):
     source_record = source_records["records"][0]
     source_record["deck_match_scope"] = "exact_deck_matched"
     source_record["deck_match"]["exact_deck_evidence"] = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
         "matched": True,
         "matched_deck_fingerprint": deck_identity["deck_fingerprint"],
+        "candidate_deck_code_hashes": ["sha256:source-autopilot-cli"],
     }
     source_records_path = tmp_path / "source_search_shadowpriest_exact.json"
     source_records_path.write_text(json.dumps(source_records), encoding="utf-8")

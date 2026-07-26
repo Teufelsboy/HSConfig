@@ -464,7 +464,7 @@ def test_malformed_exact_evidence_counts_fail_closed_to_baseline_suppression(
     }
     assert any(
         row.get("authority") == "source_contract_suppressed"
-        and row.get("reason") == "globalvalues_requires_verified_source_receipt"
+        and row.get("reason") == "globalvalues_requires_exact_deck_match"
         for row in matrix["blocked_until_runtime_evidence"]
     )
 
