@@ -306,6 +306,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     source_index = json.loads((reports / "source_evidence_index.json").read_text(encoding="utf-8"))
     unsupported = json.loads((reports / "unsupported_claims_report.json").read_text(encoding="utf-8"))
     operator_summary = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
     voidtouched = json.loads(
         (
             package
@@ -327,6 +330,9 @@ def test_prepare_accepts_guide_sources_json_and_writes_depth_artifacts(tmp_path:
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["guide_strength_summary"]["cards_needing_runtime_surface"] == 0
     assert operator_summary["guide_strength_summary"]["cards_needing_mechanic_lowering"] == 0
+    assert card_behavior["runtime_row_conflicts"] == []
+    assert card_behavior["compiler_runtime_row_conflicts"] == []
+    assert card_behavior["merged_duplicate_runtime_row_count"] >= 1
     assert "OnBoardBonus" in voidtouched
     assert "BeforePlayCardBonus" not in voidtouched
     assert (reports / "mulligan_plan_report.json").exists()

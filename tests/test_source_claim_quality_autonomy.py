@@ -586,8 +586,22 @@ def test_start_of_game_hero_power_effect_does_not_infer_mulligan_keep():
         for row in card_behavior_plan["card_rows"]["SW_448"]
         if row["claim_id"] == hero_power_claim["claim_id"]
     )
+    static_hero_power_claim = next(
+        claim
+        for claim in claims
+        if claim["claim_kind"] == "mechanic_usage"
+        and claim["cards"] == ["SW_448"]
+        and claim.get("mechanic") == "shadowform"
+    )
     assert card_behavior_row["behavior_block"] == "BeforeUseHeroPowerBonus"
-    assert card_behavior_row["source_claim_ids"] == [hero_power_claim["claim_id"]]
+    expected_provenance = sorted(
+        [
+            hero_power_claim["claim_id"],
+            static_hero_power_claim["claim_id"],
+        ]
+    )
+    assert card_behavior_row["source_claim_ids"] == expected_provenance
+    assert card_behavior_row["merged_claim_ids"] == expected_provenance
     assert "local://shadowpriest-test" in card_behavior_row["source_refs"]
 
     assert not any(

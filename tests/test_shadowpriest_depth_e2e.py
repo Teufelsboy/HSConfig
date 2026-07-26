@@ -375,9 +375,9 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert len(coverage["uncovered_cards"]) <= 4
     assert depth["depth_status"] in {"strong", "usable", "usable_with_runtime_gaps"}
     assert depth["summary"]["cards_needing_runtime_surface"] == 0
-    assert depth["summary"]["warnings_count"] == 14
+    assert depth["summary"]["warnings_count"] == 10
     assert readiness["summary"]["generic_low_confidence"] == 0
-    assert readiness["summary"]["runtime_emitted"] == 2
+    assert readiness["summary"]["runtime_emitted"] == 6
     assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
     assert len(mulligan["Mulligan"]["values"]) == 4
     assert active_card_ids == {
@@ -402,6 +402,11 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     }
     assert set(voidtouched) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
     assert [row["value"] for row in voidtouched["OnBoardBonus"]["values"]] == ["10"]
+    behavior_report = json.loads(
+        (reports / "card_behavior_plan_report.json").read_text(encoding="utf-8")
+    )
+    assert behavior_report["runtime_row_conflicts"] == []
+    assert behavior_report["compiler_runtime_row_conflicts"] == []
 
 
 def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: Path, capsys):
@@ -453,15 +458,17 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert any(
         row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
         and row["condition"] == "*"
-        and row["value"] == "6"
+        and row["value"] == "10"
         for row in hero_power_values
     )
     sw448_behavior_rows = behavior_report["card_rows"]["SW_448"]
     assert any(
-        row.get("semantic_score", {}).get("reason") == "explicit_runtime_value"
-        and row["value"] == "6"
+        row.get("semantic_score", {}).get("reason") == "hero_power_transform"
+        and row["value"] == "10"
         for row in sw448_behavior_rows
     )
+    assert behavior_report["runtime_row_conflicts"] == []
+    assert behavior_report["compiler_runtime_row_conflicts"] == []
     assert len(darkbishop_attention) == 1
     assert darkbishop_attention[0]["status"] == "runtime_backed"
     assert darkbishop_attention[0]["strongest_claim_kind"] == "hero_power_transform"

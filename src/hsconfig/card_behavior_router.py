@@ -19,4 +19,8 @@ def route_card_behavior_claims(
         "rows": plan["rows"],
         "suppressed": plan["suppressed"],
         "option_resolution": plan["option_resolution"],
+        "merged_duplicate_runtime_row_count": plan[
+            "merged_duplicate_runtime_row_count"
+        ],
+        "runtime_row_conflicts": plan["runtime_row_conflicts"],
     }

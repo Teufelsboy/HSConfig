@@ -1663,7 +1663,7 @@ def test_cardid_router_merges_exact_duplicate_runtime_rows_and_provenance():
     )
 
     assert len(result["rows"]) == 1
-    assert result["rows"][0]["source_claim_ids"] == ["claim-a"]
+    assert result["rows"][0]["source_claim_ids"] == ["claim-a", "claim-b"]
     assert result["rows"][0]["merged_claim_ids"] == ["claim-a", "claim-b"]
     assert result["merged_duplicate_runtime_row_count"] == 1
     assert result["runtime_row_conflicts"] == []
@@ -1687,6 +1687,32 @@ def test_cardid_router_omits_conflicting_runtime_row_key():
     )
 
     assert result["rows"] == []
+    assert result["runtime_row_conflicts"][0]["key"] == [
+        "REV_290",
+        "BeforePlayCardBonus",
+        "*",
+    ]
+    assert result["runtime_row_conflicts"][0]["values"] == ["6", "8"]
+
+
+def test_card_behavior_wrapper_propagates_runtime_row_diagnostics():
+    result = route_card_behavior_claims(
+        [
+            {
+                "claim_id": claim_id,
+                "claim_kind": "card_role",
+                "cards": ["REV_290"],
+                "stance": "deploy_location",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": value,
+                "condition": "*",
+                "source_lane": "deck_matched_public_guide",
+            }
+            for claim_id, value in (("claim-a", "6"), ("claim-b", "8"))
+        ]
+    )
+
+    assert result["merged_duplicate_runtime_row_count"] == 0
     assert result["runtime_row_conflicts"][0]["key"] == [
         "REV_290",
         "BeforePlayCardBonus",

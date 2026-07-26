@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
 from typing import Any, Iterable
 
 
@@ -70,7 +71,7 @@ def canonicalize_runtime_rows(
                     "key": list(key),
                     "values": values,
                     "source_claim_ids": _merged_source_claim_ids(group),
-                    "merged_claim_ids": _merged_claim_ids(group),
+                    "merged_claim_ids": _all_provenance_claim_ids(group),
                 }
             )
             continue
@@ -79,17 +80,10 @@ def canonicalize_runtime_rows(
         signature_rows = signature_groups[signature]
         representative = min(signature_rows, key=_representative_sort_key)
         canonical = dict(representative)
-        source_claim_ids = _row_source_claim_ids(representative)
-        if not source_claim_ids:
-            source_claim_ids = _merged_source_claim_ids(signature_rows)
+        source_claim_ids = _merged_source_claim_ids(signature_rows)
         merged_claim_ids = _merged_claim_ids(signature_rows)
         if len(signature_rows) > 1:
-            merged_claim_ids = sorted(
-                {
-                    *merged_claim_ids,
-                    *_merged_source_claim_ids(signature_rows),
-                }
-            )
+            merged_claim_ids = _all_provenance_claim_ids(signature_rows)
         canonical["source_claim_ids"] = source_claim_ids
         if merged_claim_ids:
             canonical["merged_claim_ids"] = merged_claim_ids
@@ -138,19 +132,6 @@ def _merged_source_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:
     return sorted(claim_ids)
 
 
-def _row_source_claim_ids(row: dict[str, Any]) -> list[str]:
-    source_claim_ids = row.get("source_claim_ids", [])
-    if not isinstance(source_claim_ids, (list, tuple, set)):
-        return []
-    return sorted(
-        {
-            normalized
-            for item in source_claim_ids
-            if (normalized := str(item).strip())
-        }
-    )
-
-
 def _merged_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:
     claim_ids: set[str] = set()
     for row in rows:
@@ -164,8 +145,34 @@ def _merged_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:
     return sorted(claim_ids)
 
 
-def _representative_sort_key(row: dict[str, Any]) -> tuple[str, str]:
+def _all_provenance_claim_ids(rows: Iterable[dict[str, Any]]) -> list[str]:
+    claim_ids: set[str] = set()
+    for row in rows:
+        for key in ("claim_id", "source_claim_id"):
+            normalized = str(row.get(key, "")).strip()
+            if normalized:
+                claim_ids.add(normalized)
+        for key in ("source_claim_ids", "merged_claim_ids"):
+            values = row.get(key, [])
+            if isinstance(values, str):
+                values = [values]
+            if isinstance(values, (list, tuple, set)):
+                claim_ids.update(
+                    normalized
+                    for item in values
+                    if (normalized := str(item).strip())
+                )
+    return sorted(claim_ids)
+
+
+def _representative_sort_key(row: dict[str, Any]) -> tuple[str, str, str]:
     return (
         str(row.get("rule_id_suffix", "")).strip(),
         str(row.get("claim_id", "")).strip(),
+        json.dumps(
+            row,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ),
     )

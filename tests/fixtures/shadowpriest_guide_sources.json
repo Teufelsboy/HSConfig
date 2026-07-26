@@ -11,7 +11,6 @@
         "card_ids": ["SW_448"],
         "stance": "shadowform_mind_spike",
         "runtime_block": "BeforeUseHeroPowerBonus",
-        "runtime_value": "6",
         "condition": "*",
         "opening_hand_relevant": false,
         "source_type": "public_guide",

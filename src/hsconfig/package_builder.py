@@ -232,6 +232,14 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             [],
         ),
     )
+    card_behavior_plan.setdefault("merged_duplicate_runtime_row_count", 0)
+    card_behavior_plan.setdefault("runtime_row_conflicts", [])
+    card_behavior_plan["compiler_merged_duplicate_runtime_row_count"] = (
+        cardid_behavior_files.merged_duplicate_runtime_row_count
+    )
+    card_behavior_plan["compiler_runtime_row_conflicts"] = (
+        cardid_behavior_files.runtime_row_conflicts
+    )
     config_readiness_report = build_config_readiness_report(
         deck_identity=deck_identity,
         claim_coverage=guide_claim_bundle["coverage"],
