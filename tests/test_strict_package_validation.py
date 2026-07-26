@@ -10,6 +10,8 @@ import pytest
 from hsconfig import package_builder
 from hsconfig.cli import main
 from hsconfig.contract_preflight import build_package_contract_preflight
+from hsconfig.io import write_json
+from hsconfig.strict_package_validation import validate_complete_package
 
 
 def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[str, Any], int]:
@@ -185,3 +187,49 @@ def test_invalid_globalvalues_reports_fail_all_strict_paths(
     assert apply_code == 1
     assert apply_result["status"] in {"failed", "blocked"}
     assert not runtime.exists()
+
+
+def test_strict_validation_rejects_linked_runtime_filename_gamecardid_mismatch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    deck_dir = next((package / "CustomConfig").iterdir())
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+    write_json(
+        deck_dir / "EX1_625t.json",
+        {
+            "GameCardId": "SW_448",
+            "ConfigComment": "wrong linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        "linked runtime entity filename/GameCardId mismatch: "
+        "EX1_625t.json owns EX1_625t, got SW_448"
+        in error
+        for error in report["errors"]
+    )

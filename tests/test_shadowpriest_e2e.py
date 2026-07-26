@@ -81,8 +81,11 @@ def test_semantically_gated_shadowpriest_keeps_benedictus_effect_not_opening_han
 
     deck_dir = out / "CustomConfig" / "shadowpriest"
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
-    benedictus_behavior = json.loads(
+    benedictus_source = json.loads(
         (deck_dir / "SW_448.json").read_text(encoding="utf-8")
+    )
+    benedictus_behavior = json.loads(
+        (deck_dir / "EX1_625t.json").read_text(encoding="utf-8")
     )
     summary = json.loads(
         (out / "reports" / "operator_summary.json").read_text(encoding="utf-8")
@@ -124,6 +127,9 @@ def test_semantically_gated_shadowpriest_keeps_benedictus_effect_not_opening_han
         for row in behavior_report["suppressed"]
     )
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
+    assert benedictus_source["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in benedictus_source
+    assert benedictus_behavior["GameCardId"] == "EX1_625t"
     assert (
         "hero_power_transform" in json.dumps(benedictus_behavior, sort_keys=True)
         or "BeforeUseHeroPowerBonus" in benedictus_behavior
@@ -306,7 +312,10 @@ def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_life
     deck_dir = out / "CustomConfig" / "shadowpriest"
     reports = out / "reports"
     mulligan_text = (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
-    darkbishop_text = (deck_dir / "SW_448.json").read_text(encoding="utf-8")
+    darkbishop_source = json.loads(
+        (deck_dir / "SW_448.json").read_text(encoding="utf-8")
+    )
+    shadow_hero_power_text = (deck_dir / "EX1_625t.json").read_text(encoding="utf-8")
     audit = json.loads((reports / "source_contract_audit.json").read_text(encoding="utf-8"))
     claim_rows = audit["claim_rows"]
     darkbishop_claim_ids = {
@@ -322,13 +331,15 @@ def test_shadowpriest_darkbishop_effect_visible_but_not_mulligan_keep_after_life
 
     assert code == 0
     assert "SW_448" not in mulligan_text
-    assert "BeforeUseHeroPowerBonus" in darkbishop_text
+    assert darkbishop_source["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop_source
+    assert "BeforeUseHeroPowerBonus" in shadow_hero_power_text
     assert not (deck_dir / "Presume.json").exists()
     assert not (deck_dir / "Concede.json").exists()
     assert any(
         row["claim_kind"] == "hero_power_transform"
         and row["builder_or_router_decision"] == "emitted"
-        and "SW_448.json" in row["emitted_files"]
+        and "EX1_625t.json" in row["emitted_files"]
         for row in darkbishop_lifecycle_rows
     )
     assert not any(
@@ -409,9 +420,13 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     )
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     darkbishop_contract = contract["cards"]["SW_448"]
-    darkbishop_card_config = deck_dir / "SW_448.json"
-    darkbishop_runtime_config = json.loads(
-        darkbishop_card_config.read_text(encoding="utf-8")
+    darkbishop_source_config = deck_dir / "SW_448.json"
+    darkbishop_source = json.loads(
+        darkbishop_source_config.read_text(encoding="utf-8")
+    )
+    shadow_hero_power_config = deck_dir / "EX1_625t.json"
+    shadow_hero_power_runtime = json.loads(
+        shadow_hero_power_config.read_text(encoding="utf-8")
     )
     mulligan_values = mulligan["Mulligan"]["values"]
     policy_hold_rows = [
@@ -506,9 +521,12 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         >= 1
     )
     assert (deck_dir / "DS1_233.json").exists()
-    assert darkbishop_card_config.exists()
-    assert darkbishop_runtime_config["GameCardId"] == "SW_448"
-    assert darkbishop_runtime_config["BeforeUseHeroPowerBonus"]["values"]
+    assert darkbishop_source_config.exists()
+    assert shadow_hero_power_config.exists()
+    assert darkbishop_source["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop_source
+    assert shadow_hero_power_runtime["GameCardId"] == "EX1_625t"
+    assert shadow_hero_power_runtime["BeforeUseHeroPowerBonus"]["values"]
     darkbishop_claims = [
         row
         for row in source_contract_audit["claim_rows"].values()
@@ -542,14 +560,14 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
 
     assert darkbishop_effect_lifecycle
     assert darkbishop_explainability["strongest_claim_kind"] == "hero_power_transform"
-    assert "SW_448.json" in darkbishop_explainability["emitted_runtime_files"]
+    assert "EX1_625t.json" in darkbishop_explainability["emitted_runtime_files"]
     assert "Mulligan.json" not in darkbishop_explainability["emitted_runtime_files"]
     assert darkbishop_explainability["apply_blocked"] is False
     assert darkbishop_explainability["next_source_action"] == "none"
     assert any(
         row["claim_kind"] == "hero_power_transform"
         and row["builder_or_router_decision"] == "emitted"
-        and "SW_448.json" in row["emitted_runtime_files"]
+        and "EX1_625t.json" in row["emitted_runtime_files"]
         for row in darkbishop_explainability_claims
     )
     assert not any(
@@ -561,8 +579,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         for row in darkbishop_effect_lifecycle
     )
     assert all(
-        row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
-        or "SW_448.json" in row["emitted_files"]
+        row["runtime_surface"] in {"EX1_625t.json", "<CARDID>.json", "CARDID.json"}
+        or "EX1_625t.json" in row["emitted_files"]
         for row in darkbishop_effect_lifecycle
     )
     assert darkbishop_mulligan_lifecycle == []
@@ -583,8 +601,8 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
         row["claim_kind"] == "hero_power_transform"
         and row["builder_or_router_decision"] == "emitted"
         and (
-            row["runtime_surface"] in {"SW_448.json", "<CARDID>.json", "CARDID.json"}
-            or "SW_448.json" in row["emitted_files"]
+            row["runtime_surface"] in {"EX1_625t.json", "<CARDID>.json", "CARDID.json"}
+            or "EX1_625t.json" in row["emitted_files"]
         )
         for row in darkbishop_lifecycle_rows
     )

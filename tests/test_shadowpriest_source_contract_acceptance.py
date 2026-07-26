@@ -81,6 +81,7 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
     deck_dir = next((package / "CustomConfig").iterdir())
     mulligan = _read_json(deck_dir / "Mulligan.json")
     darkbishop = _read_json(deck_dir / "SW_448.json")
+    shadow_hero_power = _read_json(deck_dir / "EX1_625t.json")
 
     assert summary["status"] == "OK"
     assert autopilot["semantic_status"] == "SOURCE_BACKED_PARTIAL"
@@ -133,7 +134,13 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
     for expected_card_id in ("SW_446", "TOY_381", "SW_444", "SCH_514", "GVG_009"):
         assert expected_card_id not in mulligan_text
 
-    darkbishop_text = json.dumps(darkbishop, sort_keys=True).lower()
-    assert "beforeuseheropowerbonus" in darkbishop_text
-    assert "enable_shadow_hero_power" in darkbishop_text or "shadow hero" in darkbishop_text
-    assert "shadow" in darkbishop_text
+    assert darkbishop["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop
+    shadow_hero_power_text = json.dumps(shadow_hero_power, sort_keys=True).lower()
+    assert shadow_hero_power["GameCardId"] == "EX1_625t"
+    assert "beforeuseheropowerbonus" in shadow_hero_power_text
+    assert (
+        "enable_shadow_hero_power" in shadow_hero_power_text
+        or "shadow hero" in shadow_hero_power_text
+    )
+    assert "shadow" in shadow_hero_power_text

@@ -358,7 +358,10 @@ def _suppressed_reasons(
         for row in _rows(rows):
             reason = _normalized_suppression_reason(row)
             for claim_id in _row_claim_ids(row):
-                reasons.setdefault(claim_id, reason)
+                reasons[claim_id] = _more_specific_suppression_reason(
+                    reasons.get(claim_id, ""),
+                    reason,
+                )
     return reasons
 
 
@@ -474,7 +477,7 @@ def _cardid_runtime_rows(rows: Any) -> list[dict[str, Any]]:
         claim_ids = _row_claim_ids(row)
         if not claim_ids:
             continue
-        card_id = str(row.get("card_id", "")).strip()
+        card_id = str(row.get("runtime_card_id") or row.get("card_id", "")).strip()
         meaningful = bool(row.get("meaningful_runtime_surface", True))
         if meaningful and card_id:
             runtime_surface = f"{card_id}.json"
@@ -546,9 +549,10 @@ def _more_specific_suppression_reason(current: str, incoming: str) -> str:
     priority = {
         "runtime_evidence_required": 0,
         "requires_runtime_evidence": 1,
-        "source_evidence_required": 2,
-        "surface_gate_rejected": 3,
-        "builder_or_router_missing": 4,
+        "linked_runtime_entity_unresolved": 2,
+        "source_evidence_required": 3,
+        "surface_gate_rejected": 4,
+        "builder_or_router_missing": 5,
     }
     if not current:
         return incoming or "suppressed"

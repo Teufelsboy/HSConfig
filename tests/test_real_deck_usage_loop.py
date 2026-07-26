@@ -10,6 +10,7 @@ SHADOWPRIEST_DECK_CODE = (
     "KgG17oG1cEGAAA="
 )
 DARKBISHOP_CARD_ID = "SW_448"
+SHADOW_HERO_POWER_CARD_ID = "EX1_625t"
 
 
 def _json(path: Path) -> dict:
@@ -81,6 +82,7 @@ def test_shadowpriest_configure_path_real_deck_loop_uses_operator_summary_withou
     deck_dir = _single_deck_dir(package)
     mulligan = _json(deck_dir / "Mulligan.json")
     darkbishop = _json(deck_dir / f"{DARKBISHOP_CARD_ID}.json")
+    shadow_hero_power = _json(deck_dir / f"{SHADOW_HERO_POWER_CARD_ID}.json")
 
     assert code == 0
     assert payload["status"] == "OK"
@@ -120,6 +122,8 @@ def test_shadowpriest_configure_path_real_deck_loop_uses_operator_summary_withou
     mulligan_text = json.dumps(mulligan, sort_keys=True)
     assert DARKBISHOP_CARD_ID not in mulligan_text
     assert darkbishop["GameCardId"] == DARKBISHOP_CARD_ID
-    darkbishop_text = json.dumps(darkbishop, sort_keys=True)
-    assert "BeforeUseHeroPowerBonus" in darkbishop_text
-    assert "hero_power" in darkbishop_text.lower()
+    assert "BeforeUseHeroPowerBonus" not in darkbishop
+    assert shadow_hero_power["GameCardId"] == SHADOW_HERO_POWER_CARD_ID
+    shadow_hero_power_text = json.dumps(shadow_hero_power, sort_keys=True)
+    assert "BeforeUseHeroPowerBonus" in shadow_hero_power_text
+    assert "hero_power" in shadow_hero_power_text.lower()

@@ -20,6 +20,7 @@ CARDID_SURFACE_ALIASES = {"CARDID.json", "CardID.json"}
 
 LANES = (
     "runtime_emitted",
+    "linked_runtime_source",
     "mulligan_only",
     "globalvalues_only",
     "report_only_supported",
@@ -59,6 +60,7 @@ SEMANTIC_SUPPRESSION_MISSING_LINKS = {
     "invalid_target_scope": "needs_invalid_target_scope",
     "target_scope_not_encoded": "needs_target_surface",
     "semantic_surface_not_expressible": "semantic_surface_not_expressible",
+    "linked_runtime_entity_unresolved": "needs_runtime_surface",
 }
 GUIDE_BACKED_COVERAGE_STATUSES = {
     "guide_backed",
@@ -103,6 +105,16 @@ def build_config_readiness_report(
         fallback_cardids=all_cardid_cards,
     )
     emitted_cardid_cards = meaningful_emitted_cardids
+    linked_runtime_entities = _linked_runtime_entity_readiness(
+        card_behavior_plan,
+        emitted_cardid_files=emitted_cardid_files,
+        emitted_cardid_file_map=emitted_cardid_file_map,
+        meaningful_emitted_cardids=meaningful_emitted_cardids,
+    )
+    linked_runtime_sources = {
+        str(row["source_card_id"]): str(row["runtime_surface"])
+        for row in linked_runtime_entities.values()
+    }
     semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
@@ -130,6 +142,7 @@ def build_config_readiness_report(
         runtime_surfaces = _runtime_surfaces(
             card_id=card_id,
             emitted_cardid_file_map=emitted_cardid_file_map,
+            linked_runtime_sources=linked_runtime_sources,
             mulligan_cards=mulligan_cards,
             combo_cards=combo_cards,
             globalvalue_cards=globalvalue_cards,
@@ -146,6 +159,7 @@ def build_config_readiness_report(
             mulligan_authority_gap_cards=mulligan_authority_gap_cards,
             combo_cards=combo_cards,
             globalvalue_cards=globalvalue_cards,
+            linked_runtime_source_cards=set(linked_runtime_sources),
         )
 
         lane_counter[lane] += 1
@@ -176,13 +190,21 @@ def build_config_readiness_report(
     return {
         "deck_name": deck_name,
         "deck_slug": deck_slug,
-        "summary": _summary(
-            total_cards=len(rows),
-            lane_counter=lane_counter,
-            missing_counter=missing_counter,
-            rows=rows.values(),
-        ),
+        "summary": {
+            **_summary(
+                total_cards=len(rows),
+                lane_counter=lane_counter,
+                missing_counter=missing_counter,
+                rows=rows.values(),
+            ),
+            "linked_runtime_entity": sum(
+                1
+                for row in linked_runtime_entities.values()
+                if row["runtime_emitted"]
+            ),
+        },
         "cards": rows,
+        "linked_runtime_entities": linked_runtime_entities,
     }
 
 
@@ -232,9 +254,11 @@ def _cards_from_any_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str
 
 def _cards_from_card_behavior(card_behavior_plan: dict[str, Any]) -> set[str]:
     return {
-        str(row["card_id"])
+        str(row.get("source_card_id") or row["card_id"])
         for row in card_behavior_plan.get("rows", [])
         if _is_meaningful_cardid_runtime_row(row)
+        and str(row.get("runtime_card_id") or row["card_id"])
+        == str(row.get("source_card_id") or row["card_id"])
     }
 
 
@@ -285,6 +309,57 @@ def _has_runtime_effect_rows(payload: Any) -> bool:
         if isinstance(values, list) and values:
             return True
     return False
+
+
+def _linked_runtime_entity_readiness(
+    card_behavior_plan: dict[str, Any],
+    *,
+    emitted_cardid_files: (
+        Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
+    ),
+    emitted_cardid_file_map: dict[str, str],
+    meaningful_emitted_cardids: set[str],
+) -> dict[str, dict[str, Any]]:
+    payloads_by_card_id: dict[str, Any] = {}
+    if isinstance(emitted_cardid_files, Mapping):
+        for emitted_file, payload in emitted_cardid_files.items():
+            filename = str(emitted_file).replace("\\", "/").rsplit("/", 1)[-1]
+            if filename.endswith(".json"):
+                payloads_by_card_id[filename.removesuffix(".json")] = payload
+
+    rows: dict[str, dict[str, Any]] = {}
+    for row in card_behavior_plan.get("rows", []):
+        if not _is_meaningful_cardid_runtime_row(row):
+            continue
+        source_card_id = str(row.get("source_card_id") or row["card_id"])
+        runtime_card_id = str(row.get("runtime_card_id") or row["card_id"])
+        link_kind = str(row.get("link_kind") or "self")
+        if runtime_card_id == source_card_id or link_kind == "self":
+            continue
+
+        runtime_surface = emitted_cardid_file_map.get(
+            runtime_card_id,
+            f"{runtime_card_id}.json",
+        )
+        payload = payloads_by_card_id.get(runtime_card_id)
+        filename_game_card_id_match = (
+            runtime_surface == f"{runtime_card_id}.json"
+            and isinstance(payload, Mapping)
+            and str(payload.get("GameCardId", "")) == runtime_card_id
+        )
+        rows[runtime_card_id] = {
+            "readiness_category": "linked_runtime_entity",
+            "source_card_id": source_card_id,
+            "runtime_card_id": runtime_card_id,
+            "link_kind": link_kind,
+            "runtime_surface": runtime_surface,
+            "runtime_emitted": (
+                runtime_card_id in meaningful_emitted_cardids
+                and filename_game_card_id_match
+            ),
+            "filename_game_card_id_match": filename_game_card_id_match,
+        }
+    return dict(sorted(rows.items()))
 
 
 def _is_cardid_runtime_row(row: Any) -> bool:
@@ -401,6 +476,7 @@ def _runtime_surfaces(
     *,
     card_id: str,
     emitted_cardid_file_map: dict[str, str],
+    linked_runtime_sources: Mapping[str, str],
     mulligan_cards: set[str],
     combo_cards: set[str],
     globalvalue_cards: set[str],
@@ -408,6 +484,8 @@ def _runtime_surfaces(
     surfaces = []
     if card_id in emitted_cardid_file_map:
         surfaces.append(emitted_cardid_file_map[card_id])
+    if card_id in linked_runtime_sources:
+        surfaces.append(linked_runtime_sources[card_id])
     if card_id in mulligan_cards:
         surfaces.append(RUNTIME_SURFACE_MULLIGAN)
     if card_id in combo_cards:
@@ -430,6 +508,7 @@ def _lane_and_missing_link(
     mulligan_authority_gap_cards: set[str],
     combo_cards: set[str],
     globalvalue_cards: set[str],
+    linked_runtime_source_cards: set[str],
 ) -> tuple[str, str]:
     coverage = str(card.get("coverage_status", card.get("confidence", ""))).lower()
     roles = {str(role).lower() for role in card.get("roles", [])}
@@ -450,6 +529,8 @@ def _lane_and_missing_link(
         return "report_only_supported", "needs_runtime_surface"
     if card_id in emitted_cardid_cards or card_id in combo_cards:
         return "runtime_emitted", "none"
+    if card_id in linked_runtime_source_cards:
+        return "linked_runtime_source", "none"
     if card_id in semantic_suppression_missing_links:
         return "report_only_supported", semantic_suppression_missing_links[card_id]
     if card_id in mulligan_cards:

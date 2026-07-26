@@ -799,6 +799,81 @@ def test_source_backed_hero_power_transform_can_be_satisfied_by_globalvalues():
     assert row["first_missing_link"] == "none"
 
 
+def test_linked_runtime_entity_readiness_is_separate_from_deck_card_readiness():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Deck",
+            "cards": [{"card_id": "SW_448", "name": "Darkbishop Benedictus"}],
+        },
+        claim_coverage={"uncovered_cards": []},
+        gameplan_contract={
+            "deck_name": "Deck",
+            "cards": {
+                "SW_448": {
+                    "card_id": "SW_448",
+                    "name": "Darkbishop Benedictus",
+                    "coverage_status": "source_backed_static_semantics",
+                    "roles": ["hero_power_transform"],
+                }
+            },
+            "hero_power_expectations": [{"source_card_id": "SW_448"}],
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={
+            "rows": [
+                {
+                    "surface": "CardID.json",
+                    "surface_family": "CARDID.json",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ],
+            "suppressed": [],
+        },
+        combo_plan={"combos": []},
+        global_values_authority_matrix={
+            "allowed_step1_overlays": [{"key": "MyHeroPowerValue"}]
+        },
+        emitted_cardid_files={
+            "SW_448.json": {
+                "GameCardId": "SW_448",
+                "ConfigComment": "metadata only",
+            },
+            "EX1_625t.json": {
+                "GameCardId": "EX1_625t",
+                "ConfigComment": "linked runtime owner",
+                "BeforeUseHeroPowerBonus": {
+                    "values": [{"condition": "*", "value": "10"}],
+                },
+            },
+        },
+    )
+
+    assert report["summary"]["total_cards"] == 1
+    assert report["summary"]["runtime_emitted"] == 0
+    assert report["summary"]["linked_runtime_source"] == 1
+    assert report["summary"]["linked_runtime_entity"] == 1
+    assert report["cards"]["SW_448"]["readiness_lane"] == "linked_runtime_source"
+    assert report["cards"]["SW_448"]["runtime_surfaces"] == [
+        "SW_448.json",
+        "EX1_625t.json",
+        "GlobalValues.json",
+    ]
+    assert report["linked_runtime_entities"]["EX1_625t"] == {
+        "readiness_category": "linked_runtime_entity",
+        "source_card_id": "SW_448",
+        "runtime_card_id": "EX1_625t",
+        "link_kind": "hero_power_transform",
+        "runtime_surface": "EX1_625t.json",
+        "runtime_emitted": True,
+        "filename_game_card_id_match": True,
+    }
+
+
 def test_baseline_only_globalvalues_matrix_does_not_credit_source_cards():
     report = build_config_readiness_report(
         deck_identity={

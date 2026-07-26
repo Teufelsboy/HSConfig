@@ -373,10 +373,16 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert operator["no_block_failure_mode_summary"]["hard_block"] is False
     assert explainability["apply_blocking"] is False
 
-    darkbishop_path = deck_dir / "SW_448.json"
-    assert darkbishop_path.is_file()
-    darkbishop = _read_json(darkbishop_path)
-    assert_darkbishop_effect_semantics_without_mulligan_keep(darkbishop, mulligan)
+    darkbishop_source_path = deck_dir / "SW_448.json"
+    hero_power_owner_path = deck_dir / "EX1_625t.json"
+    assert darkbishop_source_path.is_file()
+    assert hero_power_owner_path.is_file()
+    darkbishop_source = _read_json(darkbishop_source_path)
+    hero_power_owner = _read_json(hero_power_owner_path)
+    assert darkbishop_source["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop_source
+    assert hero_power_owner["GameCardId"] == "EX1_625t"
+    assert_darkbishop_effect_semantics_without_mulligan_keep(hero_power_owner, mulligan)
 
     source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
     flat_claims = [

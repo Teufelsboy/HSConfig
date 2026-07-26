@@ -86,3 +86,43 @@ def test_plan_input_diagnostics_is_classified_without_a_second_apply_authority()
     assert diagnostics["diagnostic_only"] is True
     assert diagnostics["can_block_apply"] is False
     assert manifest["summary"]["unclassified_file_count"] == 0
+
+
+def test_linked_runtime_entity_has_explicit_source_to_owner_manifest_row():
+    manifest = build_output_ownership_manifest(
+        [
+            "CustomConfig/shadowpriest/SW_448.json",
+            "CustomConfig/shadowpriest/EX1_625t.json",
+        ],
+        card_behavior_plan={
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+
+    assert manifest["runtime_entity_ownership"] == [
+        {
+            "path": "CardID/EX1_625t.json",
+            "owner_kind": "linked_runtime_entity",
+            "source_card_id": "SW_448",
+            "runtime_card_id": "EX1_625t",
+            "link_kind": "hero_power_transform",
+        }
+    ]
+    by_file = {row["file"]: row for row in manifest["files"]}
+    assert by_file["CustomConfig/shadowpriest/EX1_625t.json"]["owner_kind"] == (
+        "linked_runtime_entity"
+    )
+    assert by_file["CustomConfig/shadowpriest/EX1_625t.json"]["source_card_id"] == (
+        "SW_448"
+    )
+    assert "owner_kind" not in by_file["CustomConfig/shadowpriest/SW_448.json"]

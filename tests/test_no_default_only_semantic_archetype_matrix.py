@@ -303,16 +303,18 @@ def _assert_semantic_claim_routing(fixture: dict, deck_dir: Path, reports: Path)
             assert "OnChooseOneCardBonus" not in runtime_cards[card_id]
         elif claim["claim_kind"] == "hero_power_transform":
             assert any(
-                f"{card_id}.json" in row["emitted_files"]
-                and row["final_runtime_effect"] == "emitted_runtime_row"
+                row["builder_or_router_decision"] == "suppressed"
+                and row["suppressed_reason"] == "linked_runtime_entity_unresolved"
+                and row["final_runtime_effect"] == "suppressed_runtime_claim"
                 for row in lifecycle_rows
             )
+            assert not gameplan_contract["card_behavior_plan"]["card_rows"].get(card_id)
             assert any(
-                row.get("claim_id") == claim_id
-                and claim_id in row.get("source_claim_ids", [])
-                for row in gameplan_contract["card_behavior_plan"]["card_rows"][card_id]
+                row["reason"] == "linked_runtime_entity_unresolved"
+                and row["cards"] == [card_id]
+                for row in gameplan_contract["card_behavior_plan"]["suppressed"]
             )
-            assert "BeforeUseHeroPowerBonus" in runtime_cards[card_id]
+            assert "BeforeUseHeroPowerBonus" not in runtime_cards[card_id]
             assert card_id not in hold_ids
 
 

@@ -376,9 +376,15 @@ def assert_runtime_surface_shape(deck_dir: Path, deck_card_ids: set[str]) -> Non
 
 def assert_darkbishop_effect_semantics_without_mulligan_keep(deck_dir: Path) -> None:
     darkbishop_path = deck_dir / "SW_448.json"
+    hero_power_owner_path = deck_dir / "EX1_625t.json"
     assert darkbishop_path.is_file()
+    assert hero_power_owner_path.is_file()
     darkbishop = json.loads(darkbishop_path.read_text(encoding="utf-8"))
-    hero_power_bonus = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+    hero_power_owner = json.loads(hero_power_owner_path.read_text(encoding="utf-8"))
+    assert darkbishop["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop
+    assert hero_power_owner["GameCardId"] == "EX1_625t"
+    hero_power_bonus = hero_power_owner["BeforeUseHeroPowerBonus"]["values"]
     assert hero_power_bonus
     assert any(
         row.get("value") and _has_shadow_hero_power_transform_semantics(row)
@@ -486,12 +492,6 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     deck_dirs = [path for path in (out / "CustomConfig").iterdir() if path.is_dir()]
     assert len(deck_dirs) == 1
     deck_dir = deck_dirs[0]
-    special_files = {"Combo.json", "GlobalValues.json", "Mulligan.json"}
-    card_files = {
-        path.stem
-        for path in deck_dir.glob("*.json")
-        if path.name not in special_files
-    }
     deck_card_ids = {str(card["card_id"]) for card in deck_identity["cards"]}
 
     assert code == 0
@@ -546,7 +546,8 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert semantic_report["non_blocking"] is True
     assert "summary" in semantic_report
     assert "cards" in semantic_report
-    assert_runtime_surface_shape(deck_dir, deck_card_ids)
+    linked_runtime_card_ids = {"EX1_625t"} if deck_name == "ShadowPriest" else set()
+    assert_runtime_surface_shape(deck_dir, deck_card_ids | linked_runtime_card_ids)
     if deck_name == "ShadowPriest":
         assert_darkbishop_effect_semantics_without_mulligan_keep(deck_dir)
 
@@ -679,12 +680,22 @@ def test_singleton_hero_power_state_requirement_preserves_effect_without_mulliga
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     claim = result["guide_claim_bundle"]["claims"][0]
     operator_summary = result["operator_summary"]
+    behavior_report = json.loads(
+        (package / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
     assert result["exit_code"] == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["runtime_apply_allowed"] is True
     assert claim["semantic_qualifiers"]["state_requirements"] == ["all_shadow_spells"]
-    assert card_behavior["BeforeUseHeroPowerBonus"]["values"]
+    assert "BeforeUseHeroPowerBonus" not in card_behavior
+    assert any(
+        row["reason"] == "linked_runtime_entity_unresolved"
+        and row["cards"] == ["CARD_001"]
+        for row in behavior_report["suppressed"]
+    )
     assert not any(row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"])
 
 

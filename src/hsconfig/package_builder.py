@@ -21,6 +21,7 @@ from hsconfig.guide_source_builder import (
 )
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
+from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
@@ -502,7 +503,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
     write_json(reports_dir / "source_claim_gap_report.json", source_claim_gap_report)
     source_to_runtime_explainability_report = (
-        build_source_to_runtime_explainability_report(source_contract_audit_report)
+        build_source_to_runtime_explainability_report(
+            source_contract_audit_report,
+            card_behavior_plan=card_behavior_plan,
+        )
     )
     write_json(
         reports_dir / "source_to_runtime_explainability.json",
@@ -558,7 +562,10 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             "source_evidence_closure.json",
         ),
     )
-    output_ownership_manifest = build_output_ownership_manifest(generated_files)
+    output_ownership_manifest = build_output_ownership_manifest(
+        generated_files,
+        card_behavior_plan=card_behavior_plan,
+    )
     write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
     operator_summary = build_operator_summary(
         generated_files=generated_files,
@@ -1194,8 +1201,17 @@ def _card_behavior_identity_links(gameplan_contract: dict[str, Any]) -> dict[str
     cards = gameplan_contract.get("cards", {})
     if not isinstance(cards, dict):
         return {}
-    return {
-        str(card_id): list(row.get("linked_entities", []))
-        for card_id, row in cards.items()
-        if isinstance(row, dict)
-    }
+    identity_links: dict[str, Any] = {}
+    for card_id, row in cards.items():
+        if not isinstance(row, dict):
+            continue
+        source_card_id = str(card_id)
+        links = list(row.get("linked_entities", []))
+        owner_links: dict[str, Any] = {"links": links}
+        for curated_link in curated_links_for(source_card_id):
+            link_kind = str(curated_link.get("link_kind", "")).strip()
+            runtime_card_id = str(curated_link.get("card_id", "")).strip()
+            if link_kind and runtime_card_id:
+                owner_links[link_kind] = runtime_card_id
+        identity_links[source_card_id] = owner_links
+    return identity_links

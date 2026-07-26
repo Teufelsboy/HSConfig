@@ -1319,7 +1319,12 @@ def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
     assert actual_cardid_files == reported_cardid_files
     for filename in actual_cardid_files:
         card_id = filename.removesuffix(".json")
-        assert filename in readiness["cards"][card_id]["runtime_surfaces"]
+        if card_id in readiness["cards"]:
+            assert filename in readiness["cards"][card_id]["runtime_surfaces"]
+        else:
+            linked_entity = readiness["linked_runtime_entities"][card_id]
+            assert linked_entity["runtime_surface"] == filename
+            assert linked_entity["filename_game_card_id_match"] is True
 
 
 def test_prepare_writes_claim_conflict_and_coverage_reports(tmp_path: Path, capsys):

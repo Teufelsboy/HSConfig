@@ -299,6 +299,85 @@ def test_explainability_prefers_hero_power_transform_over_generic_mechanic_usage
     }
 
 
+def test_explainability_keeps_darkbishop_as_source_and_mind_spike_as_runtime_owner():
+    audit = {
+        "schema_version": 1,
+        "deck_name": "ShadowPriest",
+        "claim_rows": {
+            "claim_darkbishop": {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "lane": "runtime_lowered",
+                "policy_lane": "runtime_lowerable",
+                "cards": ["SW_448"],
+            }
+        },
+        "claim_lifecycle_rows": [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "policy_lane": "runtime_lowerable",
+                "surface_gate_decision": "allowed",
+                "surface_gate_reason": "allowed",
+                "builder_or_router_decision": "emitted",
+                "runtime_surface": "SW_448.json",
+                "emitted_files": ["SW_448.json"],
+                "suppressed_reason": None,
+                "first_missing_link": None,
+                "operator_impact": "diagnostic_only",
+            }
+        ],
+        "card_rows": {
+            "SW_448": {
+                "name": "Darkbishop Benedictus",
+                "readiness_lane": "globalvalues_only",
+                "first_missing_link": "none",
+                "runtime_surfaces": ["GlobalValues.json", "SW_448.json"],
+                "claim_lanes": {"runtime_lowered": 1},
+            }
+        },
+    }
+    card_behavior_plan = {
+        "rows": [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "card_id": "SW_448",
+                "source_card_id": "SW_448",
+                "runtime_card_id": "EX1_625t",
+                "link_kind": "hero_power_transform",
+                "behavior_block": "BeforeUseHeroPowerBonus",
+                "meaningful_runtime_surface": True,
+            }
+        ]
+    }
+
+    report = build_source_to_runtime_explainability_report(
+        audit,
+        card_behavior_plan=card_behavior_plan,
+    )
+    claim = report["claim_rows"][0]
+    card = report["card_rows"][0]
+
+    assert report["runtime_entity_transitions"] == [
+        {
+            "source_card_id": "SW_448",
+            "source_role": "hero_power_transform_source",
+            "runtime_card_id": "EX1_625t",
+            "runtime_owner_role": "hero_power",
+            "link_kind": "hero_power_transform",
+            "runtime_file": "EX1_625t.json",
+        }
+    ]
+    assert claim["source_card_id"] == "SW_448"
+    assert claim["runtime_card_id"] == "EX1_625t"
+    assert claim["emitted_runtime_files"] == ["EX1_625t.json"]
+    assert claim["not_emitted_runtime_files"] == []
+    assert card["card_id"] == "SW_448"
+    assert card["emitted_runtime_files"] == ["EX1_625t.json"]
+    assert card["evidence_chain"][0]["runtime_card_id"] == "EX1_625t"
+
+
 def test_explainability_card_rows_include_evidence_chain_for_runtime_and_gaps():
     report = build_source_to_runtime_explainability_report(_fixture_audit())
     rows = {row["card_id"]: row for row in report["card_rows"]}

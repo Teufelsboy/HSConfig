@@ -37,7 +37,11 @@ EXPECTED_CARD_IDS = frozenset(EXPECTED_CARD_COUNTS)
 EXPECTED_CARD_JSON_FILES = frozenset(
     f"{card_id}.json" for card_id in EXPECTED_CARD_IDS
 )
-EXPECTED_RUNTIME_JSON_FILES = EXPECTED_CARD_JSON_FILES | {
+EXPECTED_LINKED_RUNTIME_CARD_IDS = frozenset({"EX1_625t"})
+EXPECTED_LINKED_RUNTIME_JSON_FILES = frozenset(
+    f"{card_id}.json" for card_id in EXPECTED_LINKED_RUNTIME_CARD_IDS
+)
+EXPECTED_RUNTIME_JSON_FILES = EXPECTED_CARD_JSON_FILES | EXPECTED_LINKED_RUNTIME_JSON_FILES | {
     "GlobalValues.json",
     "Mulligan.json",
 }
@@ -90,7 +94,7 @@ SAFE_SHADOWPRIEST_ROWS = {
     ("DS1_233", "BeforePlayCardBonus", "*", "12"),
     ("REV_290", "BeforePlayCardBonus", "*", "8"),
     ("SW_446", "OnBoardBonus", "*", "10"),
-    ("SW_448", "BeforeUseHeroPowerBonus", "*", "10"),
+    ("EX1_625t", "BeforeUseHeroPowerBonus", "*", "10"),
     ("TOY_381", "OnBoardBonus", "*", "8"),
     ("TOY_518", "OnBoardBonus", "*", "8"),
     ("WON_065", "OnBoardBonus", "*", "8"),
@@ -218,7 +222,7 @@ def _assert_exact_globalvalues_key_sets(
         ),
     ],
 )
-def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
+def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_contract(
     tmp_path,
     monkeypatch,
     source_url,
@@ -314,12 +318,13 @@ def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
         (deck_dir / "Mulligan.json").read_text(encoding="utf-8")
     )
     darkbishop = json.loads((deck_dir / "SW_448.json").read_text(encoding="utf-8"))
+    mind_spike = json.loads((deck_dir / "EX1_625t.json").read_text(encoding="utf-8"))
     papercraft = json.loads((deck_dir / "TOY_381.json").read_text(encoding="utf-8"))
 
     physical_signatures = set()
     active_card_ids = set()
     report_only_card_ids = set()
-    for card_id in EXPECTED_CARD_IDS:
+    for card_id in EXPECTED_CARD_IDS | EXPECTED_LINKED_RUNTIME_CARD_IDS:
         payload = json.loads(
             (deck_dir / f"{card_id}.json").read_text(encoding="utf-8")
         )
@@ -341,7 +346,7 @@ def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
 
     report_signatures = {
         (
-            str(row["card_id"]),
+            str(row.get("runtime_card_id", row["card_id"])),
             str(row["behavior_block"]),
             str(row["condition"]),
             str(row["value"]),
@@ -360,9 +365,19 @@ def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
     )
     assert physical_signatures == SAFE_SHADOWPRIEST_ROWS
     assert report_signatures == SAFE_SHADOWPRIEST_ROWS
-    assert active_card_ids == {row[0] for row in SAFE_SHADOWPRIEST_ROWS}
-    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST
-    assert readiness["summary"]["runtime_emitted"] == 7
+    assert active_card_ids & EXPECTED_CARD_IDS == {
+        "DS1_233",
+        "REV_290",
+        "SW_446",
+        "TOY_381",
+        "TOY_518",
+        "WON_065",
+    }
+    assert active_card_ids & EXPECTED_LINKED_RUNTIME_CARD_IDS == {"EX1_625t"}
+    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST | {"SW_448"}
+    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["linked_runtime_source"] == 1
+    assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["report_only_supported"] == 9
     assert conflict["conflict_count"] == 0
     assert set(papercraft) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
@@ -371,6 +386,10 @@ def test_real_configure_paths_preserve_seven_active_nine_report_only_contract(
         for row in papercraft["OnBoardBonus"]["values"]
     ] == [("*", "8")]
     assert set(darkbishop) == {
+        "ConfigComment",
+        "GameCardId",
+    }
+    assert set(mind_spike) == {
         "BeforeUseHeroPowerBonus",
         "ConfigComment",
         "GameCardId",
@@ -419,7 +438,7 @@ def test_cathedral_only_keeps_supported_deploy_semantics(package):
         ("TOY_518", "OnBoardBonus", [("*", "8")]),
         ("WON_065", "OnBoardBonus", [("*", "8")]),
         (
-            "SW_448",
+            "EX1_625t",
             "BeforeUseHeroPowerBonus",
             [("*", "10")],
         ),
@@ -438,12 +457,12 @@ def test_supported_burn_aura_and_hero_power_rows_remain(
     )
 
 
-def test_shadowpriest_has_exactly_seven_active_card_semantics(package):
+def test_shadowpriest_has_six_active_deck_cards_and_one_linked_runtime_entity(package):
     physical_signatures = set()
     runtime_emitted_card_ids = set()
     report_only_card_ids = set()
 
-    for card_id in EXPECTED_CARD_IDS:
+    for card_id in EXPECTED_CARD_IDS | EXPECTED_LINKED_RUNTIME_CARD_IDS:
         payload = _card(package, card_id)
         runtime_blocks = set(payload) - {"GameCardId", "ConfigComment"}
         if not runtime_blocks:
@@ -465,25 +484,29 @@ def test_shadowpriest_has_exactly_seven_active_card_semantics(package):
 
     assert physical_signatures == SAFE_SHADOWPRIEST_ROWS
     assert len(physical_signatures) == 7
-    assert runtime_emitted_card_ids == {
+    assert runtime_emitted_card_ids & EXPECTED_CARD_IDS == {
         "DS1_233",
         "REV_290",
         "SW_446",
-        "SW_448",
         "TOY_381",
         "TOY_518",
         "WON_065",
     }
-    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST
+    assert runtime_emitted_card_ids & EXPECTED_LINKED_RUNTIME_CARD_IDS == {
+        "EX1_625t"
+    }
+    assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST | {"SW_448"}
 
     readiness = _report(package, "per_card_config_readiness_report.json")
-    assert readiness["summary"]["runtime_emitted"] == 7
+    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["linked_runtime_source"] == 1
+    assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["report_only_supported"] == 9
 
     behavior_plan = _report(package, "card_behavior_plan_report.json")
     signatures = [
         (
-            str(row["card_id"]),
+            str(row.get("runtime_card_id", row["card_id"])),
             str(row["behavior_block"]),
             str(row["condition"]),
             str(row["value"]),
@@ -656,6 +679,7 @@ def test_shadowpriest_is_load_safe_without_claiming_semantic_closure(package):
 def test_darkbishop_effect_does_not_become_mulligan_or_body_priority(package):
     mulligan = _card(package, "Mulligan")
     darkbishop = _card(package, "SW_448")
+    mind_spike = _card(package, "EX1_625t")
 
     selectors = [
         row["mulligan"]
@@ -664,9 +688,10 @@ def test_darkbishop_effect_does_not_become_mulligan_or_body_priority(package):
     ]
     assert "SW_448" not in selectors
     _assert_runtime_rows(
-        darkbishop,
+        mind_spike,
         "BeforeUseHeroPowerBonus",
         [("*", "10")],
     )
+    assert set(darkbishop) == {"GameCardId", "ConfigComment"}
     assert "InHandPlayPriority" not in darkbishop
     assert "BeforePlayCardBonus" not in darkbishop

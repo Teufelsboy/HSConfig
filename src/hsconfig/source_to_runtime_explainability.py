@@ -52,6 +52,7 @@ def build_source_to_runtime_explainability_report(
     *,
     audit: Mapping[str, Any] | None = None,
     runtime_files: Sequence[str] | set[str] | None = None,
+    card_behavior_plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project source-contract audit rows into operator-facing diagnostics.
 
@@ -62,7 +63,18 @@ def build_source_to_runtime_explainability_report(
         audit if audit is not None else source_contract_audit_report,
         runtime_files=runtime_files,
     )
-    claim_rows = _claim_rows(audit_report)
+    runtime_entity_transitions = _runtime_entity_transitions(
+        card_behavior_plan or {}
+    )
+    ownership_by_claim_id = {
+        row["claim_id"]: row
+        for row in runtime_entity_transitions
+        if row.get("claim_id")
+    }
+    claim_rows = _claim_rows(
+        audit_report,
+        ownership_by_claim_id=ownership_by_claim_id,
+    )
     card_rows = _card_rows(audit_report, claim_rows)
     summary = {
         "cards_total": len(card_rows),
@@ -89,21 +101,51 @@ def build_source_to_runtime_explainability_report(
         "summary": summary,
         "claim_rows": claim_rows,
         "card_rows": card_rows,
+        "runtime_entity_transitions": [
+            {
+                key: row[key]
+                for key in (
+                    "source_card_id",
+                    "source_role",
+                    "runtime_card_id",
+                    "runtime_owner_role",
+                    "link_kind",
+                    "runtime_file",
+                )
+            }
+            for row in runtime_entity_transitions
+        ],
         "operator_attention": _operator_attention_rows(card_rows),
     }
 
 
-def _claim_rows(audit: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _claim_rows(
+    audit: Mapping[str, Any],
+    *,
+    ownership_by_claim_id: Mapping[str, Mapping[str, str]] | None = None,
+) -> list[dict[str, Any]]:
     lifecycle_rows = audit.get("claim_lifecycle_rows", [])
     if not isinstance(lifecycle_rows, list):
         return []
 
     rows: list[dict[str, Any]] = []
+    ownership_by_claim_id = ownership_by_claim_id or {}
     for raw_row in lifecycle_rows:
         if not isinstance(raw_row, Mapping):
             continue
         emitted_files = _string_list(raw_row.get("emitted_files"))
         expected_files = _expected_runtime_files(raw_row)
+        ownership = ownership_by_claim_id.get(
+            str(raw_row.get("claim_id", ""))
+        )
+        if ownership is not None:
+            source_file = f"{ownership['source_card_id']}.json"
+            runtime_file = str(ownership["runtime_file"])
+            emitted_files = [
+                runtime_file if path == source_file else path
+                for path in emitted_files
+            ]
+            expected_files = [runtime_file]
         not_emitted_files = [
             path for path in expected_files if path not in set(emitted_files)
         ]
@@ -111,30 +153,37 @@ def _claim_rows(audit: Mapping[str, Any]) -> list[dict[str, Any]]:
             raw_row.get("first_missing_link")
         )
         why_not_emitted = _normalized_empty(raw_row.get("suppressed_reason"))
-        rows.append(
-            {
-                "claim_id": str(raw_row.get("claim_id", "")),
-                "claim_kind": str(raw_row.get("claim_kind", "")),
-                "policy_lane": str(raw_row.get("policy_lane", "")),
-                "surface_gate_decision": str(
-                    raw_row.get("surface_gate_decision", "")
-                ),
-                "surface_gate_reason": str(raw_row.get("surface_gate_reason", "")),
-                "builder_or_router_decision": str(
-                    raw_row.get("builder_or_router_decision", "")
-                ),
-                "emitted_runtime_files": emitted_files,
-                "not_emitted_runtime_files": not_emitted_files,
-                "first_missing_link": first_missing_link,
-                "why_not_emitted": why_not_emitted,
-                "apply_blocked": False,
-                "next_source_action": _next_source_action(
-                    first_missing_link=first_missing_link,
-                    why_not_emitted=why_not_emitted,
-                    claim_kind=str(raw_row.get("claim_kind", "")),
-                ),
-            }
-        )
+        row = {
+            "claim_id": str(raw_row.get("claim_id", "")),
+            "claim_kind": str(raw_row.get("claim_kind", "")),
+            "policy_lane": str(raw_row.get("policy_lane", "")),
+            "surface_gate_decision": str(
+                raw_row.get("surface_gate_decision", "")
+            ),
+            "surface_gate_reason": str(raw_row.get("surface_gate_reason", "")),
+            "builder_or_router_decision": str(
+                raw_row.get("builder_or_router_decision", "")
+            ),
+            "emitted_runtime_files": emitted_files,
+            "not_emitted_runtime_files": not_emitted_files,
+            "first_missing_link": first_missing_link,
+            "why_not_emitted": why_not_emitted,
+            "apply_blocked": False,
+            "next_source_action": _next_source_action(
+                first_missing_link=first_missing_link,
+                why_not_emitted=why_not_emitted,
+                claim_kind=str(raw_row.get("claim_kind", "")),
+            ),
+        }
+        if ownership is not None:
+            row.update(
+                {
+                    "source_card_id": ownership["source_card_id"],
+                    "runtime_card_id": ownership["runtime_card_id"],
+                    "link_kind": ownership["link_kind"],
+                }
+            )
+        rows.append(row)
     return rows
 
 
@@ -408,31 +457,38 @@ def _evidence_chain(
         first_missing_link = _normalized_missing_link(claim.get("first_missing_link"))
         why_not_emitted = _normalized_empty(claim.get("why_not_emitted"))
         claim_kind = str(claim.get("claim_kind", ""))
-        rows.append(
-            {
-                "claim_id": str(claim.get("claim_id", "")),
-                "claim_kind": claim_kind,
-                "source_lane": str(
-                    claim.get("source_lane") or claim.get("policy_lane") or ""
-                ),
-                "source_type": str(claim.get("source_type") or ""),
-                "runtime_surface": _first_runtime_surface(runtime_files),
-                "runtime_files": runtime_files,
-                "resolution_reason": _evidence_chain_resolution(claim),
-                "first_missing_link": first_missing_link,
-                "first_missing_source_action": _first_missing_source_action(
-                    related_claims=[claim],
+        row = {
+            "claim_id": str(claim.get("claim_id", "")),
+            "claim_kind": claim_kind,
+            "source_lane": str(
+                claim.get("source_lane") or claim.get("policy_lane") or ""
+            ),
+            "source_type": str(claim.get("source_type") or ""),
+            "runtime_surface": _first_runtime_surface(runtime_files),
+            "runtime_files": runtime_files,
+            "resolution_reason": _evidence_chain_resolution(claim),
+            "first_missing_link": first_missing_link,
+            "first_missing_source_action": _first_missing_source_action(
+                related_claims=[claim],
+                first_missing_link=first_missing_link,
+                why_not_emitted=why_not_emitted,
+                claim_kind=claim_kind,
+                next_source_action=_next_source_action(
                     first_missing_link=first_missing_link,
                     why_not_emitted=why_not_emitted,
                     claim_kind=claim_kind,
-                    next_source_action=_next_source_action(
-                        first_missing_link=first_missing_link,
-                        why_not_emitted=why_not_emitted,
-                        claim_kind=claim_kind,
-                    ),
                 ),
-            }
-        )
+            ),
+        }
+        if claim.get("source_card_id") and claim.get("runtime_card_id"):
+            row.update(
+                {
+                    "source_card_id": str(claim["source_card_id"]),
+                    "runtime_card_id": str(claim["runtime_card_id"]),
+                    "link_kind": str(claim.get("link_kind", "")),
+                }
+            )
+        rows.append(row)
     return sorted(
         rows,
         key=lambda row: (
@@ -781,6 +837,18 @@ def _card_expected_runtime_files(
 ) -> list[str]:
     if strongest_claim is None:
         return []
+    runtime_card_id = _normalized_empty(
+        strongest_claim.get("runtime_card_id")
+    )
+    source_card_id = _normalized_empty(
+        strongest_claim.get("source_card_id")
+    )
+    if (
+        runtime_card_id is not None
+        and source_card_id is not None
+        and runtime_card_id != source_card_id
+    ):
+        return [f"{runtime_card_id}.json"]
     claim_kind = str(strongest_claim.get("claim_kind", ""))
     if claim_kind in {
         "targeting_rule",
@@ -801,6 +869,52 @@ def _card_expected_runtime_files(
     if claim_kind in {"gameplan_posture", "globalvalue_numeric_tuning"}:
         return ["GlobalValues.json"]
     return []
+
+
+def _runtime_entity_transitions(
+    card_behavior_plan: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    transitions: dict[
+        tuple[str, str, str, str],
+        dict[str, str],
+    ] = {}
+    raw_rows = card_behavior_plan.get("rows", [])
+    if not isinstance(raw_rows, list):
+        return []
+    for row in raw_rows:
+        if not isinstance(row, Mapping):
+            continue
+        source_card_id = str(
+            row.get("source_card_id") or row.get("card_id") or ""
+        ).strip()
+        runtime_card_id = str(
+            row.get("runtime_card_id") or row.get("card_id") or ""
+        ).strip()
+        link_kind = str(row.get("link_kind") or "self").strip()
+        claim_id = str(row.get("claim_id") or "").strip()
+        if (
+            row.get("meaningful_runtime_surface") is not True
+            or not source_card_id
+            or not runtime_card_id
+            or source_card_id == runtime_card_id
+            or link_kind == "self"
+        ):
+            continue
+        key = (claim_id, source_card_id, runtime_card_id, link_kind)
+        transitions[key] = {
+            "claim_id": claim_id,
+            "source_card_id": source_card_id,
+            "source_role": f"{link_kind}_source",
+            "runtime_card_id": runtime_card_id,
+            "runtime_owner_role": (
+                "hero_power"
+                if link_kind == "hero_power_transform"
+                else "linked_runtime_entity"
+            ),
+            "link_kind": link_kind,
+            "runtime_file": f"{runtime_card_id}.json",
+        }
+    return [transitions[key] for key in sorted(transitions)]
 
 
 def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:

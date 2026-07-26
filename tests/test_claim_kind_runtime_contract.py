@@ -1039,7 +1039,12 @@ def test_hero_power_transform_can_emit_cardid_without_mulligan_keep():
 
     cardid_decision = surface_gate_decision(claim, "cardid")
     mulligan_decision = surface_gate_decision(claim, "mulligan")
-    routed = route_card_behavior_surfaces([claim])
+    routed = route_card_behavior_surfaces(
+        [claim],
+        identity_links={
+            "CARD_HP": {"hero_power_transform": "HERO_POWER_HP"}
+        },
+    )
 
     assert cardid_decision.allowed is True
     assert mulligan_decision.allowed is False
@@ -1075,7 +1080,12 @@ def test_darkbishop_static_effect_and_guide_mulligan_keep_are_independent_claims
         "mulligan",
         mulligan_context,
     )
-    routed = route_card_behavior_surfaces([static_effect_claim, guide_keep_claim])
+    routed = route_card_behavior_surfaces(
+        [static_effect_claim, guide_keep_claim],
+        identity_links={
+            "SW_448": {"hero_power_transform": "EX1_625t"}
+        },
+    )
 
     assert darkbishop_mulligan.allowed is False
     assert darkbishop_mulligan.reason == "claim_kind_not_mulligan_surface"

@@ -10,6 +10,7 @@ from hsconfig.mechanic_support import (
     mechanic_lowering_policy,
     normalize_role_token,
 )
+from hsconfig.runtime_entity_owner import resolve_runtime_entity_owner
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 from hsconfig.semantic_intent_score import score_card_behavior_claim
 from hsconfig.semantic_runtime_gate import decide_semantic_runtime
@@ -366,8 +367,14 @@ def route_card_behavior_surfaces(
             _suppressed_row(claim, claim_kind, cards, "no_documented_card_behavior_surface")
         )
 
-    runtime_rows = [row for row in rows if row.get("behavior_block")]
-    report_only_rows = [row for row in rows if not row.get("behavior_block")]
+    owned_rows = _assign_runtime_entity_owners(
+        rows,
+        suppressed=suppressed,
+        claims=claims,
+        identity_links=identity_links,
+    )
+    runtime_rows = [row for row in owned_rows if row.get("behavior_block")]
+    report_only_rows = [row for row in owned_rows if not row.get("behavior_block")]
     canonical = canonicalize_runtime_rows(runtime_rows)
     output_rows = sorted(
         [*canonical["rows"], *report_only_rows],
@@ -380,6 +387,71 @@ def route_card_behavior_surfaces(
         "merged_duplicate_runtime_row_count": canonical["merged_duplicate_count"],
         "runtime_row_conflicts": canonical["conflicts"],
     }
+
+
+def _assign_runtime_entity_owners(
+    rows: list[dict[str, Any]],
+    *,
+    suppressed: list[dict[str, Any]],
+    claims: list[dict[str, Any]],
+    identity_links: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    claim_kinds = {
+        lifecycle_claim_id(claim): normalized_claim_kind(claim)
+        for claim in claims
+    }
+    owner_links = identity_links or {}
+    owned_rows: list[dict[str, Any]] = []
+    for row in rows:
+        if not row.get("behavior_block"):
+            owned_rows.append(row)
+            continue
+
+        source_card_id = str(row["card_id"])
+        semantic_reason = _runtime_owner_semantic_reason(row)
+        owner = resolve_runtime_entity_owner(
+            source_card_id=source_card_id,
+            semantic_reason=semantic_reason,
+            identity_links=owner_links,
+        )
+        if owner is None:
+            suppressed.append(
+                {
+                    "claim_id": str(row.get("claim_id", "")),
+                    "claim_kind": claim_kinds.get(
+                        str(row.get("claim_id", "")),
+                        "",
+                    ),
+                    "cards": [source_card_id],
+                    "reason": "linked_runtime_entity_unresolved",
+                }
+            )
+            continue
+
+        owned_rows.append(
+            {
+                **row,
+                "source_card_id": owner.source_card_id,
+                "runtime_card_id": owner.runtime_card_id,
+                "link_kind": owner.link_kind,
+            }
+        )
+    return owned_rows
+
+
+def _runtime_owner_semantic_reason(row: dict[str, Any]) -> str:
+    semantic_score = row.get("semantic_score", {})
+    semantic_reason = (
+        str(semantic_score.get("semantic_reason", ""))
+        if isinstance(semantic_score, dict)
+        else ""
+    )
+    if (
+        row.get("behavior_block") == "BeforeUseHeroPowerBonus"
+        and semantic_reason == "hero_power_transform"
+    ):
+        return "hero_power_before_use"
+    return semantic_reason
 
 
 def _runtime_and_report_row_sort_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:

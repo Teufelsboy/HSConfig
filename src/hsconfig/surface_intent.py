@@ -36,6 +36,29 @@ def build_surface_intent(contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    for runtime_card_id, ownership in _linked_runtime_entities(contract).items():
+        surface = f"{runtime_card_id}.json"
+        if surface in required_surfaces:
+            continue
+        required_surfaces.add(surface)
+        rows.append(
+            {
+                "rule_id": f"{runtime_card_id}_card_behavior",
+                "card_id": runtime_card_id,
+                "source_card_id": ownership["source_card_id"],
+                "runtime_card_id": runtime_card_id,
+                "link_kind": ownership["link_kind"],
+                "owner_kind": "linked_runtime_entity",
+                "surface": surface,
+                "surface_family": "CARDID.json",
+                "intent": "linked_runtime_entity_behavior",
+                "intent_source": "runtime_entity_owner",
+                "roles": [ownership["link_kind"]],
+                "confidence": ownership["confidence"],
+                "source_claim_ids": ownership["source_claim_ids"],
+            }
+        )
+
     for anchor in contract.get("mulligan_anchors", []):
         card_id = str(anchor["card_id"])
         rows.append(
@@ -91,6 +114,58 @@ def _cards(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
     if isinstance(cards, dict):
         return {str(card_id): dict(card) for card_id, card in sorted(cards.items())}
     return {str(card["card_id"]): dict(card) for card in sorted(cards, key=lambda row: row["card_id"])}
+
+
+def _linked_runtime_entities(
+    contract: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    card_behavior_plan = contract.get("card_behavior_plan", {})
+    if not isinstance(card_behavior_plan, Mapping):
+        return {}
+    rows = card_behavior_plan.get("rows", [])
+    if not isinstance(rows, list):
+        return {}
+
+    linked: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        source_card_id = str(
+            row.get("source_card_id") or row.get("card_id") or ""
+        ).strip()
+        runtime_card_id = str(
+            row.get("runtime_card_id") or row.get("card_id") or ""
+        ).strip()
+        link_kind = str(row.get("link_kind") or "self").strip()
+        if (
+            row.get("meaningful_runtime_surface") is not True
+            or not source_card_id
+            or not runtime_card_id
+            or source_card_id == runtime_card_id
+            or link_kind == "self"
+        ):
+            continue
+        current = linked.setdefault(
+            runtime_card_id,
+            {
+                "source_card_id": source_card_id,
+                "link_kind": link_kind,
+                "confidence": str(
+                    row.get("confidence") or "source_backed"
+                ),
+                "source_claim_ids": [],
+            },
+        )
+        current["source_claim_ids"] = sorted(
+            {
+                *current["source_claim_ids"],
+                *[
+                    str(claim_id)
+                    for claim_id in row.get("source_claim_ids", [])
+                ],
+            }
+        )
+    return dict(sorted(linked.items()))
 
 
 def _all_source_claim_ids(contract: dict[str, Any]) -> list[str]:

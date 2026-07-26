@@ -676,7 +676,10 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
 
     plan = route_card_behavior_surfaces(
         claims,
-        identity_links={"CARD_Z": [{"link_kind": "entourage", "card_id": "CHOICE_ALPHA"}]},
+        identity_links={
+            "CARD_A": {"hero_power_transform": "HERO_POWER_A"},
+            "CARD_Z": [{"link_kind": "entourage", "card_id": "CHOICE_ALPHA"}],
+        },
     )
 
     assert [row["claim_id"] for row in plan["rows"]] == [
@@ -995,9 +998,40 @@ def test_card_behavior_surface_router_suppresses_option_claim_without_identity_l
     ]
 
 
-def test_hero_power_transform_claim_routes_to_hero_power_surface():
+def test_hero_power_transform_claim_routes_to_curated_linked_runtime_owner():
     spec = importlib.util.find_spec("hsconfig.card_behavior_surface_router")
     assert spec is not None, "card behavior surface router module is required"
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "cards": ["SW_448"],
+                "claim_readiness": "source_backed_static_semantics",
+                "stance": "shadow_hero_power_pressure",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+            }
+        ],
+        identity_links={
+            "SW_448": {
+                "hero_power_transform": "EX1_625t",
+            }
+        },
+    )
+
+    assert plan["suppressed"] == []
+    assert plan["rows"][0]["card_id"] == "SW_448"
+    assert plan["rows"][0]["source_card_id"] == "SW_448"
+    assert plan["rows"][0]["runtime_card_id"] == "EX1_625t"
+    assert plan["rows"][0]["link_kind"] == "hero_power_transform"
+    assert plan["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
+    assert plan["rows"][0]["meaningful_runtime_surface"] is True
+
+
+def test_hero_power_transform_claim_without_curated_owner_is_suppressed():
     from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 
     plan = route_card_behavior_surfaces(
@@ -1014,10 +1048,69 @@ def test_hero_power_transform_claim_routes_to_hero_power_surface():
         ]
     )
 
-    assert plan["suppressed"] == []
-    assert plan["rows"][0]["card_id"] == "SW_448"
-    assert plan["rows"][0]["behavior_block"] == "BeforeUseHeroPowerBonus"
-    assert plan["rows"][0]["meaningful_runtime_surface"] is True
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_darkbishop",
+            "claim_kind": "hero_power_transform",
+            "cards": ["SW_448"],
+            "reason": "linked_runtime_entity_unresolved",
+        }
+    ]
+
+
+def test_hero_power_transform_does_not_select_same_name_or_text_link():
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "cards": ["SW_448"],
+                "claim_readiness": "source_backed_static_semantics",
+                "stance": "shadow_hero_power_pressure",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+            }
+        ],
+        identity_links={
+            "SW_448": {
+                "links": [
+                    {
+                        "card_id": "FAKE_001t",
+                        "name": "Mind Spike",
+                        "text": "Deal $2 damage.",
+                    }
+                ]
+            }
+        },
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "linked_runtime_entity_unresolved"
+
+
+def test_hero_power_transform_does_not_treat_legacy_option_links_as_owner_map():
+    from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_darkbishop",
+                "claim_kind": "hero_power_transform",
+                "cards": ["SW_448"],
+                "claim_readiness": "source_backed_static_semantics",
+                "stance": "shadow_hero_power_pressure",
+                "runtime_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+            }
+        ],
+        identity_links={"SW_448": [{"card_id": "EX1_625t"}]},
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"][0]["reason"] == "linked_runtime_entity_unresolved"
 
 
 def test_known_bad_pattern_stays_report_only_without_documented_block():

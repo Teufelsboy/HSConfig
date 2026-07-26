@@ -420,7 +420,7 @@ def test_compile_cardid_keeps_report_only_card_files_minimal():
         assert set(card_file) == {"GameCardId", "ConfigComment"}
 
 
-def test_effect_only_darkbishop_keeps_hero_power_bonus_without_body_priority():
+def test_darkbishop_hero_power_behavior_is_owned_by_linked_mind_spike_file():
     contract = {
         "deck_name": "ShadowPriest",
         "cards": {
@@ -436,25 +436,39 @@ def test_effect_only_darkbishop_keeps_hero_power_bonus_without_body_priority():
                 ],
                 "source_claim_ids": ["claim-darkbishop-effect"],
                 "confidence": "source_backed",
-                "behavior_rows": [
-                    {
-                        "behavior_block": "BeforeUseHeroPowerBonus",
-                        "condition": "*",
-                        "value": "10",
-                        "comment": "ShadowPriest: SW_448_enable_shadow_hero_power",
-                        "source_claim_ids": ["claim-darkbishop-effect"],
-                    }
-                ],
             }
         },
     }
+    rows = [
+        {
+            "surface": "CardID.json",
+            "surface_family": "CARDID.json",
+            "card_id": "SW_448",
+            "source_card_id": "SW_448",
+            "runtime_card_id": "EX1_625t",
+            "link_kind": "hero_power_transform",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+            "condition": "*",
+            "value": "10",
+            "rule_id_suffix": "enable_shadow_hero_power",
+            "roles": ["hero_power_transform"],
+            "source_claim_ids": ["claim-darkbishop-effect"],
+            "confidence": "source_backed",
+        }
+    ]
 
-    card_files = compile_cardid_behaviors(contract)
+    card_files = compile_cardid_behaviors(contract, rows=rows)
     darkbishop = card_files["SW_448.json"]
+    mind_spike = card_files["EX1_625t.json"]
 
-    assert "BeforeUseHeroPowerBonus" in darkbishop
+    assert set(darkbishop) == {"GameCardId", "ConfigComment"}
     assert "InHandPlayPriority" not in darkbishop
     assert "BeforePlayCardBonus" not in darkbishop
+    assert mind_spike["GameCardId"] == "EX1_625t"
+    assert [
+        (row["condition"], row["value"])
+        for row in mind_spike["BeforeUseHeroPowerBonus"]["values"]
+    ] == [("*", "10")]
 
 
 def test_explicit_body_behavior_row_is_not_removed_for_effect_only_card():

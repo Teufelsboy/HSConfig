@@ -87,6 +87,7 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     shadowbomber = read_card_json(package_root, "GVG_009")
     twilight_deceptor = read_card_json(package_root, "SW_444")
     darkbishop = read_card_json(package_root, "SW_448")
+    mind_spike = read_card_json(package_root, "EX1_625t")
     mind_sear = read_card_json(package_root, "NX2_019")
     cathedral = read_card_json(package_root, "REV_290")
     voidtouched = read_card_json(package_root, "SW_446")
@@ -96,9 +97,14 @@ def test_shadowpriest_runtime_rows_match_card_semantics(shadowpriest_package):
     assert "BeforeBattlecryTargetBonus" not in shadowbomber
     assert set(twilight_deceptor) == {"GameCardId", "ConfigComment"}
 
-    assert "BeforeUseHeroPowerBonus" in darkbishop
+    assert set(darkbishop) == {"GameCardId", "ConfigComment"}
     assert "InHandPlayPriority" not in darkbishop
     assert "BeforePlayCardBonus" not in darkbishop
+    assert mind_spike["GameCardId"] == "EX1_625t"
+    assert [
+        (row["condition"], row["value"])
+        for row in mind_spike["BeforeUseHeroPowerBonus"]["values"]
+    ] == [("*", "10")]
 
     assert set(mind_sear) == {"GameCardId", "ConfigComment"}
     assert "BeforeBattlecryTargetBonus" not in mind_sear

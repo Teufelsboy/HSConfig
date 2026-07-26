@@ -433,13 +433,14 @@ def _write_canonical_runtime_plan_source_document(
                             },
                             {
                                 "claim_id": "canonical-card",
-                                "claim_kind": "hero_power_transform",
+                                "claim_kind": "card_role",
                                 "cards": ["EX1_002"],
                                 "scope": "card",
-                                "stance": "use_transformed_hero_power",
+                                "stance": "prioritize_in_hand",
+                                "runtime_block": "InHandBonus",
                                 "runtime_value": "13",
                                 "evidence_text_short": (
-                                    "Use the transformed hero power with EX1_002."
+                                    "Prioritize EX1_002 while it is in hand."
                                 ),
                                 "source_confidence": "high",
                             },
@@ -2900,10 +2901,8 @@ def test_build_imported_runtime_plans_are_full_payload_diagnostics_only(
     }
     assert len(canonical_card_rows) == 1
     assert canonical_card_rows[0]["card_id"] == "EX1_002"
-    assert canonical_card_rows[0]["behavior_block"] == (
-        "BeforeUseHeroPowerBonus"
-    )
-    assert card_config["BeforeUseHeroPowerBonus"]["values"][0]["value"] == "13"
+    assert canonical_card_rows[0]["behavior_block"] == "InHandBonus"
+    assert card_config["InHandBonus"]["values"][0]["value"] == "13"
     assert "BeforePlayCardBonus" not in suppressed_card_config
     assert canonical_combo_rows == []
     assert not (deck_dir / "Combo.json").exists()

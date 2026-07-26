@@ -509,7 +509,9 @@ def _trace_completeness_check(
     return {
         "runtime_rows_missing_trace": missing,
         "traced_card_ids": sorted(traced),
-        "runtime_card_ids": sorted({_row_card_id(row) for row in runtime_rows}),
+        "runtime_card_ids": sorted(
+            {_runtime_owner_card_id(row) for row in runtime_rows}
+        ),
     }
 
 
@@ -570,7 +572,7 @@ def _runtime_row_trace_inventory_check(
     )
     reported = Counter(
         _runtime_row_signature(
-            _row_card_id(row),
+            _runtime_owner_card_id(row),
             str(row.get("behavior_block", "")),
             row,
         )
@@ -607,7 +609,7 @@ def _runtime_row_from_signature(
 
 def _compact_behavior_row(row: Mapping[str, Any]) -> dict[str, str]:
     return {
-        "card_id": _row_card_id(row),
+        "card_id": _runtime_owner_card_id(row),
         "behavior_block": str(row.get("behavior_block", "")),
         "value": str(row.get("value", "")),
     }
@@ -691,7 +693,7 @@ def _runtime_row_has_trace(
     traced_card_ids: set[str],
     traced_claims_by_card: Mapping[str, set[str]],
 ) -> bool:
-    card_id = _row_card_id(row)
+    card_id = _runtime_owner_card_id(row)
     row_claim_ids = _runtime_row_claim_ids(row)
     if not row_claim_ids:
         return card_id in traced_card_ids
@@ -747,6 +749,10 @@ def _row_card_id(row: Mapping[str, Any]) -> str:
     return str(row.get("card_id", "") or row.get("card", "")).strip()
 
 
+def _runtime_owner_card_id(row: Mapping[str, Any]) -> str:
+    return str(row.get("runtime_card_id") or _row_card_id(row)).strip()
+
+
 def _file_card_id(value: Any) -> str:
     name = Path(str(value or "")).name
     if not name.endswith(".json") or name in SPECIAL_RUNTIME_FILES:
@@ -766,7 +772,10 @@ def _expected_cardid_runtime_files(
     explainability: Mapping[str, Any],
 ) -> set[str]:
     expected = _deck_identity_card_ids(deck_identity)
-    expected.update(_row_card_id(row) for row in _meaningful_cardid_rows(card_behavior))
+    expected.update(
+        _runtime_owner_card_id(row)
+        for row in _meaningful_cardid_rows(card_behavior)
+    )
     expected.update(_traced_card_ids(explainability))
     return {card_id for card_id in expected if card_id}
 
@@ -1153,7 +1162,10 @@ def _card_behavior_row_is_emitted(
     row: Mapping[str, Any],
     runtime_blocks: set[tuple[str, str]],
 ) -> bool:
-    return (_row_card_id(row), str(row.get("behavior_block", ""))) in runtime_blocks
+    return (
+        _runtime_owner_card_id(row),
+        str(row.get("behavior_block", "")),
+    ) in runtime_blocks
 
 
 def _report_only_mechanics_from_row(row: Mapping[str, Any]) -> list[str]:
@@ -1995,7 +2007,7 @@ def _explained_runtime_files_from_reports(
                 )
 
     for row in _meaningful_cardid_rows(card_behavior):
-        card_id = _row_card_id(row)
+        card_id = _runtime_owner_card_id(row)
         if card_id:
             explained.add(f"{card_id}.json")
 

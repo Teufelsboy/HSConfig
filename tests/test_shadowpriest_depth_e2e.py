@@ -303,10 +303,11 @@ def test_real_shadowpriest_deckcode_depth_prepare_has_clean_runtime(tmp_path: Pa
     assert validation["status"] == "passed"
     assert any(claim["claim_kind"] == "gameplan_posture" and claim["scope"] == "deck" for claim in guide_claims["claims"])
     assert (deck_dir / "SW_448.json").exists()
+    assert (deck_dir / "EX1_625t.json").exists()
     deck_card_ids = {card["card_id"] for card in deck_identity["cards"]}
     for path in deck_dir.glob("*.json"):
         if path.name not in {"GlobalValues.json", "Mulligan.json", "Combo.json"}:
-            assert path.stem in deck_card_ids
+            assert path.stem in deck_card_ids | {"EX1_625t"}
     for path in deck_dir.glob("*.json"):
         payload = json.loads(path.read_text(encoding="utf-8"))
         for block in payload.values():
@@ -394,14 +395,15 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert depth["summary"]["cards_needing_runtime_surface"] == 0
     assert depth["summary"]["warnings_count"] == 9
     assert readiness["summary"]["generic_low_confidence"] == 0
-    assert readiness["summary"]["runtime_emitted"] == 7
+    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["linked_runtime_source"] == 1
+    assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0
     assert len(mulligan["Mulligan"]["values"]) == 4
     assert active_card_ids == {
         "DS1_233",
         "REV_290",
         "SW_446",
-        "SW_448",
         "TOY_381",
         "TOY_518",
         "WON_065",
@@ -413,10 +415,12 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
         "NX2_019",
         "SCH_514",
         "SW_444",
+        "SW_448",
         "VAC_419",
         "VAC_512",
         "YOD_032",
     }
+    assert readiness["cards"]["SW_448"]["readiness_lane"] == "linked_runtime_source"
     assert set(voidtouched) == {"ConfigComment", "GameCardId", "OnBoardBonus"}
     assert [row["value"] for row in voidtouched["OnBoardBonus"]["values"]] == ["10"]
     behavior_report = json.loads(
@@ -451,6 +455,9 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     reports = out / "reports"
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     darkbishop = json.loads((deck_dir / "SW_448.json").read_text(encoding="utf-8"))
+    shadow_hero_power = json.loads(
+        (deck_dir / "EX1_625t.json").read_text(encoding="utf-8")
+    )
     explainability = json.loads(
         (reports / "source_to_runtime_explainability.json").read_text(encoding="utf-8")
     )
@@ -463,7 +470,7 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
         for row in mulligan["Mulligan"]["values"]
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
-    hero_power_values = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+    hero_power_values = shadow_hero_power["BeforeUseHeroPowerBonus"]["values"]
     darkbishop_attention = [
         row for row in explainability["operator_attention"] if row["card_id"] == "SW_448"
     ]
@@ -471,9 +478,12 @@ def test_shadowpriest_darkbishop_effect_visible_without_mulligan_keep(tmp_path: 
     assert result == 0
     assert "SW_448" not in concrete_keeps
     assert "SW_448" not in json.dumps(mulligan, sort_keys=True)
+    assert darkbishop["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop
+    assert shadow_hero_power["GameCardId"] == "EX1_625t"
     assert hero_power_values
     assert any(
-        row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
+        row["comment"] == "ShadowPriest: EX1_625t_shadowform_mind_spike"
         and row["condition"] == "*"
         and row["value"] == "10"
         for row in hero_power_values
@@ -502,6 +512,9 @@ def test_shadowpriest_semantic_gate_preserves_darkbishop_effect_not_keep(tmp_pat
     operator = read_json(package / "reports" / "operator_summary.json")
     mulligan = read_json(package / "CustomConfig" / "shadowpriest" / "Mulligan.json")
     darkbishop = read_json(package / "CustomConfig" / "shadowpriest" / "SW_448.json")
+    shadow_hero_power = read_json(
+        package / "CustomConfig" / "shadowpriest" / "EX1_625t.json"
+    )
     explainability = read_json(package / "reports" / "source_to_runtime_explainability.json")
     behavior_report = read_json(package / "reports" / "card_behavior_plan_report.json")
     closure = read_json(package / "reports" / "source_evidence_closure.json")
@@ -514,12 +527,15 @@ def test_shadowpriest_semantic_gate_preserves_darkbishop_effect_not_keep(tmp_pat
         for row in mulligan["Mulligan"]["values"]
         if row["value"] == "hold" and row["mulligan"] != "*"
     ]
-    hero_power_values = darkbishop["BeforeUseHeroPowerBonus"]["values"]
+    hero_power_values = shadow_hero_power["BeforeUseHeroPowerBonus"]["values"]
 
     assert "SW_448" not in concrete_keeps
+    assert darkbishop["GameCardId"] == "SW_448"
+    assert "BeforeUseHeroPowerBonus" not in darkbishop
+    assert shadow_hero_power["GameCardId"] == "EX1_625t"
     assert hero_power_values
     assert any(
-        row["comment"] == "ShadowPriest: SW_448_shadowform_mind_spike"
+        row["comment"] == "ShadowPriest: EX1_625t_shadowform_mind_spike"
         and row["condition"] == "*"
         and row["value"] == "10"
         for row in hero_power_values

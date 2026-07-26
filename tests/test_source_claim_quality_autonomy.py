@@ -562,7 +562,12 @@ def test_start_of_game_hero_power_effect_does_not_infer_mulligan_keep():
         claims,
         research_bundle=research_bundle,
     )
-    card_behavior_plan = route_card_behavior_claims(claims)
+    card_behavior_plan = route_card_behavior_claims(
+        claims,
+        identity_links={
+            "SW_448": {"hero_power_transform": "EX1_625t"},
+        },
+    )
     mulligan_plan = build_mulligan_plan(
         deck_name="ShadowPriest",
         claims=claims,
@@ -594,6 +599,9 @@ def test_start_of_game_hero_power_effect_does_not_infer_mulligan_keep():
         and claim.get("mechanic") == "shadowform"
     )
     assert card_behavior_row["behavior_block"] == "BeforeUseHeroPowerBonus"
+    assert card_behavior_row["source_card_id"] == "SW_448"
+    assert card_behavior_row["runtime_card_id"] == "EX1_625t"
+    assert card_behavior_row["link_kind"] == "hero_power_transform"
     expected_provenance = sorted(
         [
             hero_power_claim["claim_id"],

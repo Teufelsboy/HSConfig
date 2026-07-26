@@ -117,7 +117,7 @@ def _cards_from_rows(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     for row in rows:
         if row.get("surface_family") != "CARDID.json" and row.get("surface") != "CARDID.json":
             continue
-        card_id = str(row["card_id"])
+        card_id = str(row.get("runtime_card_id") or row["card_id"])
         card = cards.setdefault(
             card_id,
             {

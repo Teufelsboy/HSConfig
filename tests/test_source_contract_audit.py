@@ -625,6 +625,9 @@ def test_source_contract_audit_preserves_start_of_game_effect_without_mulligan_k
                 {
                     "claim_id": "darkbishop_effect",
                     "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
                     "surface_family": "CARDID.json",
                     "meaningful_runtime_surface": True,
                     "behavior_block": {"BeforeUseHeroPowerBonus": {"values": []}},
@@ -642,8 +645,8 @@ def test_source_contract_audit_preserves_start_of_game_effect_without_mulligan_k
                 "SW_448": {
                     "name": "Darkbishop Benedictus",
                     "roles": ["start_of_game", "hero_power_transform"],
-                    "runtime_surfaces": ["SW_448.json"],
-                    "readiness_lane": "runtime_emitted",
+                    "runtime_surfaces": ["EX1_625t.json"],
+                    "readiness_lane": "linked_runtime_source",
                     "first_missing_link": "none",
                 }
             }
@@ -658,6 +661,13 @@ def test_source_contract_audit_preserves_start_of_game_effect_without_mulligan_k
     )
     assert report["card_rows"]["SW_448"]["claim_lanes"]["runtime_lowered"] == 1
     assert report["card_rows"]["SW_448"]["claim_lanes"]["suppressed_with_reason"] == 1
+    effect_lifecycle = next(
+        row
+        for row in report["claim_lifecycle_rows"]
+        if row["claim_id"] == "darkbishop_effect"
+    )
+    assert effect_lifecycle["runtime_surface"] == "EX1_625t.json"
+    assert effect_lifecycle["emitted_files"] == ["EX1_625t.json"]
 
 
 def test_source_contract_audit_markdown_is_compact_and_operator_readable():

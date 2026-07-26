@@ -6,6 +6,7 @@ from typing import Any, Mapping
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
+from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mulligan_plan import build_mulligan_plan
 from hsconfig.source_acquisition_provenance import (
     FIXTURE_MAP,
@@ -474,6 +475,8 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
         return _fixture_mulligan_bundle(claim_kind)["claims"][0]
     if claim_kind == "globalvalue_numeric_tuning":
         return {**claim, "cards": [], "key": "LowHpBoardValuePenalty"}
+    if claim_kind == "hero_power_transform":
+        return {**claim, "cards": ["SW_448"]}
     if claim_kind == "card_role":
         return {**claim, "runtime_block": "InHandBonus"}
     if claim_kind == "targeting_rule":
@@ -549,9 +552,19 @@ def _builder_runner_result(
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["blocked_until_runtime_evidence"])
     if runner == "route_card_behavior_surfaces":
+        identity_links: dict[str, Any] = {
+            "CARD_001": [{"card_id": "OPTION_001"}],
+        }
+        if claim_kind == "hero_power_transform":
+            identity_links = {
+                "SW_448": {
+                    str(link["link_kind"]): str(link["card_id"])
+                    for link in curated_links_for("SW_448")
+                },
+            }
         plan = route_card_behavior_surfaces(
             [claim],
-            identity_links={"CARD_001": [{"card_id": "OPTION_001"}]},
+            identity_links=identity_links,
         )
         if any(row.get("claim_id") == claim["claim_id"] for row in plan["rows"]):
             return {"outcome": "emitted", "reason": "emitted"}
