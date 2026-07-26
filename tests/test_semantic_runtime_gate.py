@@ -84,6 +84,7 @@ def test_supported_reason_cannot_bypass_source_lane_authority():
         ("reciprocal_hero_burn", "BeforePlayCardBonus", "card_role"),
         ("damage_aura_amplifier", "OnBoardBonus", "card_role"),
         ("damage_aura_amplifier", "BeforePlayCardBonus", "mechanic_usage"),
+        ("hero_power_cost_aura", "OnBoardBonus", "card_role"),
         ("hero_power_cost_aura", "BeforeUseHeroPowerBonus", "card_role"),
         (
             "hero_power_transform",
@@ -124,6 +125,20 @@ def test_static_surface_requires_compatible_condition_and_claim_kind(
         condition=condition,
         runtime_block="BeforePlayCardBonus",
         claim_kind=claim_kind,
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "semantic_surface_not_expressible"
+
+
+@pytest.mark.parametrize("runtime_block", ["InHandPlayPriority", "BeforePlayCardBonus"])
+def test_hero_power_cost_aura_rejects_unrelated_static_surfaces(runtime_block):
+    decision = decide_semantic_runtime(
+        semantic_reason="hero_power_cost_aura",
+        source_lane="official_static_semantics",
+        condition="*",
+        runtime_block=runtime_block,
+        claim_kind="card_role",
     )
 
     assert decision.allowed is False

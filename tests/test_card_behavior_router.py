@@ -106,6 +106,36 @@ def test_twilight_deceptor_real_text_stays_report_only_on_official_static_lane()
     ]
 
 
+def test_papercraft_angel_static_aura_routes_to_on_board_bonus():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_papercraft_angel_static",
+                "claim_kind": "card_role",
+                "cards": ["TOY_381"],
+                "stance": "hero_power_support",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_lane": "official_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "OnBoardBonus",
+                "condition": "*",
+                "evidence_text_short": (
+                    "Papercraft Angel makes your Hero Power cost (0)."
+                ),
+            }
+        ]
+    )
+
+    assert plan["suppressed"] == []
+    assert len(plan["rows"]) == 1
+    assert plan["rows"][0]["card_id"] == "TOY_381"
+    assert plan["rows"][0]["behavior_block"] == "OnBoardBonus"
+    assert (
+        plan["rows"][0]["semantic_score"]["reason"]
+        == "hero_power_cost_aura"
+    )
+
+
 def test_card_behavior_router_routes_specific_runtime_blocks():
     claims = [
         {

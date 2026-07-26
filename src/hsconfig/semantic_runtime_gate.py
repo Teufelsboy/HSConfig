@@ -36,6 +36,7 @@ STATIC_ACTION_SURFACES = {
     "hero_power_cost_aura": {
         ("BeforeUseHeroPowerBonus", "card_role", "*"),
         ("BeforeUseHeroPowerBonus", "mechanic_usage", "*"),
+        ("OnBoardBonus", "card_role", "*"),
     },
     "hero_power_transform": {
         ("BeforeUseHeroPowerBonus", "card_role", "*"),
