@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -22,6 +23,18 @@ SKILL_REFERENCE_PATHS = [
 def _active_skill_docs_text() -> str:
     paths = [SKILL_ROOT / "SKILL.md"] + SKILL_REFERENCE_PATHS
     return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
+def _markdown_table(text: str, heading: str) -> dict[str, dict[str, str]]:
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    table_lines = [line for line in section.splitlines() if line.startswith("|")]
+    headers = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
+    rows: dict[str, dict[str, str]] = {}
+    for line in table_lines[2:]:
+        cells = [cell.strip().replace("`", "") for cell in line.strip("|").split("|")]
+        row = dict(zip(headers, cells, strict=True))
+        rows[cells[0]] = row
+    return rows
 
 
 def test_research_docs_are_marked_as_evidence_not_operator_path():
@@ -580,3 +593,26 @@ def test_operator_docs_describe_handoff_contract_without_second_gate() -> None:
     assert "diagnostic-only handoff proof" in text
     assert "does not replace reports/operator_summary.json" in text
     assert "research-result sentinel" in text
+
+
+def test_operator_route_exposes_structured_semantic_closure_contract() -> None:
+    operator_path = Path("docs/operator/README.md")
+    operator_text = operator_path.read_text(encoding="utf-8")
+    routed_targets = {
+        operator_path.parent / target
+        for target in re.findall(r"\[[^\]]+\]\(([^)]+\.md)\)", operator_text)
+    }
+
+    assert operator_path.parent / "source-contract-spine.md" in routed_targets
+    assert operator_path.parent / "guide-research-policy.md" in routed_targets
+
+    spine = Path("docs/operator/source-contract-spine.md").read_text(encoding="utf-8")
+    rows = _markdown_table(spine, "## Audited Semantic Closure Contract")
+
+    assert rows["source_identity"]["Authority"] == "decoded canonical deck fingerprint"
+    assert rows["source_identity"]["Outcome"] == "exact_deck_matched"
+    assert rows["mulligan_authority"]["Authority"] == "exact_deck_matched"
+    assert rows["hero_power_transform"]["Outcome"] == "CardID only"
+    assert rows["metadata_only_cardid"]["Outcome"] == "not runtime_emitted"
+    assert rows["load_safety"]["Outcome"] == "in-client optimality remains unproven"
+    assert rows["configuration_assurance"]["Outcome"] == "runtime_gate_impact=none"

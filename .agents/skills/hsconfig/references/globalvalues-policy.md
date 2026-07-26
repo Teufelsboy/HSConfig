@@ -25,3 +25,17 @@ Rules:
 - Use `runtime_evidence_required` for keys that require HSTuner or other runtime evidence before changing.
 - Treat GlobalValues reports as supporting evidence for `operator_summary.json`, not as a separate apply gate.
 - Validate with both baseline and profile before apply.
+
+## ShadowPriest Authority Boundary
+
+| Source claim | GlobalValues authority | Constraint |
+| --- | --- | --- |
+| `hero_power_transform` | none | CardID effect semantics only. |
+| `exact gameplan_posture` | aggressive posture overlay | Requires a separate lowerable exact-deck guide claim. |
+| `archetype-only gameplan_posture` | baseline only | Keep validated posture values unchanged. |
+
+`hero_power_transform` does not authorize aggressive GlobalValues by itself.
+The exact `SW_448 -> EX1_625t` identity owns one CardID Hero Power bonus; it
+does not authorize a Darkbishop body priority, a Mulligan keep, or a
+GlobalValues posture change. A neutral generated `MyHeroPowerValue=1.00` may
+fill a missing registered baseline key, but it is not an aggressive overlay.

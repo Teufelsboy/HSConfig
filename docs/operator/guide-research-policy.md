@@ -43,6 +43,39 @@ Current deck-matched guide evidence should still win when available; old non-Wil
 
 HearthstoneJSON and other static records may support deterministic CardID/effect rows like `hero_power_transform`, identity, or card-text semantics. They must not create opening-hand Mulligan keeps without an explicit mulligan claim from a qualifying guide source. operator_summary.json remains the only normal apply authority.
 
+## Exact Source Authority
+
+`exact_deck_matched` requires a decoded canonical deck fingerprint match. The
+guide must expose a deckstring, decoding must succeed, and the decoded canonical
+main-deck multiset fingerprint must equal the target
+`deck_identity["deck_fingerprint"]`. When both sides expose them, hero, format,
+main-deck card count, and sideboard count must also match.
+
+Deck name, archetype name, or card-name overlap without fingerprint equality is
+only `archetype_matched`. It remains useful context, but it cannot authorize
+exact guide-backed Mulligan rows, exact `SOURCE_BACKED_STRONG` closure, or an
+exact deckwide `gameplan_posture`. In particular, a guide for a 40-card list
+does not become exact authority for a 30-card target deck.
+
+### Exact Public-Guide Mulligan Gate
+
+Guide-backed Mulligan claims require `exact_deck_matched`. All four checks must
+pass:
+
+| Check | Required value | Failure outcome |
+| --- | --- | --- |
+| `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
+| `promotion_eligible` | `true` | suppress with visible reason |
+| `source_visibility` | `full_text` | suppress with visible reason |
+| `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
+
+Failed public-guide keeps and discards remain visible with their stable
+suppression reasons. They do not prevent the existing
+`policy_backed_autonomous_mulligan` fallback from running. Fallback rows remain
+explicitly `policy_backed`, never count as exact guide evidence, and still
+exclude non-hand start-of-game effects such as Darkbishop Benedictus unless
+separate exact opening-hand authority exists.
+
 ## Structured Source Format
 
 Pass researched source documents with `--source-documents-json`, or pass normalized `research-deck` output with `--guide-sources-json`.

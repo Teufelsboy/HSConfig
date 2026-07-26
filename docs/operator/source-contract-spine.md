@@ -17,6 +17,61 @@ This page explains why a source claim did or did not lower to runtime config. It
 
 `Presume.json` and `Concede.json` are documented HearthRanger concepts but not normal HSConfig runtime outputs.
 
+## Audited Semantic Closure Contract
+
+| Contract | Authority | Outcome |
+| --- | --- | --- |
+| `source_identity` | decoded canonical deck fingerprint | `exact_deck_matched` |
+| `mulligan_authority` | `exact_deck_matched` | guide-backed Mulligan may lower only after the complete exact-guide gate |
+| `hero_power_transform` | exact CardID and linked identity | CardID only |
+| `metadata_only_cardid` | parsed physical `values` row | not `runtime_emitted` |
+| `load_safety` | strict package validation | in-client optimality remains unproven |
+| `configuration_assurance` | diagnostic projection | `runtime_gate_impact=none` |
+
+`exact_deck_matched` requires a decoded canonical deck fingerprint match.
+Guide-backed Mulligan claims require `exact_deck_matched`.
+`hero_power_transform` does not authorize aggressive GlobalValues by itself.
+A metadata-only CardID file is not `runtime_emitted`.
+Load safety does not prove in-client optimality.
+`configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
+
+## ShadowPriest Runtime Surfaces
+
+| Semantic family | Identity | Runtime surface | Boundary |
+| --- | --- | --- | --- |
+| `hero_power_transform` | `SW_448 -> EX1_625t` | one `BeforeUseHeroPowerBonus` | No Darkbishop body priority and no inferred Mulligan keep. |
+| `gameplan_posture` | separate exact guide claim | `GlobalValues.json` posture overlay | The Hero Power transform alone has no aggressive GlobalValues authority. |
+| `summon_trigger_board_engine` | Treasure Distributor or Ship's Chirurgeon | `OnBoardBonus` | Board engine value only; it does not claim the card summons a minion. |
+| `reciprocal_burn` | reciprocal health effect | report-only | Self-health safety is not proven by the supported condition grammar. |
+| `state_dependent` | unresolved runtime state | report-only | Emit only after a documented deterministic condition exists. |
+
+## Physical Runtime Row Contract
+
+| Concept | Shape | Result |
+| --- | --- | --- |
+| `runtime_key` | `(card_id, behavior_block, condition)` | one physical owner per runtime slot |
+| `full_signature` | `(card_id, behavior_block, condition, value)` | canonical emitted-row identity |
+| `duplicate_provenance` | identical full signature | merge and sort provenance |
+| `conflicting_values` | same runtime key with different values | fail closed; suppress physical row |
+| `physical_report_parity` | physical rows versus `runtime_emitted` lifecycle rows | exact row parity required |
+
+Equivalent physical rows emit once while their source claim IDs, source
+references, and lifecycle claim IDs merge deterministically. Conflicting values
+must stay visible in diagnostics and must not reach runtime output. Reports may
+call a CardID row `runtime_emitted` only when the parsed physical payload
+contains the matching non-metadata `values` row.
+
+## Configuration Assurance
+
+| Field | Contract value | Meaning |
+| --- | --- | --- |
+| `load_safety` | `validated` or `not_validated` | Technical package validation only. |
+| `source_authority` | `exact`, `archetype_only`, `partial`, or `unknown` | Source scope, separate from load safety. |
+| `semantic_closure` | current `semantic_handoff_status` | Diagnostic semantic state. |
+| `in_client_behavior` | `not_proven_by_pre_run_contract` | No in-client behavior proof. |
+| `optimality_claim_allowed` | `false` | Pre-run output cannot claim optimality. |
+| `runtime_gate_impact` | `none` | Assurance never changes apply permission. |
+
 ## Claim-Kind Spine
 
 | Claim Kind | Lane | Runtime Surface | Boundary |

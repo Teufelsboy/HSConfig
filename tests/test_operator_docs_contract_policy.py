@@ -163,6 +163,18 @@ def _section(text: str, heading: str) -> str:
     return text[start:next_heading]
 
 
+def _markdown_table(text: str, heading: str) -> dict[str, dict[str, str]]:
+    section = _section(text, heading)
+    table_lines = [line for line in section.splitlines() if line.startswith("|")]
+    headers = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
+    rows: dict[str, dict[str, str]] = {}
+    for line in table_lines[2:]:
+        cells = [cell.strip().replace("`", "") for cell in line.strip("|").split("|")]
+        row = dict(zip(headers, cells, strict=True))
+        rows[cells[0]] = row
+    return rows
+
+
 def _assert_task7_sentinels(text: str) -> None:
     for sentinel in SOURCE_BACKED_STRONG_TASK7_SENTINELS:
         assert sentinel in text
@@ -822,3 +834,56 @@ def test_source_closure_receipt_explanatory_paragraph_uses_out_prefix():
     assert paragraph.startswith(
         "`<out>/configure_summary.json.source_closure_receipt`"
     )
+
+
+def test_exact_guide_mulligan_gate_is_machine_readable_and_fail_closed() -> None:
+    policy = (ROOT / "docs/operator/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    gate = _markdown_table(policy, "### Exact Public-Guide Mulligan Gate")
+
+    assert set(gate) == {
+        "deck_match_scope",
+        "promotion_eligible",
+        "source_visibility",
+        "source_lane",
+    }
+    assert {row["Required value"] for row in gate.values()} == {
+        "exact_deck_matched",
+        "true",
+        "full_text",
+        "deck_matched_public_guide",
+    }
+    assert {row["Failure outcome"] for row in gate.values()} == {
+        "suppress with visible reason"
+    }
+
+
+def test_operator_contract_models_physical_rows_and_assurance_dimensions() -> None:
+    spine = (ROOT / "docs/operator/source-contract-spine.md").read_text(
+        encoding="utf-8"
+    )
+    rows = _markdown_table(spine, "## Physical Runtime Row Contract")
+    assurance = _markdown_table(spine, "## Configuration Assurance")
+
+    assert rows["runtime_key"]["Shape"] == "(card_id, behavior_block, condition)"
+    assert rows["full_signature"]["Shape"] == (
+        "(card_id, behavior_block, condition, value)"
+    )
+    assert rows["duplicate_provenance"]["Result"] == "merge and sort provenance"
+    assert rows["conflicting_values"]["Result"] == "fail closed; suppress physical row"
+    assert rows["physical_report_parity"]["Result"] == "exact row parity required"
+
+    assert set(assurance) == {
+        "load_safety",
+        "source_authority",
+        "semantic_closure",
+        "in_client_behavior",
+        "optimality_claim_allowed",
+        "runtime_gate_impact",
+    }
+    assert assurance["in_client_behavior"]["Contract value"] == (
+        "not_proven_by_pre_run_contract"
+    )
+    assert assurance["optimality_claim_allowed"]["Contract value"] == "false"
+    assert assurance["runtime_gate_impact"]["Contract value"] == "none"

@@ -191,6 +191,30 @@ facts do not become Mulligan keeps unless there is separate exact hand-keep
 authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
 remains the normal apply authority.
 
+### Audited Semantic Closure
+
+Use the [source-contract spine](source-contract-spine.md) for the compact
+claim-to-runtime contract and the [guide research policy](guide-research-policy.md)
+for exact source identity and Mulligan eligibility.
+
+- `exact_deck_matched` requires a decoded canonical deck fingerprint match.
+- Guide-backed Mulligan claims require `exact_deck_matched`.
+- `hero_power_transform` does not authorize aggressive GlobalValues by itself.
+- A metadata-only CardID file is not `runtime_emitted`.
+- Load safety does not prove in-client optimality.
+- `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
+
+The six `configuration_assurance` fields keep independent truths separate:
+
+| Field | Meaning |
+| --- | --- |
+| `load_safety` | `validated` only when the technical package is valid; otherwise `not_validated`. |
+| `source_authority` | `exact`, `archetype_only`, `partial`, or `unknown`. |
+| `semantic_closure` | The current diagnostic `semantic_handoff_status`. |
+| `in_client_behavior` | Always `not_proven_by_pre_run_contract`. |
+| `optimality_claim_allowed` | Always `false` for this pre-run contract. |
+| `runtime_gate_impact` | Always `none`; assurance cannot grant or deny apply. |
+
 ## Load Safety vs. Config Richness
 
 Open `reports/operator_summary.json` first.

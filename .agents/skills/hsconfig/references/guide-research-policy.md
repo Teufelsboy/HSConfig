@@ -54,6 +54,30 @@ Evergreen Wild guide rule: `SOURCE_BACKED_STRONG` may use a current deck-matched
 
 HearthstoneJSON and other static records may support deterministic CardID/effect rows like `hero_power_transform`, identity, or card-text semantics. They must not create opening-hand Mulligan keeps without an explicit mulligan claim from a qualifying guide source. operator_summary.json remains the only normal apply authority.
 
+## Exact Source Authority
+
+`exact_deck_matched` requires a decoded canonical deck fingerprint match.
+
+| Scope | Identity proof | Guide Mulligan | Exact gameplan posture |
+| --- | --- | --- | --- |
+| `exact_deck_matched` | decoded canonical main-deck fingerprint equality | allowed | allowed |
+| `archetype_matched` | name, archetype, or card overlap only | none | none |
+
+The guide must expose a deckstring, decoding must succeed, and the canonical
+main-deck multiset fingerprint must equal the target
+`deck_identity["deck_fingerprint"]`. Compare hero, format, main-deck card count,
+and sideboard count when both sides expose them. A 40-card guide cannot become
+exact authority for a 30-card target deck.
+
+Guide-backed Mulligan claims require `exact_deck_matched` and all four gate
+values: `deck_match_scope=exact_deck_matched`, `promotion_eligible=true`,
+`source_visibility=full_text`, and
+`source_lane=deck_matched_public_guide`. A failing claim is suppressed with a
+stable visible reason. It does not block the
+`policy_backed_autonomous_mulligan` fallback; fallback rows remain labeled
+`policy_backed`, never count as exact guide evidence, and cannot infer a
+Darkbishop opening-hand keep from its start-of-game effect.
+
 Short evidence row shape for `--source-evidence-json`:
 
 ```json

@@ -44,6 +44,18 @@ def _active_skill_docs_text() -> str:
     )
 
 
+def _markdown_table(text: str, heading: str) -> dict[str, dict[str, str]]:
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    table_lines = [line for line in section.splitlines() if line.startswith("|")]
+    headers = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
+    rows: dict[str, dict[str, str]] = {}
+    for line in table_lines[2:]:
+        cells = [cell.strip().replace("`", "") for cell in line.strip("|").split("|")]
+        row = dict(zip(headers, cells, strict=True))
+        rows[cells[0]] = row
+    return rows
+
+
 def test_skill_has_required_files():
     expected = {
         "SKILL.md",
@@ -1400,3 +1412,50 @@ def test_skill_and_operator_docs_explain_research_deep_contract_bridge() -> None
     combined = "\n".join(path.read_text(encoding="utf-8") for path in paths)
     for phrase in required:
         assert phrase in combined, phrase
+
+
+def test_skill_entrypoint_routes_audited_closure_to_direct_references() -> None:
+    skill = _skill_entrypoint_text()
+    targets = {
+        target
+        for target in re.findall(r"\[[^\]]+\]\((references/[^)]+\.md)\)", skill)
+    }
+    required_targets = {
+        "references/guide-research-policy.md",
+        "references/globalvalues-policy.md",
+        "references/card-behavior-policy.md",
+    }
+
+    assert required_targets <= targets
+    for target in required_targets:
+        assert (SKILL_ROOT / target).is_file()
+
+    guide = (SKILL_ROOT / "references/guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    source_contract = _markdown_table(guide, "## Exact Source Authority")
+    assert source_contract["exact_deck_matched"]["Identity proof"] == (
+        "decoded canonical main-deck fingerprint equality"
+    )
+    assert source_contract["archetype_matched"]["Guide Mulligan"] == "none"
+
+    globalvalues = (SKILL_ROOT / "references/globalvalues-policy.md").read_text(
+        encoding="utf-8"
+    )
+    gv_contract = _markdown_table(globalvalues, "## ShadowPriest Authority Boundary")
+    assert gv_contract["hero_power_transform"]["GlobalValues authority"] == "none"
+    assert gv_contract["exact gameplan_posture"]["GlobalValues authority"] == (
+        "aggressive posture overlay"
+    )
+
+    card = (SKILL_ROOT / "references/card-behavior-policy.md").read_text(
+        encoding="utf-8"
+    )
+    card_contract = _markdown_table(card, "## Audited Card Runtime Surfaces")
+    assert card_contract["hero_power_transform"]["Behavior block"] == (
+        "BeforeUseHeroPowerBonus"
+    )
+    assert card_contract["summon_trigger_board_engine"]["Behavior block"] == (
+        "OnBoardBonus"
+    )
+    assert card_contract["metadata_only"]["Emission status"] == "report_only"

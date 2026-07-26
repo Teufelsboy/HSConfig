@@ -276,3 +276,69 @@ def test_shared_skill_sync_status_reports_missing_install_folder_without_writes(
     assert status["runtime_apply_authority"] == "reports/operator_summary.json"
     assert not install_root.exists()
     assert list(tmp_path.rglob("*")) == []
+
+
+def _markdown_table(text: str, heading: str) -> dict[str, dict[str, str]]:
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    table_lines = [line for line in section.splitlines() if line.startswith("|")]
+    headers = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
+    rows: dict[str, dict[str, str]] = {}
+    for line in table_lines[2:]:
+        cells = [cell.strip().replace("`", "") for cell in line.strip("|").split("|")]
+        row = dict(zip(headers, cells, strict=True))
+        rows[cells[0]] = row
+    return rows
+
+
+def test_skill_sync_preserves_structured_audited_closure_contract(tmp_path: Path) -> None:
+    install_root = tmp_path / "codex" / "skills"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--install-root",
+            str(install_root),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    repo_root = Path(".agents/skills/hsconfig")
+    installed_root = install_root / "hsconfig"
+    relative_paths = [
+        Path("SKILL.md"),
+        Path("references/guide-research-policy.md"),
+        Path("references/globalvalues-policy.md"),
+        Path("references/card-behavior-policy.md"),
+    ]
+    for relative_path in relative_paths:
+        assert (installed_root / relative_path).read_bytes() == (
+            repo_root / relative_path
+        ).read_bytes()
+
+    guide_rows = _markdown_table(
+        (installed_root / "references/guide-research-policy.md").read_text(
+            encoding="utf-8"
+        ),
+        "## Exact Source Authority",
+    )
+    globalvalue_rows = _markdown_table(
+        (installed_root / "references/globalvalues-policy.md").read_text(
+            encoding="utf-8"
+        ),
+        "## ShadowPriest Authority Boundary",
+    )
+    card_rows = _markdown_table(
+        (installed_root / "references/card-behavior-policy.md").read_text(
+            encoding="utf-8"
+        ),
+        "## Physical Runtime Row Contract",
+    )
+
+    assert guide_rows["exact_deck_matched"]["Guide Mulligan"] == "allowed"
+    assert globalvalue_rows["hero_power_transform"]["GlobalValues authority"] == "none"
+    assert card_rows["conflicting_values"]["Result"] == (
+        "fail closed; suppress physical row"
+    )
