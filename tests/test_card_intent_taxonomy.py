@@ -250,3 +250,17 @@ def test_damage_aura_still_wins_before_reciprocal_hero_burn():
     assert classification.reason == "damage_aura_amplifier"
     assert classification.value == "10"
     assert classification.band == "critical"
+
+
+def test_twilight_deceptor_identity_precedes_broad_enemy_hero_damage_context():
+    classification = classify_card_intent(
+        (
+            "If any hero took damage this turn, Twilight Deceptor draws a Shadow "
+            "spell. enemy hero damage"
+        ),
+        card_identity="SW_444",
+    )
+
+    assert classification.reason == "conditional_draw"
+    assert classification.value == "8"
+    assert classification.band == "medium"

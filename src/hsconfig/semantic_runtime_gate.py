@@ -13,13 +13,44 @@ REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE = {
     "self_damage_liability_body",
     "location_activation",
 }
-SUPPORTED_STATIC_ACTION_REASONS = {
-    "damage_aura_amplifier",
-    "direct_enemy_hero_burn",
-    "hero_power_cost_aura",
-    "hero_power_transform",
-    "location_deploy",
-    "reciprocal_hero_burn",
+STATIC_SOURCE_LANES = {
+    "official_static_semantics",
+    "source_backed_static_semantics",
+}
+GUIDE_SOURCE_LANES = {
+    "deck_matched_public_guide",
+    "archetype_matched_public_guide",
+}
+STATIC_ACTION_SURFACES = {
+    "damage_aura_amplifier": {
+        ("BeforePlayCardBonus", "card_role", "*"),
+        ("BeforePlayCardBonus", "mechanic_usage", "*"),
+        ("OnBoardBonus", "card_role", "*"),
+        ("OnBoardBonus", "mechanic_usage", "*"),
+    },
+    "direct_enemy_hero_burn": {
+        ("BeforePlayCardBonus", "card_role", "*"),
+        ("BeforePlayCardBonus", "mechanic_usage", "*"),
+        ("BeforePlayCardBonus", "targeting_rule", "*"),
+    },
+    "hero_power_cost_aura": {
+        ("BeforeUseHeroPowerBonus", "card_role", "*"),
+        ("BeforeUseHeroPowerBonus", "mechanic_usage", "*"),
+    },
+    "hero_power_transform": {
+        ("BeforeUseHeroPowerBonus", "card_role", "*"),
+        ("BeforeUseHeroPowerBonus", "hero_power_transform", "*"),
+        ("BeforeUseHeroPowerBonus", "mechanic_usage", "*"),
+    },
+    "location_deploy": {
+        ("BeforePlayCardBonus", "card_role", "*"),
+        ("BeforePlayCardBonus", "mechanic_usage", "*"),
+    },
+    "reciprocal_hero_burn": {
+        ("BeforePlayCardBonus", "card_role", "*"),
+        ("BeforePlayCardBonus", "mechanic_usage", "*"),
+        ("BeforePlayCardBonus", "targeting_rule", "*"),
+    },
 }
 
 
@@ -37,18 +68,16 @@ def decide_semantic_runtime(
     runtime_block: str,
     claim_kind: str,
 ) -> SemanticRuntimeDecision:
-    del condition, runtime_block, claim_kind
-    if (
-        source_lane in {"official_static_semantics", "source_backed_static_semantics"}
-        and semantic_reason in REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE
-    ):
-        return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
-    if semantic_reason in SUPPORTED_STATIC_ACTION_REASONS:
+    if source_lane in STATIC_SOURCE_LANES:
+        if semantic_reason in REPORT_ONLY_WITHOUT_EXACT_RUNTIME_EVIDENCE:
+            return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
+        allowed_surfaces = STATIC_ACTION_SURFACES.get(semantic_reason)
+        if allowed_surfaces is None:
+            return SemanticRuntimeDecision(False, "semantic_surface_not_proven")
+        if (runtime_block, claim_kind, condition) not in allowed_surfaces:
+            return SemanticRuntimeDecision(False, "semantic_surface_not_expressible")
         return SemanticRuntimeDecision(True, "semantic_surface_supported")
-    if source_lane in {
-        "deck_matched_public_guide",
-        "archetype_matched_public_guide",
-    }:
+    if source_lane in GUIDE_SOURCE_LANES:
         return SemanticRuntimeDecision(True, "guide_surface_supported")
     return SemanticRuntimeDecision(False, "semantic_surface_not_proven")
 

@@ -204,7 +204,10 @@ def classify_card_intent(
             ),
         )
 
-    if _has_direct_enemy_hero_burn(normalized) or identity_reason == "direct_enemy_hero_burn":
+    if identity_reason != "conditional_draw" and (
+        _has_direct_enemy_hero_burn(normalized)
+        or identity_reason == "direct_enemy_hero_burn"
+    ):
         return CardIntentClassification(
             reason="direct_enemy_hero_burn",
             value="12",
@@ -221,7 +224,10 @@ def classify_card_intent(
             ),
         )
 
-    if _has_reciprocal_hero_burn(normalized) or identity_reason == "reciprocal_hero_burn":
+    if identity_reason != "conditional_draw" and (
+        _has_reciprocal_hero_burn(normalized)
+        or identity_reason == "reciprocal_hero_burn"
+    ):
         return CardIntentClassification(
             reason="reciprocal_hero_burn",
             value="10",

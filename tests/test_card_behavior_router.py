@@ -74,6 +74,38 @@ def test_supported_direct_burn_static_semantics_can_emit_candidate_row():
     assert plan["rows"][0]["behavior_block"] == "BeforePlayCardBonus"
 
 
+def test_twilight_deceptor_real_text_stays_report_only_on_official_static_lane():
+    plan = route_card_behavior_surfaces(
+        [
+            {
+                "claim_id": "claim_twilight_deceptor_static",
+                "claim_kind": "card_role",
+                "cards": ["SW_444"],
+                "stance": "enemy hero damage",
+                "claim_readiness": "source_backed_static_semantics",
+                "source_lane": "official_static_semantics",
+                "source_refs": ["hearthstonejson_static_semantics"],
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": (
+                    "If any hero took damage this turn, Twilight Deceptor draws "
+                    "a Shadow spell."
+                ),
+            }
+        ]
+    )
+
+    assert plan["rows"] == []
+    assert plan["suppressed"] == [
+        {
+            "claim_id": "claim_twilight_deceptor_static",
+            "claim_kind": "card_role",
+            "cards": ["SW_444"],
+            "reason": "semantic_surface_not_expressible",
+        }
+    ]
+
+
 def test_card_behavior_router_routes_specific_runtime_blocks():
     claims = [
         {
