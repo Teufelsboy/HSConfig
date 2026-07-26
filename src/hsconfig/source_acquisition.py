@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.source_acquisition_provenance import (
+    CAPTURED_RECORD,
     LIVE_HTTP,
     build_acquisition_provenance,
 )
@@ -205,7 +206,11 @@ def collect_public_source_records(
             "deck_match_scope": deck_match_scope,
             "normalized_text": sanitized_text,
             "acquisition_provenance": build_acquisition_provenance(
-                mode=acquisition_mode,
+                mode=(
+                    acquisition_mode
+                    if fetcher is None or acquisition_mode != LIVE_HTTP
+                    else CAPTURED_RECORD
+                ),
                 content=body,
             ),
         }

@@ -7,7 +7,10 @@ from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.mulligan_plan import build_mulligan_plan
-from hsconfig.source_acquisition import collect_public_source_records
+from hsconfig.source_acquisition_provenance import (
+    FIXTURE_MAP,
+    build_acquisition_provenance,
+)
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import (
@@ -19,15 +22,18 @@ from hsconfig.source_document_model import (
 SURFACES = ("mulligan", "globalvalues", "cardid", "combo")
 OPERATOR_GATE_IMPACT = "diagnostic_only"
 _CONFORMANCE_DECK_FINGERPRINT = "conformance-deck-fingerprint"
+_EXPECTED_DIAGNOSTIC_GATE_REASONS = frozenset(
+    {"strategic_provenance_not_live_verified"}
+)
 
 _BUILDER_ROUTER_EXPECTATIONS = {
     "archetype": {"surface": None, "runner": "not_seen_by_builder", "outcome": "not_seen_by_builder"},
-    "mulligan_keep": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "emitted"},
-    "mulligan_discard": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "emitted"},
+    "mulligan_keep": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "suppressed"},
+    "mulligan_discard": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "suppressed"},
     "card_role": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
     "targeting_rule": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
-    "combo_sequence": {"surface": "combo", "runner": "build_combo_plan", "outcome": "emitted"},
-    "gameplan_posture": {"surface": "globalvalues", "runner": "build_globalvalues_authority_matrix", "outcome": "emitted"},
+    "combo_sequence": {"surface": "combo", "runner": "build_combo_plan", "outcome": "suppressed"},
+    "gameplan_posture": {"surface": "globalvalues", "runner": "build_globalvalues_authority_matrix", "outcome": "suppressed"},
     "hero_power_transform": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
     "mechanic_usage": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
     "known_bad_pattern": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
@@ -263,7 +269,7 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         }
     }
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
-        bundle = _verified_mulligan_bundle(claim_kind)
+        bundle = _fixture_mulligan_bundle(claim_kind)
         claim = bundle["claims"][0]
         context["deck_identity"] = {
             "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
@@ -272,7 +278,7 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
             "canonical_source_receipts"
         ]
     elif claim_kind == "gameplan_posture":
-        bundle = _verified_gameplan_posture_bundle()
+        bundle = _fixture_gameplan_posture_bundle()
         claim = bundle["claims"][0]
         context["deck_identity"] = {
             "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
@@ -281,7 +287,7 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
             "canonical_source_receipts"
         ]
     elif claim_kind == "combo_sequence":
-        bundle = _verified_combo_bundle()
+        bundle = _fixture_combo_bundle()
         claim = bundle["claims"][0]
         context["deck_identity"] = {
             "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
@@ -403,8 +409,6 @@ def _final_runtime_effect(row: Mapping[str, Any]) -> str:
     builder_router = row.get("builder_router", {})
     if claim_kind == "globalvalue_numeric_tuning":
         return "suppressed_until_runtime_evidence"
-    if claim_kind == "combo_sequence":
-        return "emits_when_builder_prerequisites_are_complete"
     if claim_kind in {"archetype", "tech_slot", "replacement_option"}:
         return "report_only_no_runtime_row"
     if not isinstance(builder_router, Mapping):
@@ -463,11 +467,11 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
         "cards": ["CARD_001"],
     }
     if claim_kind == "combo_sequence":
-        return _verified_combo_bundle(incomplete=incomplete)["claims"][0]
+        return _fixture_combo_bundle(incomplete=incomplete)["claims"][0]
     if claim_kind == "gameplan_posture":
-        return _verified_gameplan_posture_bundle()["claims"][0]
+        return _fixture_gameplan_posture_bundle()["claims"][0]
     if claim_kind in {"mulligan_keep", "mulligan_discard"}:
-        return _verified_mulligan_bundle(claim_kind)["claims"][0]
+        return _fixture_mulligan_bundle(claim_kind)["claims"][0]
     if claim_kind == "globalvalue_numeric_tuning":
         return {**claim, "cards": [], "key": "LowHpBoardValuePenalty"}
     if claim_kind == "card_role":
@@ -497,7 +501,7 @@ def _builder_runner_result(
     if runner == "not_seen_by_builder":
         return {"outcome": "not_seen_by_builder", "reason": "no_runtime_builder"}
     if runner == "build_combo_plan":
-        verified_bundle = _verified_combo_bundle(
+        fixture_bundle = _fixture_combo_bundle(
             incomplete=len(claim.get("cards", [])) < 2
         )
         plan = build_combo_plan(
@@ -506,13 +510,13 @@ def _builder_runner_result(
             deck_identity={
                 "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
             },
-            verified_source_receipts=verified_bundle["canonical_source_receipts"],
+            verified_source_receipts=fixture_bundle["canonical_source_receipts"],
         )
         if plan["combos"]:
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["suppressed"])
     if runner == "build_mulligan_plan":
-        verified_bundle = _verified_mulligan_bundle(claim_kind)
+        fixture_bundle = _fixture_mulligan_bundle(claim_kind)
         plan = build_mulligan_plan(
             deck_name="Conformance",
             claims=[claim],
@@ -520,7 +524,7 @@ def _builder_runner_result(
             deck_identity={
                 "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
             },
-            verified_source_receipts=verified_bundle[
+            verified_source_receipts=fixture_bundle[
                 "canonical_source_receipts"
             ],
         )
@@ -528,8 +532,8 @@ def _builder_runner_result(
             return {"outcome": "emitted", "reason": "emitted"}
         return _suppressed_result(plan["suppressed_rules"])
     if runner == "build_globalvalues_authority_matrix":
-        verified_source_receipts = (
-            _verified_gameplan_posture_bundle()["globalvalues_source_receipts"]
+        fixture_source_receipts = (
+            _fixture_gameplan_posture_bundle()["globalvalues_source_receipts"]
             if claim_kind == "gameplan_posture"
             else []
         )
@@ -539,7 +543,7 @@ def _builder_runner_result(
             deck_identity={
                 "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
             },
-            verified_source_receipts=verified_source_receipts,
+            verified_source_receipts=fixture_source_receipts,
         )
         if any(claim["claim_id"] in row.get("claim_refs", []) for row in plan["allowed_step1_overlays"]):
             return {"outcome": "emitted", "reason": "emitted"}
@@ -555,7 +559,7 @@ def _builder_runner_result(
     raise RuntimeError(f"Unsupported conformance runner: {runner}")
 
 
-def _verified_gameplan_posture_bundle() -> dict[str, Any]:
+def _fixture_gameplan_posture_bundle() -> dict[str, Any]:
     deck_identity = {
         "deck_name": "Conformance",
         "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
@@ -572,7 +576,7 @@ def _verified_gameplan_posture_bundle() -> dict[str, Any]:
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
                 "acquisition_provenance": (
-                    _verified_conformance_acquisition_provenance()
+                    _conformance_fixture_provenance()
                 ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
@@ -604,7 +608,7 @@ def _verified_gameplan_posture_bundle() -> dict[str, Any]:
     )
 
 
-def _verified_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
+def _fixture_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
     cards = ["CARD_001"] if incomplete else ["CARD_001", "CARD_002"]
     deck_identity = {
         "deck_name": "Conformance",
@@ -625,7 +629,7 @@ def _verified_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
                 "acquisition_provenance": (
-                    _verified_conformance_acquisition_provenance()
+                    _conformance_fixture_provenance()
                 ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
@@ -661,7 +665,7 @@ def _verified_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
     )
 
 
-def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
+def _fixture_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
     deck_identity = {
         "deck_name": "Conformance",
         "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
@@ -680,7 +684,7 @@ def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
                 "acquisition_provenance": (
-                    _verified_conformance_acquisition_provenance()
+                    _conformance_fixture_provenance()
                 ),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
@@ -724,30 +728,11 @@ def _verified_mulligan_bundle(claim_kind: str) -> dict[str, Any]:
     )
 
 
-def _verified_conformance_acquisition_provenance() -> dict[str, str]:
-    acquired = collect_public_source_records(
-        deck_name="Conformance",
-        deck_identity={
-            "deck_name": "Conformance",
-            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
-            "cards": [
-                {
-                    "card_id": "CARD_001",
-                    "name": "Conformance Card",
-                    "count": 1,
-                }
-            ],
-        },
-        source_urls=["https://example.test/conformance-guide"],
-        current_date="2026-07-26",
-        fetcher=lambda _url, _timeout: (
-            200,
-            "text/html",
-            b"<html><body>Conformance source response.</body></html>",
-        ),
-        resolver=lambda _hostname: ["93.184.216.34"],
+def _conformance_fixture_provenance() -> dict[str, str]:
+    return build_acquisition_provenance(
+        mode=FIXTURE_MAP,
+        content=b"Conformance fixture source response.",
     )
-    return acquired["source_records"][0]["acquisition_provenance"]
 
 
 def _suppressed_result(rows: list[Mapping[str, Any]]) -> dict[str, str]:
@@ -807,6 +792,11 @@ def _policy_gate_mismatches(rows: Mapping[str, Any]) -> list[dict[str, Any]]:
             policy_allowed = surface in allowed_surfaces
             gate_allowed = gate.get("decision") == "allowed"
             if policy_allowed == gate_allowed:
+                continue
+            if (
+                policy_allowed
+                and gate.get("reason") in _EXPECTED_DIAGNOSTIC_GATE_REASONS
+            ):
                 continue
             mismatches.append(
                 {

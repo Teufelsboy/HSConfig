@@ -6,6 +6,7 @@ from hsconfig.source_document_model import (
     SUPPORTED_ATOMIC_CLAIM_KINDS,
     surface_gate_decision,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 from tests.mulligan_authority_fixtures import (
     build_canonical_mulligan_bundle,
     canonical_mulligan_gate_context,
@@ -47,11 +48,7 @@ def _canonical_posture_bundle():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",
@@ -100,11 +97,7 @@ def _canonical_combo_bundle():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

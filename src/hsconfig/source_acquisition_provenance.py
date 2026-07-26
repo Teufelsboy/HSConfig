@@ -28,6 +28,9 @@ _AUTHORITY_BY_MODE = {
     FIXTURE_MAP: FIXTURE_ONLY,
     LEGACY_CLAIMS_JSON: LEGACY_UNVERIFIED,
 }
+_CANONICAL_PROVENANCE_KEYS = frozenset(
+    {"mode", "content_sha256", "authority"}
+)
 _CANONICAL_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
@@ -54,6 +57,8 @@ def acquisition_provenance_is_canonical(
     mode: str | None = None,
 ) -> bool:
     if not isinstance(value, Mapping):
+        return False
+    if set(value) != _CANONICAL_PROVENANCE_KEYS:
         return False
     observed_mode = value.get("mode")
     if observed_mode not in _AUTHORITY_BY_MODE:

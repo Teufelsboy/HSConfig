@@ -225,8 +225,8 @@ def test_configure_live_http_preserves_provenance_to_strategic_receipt(
         "tests/fixtures/source_pages/shadowpriest_current_guide.html"
     ).read_bytes()
     monkeypatch.setattr(
-        "hsconfig.source_acquisition._default_fetcher",
-        lambda _url, _timeout, validated_addresses=None: (
+        "hsconfig.source_acquisition._fetch_with_validated_address",
+        lambda _url, _timeout, _address: (
             200,
             "text/html",
             body,

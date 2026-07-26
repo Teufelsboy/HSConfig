@@ -201,7 +201,10 @@ def test_contract_spine_sentinel_keeps_critical_runtime_boundaries_visible():
     critical = report["checks"]["critical_boundary_rows"]
 
     assert critical["mulligan_keep"]["allowed_surfaces"] == ["mulligan"]
-    assert critical["mulligan_keep"]["final_runtime_effect"] == "emits_mulligan_runtime_row"
+    assert critical["mulligan_keep"]["surface_gate_status"] == "mulligan:rejected"
+    assert critical["mulligan_keep"]["final_runtime_effect"] == (
+        "suppressed:strategic_provenance_not_live_verified"
+    )
 
     assert critical["hero_power_transform"]["allowed_surfaces"] == ["cardid"]
     assert critical["hero_power_transform"]["final_runtime_effect"] == "emits_cardid_runtime_row"

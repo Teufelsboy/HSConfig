@@ -4,13 +4,10 @@ from datetime import date
 from pathlib import Path
 
 from hsconfig.deck_identity import stable_deck_fingerprint
-from hsconfig.source_acquisition_provenance import (
-    LIVE_HTTP,
-    build_acquisition_provenance,
-)
 from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_claim_compiler import compile_source_search_records
 from hsconfig.source_evidence_policy import classify_source_evidence
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 CURRENT_DATE = date(2026, 7, 15)
@@ -49,12 +46,7 @@ SHADOW_DECK_IDENTITY["deck_fingerprint"] = stable_deck_fingerprint(
 
 def _guide_record(claims: list[dict] | None = None) -> dict:
     return {
-        "acquisition_provenance": build_acquisition_provenance(
-            mode=LIVE_HTTP,
-            content=(
-                b"synthetic successful HTTP response for downstream authority tests"
-            ),
-        ),
+        "acquisition_provenance": acquire_live_test_provenance(),
         "source_url": "https://example.com/shadow-priest-guide-2026",
         "source_title": "ShadowPriest Current Public Guide 2026",
         "source_family": "guide",

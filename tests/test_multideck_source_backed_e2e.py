@@ -8,15 +8,12 @@ from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json, write_json
 from hsconfig.source_autopilot import build_source_autopilot_bundle
-from hsconfig.source_acquisition_provenance import (
-    LIVE_HTTP,
-    build_acquisition_provenance,
-)
 from hsconfig.source_document_model import qualify_source_claim
 from tests.helpers.fixture_prepare import (
     load_archetype_matrix,
     read_json as read_fixture_json,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 DECKS = {
@@ -170,12 +167,7 @@ def _exact_current_record(record: dict, deck_identity: dict) -> dict:
     card_ids = [str(card["card_id"]) for card in deck_identity["cards"]]
     return {
         **record,
-        "acquisition_provenance": build_acquisition_provenance(
-            mode=LIVE_HTTP,
-            content=(
-                b"synthetic successful HTTP response for downstream authority tests"
-            ),
-        ),
+        "acquisition_provenance": acquire_live_test_provenance(),
         "source_record_strength": "candidate_strong",
         "deck_match_scope": "exact_deck_matched",
         "deck_match": {

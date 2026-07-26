@@ -729,7 +729,11 @@ def strategic_source_receipt_provenance(
     if not strategic_source_provenance_is_verified(value):
         return None
     assert isinstance(value, Mapping)
-    return value
+    return {
+        "mode": str(value["mode"]),
+        "content_sha256": str(value["content_sha256"]),
+        "authority": str(value["authority"]),
+    }
 
 
 def strategic_provenance_diagnostic(

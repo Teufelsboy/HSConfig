@@ -24,6 +24,10 @@ from hsconfig.source_acquisition import (
     extract_visible_text,
     validate_public_source_url,
 )
+from hsconfig.source_acquisition_provenance import (
+    acquisition_provenance_is_canonical,
+)
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "source_pages"
@@ -187,15 +191,20 @@ def test_acquisition_provenance_rejects_unknown_mode():
         )
 
 
-def test_successful_direct_http_fetch_records_live_verified_provenance():
+def test_successful_direct_http_fetch_records_live_verified_provenance(
+    monkeypatch,
+):
     body = b"<html><body><main>ShadowPriest guide text.</main></body></html>"
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition._fetch_with_validated_address",
+        lambda _url, _timeout, _address: (200, "text/html", body),
+    )
 
     result = collect_public_source_records(
         deck_name="ShadowPriest",
         deck_identity=_shadowpriest_identity(),
         source_urls=["https://example.test/guide"],
         current_date="2026-07-26",
-        fetcher=lambda _url, _timeout: (200, "text/html", body),
         resolver=_public_resolver,
     )
 
@@ -207,6 +216,53 @@ def test_successful_direct_http_fetch_records_live_verified_provenance():
         ),
         "authority": "live_verified",
     }
+
+
+@pytest.mark.parametrize(
+    "acquisition_kwargs",
+    [
+        pytest.param({}, id="default-mode"),
+        pytest.param({"acquisition_mode": "live_http"}, id="forged-live-mode"),
+    ],
+)
+def test_injected_fetcher_cannot_assign_live_authority(acquisition_kwargs):
+    result = collect_public_source_records(
+        deck_name="ShadowPriest",
+        deck_identity=_shadowpriest_identity(),
+        source_urls=["https://example.test/captured"],
+        current_date="2026-07-26",
+        fetcher=lambda _url, _timeout: (
+            200,
+            "text/html",
+            b"<html><body>Captured response.</body></html>",
+        ),
+        resolver=_public_resolver,
+        **acquisition_kwargs,
+    )
+
+    provenance = result["source_records"][0]["acquisition_provenance"]
+    assert provenance["mode"] == "captured_record"
+    assert provenance["authority"] == "captured_unverified"
+
+
+@pytest.mark.parametrize(
+    ("extra_key", "sensitive_value"),
+    [
+        ("raw_html", "<script>secret</script>"),
+        ("local_path", "C:/Users/operator/private/source.html"),
+        ("source_url", "https://example.test/guide?token=super-secret"),
+    ],
+)
+def test_canonical_provenance_rejects_additional_fields(
+    extra_key,
+    sensitive_value,
+):
+    provenance = {
+        **acquire_live_test_provenance(),
+        extra_key: sensitive_value,
+    }
+
+    assert acquisition_provenance_is_canonical(provenance) is False
 
 
 @pytest.mark.parametrize(

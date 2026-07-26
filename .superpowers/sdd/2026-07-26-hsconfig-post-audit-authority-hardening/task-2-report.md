@@ -287,3 +287,116 @@ Vorgesehener Task-Commit:
 ```text
 fix: bind strategic receipts to live acquisition provenance
 ```
+
+## Fix-Runde 1
+
+Status: `DONE`
+
+### Behobene Review-Befunde
+
+1. Ein beliebig injizierter Top-Level-`fetcher` kann keine
+   `live_http`-/`live_verified`-Provenienz mehr erzeugen. Nur der interne
+   Direkt-HTTP-Pfad mit `fetcher=None` darf Live-Authority zuweisen. Tests
+   ersetzen bei positiven Live-Fällen ausschliesslich die tieferliegende
+   Netzwerkfunktion `_fetch_with_validated_address`.
+2. Alle vergleichbaren strategischen Positiv-Fixtures für Mulligan, Combo und
+   GlobalValues beziehen Live-Provenienz über den gemeinsamen Test-Helper
+   `tests/helpers/live_acquisition.py`. Manuelle Live-Dictionaries und direkte
+   Authority-Erzeugung in diesen Downstream-Fixtures wurden entfernt.
+   Production-Conformance verwendet jetzt ausdrücklich `fixture_map`, bleibt
+   diagnostic-only und erzeugt keine strategischen Receipts.
+3. Der kanonische Provenienz-Verifier verlangt exakt die Schlüssel
+   `{mode, content_sha256, authority}`. Strategische Receipts erhalten ein neu
+   normalisiertes Drei-Feld-Objekt. Zusätzliche Felder wie `raw_html`,
+   `local_path` oder eine URL mit Query-Secret verhindern das Receipt-Minting
+   vollständig und gelangen nicht in Receipts.
+
+### TDD RED
+
+Vor dem Produktcode-Fix:
+
+```powershell
+python -m pytest -q `
+  tests/test_source_acquisition.py::test_injected_fetcher_cannot_assign_live_authority `
+  tests/test_source_acquisition.py::test_canonical_provenance_rejects_additional_fields `
+  tests/test_source_document_drafter.py::test_strategic_receipt_rejects_noncanonical_provenance_fields `
+  tests/test_source_contract_conformance.py::test_conformance_strategic_examples_remain_diagnostic_only `
+  --tb=short --show-capture=no
+```
+
+Ergebnis:
+
+```text
+9 failed in 0.65s
+```
+
+Die neun Fehler deckten exakt die drei Review-Befunde ab: zwei unerlaubte
+Live-Upgrades durch injizierte Fetcher, drei akzeptierte Provenienzobjekte mit
+Zusatzfeldern, drei dadurch erzeugte strategische Receipts und eine
+Conformance-Probe mit unerlaubter Live-Authority.
+
+### GREEN und Regression
+
+Die neue Regression-Suite wurde nach dem minimalen Produktcode-Fix grün:
+
+```text
+9 passed in 0.43s
+```
+
+Fokussierte Provenienz-/Receipt-/Conformance-/Combo-/Mulligan-/
+GlobalValues-Prüfung:
+
+```text
+399 passed in 19.58s
+```
+
+Nach der Migration des zugehörigen Contract-Spine-Sentinels:
+
+```text
+192 passed in 7.77s
+```
+
+Der erste vollständige Lauf fand genau eine veraltete Sentinel-Erwartung:
+
+```text
+1 failed, 2381 passed, 11 skipped in 242.99s
+```
+
+Der Sentinel erwartete noch strategische Emission aus der nun bewusst
+unautorisierten Conformance-Fixture. Nach Ausrichtung auf die
+diagnostic-only-Sperre war die vollständige Repository-Suite grün:
+
+```text
+2382 passed, 11 skipped in 238.30s
+```
+
+Ruff auf allen geänderten Python-Dateien:
+
+```text
+All checks passed!
+```
+
+`git diff --check` war sauber; es erschienen nur die bestehenden
+Windows-Hinweise zur künftigen LF/CRLF-Normalisierung.
+
+### Self-Review
+
+- Repository-weite Suche bestätigt: Verbleibende `live_http`-/
+  `live_verified`-Literale in Tests sind Output-Assertions, Negativ-/Forgery-
+  Fälle oder direkte Unit-Tests des Provenienz-Wertobjekts. Strategische
+  Downstream-Positiv-Fixtures minten keine Authority selbst.
+- Die neue Trust-Grenze ist fail-closed: Ein injizierter Fetcher wird bei
+  angefordertem Live-Modus als `captured_record` klassifiziert; explizit
+  schwächere Modi bleiben schwächer.
+- Der kanonische Verifier akzeptiert weder unbekannte noch zusätzliche Felder.
+  Der Receipt-Builder gibt nur die drei kanonischen String-Felder weiter.
+- Conformance und Contract-Spine bleiben diagnostic-only und melden die
+  fehlende Live-Provenienz, ohne Apply-Gates oder Runtime-Schreibrechte zu
+  lockern.
+- Keine Runtime-, HSTuner- oder Desktop-Dateien wurden geschrieben.
+
+Vorgesehener Fix-Commit:
+
+```text
+fix: seal live acquisition provenance boundary
+```

@@ -4,6 +4,7 @@ from hsconfig.source_document_model import (
     globalvalues_claim_signature,
     normalized_claim_kind,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 _TEST_DECK_FINGERPRINT = "sha256:mulligan-plan-unit-fixture"
@@ -25,11 +26,7 @@ def build_mulligan_plan(**kwargs):
             claim.setdefault("source_lane", "deck_matched_public_guide")
             claim.setdefault(
                 "acquisition_provenance",
-                {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                acquire_live_test_provenance(),
             )
             claim.setdefault(
                 "deck_match",

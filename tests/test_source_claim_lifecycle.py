@@ -11,6 +11,7 @@ from hsconfig.source_document_model import (
     globalvalues_claim_signature,
     strict_claim_kind,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 _MULLIGAN_FINGERPRINT = "sha256:lifecycle-mulligan-fixture"
@@ -31,11 +32,7 @@ def _authorized_mulligan_claim(
         "promotion_eligible": True,
         "source_visibility": "full_text",
         "source_lane": "deck_matched_public_guide",
-        "acquisition_provenance": {
-            "mode": "live_http",
-            "content_sha256": "sha256:" + ("a" * 64),
-            "authority": "live_verified",
-        },
+        "acquisition_provenance": acquire_live_test_provenance(),
         "deck_match": {
             "exact_deck_evidence": {
                 "candidate_count": 1,

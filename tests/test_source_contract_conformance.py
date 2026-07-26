@@ -22,7 +22,12 @@ def test_conformance_snapshot_keeps_key_boundaries_explicit():
     rows = build_source_contract_conformance_snapshot()["claim_kind_rows"]
 
     assert rows["mulligan_keep"]["policy_lane"] == "runtime_lowerable"
-    assert rows["mulligan_keep"]["surface_gates"]["mulligan"]["decision"] == "allowed"
+    assert rows["mulligan_keep"]["surface_gates"]["mulligan"] == {
+        "claim_kind": "mulligan_keep",
+        "surface": "mulligan",
+        "decision": "rejected",
+        "reason": "strategic_provenance_not_live_verified",
+    }
     assert rows["mulligan_keep"]["surface_gates"]["cardid"]["decision"] == "rejected"
 
     assert rows["hero_power_transform"]["policy_lane"] == "suppressed_or_conditional"
@@ -52,26 +57,29 @@ def test_conformance_snapshot_records_builder_router_expectations_and_combo_prer
     combo = rows["combo_sequence"]["builder_router"]
     assert combo["surface"] == "combo"
     assert combo["runner"] == "build_combo_plan"
-    assert combo["complete"]["expected_outcome"] == "emitted"
-    assert combo["complete"]["outcome"] == "emitted"
+    assert combo["complete"]["expected_outcome"] == "suppressed"
+    assert combo["complete"]["outcome"] == "suppressed"
+    assert combo["complete"]["reason"] == "strategic_provenance_not_live_verified"
     assert combo["incomplete"]["expected_outcome"] == "suppressed"
     assert combo["incomplete"]["outcome"] == "suppressed"
-    assert combo["incomplete"]["reason"] == "sequence_too_short"
+    assert combo["incomplete"]["reason"] == "strategic_provenance_not_live_verified"
+    assert snapshot["summary"]["builder_prerequisite_gaps"] == []
 
-    assert snapshot["summary"]["builder_prerequisite_gap_count"] >= 1
-    assert {
-        "claim_kind": "combo_sequence",
-        "surface": "combo",
-        "builder_outcome": "suppressed",
-        "reason": "sequence_too_short",
-    } in [
-        {
-            key: value
-            for key, value in row.items()
-            if key in {"claim_kind", "surface", "builder_outcome", "reason"}
-        }
-        for row in snapshot["summary"]["builder_prerequisite_gaps"]
-    ]
+
+def test_conformance_strategic_examples_remain_diagnostic_only():
+    rows = build_source_contract_conformance_snapshot()["claim_kind_rows"]
+
+    expected_reasons = {
+        "mulligan_keep": "strategic_provenance_not_live_verified",
+        "mulligan_discard": "strategic_provenance_not_live_verified",
+        "combo_sequence": "strategic_provenance_not_live_verified",
+        "gameplan_posture": "requires_runtime_evidence",
+    }
+    for claim_kind, expected_reason in expected_reasons.items():
+        exemplar = rows[claim_kind]["builder_router"]["complete"]
+        assert exemplar["expected_outcome"] == "suppressed"
+        assert exemplar["outcome"] == "suppressed"
+        assert exemplar["reason"] == expected_reason
 
 
 def test_conformance_snapshot_describes_a_policy_gate_mismatch(monkeypatch):
@@ -159,7 +167,9 @@ def test_conformance_markdown_exposes_combo_builder_router_outcomes():
 
     assert "## Builder/Router Outcomes" in markdown
     assert (
-        "| combo_sequence | combo | build_combo_plan | emitted | suppressed: sequence_too_short |"
+        "| combo_sequence | combo | build_combo_plan | "
+        "suppressed: strategic_provenance_not_live_verified | "
+        "suppressed: strategic_provenance_not_live_verified |"
         in markdown
     )
 
@@ -170,15 +180,15 @@ def test_pipeline_mismatch_count_includes_builder_router_expectation_mismatches(
     monkeypatch.setitem(
         conformance._BUILDER_ROUTER_EXPECTATIONS["mulligan_keep"],
         "outcome",
-        "suppressed",
+        "emitted",
     )
 
     summary = build_source_contract_conformance_snapshot()["summary"]
 
     assert summary["policy_gate_mismatch_count"] == 0
     assert summary["builder_router_expectation_mismatch_count"] == 1
-    assert summary["surface_gate_builder_mismatch_count"] == 1
-    assert summary["pipeline_mismatch_count"] == 2
+    assert summary["surface_gate_builder_mismatch_count"] == 0
+    assert summary["pipeline_mismatch_count"] == 1
 
 
 def test_conformance_snapshot_contains_no_apply_authority_fields():
@@ -203,20 +213,9 @@ def test_conformance_snapshot_distinguishes_drift_from_builder_prerequisites():
     assert summary["unexpected_contract_drift_count"] == 0
     assert summary["unexpected_contract_drifts"] == []
 
-    assert summary["builder_prerequisite_gap_count"] == 1
-    assert summary["builder_prerequisite_gaps"] == [
-        {
-            "claim_kind": "combo_sequence",
-            "surface": "combo",
-            "builder_outcome": "suppressed",
-            "reason": "sequence_too_short",
-            "operator_meaning": (
-                "Surface gate allows this claim kind, but the builder still needs "
-                "a complete sequence before runtime JSON can be emitted."
-            ),
-        }
-    ]
-    assert summary["pipeline_attention_count"] == 1
+    assert summary["builder_prerequisite_gap_count"] == 0
+    assert summary["builder_prerequisite_gaps"] == []
+    assert summary["pipeline_attention_count"] == 0
 
 
 def test_conformance_snapshot_keeps_legacy_mismatch_keys_as_attention_aliases():
@@ -257,9 +256,14 @@ def test_conformance_snapshot_exposes_claim_lifecycle_for_key_claims():
     assert rows["combo_sequence"]["lifecycle"] == {
         "policy_lane": "runtime_lowerable",
         "allowed_surfaces": ["combo"],
-        "surface_gate_status": "combo:allowed",
-        "builder_status": "build_combo_plan:emitted; incomplete:suppressed:sequence_too_short",
-        "final_runtime_effect": "emits_when_builder_prerequisites_are_complete",
+        "surface_gate_status": "combo:rejected",
+        "builder_status": (
+            "build_combo_plan:suppressed; "
+            "incomplete:suppressed:strategic_provenance_not_live_verified"
+        ),
+        "final_runtime_effect": (
+            "suppressed:strategic_provenance_not_live_verified"
+        ),
         "operator_meaning": "Can lower only as an explicit ordered Combo.json sequence.",
     }
 
@@ -362,13 +366,9 @@ def test_conformance_markdown_uses_drift_and_prerequisite_language():
 
     assert "## Summary" in markdown
     assert "- Unexpected contract drift: 0" in markdown
-    assert "- Builder prerequisite gaps: 1" in markdown
+    assert "- Builder prerequisite gaps: 0" in markdown
     assert "## Builder Prerequisite Gaps" in markdown
-    assert (
-        "| combo_sequence | combo | suppressed | sequence_too_short | "
-        "Surface gate allows this claim kind, but the builder still needs a complete "
-        "sequence before runtime JSON can be emitted. |"
-    ) in markdown
+    assert "| none | none | none | none | none |" in markdown
     assert "## Claim Lifecycle" in markdown
     assert (
         "| hero_power_transform | suppressed_or_conditional | cardid:allowed | "
@@ -411,8 +411,10 @@ def test_contract_spine_keeps_critical_runtime_boundaries_explicit():
         "mulligan_keep": {
             "policy_lane": "runtime_lowerable",
             "allowed_surfaces": ["mulligan"],
-            "surface_gate_status": "mulligan:allowed",
-            "final_runtime_effect": "emits_mulligan_runtime_row",
+            "surface_gate_status": "mulligan:rejected",
+            "final_runtime_effect": (
+                "suppressed:strategic_provenance_not_live_verified"
+            ),
         },
         "hero_power_transform": {
             "policy_lane": "suppressed_or_conditional",
@@ -429,8 +431,10 @@ def test_contract_spine_keeps_critical_runtime_boundaries_explicit():
         "combo_sequence": {
             "policy_lane": "runtime_lowerable",
             "allowed_surfaces": ["combo"],
-            "surface_gate_status": "combo:allowed",
-            "final_runtime_effect": "emits_when_builder_prerequisites_are_complete",
+            "surface_gate_status": "combo:rejected",
+            "final_runtime_effect": (
+                "suppressed:strategic_provenance_not_live_verified"
+            ),
         },
         "archetype": {
             "policy_lane": "report_only",

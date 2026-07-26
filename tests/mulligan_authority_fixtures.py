@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from hsconfig.source_document_builder import build_source_document_bundle
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 MULLIGAN_AUTHORITY_FINGERPRINT = "sha256:test-mulligan-authority"
@@ -66,11 +67,7 @@ def build_canonical_mulligan_bundle(
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

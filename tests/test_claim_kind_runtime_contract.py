@@ -20,6 +20,7 @@ from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     select_claims_for_surface,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 MULLIGAN_RECEIPT_FINGERPRINT = "sha256:mulligan-receipt-target"
@@ -61,11 +62,7 @@ def _canonical_mulligan_receipt_bundle(
         "source_title": "Canonical Mulligan Guide",
         "source_family": "guide",
         "retrieved_at": "2026-07-26T00:00:00Z",
-        "acquisition_provenance": {
-            "mode": "live_http",
-            "content_sha256": "sha256:" + ("a" * 64),
-            "authority": "live_verified",
-        },
+        "acquisition_provenance": acquire_live_test_provenance(),
         "source_visibility": "full_text",
         "source_lane": "deck_matched_public_guide",
         "deck_match_scope": "exact_deck_matched",
@@ -366,11 +363,7 @@ def test_globalvalues_lifecycle_accepts_verified_exact_public_guide_posture():
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

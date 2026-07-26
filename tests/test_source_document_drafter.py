@@ -3,6 +3,11 @@ import pytest
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_drafter import draft_source_documents
 from hsconfig.source_document_model import can_lower_to_mulligan
+from hsconfig.source_acquisition_provenance import (
+    CAPTURED_RECORD,
+    build_acquisition_provenance,
+)
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 DECK_IDENTITY = {
@@ -44,11 +49,7 @@ def _exact_mulligan_evidence_row(
         "source_title": "Strict Count Guide",
         "source_family": "guide",
         "retrieved_at": "2026-07-26T00:00:00Z",
-        "acquisition_provenance": {
-            "mode": "live_http",
-            "content_sha256": "sha256:" + ("a" * 64),
-            "authority": "live_verified",
-        },
+        "acquisition_provenance": acquire_live_test_provenance(),
         "deck_name": "StrictCountDeck",
         "archetype": "strictcountdeck",
         "source_lane": "deck_matched_public_guide",
@@ -68,25 +69,24 @@ def _exact_mulligan_evidence_row(
 
 
 @pytest.mark.parametrize(
-    ("mode", "authority", "expected_receipt_count"),
+    ("is_live_acquisition", "expected_receipt_count"),
     [
-        ("live_http", "live_verified", 1),
-        ("captured_record", "captured_unverified", 0),
+        (True, 1),
+        (False, 0),
     ],
 )
 def test_strategic_receipt_minting_is_bound_to_acquisition_provenance(
-    mode,
-    authority,
+    is_live_acquisition,
     expected_receipt_count,
 ):
-    content_provenance = {
-        "mode": mode,
-        "content_sha256": (
-            "sha256:ee777040a572d64f2d71e67d68539986e003b924be839a5875"
-            "adda224e19a665"
-        ),
-        "authority": authority,
-    }
+    content_provenance = (
+        acquire_live_test_provenance()
+        if is_live_acquisition
+        else build_acquisition_provenance(
+            mode=CAPTURED_RECORD,
+            content=b"Captured source response.",
+        )
+    )
     fingerprint = "sha256:provenance-target"
     deck_identity = {
         "deck_name": "ProvenanceDeck",
@@ -129,6 +129,57 @@ def test_strategic_receipt_minting_is_bound_to_acquisition_provenance(
                 "code": "strategic_provenance_not_live_verified",
             }
         ]
+
+
+@pytest.mark.parametrize(
+    ("extra_key", "sensitive_value"),
+    [
+        ("raw_html", "<main>private source text</main>"),
+        ("local_path", "C:/Users/operator/private/source.html"),
+        ("source_url", "https://example.test/guide?token=super-secret"),
+    ],
+)
+def test_strategic_receipt_rejects_noncanonical_provenance_fields(
+    extra_key,
+    sensitive_value,
+):
+    fingerprint = "sha256:strict-provenance-target"
+    deck_identity = {
+        "deck_name": "StrictProvenanceDeck",
+        "deck_fingerprint": fingerprint,
+        "cards": [{"card_id": "EX1_001", "name": "Fixture One", "count": 1}],
+    }
+    row = _exact_mulligan_evidence_row(
+        fingerprint=fingerprint,
+        count_field="candidate_count",
+        count_value=1,
+    )
+    row["acquisition_provenance"] = {
+        **acquire_live_test_provenance(),
+        extra_key: sensitive_value,
+    }
+
+    draft = draft_source_documents(
+        deck_name="StrictProvenanceDeck",
+        deck_identity=deck_identity,
+        evidence_rows=[row],
+    )
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=draft["source_documents"],
+        current_date="2026-07-26",
+    )
+
+    assert bundle["canonical_source_receipts"] == []
+    assert bundle["strategic_receipt_diagnostics"] == [
+        {
+            "claim_id": bundle["claims"][0]["claim_id"],
+            "source_ref": "source:1",
+            "code": "strategic_provenance_not_live_verified",
+        }
+    ]
+    assert sensitive_value not in str(bundle["canonical_source_receipts"])
 
 
 def test_drafter_preserves_consensus_exact_deck_evidence():

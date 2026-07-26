@@ -4,6 +4,7 @@ from hsconfig.globalvalues_key_authority import authority_for_key
 from hsconfig.globalvalues_authority import build_globalvalues_authority_matrix
 from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import can_lower_to_globalvalues
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 def test_globalvalues_key_authority_classifies_core_keys():
@@ -274,11 +275,7 @@ def _verified_public_guide_posture_claim(
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

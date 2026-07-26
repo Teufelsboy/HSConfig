@@ -7,6 +7,7 @@ from hsconfig.source_contract_audit import (
     build_source_contract_audit,
     render_source_contract_audit_markdown,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 from tests.mulligan_authority_fixtures import build_canonical_mulligan_bundle
 
 
@@ -45,11 +46,7 @@ def _verified_posture_bundle(claim_id: str = "posture_claim") -> dict:
                 "source_family": "guide",
                 "source_type": "public_guide",
                 "retrieved_at": "2026-07-26T00:00:00Z",
-                "acquisition_provenance": {
-                    "mode": "live_http",
-                    "content_sha256": "sha256:" + ("a" * 64),
-                    "authority": "live_verified",
-                },
+                "acquisition_provenance": acquire_live_test_provenance(),
                 "source_visibility": "full_text",
                 "source_lane": "deck_matched_public_guide",
                 "deck_match_scope": "exact_deck_matched",

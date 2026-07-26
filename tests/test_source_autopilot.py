@@ -14,6 +14,7 @@ from hsconfig.source_autopilot import (
     extract_source_evidence_rows,
     rank_public_sources,
 )
+from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -189,11 +190,7 @@ def _current_guide_record(claims: list[dict], *, archetype: str = "aggro_fixture
         "source_family": "guide",
         "source_visibility": "full_text",
         "publication_year": 2026,
-        "acquisition_provenance": {
-            "mode": "live_http",
-            "content_sha256": "sha256:" + ("a" * 64),
-            "authority": "live_verified",
-        },
+        "acquisition_provenance": acquire_live_test_provenance(),
         "normalized_text": (
             "Profile Fixture Guide 2026 explains current mulligan decisions, "
             "gameplan posture, target priorities, combo sequence planning, "
@@ -279,11 +276,7 @@ def _strict_count_autopilot_fixture(
         "source_record_strength": "candidate_strong",
         "source_lane": "deck_matched_public_guide",
         "source_rank_lane": "guide_current_deck_match",
-        "acquisition_provenance": {
-            "mode": "live_http",
-            "content_sha256": "sha256:" + ("a" * 64),
-            "authority": "live_verified",
-        },
+        "acquisition_provenance": acquire_live_test_provenance(),
         "deck_match_scope": "exact_deck_matched",
         "deck_match": {
             "deck_name": "StrictCountDeck",
