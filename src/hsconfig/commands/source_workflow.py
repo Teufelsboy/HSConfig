@@ -476,6 +476,7 @@ def _research_deck_payload(
     context = build_preconfig_context(
         args,
         source_authority_handoff=source_authority_handoff,
+        source_authority_consumer="research",
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=fetch_latest_collectible_cards,
     )

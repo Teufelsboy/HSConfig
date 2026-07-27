@@ -29,6 +29,7 @@ from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
 from hsconfig.internal_source_authority import (
     reject_caller_supplied_source_authority,
+    split_source_documents_handoff,
 )
 from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
@@ -111,6 +112,8 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     source_acquisition_path = None
     source_documents_json = None
     source_authority_handoff = None
+    research_source_authority_handoff = None
+    prepare_source_authority_handoff = None
     source_autopilot_path = None
     source_closure_intake_receipt_path = None
     source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
@@ -221,6 +224,11 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 {"stage": "source-autopilot", **autopilot_payload},
                 autopilot_status,
             )
+        if source_authority_handoff is not None:
+            (
+                research_source_authority_handoff,
+                prepare_source_authority_handoff,
+            ) = split_source_documents_handoff(source_authority_handoff)
         source_autopilot_path = autopilot_dir
         source_documents_json = autopilot_dir / "source_documents.json"
     elif getattr(args, "source_evidence_json", None):
@@ -258,10 +266,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 skip_semantic_fetch=False,
                 auto_research_fallback=True,
             )
-        if source_authority_handoff is not None:
+        if research_source_authority_handoff is not None:
             research_payload, research_status = research_deck_for_configure(
                 research_args,
-                source_authority_handoff,
+                research_source_authority_handoff,
             )
         else:
             research_payload, research_status = research_deck_payload(research_args)
@@ -297,7 +305,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 json=True,
             ),
             current_date=current_date,
-            source_authority_handoff=source_authority_handoff,
+            source_authority_handoff=prepare_source_authority_handoff,
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)

@@ -145,6 +145,7 @@ def build_package_payload(
         args,
         current_date=_package_current_date(args, current_date),
         source_authority_handoff=source_authority_handoff,
+        source_authority_consumer="prepare",
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=None,
         research_required_guide_sources_fn=_research_required_guide_sources,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from hsconfig.card_data_intake import build_card_data_context
 from hsconfig.card_feed_loading import (
@@ -47,6 +47,7 @@ def build_preconfig_context(
     *,
     current_date: date | None = None,
     source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+    source_authority_consumer: Literal["research", "prepare"] | None = None,
     fetch_latest_cards_fn: Any = fetch_latest_cards,
     fetch_latest_collectible_cards_fn: Any | None = fetch_latest_collectible_cards,
     research_required_guide_sources_fn: Any = research_required_guide_sources,
@@ -80,8 +81,15 @@ def build_preconfig_context(
     collectible_cards = collectible_cards or []
     full_cards = full_cards or []
     claims = load_claims(getattr(args, "claims_json", None))
-    trusted_source_documents = trusted_source_documents_from_handoff(
-        source_authority_handoff
+    if source_authority_handoff is not None and source_authority_consumer is None:
+        raise ValueError("source_authority_consumer_mismatch")
+    trusted_source_documents = (
+        trusted_source_documents_from_handoff(
+            source_authority_handoff,
+            consumer=source_authority_consumer,
+        )
+        if source_authority_handoff is not None
+        else None
     )
     source_documents_input = (
         trusted_source_documents

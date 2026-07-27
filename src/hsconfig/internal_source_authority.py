@@ -6,7 +6,7 @@ from secrets import token_bytes, token_hex
 from copy import deepcopy
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any
+from typing import Any, Literal
 from weakref import WeakValueDictionary
 
 
@@ -20,6 +20,11 @@ _ACTIVE_SEARCH = "active_search"
 _CONSUMED_SEARCH = "consumed_search"
 _DOCUMENT_ISSUED = "document_issued"
 _ACTIVE_DOCUMENT = "active_document"
+_DOCUMENT_SPLIT = "document_split"
+_CONSUMED_DOCUMENT = "consumed_document"
+_SOURCE_AUTOPILOT_CONSUMER = "source_autopilot"
+_SPLIT_CONSUMER = "split"
+_DOCUMENT_CONSUMERS = ("research", "prepare")
 _HANDOFF_MAC_KEY = token_bytes(32)
 _ACTIVE_ORIGINAL_TOKENS: WeakValueDictionary[str, _AuthorityToken] = (
     WeakValueDictionary()
@@ -37,6 +42,7 @@ class InternalSourceAuthorityHandoff:
     search_records: tuple[dict[str, Any], ...]
     source_documents: tuple[dict[str, Any], ...]
     _token: object
+    consumer: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +59,7 @@ class _AuthorityToken:
     record_fingerprint: str
     document_fingerprint: str
     lineage_fingerprint: str
+    consumer: str
     mac: str
 
 
@@ -65,16 +72,22 @@ def reject_caller_supplied_source_authority(args: Any) -> None:
 def _issue_acquired_search_records_handoff(
     records: list[dict[str, Any]],
 ) -> InternalSourceAuthorityHandoff:
-    copied_records = tuple(deepcopy(records))
+    copied_records = tuple(
+        _safe_deepcopy(
+            records,
+            failure_reason="source_authority_payload_copy_failed",
+        )
+    )
     record_fingerprint = _payload_fingerprint(copied_records)
     lineage_fingerprint = _lineage_fingerprint(record_fingerprint, "")
-    token = _new_authority_token(
+    token = _prepare_authority_token(
         state=_ACTIVE_SEARCH,
         record_fingerprint=record_fingerprint,
         document_fingerprint="",
         lineage_fingerprint=lineage_fingerprint,
+        consumer=_SOURCE_AUTOPILOT_CONSUMER,
     )
-    return InternalSourceAuthorityHandoff(
+    handoff = InternalSourceAuthorityHandoff(
         stage=_SEARCH_RECORDS_STAGE,
         record_fingerprint=record_fingerprint,
         document_fingerprint="",
@@ -82,7 +95,10 @@ def _issue_acquired_search_records_handoff(
         search_records=copied_records,
         source_documents=(),
         _token=token,
+        consumer=_SOURCE_AUTOPILOT_CONSUMER,
     )
+    _register_authority_token(token)
+    return handoff
 
 
 def _consume_acquired_search_records_handoff(
@@ -96,6 +112,11 @@ def _consume_acquired_search_records_handoff(
         raise ValueError("invalid_internal_source_authority_handoff")
     if _ACTIVE_ORIGINAL_TOKENS.get(token.nonce) is not token:
         raise ValueError("invalid_internal_source_authority_handoff")
+    if (
+        handoff.consumer != _SOURCE_AUTOPILOT_CONSUMER
+        or token.consumer != _SOURCE_AUTOPILOT_CONSUMER
+    ):
+        raise ValueError("source_authority_consumer_mismatch")
     registered_fingerprint = token.record_fingerprint
     observed_fingerprint = _payload_fingerprint(
         handoff.search_records,
@@ -110,16 +131,20 @@ def _consume_acquired_search_records_handoff(
         != _lineage_fingerprint(registered_fingerprint, "")
     ):
         raise ValueError("source_authority_handoff_lineage_mismatch")
-    consumed_token = _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce, None)
-    if consumed_token is not token:
-        raise ValueError("invalid_internal_source_authority_handoff")
-    _set_token_state(token, _CONSUMED_SEARCH)
+    copied_records = _safe_deepcopy(
+        list(handoff.search_records),
+        failure_reason="source_authority_payload_copy_failed",
+    )
     lineage = _ConsumedSearchLineage(
         record_fingerprint=registered_fingerprint,
         search_records=handoff.search_records,
         _token=token,
     )
-    return deepcopy(list(handoff.search_records)), lineage
+    consumed_mac = _authority_token_mac(token, state=_CONSUMED_SEARCH)
+
+    _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce)
+    _commit_token_state(token, state=_CONSUMED_SEARCH, mac=consumed_mac)
+    return copied_records, lineage
 
 
 def _issue_generated_source_documents_handoff(
@@ -143,8 +168,12 @@ def _issue_generated_source_documents_handoff(
         or observed_record_fingerprint != registered_fingerprint
     ):
         raise ValueError("source_authority_handoff_lineage_mismatch")
-    _set_token_state(token, _DOCUMENT_ISSUED)
-    copied_documents = tuple(deepcopy(documents))
+    copied_documents = tuple(
+        _safe_deepcopy(
+            documents,
+            failure_reason="source_authority_payload_copy_failed",
+        )
+    )
     document_fingerprint = _payload_fingerprint(
         copied_documents,
         failure_reason="source_authority_handoff_lineage_mismatch",
@@ -153,13 +182,14 @@ def _issue_generated_source_documents_handoff(
         registered_fingerprint,
         document_fingerprint,
     )
-    document_token = _new_authority_token(
+    document_token = _prepare_authority_token(
         state=_ACTIVE_DOCUMENT,
         record_fingerprint=registered_fingerprint,
         document_fingerprint=document_fingerprint,
         lineage_fingerprint=lineage_fingerprint,
+        consumer=_SPLIT_CONSUMER,
     )
-    return InternalSourceAuthorityHandoff(
+    handoff = InternalSourceAuthorityHandoff(
         stage=_SOURCE_DOCUMENTS_STAGE,
         record_fingerprint=registered_fingerprint,
         document_fingerprint=document_fingerprint,
@@ -167,20 +197,134 @@ def _issue_generated_source_documents_handoff(
         search_records=lineage.search_records,
         source_documents=copied_documents,
         _token=document_token,
+        consumer=_SPLIT_CONSUMER,
     )
+    issued_mac = _authority_token_mac(token, state=_DOCUMENT_ISSUED)
+
+    _commit_token_state(token, state=_DOCUMENT_ISSUED, mac=issued_mac)
+    _register_authority_token(document_token)
+    return handoff
 
 
-def trusted_source_documents_from_handoff(
-    handoff: InternalSourceAuthorityHandoff | None,
-) -> list[dict[str, Any]] | None:
-    if handoff is None:
-        return None
+def split_source_documents_handoff(
+    handoff: InternalSourceAuthorityHandoff,
+) -> tuple[InternalSourceAuthorityHandoff, InternalSourceAuthorityHandoff]:
+    """Consume one document capability and issue research/prepare capabilities."""
+
     _require_handoff_type_and_stage(handoff, stage=_SOURCE_DOCUMENTS_STAGE)
     token = _validated_authority_token(handoff._token)
+    if token.state == _DOCUMENT_SPLIT:
+        raise ValueError("source_authority_handoff_replayed")
     if token.state != _ACTIVE_DOCUMENT:
         raise ValueError("invalid_internal_source_authority_handoff")
     if _ACTIVE_ORIGINAL_TOKENS.get(token.nonce) is not token:
         raise ValueError("invalid_internal_source_authority_handoff")
+    if handoff.consumer != _SPLIT_CONSUMER or token.consumer != _SPLIT_CONSUMER:
+        raise ValueError("source_authority_consumer_mismatch")
+    (
+        record_fingerprint,
+        document_fingerprint,
+        lineage_fingerprint,
+    ) = _validated_document_handoff_fingerprints(handoff, token)
+
+    successor_handoffs: list[InternalSourceAuthorityHandoff] = []
+    prepared_tokens: list[_AuthorityToken] = []
+    for consumer in _DOCUMENT_CONSUMERS:
+        copied_search_records = tuple(
+            _safe_deepcopy(
+                list(handoff.search_records),
+                failure_reason="source_authority_payload_copy_failed",
+            )
+        )
+        copied_source_documents = tuple(
+            _safe_deepcopy(
+                list(handoff.source_documents),
+                failure_reason="source_authority_payload_copy_failed",
+            )
+        )
+        if (
+            _payload_fingerprint(
+                copied_search_records,
+                failure_reason="source_authority_handoff_lineage_mismatch",
+            )
+            != record_fingerprint
+            or _payload_fingerprint(
+                copied_source_documents,
+                failure_reason="source_authority_handoff_lineage_mismatch",
+            )
+            != document_fingerprint
+            or _lineage_fingerprint(record_fingerprint, document_fingerprint)
+            != lineage_fingerprint
+        ):
+            raise ValueError("source_authority_handoff_lineage_mismatch")
+        successor_token = _prepare_authority_token(
+            state=_ACTIVE_DOCUMENT,
+            record_fingerprint=record_fingerprint,
+            document_fingerprint=document_fingerprint,
+            lineage_fingerprint=lineage_fingerprint,
+            consumer=consumer,
+        )
+        prepared_tokens.append(successor_token)
+        successor_handoffs.append(
+            InternalSourceAuthorityHandoff(
+                stage=_SOURCE_DOCUMENTS_STAGE,
+                record_fingerprint=record_fingerprint,
+                document_fingerprint=document_fingerprint,
+                lineage_fingerprint=lineage_fingerprint,
+                search_records=copied_search_records,
+                source_documents=copied_source_documents,
+                _token=successor_token,
+                consumer=consumer,
+            )
+        )
+    split_mac = _authority_token_mac(token, state=_DOCUMENT_SPLIT)
+
+    _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce)
+    _commit_token_state(token, state=_DOCUMENT_SPLIT, mac=split_mac)
+    for successor_token in prepared_tokens:
+        _register_authority_token(successor_token)
+    return successor_handoffs[0], successor_handoffs[1]
+
+
+def trusted_source_documents_from_handoff(
+    handoff: InternalSourceAuthorityHandoff | None,
+    *,
+    consumer: Literal["research", "prepare"],
+) -> list[dict[str, Any]] | None:
+    """Validate and consume the capability for exactly one named consumer."""
+
+    if handoff is None:
+        return None
+    _require_handoff_type_and_stage(handoff, stage=_SOURCE_DOCUMENTS_STAGE)
+    token = _validated_authority_token(handoff._token)
+    if token.state == _CONSUMED_DOCUMENT:
+        raise ValueError("source_authority_handoff_replayed")
+    if token.state != _ACTIVE_DOCUMENT:
+        raise ValueError("invalid_internal_source_authority_handoff")
+    if _ACTIVE_ORIGINAL_TOKENS.get(token.nonce) is not token:
+        raise ValueError("invalid_internal_source_authority_handoff")
+    if (
+        consumer not in _DOCUMENT_CONSUMERS
+        or handoff.consumer != consumer
+        or token.consumer != consumer
+    ):
+        raise ValueError("source_authority_consumer_mismatch")
+    _validated_document_handoff_fingerprints(handoff, token)
+    copied_documents = _safe_deepcopy(
+        list(handoff.source_documents),
+        failure_reason="source_authority_payload_copy_failed",
+    )
+    consumed_mac = _authority_token_mac(token, state=_CONSUMED_DOCUMENT)
+
+    _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce)
+    _commit_token_state(token, state=_CONSUMED_DOCUMENT, mac=consumed_mac)
+    return copied_documents
+
+
+def _validated_document_handoff_fingerprints(
+    handoff: InternalSourceAuthorityHandoff,
+    token: _AuthorityToken,
+) -> tuple[str, str, str]:
     record_fingerprint = _payload_fingerprint(
         handoff.search_records,
         failure_reason="source_authority_handoff_lineage_mismatch",
@@ -202,7 +346,7 @@ def trusted_source_documents_from_handoff(
         or handoff.lineage_fingerprint != lineage_fingerprint
     ):
         raise ValueError("source_authority_handoff_lineage_mismatch")
-    return deepcopy(list(handoff.source_documents))
+    return record_fingerprint, document_fingerprint, lineage_fingerprint
 
 
 def _require_handoff_type_and_stage(
@@ -245,24 +389,38 @@ def _lineage_fingerprint(
     )
 
 
-def _new_authority_token(
+def _safe_deepcopy(payload: Any, *, failure_reason: str) -> Any:
+    try:
+        return deepcopy(payload)
+    except Exception as exc:
+        raise ValueError(failure_reason) from exc
+
+
+def _prepare_authority_token(
     *,
     state: str,
     record_fingerprint: str,
     document_fingerprint: str,
     lineage_fingerprint: str,
+    consumer: str,
 ) -> _AuthorityToken:
+    """Construct and sign without registering or mutating predecessor state."""
+
     token = _AuthorityToken(
         nonce=token_hex(16),
         state=state,
         record_fingerprint=record_fingerprint,
         document_fingerprint=document_fingerprint,
         lineage_fingerprint=lineage_fingerprint,
+        consumer=consumer,
         mac="",
     )
     token.mac = _authority_token_mac(token)
-    _ACTIVE_ORIGINAL_TOKENS[token.nonce] = token
     return token
+
+
+def _register_authority_token(token: _AuthorityToken) -> None:
+    _ACTIVE_ORIGINAL_TOKENS[token.nonce] = token
 
 
 def _validated_authority_token(value: Any) -> _AuthorityToken:
@@ -274,19 +432,24 @@ def _validated_authority_token(value: Any) -> _AuthorityToken:
     return value
 
 
-def _set_token_state(token: _AuthorityToken, state: str) -> None:
+def _commit_token_state(token: _AuthorityToken, *, state: str, mac: str) -> None:
     token.state = state
-    token.mac = _authority_token_mac(token)
+    token.mac = mac
 
 
-def _authority_token_mac(token: _AuthorityToken) -> str:
+def _authority_token_mac(
+    token: _AuthorityToken,
+    *,
+    state: str | None = None,
+) -> str:
     payload = json.dumps(
         {
             "nonce": token.nonce,
-            "state": token.state,
+            "state": token.state if state is None else state,
             "record_fingerprint": token.record_fingerprint,
             "document_fingerprint": token.document_fingerprint,
             "lineage_fingerprint": token.lineage_fingerprint,
+            "consumer": token.consumer,
         },
         separators=(",", ":"),
         sort_keys=True,

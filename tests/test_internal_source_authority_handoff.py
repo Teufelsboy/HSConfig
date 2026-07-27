@@ -149,6 +149,202 @@ def _deeply_nested_row() -> dict:
     return row
 
 
+class _CopyBombList(list):
+    def __deepcopy__(self, memo):
+        del memo
+        raise RuntimeError("copy-bomb")
+
+
+def _issue_document_handoff(
+    documents: list[dict] | None = None,
+) -> source_authority.InternalSourceAuthorityHandoff:
+    search_handoff = source_authority._issue_acquired_search_records_handoff(
+        [{"source_url": "https://example.test/authority"}]
+    )
+    _records, lineage = source_authority._consume_acquired_search_records_handoff(
+        search_handoff
+    )
+    return source_authority._issue_generated_source_documents_handoff(
+        lineage,
+        documents
+        if documents is not None
+        else [{"source_url": "https://example.test/authority", "claims": []}],
+    )
+
+
+def _assert_token_active_and_registered(
+    handoff: source_authority.InternalSourceAuthorityHandoff,
+    *,
+    state: str,
+) -> None:
+    token = handoff._token
+    assert token.state == state
+    assert source_authority._ACTIVE_ORIGINAL_TOKENS.get(token.nonce) is token
+
+
+def test_document_handoff_split_issues_consumer_scoped_one_shot_capabilities() -> None:
+    documents = [{"source_url": "https://example.test/authority", "claims": []}]
+    document_handoff = _issue_document_handoff(documents)
+
+    research_handoff, prepare_handoff = (
+        source_authority.split_source_documents_handoff(document_handoff)
+    )
+
+    assert research_handoff.consumer == "research"
+    assert prepare_handoff.consumer == "prepare"
+    with pytest.raises(ValueError, match="source_authority_handoff_replayed"):
+        source_authority.split_source_documents_handoff(document_handoff)
+    assert source_authority.trusted_source_documents_from_handoff(
+        research_handoff,
+        consumer="research",
+    ) == documents
+    with pytest.raises(ValueError, match="source_authority_handoff_replayed"):
+        source_authority.trusted_source_documents_from_handoff(
+            research_handoff,
+            consumer="research",
+        )
+    with pytest.raises(ValueError, match="source_authority_consumer_mismatch"):
+        source_authority.trusted_source_documents_from_handoff(
+            prepare_handoff,
+            consumer="research",
+        )
+    assert source_authority.trusted_source_documents_from_handoff(
+        prepare_handoff,
+        consumer="prepare",
+    ) == documents
+
+
+def test_search_handoff_copy_failure_preserves_capability_for_retry() -> None:
+    records = [{"source_url": "https://example.test/authority", "tags": ["guide"]}]
+    handoff = source_authority._issue_acquired_search_records_handoff(records)
+    original_records = handoff.search_records
+    object.__setattr__(
+        handoff,
+        "search_records",
+        ({"source_url": records[0]["source_url"], "tags": _CopyBombList(["guide"])},),
+    )
+
+    with pytest.raises(ValueError, match="source_authority_payload_copy_failed") as exc:
+        source_authority._consume_acquired_search_records_handoff(handoff)
+
+    assert isinstance(exc.value.__cause__, RuntimeError)
+    _assert_token_active_and_registered(handoff, state="active_search")
+    object.__setattr__(handoff, "search_records", original_records)
+    copied_records, _lineage = (
+        source_authority._consume_acquired_search_records_handoff(handoff)
+    )
+    assert copied_records == records
+
+
+def test_document_issuance_copy_failure_preserves_lineage_for_retry() -> None:
+    search_handoff = source_authority._issue_acquired_search_records_handoff([])
+    _records, lineage = source_authority._consume_acquired_search_records_handoff(
+        search_handoff
+    )
+    search_token = lineage._token
+    registry_before = dict(source_authority._ACTIVE_ORIGINAL_TOKENS.items())
+
+    with pytest.raises(ValueError, match="source_authority_payload_copy_failed") as exc:
+        source_authority._issue_generated_source_documents_handoff(
+            lineage,
+            [{"source_url": "https://example.test/authority", "claims": _CopyBombList()}],
+        )
+
+    assert isinstance(exc.value.__cause__, RuntimeError)
+    assert search_token.state == "consumed_search"
+    assert dict(source_authority._ACTIVE_ORIGINAL_TOKENS.items()) == registry_before
+    handoff = source_authority._issue_generated_source_documents_handoff(
+        lineage,
+        [{"source_url": "https://example.test/authority", "claims": []}],
+    )
+    _assert_token_active_and_registered(handoff, state="active_document")
+
+
+def test_document_split_copy_failure_preserves_capability_for_retry() -> None:
+    documents = [{"source_url": "https://example.test/authority", "claims": []}]
+    handoff = _issue_document_handoff(documents)
+    original_documents = handoff.source_documents
+    object.__setattr__(
+        handoff,
+        "source_documents",
+        (
+            {
+                "source_url": documents[0]["source_url"],
+                "claims": _CopyBombList(),
+            },
+        ),
+    )
+
+    with pytest.raises(ValueError, match="source_authority_payload_copy_failed") as exc:
+        source_authority.split_source_documents_handoff(handoff)
+
+    assert isinstance(exc.value.__cause__, RuntimeError)
+    _assert_token_active_and_registered(handoff, state="active_document")
+    object.__setattr__(handoff, "source_documents", original_documents)
+    research_handoff, prepare_handoff = (
+        source_authority.split_source_documents_handoff(handoff)
+    )
+    assert research_handoff.consumer == "research"
+    assert prepare_handoff.consumer == "prepare"
+
+
+def test_document_split_canonicalization_failure_preserves_capability_for_retry() -> None:
+    handoff = _issue_document_handoff([])
+    cyclic_document = _cyclic_row()
+    object.__setattr__(handoff, "source_documents", (cyclic_document,))
+
+    with pytest.raises(
+        ValueError,
+        match="source_authority_handoff_lineage_mismatch",
+    ):
+        source_authority.split_source_documents_handoff(handoff)
+
+    _assert_token_active_and_registered(handoff, state="active_document")
+    object.__setattr__(handoff, "source_documents", ())
+    research_handoff, prepare_handoff = (
+        source_authority.split_source_documents_handoff(handoff)
+    )
+    assert research_handoff.consumer == "research"
+    assert prepare_handoff.consumer == "prepare"
+
+
+def test_document_extraction_copy_failure_preserves_capability_for_retry() -> None:
+    documents = [{"source_url": "https://example.test/authority", "claims": []}]
+    document_handoff = _issue_document_handoff(documents)
+    research_handoff, _prepare_handoff = (
+        source_authority.split_source_documents_handoff(document_handoff)
+    )
+    original_documents = research_handoff.source_documents
+    object.__setattr__(
+        research_handoff,
+        "source_documents",
+        (
+            {
+                "source_url": documents[0]["source_url"],
+                "claims": _CopyBombList(),
+            },
+        ),
+    )
+
+    with pytest.raises(ValueError, match="source_authority_payload_copy_failed") as exc:
+        source_authority.trusted_source_documents_from_handoff(
+            research_handoff,
+            consumer="research",
+        )
+
+    assert isinstance(exc.value.__cause__, RuntimeError)
+    _assert_token_active_and_registered(research_handoff, state="active_document")
+    object.__setattr__(
+        research_handoff,
+        "source_documents",
+        original_documents,
+    )
+    assert source_authority.trusted_source_documents_from_handoff(
+        research_handoff,
+        consumer="research",
+    ) == documents
+
+
 def test_prepare_rejects_caller_supplied_trusted_source_documents(
     tmp_path: Path,
 ) -> None:
@@ -302,8 +498,11 @@ def test_zero_record_handoff_cannot_be_paired_with_forged_live_document(
         ),
         search_handoff,
     )
+    _research_handoff, prepare_handoff = (
+        source_authority.split_source_documents_handoff(document_handoff)
+    )
     object.__setattr__(
-        document_handoff,
+        prepare_handoff,
         "source_documents",
         (
             _forged_live_document(
@@ -337,7 +536,7 @@ def test_zero_record_handoff_cannot_be_paired_with_forged_live_document(
     ):
         prepare_package_payload(
             prepare_args,
-            source_authority_handoff=document_handoff,
+            source_authority_handoff=prepare_handoff,
         )
     assert not (tmp_path / "forged-package").exists()
     assert not (tmp_path / "runtime").exists()
@@ -494,6 +693,9 @@ def test_deepcopied_document_handoff_never_inherits_original_authority(
         _autopilot_args(tmp_path, acquire_args, "autopilot"),
         search_handoff,
     )
+    _research_handoff, original = source_authority.split_source_documents_handoff(
+        original
+    )
     cloned = deepcopy(original)
 
     if clone_first:
@@ -501,16 +703,25 @@ def test_deepcopied_document_handoff_never_inherits_original_authority(
             ValueError,
             match="invalid_internal_source_authority_handoff",
         ):
-            source_authority.trusted_source_documents_from_handoff(cloned)
+            source_authority.trusted_source_documents_from_handoff(
+                cloned,
+                consumer="prepare",
+            )
 
-    assert source_authority.trusted_source_documents_from_handoff(original) == []
+    assert source_authority.trusted_source_documents_from_handoff(
+        original,
+        consumer="prepare",
+    ) == []
 
     if not clone_first:
         with pytest.raises(
             ValueError,
             match="invalid_internal_source_authority_handoff",
         ):
-            source_authority.trusted_source_documents_from_handoff(cloned)
+            source_authority.trusted_source_documents_from_handoff(
+                cloned,
+                consumer="prepare",
+            )
 
 
 @pytest.mark.parametrize(
@@ -556,8 +767,11 @@ def test_invalid_document_canonicalization_fails_before_package_output(
         _autopilot_args(tmp_path, acquire_args, "autopilot"),
         search_handoff,
     )
+    _research_handoff, prepare_handoff = (
+        source_authority.split_source_documents_handoff(document_handoff)
+    )
     object.__setattr__(
-        document_handoff,
+        prepare_handoff,
         "source_documents",
         (invalid_document,),
     )
@@ -583,7 +797,7 @@ def test_invalid_document_canonicalization_fails_before_package_output(
     ):
         prepare_package_payload(
             prepare_args,
-            source_authority_handoff=document_handoff,
+            source_authority_handoff=prepare_handoff,
         )
     assert not (tmp_path / "invalid-package").exists()
 
