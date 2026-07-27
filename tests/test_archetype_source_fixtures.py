@@ -91,6 +91,38 @@ def _claims(deck_name: str) -> list[dict]:
     ]
 
 
+@pytest.mark.parametrize(
+    ("deck_name", "card_id", "runtime_block"),
+    [
+        ("CtAPaladin", "WW_336", "BeforePlayCardBonus"),
+        ("CtAPaladin", "WW_051", "BeforePlayCardBonus"),
+        ("CtAPaladin", "CATA_479", "BeforePlayCardBonus"),
+        ("PirateRogue", "CS2_073", "BeforePlayCardBonus"),
+        ("PirateRogue", "DMF_519", "BeforeBattlecryTargetBonus"),
+        ("PirateRogue", "TTN_922", "BeforePlayCardBonus"),
+        ("BigShaman", "GVG_029", "BeforePlayCardBonus"),
+        ("BigShaman", "CS2_038", "BeforeBattlecryTargetBonus"),
+        ("BigShaman", "WON_335", "BeforeBattlecryTargetBonus"),
+        ("BigShaman", "TOY_877", "OnBoardBonus"),
+        ("TreantDruid", "JAM_028", "BeforePlayCardBonus"),
+        ("TreantDruid", "TTN_954", "OnBoardBonus"),
+        ("PirateRogue", "NX2_006", "BeforePhysicalAttackBonus"),
+        ("Kingslayer", "VAC_938", "BeforePhysicalAttackBonus"),
+        ("Kingslayer", "VAC_701", "BeforePhysicalAttackBonus"),
+    ],
+)
+def test_audited_unexpressible_claims_remain_in_source_fixtures(
+    deck_name: str,
+    card_id: str,
+    runtime_block: str,
+) -> None:
+    assert any(
+        card_id in claim.get("cards", [])
+        and claim.get("runtime_block") == runtime_block
+        for claim in _claims(deck_name)
+    )
+
+
 def _is_url_like_source_ref(value: object) -> bool:
     text = str(value).strip()
     if not text:

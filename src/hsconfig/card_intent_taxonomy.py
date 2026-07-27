@@ -5,6 +5,26 @@ import re
 from typing import Sequence
 
 
+CONDITION_REQUIRED_SEMANTIC_INTENTS = frozenset(
+    {
+        "choose_one_condition_not_encoded",
+        "combo_condition_not_encoded",
+        "combo_count_condition_not_encoded",
+        "combo_target_condition_not_encoded",
+        "discover_condition_not_encoded",
+        "dredge_condition_not_encoded",
+        "hand_position_condition_not_encoded",
+        "health_cost_condition_not_encoded",
+        "imbue_condition_not_encoded",
+        "outcast_condition_not_encoded",
+        "shatter_state_not_encoded",
+        "symmetric_board_condition_not_encoded",
+        "symmetric_summon_condition_not_encoded",
+        "variable_cost_condition_not_encoded",
+    }
+)
+
+
 @dataclass(frozen=True)
 class CardIntentClassification:
     reason: str
@@ -332,6 +352,70 @@ def classify_card_intent(
     )
 
 
+def classify_runtime_boundary(text: str) -> str:
+    """Classify semantics that need a representation beyond a wildcard row."""
+    normalized = re.sub(r"<[^>]+>", " ", str(text or "").lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+
+    if "costs health instead of mana" in normalized:
+        return "health_cost_condition_not_encoded"
+    if "shatter" in normalized:
+        return "shatter_state_not_encoded"
+    if "both players summon" in normalized:
+        return "symmetric_board_condition_not_encoded"
+    if (
+        "each player's hand" in normalized
+        or "each players' hand" in normalized
+    ) and _has_any(normalized, ("battlefield", "summon", "put a random minion")):
+        return "symmetric_summon_condition_not_encoded"
+    if _has_any(normalized, ("left-most", "leftmost", "right-most", "rightmost")):
+        return "hand_position_condition_not_encoded"
+    if "combo" in normalized and _has_any(
+        normalized,
+        ("for each other card", "cards you've played this turn"),
+    ):
+        return "combo_count_condition_not_encoded"
+    if "combo" in normalized and _has_any(
+        normalized,
+        ("give a minion", "deal damage to a minion", "destroy a minion"),
+    ):
+        return "combo_target_condition_not_encoded"
+    if "combo" in normalized:
+        return "combo_condition_not_encoded"
+    if "costs" in normalized and _has_any(
+        normalized,
+        ("less for each", "more for each"),
+    ):
+        return "variable_cost_condition_not_encoded"
+    if "after your hero attacks" in normalized:
+        return "trigger_owner_does_not_attack"
+    if (
+        "another friendly" in normalized
+        and "attacks" in normalized
+        and _has_any(normalized, ("give it", "give that"))
+    ):
+        return "buff_target_owner_mismatch"
+    if (
+        "battlecry" in normalized
+        and "weapon" in normalized
+        and _has_any(normalized, ("set the attack", "give your weapon"))
+    ):
+        return "battlecry_owner_does_not_attack"
+    if "if you discard this minion" in normalized and "summon it" in normalized:
+        return "discard_trigger_not_manual_play"
+    if _has_token(normalized, "imbue"):
+        return "imbue_condition_not_encoded"
+    if _has_token(normalized, "outcast"):
+        return "outcast_condition_not_encoded"
+    if _has_token(normalized, "discover"):
+        return "discover_condition_not_encoded"
+    if _has_token(normalized, "dredge"):
+        return "dredge_condition_not_encoded"
+    if _has_any(normalized, ("choose one", "choose_one")):
+        return "choose_one_condition_not_encoded"
+    return ""
+
+
 def bounded_default_value(value_default: str) -> str:
     try:
         value = int(str(value_default).strip())
@@ -517,7 +601,9 @@ def _signals(*candidates: tuple[str, bool]) -> tuple[str, ...]:
 
 
 __all__ = (
+    "CONDITION_REQUIRED_SEMANTIC_INTENTS",
     "CardIntentClassification",
     "bounded_default_value",
     "classify_card_intent",
+    "classify_runtime_boundary",
 )

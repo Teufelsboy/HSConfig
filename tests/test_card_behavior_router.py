@@ -40,9 +40,10 @@ def test_risky_static_semantics_stay_report_only_after_candidate_scoring():
     assert plan["suppressed"] == [
         {
             "claim_id": "claim_mind_sear_static",
-            "claim_kind": "card_role",
-            "cards": ["NX2_019"],
-            "reason": "semantic_surface_not_expressible",
+                "claim_kind": "card_role",
+                "cards": ["NX2_019"],
+                "reason": "semantic_surface_not_expressible",
+                "source_refs": ["hearthstonejson_static_semantics"],
         }
     ]
 
@@ -114,9 +115,10 @@ def test_twilight_deceptor_real_text_stays_report_only_on_official_static_lane()
     assert plan["suppressed"] == [
         {
             "claim_id": "claim_twilight_deceptor_static",
-            "claim_kind": "card_role",
-            "cards": ["SW_444"],
-            "reason": "semantic_surface_not_expressible",
+                "claim_kind": "card_role",
+                "cards": ["SW_444"],
+                "reason": "semantic_surface_not_expressible",
+                "source_refs": ["hearthstonejson_static_semantics"],
         }
     ]
 
@@ -355,9 +357,10 @@ def test_conditional_target_kill_burn_guide_row_stays_report_only():
     assert plan["suppressed"] == [
         {
             "claim_id": "",
-            "claim_kind": "targeting_rule",
-            "cards": ["NX2_019"],
+                "claim_kind": "targeting_rule",
+                "cards": ["NX2_019"],
                 "reason": "targeting_requires_public_guide_source",
+                "source_claim_ids": ["mind_sear_source"],
         }
     ]
 
@@ -377,9 +380,10 @@ def test_targeting_claim_without_target_scope_is_suppressed():
     assert report["suppressed"] == [
         {
             "claim_id": "target-missing-scope",
-            "claim_kind": "targeting_rule",
-            "cards": ["NX2_019"],
-            "reason": "missing_target_scope",
+                "claim_kind": "targeting_rule",
+                "cards": ["NX2_019"],
+                "reason": "missing_target_scope",
+                "source_claim_ids": ["target-missing-scope"],
         }
     ]
 
@@ -499,9 +503,18 @@ def test_diagnostic_targeting_claim_without_receipt_is_suppressed(
     assert report["suppressed"] == [
         {
             "claim_id": "targeting-authorized",
-            "claim_kind": "targeting_rule",
-            "cards": ["CARD_TARGET"],
-            "reason": "strategic_provenance_not_live_verified",
+                "claim_kind": "targeting_rule",
+                "cards": ["CARD_TARGET"],
+                "reason": "strategic_provenance_not_live_verified",
+                "source_claim_ids": ["targeting-authorized"],
+                "source_refs": [
+                    "source:1",
+                    "https://example.invalid/targeting-authority-guide",
+                ],
+                "acquisition_provenance": build_acquisition_provenance(
+                    mode=mode,
+                    content=b"diagnostic targeting source",
+                ),
         }
     ]
 

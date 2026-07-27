@@ -668,6 +668,42 @@ def test_unsupported_condition_suppression_needs_condition_lowering():
     assert report["summary"]["cards_needing_condition_lowering"] == 1
 
 
+def test_audited_semantic_suppressions_have_stable_readiness_links():
+    expected_by_reason = {
+        "variable_cost_condition_not_encoded": "needs_condition_lowering",
+        "symmetric_board_condition_not_encoded": "needs_condition_lowering",
+        "shatter_state_not_encoded": "needs_condition_lowering",
+        "combo_target_condition_not_encoded": "needs_condition_lowering",
+        "combo_count_condition_not_encoded": "needs_condition_lowering",
+        "hand_position_condition_not_encoded": "needs_condition_lowering",
+        "symmetric_summon_condition_not_encoded": "needs_condition_lowering",
+        "health_cost_condition_not_encoded": "needs_condition_lowering",
+        "spell_cannot_use_battlecry_target": "semantic_surface_not_expressible",
+        "spell_cannot_own_on_board": "semantic_surface_not_expressible",
+        "trigger_owner_does_not_attack": "semantic_surface_not_expressible",
+        "buff_target_owner_mismatch": "needs_target_scope",
+        "battlecry_owner_does_not_attack": "semantic_surface_not_expressible",
+    }
+
+    for reason, expected_link in expected_by_reason.items():
+        report = _report_for_card(
+            card_id="AUDITED_CARD",
+            roles=["pressure"],
+            card_behavior_plan={
+                "rows": [],
+                "suppressed": [
+                    {
+                        "claim_id": f"claim_{reason}",
+                        "cards": ["AUDITED_CARD"],
+                        "reason": reason,
+                    }
+                ],
+            },
+        )
+
+        assert report["cards"]["AUDITED_CARD"]["first_missing_link"] == expected_link
+
+
 def test_targeting_suppression_does_not_count_as_runtime_closed():
     report = build_config_readiness_report(
         deck_identity=_one_card_identity("NX2_019"),

@@ -86,6 +86,80 @@ def hold_cards(plan: Mapping[str, Any]) -> set[str]:
     }
 
 
+def test_audited_cards_emit_no_semantically_invalid_runtime_block(
+    tmp_path: Path,
+) -> None:
+    cases_by_deck = {
+        "CtAPaladin": {
+            "WW_336": "BeforePlayCardBonus",
+            "WW_051": "BeforePlayCardBonus",
+            "CATA_479": "BeforePlayCardBonus",
+        },
+        "PirateRogue": {
+            "CS2_073": "BeforePlayCardBonus",
+            "DMF_519": "BeforeBattlecryTargetBonus",
+            "TTN_922": "BeforePlayCardBonus",
+            "NX2_006": "BeforePhysicalAttackBonus",
+        },
+        "BigShaman": {
+            "GVG_029": "BeforePlayCardBonus",
+            "CS2_038": "BeforeBattlecryTargetBonus",
+            "WON_335": "BeforeBattlecryTargetBonus",
+            "TOY_877": "OnBoardBonus",
+        },
+        "TreantDruid": {
+            "JAM_028": "BeforePlayCardBonus",
+            "TTN_954": "OnBoardBonus",
+        },
+        "Kingslayer": {
+            "VAC_938": "BeforePhysicalAttackBonus",
+            "VAC_701": "BeforePhysicalAttackBonus",
+        },
+    }
+    decks = {
+        row["deck_name"]: row
+        for row in load_archetype_matrix()
+        if row["deck_name"] in cases_by_deck
+    }
+
+    for deck_name, expected in cases_by_deck.items():
+        prepared = prepare_fixture_deck(tmp_path / deck_name, decks[deck_name])
+        assert prepared["exit_code"] == 0
+        plan = read_json(
+            prepared["out"] / "reports" / "card_behavior_plan_report.json"
+        )
+        for card_id, invalid_block in expected.items():
+            assert not any(
+                row.get("card_id") == card_id
+                and row.get("behavior_block") == invalid_block
+                for row in plan["rows"]
+            )
+
+
+def test_discolock_emits_no_coverage_or_owner_mismatched_runtime_rows(
+    tmp_path: Path,
+) -> None:
+    deck = next(
+        row for row in load_archetype_matrix()
+        if row["deck_name"] == "Discolock"
+    )
+    prepared = prepare_fixture_deck(tmp_path / "Discolock", deck)
+    assert prepared["exit_code"] == 0
+
+    custom_config = next((prepared["out"] / "CustomConfig").iterdir())
+    payloads = {
+        path.stem: read_json(path)
+        for path in custom_config.glob("*.json")
+        if path.name not in {"GlobalValues.json", "Mulligan.json", "Combo.json"}
+    }
+
+    assert all("InHandPlayPriority" not in payload for payload in payloads.values())
+    for card_id in ("CATA_490", "TLC_603", "VAC_940"):
+        assert "BeforeBattlecryTargetBonus" not in payloads[card_id]
+    for card_id in ("RLK_532", "WON_098"):
+        assert "BeforePlayCardBonus" not in payloads[card_id]
+
+
 @pytest.mark.parametrize("deck_name", ["ImbueMage", "Boarlock"])
 def test_baseline_only_globalvalues_authority_emits_no_hidden_hero_power_overlay(
     tmp_path: Path,

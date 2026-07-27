@@ -2,7 +2,9 @@ import pytest
 
 from hsconfig.semantic_runtime_gate import (
     SemanticRuntimeDecision,
+    SurfaceGateDecision,
     decide_semantic_runtime,
+    semantic_runtime_decision,
 )
 
 
@@ -224,4 +226,21 @@ def test_hero_power_cost_aura_accepts_real_static_mechanic_usage_on_board():
     assert decision == SemanticRuntimeDecision(
         True,
         "semantic_surface_supported",
+    )
+
+
+def test_surface_gate_api_consumes_type_intent_target_and_lowered_condition():
+    decision = semantic_runtime_decision(
+        semantic_intent="semantic_default",
+        source_lane="deck_matched_public_guide",
+        condition="*",
+        runtime_block="BeforeBattlecryTargetBonus",
+        claim_kind="targeting_rule",
+        card_type="SPELL",
+        target_scope="friendly_minion",
+    )
+
+    assert decision == SurfaceGateDecision(
+        False,
+        "spell_cannot_use_battlecry_target",
     )

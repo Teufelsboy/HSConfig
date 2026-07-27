@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from hsconfig.card_intent_taxonomy import classify_runtime_boundary
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mechanic_support import (
     ROLE_ALIASES,
@@ -14,7 +15,7 @@ from hsconfig.mechanic_support import (
 from hsconfig.runtime_entity_owner import resolve_runtime_entity_owner
 from hsconfig.runtime_row_identity import canonicalize_runtime_rows
 from hsconfig.semantic_intent_score import score_card_behavior_claim
-from hsconfig.semantic_runtime_gate import decide_semantic_runtime
+from hsconfig.semantic_runtime_gate import semantic_runtime_decision
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
 from hsconfig.source_document_model import can_lower_to_cardid, normalized_claim_kind
 from hsconfig.source_semantic_qualifiers import normalize_semantic_qualifiers
@@ -74,12 +75,14 @@ def route_card_behavior_surfaces(
     identity_links: dict[str, Any] | None = None,
     *,
     deck_identity: Mapping[str, Any] | None = None,
+    card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
     verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
     option_resolution: list[dict[str, Any]] = []
     strong_cards: set[str] = set()
+    metadata_by_card = _metadata_by_card(card_metadata)
     resolved_discover_choice_cards = _resolved_choice_cards(claims, identity_links)
 
     for claim in claims:
@@ -181,6 +184,7 @@ def route_card_behavior_surfaces(
                 ),
                 claim=claim,
                 claim_kind=claim_kind,
+                metadata_by_card=metadata_by_card,
             )
             if intent in TARGETING_STANCES:
                 strong_cards.update(cards)
@@ -293,6 +297,7 @@ def route_card_behavior_surfaces(
                     ),
                     claim=claim,
                     claim_kind=claim_kind,
+                    metadata_by_card=metadata_by_card,
                 )
                 continue
 
@@ -311,6 +316,7 @@ def route_card_behavior_surfaces(
                 ),
                 claim=claim,
                 claim_kind=claim_kind,
+                metadata_by_card=metadata_by_card,
             )
             continue
 
@@ -335,6 +341,7 @@ def route_card_behavior_surfaces(
                         ],
                         claim=claim,
                         claim_kind=claim_kind,
+                        metadata_by_card=metadata_by_card,
                     )
                 else:
                     row["intent"] = "in_hand_priority"
@@ -361,6 +368,7 @@ def route_card_behavior_surfaces(
                     ),
                     claim=claim,
                     claim_kind=claim_kind,
+                    metadata_by_card=metadata_by_card,
                 )
             else:
                 suppressed.append(
@@ -507,6 +515,7 @@ def _append_semantically_allowed_rows(
     *,
     claim: dict[str, Any],
     claim_kind: str,
+    metadata_by_card: Mapping[str, Mapping[str, Any]],
 ) -> None:
     for row in candidates:
         semantic_score = row.get("semantic_score", {})
@@ -516,12 +525,29 @@ def _append_semantically_allowed_rows(
                 semantic_score.get("reason", ""),
             )
         )
-        decision = decide_semantic_runtime(
-            semantic_reason=semantic_reason,
+        card_id = str(row["card_id"])
+        metadata = metadata_by_card.get(card_id, {})
+        boundary_intent = classify_runtime_boundary(
+            " ".join(
+                str(value)
+                for value in (
+                    metadata.get("text"),
+                    claim.get("evidence_text_short"),
+                    claim.get("stance"),
+                    claim.get("intent"),
+                )
+                if value
+            )
+        )
+        decision = semantic_runtime_decision(
+            semantic_intent=boundary_intent or semantic_reason,
             source_lane=_claim_source_lane(claim),
             condition=str(row["condition"]),
             runtime_block=str(row["behavior_block"]),
             claim_kind=claim_kind,
+            card_type=str(metadata.get("type", "")),
+            target_scope=str(normalize_semantic_qualifiers(claim).get("target_scope") or ""),
+            option_identity=str(_claim_option_card_id(claim) or ""),
         )
         if not decision.allowed:
             suppression_reason = (
@@ -576,11 +602,32 @@ def _suppressed_row(
     cards: list[str],
     reason: str,
 ) -> dict[str, Any]:
-    return {
+    row = {
         "claim_id": lifecycle_claim_id(claim),
         "claim_kind": claim_kind,
         "cards": cards,
         "reason": reason,
+    }
+    for key in ("source_claim_ids", "source_refs", "acquisition_provenance"):
+        if key in claim:
+            value = claim[key]
+            row[key] = dict(value) if isinstance(value, Mapping) else list(value)
+    return row
+
+
+def _metadata_by_card(
+    card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
+) -> dict[str, Mapping[str, Any]]:
+    if isinstance(card_metadata, Mapping):
+        rows = card_metadata.get("cards", [])
+    else:
+        rows = card_metadata or []
+    if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+        return {}
+    return {
+        str(row["card_id"]): row
+        for row in rows
+        if isinstance(row, Mapping) and row.get("card_id")
     }
 
 

@@ -11,12 +11,14 @@ def route_card_behavior_claims(
     identity_links: dict[str, Any] | None = None,
     *,
     deck_identity: Mapping[str, Any] | None = None,
+    card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
     verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     plan = route_card_behavior_surfaces(
         claims,
         identity_links=identity_links,
         deck_identity=deck_identity,
+        card_metadata=card_metadata,
         verified_source_receipts=verified_source_receipts,
     )
     card_rows: dict[str, list[dict[str, Any]]] = {}

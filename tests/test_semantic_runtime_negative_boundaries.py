@@ -12,6 +12,115 @@ from hsconfig.source_document_model import (
 from tests.combo_authority_fixtures import build_canonical_combo_case
 
 
+AUDITED_UNEXPRESSIBLE_CASES = [
+    (
+        "WW_336",
+        "BeforePlayCardBonus",
+        "variable_cost_condition_not_encoded",
+        "SPELL",
+        "Deal 3 damage to all enemies. Costs (1) less for each enemy minion.",
+    ),
+    (
+        "WW_051",
+        "BeforePlayCardBonus",
+        "symmetric_board_condition_not_encoded",
+        "SPELL",
+        "Both players summon three 3/3 Outlaws. Give yours Rush.",
+    ),
+    (
+        "CATA_479",
+        "BeforePlayCardBonus",
+        "shatter_state_not_encoded",
+        "SPELL",
+        "Shatter. Summon two 4/2 Drakes.",
+    ),
+    (
+        "CS2_073",
+        "BeforePlayCardBonus",
+        "combo_target_condition_not_encoded",
+        "SPELL",
+        "Give a minion +2 Attack. Combo: +4 Attack instead.",
+    ),
+    (
+        "DMF_519",
+        "BeforeBattlecryTargetBonus",
+        "combo_count_condition_not_encoded",
+        "MINION",
+        "Combo: Deal 1 damage to a minion for each other card you've played this turn.",
+    ),
+    (
+        "TTN_922",
+        "BeforePlayCardBonus",
+        "hand_position_condition_not_encoded",
+        "SPELL",
+        "Shuffle the two left-most cards in your hand into your deck. Draw 3 cards.",
+    ),
+    (
+        "GVG_029",
+        "BeforePlayCardBonus",
+        "symmetric_summon_condition_not_encoded",
+        "SPELL",
+        "Put a random minion from each player's hand into the battlefield.",
+    ),
+    (
+        "CS2_038",
+        "BeforeBattlecryTargetBonus",
+        "spell_cannot_use_battlecry_target",
+        "SPELL",
+        'Give a minion "Deathrattle: Resummon this minion."',
+    ),
+    (
+        "WON_335",
+        "BeforeBattlecryTargetBonus",
+        "spell_cannot_use_battlecry_target",
+        "SPELL",
+        "Destroy a minion, then return it to life with full Health.",
+    ),
+    (
+        "TOY_877",
+        "OnBoardBonus",
+        "spell_cannot_own_on_board",
+        "SPELL",
+        "Give +2/+3 to all minions in your hand, deck, and battlefield.",
+    ),
+    (
+        "JAM_028",
+        "BeforePlayCardBonus",
+        "health_cost_condition_not_encoded",
+        "MINION",
+        "Costs Health instead of Mana.",
+    ),
+    (
+        "TTN_954",
+        "OnBoardBonus",
+        "spell_cannot_own_on_board",
+        "SPELL",
+        "Give your minions +2/+2. Costs (1) less for each Treant summoned.",
+    ),
+    (
+        "NX2_006",
+        "BeforePhysicalAttackBonus",
+        "trigger_owner_does_not_attack",
+        "MINION",
+        "After your hero attacks, summon a 1/1 Undead Pirate.",
+    ),
+    (
+        "VAC_938",
+        "BeforePhysicalAttackBonus",
+        "buff_target_owner_mismatch",
+        "MINION",
+        "Whenever another friendly Pirate attacks, give it +1/+1.",
+    ),
+    (
+        "VAC_701",
+        "BeforePhysicalAttackBonus",
+        "battlecry_owner_does_not_attack",
+        "MINION",
+        "Battlecry: Set the Attack and Durability of your weapon to 3.",
+    ),
+]
+
+
 def build_authorized_combo_case(*, deck_cards, case_id):
     bundle, deck_identity = build_canonical_combo_case(case_id)
     return _build_combo_plan(
@@ -336,3 +445,88 @@ def test_modern_wild_keywords_remain_report_first_until_surface_exists():
 
         assert keyword.lower() in result["families"]
         assert keyword.lower() in result["warning_only"]
+
+
+@pytest.mark.parametrize(
+    ("card_id", "runtime_block", "expected_reason", "card_type", "card_text"),
+    AUDITED_UNEXPRESSIBLE_CASES,
+)
+def test_audited_unexpressible_hearthstone_semantics_stay_suppressed(
+    card_id,
+    runtime_block,
+    expected_reason,
+    card_type,
+    card_text,
+):
+    claim = {
+        "claim_id": f"audit_{card_id}",
+        "claim_kind": "card_role",
+        "claim_readiness": "guide_backed",
+        "trust_ceiling": "runtime_lowerable",
+        "cards": [card_id],
+        "stance": "audited_semantic_intent",
+        "runtime_block": runtime_block,
+        "condition": "*",
+        "evidence_text_short": card_text,
+        "source_claim_ids": [f"source_{card_id}"],
+        "source_refs": [f"https://example.test/{card_id}"],
+        "acquisition_provenance": {
+            "authority": "fixture",
+            "content_sha256": f"sha256:{card_id.lower()}",
+        },
+    }
+    routed = route_card_behavior_claims(
+        [claim],
+        card_metadata={
+            "cards": [
+                {
+                    "card_id": card_id,
+                    "type": card_type,
+                    "text": card_text,
+                }
+            ]
+        },
+    )
+
+    assert routed["card_rows"] == {}
+    assert routed["rows"] == []
+    assert routed["suppressed"] == [
+        {
+            "claim_id": f"audit_{card_id}",
+            "claim_kind": claim["claim_kind"],
+            "cards": [card_id],
+            "reason": expected_reason,
+            "source_claim_ids": [f"source_{card_id}"],
+            "source_refs": [f"https://example.test/{card_id}"],
+            "acquisition_provenance": {
+                "authority": "fixture",
+                "content_sha256": f"sha256:{card_id.lower()}",
+            },
+        }
+    ]
+
+
+@pytest.mark.parametrize("card_id", ["RLK_532", "WON_098"])
+def test_discard_payoff_trigger_does_not_become_manual_play_bonus(card_id):
+    text = "If you discard this minion, summon it."
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": f"discard_payoff_{card_id}",
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": [card_id],
+                "stance": "discard_summon_payoff",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": text,
+            }
+        ],
+        card_metadata={
+            "cards": [{"card_id": card_id, "type": "MINION", "text": text}]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "discard_trigger_not_manual_play"

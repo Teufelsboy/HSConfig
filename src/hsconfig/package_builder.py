@@ -290,6 +290,7 @@ def build_package_payload(
         cardid_claims,
         identity_links=_card_behavior_identity_links(gameplan_contract),
         deck_identity=deck_identity,
+        card_metadata=card_metadata,
         verified_source_receipts=verified_source_receipts,
     )
     combo_plan = build_combo_plan(
