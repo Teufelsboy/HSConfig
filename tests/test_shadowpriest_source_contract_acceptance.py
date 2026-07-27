@@ -105,14 +105,21 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
     assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert operator["source_strong_ready"] is False
     assert operator["first_missing_source_action"] == (
-        "replace_default_only_runtime_surface_with_source_or_policy_claim"
+        "add_runtime_lowerable_claim_or_router_support"
     )
     assert operator["source_status_reasons"] == [
-        "default_only_runtime_surface",
+        "first_missing_claim_chain",
         "diagnostic_source_not_apply_eligible",
     ]
-    assert operator["default_only_runtime_surfaces"] == ["mulligan"]
+    assert operator["default_only_runtime_surfaces"] == []
     assert operator["source_status_apply_blocking"] is False
+    assert operator["no_block_failure_mode_summary"]["hard_block"] is False
+    assert operator["no_block_failure_mode_summary"]["overall"] == (
+        "runtime_apply_not_allowed"
+    )
+    assert operator["no_block_failure_mode_summary"]["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
     assert acquisition["records"][0]["source_visibility"] == "full_text"
     assert acquisition["records"][0]["acquisition_provenance"]["mode"] == (
         "fixture_map"
@@ -163,8 +170,24 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
         "diagnostic_source_not_apply_eligible"
     )
     assert acceptance["status"] == "failed"
-    assert acceptance["packages"][0]["apply_gate_allowed"] is False
-    assert acceptance["packages"][0]["apply_gate_reasons"][0]["reason"] == (
+    acceptance_row = acceptance["packages"][0]
+    assert acceptance["summary"]["technical_hard_block_count"] == 0
+    assert acceptance_row["technical_hard_block_count"] == 0
+    assert "technical_hard_block_present" not in acceptance_row[
+        "matrix_row_failure_reasons"
+    ]
+    assert acceptance_row["runtime_load_safe"] is True
+    assert acceptance_row["runtime_apply_mode"] == "blocked"
+    assert acceptance_row["runtime_apply_allowed"] is False
+    assert acceptance_row["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
+    assert acceptance_row["fixture_classification"] == "load_safe_fixture"
+    assert acceptance_row["apply_eligibility_classification"] == (
+        "diagnostic_source_apply_ineligible"
+    )
+    assert acceptance_row["apply_gate_allowed"] is False
+    assert acceptance_row["apply_gate_reasons"][0]["reason"] == (
         "diagnostic_source_not_apply_eligible"
     )
 

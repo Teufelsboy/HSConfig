@@ -15,6 +15,8 @@ SPECIAL_RUNTIME_FILES = {
     "Presume.json",
     "Concede.json",
 }
+DIAGNOSTIC_SOURCE_APPLY_REASON = "diagnostic_source_not_apply_eligible"
+DIAGNOSTIC_SOURCE_NEXT_ACTION = "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
 
 
 def build_acceptance_matrix(package_paths: Sequence[str | Path]) -> dict[str, Any]:
@@ -118,7 +120,15 @@ def _inspect_package(package: Path) -> dict[str, Any]:
     technical_status = str(operator.get("technical_status", ""))
     technical_hard_blocks = _technical_hard_blocks(operator)
     hard_block_count = len(technical_hard_blocks)
-    if apply_gate.get("status") != "allowed" and hard_block_count == 0:
+    diagnostic_source_apply_veto = _is_diagnostic_source_apply_veto(
+        operator=operator,
+        apply_gate=apply_gate,
+    )
+    if (
+        apply_gate.get("status") != "allowed"
+        and hard_block_count == 0
+        and not diagnostic_source_apply_veto
+    ):
         hard_block_count = 1
     if validation_report.get("status") != "passed" and hard_block_count == 0:
         hard_block_count = 1
@@ -132,8 +142,21 @@ def _inspect_package(package: Path) -> dict[str, Any]:
         "technical_status": technical_status,
         "semantic_status": str(operator.get("semantic_status", "")),
         "next_action": str(operator.get("next_action", "")),
+        "apply_policy": str(operator.get("apply_policy", "")),
+        "runtime_load_safe": bool(operator.get("runtime_load_safe", False)),
         "runtime_apply_mode": str(operator.get("runtime_apply_mode", "")),
         "runtime_apply_allowed": bool(operator.get("runtime_apply_allowed", False)),
+        "runtime_apply_reason": str(operator.get("runtime_apply_reason", "")),
+        "fixture_classification": operator.get("fixture_classification"),
+        "apply_eligibility_classification": (
+            "diagnostic_source_apply_ineligible"
+            if diagnostic_source_apply_veto
+            else (
+                "apply_eligible"
+                if apply_gate.get("status") == "allowed"
+                else "technical_apply_blocked"
+            )
+        ),
         "validation_status": str(validation_report.get("status", "")),
         "validation_error_count": len(_list(validation_report.get("errors"))),
         "validation_errors": _list(validation_report.get("errors")),
@@ -170,8 +193,13 @@ def _missing_operator_summary_row(package: Path, operator_path: Path) -> dict[st
         "technical_status": "INVALID_PACKAGE",
         "semantic_status": "INVALID_PACKAGE",
         "next_action": "FIX_PACKAGE_BEFORE_APPLY",
+        "apply_policy": "BLOCKED",
+        "runtime_load_safe": False,
         "runtime_apply_mode": "blocked",
         "runtime_apply_allowed": False,
+        "runtime_apply_reason": "missing_operator_summary",
+        "fixture_classification": None,
+        "apply_eligibility_classification": "technical_apply_blocked",
         "validation_status": "failed",
         "validation_error_count": 1,
         "validation_errors": [f"Missing operator summary: {operator_path}"],
@@ -248,6 +276,40 @@ def _technical_hard_blocks(operator: dict[str, Any]) -> list[dict[str, Any]]:
     categories = _dict(no_block.get("categories"))
     rows = categories.get("technical_hard_block", [])
     return rows if isinstance(rows, list) else []
+
+
+def _is_diagnostic_source_apply_veto(
+    *,
+    operator: dict[str, Any],
+    apply_gate: dict[str, Any],
+) -> bool:
+    no_block = _dict(operator.get("no_block_failure_mode_summary"))
+    gate_reasons = [
+        str(reason.get("reason", ""))
+        for reason in _list(apply_gate.get("reasons"))
+        if isinstance(reason, dict)
+    ]
+    return (
+        str(operator.get("technical_status", "")) == "VALID_PACKAGE"
+        and operator.get("runtime_load_safe") is True
+        and str(operator.get("runtime_apply_mode", "")) == "blocked"
+        and operator.get("runtime_apply_allowed") is False
+        and str(operator.get("runtime_apply_reason", ""))
+        == DIAGNOSTIC_SOURCE_APPLY_REASON
+        and str(operator.get("apply_policy", "")) == "BLOCKED"
+        and str(operator.get("next_action", "")) == DIAGNOSTIC_SOURCE_NEXT_ACTION
+        and no_block.get("hard_block") is False
+        and str(no_block.get("runtime_apply_mode", "")) == "blocked"
+        and no_block.get("runtime_apply_allowed") is False
+        and str(no_block.get("runtime_apply_reason", ""))
+        == DIAGNOSTIC_SOURCE_APPLY_REASON
+        and str(no_block.get("apply_policy", "")) == "BLOCKED"
+        and str(no_block.get("next_action", "")) == DIAGNOSTIC_SOURCE_NEXT_ACTION
+        and not _technical_hard_blocks(operator)
+        and apply_gate.get("status") == "blocked"
+        and apply_gate.get("allowed") is False
+        and gate_reasons == [DIAGNOSTIC_SOURCE_APPLY_REASON]
+    )
 
 
 def _deck_name(operator: dict[str, Any]) -> str:

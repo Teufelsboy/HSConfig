@@ -20,8 +20,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
   `runtime_apply_mode=blocked` and `runtime_apply_allowed=false`. This package
   is valid and load-safe for inspection, but apply-ineligible until rebuilt
   from live-verified source.
-- Warnings are follow-up work, not a second apply path.
-- HSTuner owns post-run evaluation and tuning.
+- Warnings are follow-up work, not a second apply path. HSTuner owns post-run evaluation and tuning.
 
 ## Preferred Normal Path
 
@@ -466,6 +465,14 @@ The matrix summarizes `technical_status`, `runtime_apply_mode`, runtime file
 coverage, CardID file count, `config_usefulness`, and warning boundaries across
 packages. It is diagnostic only. It does not write runtime files, and it does not replace `reports/operator_summary.json`
 as the single operator gate.
+
+A technically valid, load-safe diagnostic-source package remains a failed
+matrix row because apply is ineligible, but it is classified as
+`apply_eligibility_classification=diagnostic_source_apply_ineligible` with
+`technical_hard_block_count=0`. Its blocked mode, false apply permission, and
+`diagnostic_source_not_apply_eligible` reason remain visible. Invalid,
+load-unsafe, inconsistent, or otherwise technically blocked packages retain a
+technical hard block.
 
 Read `status` first. The matrix-level `status` is authoritative for the
 matrix diagnostic. Row fields such as `apply_gate_allowed`,

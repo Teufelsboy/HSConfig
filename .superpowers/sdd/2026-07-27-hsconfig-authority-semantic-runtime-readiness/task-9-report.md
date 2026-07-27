@@ -95,3 +95,36 @@ Fix-round verification:
 
 No runtime, HSTuner, HearthRanger Desktop, or runtime write path was used in
 the fix round.
+
+## Fix Round 2
+
+Closed the remaining operator-document and acceptance-matrix parity findings:
+
+- Consolidated the Quick Start to seven bullets while preserving the complete
+  diagnostic-source semantics and HSTuner ownership statement.
+- Acceptance rows now mirror `runtime_load_safe`, `runtime_apply_reason`,
+  `apply_policy`, and `fixture_classification` from the operator summary.
+- A package blocked solely by a fully consistent
+  `diagnostic_source_not_apply_eligible` provenance veto is classified as
+  `diagnostic_source_apply_ineligible`. It remains matrix-failed and
+  apply-ineligible, but does not mint a technical hard block.
+- The exemption requires exact agreement between operator summary,
+  `no_block_failure_mode_summary`, and the recomputed apply gate. Invalid,
+  load-unsafe, inconsistent, or otherwise technically blocked packages remain
+  hard-blocking.
+- The real diagnostic-source ShadowPriest configuration path proves
+  `technical_hard_block_count=0`, no
+  `technical_hard_block_present` failure reason, and retained
+  blocked/false/diagnostic apply fields.
+- Updated the ShadowPriest regression's pre-existing closure expectations to
+  the current runtime-lowering lane.
+
+Fix-round verification:
+
+- Acceptance, operator-guidance, and ShadowPriest acceptance suites:
+  `31 passed`.
+- Full contract guardrail: exit code `0`.
+- Targeted Ruff and `git diff --check`: clean.
+
+No runtime, HSTuner, HearthRanger Desktop, or runtime write path was used in
+the fix round.
