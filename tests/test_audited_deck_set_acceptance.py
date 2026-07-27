@@ -4,15 +4,17 @@ from collections import Counter
 from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from hashlib import sha256
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+import hsconfig.source_acquisition as source_acquisition
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
-from hsconfig.deckstring_decode import decode_deck_code
+from hsconfig.deckstring_decode import _parse_deckstring, decode_deck_code
 from hsconfig.io import write_json
 from hsconfig.strict_package_validation import validate_complete_package
 from tests.helpers.fixture_prepare import prepare_fixture_deck, read_json
@@ -23,13 +25,296 @@ SUPPLEMENTAL_PATH = Path("docs/operator/supplemental-proof-decks.json")
 AUDITED_CARD_DB_PATH = Path("tests/fixtures/audited_deck_card_db.json")
 DIAGNOSTIC_APPLY_REASON = "diagnostic_source_not_apply_eligible"
 CARD_METADATA_KEYS = {"ConfigComment", "GameCardId"}
+AUDITED_CARD_DB_SNAPSHOT_SHA256 = (
+    "sha256:8ce0192a62b9c94147c8ccab1770699f9c07cbe65f94614b18d9572630a8a8d0"
+)
+AUDITED_CARD_DB_METADATA = {
+    "captured_at": "2026-07-27T16:45:03Z",
+    "snapshot_sha256": AUDITED_CARD_DB_SNAPSHOT_SHA256,
+    "source_build": 247416,
+    "source_identifier": "HearthstoneJSON:247416:CardDefs.xml",
+    "source_url": "https://api.hearthstonejson.com/v1/247416/CardDefs.xml",
+    "upstream_raw_sha256": (
+        "sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4"
+    ),
+}
+
+
+def test_network_fence_denies_direct_source_acquisition_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = _install_read_only_isolation(monkeypatch)
+
+    with pytest.raises(AssertionError):
+        source_acquisition.getaddrinfo("alias.example", None)
+    with pytest.raises(AssertionError):
+        source_acquisition.create_connection(("93.184.216.34", 443), 1.0)
+    with pytest.raises(AssertionError):
+        source_acquisition._default_resolver("resolver.example")
+
+    assert attempts == {
+        "external_network": [
+            "alias.example",
+            "('93.184.216.34', 443)",
+            "resolver.example",
+        ],
+        "runtime_write": [],
+    }
+
+
+def _required_snapshot_dbf_ids() -> set[int]:
+    matrix, supplemental = _catalog_payloads()
+    decks = _validate_audited_deck_catalog(matrix, supplemental)
+    required: set[int] = set()
+    for deck in decks:
+        parsed = _parse_deckstring(str(deck["deck_code"]))
+        required.update(int(dbf_id) for dbf_id, _count in parsed["cards"])
+        required.update(int(dbf_id) for dbf_id in parsed["heroes"])
+        for sideboard in parsed.get("sideboards", []):
+            if isinstance(sideboard, tuple) and len(sideboard) == 3:
+                card_dbf_id, _count, owner_dbf_id = sideboard
+                required.update((int(card_dbf_id), int(owner_dbf_id)))
+    return required
+
+
+def test_audited_dbf_snapshot_metadata_and_exact_set_are_pinned() -> None:
+    payload = read_json(AUDITED_CARD_DB_PATH)
+    required = _required_snapshot_dbf_ids()
+
+    cards = _validate_audited_card_db_payload(
+        payload,
+        required_dbf_ids=required,
+    )
+
+    assert payload["schema_version"] == 2
+    assert payload["metadata"] == {
+        "captured_at": "2026-07-27T16:45:03Z",
+        "snapshot_sha256": AUDITED_CARD_DB_SNAPSHOT_SHA256,
+        "source_build": 247416,
+        "source_identifier": "HearthstoneJSON:247416:CardDefs.xml",
+        "source_url": (
+            "https://api.hearthstonejson.com/v1/247416/CardDefs.xml"
+        ),
+        "upstream_raw_sha256": (
+            "sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4"
+        ),
+    }
+    assert len(required) == 192
+    assert {int(row[0]) for row in cards} == required
+    assert len({str(row[1]) for row in cards}) == 192
+
+
+def test_audited_dbf_snapshot_rejects_malformed_schema_or_metadata() -> None:
+    required = _required_snapshot_dbf_ids()
+    payload = read_json(AUDITED_CARD_DB_PATH)
+
+    malformed_schema = deepcopy(payload)
+    malformed_schema["schema_version"] = 1
+    with pytest.raises(ValueError, match="snapshot_schema_invalid"):
+        _validate_audited_card_db_payload(
+            malformed_schema,
+            required_dbf_ids=required,
+        )
+
+    missing_metadata = deepcopy(payload)
+    del missing_metadata["metadata"]["source_build"]
+    with pytest.raises(ValueError, match="snapshot_metadata_invalid"):
+        _validate_audited_card_db_payload(
+            missing_metadata,
+            required_dbf_ids=required,
+        )
+
+    mutable_source = deepcopy(payload)
+    mutable_source["metadata"]["source_url"] = (
+        "https://api.hearthstonejson.com/v1/latest/CardDefs.xml"
+    )
+    with pytest.raises(ValueError, match="snapshot_metadata_invalid"):
+        _validate_audited_card_db_payload(
+            mutable_source,
+            required_dbf_ids=required,
+        )
+
+
+def test_audited_dbf_snapshot_rejects_duplicate_dbf_or_card_id() -> None:
+    required = _required_snapshot_dbf_ids()
+    payload = read_json(AUDITED_CARD_DB_PATH)
+
+    duplicate_dbf = deepcopy(payload)
+    duplicate_dbf_row = deepcopy(duplicate_dbf["cards"][0])
+    duplicate_dbf_row[1] = "UNIQUE_CARD_ID"
+    duplicate_dbf["cards"].append(duplicate_dbf_row)
+    with pytest.raises(ValueError, match="snapshot_duplicate_dbf_id"):
+        _validate_audited_card_db_payload(
+            duplicate_dbf,
+            required_dbf_ids=required,
+        )
+
+    duplicate_card_id = deepcopy(payload)
+    duplicate_card_id_row = deepcopy(duplicate_card_id["cards"][0])
+    duplicate_card_id_row[0] = 999_998
+    duplicate_card_id["cards"].append(duplicate_card_id_row)
+    with pytest.raises(ValueError, match="snapshot_duplicate_card_id"):
+        _validate_audited_card_db_payload(
+            duplicate_card_id,
+            required_dbf_ids=required,
+        )
+
+
+def test_audited_dbf_snapshot_rejects_missing_or_extra_dbf_id() -> None:
+    required = _required_snapshot_dbf_ids()
+    payload = read_json(AUDITED_CARD_DB_PATH)
+
+    missing = deepcopy(payload)
+    missing["cards"].pop()
+    with pytest.raises(ValueError, match="snapshot_dbf_set_mismatch"):
+        _validate_audited_card_db_payload(
+            missing,
+            required_dbf_ids=required,
+        )
+
+    extra = deepcopy(payload)
+    extra_row = deepcopy(extra["cards"][0])
+    extra_row[0] = 999_999
+    extra_row[1] = "EXTRA_CARD_ID"
+    extra["cards"].append(extra_row)
+    with pytest.raises(ValueError, match="snapshot_dbf_set_mismatch"):
+        _validate_audited_card_db_payload(
+            extra,
+            required_dbf_ids=required,
+        )
+
+
+def test_audited_dbf_snapshot_rejects_malformed_row_or_hash_drift() -> None:
+    required = _required_snapshot_dbf_ids()
+    payload = read_json(AUDITED_CARD_DB_PATH)
+
+    malformed_row = deepcopy(payload)
+    malformed_row["cards"][0] = malformed_row["cards"][0][:-1]
+    with pytest.raises(ValueError, match="snapshot_card_row_invalid"):
+        _validate_audited_card_db_payload(
+            malformed_row,
+            required_dbf_ids=required,
+        )
+
+    corrupt_content = deepcopy(payload)
+    corrupt_content["cards"][0][2] = "Corrupt Name"
+    with pytest.raises(ValueError, match="snapshot_sha256_mismatch"):
+        _validate_audited_card_db_payload(
+            corrupt_content,
+            required_dbf_ids=required,
+        )
+
+    corrupt_expected_hash = deepcopy(payload)
+    corrupt_expected_hash["metadata"]["snapshot_sha256"] = "sha256:" + ("0" * 64)
+    with pytest.raises(ValueError, match="snapshot_sha256_mismatch"):
+        _validate_audited_card_db_payload(
+            corrupt_expected_hash,
+            required_dbf_ids=required,
+        )
+
+
+def _snapshot_sha256(payload: Mapping[str, Any]) -> str:
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        raise ValueError("snapshot_metadata_invalid")
+    digest_payload = {
+        "cards": payload.get("cards"),
+        "metadata": {
+            str(key): value
+            for key, value in metadata.items()
+            if key != "snapshot_sha256"
+        },
+        "schema_version": payload.get("schema_version"),
+    }
+    canonical = json.dumps(
+        digest_payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(canonical).hexdigest()}"
+
+
+def _validate_audited_card_db_payload(
+    payload: Mapping[str, Any],
+    *,
+    required_dbf_ids: set[int],
+) -> list[list[Any]]:
+    if payload.get("schema_version") != 2:
+        raise ValueError("snapshot_schema_invalid")
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, Mapping):
+        raise ValueError("snapshot_metadata_invalid")
+    metadata_without_hash = {
+        str(key): value
+        for key, value in metadata.items()
+        if key != "snapshot_sha256"
+    }
+    expected_without_hash = {
+        key: value
+        for key, value in AUDITED_CARD_DB_METADATA.items()
+        if key != "snapshot_sha256"
+    }
+    if (
+        set(metadata) != set(AUDITED_CARD_DB_METADATA)
+        or metadata_without_hash != expected_without_hash
+    ):
+        raise ValueError("snapshot_metadata_invalid")
+    cards = payload.get("cards")
+    if not isinstance(cards, list):
+        raise ValueError("snapshot_cards_invalid")
+
+    dbf_ids: set[int] = set()
+    card_ids: set[str] = set()
+    validated_cards: list[list[Any]] = []
+    for row in cards:
+        if (
+            not isinstance(row, list)
+            or len(row) != 8
+            or not isinstance(row[0], int)
+            or isinstance(row[0], bool)
+            or not isinstance(row[1], str)
+            or not row[1]
+            or not isinstance(row[2], str)
+            or not isinstance(row[3], (int, type(None)))
+            or isinstance(row[3], bool)
+            or not isinstance(row[4], str)
+            or not row[4]
+            or not isinstance(row[5], str)
+            or not row[5]
+            or not isinstance(row[6], str)
+            or not isinstance(row[7], list)
+            or any(not isinstance(mechanic, str) for mechanic in row[7])
+        ):
+            raise ValueError("snapshot_card_row_invalid")
+        dbf_id = int(row[0])
+        card_id = str(row[1])
+        if dbf_id in dbf_ids:
+            raise ValueError("snapshot_duplicate_dbf_id")
+        if card_id in card_ids:
+            raise ValueError("snapshot_duplicate_card_id")
+        dbf_ids.add(dbf_id)
+        card_ids.add(card_id)
+        validated_cards.append(row)
+
+    if dbf_ids != required_dbf_ids:
+        raise ValueError("snapshot_dbf_set_mismatch")
+    if (
+        metadata.get("snapshot_sha256") != AUDITED_CARD_DB_SNAPSHOT_SHA256
+        or _snapshot_sha256(payload) != AUDITED_CARD_DB_SNAPSHOT_SHA256
+    ):
+        raise ValueError("snapshot_sha256_mismatch")
+    return validated_cards
 
 
 def _audited_card_db() -> dict[int, SimpleNamespace]:
     payload = read_json(AUDITED_CARD_DB_PATH)
-    assert payload["schema"] == 1
+    rows = _validate_audited_card_db_payload(
+        payload,
+        required_dbf_ids=_required_snapshot_dbf_ids(),
+    )
     cards: dict[int, SimpleNamespace] = {}
-    for row in payload["cards"]:
+    for row in rows:
         (
             dbf_id,
             card_id,
@@ -55,10 +340,9 @@ def _audited_card_db() -> dict[int, SimpleNamespace]:
     return cards
 
 
-@pytest.fixture
-def read_only_isolation(
+def _install_read_only_isolation(
     monkeypatch: pytest.MonkeyPatch,
-) -> Iterator[dict[str, list[str]]]:
+) -> dict[str, list[str]]:
     attempts: dict[str, list[str]] = {
         "external_network": [],
         "runtime_write": [],
@@ -81,6 +365,14 @@ def read_only_isolation(
     monkeypatch.setattr("hsconfig.hearthstonejson.urlopen", deny_external_network)
     monkeypatch.setattr("socket.create_connection", deny_external_network)
     monkeypatch.setattr("socket.getaddrinfo", deny_external_network)
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition.create_connection",
+        deny_external_network,
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition.getaddrinfo",
+        deny_external_network,
+    )
     audited_card_db = _audited_card_db()
     monkeypatch.setattr(
         "hsconfig.deckstring_decode.cardxml.load_dbf",
@@ -105,6 +397,14 @@ def read_only_isolation(
         "hsconfig.commands.apply.apply_package",
         deny_runtime_write,
     )
+    return attempts
+
+
+@pytest.fixture
+def read_only_isolation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[dict[str, list[str]]]:
+    attempts = _install_read_only_isolation(monkeypatch)
 
     yield attempts
 

@@ -110,3 +110,52 @@ Fix-round TDD and verification:
 
 No runtime, HSTuner, HearthRanger Desktop, or runtime write path was used in
 the fix round.
+
+## Fix Round 2
+
+Closed the remaining network-isolation and frozen-snapshot trust gaps:
+
+- Extended the read-only network fence beyond the global `socket` functions to
+  the directly imported `hsconfig.source_acquisition.getaddrinfo` and
+  `create_connection` aliases. A dedicated canary calls both aliases and
+  `_default_resolver` directly, proves fail-closed denial, and verifies that
+  every attempted destination is recorded.
+- Kept the positive exact-deck acquisition path local and deterministic. Its
+  resolver and transport remain test doubles, so it still proves the intended
+  acquisition/validation path without external DNS, socket, or HTTP access.
+- Replaced the mutable/unresolvable snapshot description with pinned
+  HearthstoneJSON build `247416`, source
+  `https://api.hearthstonejson.com/v1/247416/CardDefs.xml`, capture timestamp
+  `2026-07-27T16:45:03Z`, source identifier
+  `HearthstoneJSON:247416:CardDefs.xml`, and upstream raw SHA-256
+  `sha256:a3b0e3dcd112626aa47ba16ede1b26506eed175b1fda288c1b6952065c06aac4`.
+- Added a canonical snapshot SHA-256 contract:
+  `sha256:8ce0192a62b9c94147c8ccab1770699f9c07cbe65f94614b18d9572630a8a8d0`.
+  The digest covers the schema, pinned provenance metadata except the digest
+  field itself, and all card rows.
+- Independently derives the required DBF set from the raw audited deckstrings,
+  including heroes and sideboards, without using the patched card loader. The
+  frozen snapshot must match that exact 192-ID set, with no missing or extra
+  DBF IDs and 192 unique CardIDs.
+- The snapshot loader now rejects malformed schema or metadata, malformed card
+  rows, duplicate DBF IDs, duplicate CardIDs, missing or extra IDs, metadata
+  digest drift, and content corruption. Focused mutation tests cover every
+  rejection class.
+- Updated the operator guide and installed skill source/reference to document
+  the pinned provenance, exact-set/digest contract, and direct-alias network
+  fence.
+
+Fix-round TDD and verification:
+
+- Initial focused RED: `6 failed, 25 deselected`; the new isolation helper,
+  snapshot validator, and trust checks did not yet exist.
+- Focused GREEN: `6 passed, 25 deselected`.
+- Complete Task 10 file: `31 passed`.
+- Required focused suites: `63 passed, 11 skipped`.
+- Full contract guardrail: `949 passed`; installed-skill sync,
+  contract-spine sentinel, and focused boundary checks all reported `OK`.
+- Installed-skill sync check, targeted Ruff, and `git diff --check`: clean
+  apart from Git's existing LF-to-CRLF notices.
+
+No runtime, HSTuner, HearthRanger Desktop, acceptance-test external network
+path, or runtime write path was used in this fix round.

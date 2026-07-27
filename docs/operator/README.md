@@ -593,10 +593,15 @@ or promoting CuteWarrior into the representative matrix. A catalog guard
 requires exactly eleven representative rows, exactly one supplemental
 CuteWarrior row, exactly twelve audited rows, and unique deck names and deck
 codes. It prepares packages only under pytest temporary directories. The test
-uses a frozen local DBF snapshot for the twelve audited deckstrings, denies
-external Cardfeed/DNS/socket access, stubs the runtime writer entry, keeps the
-temporary runtime root absent, and requires that no runtime apply receipt is
-created.
+uses a frozen local DBF snapshot for the twelve audited deckstrings. The
+snapshot pins HearthstoneJSON build `247416`, its immutable `CardDefs.xml` URL,
+capture timestamp, upstream raw digest, and a canonical snapshot digest. Its
+loader derives the required DBF set independently from the raw deckstrings and
+requires exactly 192 unique DBF IDs and 192 unique CardIDs with no missing or
+extra row. The test denies external Cardfeed/DNS/socket access, including the
+directly imported source-acquisition resolver and connection aliases, stubs the
+runtime writer entry, keeps the temporary runtime root absent, and requires
+that no runtime apply receipt is created.
 
 The twelve captured/fixture-backed cases are expected to be technically valid
 and load-safe but apply-ineligible with

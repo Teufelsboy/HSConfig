@@ -25,10 +25,13 @@ The audited twelve-deck read-only acceptance additionally requires:
 - no static Boarlock `Combo.json`, no coverage-only Discolock
   `InHandPlayPriority`, and exact ImbueMage Mulligan/readiness identity parity.
 
-It prepares only temporary packages under a network-deny sentinel, stubs the
-runtime writer entry, keeps the runtime root absent, and requires no apply
-receipt. It does not prove in-client execution or gameplay optimality. Fixture
-manifests do not authorize apply; `reports/operator_summary.json` remains the
-sole current package authority.
+It prepares only temporary packages using an exact, build-pinned DBF snapshot
+whose upstream raw and canonical snapshot digests are checked. The
+network-deny sentinel covers global socket hooks and directly imported
+source-acquisition resolver/connection aliases; the runtime writer is stubbed,
+the runtime root stays absent, and no apply receipt may appear. It does not
+prove in-client execution or gameplay optimality. Fixture manifests do not
+authorize apply; `reports/operator_summary.json` remains the sole current
+package authority.
 
 Reports stay under `reports/` and must not be copied into runtime deck folders.
