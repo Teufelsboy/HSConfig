@@ -17,10 +17,10 @@ from hsconfig.input_loading import (
 from hsconfig.io import read_json, write_json
 from hsconfig.internal_source_authority import (
     InternalSourceAuthorityHandoff,
+    _consume_acquired_search_records_handoff,
     _issue_acquired_search_records_handoff,
-    advance_to_source_documents_handoff,
+    _issue_generated_source_documents_handoff,
     reject_caller_supplied_source_authority,
-    trusted_search_records_from_handoff,
 )
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
@@ -214,7 +214,7 @@ def draft_source_documents_payload(
 
 def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     reject_caller_supplied_source_authority(args)
-    payload, status, _handoff = _source_autopilot_payload(args)
+    payload, status, _documents = _source_autopilot_payload(args)
     return payload, status
 
 
@@ -222,20 +222,25 @@ def source_autopilot_for_configure(
     args: argparse.Namespace,
     source_authority_handoff: InternalSourceAuthorityHandoff,
 ) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff]:
-    payload, status, output_handoff = _source_autopilot_payload(
-        args,
-        source_authority_handoff=source_authority_handoff,
+    source_records, lineage = _consume_acquired_search_records_handoff(
+        source_authority_handoff
     )
-    if output_handoff is None:
-        raise ValueError("source_document_handoff_not_issued")
+    payload, status, documents = _source_autopilot_payload(
+        args,
+        source_records=source_records,
+    )
+    output_handoff = _issue_generated_source_documents_handoff(
+        lineage,
+        documents,
+    )
     return payload, status, output_handoff
 
 
 def _source_autopilot_payload(
     args: argparse.Namespace,
     *,
-    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
-) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff | None]:
+    source_records: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], int, list[dict[str, Any]]]:
     out = Path(args.out)
     prepare_research_output_dir(out)
 
@@ -253,14 +258,9 @@ def _source_autopilot_payload(
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
-    trusted_source_records = (
-        trusted_search_records_from_handoff(source_authority_handoff)
-        if source_authority_handoff is not None
-        else None
-    )
     source_records = (
-        trusted_source_records
-        if isinstance(trusted_source_records, list)
+        source_records
+        if source_records is not None
         else load_source_search_records(args.source_search_results_json)
     )
 
@@ -281,14 +281,6 @@ def _source_autopilot_payload(
         {"schema_version": 1, "evidence_rows": bundle["source_evidence_rows"]},
     )
     write_json(source_path, bundle["source_documents_payload"])
-    output_handoff = (
-        advance_to_source_documents_handoff(
-            source_authority_handoff,
-            bundle["source_documents_payload"]["source_documents"],
-        )
-        if source_authority_handoff is not None
-        else None
-    )
     write_json(draft_report_path, bundle["source_document_draft_report"])
     write_json(report_path, bundle["source_autopilot_report"])
     payload_and_status = (
@@ -309,7 +301,10 @@ def _source_autopilot_payload(
         },
         0,
     )
-    return *payload_and_status, output_handoff
+    return (
+        *payload_and_status,
+        bundle["source_documents_payload"]["source_documents"],
+    )
 
 
 def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:

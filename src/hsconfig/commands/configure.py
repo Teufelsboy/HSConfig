@@ -27,6 +27,9 @@ from hsconfig.configure_source_closure_receipt import (
 )
 from hsconfig.package_builder import prepare_package_payload
 from hsconfig.io import read_json, write_json
+from hsconfig.internal_source_authority import (
+    reject_caller_supplied_source_authority,
+)
 from hsconfig.operator_summary import refresh_generated_file_accounting
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_derivation_receipt import refresh_package_derivation_authority
@@ -47,6 +50,7 @@ from hsconfig.source_readiness_preview import build_source_readiness_preview
 
 
 def run_configure_command(args: argparse.Namespace) -> int:
+    reject_caller_supplied_source_authority(args)
     try:
         payload, status = configure_payload(args)
     except Exception as exc:
@@ -55,6 +59,7 @@ def run_configure_command(args: argparse.Namespace) -> int:
 
 
 def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    reject_caller_supplied_source_authority(args)
     current_date = _normalize_operator_date(
         getattr(args, "current_date", None)
     )

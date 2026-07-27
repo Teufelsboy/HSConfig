@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import hsconfig.internal_source_authority as source_authority
 from hsconfig.cli import _build_parser
-from hsconfig.commands.source_workflow import source_autopilot_payload
+from hsconfig.commands.configure import configure_payload, run_configure_command
+from hsconfig.commands.source_workflow import (
+    source_acquire_for_configure,
+    source_autopilot_for_configure,
+    source_autopilot_payload,
+)
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.package_builder import (
     _with_strategic_receipt_verification,
@@ -83,6 +90,28 @@ def _verified_deck_fingerprint() -> str:
         deck_code=VERIFIED_TEST_DECK_CODE,
         cards=VERIFIED_TEST_CARDS,
     )["deck_fingerprint"]
+
+
+def _acquire_zero_record_handoff(
+    tmp_path: Path,
+) -> tuple[SimpleNamespace, source_authority.InternalSourceAuthorityHandoff]:
+    cards_json = _write_verified_cards(tmp_path / "cards.json")
+    args = SimpleNamespace(
+        deck_name="ForgedAuthorityDeck",
+        deck_code=VERIFIED_TEST_DECK_CODE,
+        cards_json=cards_json,
+        allow_placeholder=False,
+        source_url=[],
+        source_fixture_url_map_json=None,
+        source_fetch_timeout_seconds=1.0,
+        candidate_registry_url_count=0,
+        current_date="2026-07-27",
+        out=str(tmp_path / "acquisition"),
+    )
+    payload, status, handoff = source_acquire_for_configure(args)
+    assert status == 0
+    assert payload["source_claim_compiler_report"]["record_count"] == 0
+    return args, handoff
 
 
 def test_prepare_rejects_caller_supplied_trusted_source_documents(
@@ -170,3 +199,195 @@ def test_strategic_receipt_annotation_rejects_mismatched_provenance() -> None:
     )
 
     assert annotated[0]["strategic_receipt_verified"] is False
+
+
+def test_search_handoff_is_single_use_and_replay_is_rejected(
+    tmp_path: Path,
+) -> None:
+    acquire_args, handoff = _acquire_zero_record_handoff(tmp_path)
+    autopilot_args = SimpleNamespace(
+        deck_name=acquire_args.deck_name,
+        deck_code=acquire_args.deck_code,
+        cards_json=acquire_args.cards_json,
+        allow_placeholder=False,
+        source_search_results_json=str(tmp_path / "unused-source-results.json"),
+        current_date="2026-07-27",
+        out=str(tmp_path / "autopilot"),
+    )
+
+    payload, status, document_handoff = source_autopilot_for_configure(
+        autopilot_args,
+        handoff,
+    )
+
+    assert status == 0
+    assert payload["status"] == "OK"
+    assert document_handoff.stage == "verified_source_documents"
+    with pytest.raises(ValueError, match="source_authority_handoff_replayed"):
+        source_autopilot_for_configure(
+            SimpleNamespace(
+                **{
+                    **vars(autopilot_args),
+                    "out": str(tmp_path / "replay"),
+                }
+            ),
+            handoff,
+        )
+    assert not (tmp_path / "replay").exists()
+    with pytest.raises(
+        ValueError,
+        match="invalid_internal_source_authority_handoff_stage",
+    ):
+        source_autopilot_for_configure(
+            SimpleNamespace(
+                **{
+                    **vars(autopilot_args),
+                    "out": str(tmp_path / "wrong-stage"),
+                }
+            ),
+            document_handoff,
+        )
+    assert not (tmp_path / "wrong-stage").exists()
+
+
+def test_zero_record_handoff_cannot_be_paired_with_forged_live_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    acquire_args, search_handoff = _acquire_zero_record_handoff(tmp_path)
+    _payload, _status, document_handoff = source_autopilot_for_configure(
+        SimpleNamespace(
+            deck_name=acquire_args.deck_name,
+            deck_code=acquire_args.deck_code,
+            cards_json=acquire_args.cards_json,
+            allow_placeholder=False,
+            source_search_results_json=str(tmp_path / "unused-source-results.json"),
+            current_date="2026-07-27",
+            out=str(tmp_path / "autopilot"),
+        ),
+        search_handoff,
+    )
+    object.__setattr__(
+        document_handoff,
+        "source_documents",
+        (
+            _forged_live_document(
+                deck_fingerprint=_verified_deck_fingerprint(),
+            ),
+        ),
+    )
+    prepare_args = _build_parser().parse_args(
+        [
+            "prepare",
+            "--deck-name",
+            acquire_args.deck_name,
+            "--deck-code",
+            acquire_args.deck_code,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(tmp_path / "forged-package"),
+            "--cards-json",
+            acquire_args.cards_json,
+        ]
+    )
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source_authority_handoff_lineage_mismatch",
+    ):
+        prepare_package_payload(
+            prepare_args,
+            source_authority_handoff=document_handoff,
+        )
+    assert not (tmp_path / "forged-package").exists()
+    assert not (tmp_path / "runtime").exists()
+    assert not (
+        tmp_path
+        / "forged-package"
+        / "reports"
+        / "guide_claim_bundle.json"
+    ).exists()
+
+
+def test_no_public_document_advance_api_accepts_unrelated_documents() -> None:
+    assert not hasattr(source_authority, "advance_to_source_documents_handoff")
+
+
+@pytest.mark.parametrize(
+    ("entrypoint", "attribute"),
+    [
+        (configure_payload, "trusted_source_documents"),
+        (configure_payload, "trusted_source_search_records"),
+        (run_configure_command, "trusted_source_documents"),
+        (run_configure_command, "trusted_source_search_records"),
+    ],
+)
+def test_configure_rejects_caller_authority_before_creating_output(
+    tmp_path: Path,
+    entrypoint,
+    attribute: str,
+) -> None:
+    out = tmp_path / f"{entrypoint.__name__}-{attribute}"
+    args = _build_parser().parse_args(
+        [
+            "configure",
+            "--deck-name",
+            "ForgedAuthorityDeck",
+            "--deck-code",
+            "invalid-deck-code",
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+        ]
+    )
+    setattr(args, attribute, [])
+
+    with pytest.raises(
+        ValueError,
+        match=f"caller_supplied_{attribute}_not_allowed",
+    ):
+        entrypoint(args)
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "bad_handoff",
+    [
+        None,
+        object(),
+        SimpleNamespace(stage="verified_search_records"),
+        source_authority.InternalSourceAuthorityHandoff(
+            stage="verified_search_records",
+            record_fingerprint="sha256:fake",
+            document_fingerprint="",
+            lineage_fingerprint="sha256:fake",
+            search_records=(),
+            source_documents=(),
+            _token=object(),
+        ),
+    ],
+)
+def test_source_autopilot_for_configure_rejects_invalid_handoffs(
+    tmp_path: Path,
+    bad_handoff,
+) -> None:
+    cards_json = _write_verified_cards(tmp_path / "cards.json")
+    args = SimpleNamespace(
+        deck_name="ForgedAuthorityDeck",
+        deck_code=VERIFIED_TEST_DECK_CODE,
+        cards_json=cards_json,
+        allow_placeholder=False,
+        source_search_results_json=str(tmp_path / "unused-source-results.json"),
+        current_date="2026-07-27",
+        out=str(tmp_path / "autopilot"),
+    )
+
+    with pytest.raises(ValueError, match="invalid_internal_source_authority_handoff"):
+        source_autopilot_for_configure(args, bad_handoff)
+    assert not (tmp_path / "autopilot").exists()
