@@ -117,3 +117,38 @@ Files added to this round:
 - `tests/test_config_readiness.py`
 - `tests/test_compile_cardid.py`
 - `tests/test_config_quality_contract.py`
+
+## Quality fix round 2
+
+Status: DONE
+
+Round 1 incorrectly allowed two distinct source owners to share a runtime entity
+when their physical behavior signatures were identical. A single physical file
+cannot safely retain singular source ownership or manifest provenance for that
+case, so ownership authority must be resolved before physical deduplication.
+
+RED:
+
+- Two rows from `SOURCE_A` and `SOURCE_B` with the same runtime card, block,
+  condition, and value incorrectly produced `RUNTIME_SHARED.json` instead of
+  an owner collision.
+
+Fix:
+
+- Restored the unconditional multi-source owner collision: differing
+  `source_card_id` values for one runtime entity are always rejected, whether
+  their physical signatures match or differ.
+- Compiler duplicate merging remains asserted only inside the same
+  `(source_card_id, runtime_card_id, link_kind)` ownership relation. This keeps
+  merged physical rows and provenance singular at every ownership/manifest
+  consumer.
+- The cross-consumer owner regression is parameterized for both identical and
+  different physical signatures; both assert no runtime output or ownership
+  projection.
+
+GREEN:
+
+- Owner, manifest, and compiler suites: `31 passed`.
+- ShadowPriest depth integration plus full semantic safety wave: `31 passed`.
+- Prescribed Task-6 suite: `343 passed in 65.83s`.
+- Ruff and `git diff --check`: passed.

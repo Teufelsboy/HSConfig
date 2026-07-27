@@ -90,7 +90,6 @@ def partition_runtime_entity_owner_rows(
 ) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
     materialized_rows = list(rows)
     source_ids_by_runtime_id: dict[str, set[str]] = {}
-    signatures_by_runtime_id: dict[str, set[tuple[str, str, str]]] = {}
     for row in materialized_rows:
         owner = _meaningful_runtime_owner(row)
         if owner is None:
@@ -98,9 +97,6 @@ def partition_runtime_entity_owner_rows(
         source_card_id, runtime_card_id = owner
         source_ids_by_runtime_id.setdefault(runtime_card_id, set()).add(
             source_card_id
-        )
-        signatures_by_runtime_id.setdefault(runtime_card_id, set()).add(
-            _runtime_behavior_signature(row)
         )
 
     collisions = [
@@ -112,10 +108,7 @@ def partition_runtime_entity_owner_rows(
         for runtime_card_id, source_card_ids in sorted(
             source_ids_by_runtime_id.items()
         )
-        if (
-            len(source_card_ids) > 1
-            and len(signatures_by_runtime_id[runtime_card_id]) > 1
-        )
+        if len(source_card_ids) > 1
     ]
     colliding_runtime_ids = {
         str(collision["runtime_card_id"]) for collision in collisions
@@ -148,14 +141,6 @@ def _meaningful_runtime_owner(
     if not source_card_id or not runtime_card_id:
         return None
     return source_card_id, runtime_card_id
-
-
-def _runtime_behavior_signature(row: Mapping[str, Any]) -> tuple[str, str, str]:
-    return (
-        str(row.get("behavior_block", "")).strip(),
-        str(row.get("condition", "*")).strip() or "*",
-        str(row.get("value", "")).strip(),
-    )
 
 
 __all__ = (

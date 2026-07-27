@@ -678,12 +678,12 @@ def test_compile_cardid_merges_exact_duplicate_rows_as_final_write_guard():
     assert files.merged_duplicate_runtime_row_count == 1
 
 
-def test_compile_cardid_merges_duplicate_runtime_rows_from_distinct_sources():
+def test_compile_cardid_merges_duplicate_runtime_rows_within_one_owner_relation():
     rows = [
         {
             "surface_family": "CARDID.json",
-            "card_id": source_card_id,
-            "source_card_id": source_card_id,
+            "card_id": "SOURCE_A",
+            "source_card_id": "SOURCE_A",
             "runtime_card_id": "RUNTIME_SHARED",
             "link_kind": "shared_runtime_effect",
             "behavior_block": "OnBoardBonus",
@@ -692,10 +692,7 @@ def test_compile_cardid_merges_duplicate_runtime_rows_from_distinct_sources():
             "claim_id": claim_id,
             "source_claim_ids": [claim_id],
         }
-        for source_card_id, claim_id in (
-            ("SOURCE_A", "claim-source-a"),
-            ("SOURCE_B", "claim-source-b"),
-        )
+        for claim_id in ("claim-source-a", "claim-source-b")
     ]
 
     files = compile_cardid_behaviors(

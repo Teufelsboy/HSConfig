@@ -1,3 +1,5 @@
+import pytest
+
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.config_readiness import build_config_readiness_report
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
@@ -7,7 +9,18 @@ from hsconfig.source_to_runtime_explainability import (
 from hsconfig.surface_intent import build_surface_intent
 
 
-def test_competing_sources_for_one_runtime_owner_fail_closed_across_consumers():
+@pytest.mark.parametrize(
+    ("second_behavior_block", "second_value"),
+    [
+        ("BeforePlayCardBonus", "7"),
+        ("BeforeUseHeroPowerBonus", "9"),
+    ],
+    ids=["same_physical_signature", "different_physical_signature"],
+)
+def test_competing_sources_for_one_runtime_owner_fail_closed_across_consumers(
+    second_behavior_block: str,
+    second_value: str,
+):
     rows = [
         {
             "surface": "CardID.json",
@@ -29,9 +42,9 @@ def test_competing_sources_for_one_runtime_owner_fail_closed_across_consumers():
             "source_card_id": "SOURCE_B",
             "runtime_card_id": "RUNTIME_SHARED",
             "link_kind": "synthetic_link",
-            "behavior_block": "BeforeUseHeroPowerBonus",
+            "behavior_block": second_behavior_block,
             "condition": "*",
-            "value": "9",
+            "value": second_value,
         },
     ]
     plan = {"rows": rows, "suppressed": []}
