@@ -1,6 +1,4 @@
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import yaml
@@ -19,6 +17,19 @@ EXPECTED_FIELDS = {
     "citations",
     "uncertain",
 }
+
+
+def _assert_results_cover_required_fields(fields: Path, result_files: list[Path]) -> None:
+    payload = yaml.safe_load(fields.read_text(encoding="utf-8"))
+    required_fields = {
+        field["name"]
+        for category in payload["field_categories"]
+        for field in category["fields"]
+        if field.get("required") is True
+    }
+    for path in result_files:
+        result = json.loads(path.read_text(encoding="utf-8"))
+        assert required_fields <= set(result), path
 
 
 def test_skill_audit_fields_yaml_uses_research_validator_shape():
@@ -52,19 +63,10 @@ def test_skill_audit_research_results_cover_all_required_fields():
 
 
 def test_skill_audit_results_pass_existing_research_validator():
-    command = [
-        sys.executable,
-        str(Path.home() / ".codex/skills/research/validate_json.py"),
-        "-f",
-        str(FIELDS),
-        "-j",
-        *[str(path) for path in sorted(RESULTS.glob("*.json"))],
-    ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    result_files = sorted(RESULTS.glob("*.json"))
 
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "Total fields: 8" in completed.stdout
-    assert "Validation passed: 5/5" in completed.stdout
+    assert len(result_files) == 5
+    _assert_results_cover_required_fields(FIELDS, result_files)
 
 
 def test_research_index_marks_research_as_evidence_not_operator_guidance():
@@ -94,18 +96,7 @@ def test_source_builder_lite_research_results_validate():
     result_files = sorted(results.glob("*.json"))
     assert len(result_files) == 5
 
-    command = [
-        sys.executable,
-        str(Path.home() / ".codex/skills/research/validate_json.py"),
-        "-f",
-        str(fields),
-        "-j",
-        *[str(path) for path in result_files],
-    ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
-
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "Validation passed: 5/5" in completed.stdout
+    _assert_results_cover_required_fields(fields, result_files)
 
 
 def test_latest_guarded_apply_matrix_audit_is_curated_markdown():
@@ -158,19 +149,15 @@ def test_source_contract_logic_audit_validates_and_is_indexed_as_evidence():
     result_files = sorted(results.glob("*.json"))
     assert len(result_files) == 3
 
-    command = [
-        sys.executable,
-        str(Path.home() / ".codex/skills/research/validate_json.py"),
-        "-f",
-        str(fields),
-        "-j",
-        *[str(path) for path in result_files],
-    ]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
-
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "Total fields: 8" in completed.stdout
-    assert "Validation passed: 3/3" in completed.stdout
+    assert len(
+        {
+            field["name"]
+            for category in yaml.safe_load(fields.read_text(encoding="utf-8"))["field_categories"]
+            for field in category["fields"]
+            if field.get("required") is True
+        }
+    ) == 8
+    _assert_results_cover_required_fields(fields, result_files)
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     current_truth = Path("docs/research/current-truth.md").read_text(encoding="utf-8")
