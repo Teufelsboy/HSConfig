@@ -238,14 +238,22 @@ def _ledger_cards(ledger: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 def _ledger_mulligan_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
     metrics = ledger.get("mulligan", {})
     count = _int(metrics.get("rule_count")) if isinstance(metrics, Mapping) else 0
-    status = "rich" if count else "thin"
+    rules = _list(metrics.get("rules")) if isinstance(metrics, Mapping) else []
+    concrete_keeps = [
+        rule
+        for rule in rules
+        if isinstance(rule, Mapping)
+        and str(rule.get("mulligan", "")) != "*"
+        and str(rule.get("value", "")) == "hold"
+    ]
+    status = "rich" if concrete_keeps else "thin"
     return {
         "status": status,
         "rule_count": count,
         "suppressed_rule_count": 0,
-        "has_concrete_keeps": bool(count),
-        "default_only": False,
-        "first_gap_reason": "none" if count else "no_physical_mulligan_keep",
+        "has_concrete_keeps": bool(concrete_keeps),
+        "default_only": bool(count) and not concrete_keeps,
+        "first_gap_reason": "none" if concrete_keeps else "no_physical_mulligan_keep",
         "next_source_need": "none"
         if count
         else "source_backed_or_policy_backed_mulligan_keeps",
@@ -285,7 +293,7 @@ def _ledger_combo_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
     metrics = ledger.get("combo", {})
     count = _int(metrics.get("row_count")) if isinstance(metrics, Mapping) else 0
     return {
-        "status": "rich" if count >= 2 else "not_expected",
+        "status": "rich" if count else "not_expected",
         "default_only": False,
         "combo_expected": bool(count),
         "combo_row_count": count,

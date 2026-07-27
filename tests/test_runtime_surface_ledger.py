@@ -326,3 +326,85 @@ def test_runtime_surface_ledger_counts_linked_owner_cardid_entity():
     assert ledger["cardid"]["entity_count"] == 1
     assert ledger["cardid"]["card_ids"] == ["TOKEN_001"]
     assert ledger["cardid"]["behavior_row_count"] == 1
+
+
+def test_runtime_surface_ledger_preserves_combo_operators_and_single_row_is_rich():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={
+            "deck_name": "Combo Identity",
+            "cards": [
+                {"card_id": "A_001", "count": 1},
+                {"card_id": "B_002", "count": 1},
+            ],
+        },
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo={
+            "ComboList": {
+                "values": [
+                    {"combo": "A_001 >-> B_002"},
+                    {"combo": "A_001 >> A_001"},
+                ]
+            }
+        },
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+    single_row = {
+        **ledger,
+        "combo": {"row_count": 1, "rows": ["A_001>>A_001"], "card_ids": ["A_001"]},
+    }
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="",
+        config_readiness_summary={},
+        runtime_surface_ledger=single_row,
+    )
+
+    assert ledger["combo"]["rows"] == ["A_001>->B_002", "A_001>>A_001"]
+    assert usefulness["surfaces"]["combo"]["combo_row_count"] == 1
+    assert usefulness["surfaces"]["combo"]["status"] == "rich"
+
+
+def test_runtime_surface_ledger_rejects_orphan_cardid_and_out_of_deck_mulligan_combo_ids():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Ownership", "cards": [{"card_id": "A_001", "count": 1}]},
+        compiled_mulligan={"Mulligan": {"values": [{"mulligan": "ORPHAN_001", "value": "hold"}]}},
+        compiled_globalvalues={},
+        compiled_combo={"ComboList": {"values": [{"combo": "A_001 >> ORPHAN_001"}]}},
+        compiled_cardid_files={
+            "ORPHAN_001.json": {
+                "GameCardId": "ORPHAN_001",
+                "BeforePlayCardBonus": {"values": [{"condition": "*", "value": "1"}]},
+            }
+        },
+        linked_runtime_owners=[],
+    )
+
+    assert ledger["physical_errors"] == [
+        "cardid_orphan_runtime_entity:ORPHAN_001",
+        "combo_out_of_deck_card:ORPHAN_001",
+        "mulligan_out_of_deck_card:ORPHAN_001",
+    ]
+
+
+def test_config_usefulness_keeps_discard_only_mulligan_thin():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="",
+        config_readiness_summary={},
+        runtime_surface_ledger={
+            "mulligan": {
+                "rule_count": 1,
+                "rules": [{"mulligan": "A_001", "value": "discard", "condition": "*"}],
+                "card_ids": ["A_001"],
+            },
+            "combo": {"row_count": 0},
+            "cardid": {},
+            "globalvalues": {},
+        },
+    )
+
+    assert usefulness["surfaces"]["mulligan"]["rule_count"] == 1
+    assert usefulness["surfaces"]["mulligan"]["has_concrete_keeps"] is False
+    assert usefulness["surfaces"]["mulligan"]["status"] == "thin"

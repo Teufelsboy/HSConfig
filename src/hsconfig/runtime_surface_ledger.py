@@ -39,10 +39,30 @@ def build_runtime_surface_ledger(
         if card.get("card_id")
     }
     mulligan_rows = _mulligan_rows(compiled_mulligan)
-    mulligan_cards = {str(row["mulligan"]) for row in mulligan_rows if row["value"] == "hold" and row["mulligan"] != "*"}
+    mulligan_cards = {str(row["mulligan"]) for row in mulligan_rows if row["mulligan"] != "*"}
     combo_rows, combo_errors = _combo_rows(compiled_combo)
-    combo_cards = {card_id for row in combo_rows for card_id in row}
+    combo_cards = {card_id for row in combo_rows for card_id in row["cards"]}
     cardid_payloads, cardid_errors = _valid_cardid_payloads(compiled_cardid_files)
+    explicit_linked_runtime_ids = {
+        str(owner.get("runtime_card_id", ""))
+        for owner in linked_runtime_owners
+        if str(owner.get("runtime_card_id", ""))
+    }
+    ownership_errors = [
+        *[
+            f"mulligan_out_of_deck_card:{row['mulligan']}"
+            for row in mulligan_rows
+            if row["mulligan"] != "*" and row["mulligan"] not in cards
+        ],
+        *[
+            f"combo_out_of_deck_card:{card_id}"
+            for card_id in sorted(combo_cards - set(cards))
+        ],
+        *[
+            f"cardid_orphan_runtime_entity:{card_id}"
+            for card_id in sorted(set(cardid_payloads) - set(cards) - explicit_linked_runtime_ids)
+        ],
+    ]
     globalvalues, globalvalue_errors = _globalvalues_metrics(
         compiled_globalvalues, globalvalues_baseline
     )
@@ -73,11 +93,11 @@ def build_runtime_surface_ledger(
         "combo": {
             "row_count": len(combo_rows),
             "card_ids": sorted(combo_cards),
-            "rows": [">>".join(row) for row in combo_rows],
+            "rows": [str(row["canonical"]) for row in combo_rows],
         },
         "cardid": _cardid_metrics(cardid_payloads),
         "globalvalues": globalvalues,
-        "physical_errors": sorted([*combo_errors, *cardid_errors, *globalvalue_errors]),
+        "physical_errors": sorted([*combo_errors, *cardid_errors, *globalvalue_errors, *ownership_errors]),
         "unexpected_runtime_emissions": sorted(
             unexpected, key=lambda row: row["card_id"]
         ),
@@ -100,7 +120,11 @@ def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, str]]:
         else []
     )
     return [
-        {"mulligan": str(row["mulligan"]), "value": str(row["value"])}
+        {
+            "mulligan": str(row["mulligan"]),
+            "value": str(row["value"]),
+            "condition": str(row.get("condition", "*")),
+        }
         for row in values
         if isinstance(row, Mapping)
         and row.get("mulligan")
@@ -108,7 +132,9 @@ def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-def _combo_rows(payload: Mapping[str, Any] | None) -> tuple[list[list[str]], list[str]]:
+def _combo_rows(
+    payload: Mapping[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
     if payload is None:
         return [], []
     values = (
@@ -118,7 +144,7 @@ def _combo_rows(payload: Mapping[str, Any] | None) -> tuple[list[list[str]], lis
     )
     if not isinstance(values, list):
         return [], ["combo_values_malformed"]
-    parsed_rows: list[list[str]] = []
+    parsed_rows: list[dict[str, Any]] = []
     errors: list[str] = []
     for index, row in enumerate(values):
         raw = row.get("combo") if isinstance(row, Mapping) else None
@@ -130,18 +156,16 @@ def _combo_rows(payload: Mapping[str, Any] | None) -> tuple[list[list[str]], lis
     return parsed_rows, errors
 
 
-def _parse_combo(raw: Any) -> list[str] | None:
+def _parse_combo(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, str):
         return None
     separators = [token for token in COMBO_SEPARATORS if token in raw]
     if len(separators) != 1:
         return None
     parts = [part.strip() for part in raw.split(separators[0])]
-    return (
-        parts
-        if len(parts) >= 2 and all(parts) and all(">" not in part for part in parts)
-        else None
-    )
+    if len(parts) < 2 or not all(parts) or any(">" in part for part in parts):
+        return None
+    return {"cards": parts, "operator": separators[0], "canonical": separators[0].join(parts)}
 
 
 def _valid_cardid_payloads(

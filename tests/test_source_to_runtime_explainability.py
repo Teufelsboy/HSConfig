@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
 from hsconfig.source_contract_audit import build_source_contract_audit
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
@@ -315,10 +316,10 @@ def test_explainability_uses_empty_ledger_not_plan_emission_for_closure_and_atte
     attention = next(row for row in report["operator_attention"] if row["card_id"] == "CARD_KEEP")
 
     assert row["emitted_runtime_files"] == []
-    assert row["not_emitted_runtime_files"] == []
+    assert row["not_emitted_runtime_files"] == ["Mulligan.json"]
     assert row["runtime_lowering_status"] == "source_backed_contract_only"
     assert row["closure"]["runtime_surfaces"] == []
-    assert row["evidence_chain"][0]["runtime_files"] == []
+    assert row["evidence_chain"][0]["runtime_files"] == ["Mulligan.json"]
     assert attention["status"] == "source_action_needed"
     keep_claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
     assert keep_claim["emitted_runtime_files"] == []
@@ -342,6 +343,90 @@ def test_explainability_preserves_strong_claim_when_ledger_has_matching_mulligan
     assert card["strong_ready"] is True
     assert card["closure_lane"] == "source_backed_runtime_lowered"
     assert report["summary"]["runtime_lowered_claims"] == 1
+
+
+def test_explainability_emits_discard_claim_only_for_matching_discard_selector():
+    audit = _fixture_audit()
+    audit["claim_rows"]["keep_claim"].update(
+        {"claim_kind": "mulligan_discard", "selector": "CARD_KEEP"}
+    )
+    audit["claim_lifecycle_rows"][0]["claim_kind"] = "mulligan_discard"
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Discard", "cards": [{"card_id": "CARD_KEEP", "count": 1}]},
+        compiled_mulligan={
+            "Mulligan": {"values": [{"mulligan": "CARD_KEEP", "value": "discard"}]}
+        },
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    report = build_source_to_runtime_explainability_report(
+        audit, runtime_surface_ledger=ledger
+    )
+    claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
+    card = next(row for row in report["card_rows"] if row["card_id"] == "CARD_KEEP")
+
+    assert ledger["cards"]["CARD_KEEP"]["runtime_surfaces"] == ["Mulligan.json"]
+    assert claim["emitted_runtime_files"] == ["Mulligan.json"]
+    assert card["emitted_runtime_files"] == ["Mulligan.json"]
+    assert report["summary"]["runtime_lowered_claims"] == 1
+
+
+def test_explainability_does_not_match_keep_claim_to_discard_surface():
+    audit = _fixture_audit()
+    audit["claim_rows"]["keep_claim"]["selector"] = "CARD_KEEP"
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Discard", "cards": [{"card_id": "CARD_KEEP", "count": 1}]},
+        compiled_mulligan={
+            "Mulligan": {"values": [{"mulligan": "CARD_KEEP", "value": "discard"}]}
+        },
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    report = build_source_to_runtime_explainability_report(
+        audit, runtime_surface_ledger=ledger
+    )
+    claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
+
+    assert claim["emitted_runtime_files"] == []
+
+
+def test_explainability_requires_exact_combo_operator_and_order():
+    audit = _fixture_audit()
+    audit["claim_rows"]["keep_claim"].update(
+        {
+            "claim_kind": "combo_sequence",
+            "cards": ["CARD_KEEP", "CARD_NUM"],
+            "operator": ">>",
+        }
+    )
+    audit["claim_lifecycle_rows"][0].update(
+        {
+            "claim_kind": "combo_sequence",
+            "runtime_surface": "Combo.json",
+            "emitted_files": ["Combo.json"],
+        }
+    )
+    ledger = {
+        "cards": {
+            "CARD_KEEP": {"runtime_surfaces": ["Combo.json"]},
+            "CARD_NUM": {"runtime_surfaces": ["Combo.json"]},
+        },
+        "combo": {"row_count": 1, "rows": ["CARD_KEEP>->CARD_NUM"]},
+        "linked_runtime_entities": {},
+    }
+
+    report = build_source_to_runtime_explainability_report(
+        audit, runtime_surface_ledger=ledger
+    )
+    claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
+
+    assert claim["emitted_runtime_files"] == []
 
 
 def test_explainability_keeps_darkbishop_as_source_and_mind_spike_as_runtime_owner():

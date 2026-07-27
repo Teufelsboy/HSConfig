@@ -187,7 +187,12 @@ def _apply_runtime_surface_ledger_to_claim_rows(
         if not expected_files:
             projected.append(row)
             continue
-        emitted_files = sorted(set(physical_files) & set(expected_files))
+        emitted_files = _claim_physical_files(
+            raw_claim=raw_claim if isinstance(raw_claim, Mapping) else {},
+            expected_files=expected_files,
+            physical_files=physical_files,
+            ledger=ledger,
+        )
         projected.append(
             {
                 **row,
@@ -218,6 +223,82 @@ def _apply_runtime_surface_ledger_to_claim_rows(
     return projected
 
 
+def _claim_physical_files(
+    *,
+    raw_claim: Mapping[str, Any],
+    expected_files: list[str],
+    physical_files: list[str],
+    ledger: Mapping[str, Any],
+) -> list[str]:
+    kind = str(raw_claim.get("claim_kind", "")).lower()
+    expected = set(expected_files)
+    if "mulligan" in kind and "Mulligan.json" in expected:
+        metrics = ledger.get("mulligan")
+        if not isinstance(metrics, Mapping):
+            return ["Mulligan.json"] if "Mulligan.json" in physical_files else []
+        selector = str(raw_claim.get("selector") or raw_claim.get("mulligan") or "")
+        cards = _string_list(raw_claim.get("cards"))
+        selector = selector or (cards[0] if len(cards) == 1 else "")
+        action = "discard" if "discard" in kind else "hold"
+        if any(
+            str(rule.get("mulligan", "")) == selector
+            and str(rule.get("value", "")) == action
+            for rule in metrics.get("rules", [])
+            if isinstance(rule, Mapping)
+        ):
+            return ["Mulligan.json"]
+        return []
+    if "combo" in kind and "Combo.json" in expected:
+        metrics = ledger.get("combo")
+        if not isinstance(metrics, Mapping):
+            return ["Combo.json"] if "Combo.json" in physical_files else []
+        cards = _string_list(raw_claim.get("cards"))
+        rows = _string_list(metrics.get("rows"))
+        operator = str(raw_claim.get("operator", ""))
+        if cards and any(
+            identity["cards"] == cards
+            and (not operator or identity["operator"] == operator)
+            for identity in (_combo_row_identity(row) for row in rows)
+        ):
+            return ["Combo.json"]
+        return []
+    if "globalvalue" in kind and "GlobalValues.json" in expected:
+        metrics = ledger.get("globalvalues")
+        key = str(raw_claim.get("key") or raw_claim.get("globalvalues_key") or "")
+        if isinstance(metrics, Mapping) and key in _string_list(metrics.get("changed_keys")):
+            return ["GlobalValues.json"]
+        return []
+    cardid_metrics = ledger.get("cardid")
+    behavior_block = str(raw_claim.get("behavior_block", ""))
+    cardid_expected = [path for path in expected_files if path.endswith(".json") and path not in {"Mulligan.json", "Combo.json", "GlobalValues.json"}]
+    if cardid_expected and behavior_block and isinstance(cardid_metrics, Mapping):
+        entities = {
+            str(entity.get("card_id", "")): entity
+            for entity in cardid_metrics.get("entities", [])
+            if isinstance(entity, Mapping)
+        }
+        return [
+            path
+            for path in cardid_expected
+            if behavior_block in _mapping_dict(entities.get(path[:-5])).get("behavior_blocks", {})
+        ]
+    return sorted(set(physical_files) & expected)
+
+
+def _mapping_dict(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _combo_row_identity(row: str) -> dict[str, Any]:
+    for operator in (">->", ">>"):
+        if operator in row:
+            return {
+                "operator": operator,
+                "cards": [part.strip() for part in row.split(operator)],
+            }
+    return {"operator": "", "cards": []}
+
+
 def _apply_runtime_surface_ledger(
     rows: list[dict[str, Any]],
     ledger: Mapping[str, Any] | None,
@@ -235,7 +316,11 @@ def _apply_runtime_surface_ledger(
         direct_files = _string_list(
             physical.get("runtime_surfaces") if isinstance(physical, Mapping) else []
         )
-        emitted_files = sorted(set(direct_files) | set(linked_files_by_source.get(str(row.get("card_id", "")), [])))
+        emitted_files = sorted(
+            set(direct_files)
+            | set(linked_files_by_source.get(str(row.get("card_id", "")), []))
+            | set(_string_list(row.get("emitted_runtime_files")))
+        )
         runtime_eligible = row.get("runtime_eligible") is not False
         runtime_backed = bool(emitted_files)
         first_missing_link = (
@@ -260,7 +345,9 @@ def _apply_runtime_surface_ledger(
             # Plans can state an intended surface, but only a ledger can state
             # a physical non-emission.  Do not re-export intended files as a
             # physical truth when the ledger is supplied.
-            "not_emitted_runtime_files": [],
+            "not_emitted_runtime_files": _string_list(
+                row.get("not_emitted_runtime_files")
+            ),
             "first_missing_link": first_missing_link,
             "why_not_emitted": why_not_emitted,
             "next_source_action": next_source_action,
@@ -283,7 +370,7 @@ def _apply_runtime_surface_ledger(
             ),
             "strong_ready": runtime_backed and row.get("strong_ready") is True,
             "default_only_blocker": not runtime_backed,
-            "evidence_chain": _ledger_evidence_chain(row.get("evidence_chain", []), emitted_files, why_not_emitted),
+            "evidence_chain": row.get("evidence_chain", []),
         }
         updated["closure"] = _closure_row(row=updated, related_claims=[])
         updated["closure"]["lane"] = updated["closure_lane"]

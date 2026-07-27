@@ -39,3 +39,4 @@ Task 7: complete (commits 498d4c3..334957c; spec and quality approved; root veri
 Task 8: complete (physical compiled-artifact runtime surface ledger; FIR_911 Mulligan parity, SW_448 to EX1_625t linked separation, and MechPala sideboard coverage; local verification 248 passed)
 Task 8: fix round 1/5 (fail-closed Combo/CardID/GlobalValues physical parsing; authoritative empty-ledger consumer projections; sideboard emission strict rejection; order-independent linked-owner collision rejection; ledger/strict slice 74 passed, multi-deck E2E 19 passed, Ruff clean)
 Task 8: fix round 2/5 (schema-2 canonical ledger re-derivation and integrity enforcement; exact ledger metrics; claim/card/summary physical reconciliation; ledger/strict slice 80 passed, multi-deck E2E 19 passed, Ruff clean)
+Task 8: fix round 3/5 (exact Combo/Mulligan physical identities, discard-aware usefulness and claims, orphan ownership rejection; focused Task-8 suite 86 passed, Ruff clean)

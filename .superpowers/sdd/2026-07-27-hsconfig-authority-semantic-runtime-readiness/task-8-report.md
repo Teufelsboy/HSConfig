@@ -33,6 +33,20 @@ validation regressions; `19 passed` for the multi-deck source-backed E2E suite;
 both targeted Ruff checks and `git diff --check` passed. No runtime, HSTuner or
 Desktop access was used.
 
+## Round 3 surface identity follow-up
+
+Combo rows retain their exact supported operator in canonical identity; even a
+single valid physical row is rich. Mulligan records include card-specific hold
+and discard rules while usefulness only treats concrete non-wildcard holds as
+rich. Claim reconciliation matches Mulligan selector/action and Combo
+order/operator, preserves claim-local evidence/missing files, and rejects
+orphan or out-of-deck CardID/Mulligan/Combo identities unless an explicit
+linked runtime owner authorizes the CardID entity.
+
+Round-3 verification: RED confirmed for operator loss, one-row Combo richness,
+discard identity, and orphan output; focused Task-8 suite `86 passed`, Ruff and
+`git diff --check` passed. No runtime, HSTuner or Desktop access was used.
+
 ## Round 2 canonicality and claim-projection follow-up
 
 Schema-2 packages now require `reports/runtime_surface_ledger.json`. Strict
