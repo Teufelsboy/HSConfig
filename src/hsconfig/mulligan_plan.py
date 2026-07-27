@@ -4,8 +4,15 @@ from typing import Any
 
 from hsconfig.autonomous_mulligan_policy import build_policy_backed_mulligan_rules
 from hsconfig.condition_format import lower_runtime_condition
+from hsconfig.input_loading import fixture_row_for
 from hsconfig.mulligan_selector import normalize_mulligan_selector
+from hsconfig.role_tokens import (
+    claim_role_tokens,
+    has_start_of_game_non_hand_effect,
+    role_tokens,
+)
 from hsconfig.source_claim_lifecycle import lifecycle_claim_id
+from hsconfig.source_claim_gap_report import documented_mulligan_stop_condition_cards
 from hsconfig.source_document_model import can_lower_to_mulligan, normalized_claim_kind
 
 
@@ -190,16 +197,27 @@ def build_mulligan_plan(
     )
     has_source_backed_keeps = source_backed_keep_rule_count > 0
     if allow_policy_backed and not has_source_backed_keeps:
+        documented_gap_cards = documented_mulligan_stop_condition_cards(
+            fixture_row_for(deck_name)
+        )
+        policy_veto_card_ids = _policy_veto_card_ids(
+            claims=claims,
+            rules=rules,
+            suppressed_rules=suppressed_rules,
+            card_roles=card_roles,
+            documented_gap_cards=documented_gap_cards,
+            extra_card_ids=policy_excluded_card_ids or set(),
+        )
+        _preserve_documented_source_gap_suppression(
+            suppressed_rules=suppressed_rules,
+            documented_gap_cards=documented_gap_cards,
+            exact_authority_cards=_exact_source_mulligan_authority_cards(rules),
+        )
         policy_result = build_policy_backed_mulligan_rules(
             deck_name=deck_name,
             deck_cards=deck_cards or {},
             card_roles=card_roles,
-            excluded_card_ids=_source_mulligan_intent_cards_for_policy(
-                claims=claims,
-                rules=rules,
-                suppressed_rules=suppressed_rules,
-                extra_card_ids=policy_excluded_card_ids or set(),
-            ),
+            excluded_card_reasons=policy_veto_card_ids,
         )
         for row in policy_result["rules"]:
             if _add_or_merge_mulligan_rule(rules, rules_by_key, row):
@@ -399,37 +417,139 @@ def _apply_mulligan_precedence(rules: list[dict[str, Any]]) -> list[dict[str, An
     return [rule for _index, rule in sorted(enumerate(rules), key=sort_key)]
 
 
-def _source_mulligan_intent_cards_for_policy(
+def _policy_veto_card_ids(
     *,
     claims: list[dict[str, Any]],
     rules: list[dict[str, Any]],
     suppressed_rules: list[dict[str, Any]],
+    card_roles: dict[str, Any],
+    documented_gap_cards: dict[str, str],
     extra_card_ids: set[str],
-) -> set[str]:
-    cards = {str(card_id) for card_id in extra_card_ids if str(card_id)}
+) -> dict[str, str]:
+    vetoes = {
+        str(card_id): "excluded_source_mulligan_intent"
+        for card_id in extra_card_ids
+        if str(card_id)
+    }
+    exact_authority_cards = _exact_source_mulligan_authority_cards(rules)
     for claim in claims:
         if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:
             continue
         lifecycle = claim.get("_claim_lifecycle")
-        if isinstance(lifecycle, dict) and lifecycle.get("surface_gate_allowed") is False:
+        if (
+            isinstance(lifecycle, dict)
+            and lifecycle.get("surface_gate_allowed") is False
+            and str(lifecycle.get("surface_gate_reason", ""))
+            in SURFACE_REJECTION_REASONS
+        ):
             continue
-        cards.update(_claim_cards(claim))
+        for card_id in _claim_cards(claim):
+            vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
     for row in [*rules, *suppressed_rules]:
         if row.get("action") not in {"hold", "discard"}:
             continue
-        if str(row.get("reason", "")) in SURFACE_REJECTION_REASONS:
+        reason = str(row.get("reason", ""))
+        if reason in SURFACE_REJECTION_REASONS:
             continue
-        _add_row_cards(cards, row)
-    return {card_id for card_id in cards if card_id and card_id != "*"}
+        for card_id in _row_card_ids(row):
+            vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
+            if reason == "claim_not_runtime_lowerable":
+                vetoes[card_id] = "explicit_source_gap_requires_resolution"
+    for card_id, reason in documented_gap_cards.items():
+        if card_id not in exact_authority_cards:
+            vetoes[card_id] = reason
+    for card_id, role_row in card_roles.items():
+        card_id = str(card_id)
+        if not card_id:
+            continue
+        roles = _card_role_tokens(role_row)
+        if "sideboard_owner" in roles:
+            vetoes.setdefault(card_id, "sideboard_owner_not_curve_anchor")
+        elif (
+            card_id not in exact_authority_cards
+            and (
+                has_start_of_game_non_hand_effect(roles)
+                or "start_of_game" in roles
+            )
+        ):
+            vetoes.setdefault(
+                card_id,
+                "excluded_non_hand_start_of_game_effect",
+            )
+    return vetoes
 
 
-def _add_row_cards(cards: set[str], row: dict[str, Any]) -> None:
-    for card_id in row.get("selector_cards", []):
-        if str(card_id):
-            cards.add(str(card_id))
+def _row_card_ids(row: dict[str, Any]) -> set[str]:
+    selector_cards = row.get("selector_cards", [])
+    if isinstance(selector_cards, str):
+        selector_cards = [selector_cards]
+    if not isinstance(selector_cards, list):
+        selector_cards = []
+    cards = {
+        str(card_id)
+        for card_id in selector_cards
+        if str(card_id)
+    }
     card_id = str(row.get("card", ""))
     if card_id and card_id != "*":
         cards.add(card_id)
+    return cards
+
+
+def _exact_source_mulligan_authority_cards(
+    rules: list[dict[str, Any]],
+) -> set[str]:
+    cards: set[str] = set()
+    for row in rules:
+        if (
+            row.get("source_type") != "source_claim"
+            or row.get("action") not in {"hold", "discard"}
+            or row.get("selector_kind") == "wildcard"
+        ):
+            continue
+        selector_cards = row.get("selector_cards", [])
+        if isinstance(selector_cards, list):
+            cards.update(str(card_id) for card_id in selector_cards if str(card_id))
+        card_id = str(row.get("card", ""))
+        if card_id and card_id != "*":
+            cards.add(card_id)
+    return cards
+
+
+def _preserve_documented_source_gap_suppression(
+    *,
+    suppressed_rules: list[dict[str, Any]],
+    documented_gap_cards: dict[str, str],
+    exact_authority_cards: set[str],
+) -> None:
+    for card_id in documented_gap_cards:
+        if card_id in exact_authority_cards:
+            continue
+        if any(
+            row.get("card") == card_id
+            and row.get("action") in {"hold", "discard"}
+            and row.get("reason") == "claim_not_runtime_lowerable"
+            for row in suppressed_rules
+        ):
+            continue
+        suppressed_rules.append(
+            {
+                "card": card_id,
+                "action": "hold",
+                "reason": "claim_not_runtime_lowerable",
+                "source_claim_ids": [],
+                "source_type": "documented_source_gap",
+            }
+        )
+
+
+def _card_role_tokens(row: Any) -> set[str]:
+    if not isinstance(row, dict):
+        return set()
+    values = claim_role_tokens(row)
+    values.update(role_tokens(row.get("mechanics")))
+    values.update(role_tokens(row.get("tags")))
+    return values
 
 
 def _claim_cards(claim: dict[str, Any]) -> list[str]:

@@ -152,13 +152,13 @@ def build_policy_backed_mulligan_rules(
     excluded_card_reasons: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     cards = _normalise_deck_cards(deck_cards)
-    excluded_reasons = {
+    policy_veto_card_ids = {
         str(card_id): str(reason)
         for card_id, reason in (excluded_card_reasons or {}).items()
     }
     excluded_cards = {
         str(card_id) for card_id in (excluded_card_ids or set())
-    } | set(excluded_reasons)
+    } | set(policy_veto_card_ids)
     candidates: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
 
@@ -167,7 +167,7 @@ def build_policy_backed_mulligan_rules(
             suppressed.append(
                 {
                     "card": card_id,
-                    "reason": excluded_reasons.get(
+                    "reason": policy_veto_card_ids.get(
                         card_id,
                         "excluded_source_mulligan_intent",
                     ),
@@ -216,6 +216,7 @@ def build_policy_backed_mulligan_rules(
         "candidate_count": len(candidates),
         "selected_count": len(rules),
         "excluded_count": len(suppressed),
+        "policy_veto_card_ids": policy_veto_card_ids,
     }
 
 

@@ -146,6 +146,28 @@ def test_policy_uses_last_resort_curve_anchor_when_roles_are_unknown():
     )
 
 
+def test_policy_veto_preserves_ordinary_safe_curve_fallback():
+    result = build_policy_backed_mulligan_rules(
+        deck_name="UnknownDeck",
+        deck_cards={
+            "SOURCE_GAP": {"name": "Unresolved Source Card", "cost": 1},
+            "SAFE_CURVE": {"name": "Safe Curve Card", "cost": 2},
+        },
+        card_roles={},
+        excluded_card_reasons={
+            "SOURCE_GAP": "explicit_source_gap_requires_resolution",
+        },
+    )
+
+    assert [row["card"] for row in result["rules"]] == ["SAFE_CURVE"]
+    assert {
+        "card": "SOURCE_GAP",
+        "reason": "explicit_source_gap_requires_resolution",
+        "policy_lane": "source_veto",
+        "source_type": "policy_backed_autonomous_mulligan",
+    } in result["suppressed"]
+
+
 def test_policy_excludes_mixed_late_payoff_even_when_it_has_pressure_role():
     result = build_policy_backed_mulligan_rules(
         deck_name="MixedRoleDeck",

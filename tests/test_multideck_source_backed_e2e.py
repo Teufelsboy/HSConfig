@@ -1,5 +1,7 @@
 import json
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,6 +13,7 @@ from hsconfig.source_autopilot import build_source_autopilot_bundle
 from hsconfig.source_document_model import qualify_source_claim
 from tests.helpers.fixture_prepare import (
     load_archetype_matrix,
+    prepare_fixture_deck,
     read_json as read_fixture_json,
 )
 from tests.helpers.live_acquisition import acquire_live_test_provenance
@@ -57,6 +60,66 @@ PLACEHOLDER_SOURCE_ACTIONS = {
     "add_explicit_mulligan_source",
     "close_first_missing_chain",
 }
+
+
+def prepared_mulligan_plan(
+    tmp_path: Path,
+    deck_name: str,
+) -> dict[str, Any]:
+    deck = next(
+        row for row in load_archetype_matrix()
+        if row["deck_name"] == deck_name
+    )
+    prepared = prepare_fixture_deck(tmp_path / deck_name, deck)
+    assert prepared["exit_code"] == 0
+    return read_json(
+        prepared["out"] / "reports" / "mulligan_plan_report.json"
+    )
+
+
+def hold_cards(plan: Mapping[str, Any]) -> set[str]:
+    return {
+        str(row["card"])
+        for row in plan["rules"]
+        if row.get("action") == "hold"
+        and row.get("selector_kind", "single_card") != "wildcard"
+    }
+
+
+def test_policy_mulligan_honors_named_source_and_role_vetoes(
+    tmp_path: Path,
+) -> None:
+    boarlock_plan = prepared_mulligan_plan(tmp_path, "Boarlock")
+    kingslayer_plan = prepared_mulligan_plan(tmp_path, "Kingslayer")
+    mechpala_plan = prepared_mulligan_plan(tmp_path, "MechPala")
+
+    assert "WW_092" not in hold_cards(boarlock_plan)
+    assert "DEEP_014" not in hold_cards(kingslayer_plan)
+    assert "TOY_330" not in hold_cards(mechpala_plan)
+
+    expected_vetoes = (
+        (boarlock_plan, "WW_092", "explicit_source_gap_requires_resolution"),
+        (kingslayer_plan, "DEEP_014", "explicit_source_gap_requires_resolution"),
+        (mechpala_plan, "TOY_330", "sideboard_owner_not_curve_anchor"),
+    )
+    for plan, card_id, reason in expected_vetoes:
+        assert {
+            "card": card_id,
+            "reason": reason,
+            "policy_lane": "source_veto",
+            "source_type": "policy_backed_autonomous_mulligan",
+        } in plan["suppressed_rules"]
+
+    assert any(
+        row.get("card") == "WW_092"
+        and row.get("reason") == "claim_not_runtime_lowerable"
+        for row in boarlock_plan["suppressed_rules"]
+    )
+    assert any(
+        row.get("card") == "DEEP_014"
+        and row.get("reason") == "claim_not_runtime_lowerable"
+        for row in kingslayer_plan["suppressed_rules"]
+    )
 
 
 @pytest.mark.parametrize("deck_name,deck_code", DECKS.items())

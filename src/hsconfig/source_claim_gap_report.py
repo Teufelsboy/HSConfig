@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -84,6 +85,37 @@ SOURCE_DEPTH_LANE_BY_MISSING_LINK = {
     "needs_target_surface": "target_surface_gap",
     "needs_mechanic_lowering": "mechanic_lowering_gap",
 }
+
+
+def documented_mulligan_stop_condition_cards(
+    fixture_row: Mapping[str, Any] | None,
+) -> dict[str, str]:
+    """Project exact card IDs from a documented Mulligan stop condition."""
+    if not isinstance(fixture_row, Mapping):
+        return {}
+    visibility = fixture_row.get("strongness_visibility")
+    if not isinstance(visibility, Mapping):
+        return {}
+    if (
+        visibility.get("operator_action")
+        != "preserve_source_informed_with_explicit_stop_condition"
+        or not str(visibility.get("stop_condition", "")).strip()
+    ):
+        return {}
+    limits = fixture_row.get("known_coverage_limits", [])
+    if not isinstance(limits, Sequence) or isinstance(limits, (str, bytes)):
+        return {}
+    cards: dict[str, str] = {}
+    for limit in limits:
+        parts = str(limit).split(":")
+        if (
+            len(parts) >= 4
+            and parts[0] == "first_missing_chain"
+            and parts[-1] == "needs_mulligan_claim"
+            and parts[1]
+        ):
+            cards[parts[1]] = "explicit_source_gap_requires_resolution"
+    return cards
 
 
 def build_source_claim_gap_report(
