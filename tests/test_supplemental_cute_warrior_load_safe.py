@@ -61,9 +61,7 @@ def test_cute_warrior_supplemental_prepare_path_is_load_safe(
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert operator["runtime_apply_allowed"] is True
-    assert operator["runtime_apply_reason"] == (
-        "current_package_operator_gate_allowed"
-    )
+    assert operator["runtime_apply_reason"] == "runtime_load_safe_package"
     assert operator["fixture_classification"] is None
     assert operator["runtime_apply_contract"]["authority_scope"] == (
         "current_package_operator_gate"

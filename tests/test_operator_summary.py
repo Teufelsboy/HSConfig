@@ -116,9 +116,7 @@ def test_operator_summary_names_current_package_apply_authority():
     )
 
     assert summary["runtime_apply_allowed"] is True
-    assert summary["runtime_apply_reason"] == (
-        "current_package_operator_gate_allowed"
-    )
+    assert summary["runtime_apply_reason"] == "runtime_load_safe_package"
     assert summary["fixture_classification"] is None
     assert summary["runtime_apply_contract"] == {
         "apply_authority": "reports/operator_summary.json",
@@ -209,7 +207,7 @@ def test_operator_summary_prioritizes_invalid_package_apply_reason():
     )
 
     assert summary["runtime_apply_allowed"] is False
-    assert summary["runtime_apply_reason"] == "invalid_package"
+    assert summary["runtime_apply_reason"] == "missing_required_runtime_file"
     assert summary["fixture_classification"] is None
 
 

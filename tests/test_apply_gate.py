@@ -127,6 +127,16 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
             "verified": True,
         },
     }
+    if payload.get("technical_status") == "VALID_PACKAGE":
+        payload["apply_policy"] = "ALLOWED_WITH_WARNINGS"
+        payload.setdefault("runtime_apply_allowed", True)
+        payload.setdefault("runtime_apply_mode", "load_safe_apply")
+        payload.setdefault("runtime_apply_reason", "runtime_load_safe_package")
+    else:
+        payload["apply_policy"] = "BLOCKED"
+        payload.setdefault("runtime_apply_allowed", False)
+        payload.setdefault("runtime_apply_mode", "blocked")
+        payload.setdefault("runtime_apply_reason", "invalid_package")
     write_json(operator_path, payload)
 
 
@@ -366,15 +376,10 @@ def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):
         "allowed": True,
         "operator_summary_path": str(package / "reports" / "operator_summary.json"),
         "mode": "load_safe_apply",
+        "policy": "ALLOWED_WITH_WARNINGS",
         "reasons": [
-            {
-                "reason": "runtime_load_safe_package",
-                "technical_status": "VALID_PACKAGE",
-                "semantic_status": "SOURCE_BACKED_STRONG",
-                "next_action": "READY_TO_APPLY_OR_HANDOFF",
-                "apply_policy": "ALLOWED",
-                "semantic_blocker_count": 0,
-            }
+            {"reason": "runtime_load_safe_package"},
+            {"reason": "exact_source_not_closed", "blocking": False},
         ],
     }
 
@@ -405,15 +410,11 @@ def test_apply_gate_allows_valid_but_not_guide_strong_as_load_safe_apply(tmp_pat
         "allowed": True,
         "operator_summary_path": str(package / "reports" / "operator_summary.json"),
         "mode": "load_safe_apply",
+        "policy": "ALLOWED_WITH_WARNINGS",
         "reasons": [
-            {
-                "reason": "runtime_load_safe_package",
-                "technical_status": "VALID_PACKAGE",
-                "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
-                "next_action": "READY_TO_APPLY_WITH_WARNINGS",
-                "apply_policy": "ALLOWED_WITH_WARNINGS",
-                "semantic_blocker_count": 1,
-            }
+            {"reason": "runtime_load_safe_package"},
+            {"reason": "exact_source_not_closed", "blocking": False},
+            {"reason": "semantic_strength_incomplete", "blocking": False},
         ],
     }
 
@@ -453,7 +454,10 @@ def test_apply_gate_allows_minimal_load_safe_package_without_cardid_files(tmp_pa
     assert gate["allowed"] is True
     assert gate["mode"] == "load_safe_apply"
     assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
-    assert gate["reasons"][0]["semantic_blocker_count"] == 1
+    assert gate["reasons"][1] == {
+        "reason": "exact_source_not_closed",
+        "blocking": False,
+    }
 
 
 def test_apply_gate_allows_valid_runtime_surface_gap_as_load_safe_warning(
@@ -483,7 +487,10 @@ def test_apply_gate_allows_valid_runtime_surface_gap_as_load_safe_warning(
     assert gate["allowed"] is True
     assert gate["mode"] == "load_safe_apply"
     assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
-    assert gate["reasons"][0]["semantic_blocker_count"] == 1
+    assert gate["reasons"][1] == {
+        "reason": "exact_source_not_closed",
+        "blocking": False,
+    }
 
 
 def test_apply_gate_allows_source_informed_apply_ready_without_flag(tmp_path: Path):
@@ -549,10 +556,13 @@ def test_apply_gate_allows_load_safe_apply_when_source_gap_readiness_is_blocked(
     assert gate["allowed"] is True
     assert gate["mode"] == "load_safe_apply"
     assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
-    assert gate["reasons"][0]["semantic_blocker_count"] == 1
+    assert gate["reasons"][1] == {
+        "reason": "exact_source_not_closed",
+        "blocking": False,
+    }
 
 
-def test_apply_gate_ignores_forged_runtime_apply_fields_but_allows_valid_structure(
+def test_apply_gate_rejects_forged_runtime_apply_mode_despite_valid_structure(
     tmp_path: Path,
 ):
     package = tmp_path / "package"
@@ -578,9 +588,11 @@ def test_apply_gate_ignores_forged_runtime_apply_fields_but_allows_valid_structu
 
     gate = evaluate_apply_gate(package)
 
-    assert gate["allowed"] is True
-    assert gate["mode"] == "load_safe_apply"
-    assert gate["reasons"][0]["reason"] == "runtime_load_safe_package"
+    assert gate["allowed"] is False
+    assert gate["mode"] == "blocked"
+    assert gate["reasons"][0]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
 
 
 def test_apply_gate_blocks_invalid_package(tmp_path: Path):
@@ -605,7 +617,9 @@ def test_apply_gate_blocks_invalid_package(tmp_path: Path):
     gate = evaluate_apply_gate(package)
 
     assert gate["status"] == "blocked"
-    assert gate["reasons"][0]["reason"] == "operator_summary_not_valid_package"
+    assert gate["reasons"][0]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )
 
 
 @pytest.mark.parametrize("surface", ["Presume.json", "Concede.json", "CardBehavior.json"])

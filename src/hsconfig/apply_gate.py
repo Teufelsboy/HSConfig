@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from hsconfig.apply_decision import (
+    ApplyDecision,
+    ApplyFacts,
+    apply_decision_payload,
+    apply_decision_summary_projection,
+    build_apply_decision,
+)
 from hsconfig.deck_input_verification import verify_deck_input
 from hsconfig.io import read_json
 from hsconfig.package_derivation_receipt import (
@@ -33,114 +41,135 @@ def evaluate_apply_gate(
     *,
     allow_source_informed: bool = False,
 ) -> dict[str, Any]:
-    # Backward-compatible no-op; operator_summary is the gate.
+    # Backward-compatible no-op; there is one recomputed decision path.
     del allow_source_informed
     package = Path(package_root)
     operator_path = package / "reports" / "operator_summary.json"
     if not operator_path.is_file():
-        return _blocked(
+        return _decision_gate(
             operator_path,
-            {
-                "reason": "missing_operator_summary",
-                "path": str(operator_path),
-            },
+            build_apply_decision(
+                _single_blocked_fact(
+                    "package_summary_parity",
+                    {
+                        "reason": "missing_operator_summary",
+                        "path": str(operator_path),
+                    },
+                )
+            ),
         )
 
     try:
         summary = read_json(operator_path)
     except ValueError as error:
-        return _blocked(
+        return _decision_gate(
             operator_path,
-            {
-                "reason": "invalid_operator_summary_json",
-                "path": str(operator_path),
-                "error": str(error),
-            },
+            build_apply_decision(
+                _single_blocked_fact(
+                    "package_summary_parity",
+                    {
+                        "reason": "invalid_operator_summary_json",
+                        "path": str(operator_path),
+                        "error": str(error),
+                    },
+                )
+            ),
         )
     if not isinstance(summary, dict):
-        return _blocked(
+        return _decision_gate(
             operator_path,
-            {
-                "reason": "invalid_operator_summary",
-                "path": str(operator_path),
-            },
+            build_apply_decision(
+                _single_blocked_fact(
+                    "package_summary_parity",
+                    {
+                        "reason": "invalid_operator_summary",
+                        "path": str(operator_path),
+                    },
+                )
+            ),
         )
 
-    structure_reasons = _required_package_structure_reasons(package, summary)
-    if structure_reasons:
-        return _blocked(operator_path, *structure_reasons)
+    decision, _facts = recompute_apply_decision(
+        package,
+        summary,
+        enforce_summary_core_fields=True,
+    )
+    return _decision_gate(operator_path, decision)
 
-    strict_surface_reasons = [
+
+def recompute_apply_decision(
+    package_root: str | Path,
+    summary: dict[str, Any],
+    *,
+    enforce_summary_core_fields: bool,
+) -> tuple[ApplyDecision, ApplyFacts]:
+    package = Path(package_root)
+    runtime_surface_reasons = [
+        *_required_package_structure_reasons(package, summary),
         *_summary_optional_surface_reasons(summary),
         *_actual_optional_surface_reasons(package),
+        *_actual_runtime_json_reasons(package),
     ]
-    if strict_surface_reasons:
-        return _blocked(operator_path, *strict_surface_reasons)
-
-    runtime_json_reasons = _actual_runtime_json_reasons(package)
-    if runtime_json_reasons:
-        return _blocked(operator_path, *runtime_json_reasons)
-
     strict_reasons = _strict_package_validation_reasons(package)
-    if strict_reasons:
-        return _blocked(operator_path, *strict_reasons)
-
     deck_input_reasons = _deck_input_verification_reasons(package, summary)
-    if deck_input_reasons:
-        return _blocked(operator_path, *deck_input_reasons)
-
-    source_reasons = source_authority_reasons(package)
-    if source_reasons:
-        return _blocked(operator_path, *source_reasons)
-
-    source_apply_reasons = source_apply_eligibility_reasons(package)
-    if source_apply_reasons:
-        return _blocked(operator_path, *source_apply_reasons)
-
+    source_receipt_reasons = source_authority_reasons(package)
+    source_acquisition_reasons = source_apply_eligibility_reasons(package)
     derivation_reasons = _package_derivation_reasons(package, summary)
-    if derivation_reasons:
-        return _blocked(operator_path, *derivation_reasons)
-
-    summary_parity_reasons = [
+    package_summary_reasons = [
         *_actual_files_missing_from_summary_reasons(package, summary),
         *_summary_files_missing_from_actual_reasons(package, summary),
     ]
-    if summary_parity_reasons:
-        return _blocked(operator_path, *summary_parity_reasons)
-
-    technical_status = str(summary.get("technical_status", ""))
-    semantic_status = str(summary.get("semantic_status", ""))
-    next_action = str(summary.get("next_action", ""))
-    apply_policy = str(summary.get("apply_policy", ""))
-
-    if technical_status == "VALID_PACKAGE":
-        return _allowed(
-            operator_path,
-            mode="load_safe_apply",
-            reasons=[
-                {
-                    "reason": "runtime_load_safe_package",
-                    "technical_status": technical_status,
-                    "semantic_status": semantic_status,
-                    "next_action": next_action,
-                    "apply_policy": apply_policy,
-                    "semantic_blocker_count": _list_count(
-                        summary.get("semantic_blockers", [])
-                    ),
-                }
-            ],
-        )
-
-    return _blocked(
-        operator_path,
-        {
-            "reason": "operator_summary_not_valid_package",
-            "technical_status": technical_status,
-            "semantic_status": semantic_status,
-            "next_action": next_action,
-            "apply_policy": apply_policy,
-        },
+    informational_reasons = _informational_reasons(
+        package,
+        summary=summary,
+        source_receipt_reasons=source_receipt_reasons,
     )
+    blocking_reason_groups = (
+        runtime_surface_reasons,
+        strict_reasons,
+        deck_input_reasons,
+        source_receipt_reasons,
+        source_acquisition_reasons,
+        derivation_reasons,
+        package_summary_reasons,
+    )
+    primary_blocking_reasons = next(
+        (
+            tuple(reasons)
+            for reasons in blocking_reason_groups
+            if reasons
+        ),
+        (),
+    )
+    facts = ApplyFacts(
+        strict_package_validation=not strict_reasons,
+        actual_runtime_surface_inventory=not runtime_surface_reasons,
+        deck_input_verification=not deck_input_reasons,
+        source_receipt_validity=not source_receipt_reasons,
+        source_acquisition_eligibility=not source_acquisition_reasons,
+        derivation_receipt_validity=not derivation_reasons,
+        package_summary_parity=not package_summary_reasons,
+        blocking_reasons=primary_blocking_reasons,
+        informational_reasons=informational_reasons,
+    )
+    decision = build_apply_decision(facts)
+    if not enforce_summary_core_fields or not decision.allowed:
+        return decision, facts
+
+    expected_core = apply_decision_summary_projection(decision, facts)
+    core_parity_reasons = _summary_core_parity_reasons(summary, expected_core)
+    if not core_parity_reasons:
+        return decision, facts
+
+    parity_facts = replace(
+        facts,
+        package_summary_parity=False,
+        blocking_reasons=(
+            *facts.blocking_reasons,
+            *core_parity_reasons,
+        ),
+    )
+    return build_apply_decision(parity_facts), parity_facts
 
 
 def _deck_input_verification_reasons(
@@ -547,37 +576,88 @@ def _normalize_generated_file_path(path: Path) -> str:
     return path.as_posix().replace("\\", "/")
 
 
-def _allowed(
-    operator_path: Path,
+def _informational_reasons(
+    package: Path,
     *,
-    mode: str,
-    reasons: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {
-        "status": "allowed",
-        "allowed": True,
-        "operator_summary_path": str(operator_path),
-        "mode": mode,
-        "reasons": reasons,
-    }
-
-
-def _blocked(operator_path: Path, *reasons: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "status": "blocked",
-        "allowed": False,
-        "operator_summary_path": str(operator_path),
-        "mode": "blocked",
-        "reasons": list(reasons),
-    }
-
-
-def _int_value(value: Any) -> int:
+    summary: dict[str, Any],
+    source_receipt_reasons: list[dict[str, str]],
+) -> tuple[dict[str, Any], ...]:
+    reasons: list[dict[str, Any]] = []
+    if source_receipt_reasons:
+        return tuple(reasons)
     try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
+        bundle = read_json(package / "reports" / "guide_claim_bundle.json")
+    except (OSError, ValueError):
+        bundle = None
+    if isinstance(bundle, dict):
+        receipts = bundle.get(
+            "canonical_source_receipts",
+            bundle.get("globalvalues_source_receipts", []),
+        )
+        if isinstance(receipts, list) and not receipts:
+            reasons.append(
+                {
+                    "reason": "exact_source_not_closed",
+                    "blocking": False,
+                }
+            )
+    if str(summary.get("semantic_status", "")) != "SOURCE_BACKED_STRONG":
+        reasons.append(
+            {
+                "reason": "semantic_strength_incomplete",
+                "blocking": False,
+            }
+        )
+    return tuple(reasons)
 
 
-def _list_count(value: Any) -> int:
-    return len(value) if isinstance(value, list) else 0
+def _summary_core_parity_reasons(
+    summary: dict[str, Any],
+    expected_core: dict[str, Any],
+) -> list[dict[str, Any]]:
+    mismatched_fields = [
+        field
+        for field, expected in expected_core.items()
+        if summary.get(field) != expected
+    ]
+    if not mismatched_fields:
+        return []
+    return [
+        {
+            "reason": "operator_summary_apply_decision_mismatch",
+            "code": "operator_summary_apply_decision_mismatch",
+            "fields": mismatched_fields,
+        }
+    ]
+
+
+def _single_blocked_fact(
+    fact_name: str,
+    reason: dict[str, Any],
+) -> ApplyFacts:
+    values = {
+        "strict_package_validation": True,
+        "actual_runtime_surface_inventory": True,
+        "deck_input_verification": True,
+        "source_receipt_validity": True,
+        "source_acquisition_eligibility": True,
+        "derivation_receipt_validity": True,
+        "package_summary_parity": True,
+    }
+    values[fact_name] = False
+    return ApplyFacts(
+        **values,
+        blocking_reasons=(reason,),
+    )
+
+
+def _decision_gate(
+    operator_path: Path,
+    decision: ApplyDecision,
+) -> dict[str, Any]:
+    payload = apply_decision_payload(decision)
+    return {
+        "status": "allowed" if decision.allowed else "blocked",
+        "operator_summary_path": str(operator_path),
+        **payload,
+    }

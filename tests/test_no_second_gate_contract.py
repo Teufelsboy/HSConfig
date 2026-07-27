@@ -1,5 +1,13 @@
 from pathlib import Path
 
+import pytest
+
+from hsconfig.apply_gate import evaluate_apply_gate
+from hsconfig.io import read_json, write_json
+from tests.helpers.current_apply_eligible_package import (
+    write_current_apply_eligible_package,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHADOWPRIEST_ACTIVE_PLAN = (
@@ -146,3 +154,33 @@ def test_active_shadowpriest_source_diagnostics_cannot_control_apply_actions():
     assert "second apply" in source_boundary
     for action_control in ("assert", "throw", "stop", "must confirm", "required"):
         assert action_control not in source_boundary
+
+
+@pytest.mark.parametrize("allow_source_informed", [False, True])
+def test_deprecated_source_flag_cannot_bypass_core_decision_parity(
+    tmp_path: Path,
+    allow_source_informed: bool,
+) -> None:
+    package = write_current_apply_eligible_package(
+        tmp_path / "package",
+        operator_summary={
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_reason": "runtime_load_safe_package",
+        },
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["runtime_apply_allowed"] = False
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(
+        package,
+        allow_source_informed=allow_source_informed,
+    )
+
+    assert gate["allowed"] is False
+    assert gate["mode"] == "blocked"
+    assert gate["reasons"][0]["reason"] == (
+        "operator_summary_apply_decision_mismatch"
+    )

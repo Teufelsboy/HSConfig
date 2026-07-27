@@ -7,6 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from hsconfig.apply_decision import (
+    apply_decision_payload,
+    apply_decision_summary_projection,
+)
+from hsconfig.apply_gate import recompute_apply_decision
 from hsconfig.commands.apply import apply_payload, validate_payload
 from hsconfig.commands.common import emit_result
 from hsconfig.commands.source_workflow import (
@@ -403,10 +408,20 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         operator_summary,
         config_quality_summary,
     )
+    apply_decision, apply_facts = recompute_apply_decision(
+        package_dir,
+        operator_summary,
+        enforce_summary_core_fields=False,
+    )
+    operator_summary.update(
+        apply_decision_summary_projection(
+            apply_decision,
+            apply_facts,
+        )
+    )
     load_safe_to_install = (
-        str(operator_summary.get("technical_status", "")) == "VALID_PACKAGE"
-        and operator_summary.get("runtime_apply_allowed") is True
-        and str(operator_summary.get("runtime_apply_mode", "")) == "load_safe_apply"
+        apply_decision.allowed
+        and apply_decision.mode == "load_safe_apply"
         and validate_status == 0
     )
     operator_summary.update(semantic_handoff)
@@ -572,6 +587,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "config_proof_summary": config_proof_summary,
             "handoff_contract": handoff_contract,
             "source_closure_receipt": source_closure_receipt,
+            "apply_decision": apply_decision_payload(apply_decision),
             "apply_performed": bool(getattr(args, "apply", False)),
             "apply_status": apply_status,
             "runtime_package_match_status": runtime_package_match_status,

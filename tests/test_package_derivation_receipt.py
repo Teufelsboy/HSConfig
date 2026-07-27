@@ -25,6 +25,10 @@ def test_empty_canonical_receipts_remain_nonblocking_diagnostics(
     summary["package_derivation"] = refresh_package_derivation_authority(
         package
     )
+    summary["apply_policy"] = "ALLOWED_WITH_WARNINGS"
+    summary["runtime_apply_allowed"] = True
+    summary["runtime_apply_mode"] = "load_safe_apply"
+    summary["runtime_apply_reason"] = "runtime_load_safe_package"
     write_json(summary_path, summary)
 
     context = build_package_authority_context(package)
@@ -34,6 +38,10 @@ def test_empty_canonical_receipts_remain_nonblocking_diagnostics(
     assert context["exact_source_closed"] is False
     assert context["source_authority_verified"] is True
     assert gate["allowed"] is True
+    assert gate["reasons"][1] == {
+        "reason": "exact_source_not_closed",
+        "blocking": False,
+    }
 
 
 def test_bound_canonical_receipt_projects_exact_source_closure(

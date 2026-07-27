@@ -5,6 +5,11 @@ import hashlib
 import re
 from typing import Any, Mapping
 
+from hsconfig.apply_decision import (
+    ApplyFacts,
+    apply_decision_summary_projection,
+    build_apply_decision,
+)
 from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.config_quality_contract import semantic_handoff_projection
 from hsconfig.no_block_failure_modes import build_no_block_failure_mode_summary
@@ -337,26 +342,34 @@ def build_operator_summary(
     source_evidence_closure_summary = _source_evidence_closure_summary(
         source_to_runtime_explainability_report
     )
-    next_action, apply_policy = _next_action_and_policy(
+    next_action, _ = _next_action_and_policy(
         technical_status=technical_status,
         semantic_status=semantic_status,
         primary_blockers=primary_blockers,
     )
-    if technical_status == "VALID_PACKAGE" and not source_apply_eligible:
-        next_action = DIAGNOSTIC_SOURCE_NEXT_ACTION
-        apply_policy = "BLOCKED"
-    runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = (
-        _runtime_apply_contract(
-            technical_status=technical_status,
-            apply_policy=apply_policy,
-        )
-    )
-    runtime_apply_reason = _runtime_apply_reason(
+    apply_facts = _operator_apply_facts(
         technical_status=technical_status,
-        runtime_apply_allowed=runtime_apply_allowed,
+        primary_blockers=primary_blockers,
+        package_derivation=package_derivation,
+        package_authority=package_authority,
         source_apply_eligible=source_apply_eligible,
         source_apply_eligibility_reasons=source_apply_eligibility_reasons,
+        exact_source_closed=exact_source_closed,
+        semantic_status=semantic_status,
     )
+    apply_decision = build_apply_decision(apply_facts)
+    decision_projection = apply_decision_summary_projection(
+        apply_decision,
+        apply_facts,
+    )
+    technical_status = str(decision_projection["technical_status"])
+    apply_policy = str(decision_projection["apply_policy"])
+    runtime_apply_mode = str(decision_projection["runtime_apply_mode"])
+    runtime_apply_allowed = decision_projection["runtime_apply_allowed"] is True
+    runtime_apply_reason = str(decision_projection["runtime_apply_reason"])
+    if technical_status == "VALID_PACKAGE" and not source_apply_eligible:
+        next_action = DIAGNOSTIC_SOURCE_NEXT_ACTION
+    runtime_apply_requires_flag = None
     mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
     source_depth_status = _source_depth_status(guide_source_depth or {})
     no_block_failure_mode_summary = build_no_block_failure_mode_summary(
@@ -971,6 +984,94 @@ def _default_only_risk_cards(report: dict[str, Any]) -> list[str]:
         f'{row["card_id"]} {row["name"]}'.strip()
         for row in _default_only_risk_card_details(report)
     ]
+
+
+def _operator_apply_facts(
+    *,
+    technical_status: str,
+    primary_blockers: list[dict[str, str]],
+    package_derivation: dict[str, Any] | None,
+    package_authority: dict[str, Any] | None,
+    source_apply_eligible: bool,
+    source_apply_eligibility_reasons: list[str],
+    exact_source_closed: bool,
+    semantic_status: str,
+) -> ApplyFacts:
+    technical_valid = technical_status == "VALID_PACKAGE"
+    has_package_context = package_derivation is not None
+    authority = package_authority if isinstance(package_authority, dict) else {}
+    strict_valid = (
+        authority.get("strict_validation_passed") is True
+        if has_package_context
+        else technical_valid
+    )
+    deck_input_valid = (
+        authority.get("deck_input_apply_eligible") is True
+        if has_package_context
+        else technical_valid
+    )
+    source_receipt_valid = (
+        authority.get("source_authority_verified") is True
+        if has_package_context
+        else True
+    )
+    derivation_valid = (
+        authority.get("derivation_receipt_verified") is True
+        if has_package_context
+        else technical_valid
+    )
+    blocking_reasons: list[dict[str, Any]] = [
+        dict(reason)
+        for reason in primary_blockers
+    ]
+    if not technical_valid and not blocking_reasons:
+        blocking_reasons.append(
+            {
+                "reason": "invalid_package",
+                "code": "invalid_package",
+            }
+        )
+    if not source_apply_eligible:
+        blocking_reasons.extend(
+            {
+                "reason": reason,
+                "code": reason,
+            }
+            for reason in (
+                source_apply_eligibility_reasons
+                or [DIAGNOSTIC_SOURCE_APPLY_REASON]
+            )
+        )
+    informational_reasons: list[dict[str, Any]] = []
+    if (
+        package_authority is not None
+        and source_receipt_valid
+        and not exact_source_closed
+    ):
+        informational_reasons.append(
+            {
+                "reason": "exact_source_not_closed",
+                "blocking": False,
+            }
+        )
+    if semantic_status != "SOURCE_BACKED_STRONG":
+        informational_reasons.append(
+            {
+                "reason": "semantic_strength_incomplete",
+                "blocking": False,
+            }
+        )
+    return ApplyFacts(
+        strict_package_validation=strict_valid,
+        actual_runtime_surface_inventory=technical_valid,
+        deck_input_verification=deck_input_valid,
+        source_receipt_validity=source_receipt_valid,
+        source_acquisition_eligibility=source_apply_eligible,
+        derivation_receipt_validity=derivation_valid,
+        package_summary_parity=True,
+        blocking_reasons=blocking_reasons,
+        informational_reasons=tuple(informational_reasons),
+    )
 
 
 def _technical_status(
@@ -2396,36 +2497,6 @@ def _next_action_and_policy(
     if semantic_status == "SOURCE_BACKED_STRONG":
         return "READY_TO_APPLY_OR_HANDOFF", "ALLOWED"
     return "READY_TO_APPLY_WITH_WARNINGS", "ALLOWED_WITH_WARNINGS"
-
-
-def _runtime_apply_contract(
-    *,
-    technical_status: str,
-    apply_policy: str,
-) -> tuple[str, bool, str | None]:
-    if technical_status == "VALID_PACKAGE" and apply_policy != "BLOCKED":
-        return "load_safe_apply", True, None
-    return "blocked", False, None
-
-
-def _runtime_apply_reason(
-    *,
-    technical_status: str,
-    runtime_apply_allowed: bool,
-    source_apply_eligible: bool,
-    source_apply_eligibility_reasons: list[str],
-) -> str:
-    if technical_status != "VALID_PACKAGE":
-        return "invalid_package"
-    if not source_apply_eligible:
-        return (
-            source_apply_eligibility_reasons[0]
-            if source_apply_eligibility_reasons
-            else DIAGNOSTIC_SOURCE_APPLY_REASON
-        )
-    if runtime_apply_allowed:
-        return "current_package_operator_gate_allowed"
-    return "current_package_operator_gate_blocked"
 
 
 def _fixture_classification(

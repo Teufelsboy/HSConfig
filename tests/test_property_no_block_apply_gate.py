@@ -113,16 +113,16 @@ def test_valid_package_variants_remain_load_safe_apply(
     assert gate["status"] == "allowed"
     assert gate["allowed"] is True
     assert gate["mode"] == "load_safe_apply"
-    assert gate["reasons"] == [
-        {
-            "reason": "runtime_load_safe_package",
-            "technical_status": "VALID_PACKAGE",
-            "semantic_status": semantic_status,
-            "next_action": next_action,
-            "apply_policy": apply_policy,
-            "semantic_blocker_count": len(semantic_blockers),
-        }
-    ]
+    assert gate["policy"] == apply_policy
+    expected_reasons = [{"reason": "runtime_load_safe_package"}]
+    if semantic_status != "SOURCE_BACKED_STRONG":
+        expected_reasons.append(
+            {
+                "reason": "semantic_strength_incomplete",
+                "blocking": False,
+            }
+        )
+    assert gate["reasons"] == expected_reasons
 
 
 def test_valid_minimal_package_without_cardid_or_combo_is_allowed(tmp_path: Path):

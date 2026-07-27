@@ -175,6 +175,104 @@ def _first_reason_code(gate: dict) -> str:
     return str(reason.get("code") or reason.get("reason"))
 
 
+def _stub_configure_card_fetches(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
+
+
+def test_configure_operator_and_apply_gate_share_one_literal_decision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_configure_card_fetches(monkeypatch)
+    out = tmp_path / "configure"
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            SHADOWPRIEST_DECK_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--json",
+        ]
+    )
+    configure = json.loads(capsys.readouterr().out)
+    package = out / "04_package"
+    operator = read_json(package / "reports" / "operator_summary.json")
+    gate = evaluate_apply_gate(package)
+
+    assert code == 0
+    assert configure["apply_decision"] == {
+        "allowed": True,
+        "mode": "load_safe_apply",
+        "policy": "ALLOWED_WITH_WARNINGS",
+        "reasons": [
+            {"reason": "runtime_load_safe_package"},
+            {"reason": "exact_source_not_closed", "blocking": False},
+            {"reason": "semantic_strength_incomplete", "blocking": False},
+        ],
+    }
+    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator["runtime_apply_reason"] == "runtime_load_safe_package"
+    assert operator["exact_source_closed"] is False
+    assert gate["allowed"] is True
+    assert gate["mode"] == "load_safe_apply"
+    assert gate["policy"] == "ALLOWED_WITH_WARNINGS"
+    assert gate["reasons"] == configure["apply_decision"]["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("field", "forged_value"),
+    [
+        ("runtime_apply_allowed", False),
+        ("runtime_apply_mode", "blocked"),
+        ("technical_status", "INVALID_PACKAGE"),
+        ("apply_policy", "BLOCKED"),
+    ],
+)
+def test_apply_gate_rejects_serialized_core_field_forgery(
+    tmp_path: Path,
+    field: str,
+    forged_value: object,
+) -> None:
+    package = write_current_apply_eligible_package(
+        tmp_path / "package",
+        operator_summary={
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_reason": "runtime_load_safe_package",
+        },
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary[field] = forged_value
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["mode"] == "blocked"
+    assert _first_reason_code(gate) == "operator_summary_apply_decision_mismatch"
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_reason"),
     RECEIPT_TAMPERING_CASES,
@@ -240,14 +338,24 @@ def test_active_apply_paths_do_not_consume_source_contract_diagnostics():
             assert token not in content, (relative_path, token)
 
 
-def test_apply_gate_uses_operator_summary_as_single_authority():
-    content = _read("src/hsconfig/apply_gate.py")
+def test_apply_gate_reports_operator_summary_as_single_human_authority(
+    tmp_path: Path,
+) -> None:
+    package = write_current_apply_eligible_package(
+        tmp_path / "package",
+        operator_summary={
+            "runtime_apply_allowed": True,
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_reason": "runtime_load_safe_package",
+        },
+    )
 
-    assert 'package / "reports" / "operator_summary.json"' in content
-    assert "technical_status" in content
-    assert '"VALID_PACKAGE"' in content
-    assert "source_contract_audit" not in content
-    assert "source_to_runtime_explainability" not in content
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is True
+    assert Path(gate["operator_summary_path"]).resolve() == (
+        package / "reports" / "operator_summary.json"
+    ).resolve()
 
 
 def test_active_apply_paths_do_not_import_diagnostic_authorities():

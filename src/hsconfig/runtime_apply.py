@@ -271,7 +271,11 @@ def _is_allowed_gate_for_package(
 ) -> bool:
     if not isinstance(apply_gate, dict):
         return False
-    if apply_gate.get("status") != "allowed":
+    if apply_gate.get("allowed") is not True:
+        return False
+    if apply_gate.get("mode") != "load_safe_apply":
+        return False
+    if apply_gate.get("policy") not in {"ALLOWED", "ALLOWED_WITH_WARNINGS"}:
         return False
     operator_summary_path = apply_gate.get("operator_summary_path")
     if not operator_summary_path:

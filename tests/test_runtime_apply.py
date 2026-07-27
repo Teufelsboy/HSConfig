@@ -42,6 +42,25 @@ def _write_operator_summary_with_derivation(
     verified_deck_code: str | None = None,
 ) -> None:
     reports = package / "reports"
+    summary = dict(summary)
+    if summary.get("technical_status") == "VALID_PACKAGE":
+        summary.update(
+            {
+                "apply_policy": "ALLOWED_WITH_WARNINGS",
+                "runtime_apply_allowed": True,
+                "runtime_apply_mode": "load_safe_apply",
+                "runtime_apply_reason": "runtime_load_safe_package",
+            }
+        )
+    else:
+        summary.update(
+            {
+                "apply_policy": "BLOCKED",
+                "runtime_apply_allowed": False,
+                "runtime_apply_mode": "blocked",
+                "runtime_apply_reason": "invalid_package",
+            }
+        )
     manifest = read_json(reports / "input_manifest.json")
     deck_name = str(manifest.get("deck_name", "deck"))
     if verified_deck_code is None:
