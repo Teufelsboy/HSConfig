@@ -19,6 +19,9 @@ from hsconfig.contract_preflight import (
     build_package_contract_preflight,
 )
 from hsconfig.commands import contract_preflight as contract_preflight_command
+from tests.helpers.current_globalvalues_contract import (
+    write_current_globalvalues_contract,
+)
 
 
 def _clean_git() -> GitPreflight:
@@ -217,22 +220,11 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
         deck / "GlobalValues.json",
         {"GameCardId": "GlobalValues", "ConfigComment": "ShadowPriest global values"},
     )
-    _write_json(
-        reports / "globalvalues_baseline.json",
-        {"GameCardId": "GlobalValues", "ConfigComment": "ShadowPriest global values"},
-    )
-    _write_json(
-        reports / "globalvalues_profile.json",
+    write_current_globalvalues_contract(
+        package,
         {
-            "key_count": 2,
-            "keys": {
-                "GameCardId": {"status": "unchanged"},
-                "ConfigComment": {"status": "unchanged"},
-            },
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
+            "GameCardId": "GlobalValues",
+            "ConfigComment": "ShadowPriest global values",
         },
     )
     _write_json(

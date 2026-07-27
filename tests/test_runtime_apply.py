@@ -14,22 +14,15 @@ from hsconfig.package_derivation_receipt import (
 )
 from hsconfig.runtime_package_match import RuntimePackageMismatchError
 from hsconfig.runtime_apply import apply_package, plan_apply_package
+from tests.helpers.current_globalvalues_contract import (
+    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
+    write_current_globalvalues_contract,
+)
 from tests.helpers.verified_deck_input import install_verified_deck_input
 
 
 def _write_validation_reports(package: Path, globalvalues: dict) -> None:
-    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        package / "reports" / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
-        },
-    )
+    write_current_globalvalues_contract(package, globalvalues)
 
 
 def _write_operator_summary_with_derivation(
@@ -54,6 +47,7 @@ def _write_operator_summary_with_derivation(
     ownership = build_output_ownership_manifest(
         [
             *generated_files,
+            GLOBALVALUES_AUTHORITY_MATRIX_PATH,
             DERIVATION_RECEIPT_PATH,
             "reports/operator_summary.json",
             "reports/output_ownership_manifest.json",
@@ -878,18 +872,7 @@ def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
         deck / "EX1_001.json",
         {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
     )
-    write_json(package / "reports" / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        package / "reports" / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
-        },
-    )
+    write_current_globalvalues_contract(package, globalvalues)
     write_json(
         package / "reports" / "card_behavior_plan_report.json",
         {"rows": []},

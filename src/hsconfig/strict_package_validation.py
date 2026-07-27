@@ -31,21 +31,17 @@ def strict_validation_passed(report: dict[str, Any]) -> bool:
     return report.get("status") == "passed" and not report.get("errors")
 
 
-def validate_complete_package(package: str | Path) -> dict[str, Any]:
+def validate_complete_package(
+    package: str | Path,
+    *,
+    allow_legacy_globalvalues: bool = False,
+) -> dict[str, Any]:
     """Run the strict complete-package contract used by every caller."""
     package_path = Path(package)
     baseline = read_required_baseline(package_path)
     profile = read_optional_profile(package_path)
     authority_matrix_path = (
         package_path / "reports" / "global_values_authority_matrix.json"
-    )
-    ownership_declares_matrix = (
-        _output_ownership_declares_globalvalues_authority_matrix(package_path)
-    )
-    authority_matrix_required = (
-        authority_matrix_path.is_file()
-        or _is_schema_two_globalvalues_profile(profile)
-        or ownership_declares_matrix
     )
     authority_matrix = (
         read_required_globalvalues_authority_matrix(package_path)
@@ -62,10 +58,10 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
     )
     linked_runtime_errors = _validate_linked_runtime_entities(package_path)
     globalvalues_contract_errors = []
-    if authority_matrix_required and authority_matrix is None:
+    if authority_matrix is None and not allow_legacy_globalvalues:
         globalvalues_contract_errors.append(
-            "GlobalValues authority matrix required by output ownership manifest "
-            "or schema-2 profile"
+            "GlobalValues current contract requires authority matrix "
+            "reports/global_values_authority_matrix.json"
         )
     if not linked_runtime_errors and not globalvalues_contract_errors:
         return report
@@ -78,41 +74,6 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
             *linked_runtime_errors,
         ],
     }
-
-
-def _is_schema_two_globalvalues_profile(
-    profile: Mapping[str, Any] | None,
-) -> bool:
-    if profile is None:
-        return False
-    schema_version = profile.get("schema_version")
-    return (
-        isinstance(schema_version, int)
-        and not isinstance(schema_version, bool)
-        and schema_version >= 2
-    )
-
-
-def _output_ownership_declares_globalvalues_authority_matrix(
-    package_path: Path,
-) -> bool:
-    manifest_path = package_path / "reports" / "output_ownership_manifest.json"
-    if not manifest_path.is_file():
-        return False
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return False
-    if not isinstance(manifest, Mapping):
-        return False
-    files = manifest.get("files")
-    if not isinstance(files, list):
-        return False
-    return any(
-        isinstance(row, Mapping)
-        and row.get("file") == "reports/global_values_authority_matrix.json"
-        for row in files
-    )
 
 
 def _validate_linked_runtime_entities(package_path: Path) -> list[str]:

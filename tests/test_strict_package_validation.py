@@ -274,9 +274,11 @@ def test_strict_validation_rejects_schema_downgrade_and_duplicate_ledgers(
     assert any(expected_error in error for error in report["errors"])
 
 
+@pytest.mark.parametrize("remove_ownership_marker", [False, True])
 def test_strict_validation_rejects_deleted_matrix_self_downgrade(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    remove_ownership_marker: bool,
 ) -> None:
     build_result, build_code = _build_fixture(tmp_path, capsys)
     assert build_code == 0
@@ -320,6 +322,14 @@ def test_strict_validation_rejects_deleted_matrix_self_downgrade(
         if existing != key
     ]
     matrix_path.unlink()
+    if remove_ownership_marker:
+        ownership["files"] = [
+            row
+            for row in ownership["files"]
+            if row.get("file")
+            != "reports/global_values_authority_matrix.json"
+        ]
+        write_json(reports / "output_ownership_manifest.json", ownership)
     write_json(config_path, config)
     write_json(profile_path, profile)
 
@@ -327,10 +337,38 @@ def test_strict_validation_rejects_deleted_matrix_self_downgrade(
 
     assert report["status"] == "failed"
     assert any(
-        "GlobalValues authority matrix required by output ownership manifest"
+        "GlobalValues current contract requires authority matrix"
         in error
         for error in report["errors"]
     )
+
+
+def test_legacy_globalvalues_validation_requires_explicit_opt_in(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    reports = package / "reports"
+    profile_path = reports / "globalvalues_profile.json"
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    profile["schema_version"] = 1
+    profile.pop("authority_parity")
+    profile.pop("baseline_overlay_parity")
+    profile["summary"].pop("authority_parity")
+    profile["summary"].pop("baseline_overlay_parity")
+    (reports / "global_values_authority_matrix.json").unlink()
+    write_json(profile_path, profile)
+
+    default_report = validate_complete_package(package)
+    legacy_report = validate_complete_package(
+        package,
+        allow_legacy_globalvalues=True,
+    )
+
+    assert default_report["status"] == "failed"
+    assert legacy_report["status"] == "passed"
 
 
 @pytest.fixture

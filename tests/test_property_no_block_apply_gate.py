@@ -14,6 +14,10 @@ from hsconfig.package_derivation_receipt import (
     build_package_derivation_receipt,
     write_package_derivation_receipt,
 )
+from tests.helpers.current_globalvalues_contract import (
+    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
+    write_current_globalvalues_contract,
+)
 from tests.helpers.verified_deck_input import install_verified_deck_input
 
 
@@ -75,22 +79,7 @@ def _write_package(
             reports = package / "reports"
             summary["deck_input_verification"] = deck_input_verification
             globalvalues = files["GlobalValues.json"]
-            write_json(reports / "globalvalues_baseline.json", globalvalues)
-            write_json(
-                reports / "globalvalues_profile.json",
-                {
-                    "key_count": len(globalvalues),
-                    "keys": {
-                        key: {"status": "unchanged"} for key in globalvalues
-                    },
-                    "generated_overlay_keys": [],
-                    "summary": {
-                        "all_expected_overlay_keys_accounted_for": True
-                    },
-                    "expected_overlay_keys": [],
-                    "missing_overlay_keys": [],
-                },
-            )
+            write_current_globalvalues_contract(package, globalvalues)
             write_json(
                 reports / "guide_claim_bundle.json",
                 {"canonical_source_receipts": []},
@@ -98,6 +87,7 @@ def _write_package(
             ownership = build_output_ownership_manifest(
                 [
                     *generated_files,
+                    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
                     DERIVATION_RECEIPT_PATH,
                     "reports/operator_summary.json",
                     "reports/output_ownership_manifest.json",

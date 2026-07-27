@@ -13,6 +13,10 @@ from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     refresh_package_derivation_authority,
 )
+from tests.helpers.current_globalvalues_contract import (
+    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
+    write_current_globalvalues_contract,
+)
 from tests.helpers.verified_deck_input import install_verified_deck_input
 import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
@@ -99,18 +103,7 @@ def _write_minimal_package(
     )
     write_json(reports / "input_manifest.json", {"deck_name": "deck"})
     deck_input_verification = install_verified_deck_input(package)
-    write_json(reports / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        reports / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
-        },
-    )
+    write_current_globalvalues_contract(package, globalvalues)
     write_json(
         reports / "guide_claim_bundle.json",
         {"canonical_source_receipts": []},
@@ -124,6 +117,7 @@ def _write_minimal_package(
         build_output_ownership_manifest(
             [
                 *generated_files,
+                GLOBALVALUES_AUTHORITY_MATRIX_PATH,
                 DERIVATION_RECEIPT_PATH,
                 "reports/operator_summary.json",
                 "reports/output_ownership_manifest.json",

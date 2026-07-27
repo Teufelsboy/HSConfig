@@ -21,6 +21,10 @@ from hsconfig.source_acquisition_provenance import (
     MANUAL_EVIDENCE,
     build_acquisition_provenance,
 )
+from tests.helpers.current_globalvalues_contract import (
+    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
+    write_current_globalvalues_contract,
+)
 
 
 SHADOWPRIEST_DECK_CODE = (
@@ -59,18 +63,7 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     if not isinstance(globalvalues, dict):
         return
     reports = package / "reports"
-    write_json(reports / "globalvalues_baseline.json", globalvalues)
-    write_json(
-        reports / "globalvalues_profile.json",
-        {
-            "key_count": len(globalvalues),
-            "keys": {key: {"status": "unchanged"} for key in globalvalues},
-            "generated_overlay_keys": [],
-            "summary": {"all_expected_overlay_keys_accounted_for": True},
-            "expected_overlay_keys": [],
-            "missing_overlay_keys": [],
-        },
-    )
+    write_current_globalvalues_contract(package, globalvalues)
     manifest = read_json(manifest_path)
     deck_name = str(manifest.get("deck_name", "deck"))
     cards, verification = _verified_deck_input_fixture()
@@ -106,6 +99,7 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     ownership = build_output_ownership_manifest(
         [
             *generated_files,
+            GLOBALVALUES_AUTHORITY_MATRIX_PATH,
             DERIVATION_RECEIPT_PATH,
             "reports/operator_summary.json",
             "reports/output_ownership_manifest.json",
