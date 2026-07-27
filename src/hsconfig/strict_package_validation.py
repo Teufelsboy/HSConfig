@@ -39,12 +39,17 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
     authority_matrix_path = (
         package_path / "reports" / "global_values_authority_matrix.json"
     )
+    ownership_declares_matrix = (
+        _output_ownership_declares_globalvalues_authority_matrix(package_path)
+    )
+    authority_matrix_required = (
+        authority_matrix_path.is_file()
+        or _is_schema_two_globalvalues_profile(profile)
+        or ownership_declares_matrix
+    )
     authority_matrix = (
         read_required_globalvalues_authority_matrix(package_path)
-        if (
-            authority_matrix_path.is_file()
-            or _is_schema_two_globalvalues_profile(profile)
-        )
+        if authority_matrix_path.is_file()
         else None
     )
     report = validate_config_package(
@@ -56,12 +61,22 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
         require_globalvalues_profile=True,
     )
     linked_runtime_errors = _validate_linked_runtime_entities(package_path)
-    if not linked_runtime_errors:
+    globalvalues_contract_errors = []
+    if authority_matrix_required and authority_matrix is None:
+        globalvalues_contract_errors.append(
+            "GlobalValues authority matrix required by output ownership manifest "
+            "or schema-2 profile"
+        )
+    if not linked_runtime_errors and not globalvalues_contract_errors:
         return report
     return {
         **report,
         "status": "failed",
-        "errors": [*report.get("errors", []), *linked_runtime_errors],
+        "errors": [
+            *report.get("errors", []),
+            *globalvalues_contract_errors,
+            *linked_runtime_errors,
+        ],
     }
 
 
@@ -75,6 +90,28 @@ def _is_schema_two_globalvalues_profile(
         isinstance(schema_version, int)
         and not isinstance(schema_version, bool)
         and schema_version >= 2
+    )
+
+
+def _output_ownership_declares_globalvalues_authority_matrix(
+    package_path: Path,
+) -> bool:
+    manifest_path = package_path / "reports" / "output_ownership_manifest.json"
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(manifest, Mapping):
+        return False
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return False
+    return any(
+        isinstance(row, Mapping)
+        and row.get("file") == "reports/global_values_authority_matrix.json"
+        for row in files
     )
 
 

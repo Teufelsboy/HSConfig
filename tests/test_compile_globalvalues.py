@@ -94,7 +94,9 @@ def test_compile_globalvalues_baseline_authority_blocks_hidden_hero_power_overla
                 "allowed_step1_overlays": [
                     {
                         "key": "baseline",
+                        "overlay": "none",
                         "operation": "none",
+                        "value": None,
                         "reason": "no_source_backed_posture_overlay",
                     }
                 ]
@@ -342,7 +344,9 @@ def test_validate_package_rejects_hidden_generated_hero_power_overlay_without_au
                 "allowed_step1_overlays": [
                     {
                         "key": "baseline",
+                        "overlay": "none",
                         "operation": "none",
+                        "value": None,
                         "reason": "no_source_backed_posture_overlay",
                     }
                 ]
@@ -891,6 +895,52 @@ def test_compile_globalvalues_rejects_non_step1_authority_key():
                             "reason": "not a Step1 posture key",
                         }
                     ]
+                }
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {
+            "key": "baseline",
+            "operation": "none",
+            "value": None,
+            "reason": "missing overlay",
+        },
+        {
+            "key": "baseline",
+            "overlay": "none",
+            "value": None,
+            "reason": "missing operation",
+        },
+        {
+            "key": "baseline",
+            "overlay": "none",
+            "operation": "none",
+            "value": "999",
+            "reason": "effective value",
+        },
+    ],
+)
+def test_compile_globalvalues_requires_exact_baseline_authority_sentinel(
+    row: dict,
+):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_baseline_row_must_be_exact_noop",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": [row]
                 }
             },
         )

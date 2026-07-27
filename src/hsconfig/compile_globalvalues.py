@@ -265,9 +265,16 @@ def validated_globalvalues_authority_rows(
         operation = str(raw_row.get("operation", "none"))
         overlay = str(raw_row.get("overlay", "none"))
         if key == "baseline":
-            if operation != "none" or overlay != "none":
+            if (
+                "operation" not in raw_row
+                or "overlay" not in raw_row
+                or "value" not in raw_row
+                or operation != "none"
+                or overlay != "none"
+                or raw_row.get("value") is not None
+            ):
                 raise ValueError(
-                    "globalvalues_authority_baseline_row_must_be_noop"
+                    "globalvalues_authority_baseline_row_must_be_exact_noop"
                 )
             continue
         if key not in STEP1_POSTURE_KEYS:
