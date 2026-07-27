@@ -59,3 +59,18 @@ Archetype-only posture claims are suppressed visibly and cannot change posture.
 An asserted `deck_match_scope=exact_deck_matched` without matching
 `deck_match.exact_deck_evidence`, or without a current target deck fingerprint,
 also fails closed and remains visible as suppressed.
+
+## Audited Deck-set Boundary
+
+The read-only twelve-deck acceptance keeps GlobalValues authority narrow:
+Boarlock may not gain `MyHeroPowerValue` without authority, Discolock must keep
+empty authorized/emitted overlay parity for its audited fixture, and the
+ShadowPriest linked Hero Power effect does not grant a posture overlay. The
+fixture manifests classify proof scope only; they are not an apply gate.
+Current apply authority remains the package's `reports/operator_summary.json`.
+
+Captured and fixture-backed rows remain diagnostic-only even when strict
+validation passes. The separate positive fixture must enter through exact
+`live_http` / `live_verified` acquisition and pass current strict package
+validation before it can be technically eligible. This pre-run acceptance does
+not prove in-client execution, gameplay improvement, or optimality.

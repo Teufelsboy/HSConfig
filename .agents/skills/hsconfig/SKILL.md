@@ -58,6 +58,7 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 - Source card: `SW_448` (Darkbishop Benedictus); link: `hero_power_transform`; runtime owner: `EX1_625t` (Mind Spike); physical row: `CardID/EX1_625t.json`.
   Preserve the transform without a Darkbishop Mulligan keep or GlobalValues posture inference; the bonus is policy, not optimality proof.
 - Card-intent taxonomy is diagnostic-only. It explains per-card config signals but does not encode HearthRanger gameplay sequencing or create another apply gate.
+- The audited twelve-deck acceptance is read-only: it loads the eleven representative manifest rows plus supplemental CuteWarrior without duplicating deck codes or promoting the supplemental row; captured/fixture provenance remains `diagnostic_source_not_apply_eligible`, while only a separately acquired exact `live_http` / `live_verified` package that passes current strict validation may be technically eligible. Preserve no spell-owned `OnBoardBonus` or `BeforeBattlecryTargetBonus`, physical CardID claim/ref provenance, suppressed unsupported conditions, and the named ShadowPriest, MechPala, Kingslayer/Boarlock, Discolock, and ImbueMage boundaries. This matrix does not prove in-client execution, gameplay improvement, matchup quality, or optimality.
 ## Source Contract
 
 - Candidate registries, `source_closure_intake_receipt.json`, and `source-autopilot` are acquisition input or source preflight only.
@@ -66,7 +67,6 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 - Static semantics can never authorize strategic Combo order. They do not prove Mulligan, targeting, or gameplan posture.
 - When source coverage is weak, still build a technically valid diagnostic package and report `first_missing_source_action`. Weak coverage alone is not an apply gate, but diagnostic acquisition provenance is.
 - Contract compiler checklist: `references/contract-compiler-checklist.md`.
-
 ## Expert Paths
 
 - Drift check: `hsconfig contract-preflight --json` verifies currentness, installed-skill sync, and source/runtime wording; add `--package <04_package>` for read-only package runtime/config-quality readiness.

@@ -15,4 +15,17 @@ Choice-surface lowering for `discover_choice` and `choose_one_choice` stays with
 
 Linked runtime entities may own physical CardID files. Source card: `SW_448` (Darkbishop Benedictus); link: `hero_power_transform`; runtime owner: `EX1_625t` (Mind Spike); physical row: `CardID/EX1_625t.json`. The numeric bonus is configuration policy, not proof of optimal play.
 
+The audited twelve-deck read-only acceptance additionally requires:
+
+- no spell-owned `OnBoardBonus` or `BeforeBattlecryTargetBonus`;
+- source-claim/source-ref provenance for every physical CardID `values` row;
+- no unconditional lowering of a suppressed unsupported condition;
+- no static Boarlock `Combo.json`, no coverage-only Discolock
+  `InHandPlayPriority`, and exact ImbueMage Mulligan/readiness identity parity.
+
+It prepares only temporary packages. It does not write runtime files and does
+not prove in-client execution or gameplay optimality. Fixture manifests do not
+authorize apply; `reports/operator_summary.json` remains the sole current
+package authority.
+
 Reports stay under `reports/` and must not be copied into runtime deck folders.

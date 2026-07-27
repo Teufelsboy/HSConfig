@@ -585,6 +585,44 @@ no-block matrix proves the separate runtime promise: every valid listed deck
 still creates a load-safe initial package even when source confidence remains
 warning-only.
 
+### Twelve-deck read-only acceptance
+
+`tests/test_audited_deck_set_acceptance.py` combines the eleven representative
+manifest rows with the supplemental CuteWarrior row without copying deck codes
+or promoting CuteWarrior into the representative matrix. It prepares packages
+only under pytest temporary directories and performs no runtime write.
+
+The twelve captured/fixture-backed cases are expected to be technically valid
+and load-safe but apply-ineligible with
+`runtime_apply_reason=diagnostic_source_not_apply_eligible`. This is a
+provenance result from the current package's `reports/operator_summary.json`;
+the fixture manifests describe test scope and are not a second apply gate. A
+separate exact-deck fixture acquired through the real source-acquisition path
+shows the positive boundary: only `live_http` plus `live_verified` provenance
+and a passing current strict package validation can produce a technically
+eligible gate.
+
+The acceptance set enforces these semantic boundaries across physical output
+and reports:
+
+- no spell owns `OnBoardBonus` or `BeforeBattlecryTargetBonus`;
+- every physical CardID `values` row has matching source-claim and source-ref
+  provenance, and unsupported conditions remain suppressed rather than
+  becoming unconditional rows;
+- ShadowPriest keeps the Mind Spike linked owner, report-only reciprocal burn,
+  and one board row for each audited summon engine;
+- MechPala keeps all three `TOY_330` sideboard modules report-visible and keeps
+  `TOY_330` out of policy Mulligan holds;
+- Kingslayer and Boarlock keep the unresolved `DEEP_014` and `WW_092` policy
+  holds suppressed; Kingslayer wrong-owner attack rows, a static Boarlock
+  `Combo.json`, and unauthorized hero-power overlays remain absent;
+- Discolock has no coverage-only `InHandPlayPriority` or unauthorized
+  GlobalValues overlay, and ImbueMage physical Mulligan identities match its
+  readiness ledger.
+
+This matrix proves a read-only pre-run package contract. It does not prove
+in-client execution, gameplay improvement, matchup quality, or optimality.
+
 ## Supplemental Proof Decks
 
 `docs/operator/source-candidate-proof-decks.json` is the separate 12-deck

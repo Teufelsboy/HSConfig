@@ -134,6 +134,31 @@ meaningful card-behavior report rows must have exact parity: every physical
 CardID `values` row has one meaningful report row, and every meaningful report
 row has physical output.
 
+## Audited Deck-set Invariants
+
+The read-only twelve-deck acceptance loads deck codes from the eleven-row
+representative manifest plus supplemental CuteWarrior. It enforces:
+
+- no spell source card owns `OnBoardBonus` or
+  `BeforeBattlecryTargetBonus`;
+- each physical CardID row matches one meaningful report row with non-empty
+  source claim IDs and source references;
+- condition-related suppressions do not reappear as unconditional physical
+  rows;
+- `EX1_625t`, not `SW_448`, owns ShadowPriest's Hero Power row; reciprocal
+  burn stays report-only; Treasure Distributor and Ship's Chirurgeon each own
+  one audited `OnBoardBonus`;
+- MechPala's three `TOY_330` sideboard modules stay metadata/readiness-only and
+  the owner is not a policy Mulligan keep;
+- Kingslayer wrong-owner `BeforePhysicalAttackBonus` rows stay absent, Boarlock
+  has no static `Combo.json`, and Discolock has no coverage-only
+  `InHandPlayPriority`;
+- ImbueMage's physical non-wildcard Mulligan identities exactly match the
+  readiness ledger's Mulligan surfaces.
+
+This is pre-run contract evidence only. It proves neither HearthRanger
+in-client execution nor gameplay optimality.
+
 ## Configuration Assurance
 
 The exact fields are `load_safety`, `source_authority`, `semantic_closure`,
