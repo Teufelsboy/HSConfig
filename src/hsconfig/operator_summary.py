@@ -204,6 +204,21 @@ def build_operator_summary(
             )
         ]
     )
+    canonical_receipt_count_value = (
+        0
+        if package_authority is None
+        else package_authority.get("canonical_receipt_count", 0)
+    )
+    canonical_receipt_count = (
+        canonical_receipt_count_value
+        if type(canonical_receipt_count_value) is int
+        and canonical_receipt_count_value >= 0
+        else 0
+    )
+    exact_source_closed = (
+        package_authority is not None
+        and package_authority.get("exact_source_closed") is True
+    )
 
     technical_status = _technical_status(
         technical_validation,
@@ -475,6 +490,8 @@ def build_operator_summary(
         "source_status_apply_blocking": source_status_resolution.apply_blocking,
         "source_apply_eligible": source_apply_eligible,
         "source_apply_eligibility_reasons": source_apply_eligibility_reasons,
+        "canonical_receipt_count": canonical_receipt_count,
+        "exact_source_closed": exact_source_closed,
         "no_default_only_verdict": _no_default_only_verdict(
             technical_status,
             config_usefulness,

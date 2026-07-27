@@ -10,6 +10,10 @@ from hsconfig.io import read_json
 from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
+from hsconfig.source_document_model import (
+    source_claim_signature,
+    strategic_source_receipt_provenance,
+)
 from hsconfig.strict_package_validation import (
     linked_runtime_owner_projection,
     strict_validation_passed,
@@ -187,57 +191,247 @@ def deck_input_apply_eligibility_reasons(
 def source_authority_reasons(
     package_root: str | Path,
 ) -> list[dict[str, str]]:
-    package = Path(package_root)
-    bundle_path = package / "reports" / "guide_claim_bundle.json"
-    if not bundle_path.is_file():
-        return []
-    try:
-        bundle = read_json(bundle_path)
-    except ValueError:
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipt container is invalid.",
-            }
-        ]
-    if not isinstance(bundle, dict):
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipt container is invalid.",
-            }
-        ]
+    reasons, _canonical_receipt_count = _source_authority_state(
+        Path(package_root)
+    )
+    return reasons
+
+
+def canonical_source_receipt_reasons(
+    *,
+    bundle: Mapping[str, Any],
+    deck_identity: Mapping[str, Any],
+) -> list[dict[str, str]]:
     receipts = bundle.get(
         "canonical_source_receipts",
         bundle.get("globalvalues_source_receipts", []),
     )
     if not isinstance(receipts, list):
-        return [
-            {
-                "reason": "source_authority_receipt_invalid",
-                "code": "source_authority_receipt_invalid",
-                "detail": "Canonical source receipts must be a list.",
-            }
-        ]
+        return [_source_authority_invalid_reason()]
+    if not receipts:
+        return []
+
+    claims = bundle.get("claims", [])
+    claim_rows = (
+        claims
+        if isinstance(claims, Sequence)
+        and not isinstance(claims, (str, bytes, bytearray))
+        else ()
+    )
+    source_evidence = bundle.get("source_evidence_index", [])
+    source_evidence_rows = (
+        source_evidence
+        if isinstance(source_evidence, Sequence)
+        and not isinstance(source_evidence, (str, bytes, bytearray))
+        else ()
+    )
+    target_fingerprint = _clean_text(
+        deck_identity.get("deck_fingerprint")
+    )
+    seen_claim_ids: set[str] = set()
+
     for receipt in receipts:
+        if not isinstance(receipt, Mapping):
+            return [_source_authority_invalid_reason()]
         if (
-            not isinstance(receipt, dict)
-            or receipt.get("receipt_kind")
+            receipt.get("receipt_kind")
             != "canonical_exact_deck_source_document"
             or not strategic_source_provenance_is_verified(
                 receipt.get("acquisition_provenance")
             )
         ):
+            return [_source_authority_invalid_reason()]
+
+        claim_id = _clean_text(receipt.get("claim_id"))
+        if not claim_id:
             return [
-                {
-                    "reason": "source_authority_receipt_invalid",
-                    "code": "source_authority_receipt_invalid",
-                    "detail": "Canonical source receipt is not live verified.",
-                }
+                _source_receipt_reason(
+                    "source_receipt_claim_missing",
+                    "Canonical source receipt has no claim identity.",
+                )
+            ]
+        if claim_id in seen_claim_ids:
+            return [
+                _source_receipt_reason(
+                    "source_receipt_duplicate",
+                    "Canonical source receipt claim identity is duplicated.",
+                )
+            ]
+        seen_claim_ids.add(claim_id)
+
+        matching_claims = [
+            claim
+            for claim in claim_rows
+            if isinstance(claim, Mapping)
+            and _clean_text(claim.get("claim_id")) == claim_id
+        ]
+        if len(matching_claims) != 1:
+            return [
+                _source_receipt_reason(
+                    "source_receipt_claim_missing",
+                    "Canonical source receipt does not resolve to one claim.",
+                )
+            ]
+        claim = matching_claims[0]
+
+        if _clean_text(receipt.get("claim_signature")) != source_claim_signature(
+            claim
+        ):
+            return [
+                _source_receipt_reason(
+                    "source_receipt_signature_mismatch",
+                    "Canonical source receipt signature does not match its claim.",
+                )
+            ]
+
+        receipt_fingerprint = _clean_text(
+            receipt.get("matched_deck_fingerprint")
+        )
+        claim_fingerprint = _claim_deck_fingerprint(claim)
+        if (
+            not target_fingerprint
+            or receipt_fingerprint != target_fingerprint
+            or claim_fingerprint != target_fingerprint
+        ):
+            return [
+                _source_receipt_reason(
+                    "source_receipt_deck_mismatch",
+                    "Canonical source receipt is not bound to the package deck.",
+                )
+            ]
+
+        if not _receipt_claim_parity_verified(
+            receipt=receipt,
+            claim=claim,
+            source_evidence_rows=source_evidence_rows,
+        ):
+            return [
+                _source_receipt_reason(
+                    "source_receipt_claim_parity_mismatch",
+                    "Canonical source receipt source identity differs from its claim.",
+                )
             ]
     return []
+
+
+def _source_authority_state(
+    package: Path,
+) -> tuple[list[dict[str, str]], int]:
+    bundle_path = package / "reports" / "guide_claim_bundle.json"
+    if not bundle_path.is_file():
+        return [], 0
+    try:
+        bundle = read_json(bundle_path)
+    except (OSError, ValueError):
+        return [_source_authority_invalid_reason()], 0
+    if not isinstance(bundle, Mapping):
+        return [_source_authority_invalid_reason()], 0
+    receipts = bundle.get(
+        "canonical_source_receipts",
+        bundle.get("globalvalues_source_receipts", []),
+    )
+    if not isinstance(receipts, list):
+        return [_source_authority_invalid_reason()], 0
+    if not receipts:
+        return [], 0
+    try:
+        deck_identity = read_json(
+            package / "reports" / "deck_identity.json"
+        )
+    except (OSError, ValueError):
+        deck_identity = {}
+    if not isinstance(deck_identity, Mapping):
+        deck_identity = {}
+    return (
+        canonical_source_receipt_reasons(
+            bundle=bundle,
+            deck_identity=deck_identity,
+        ),
+        len(receipts),
+    )
+
+
+def _receipt_claim_parity_verified(
+    *,
+    receipt: Mapping[str, Any],
+    claim: Mapping[str, Any],
+    source_evidence_rows: Sequence[Any],
+) -> bool:
+    source_ref = _clean_text(receipt.get("source_ref"))
+    source_url = _clean_text(receipt.get("source_url"))
+    claim_source_url = _clean_text(claim.get("source_url"))
+    claim_source_refs = claim.get("source_refs", [])
+    if isinstance(claim_source_refs, Sequence) and not isinstance(
+        claim_source_refs,
+        (str, bytes, bytearray),
+    ):
+        normalized_claim_source_refs = {
+            _clean_text(value)
+            for value in claim_source_refs
+        }
+    else:
+        normalized_claim_source_refs = set()
+    direct_claim_source_ref = _clean_text(claim.get("source_ref"))
+    if direct_claim_source_ref:
+        normalized_claim_source_refs.add(direct_claim_source_ref)
+
+    matching_source_rows = [
+        row
+        for row in source_evidence_rows
+        if isinstance(row, Mapping)
+        and _clean_text(row.get("source_ref")) == source_ref
+    ]
+    if (
+        not source_ref
+        or source_ref not in normalized_claim_source_refs
+        or not source_url
+        or source_url != claim_source_url
+        or len(matching_source_rows) != 1
+        or _clean_text(matching_source_rows[0].get("source_url"))
+        != source_url
+    ):
+        return False
+
+    claim_provenance = strategic_source_receipt_provenance(claim)
+    if claim_provenance is None or receipt.get(
+        "acquisition_provenance"
+    ) != claim_provenance:
+        return False
+
+    if "claim_kind" in receipt and _clean_text(
+        receipt.get("claim_kind")
+    ) != _clean_text(claim.get("claim_kind")):
+        return False
+    return True
+
+
+def _claim_deck_fingerprint(claim: Mapping[str, Any]) -> str:
+    deck_match = claim.get("deck_match")
+    if not isinstance(deck_match, Mapping):
+        return ""
+    exact_evidence = deck_match.get("exact_deck_evidence")
+    if not isinstance(exact_evidence, Mapping):
+        return ""
+    return _clean_text(exact_evidence.get("matched_deck_fingerprint"))
+
+
+def _source_authority_invalid_reason() -> dict[str, str]:
+    return _source_receipt_reason(
+        "source_authority_receipt_invalid",
+        "Canonical source receipt container or provenance is invalid.",
+    )
+
+
+def _source_receipt_reason(code: str, detail: str) -> dict[str, str]:
+    return {
+        "reason": code,
+        "code": code,
+        "detail": detail,
+    }
+
+
+def _clean_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def source_apply_eligibility_reasons(
@@ -278,6 +472,9 @@ def build_package_authority_context(
             package,
             receipt,
         )
+    source_authority_reasons_value, canonical_receipt_count = (
+        _source_authority_state(package)
+    )
     source_apply_reasons = source_apply_eligibility_reasons(package)
     return {
         "strict_validation_passed": strict_validation_passed(
@@ -286,7 +483,12 @@ def build_package_authority_context(
         "deck_input_apply_eligible": not deck_input_apply_eligibility_reasons(
             package
         ),
-        "source_authority_verified": not source_authority_reasons(package),
+        "source_authority_verified": not source_authority_reasons_value,
+        "canonical_receipt_count": canonical_receipt_count,
+        "exact_source_closed": (
+            canonical_receipt_count > 0
+            and not source_authority_reasons_value
+        ),
         "source_apply_eligible": not source_apply_reasons,
         "source_apply_eligibility_reasons": [
             str(row["reason"])

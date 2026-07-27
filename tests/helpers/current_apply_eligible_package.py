@@ -101,12 +101,22 @@ def write_current_apply_eligible_package(
         first_card = identity_cards[0]
         if isinstance(first_card, Mapping):
             first_card_id = str(first_card.get("card_id", ""))
+    source_ref = "source:current-apply-eligible-fixture"
+    source_url = "https://example.test/acquisition"
+    deck_fingerprint = str(deck_identity.get("deck_fingerprint", ""))
     claim = {
         "claim_id": "claim_current_apply_eligible",
         "claim_kind": "card_role",
         "cards": [first_card_id] if first_card_id else [],
-        "source_ref": "source:current-apply-eligible-fixture",
+        "source_refs": [source_ref, source_url],
+        "source_url": source_url,
         "source_confidence": "high",
+        "deck_match": {
+            "exact_deck_evidence": {
+                "matched": True,
+                "matched_deck_fingerprint": deck_fingerprint,
+            }
+        },
         "acquisition_provenance": live_provenance,
     }
     write_json(
@@ -115,19 +125,17 @@ def write_current_apply_eligible_package(
             "claims": [claim],
             "source_evidence_index": [
                 {
-                    "source_ref": "source:current-apply-eligible-fixture",
-                    "source_url": "https://example.test/acquisition",
+                    "source_ref": source_ref,
+                    "source_url": source_url,
                     "acquisition_provenance": live_provenance,
                 }
             ],
             "canonical_source_receipts": [
                 {
                     "receipt_kind": "canonical_exact_deck_source_document",
-                    "source_ref": "source:current-apply-eligible-fixture",
-                    "source_url": "https://example.test/acquisition",
-                    "matched_deck_fingerprint": str(
-                        deck_identity.get("deck_fingerprint", "")
-                    ),
+                    "source_ref": source_ref,
+                    "source_url": source_url,
+                    "matched_deck_fingerprint": deck_fingerprint,
                     "claim_id": claim["claim_id"],
                     "claim_signature": source_claim_signature(claim),
                     "acquisition_provenance": live_provenance,

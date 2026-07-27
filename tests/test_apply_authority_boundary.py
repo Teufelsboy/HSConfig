@@ -8,6 +8,9 @@ from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.io import read_json, write_json
 from hsconfig.runtime_apply import apply_package
+from tests.helpers.current_apply_eligible_package import (
+    write_current_apply_eligible_package,
+)
 from tests.helpers.current_runtime_surface_ledger_contract import (
     write_current_runtime_surface_ledger,
 )
@@ -28,6 +31,14 @@ DIAGNOSTIC_ONLY_TOKENS = [
     "contract_spine_rows",
     "claim_lifecycle_rows",
     "source_contract_conformance",
+]
+
+RECEIPT_TAMPERING_CASES = [
+    ("unknown_claim_id", "source_receipt_claim_missing"),
+    ("claim_signature_mismatch", "source_receipt_signature_mismatch"),
+    ("deck_fingerprint_mismatch", "source_receipt_deck_mismatch"),
+    ("duplicate_claim_receipt", "source_receipt_duplicate"),
+    ("claim_receipt_parity_mismatch", "source_receipt_claim_parity_mismatch"),
 ]
 
 FORBIDDEN_DIAGNOSTIC_IMPORTS = [
@@ -158,6 +169,51 @@ def _remove_linked_owner_authority(package: Path) -> None:
 def _first_reason_code(gate: dict) -> str:
     reason = gate["reasons"][0]
     return str(reason.get("code") or reason.get("reason"))
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    RECEIPT_TAMPERING_CASES,
+)
+def test_apply_gate_rejects_semantically_tampered_canonical_receipt(
+    tmp_path: Path,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        refresh_package_derivation_authority,
+    )
+
+    package = write_current_apply_eligible_package(tmp_path / mutation)
+    bundle_path = package / "reports" / "guide_claim_bundle.json"
+    bundle = read_json(bundle_path)
+    receipt = bundle["canonical_source_receipts"][0]
+
+    if mutation == "unknown_claim_id":
+        receipt["claim_id"] = "claim_missing_from_bundle"
+    elif mutation == "claim_signature_mismatch":
+        receipt["claim_signature"] = "sha256:" + ("0" * 64)
+    elif mutation == "deck_fingerprint_mismatch":
+        receipt["matched_deck_fingerprint"] = "sha256:" + ("1" * 64)
+    elif mutation == "duplicate_claim_receipt":
+        bundle["canonical_source_receipts"].append(copy.deepcopy(receipt))
+    elif mutation == "claim_receipt_parity_mismatch":
+        receipt["source_url"] = "https://example.test/different-source"
+    else:
+        raise AssertionError(f"unknown mutation: {mutation}")
+
+    write_json(bundle_path, bundle)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"] = refresh_package_derivation_authority(
+        package
+    )
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == expected_reason
 
 
 def _first_runtime_json(package: Path) -> Path:

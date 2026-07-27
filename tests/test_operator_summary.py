@@ -126,6 +126,24 @@ def test_operator_summary_names_current_package_apply_authority():
     }
 
 
+def test_operator_summary_projects_exact_source_diagnostics_without_new_gate():
+    summary = build_operator_summary(
+        deck_name="Exact Source Diagnostics",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        package_authority={
+            "source_apply_eligible": True,
+            "source_apply_eligibility_reasons": [],
+            "canonical_receipt_count": 1,
+            "exact_source_closed": True,
+        },
+    )
+
+    assert summary["canonical_receipt_count"] == 1
+    assert summary["exact_source_closed"] is True
+    assert summary["runtime_apply_allowed"] is True
+
+
 def test_operator_summary_explains_diagnostic_source_apply_block():
     summary = build_operator_summary(
         deck_name="Diagnostic Source Package",
