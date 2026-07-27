@@ -132,17 +132,21 @@ and lifecycle claim IDs merge deterministically. Different values for the same
 runtime key must fail closed and remain diagnostic. Physical output and
 meaningful card-behavior report rows must have exact parity: every physical
 CardID `values` row has one meaningful report row, and every meaningful report
-row has physical output.
+row has physical output. Compare a canonical typed multiset rather than a set or
+string-normalized mapping: duplicate multiplicity and JSON condition/value
+types are part of the contract.
 
 ## Audited Deck-set Invariants
 
 The read-only twelve-deck acceptance loads deck codes from the eleven-row
 representative manifest plus supplemental CuteWarrior. It enforces:
 
-- no spell source card owns `OnBoardBonus` or
+- `semantic_enrichment_report.json` must prove that neither the source card nor
+  a linked physical runtime owner is a spell for `OnBoardBonus` or
   `BeforeBattlecryTargetBonus`;
-- each physical CardID row matches one meaningful report row with non-empty
-  source claim IDs and source references;
+- physical and meaningful report rows have duplicate-preserving typed parity in
+  both directions before each report row is checked for non-empty source claim
+  IDs and source references;
 - condition-related suppressions do not reappear as unconditional physical
   rows;
 - `EX1_625t`, not `SW_448`, owns ShadowPriest's Hero Power row; reciprocal

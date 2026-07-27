@@ -17,15 +17,18 @@ Linked runtime entities may own physical CardID files. Source card: `SW_448` (Da
 
 The audited twelve-deck read-only acceptance additionally requires:
 
-- no spell-owned `OnBoardBonus` or `BeforeBattlecryTargetBonus`;
-- source-claim/source-ref provenance for every physical CardID `values` row;
+- semantic-enrichment type and linked-owner proof that no spell source or
+  physical runtime owner has `OnBoardBonus` or `BeforeBattlecryTargetBonus`;
+- typed, duplicate-preserving physical/report parity in both directions before
+  source-claim/source-ref provenance is checked for every meaningful row;
 - no unconditional lowering of a suppressed unsupported condition;
 - no static Boarlock `Combo.json`, no coverage-only Discolock
   `InHandPlayPriority`, and exact ImbueMage Mulligan/readiness identity parity.
 
-It prepares only temporary packages. It does not write runtime files and does
-not prove in-client execution or gameplay optimality. Fixture manifests do not
-authorize apply; `reports/operator_summary.json` remains the sole current
-package authority.
+It prepares only temporary packages under a network-deny sentinel, stubs the
+runtime writer entry, keeps the runtime root absent, and requires no apply
+receipt. It does not prove in-client execution or gameplay optimality. Fixture
+manifests do not authorize apply; `reports/operator_summary.json` remains the
+sole current package authority.
 
 Reports stay under `reports/` and must not be copied into runtime deck folders.

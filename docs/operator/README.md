@@ -589,8 +589,14 @@ warning-only.
 
 `tests/test_audited_deck_set_acceptance.py` combines the eleven representative
 manifest rows with the supplemental CuteWarrior row without copying deck codes
-or promoting CuteWarrior into the representative matrix. It prepares packages
-only under pytest temporary directories and performs no runtime write.
+or promoting CuteWarrior into the representative matrix. A catalog guard
+requires exactly eleven representative rows, exactly one supplemental
+CuteWarrior row, exactly twelve audited rows, and unique deck names and deck
+codes. It prepares packages only under pytest temporary directories. The test
+uses a frozen local DBF snapshot for the twelve audited deckstrings, denies
+external Cardfeed/DNS/socket access, stubs the runtime writer entry, keeps the
+temporary runtime root absent, and requires that no runtime apply receipt is
+created.
 
 The twelve captured/fixture-backed cases are expected to be technically valid
 and load-safe but apply-ineligible with
@@ -605,10 +611,13 @@ eligible gate.
 The acceptance set enforces these semantic boundaries across physical output
 and reports:
 
-- no spell owns `OnBoardBonus` or `BeforeBattlecryTargetBonus`;
-- every physical CardID `values` row has matching source-claim and source-ref
-  provenance, and unsupported conditions remain suppressed rather than
-  becoming unconditional rows;
+- semantic-enrichment card types prove that neither the source card nor a
+  linked physical runtime owner is a spell for `OnBoardBonus` or
+  `BeforeBattlecryTargetBonus`;
+- physical CardID `values` rows and meaningful report rows have exact
+  duplicate-preserving, typed parity in both directions before every report row
+  is checked for source-claim and source-ref provenance; unsupported conditions
+  remain suppressed rather than becoming unconditional rows;
 - ShadowPriest keeps the Mind Spike linked owner, report-only reciprocal burn,
   and one board row for each audited summon engine;
 - MechPala keeps all three `TOY_330` sideboard modules report-visible and keeps
