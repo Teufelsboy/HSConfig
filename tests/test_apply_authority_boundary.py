@@ -82,6 +82,50 @@ def _build_authoritative_package(
     return package
 
 
+def _install_linked_owner_authority(package: Path) -> None:
+    from hsconfig.package_derivation_receipt import (
+        refresh_package_derivation_authority,
+    )
+
+    deck_dir = next(
+        path for path in (package / "CustomConfig").iterdir() if path.is_dir()
+    )
+    owner_path = deck_dir / "EX1_625t.json"
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+    write_json(
+        owner_path,
+        {
+            "GameCardId": "EX1_625t",
+            "ConfigComment": "curated linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    generated_path = owner_path.relative_to(package).as_posix()
+    if generated_path not in summary["generated_files"]:
+        summary["generated_files"].append(generated_path)
+    summary["package_derivation"] = refresh_package_derivation_authority(package)
+    write_json(summary_path, summary)
+
+
 def _first_reason_code(gate: dict) -> str:
     reason = gate["reasons"][0]
     return str(reason.get("code") or reason.get("reason"))
@@ -254,9 +298,18 @@ def test_untouched_builder_package_has_verified_derivation_authority(
     summary = read_json(package / "reports" / "operator_summary.json")
     gate = evaluate_apply_gate(package)
 
-    assert receipt["schema_version"] == 1
+    assert receipt["schema_version"] == 2
+    assert receipt["linked_runtime_owners"] == [
+        {
+            "source_card_id": "SW_448",
+            "runtime_card_id": "EX1_625t",
+            "link_kind": "hero_power_transform",
+            "semantic_surface": "hero_power_before_use",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+        }
+    ]
     assert summary["package_derivation"] == {
-        "schema_version": 1,
+        "schema_version": 2,
         "receipt_path": "package_derivation_receipt.json",
         "receipt_sha256": summary["package_derivation"]["receipt_sha256"],
         "verified": True,
@@ -264,6 +317,103 @@ def test_untouched_builder_package_has_verified_derivation_authority(
     assert summary["package_derivation"]["receipt_sha256"].startswith("sha256:")
     assert gate["allowed"] is True
     assert gate["status"] == "allowed"
+
+
+def test_derivation_receipt_binds_only_linked_owner_authority_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        build_package_derivation_receipt,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    _install_linked_owner_authority(package)
+    before = build_package_derivation_receipt(package)
+    plan_path = package / "reports" / "card_behavior_plan_report.json"
+    plan = read_json(plan_path)
+
+    assert before["linked_runtime_owners"] == [
+        {
+            "source_card_id": "SW_448",
+            "runtime_card_id": "EX1_625t",
+            "link_kind": "hero_power_transform",
+            "semantic_surface": "hero_power_before_use",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+        }
+    ]
+
+    plan["generated_at"] = "2099-01-01T00:00:00Z"
+    plan["diagnostic_prose"] = "changed prose"
+    plan["rows"][0]["claim_id"] = "renamed_non_authority_claim"
+    plan["rows"][0]["diagnostic_prose"] = "changed row prose"
+    write_json(plan_path, plan)
+    after_diagnostics = build_package_derivation_receipt(package)
+
+    plan["rows"][0]["runtime_card_id"] = "SW_448"
+    write_json(plan_path, plan)
+    after_authority = build_package_derivation_receipt(package)
+
+    assert after_diagnostics == before
+    assert after_authority != before
+
+
+@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    _install_linked_owner_authority(package)
+    assert evaluate_apply_gate(package)["allowed"] is True
+    path = package / "reports" / "card_behavior_plan_report.json"
+    if mutation == "remove":
+        path.unlink()
+    elif mutation == "invalid_json":
+        path.write_text("{", encoding="utf-8")
+    else:
+        path.write_text("[]", encoding="utf-8")
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) in {
+        "linked_runtime_owner_evidence_missing",
+        "linked_runtime_owner_evidence_invalid",
+        "package_derivation_mismatch",
+    }
+
+
+def test_apply_gate_rejects_legacy_derivation_receipt_schema_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        package_derivation_receipt_sha256,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    receipt_path = package / "package_derivation_receipt.json"
+    receipt = read_json(receipt_path)
+    receipt["schema_version"] = 1
+    receipt.pop("linked_runtime_owners", None)
+    write_json(receipt_path, receipt)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["package_derivation"]["schema_version"] = 1
+    summary["package_derivation"]["receipt_sha256"] = (
+        package_derivation_receipt_sha256(receipt)
+    )
+    write_json(summary_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "package_derivation_receipt_schema_unsupported"
 
 
 def test_forged_valid_operator_summary_cannot_authorize_package(

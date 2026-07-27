@@ -11,12 +11,13 @@ from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
 from hsconfig.strict_package_validation import (
+    linked_runtime_owner_projection,
     strict_validation_passed,
     validate_complete_package,
 )
 
 
-DERIVATION_RECEIPT_SCHEMA_VERSION = 1
+DERIVATION_RECEIPT_SCHEMA_VERSION = 2
 DERIVATION_RECEIPT_PATH = "package_derivation_receipt.json"
 
 _AUTHORITATIVE_JSON_PATHS = (
@@ -25,6 +26,7 @@ _AUTHORITATIVE_JSON_PATHS = (
     "reports/deck_fingerprint.json",
     "reports/globalvalues_baseline.json",
     "reports/globalvalues_profile.json",
+    "reports/card_behavior_plan_report.json",
     "reports/output_ownership_manifest.json",
 )
 _AUTHORITY_EXCLUDED_TOP_LEVEL_FIELDS = {
@@ -71,6 +73,7 @@ def build_package_derivation_receipt(
     return {
         "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
         "inputs": _authoritative_input_digests(package),
+        "linked_runtime_owners": _linked_runtime_owners(package),
         "runtime_files": _runtime_file_digests(package),
     }
 
@@ -313,11 +316,22 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     manifest: Mapping[str, Any] | None = None
     for relative_path in _AUTHORITATIVE_JSON_PATHS:
         path = package_root / Path(relative_path)
+        if (
+            relative_path == "reports/card_behavior_plan_report.json"
+            and not path.is_file()
+        ):
+            inputs[relative_path] = _canonical_json_sha256([])
+            continue
         payload = read_json(path)
         if not isinstance(payload, Mapping):
             raise ValueError(f"Authoritative package input must be an object: {path}")
         if relative_path == "reports/input_manifest.json":
             manifest = payload
+        if relative_path == "reports/card_behavior_plan_report.json":
+            inputs[relative_path] = _canonical_json_sha256(
+                linked_runtime_owner_projection(payload)
+            )
+            continue
         payload = _stable_authority_document(relative_path, payload)
         inputs[relative_path] = _canonical_json_sha256(payload)
 
@@ -353,6 +367,18 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
         _stable_authority_value(deck_input_verification)
     )
     return dict(sorted(inputs.items()))
+
+
+def _linked_runtime_owners(package_root: Path) -> list[dict[str, str]]:
+    path = package_root / "reports" / "card_behavior_plan_report.json"
+    if not path.is_file():
+        return []
+    behavior_plan = read_json(path)
+    if not isinstance(behavior_plan, Mapping):
+        raise ValueError(
+            f"Linked runtime owner evidence must be an object: {path}"
+        )
+    return linked_runtime_owner_projection(behavior_plan)
 
 
 def _runtime_file_digests(package_root: Path) -> dict[str, str]:

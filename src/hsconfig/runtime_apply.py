@@ -16,6 +16,8 @@ from hsconfig.runtime_apply_receipts import (
 )
 from hsconfig.runtime_package_match import assert_runtime_matches_package
 from hsconfig.strict_package_validation import (
+    LINKED_RUNTIME_OWNER_EVIDENCE_INVALID,
+    LINKED_RUNTIME_OWNER_EVIDENCE_MISSING,
     strict_validation_passed,
     validate_complete_package,
 )
@@ -219,7 +221,17 @@ def _validate_runtime_apply_package(package: Path) -> None:
     if strict_validation_passed(report):
         return
     errors = report.get("errors") or ["unknown package validation failure"]
-    first_error = str(errors[0])
+    first_error = next(
+        (
+            code
+            for code in (
+                LINKED_RUNTIME_OWNER_EVIDENCE_MISSING,
+                LINKED_RUNTIME_OWNER_EVIDENCE_INVALID,
+            )
+            if code in errors
+        ),
+        str(errors[0]),
+    )
     extra_count = max(len(errors) - 1, 0)
     suffix = f" (and {extra_count} more)" if extra_count else ""
     raise ValueError(

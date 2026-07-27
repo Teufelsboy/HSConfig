@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 from pathlib import Path
 from typing import Any
 
 from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.runtime_entity_owner import (
+    AUTHORIZED_HERO_POWER_OWNER,
     LINKED_RUNTIME_ENTITY_RELATION_INVALID,
     linked_runtime_entity_semantic_surface,
     runtime_entity_owner_relation_is_authorized,
 )
 from hsconfig.validate_package import validate_config_package
+
+
+LINKED_RUNTIME_OWNER_EVIDENCE_MISSING = (
+    "linked_runtime_owner_evidence_missing"
+)
+LINKED_RUNTIME_OWNER_EVIDENCE_INVALID = (
+    "linked_runtime_owner_evidence_invalid"
+)
 
 
 def strict_validation_passed(report: dict[str, Any]) -> bool:
@@ -44,15 +54,17 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
         package_path / "reports" / "card_behavior_plan_report.json"
     )
     if not behavior_plan_path.is_file():
+        if _has_curated_linked_runtime_owner_file(package_path):
+            return [LINKED_RUNTIME_OWNER_EVIDENCE_MISSING]
         return []
     try:
         behavior_plan = json.loads(
             behavior_plan_path.read_text(encoding="utf-8-sig")
         )
     except (OSError, ValueError):
-        return []
-    if not isinstance(behavior_plan, dict):
-        return []
+        return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
+    if not isinstance(behavior_plan, Mapping):
+        return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
 
     deck_dirs = sorted(
         path
@@ -94,8 +106,26 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
     return errors
 
 
+def _has_curated_linked_runtime_owner_file(package_path: Path) -> bool:
+    runtime_card_id = AUTHORIZED_HERO_POWER_OWNER[3]
+    return any(
+        path.is_file()
+        for path in (package_path / "CustomConfig").glob(
+            f"*/{runtime_card_id}.json"
+        )
+    )
+
+
+def linked_runtime_owner_projection(
+    behavior_plan: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Return the canonical, sorted linked-owner authority projection."""
+    projection, _errors = _linked_runtime_relations(behavior_plan)
+    return projection
+
+
 def _linked_runtime_relations(
-    behavior_plan: dict[str, Any],
+    behavior_plan: Mapping[str, Any],
 ) -> tuple[list[dict[str, str]], list[str]]:
     relations: list[dict[str, str]] = []
     errors: list[str] = []
@@ -123,7 +153,7 @@ def _linked_runtime_relations(
             behavior_block=behavior_block,
             link_kind=link_kind,
         )
-        relation = {
+        authorization_relation = {
             "source_card_id": source_card_id,
             "semantic_reason": semantic_surface or "",
             "link_kind": link_kind,
@@ -132,7 +162,9 @@ def _linked_runtime_relations(
         if (
             row.get("meaningful_runtime_surface") is not True
             or semantic_surface is None
-            or not runtime_entity_owner_relation_is_authorized(**relation)
+            or not runtime_entity_owner_relation_is_authorized(
+                **authorization_relation
+            )
         ):
             errors.append(
                 f"{LINKED_RUNTIME_ENTITY_RELATION_INVALID}: "
@@ -142,15 +174,24 @@ def _linked_runtime_relations(
                 f"runtime={runtime_card_id}"
             )
             continue
-        relations.append(relation)
+        relations.append(
+            {
+                "source_card_id": source_card_id,
+                "runtime_card_id": runtime_card_id,
+                "link_kind": link_kind,
+                "semantic_surface": semantic_surface,
+                "behavior_block": behavior_block,
+            }
+        )
     return (
         sorted(
             relations,
             key=lambda row: (
                 row["source_card_id"],
-                row["semantic_reason"],
-                row["link_kind"],
                 row["runtime_card_id"],
+                row["link_kind"],
+                row["semantic_surface"],
+                row["behavior_block"],
             ),
         ),
         errors,

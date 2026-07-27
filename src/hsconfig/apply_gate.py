@@ -16,6 +16,8 @@ from hsconfig.package_derivation_receipt import (
     verify_package_derivation_receipt,
 )
 from hsconfig.strict_package_validation import (
+    LINKED_RUNTIME_OWNER_EVIDENCE_INVALID,
+    LINKED_RUNTIME_OWNER_EVIDENCE_MISSING,
     strict_validation_passed,
     validate_complete_package,
 )
@@ -201,12 +203,33 @@ def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:
     if strict_validation_passed(report):
         return []
     errors = report.get("errors")
+    normalized_errors = errors if isinstance(errors, list) else []
+    linked_owner_code = next(
+        (
+            code
+            for code in (
+                LINKED_RUNTIME_OWNER_EVIDENCE_MISSING,
+                LINKED_RUNTIME_OWNER_EVIDENCE_INVALID,
+            )
+            if code in normalized_errors
+        ),
+        None,
+    )
+    if linked_owner_code is not None:
+        return [
+            {
+                "reason": linked_owner_code,
+                "code": linked_owner_code,
+                "detail": "Linked runtime owner evidence is unavailable or invalid.",
+                "errors": normalized_errors,
+            }
+        ]
     return [
         {
             "reason": "strict_package_validation_failed",
             "code": "strict_package_validation_failed",
             "detail": "Strict package validation failed.",
-            "errors": errors if isinstance(errors, list) else [],
+            "errors": normalized_errors,
         }
     ]
 

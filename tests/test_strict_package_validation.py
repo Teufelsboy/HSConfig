@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from hsconfig import package_builder
+import hsconfig.strict_package_validation as strict_package_validation
 from hsconfig.cli import main
 from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import write_json
@@ -108,6 +109,98 @@ def _build_fixture(
             str(tmp_path / "build-package"),
         ],
     )
+
+
+@pytest.fixture
+def linked_owner_package(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> Path:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    deck_dir = next((package / "CustomConfig").iterdir())
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+    write_json(
+        deck_dir / "EX1_625t.json",
+        {
+            "GameCardId": "EX1_625t",
+            "ConfigComment": "curated linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+    return package
+
+
+@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+def test_linked_owner_package_fails_closed_without_valid_plan_report(
+    linked_owner_package: Path,
+    mutation: str,
+) -> None:
+    path = linked_owner_package / "reports" / "card_behavior_plan_report.json"
+    if mutation == "remove":
+        path.unlink()
+    elif mutation == "invalid_json":
+        path.write_text("{", encoding="utf-8")
+    else:
+        path.write_text("[]", encoding="utf-8")
+
+    report = validate_complete_package(linked_owner_package)
+
+    assert report["status"] == "failed"
+    assert any(
+        code in report["errors"]
+        for code in {
+            "linked_runtime_owner_evidence_missing",
+            "linked_runtime_owner_evidence_invalid",
+        }
+    )
+
+
+def test_linked_runtime_owner_projection_has_exact_authority_fields() -> None:
+    projection = strict_package_validation.linked_runtime_owner_projection(
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                    "diagnostic_prose": "must not enter authority",
+                }
+            ]
+        }
+    )
+
+    assert projection == [
+        {
+            "source_card_id": "SW_448",
+            "runtime_card_id": "EX1_625t",
+            "link_kind": "hero_power_transform",
+            "semantic_surface": "hero_power_before_use",
+            "behavior_block": "BeforeUseHeroPowerBonus",
+        }
+    ]
 
 
 def test_valid_package_passes_build_validate_apply_and_preflight(

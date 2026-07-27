@@ -47,6 +47,8 @@ def _write_operator_summary_with_derivation(
         reports / "guide_claim_bundle.json",
         {"canonical_source_receipts": []},
     )
+    if not (reports / "card_behavior_plan_report.json").exists():
+        write_json(reports / "card_behavior_plan_report.json", {"rows": []})
     generated = summary.get("generated_files", [])
     generated_files = list(generated) if isinstance(generated, list) else []
     ownership = build_output_ownership_manifest(
@@ -183,6 +185,55 @@ def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
         package / "reports" / "input_manifest.json",
         {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
     )
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": []},
+    )
+    return package
+
+
+def _linked_owner_complete_package(tmp_path: Path) -> Path:
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    deck = next(
+        path for path in (package / "CustomConfig").iterdir() if path.is_dir()
+    )
+    owner_path = deck / "EX1_625t.json"
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+    write_json(
+        owner_path,
+        {
+            "GameCardId": "EX1_625t",
+            "ConfigComment": "curated linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+    summary = read_json(package / "reports" / "operator_summary.json")
+    generated_path = owner_path.relative_to(package).as_posix()
+    if generated_path not in summary["generated_files"]:
+        summary["generated_files"].append(generated_path)
+    _write_operator_summary_with_derivation(package, summary)
     return package
 
 
@@ -290,6 +341,48 @@ def test_runtime_apply_obeys_shared_strict_validation_result_before_any_write(
     assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
     assert not (package / "reports" / "runtime_apply_receipt.json").exists()
     assert not runtime.exists()
+
+
+@pytest.mark.parametrize("operation", ["plan", "apply"])
+@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+def test_runtime_apply_fails_closed_without_valid_linked_owner_plan_report(
+    tmp_path: Path,
+    operation: str,
+    mutation: str,
+) -> None:
+    package = _linked_owner_complete_package(tmp_path)
+    runtime = tmp_path / "runtime"
+    assert evaluate_apply_gate(package)["allowed"] is True
+    path = package / "reports" / "card_behavior_plan_report.json"
+    if mutation == "remove":
+        path.unlink()
+    elif mutation == "invalid_json":
+        path.write_text("{", encoding="utf-8")
+    else:
+        path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "linked_runtime_owner_evidence_missing"
+            "|linked_runtime_owner_evidence_invalid"
+            "|package_derivation_mismatch"
+        ),
+    ):
+        if operation == "plan":
+            plan_apply_package(
+                package_root=package,
+                runtime_root=runtime,
+            )
+        else:
+            apply_package(
+                package_root=package,
+                runtime_root=runtime,
+            )
+
+    assert not runtime.exists()
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
 
 
 def test_apply_package_blocks_direct_write_without_operator_summary(tmp_path: Path):
@@ -734,6 +827,10 @@ def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
             "expected_overlay_keys": [],
             "missing_overlay_keys": [],
         },
+    )
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": []},
     )
 
     code = main(
