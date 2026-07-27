@@ -16,11 +16,13 @@ jobs:
           python-version: "3.12"
       - name: Install package
         run: python -m pip install -e ".[dev]"
+      - name: Run Ruff
+        run: python -m ruff check --no-cache src tests scripts
       - name: Run contract-spine guard suite
         env:
           PYTHONPATH: src
         run: >
-          python -m pytest
+          python -m pytest -p no:cacheprovider
           tests/test_source_claim_family_registry.py
           tests/test_claim_kind_runtime_contract.py
           tests/test_semantic_runtime_negative_boundaries.py

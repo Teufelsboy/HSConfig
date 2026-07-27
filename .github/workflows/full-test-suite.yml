@@ -1,4 +1,4 @@
-name: contract-guardrails
+name: full-test-suite
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
       - "codex/**"
 
 jobs:
-  contract-guardrails:
+  full-test-suite:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -20,13 +20,15 @@ jobs:
           python-version: "3.11"
 
       - name: Install package
-        run: python -m pip install -e ".[dev]"
+        run: |
+          python -m pip install --upgrade pip setuptools
+          python -m pip install -e ".[dev]"
 
       - name: Run Ruff
         run: python -m ruff check --no-cache src tests scripts
 
-      - name: Seed temporary installed skill
-        run: python scripts\sync_installed_skill.py --install-root .guardrail-skills
+      - name: Run full test suite
+        run: python -m pytest -p no:cacheprovider
 
-      - name: Run contract guardrails
-        run: python scripts\check_contract_guardrails.py --skill-install-root .guardrail-skills
+      - name: Audit dependencies
+        run: python -m pip_audit

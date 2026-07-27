@@ -10,11 +10,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "hearthstone>=9.0.0",
+  "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
+  "ruff>=0.12",
+  "pip-audit>=2.9",
 ]
 
 [project.scripts]
@@ -26,3 +29,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

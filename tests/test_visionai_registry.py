@@ -1,9 +1,4 @@
-from hsconfig.visionai_registry import (
-    CARD_BEHAVIOR_BLOCK_REGISTRY,
-    is_supported_card_behavior_block,
-    runtime_block_support,
-    supported_surface,
-)
+from hsconfig.visionai_registry import is_supported_card_behavior_block, runtime_block_support, supported_surface
 
 
 def test_registry_keeps_core_card_behavior_blocks_supported():

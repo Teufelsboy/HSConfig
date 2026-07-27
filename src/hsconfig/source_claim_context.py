@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import re
-
-
 MULLIGAN_CONTEXT_MARKERS = ("mulligan", "opening hand", "opening-hand")
 BOILERPLATE_MARKERS = (
     "follow us on twitter",

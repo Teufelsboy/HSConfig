@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from hsconfig.matrix_closure import build_matrix_closure_summary

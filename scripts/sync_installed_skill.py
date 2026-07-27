@@ -11,7 +11,8 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from hsconfig.skill_sync_status import DEFAULT_INSTALL_ROOT, folder_diff
+# Repository-local src bootstrap must precede this import.
+from hsconfig.skill_sync_status import DEFAULT_INSTALL_ROOT, folder_diff  # noqa: E402
 
 
 SOURCE_SKILL = REPO_ROOT / ".agents" / "skills" / "hsconfig"
