@@ -1,5 +1,6 @@
 from hsconfig.compile_mulligan import compile_mulligan
 from hsconfig.mulligan_plan import build_mulligan_plan as _build_mulligan_plan
+from hsconfig.source_claim_lifecycle import build_initial_lifecycle_rows
 from hsconfig.source_document_model import (
     globalvalues_claim_signature,
     normalized_claim_kind,
@@ -396,6 +397,103 @@ def test_mulligan_plan_reports_lifecycle_rejected_claim_without_compiling_rule()
     }
     assert suppressed["acquisition_provenance"]["authority"] == "live_verified"
     assert plan["quality"]["blocked_reason"] == "no_source_backed_mulligan_keeps"
+
+
+def test_report_only_mulligan_claim_uses_generated_lifecycle_id_as_source_claim_id():
+    lifecycle_rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A"],
+                "source_url": "https://example.test/idless-guide",
+                "runtime_lowering_reason": "claim_not_runtime_lowerable",
+            }
+        ]
+    )
+
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[],
+        card_roles={},
+        source_claim_lifecycle_rows=lifecycle_rows,
+    )
+
+    suppressed = plan["suppressed_rules"][0]
+    assert suppressed["claim_id"] == "claim_1"
+    assert suppressed["source_claim_ids"] == ["claim_1"]
+    assert suppressed["source_url"] == "https://example.test/idless-guide"
+    assert suppressed["source_type"] == "source_claim"
+
+
+def test_report_only_multicard_mulligan_claim_emits_one_suppressed_row_per_card():
+    lifecycle_rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_id": "multicard-keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_A", "CARD_B"],
+                "source_url": "https://example.test/multicard-guide",
+                "runtime_lowering_reason": "claim_not_runtime_lowerable",
+            }
+        ]
+    )
+
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[],
+        card_roles={},
+        source_claim_lifecycle_rows=lifecycle_rows,
+    )
+
+    suppressed = [
+        row
+        for row in plan["suppressed_rules"]
+        if row["reason"] == "claim_not_runtime_lowerable"
+    ]
+    assert [(row["card"], row["action"]) for row in suppressed] == [
+        ("CARD_A", "hold"),
+        ("CARD_B", "hold"),
+    ]
+    assert all(row["claim_id"] == "multicard-keep" for row in suppressed)
+    assert all(
+        row["source_claim_ids"] == ["multicard-keep"] for row in suppressed
+    )
+    assert all(
+        row["source_url"] == "https://example.test/multicard-guide"
+        for row in suppressed
+    )
+
+
+def test_report_only_mulligan_discard_preserves_discard_action_and_all_cards():
+    lifecycle_rows = build_initial_lifecycle_rows(
+        [
+            {
+                "claim_kind": "mulligan_discard",
+                "cards": ["CARD_A", "CARD_B"],
+                "source_url": "https://example.test/discard-guide",
+                "runtime_lowering_reason": "claim_not_runtime_lowerable",
+            }
+        ]
+    )
+
+    plan = build_mulligan_plan(
+        deck_name="Deck",
+        claims=[],
+        card_roles={},
+        source_claim_lifecycle_rows=lifecycle_rows,
+    )
+
+    suppressed = [
+        row
+        for row in plan["suppressed_rules"]
+        if row["reason"] == "claim_not_runtime_lowerable"
+    ]
+    assert [(row["card"], row["action"]) for row in suppressed] == [
+        ("CARD_A", "discard"),
+        ("CARD_B", "discard"),
+    ]
+    assert all(row["claim_id"] == "claim_1" for row in suppressed)
+    assert all(row["source_claim_ids"] == ["claim_1"] for row in suppressed)
 
 
 def test_policy_vetoes_exact_card_from_lifecycle_rejected_guide_claim():

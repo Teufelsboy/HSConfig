@@ -58,19 +58,14 @@ def build_mulligan_plan(
         lifecycle = claim.get("_claim_lifecycle")
         if isinstance(lifecycle, dict) and lifecycle.get("surface_gate_allowed") is False:
             reason = str(lifecycle.get("surface_gate_reason") or "surface_gate_rejected")
-            if claim_cards:
-                suppressed_row = _with_claim_id(
-                    {
-                        "card": claim_cards[0],
-                        "action": "hold" if claim_kind == "mulligan_keep" else "none",
-                        "reason": reason,
-                        "source_claim_ids": _source_claim_ids(claim),
-                    },
-                    claim,
+            suppressed_rules.extend(
+                _suppressed_exact_card_rows(
+                    claim=claim,
+                    claim_cards=claim_cards,
+                    claim_kind=claim_kind,
+                    reason=reason,
                 )
-                suppressed_rules.append(
-                    _with_source_claim_provenance(suppressed_row, claim)
-                )
+            )
             continue
         gate = can_lower_to_mulligan(
             claim,
@@ -84,7 +79,11 @@ def build_mulligan_plan(
                     _with_claim_id(
                         {
                             "card": claim_cards[0],
-                            "action": "hold" if claim_kind == "mulligan_keep" else "none",
+                            "action": (
+                                "hold"
+                                if claim_kind == "mulligan_keep"
+                                else "none"
+                            ),
                             "reason": gate.reason,
                             "source_claim_ids": _source_claim_ids(claim),
                         },
@@ -563,10 +562,41 @@ def _selector_rows_from_claim(
 
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
     if isinstance(claim.get("source_claim_ids"), list):
-        return [str(item) for item in claim["source_claim_ids"]]
-    if claim.get("claim_id"):
-        return [str(claim["claim_id"])]
+        source_claim_ids = [
+            str(item) for item in claim["source_claim_ids"] if str(item)
+        ]
+        if source_claim_ids:
+            return source_claim_ids
+    claim_id = lifecycle_claim_id(claim)
+    if claim_id:
+        return [claim_id]
     return []
+
+
+def _suppressed_exact_card_rows(
+    *,
+    claim: dict[str, Any],
+    claim_cards: list[str],
+    claim_kind: str,
+    reason: str,
+) -> list[dict[str, Any]]:
+    action = {
+        "mulligan_keep": "hold",
+        "mulligan_discard": "discard",
+    }.get(claim_kind, "none")
+    rows: list[dict[str, Any]] = []
+    for card_id in claim_cards:
+        row = _with_claim_id(
+            {
+                "card": card_id,
+                "action": action,
+                "reason": reason,
+                "source_claim_ids": _source_claim_ids(claim),
+            },
+            claim,
+        )
+        rows.append(_with_source_claim_provenance(row, claim))
+    return rows
 
 
 def _with_claim_id(row: dict[str, Any], claim: dict[str, Any]) -> dict[str, Any]:

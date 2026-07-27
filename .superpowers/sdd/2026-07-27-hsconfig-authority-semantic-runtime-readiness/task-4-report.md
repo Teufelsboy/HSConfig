@@ -145,3 +145,69 @@ The production policy now depends only on the current normalized lifecycle
 contract. A future lifecycle schema change must preserve the `claim` payload,
 `claim_id`, `claim_kind`, and `runtime_eligibility` fields or update the
 projection and its contract tests together.
+
+## Quality Review Fix Round 2
+
+The second review found three loss-of-provenance cases in the report-only
+Mulligan lifecycle projection:
+
+1. An ID-less source claim received a canonical lifecycle `claim_id`, but its
+   `source_claim_ids` remained empty.
+2. A rejected exact-card claim containing multiple cards emitted only the first
+   card.
+3. A rejected `mulligan_discard` claim was projected with action `none`.
+
+### Fix-Round RED
+
+Focused command:
+
+```powershell
+python -m pytest tests/test_mulligan_plan.py -q -k `
+  "generated_lifecycle_id_as_source_claim_id or `
+  report_only_multicard_mulligan_claim or `
+  report_only_mulligan_discard"
+```
+
+Result before the production fix: `3 failed, 29 deselected`.
+
+Each failure reproduced one review finding: empty `source_claim_ids`, a missing
+second card row, and `none` instead of `discard`.
+
+### Fix-Round Implementation
+
+- Made `_source_claim_ids` use the same canonical `lifecycle_claim_id` helper as
+  the top-level projected `claim_id` when no non-empty source-ID list exists.
+- Added one lifecycle-suppression projector that emits one row per exact card.
+- Normalized lifecycle actions as `mulligan_keep => hold` and
+  `mulligan_discard => discard`.
+- Preserved the real source URL and source type on every emitted lifecycle row.
+- Left policy-veto derivation and the three named deck/card cases unchanged.
+
+### Fix-Round GREEN
+
+Focused regressions:
+
+```text
+3 passed, 29 deselected in 0.25s
+```
+
+The prior 67-test Task-4 suite now contains the three new regressions:
+
+```text
+70 passed in 27.72s
+```
+
+Relevant lifecycle and runtime-contract tests:
+
+```text
+143 passed in 0.48s
+```
+
+`git diff --check` completed without errors.
+
+### Remaining Risk
+
+This round changes the normalized lifecycle projection. Direct non-lifecycle
+claims rejected only by the lower-level Mulligan gate retain their existing
+single-card diagnostic projection; package preparation normally supplies the
+lifecycle rows covered by these regressions.
