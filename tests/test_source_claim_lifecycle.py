@@ -2,8 +2,13 @@ import hsconfig.source_claim_lifecycle as lifecycle
 
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
+    diagnostic_claims_for_surface,
     runtime_claims_for_surface,
     select_claims_for_surface,
+)
+from hsconfig.card_behavior_router import (
+    diagnose_card_behavior_claims,
+    route_card_behavior_claims,
 )
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.combo_plan import build_combo_plan
@@ -139,6 +144,89 @@ def test_runtime_claims_for_surface_excludes_quarantined_report_only_claims():
     by_id = {row["claim_id"]: row for row in rows}
     assert by_id["keep_2"]["quarantine_status"] == "quarantined"
     assert by_id["role_1"]["runtime_eligibility"] == "report_only"
+
+
+def test_cardid_lifecycle_diagnostics_cannot_emit_quarantined_lowerable_claims():
+    targeting_bundle, deck_identity = build_canonical_targeting_bundle()
+    accepted_role = {
+        "claim_id": "accepted_role",
+        "claim_kind": "card_role",
+        "cards": ["SAFE_ROLE"],
+        "stance": "deploy_location",
+        "runtime_block": "BeforePlayCardBonus",
+        "condition": "*",
+        "source_confidence": "guide_backed",
+        "source_lane": "deck_matched_public_guide",
+        "source_refs": ["https://example.test/accepted-role"],
+    }
+    quarantined_role = {
+        **accepted_role,
+        "claim_id": "quarantined_role",
+        "cards": ["QUARANTINED_ROLE"],
+        "source_claim_ids": ["role-source"],
+        "source_refs": ["https://example.test/quarantined-role"],
+    }
+    quarantined_targeting = {
+        **targeting_bundle["claims"][0],
+        "claim_id": "quarantined_targeting",
+        "source_claim_ids": ["targeting-source"],
+        "source_refs": ["https://example.test/quarantined-targeting"],
+    }
+    rows = build_initial_lifecycle_rows(
+        [accepted_role, quarantined_role, quarantined_targeting],
+        conflict_report={
+            "conflicts": [
+                {
+                    "claim_ids": [
+                        "quarantined_role",
+                        "quarantined_targeting",
+                    ],
+                    "reason": "source_claim_conflict",
+                }
+            ]
+        },
+    )
+    context = targeting_gate_context(targeting_bundle, deck_identity)
+
+    accepted = runtime_claims_for_surface(
+        rows,
+        "cardid",
+        context=context,
+    )
+    diagnostics = diagnostic_claims_for_surface(
+        rows,
+        "cardid",
+        context=context,
+    )
+    emitted = route_card_behavior_claims(
+        accepted,
+        **context,
+    )
+    suppressed = diagnose_card_behavior_claims(diagnostics)
+
+    assert [claim["claim_id"] for claim in accepted] == ["accepted_role"]
+    assert [row["card_id"] for row in emitted["rows"]] == ["SAFE_ROLE"]
+    assert emitted["suppressed"] == []
+    assert {claim["claim_id"] for claim in diagnostics} == {
+        "quarantined_role",
+        "quarantined_targeting",
+    }
+    assert {row["claim_id"] for row in suppressed} == {
+        "quarantined_role",
+        "quarantined_targeting",
+    }
+    assert {row["reason"] for row in suppressed} == {"source_claim_conflict"}
+    by_claim_id = {row["claim_id"]: row for row in suppressed}
+    assert by_claim_id["quarantined_role"]["source_claim_ids"] == ["role-source"]
+    assert by_claim_id["quarantined_role"]["source_refs"] == [
+        "https://example.test/quarantined-role"
+    ]
+    assert by_claim_id["quarantined_targeting"]["source_claim_ids"] == [
+        "targeting-source"
+    ]
+    assert by_claim_id["quarantined_targeting"]["source_refs"] == [
+        "https://example.test/quarantined-targeting"
+    ]
 
 
 def test_unknown_confidence_targeting_rule_remains_lifecycle_only():

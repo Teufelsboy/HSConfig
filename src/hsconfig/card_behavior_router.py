@@ -3,7 +3,22 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+from hsconfig.card_behavior_surface_router import (
+    diagnose_card_behavior_surfaces,
+    route_card_behavior_surfaces,
+)
+
+
+def diagnose_card_behavior_claims(
+    claims: list[dict[str, Any]],
+    *,
+    card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Return suppressions only; diagnostic claims have no runtime-row API."""
+    return diagnose_card_behavior_surfaces(
+        claims,
+        card_metadata=card_metadata,
+    )
 
 
 def route_card_behavior_claims(

@@ -6,7 +6,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from hsconfig.card_behavior_router import route_card_behavior_claims
+from hsconfig.card_behavior_router import (
+    diagnose_card_behavior_claims,
+    route_card_behavior_claims,
+)
 from hsconfig.combo_plan import build_combo_plan
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.compile_combo import compile_combo
@@ -49,6 +52,7 @@ from hsconfig.source_claim_conflicts import build_claim_conflict_report
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
+    diagnostic_claims_for_surface,
     lifecycle_claim_id,
     runtime_claims_for_surface,
     select_claims_for_surface,
@@ -62,7 +66,6 @@ from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_document_model import (
-    CARDID_SURFACE_CLAIM_KINDS,
     claim_can_lower_to_runtime,
     has_verified_source_receipt,
     normalized_claim_kind,
@@ -229,11 +232,20 @@ def build_package_payload(
         *mulligan_runtime_claims,
         *mulligan_selection["rejected_claims"],
     ]
-    cardid_claims = [
-        claim
-        for claim in plan_claims
-        if normalized_claim_kind(claim) in CARDID_SURFACE_CLAIM_KINDS
-    ]
+    cardid_context = {
+        "deck_identity": deck_identity,
+        "verified_source_receipts": verified_source_receipts,
+    }
+    cardid_claims = runtime_claims_for_surface(
+        initial_lifecycle_rows,
+        "cardid",
+        context=cardid_context,
+    )
+    cardid_diagnostic_claims = diagnostic_claims_for_surface(
+        initial_lifecycle_rows,
+        "cardid",
+        context=cardid_context,
+    )
     combo_claims = runtime_claims_for_surface(
         initial_lifecycle_rows,
         "combo",
@@ -290,6 +302,12 @@ def build_package_payload(
         deck_identity=deck_identity,
         card_metadata=card_metadata,
         verified_source_receipts=verified_source_receipts,
+    )
+    card_behavior_plan["suppressed"].extend(
+        diagnose_card_behavior_claims(
+            cardid_diagnostic_claims,
+            card_metadata=card_metadata,
+        )
     )
     combo_plan = build_combo_plan(
         deck_cards=set(gameplan_contract.get("cards", {})),

@@ -121,6 +121,67 @@ def runtime_claims_for_surface(
     )["accepted_claims"]
 
 
+def diagnostic_claims_for_surface(
+    rows: Sequence[Mapping[str, Any]],
+    surface: str,
+    *,
+    context: Mapping[str, Any] | None = None,
+    card_roles: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Return non-accepted claims for a diagnostic-only surface path.
+
+    These claims must never be passed to a runtime builder. The lifecycle
+    annotation carries the precise reason that kept each claim out of the
+    accepted runtime selection.
+    """
+    selection = select_claims_for_surface(
+        rows,
+        surface,
+        context=context,
+        card_roles=card_roles,
+    )
+    accepted_ids = {
+        lifecycle_claim_id(claim)
+        for claim in selection["accepted_claims"]
+    }
+    rejected_by_id = {
+        lifecycle_claim_id(claim): claim
+        for claim in selection["rejected_claims"]
+    }
+    diagnostic_claims: list[dict[str, Any]] = []
+    for row in rows:
+        if surface not in set(row.get("allowed_surfaces") or []):
+            continue
+        claim_id = str(row.get("claim_id") or "")
+        if not claim_id or claim_id in accepted_ids:
+            continue
+        rejected = rejected_by_id.get(claim_id)
+        if rejected is not None:
+            diagnostic_claims.append(deepcopy(rejected))
+            continue
+
+        claim = deepcopy(dict(row.get("claim") or {}))
+        claim_kind = str(row.get("claim_kind") or "")
+        if not claim_kind:
+            continue
+        if row.get("quarantine_status") == "quarantined":
+            reason = str(row.get("quarantine_reason") or "source_claim_conflict")
+        elif row.get("runtime_eligibility") == "report_only":
+            reason = "claim_not_runtime_lowerable"
+        else:
+            continue
+        claim["claim_kind"] = claim_kind
+        claim["_claim_lifecycle"] = {
+            "claim_id": claim_id,
+            "surface": surface,
+            "policy_lane": row.get("policy_lane"),
+            "surface_gate_allowed": False,
+            "surface_gate_reason": reason,
+        }
+        diagnostic_claims.append(claim)
+    return diagnostic_claims
+
+
 def lifecycle_claim_id(claim: Mapping[str, Any]) -> str:
     lifecycle = claim.get("_claim_lifecycle")
     if isinstance(lifecycle, Mapping):

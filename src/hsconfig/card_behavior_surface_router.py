@@ -439,6 +439,54 @@ def route_card_behavior_surfaces(
     }
 
 
+def diagnose_card_behavior_surfaces(
+    claims: list[dict[str, Any]],
+    *,
+    card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Describe lifecycle-rejected CardID claims without producing rows."""
+    suppressed: list[dict[str, Any]] = []
+    metadata_by_card = _metadata_by_card(card_metadata)
+    for claim in claims:
+        claim_kind = normalized_claim_kind(claim)
+        cards = _claim_cards(claim)
+        lifecycle = claim.get("_claim_lifecycle")
+        lifecycle_reason = (
+            str(lifecycle.get("surface_gate_reason") or "")
+            if isinstance(lifecycle, Mapping)
+            else ""
+        )
+        if not lifecycle_reason:
+            lifecycle_reason = "claim_not_runtime_lowerable"
+
+        condition, condition_error = _condition(claim)
+        if condition_error is not None:
+            documented_condition = _documented_target_scope_condition(claim)
+            condition = documented_condition or "*"
+        runtime_block, _ = _explicit_runtime_block(claim)
+        remaining_cards = list(cards)
+        if runtime_block is not None:
+            remaining_cards = _preflight_semantic_cards(
+                claim=claim,
+                claim_kind=claim_kind,
+                cards=cards,
+                condition=condition,
+                runtime_block=runtime_block,
+                metadata_by_card=metadata_by_card,
+                suppressed=suppressed,
+            )
+        if remaining_cards:
+            suppressed.append(
+                _suppressed_row(
+                    claim,
+                    claim_kind,
+                    remaining_cards,
+                    lifecycle_reason,
+                )
+            )
+    return suppressed
+
+
 def _assign_runtime_entity_owners(
     rows: list[dict[str, Any]],
     *,

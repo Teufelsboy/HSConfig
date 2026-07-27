@@ -770,6 +770,63 @@ def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
     )
 
 
+def test_quarantined_lowerable_card_role_never_reaches_physical_cardid(
+    tmp_path,
+):
+    result = prepare_fixture_deck_with_source_claims(
+        tmp_path,
+        deck_name="NoCardIdConflictBypass",
+        claims=[
+            {
+                "claim_id": "use_enemy_minion",
+                "claim_kind": "card_role",
+                "card_id": "CARD_001",
+                "stance": "use_enemy_minion",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": "Use this card against an enemy minion.",
+                "source_confidence": "guide_backed",
+            },
+            {
+                "claim_id": "do_not_target_enemy_minion",
+                "claim_kind": "known_bad_pattern",
+                "card_id": "CARD_001",
+                "stance": "do_not_target_enemy_minion",
+                "evidence_text_short": "Do not target an enemy minion with this card.",
+                "source_confidence": "guide_backed",
+            },
+        ],
+    )
+    behavior_plan = json.loads(
+        (
+            result["package"]
+            / "reports"
+            / "card_behavior_plan_report.json"
+        ).read_text(encoding="utf-8")
+    )
+    card_payload = json.loads(
+        (result["deck_dir"] / f"{FIXTURE_CARD_ID}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert result["exit_code"] == 0
+    assert not any(
+        row.get("claim_id") == "use_enemy_minion"
+        for row in behavior_plan["rows"]
+    )
+    assert "BeforePlayCardBonus" not in card_payload
+    suppression = next(
+        row
+        for row in behavior_plan["suppressed"]
+        if row.get("claim_id") == "use_enemy_minion"
+    )
+    assert suppression["reason"] == "source_claim_conflict"
+    assert suppression["source_claim_ids"]
+    assert suppression["source_refs"]
+    assert suppression["acquisition_provenance"]
+
+
 def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block(tmp_path):
     result = prepare_fixture_deck_with_source_claims(
         tmp_path,
@@ -830,7 +887,22 @@ def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block
     assert_diagnostic_source_package_is_load_safe_but_apply_blocked(
         operator_summary
     )
-    assert source_contract_audit["summary"]["report_only_claims"] >= 1
+    behavior_plan = json.loads(
+        (
+            result["package"]
+            / "reports"
+            / "card_behavior_plan_report.json"
+        ).read_text(encoding="utf-8")
+    )
+    report_only_suppression = next(
+        row
+        for row in behavior_plan["suppressed"]
+        if row.get("claim_id") == "report_only_role"
+    )
+    assert report_only_suppression["reason"] == "claim_not_runtime_lowerable"
+    assert report_only_suppression["source_claim_ids"] == ["report_only_role"]
+    assert report_only_suppression["source_refs"]
+    assert report_only_suppression["acquisition_provenance"]
     assert source_contract_audit["summary"]["runtime_evidence_required_claims"] >= 1
     assert report_only_rows
     assert all(row["builder_or_router_decision"] != "emitted" for row in report_only_rows)
