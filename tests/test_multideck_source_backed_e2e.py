@@ -108,6 +108,9 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
         explainability_by_card = {
             row["card_id"]: row for row in explainability["card_rows"]
         }
+        operator_attention_by_card = {
+            row["card_id"]: row for row in explainability["operator_attention"]
+        }
         assert explainability["summary"]["cards_with_first_missing_link"] == sum(
             row.get("first_missing_link") not in {None, "", "none", "closed"}
             for row in explainability["card_rows"]
@@ -132,6 +135,25 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
                 == "report_only_supported"
             )
             assert explainability_by_card[card_id]["first_missing_link"] == "none"
+            assert explainability_by_card[card_id]["closure_lane"] == "report_only"
+            assert explainability_by_card[card_id]["runtime_lowering_status"] == (
+                "report_only_supported"
+            )
+            assert explainability_by_card[card_id]["next_source_action"] == "none"
+            assert explainability_by_card[card_id]["first_missing_source_action"] == (
+                "none"
+            )
+            assert explainability_by_card[card_id]["closure"]["lane"] == "report_only"
+            assert (
+                explainability_by_card[card_id]["closure"]["default_only_risk"]
+                is False
+            )
+            attention = operator_attention_by_card[card_id]
+            assert attention["status"] == "report_only"
+            assert attention["closure_lane"] == "report_only"
+            assert attention["default_only_risk"] is False
+            assert attention["first_missing_link"] == "none"
+            assert attention["next_source_action"] == "none"
 
         assert "sideboard_owner" in roles["TOY_330"]["roles"]
         assert not module_ids & {

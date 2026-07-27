@@ -22,17 +22,23 @@ def analysis_cards_from_deck_identity(
         for sideboard in sideboards
         if sideboard.get("owner_card_id")
     }
-    cards: list[dict[str, Any]] = []
+    cards_by_id: dict[str, dict[str, Any]] = {}
+    card_order: list[str] = []
     for raw_card in deck_identity.get("cards", []):
         if not isinstance(raw_card, Mapping):
+            continue
+        card_id = str(raw_card.get("card_id", "")).strip()
+        if not card_id:
             continue
         card = {
             **dict(raw_card),
             "deck_zone": "main",
             "sideboard_owner_card_id": None,
+            "sideboard_owner_card_ids": [],
+            "sideboard_memberships": [],
             "runtime_eligible": True,
         }
-        if str(card.get("card_id", "")) in owner_card_ids:
+        if card_id in owner_card_ids:
             card["analysis_roles"] = sorted(
                 {
                     *[str(role) for role in card.get("analysis_roles", [])],
@@ -40,26 +46,69 @@ def analysis_cards_from_deck_identity(
                     "sideboard_owner",
                 }
             )
-        cards.append(card)
+        cards_by_id[card_id] = card
+        card_order.append(card_id)
 
-    for sideboard in sideboards:
+    for sideboard_index, sideboard in enumerate(sideboards, start=1):
         owner_card_id = (
             str(sideboard.get("owner_card_id"))
             if sideboard.get("owner_card_id")
             else None
         )
+        normalized_sideboard_index = int(
+            sideboard.get("sideboard_index", sideboard_index)
+        )
         for raw_card in sideboard.get("cards", []):
             if not isinstance(raw_card, Mapping):
                 continue
-            cards.append(
-                {
+            card_id = str(raw_card.get("card_id", "")).strip()
+            if not card_id:
+                continue
+            membership = {
+                "sideboard_index": normalized_sideboard_index,
+                "owner_card_id": owner_card_id,
+                "count": int(raw_card.get("count", 1)),
+            }
+            card = cards_by_id.get(card_id)
+            if card is None:
+                card = {
                     **dict(raw_card),
                     "deck_zone": "sideboard",
-                    "sideboard_owner_card_id": owner_card_id,
+                    "sideboard_owner_card_id": None,
+                    "sideboard_owner_card_ids": [],
+                    "sideboard_memberships": [],
                     "runtime_eligible": False,
                 }
-            )
-    return cards
+                cards_by_id[card_id] = card
+                card_order.append(card_id)
+            elif card.get("deck_zone") == "sideboard":
+                card["count"] = int(card.get("count", 0)) + int(
+                    raw_card.get("count", 1)
+                )
+            card["sideboard_memberships"].append(membership)
+            if owner_card_id is not None:
+                card["sideboard_owner_card_ids"] = sorted(
+                    {
+                        *[str(owner) for owner in card["sideboard_owner_card_ids"]],
+                        owner_card_id,
+                    }
+                )
+
+    for card in cards_by_id.values():
+        owners = card.get("sideboard_owner_card_ids", [])
+        card["sideboard_owner_card_id"] = (
+            owners[0]
+            if card.get("deck_zone") == "sideboard" and len(owners) == 1
+            else None
+        )
+        card["sideboard_memberships"] = sorted(
+            card.get("sideboard_memberships", []),
+            key=lambda row: (
+                int(row["sideboard_index"]),
+                str(row.get("owner_card_id") or ""),
+            ),
+        )
+    return [cards_by_id[card_id] for card_id in card_order]
 
 
 def hydrate_card_metadata(
@@ -106,6 +155,14 @@ def hydrate_card_metadata(
             "source_record_key": source_key if has_source_record else None,
             "deck_zone": str(card.get("deck_zone", "main")),
             "sideboard_owner_card_id": card.get("sideboard_owner_card_id"),
+            "sideboard_owner_card_ids": [
+                str(owner) for owner in card.get("sideboard_owner_card_ids", [])
+            ],
+            "sideboard_memberships": [
+                dict(membership)
+                for membership in card.get("sideboard_memberships", [])
+                if isinstance(membership, Mapping)
+            ],
             "runtime_eligible": card.get("runtime_eligible", True) is True,
             "analysis_roles": sorted(
                 {str(role) for role in card.get("analysis_roles", [])}

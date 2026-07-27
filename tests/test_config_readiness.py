@@ -148,12 +148,69 @@ def test_sideboard_cards_are_visible_but_do_not_expand_main_deck_readiness_count
             "mechanic_support": [],
             "deck_zone": "sideboard",
             "sideboard_owner_card_id": "TOY_330",
+            "sideboard_owner_card_ids": ["TOY_330"],
+            "sideboard_memberships": [
+                {
+                    "sideboard_index": 1,
+                    "owner_card_id": "TOY_330",
+                    "count": 1,
+                }
+            ],
             "runtime_eligible": False,
             "runtime_surfaces": [],
             "readiness_lane": "report_only_supported",
             "first_missing_link": "none",
             "source_depth_lane": "closed",
         }
+
+
+def test_cross_zone_duplicate_keeps_main_readiness_and_sideboard_membership():
+    report = build_config_readiness_report(
+        deck_identity={
+            "deck_name": "Collision",
+            "deck_slug": "collision",
+            "cards": [
+                {"card_id": "OWNER_A", "count": 1},
+                {"card_id": "SHARED", "count": 2, "name": "Main Copy"},
+            ],
+            "sideboards": [
+                {
+                    "sideboard_index": 1,
+                    "owner_card_id": "OWNER_A",
+                    "cards": [
+                        {"card_id": "SHARED", "count": 1, "name": "Sideboard Copy"}
+                    ],
+                }
+            ],
+        },
+        claim_coverage={"uncovered_cards": [], "total_cards": 2},
+        gameplan_contract={
+            "cards": {
+                "OWNER_A": {"card_id": "OWNER_A", "count": 1, "roles": []},
+                "SHARED": {"card_id": "SHARED", "count": 2, "roles": []},
+            }
+        },
+        mulligan_plan={"rules": []},
+        card_behavior_plan={"rows": []},
+        combo_plan={"combos": []},
+        global_values_authority_matrix={"allowed_step1_overlays": []},
+    )
+
+    assert report["summary"]["total_cards"] == 2
+    assert report["summary"]["analysis_only_sideboard_cards"] == 0
+    shared = report["cards"]["SHARED"]
+    assert shared["name"] == "Main Copy"
+    assert shared["count"] == 2
+    assert shared["deck_zone"] == "main"
+    assert shared["runtime_eligible"] is True
+    assert shared["sideboard_owner_card_ids"] == ["OWNER_A"]
+    assert shared["sideboard_memberships"] == [
+        {
+            "sideboard_index": 1,
+            "owner_card_id": "OWNER_A",
+            "count": 1,
+        }
+    ]
 
 
 def test_empty_per_card_file_is_visible_but_not_semantically_closed():

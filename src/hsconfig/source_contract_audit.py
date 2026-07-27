@@ -946,6 +946,12 @@ def _card_rows(
             else [],
             "deck_zone": str(readiness.get("deck_zone", "main")),
             "sideboard_owner_card_id": readiness.get("sideboard_owner_card_id"),
+            "sideboard_owner_card_ids": list(
+                readiness.get("sideboard_owner_card_ids", [])
+            ),
+            "sideboard_memberships": list(
+                readiness.get("sideboard_memberships", [])
+            ),
             "runtime_eligible": readiness.get("runtime_eligible", True) is True,
             "readiness_lane": str(readiness.get("readiness_lane", "")),
             "first_missing_link": str(readiness.get("first_missing_link", "")),

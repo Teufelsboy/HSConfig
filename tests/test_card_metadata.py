@@ -145,3 +145,81 @@ def test_hydrate_card_metadata_carries_analysis_annotations():
     assert card["deck_zone"] == "sideboard"
     assert card["sideboard_owner_card_id"] == "TOY_330"
     assert card["runtime_eligible"] is False
+
+
+def test_analysis_cards_keep_main_record_authoritative_for_cross_zone_duplicate():
+    cards = analysis_cards_from_deck_identity(
+        {
+            "cards": [
+                {"card_id": "OWNER_A", "count": 1},
+                {"card_id": "SHARED", "count": 2, "name": "Main Copy"},
+            ],
+            "sideboards": [
+                {
+                    "sideboard_index": 1,
+                    "owner_card_id": "OWNER_A",
+                    "cards": [
+                        {"card_id": "SHARED", "count": 1, "name": "Sideboard Copy"}
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert [card["card_id"] for card in cards].count("SHARED") == 1
+    shared = {card["card_id"]: card for card in cards}["SHARED"]
+    assert shared["name"] == "Main Copy"
+    assert shared["count"] == 2
+    assert shared["deck_zone"] == "main"
+    assert shared["runtime_eligible"] is True
+    assert shared["sideboard_owner_card_id"] is None
+    assert shared["sideboard_owner_card_ids"] == ["OWNER_A"]
+    assert shared["sideboard_memberships"] == [
+        {
+            "sideboard_index": 1,
+            "owner_card_id": "OWNER_A",
+            "count": 1,
+        }
+    ]
+
+
+def test_analysis_cards_preserve_repeated_sideboard_card_owners_without_duplicate_row():
+    cards = analysis_cards_from_deck_identity(
+        {
+            "cards": [
+                {"card_id": "OWNER_A", "count": 1},
+                {"card_id": "OWNER_B", "count": 1},
+            ],
+            "sideboards": [
+                {
+                    "sideboard_index": 1,
+                    "owner_card_id": "OWNER_A",
+                    "cards": [{"card_id": "SHARED_MODULE", "count": 1}],
+                },
+                {
+                    "sideboard_index": 2,
+                    "owner_card_id": "OWNER_B",
+                    "cards": [{"card_id": "SHARED_MODULE", "count": 1}],
+                },
+            ],
+        }
+    )
+
+    assert [card["card_id"] for card in cards].count("SHARED_MODULE") == 1
+    shared = {card["card_id"]: card for card in cards}["SHARED_MODULE"]
+    assert shared["deck_zone"] == "sideboard"
+    assert shared["runtime_eligible"] is False
+    assert shared["sideboard_owner_card_id"] is None
+    assert shared["sideboard_owner_card_ids"] == ["OWNER_A", "OWNER_B"]
+    assert shared["sideboard_memberships"] == [
+        {
+            "sideboard_index": 1,
+            "owner_card_id": "OWNER_A",
+            "count": 1,
+        },
+        {
+            "sideboard_index": 2,
+            "owner_card_id": "OWNER_B",
+            "count": 1,
+        },
+    ]

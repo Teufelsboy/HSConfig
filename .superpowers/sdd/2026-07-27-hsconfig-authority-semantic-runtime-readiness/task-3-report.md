@@ -55,3 +55,62 @@ MechPala keeps its 30-card main-deck identity and three-card sideboard identity.
 ## Concerns
 
 None blocking. No runtime writes, HSTuner actions, desktop HearthRanger actions, branches, worktrees, or pushes were performed.
+
+## Fix Round 1
+
+### Status
+
+PASS
+
+Both Important findings from `task-3-quality-review.md` are resolved:
+
+- Runtime-ineligible sideboard rows now form a terminal report-only lane throughout explainability. Their closure lane is `report_only`, lowering status is `report_only_supported`, next source actions are `none`, default-only risk is false, and operator attention is `report_only`.
+- Analysis-card collection now aggregates duplicate CardIDs without losing identity. A main-deck record remains the single authoritative runtime-capable row when the same CardID also appears in a sideboard, while separate `sideboard_owner_card_ids` and `sideboard_memberships` retain all sideboard linkage. Repeated sideboard-only CardIDs likewise retain every owner without creating duplicate analysis rows.
+
+The added sideboard linkage fields are passed through metadata, readiness, source-contract audit, and source-to-runtime explainability.
+
+### Files
+
+- `src/hsconfig/card_metadata.py`
+- `src/hsconfig/config_readiness.py`
+- `src/hsconfig/preconfig_context.py`
+- `src/hsconfig/source_contract_audit.py`
+- `src/hsconfig/source_to_runtime_explainability.py`
+- `tests/test_card_metadata.py`
+- `tests/test_config_readiness.py`
+- `tests/test_multideck_source_backed_e2e.py`
+
+### RED
+
+- Cross-zone duplicate regression showed the sideboard row overwriting the main-deck record.
+- Repeated sideboard-card regression showed last-owner-wins loss.
+- Cross-zone readiness regression showed a one-card denominator instead of two authoritative cards.
+- MechPala explainability regression showed runtime-ineligible rows ending in `explicit_gap` with source action needed.
+- Focused RED result: 4 failed.
+
+### GREEN
+
+- Focused regression command:
+  - `python -m pytest -q -p no:cacheprovider tests/test_card_metadata.py tests/test_config_readiness.py tests/test_multideck_source_backed_e2e.py -k 'cross_zone or repeated_sideboard or sideboard_cards_are_visible or multideck_source_backed_prepare and MechPala'`
+  - 5 passed, 50 deselected.
+- Combined Task 3 suite:
+  - `python -m pytest -q -p no:cacheprovider tests/test_deckstring_decode.py tests/test_card_metadata.py tests/test_config_readiness.py tests/test_multideck_source_backed_e2e.py tests/test_autonomous_mulligan_policy.py tests/test_source_contract_audit.py tests/test_source_to_runtime_explainability.py tests/test_preconfig_context_parity.py`
+  - 111 passed.
+- `git diff --check`: clean.
+
+### Commit
+
+`fix: make sideboard analysis non-lossy` (separate Fix-Round-1 commit)
+
+### Self-Review
+
+- One CardID produces one analysis row.
+- Main-deck runtime authority wins cross-zone collisions.
+- Sideboard linkage remains visible as a separate, lossless relationship.
+- Report-only rows cannot contradict themselves through nested closure or operator-attention fields.
+- Main-deck guide metadata remains restricted by `deck_zone="main"`.
+- Minor review findings remain deferred as requested.
+
+### Concerns
+
+None blocking. No runtime writes, HSTuner actions, desktop HearthRanger actions, branches, worktrees, or pushes were performed.

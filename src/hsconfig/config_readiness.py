@@ -191,6 +191,14 @@ def build_config_readiness_report(
             "mechanic_support": mechanic_support,
             "deck_zone": str(card.get("deck_zone", "main")),
             "sideboard_owner_card_id": card.get("sideboard_owner_card_id"),
+            "sideboard_owner_card_ids": [
+                str(owner) for owner in card.get("sideboard_owner_card_ids", [])
+            ],
+            "sideboard_memberships": [
+                dict(membership)
+                for membership in card.get("sideboard_memberships", [])
+                if isinstance(membership, Mapping)
+            ],
             "runtime_eligible": runtime_eligible,
             "runtime_surfaces": runtime_surfaces,
             "readiness_lane": lane,

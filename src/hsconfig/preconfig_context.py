@@ -153,11 +153,6 @@ def build_preconfig_context(
             },
         )
     enriched_card_metadata = {"cards": semantic_report["cards"]}
-    main_card_ids = {
-        str(card["card_id"])
-        for card in deck_identity["cards"]
-        if card.get("card_id")
-    }
     guide_card_metadata = {
         "cards": [
             {
@@ -170,7 +165,7 @@ def build_preconfig_context(
                 ],
             }
             for card in semantic_report["cards"]
-            if str(card.get("card_id", "")) in main_card_ids
+            if card.get("deck_zone") == "main"
         ]
     }
     source_document_draft_report = None

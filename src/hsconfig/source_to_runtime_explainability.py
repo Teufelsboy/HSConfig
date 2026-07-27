@@ -329,9 +329,26 @@ def _card_rows(
                     "sideboard_owner_card_id": raw_card.get(
                         "sideboard_owner_card_id"
                     ),
+                    "sideboard_owner_card_ids": list(
+                        raw_card.get("sideboard_owner_card_ids", [])
+                    ),
+                    "sideboard_memberships": list(
+                        raw_card.get("sideboard_memberships", [])
+                    ),
                     "runtime_eligible": runtime_eligible,
                     "runtime_surfaces": list(raw_card.get("runtime_surfaces", [])),
                     "readiness_lane": str(raw_card.get("readiness_lane", "")),
+                }
+            )
+        if not runtime_eligible:
+            card_row.update(
+                {
+                    "next_source_action": "none",
+                    "first_missing_source_action": "none",
+                    "runtime_lowering_status": "report_only_supported",
+                    "closure_lane": "report_only",
+                    "strong_ready": False,
+                    "default_only_blocker": False,
                 }
             )
         closure_input = {
@@ -404,6 +421,8 @@ def _operator_attention_status(row: dict[str, object]) -> str:
     best_source_lane = str(row.get("best_source_lane", ""))
     why_not_emitted = row.get("why_not_emitted")
 
+    if row.get("runtime_eligible") is False:
+        return "report_only"
     if first_missing_link is not None:
         return "source_action_needed"
     if emitted_runtime_files:
