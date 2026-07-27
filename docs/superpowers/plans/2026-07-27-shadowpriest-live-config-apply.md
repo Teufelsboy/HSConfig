@@ -18,9 +18,9 @@
 - Use runtime root `C:\Users\darbo\Desktop\HS`.
 - Create only `outputs\ShadowPriest-2026-07-27-live-verified`; do not overwrite, delete, rename, or repair any earlier output.
 - Use public live source URL `https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest`.
-- The source must be fetched as `live_http` and normalized as `live_verified` before it can authorize apply.
-- `reports/operator_summary.json` is the sole normal apply authority.
-- Captured, fixture, manual, legacy, stale, or seed-only provenance must stop the run before a runtime write.
+- `live_http` and `live_verified` source provenance remain expected, visible package diagnostics; they do not independently authorize apply.
+- `operator_summary.json` is the sole normal apply authority.
+- Captured, fixture, manual, legacy, stale, or seed-only provenance remains visible diagnostic evidence and does not create a second apply authority.
 - Runtime writes are allowed only through `hsconfig apply`.
 - Before the real apply, require a current receipt-bound `hsconfig apply --fake` snapshot. Use `--from-fake-receipt` for the real apply so package or runtime drift fails closed.
 - Do not invoke HSTuner, parse replays, inspect win rate, tune after games, or claim gameplay optimality.
@@ -28,6 +28,17 @@
 - If an implementation defect is discovered, stop this operational plan before editing production code. Start a separate systematic-debugging/TDD task and regenerate the package only after that fix is independently reviewed.
 - Use `PYTHONDONTWRITEBYTECODE=1` and `-p no:cacheprovider` for Python verification.
 - A successful runtime match proves installation integrity only. `RUNTIME_SAMPLED` and `GAMEPLAY_OPTIMALITY` remain `NOT_PROVEN`.
+
+## Canonical receipt diagnostic correction (2026-07-28)
+
+This plan previously required a nonempty canonical-receipt list as a direct
+pre-apply condition. That was a second apply gate and is corrected here while
+preserving the historical record of the original plan.
+
+Canonical receipt count and exact-source closure are diagnostics. Empty exact
+source evidence must remain visible, but it does not create a second apply
+authority. The operator decision is read only from reports/operator_summary.json;
+the apply command independently recomputes package integrity and parity.
 
 ## Fixed paths and identities
 
@@ -390,22 +401,21 @@ assert receipt["schema_version"] == 2
 assert operator["package_derivation"]["schema_version"] == 2
 assert operator["package_derivation"]["verified"] is True
 assert operator["package_derivation"]["receipt_sha256"].startswith("sha256:")
-assert claims["canonical_source_receipts"]
+canonical_receipts = claims["canonical_source_receipts"]
 assert all(
     row["acquisition_provenance"]["mode"] == "live_http"
     and row["acquisition_provenance"]["authority"] == "live_verified"
-    for row in claims["canonical_source_receipts"]
+    for row in canonical_receipts
 )
 assert operator["technical_status"] == "VALID_PACKAGE"
 assert operator["runtime_load_safe"] is True
-assert operator["source_apply_eligible"] is True
-assert operator["source_apply_eligibility_reasons"] == []
 assert operator["runtime_apply_mode"] == "load_safe_apply"
 assert operator["runtime_apply_allowed"] is True
 assert operator["apply_policy"] in {"ALLOWED", "ALLOWED_WITH_WARNINGS"}
 assert operator["runtime_apply_reason"] == "current_package_operator_gate_allowed"
 print(json.dumps({
     "deck_fingerprint": identity["deck_fingerprint"],
+    "canonical_receipt_count": len(canonical_receipts),
     "source_apply_eligible": operator["source_apply_eligible"],
     "runtime_apply_allowed": operator["runtime_apply_allowed"],
 }, sort_keys=True))
@@ -786,7 +796,6 @@ verdict = {
 assert verdict["identity"]["card_count"] == 30
 assert verdict["identity"]["unresolved"] == 0
 assert verdict["package"]["technical_status"] == "VALID_PACKAGE"
-assert verdict["package"]["source_apply_eligible"] is True
 assert verdict["package"]["runtime_apply_allowed"] is True
 assert verdict["installation"]["status"] == "applied"
 assert verdict["installation"]["runtime_package_match"] == "matched"

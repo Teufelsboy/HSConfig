@@ -26,8 +26,8 @@ in-client behavior, win rate, or gameplay optimality.
 - Fetch repository state and require a clean `main` that is not behind
   `origin/main` before generation.
 - Acquire public sources through the live online source path.
-- Do not use captured, fixture, manual, or legacy provenance to authorize
-  apply.
+- Keep captured, fixture, manual, or legacy provenance visible as diagnostics;
+  it does not independently authorize or prevent apply.
 - Do not invoke HSTuner, analyze replays, inspect win rate, or tune after
   games.
 - Write runtime files only through the explicit `hsconfig apply` command.
@@ -55,6 +55,11 @@ in-client behavior, win rate, or gameplay optimality.
 Phase 1 succeeds only when the package is technically valid and all identity,
 receipt, physical-output, and semantic checks are internally consistent.
 
+Canonical receipt count and exact-source closure are diagnostics. Empty exact
+source evidence must remain visible, but it does not create a second apply
+authority. The operator decision is read only from reports/operator_summary.json;
+the apply command independently recomputes package integrity and parity.
+
 ### Phase 2: Guarded runtime apply
 
 Before apply:
@@ -71,9 +76,8 @@ Apply is permitted only when the current package reports all of the following:
 - `runtime_load_safe=true`;
 - `runtime_apply_mode=load_safe_apply`;
 - `runtime_apply_allowed=true`;
-- source acquisition is `live_http` and `live_verified`;
 - exact deck identity and target fingerprint match;
-- package derivation and source receipts verify;
+- package derivation verifies;
 - no blocking package or semantic integrity reason remains.
 
 If any condition fails, Phase 2 ends before `hsconfig apply`.
@@ -120,9 +124,11 @@ surface exists; they are not passed through invented CLI flags.
 ## Failure handling
 
 - Repository behind or dirty: stop before generation.
-- Live source unavailable, inexact, or not verified: retain the diagnostic
-  package, report the first blocker, and do not apply.
-- Exact deck or receipt mismatch: validation failure and no apply.
+- Live source unavailable, inexact, or not verified: retain and report the
+  diagnostic package-quality evidence; it does not replace the operator
+  decision.
+- Exact deck or package-derivation receipt mismatch: validation failure and no
+  apply.
 - Package contract or physical ledger mismatch: validation failure and no
   apply.
 - Operator gate blocked: no runtime write, even when the package is otherwise

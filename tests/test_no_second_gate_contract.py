@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+SHADOWPRIEST_ACTIVE_PLAN = (
+    REPO_ROOT / "docs/superpowers/plans/2026-07-27-shadowpriest-live-config-apply.md"
+)
 
 
 def _read(relative_path: str) -> str:
@@ -71,3 +74,11 @@ def test_contract_preflight_may_surface_intent_but_not_apply_authority():
     assert "surface_intent_present" in preflight
     for relative_path in guarded_paths:
         assert "surface_intent" not in _read(relative_path), relative_path
+
+
+def test_active_shadowpriest_plan_does_not_require_nonempty_canonical_receipts():
+    text = SHADOWPRIEST_ACTIVE_PLAN.read_text(encoding="utf-8")
+
+    assert 'assert claims["canonical_source_receipts"]' not in text
+    assert 'assert operator["source_apply_eligible"]' not in text
+    assert 'assert verdict["package"]["source_apply_eligible"]' not in text

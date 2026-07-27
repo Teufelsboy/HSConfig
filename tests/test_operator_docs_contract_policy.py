@@ -105,6 +105,12 @@ SOURCE_RESEARCH_RESULTS = (
     / "2026-07-17-hsconfig-source-contract-acceptance-loop"
     / "results"
 )
+SHADOWPRIEST_ACTIVE_PLAN = (
+    ROOT / "docs/superpowers/plans/2026-07-27-shadowpriest-live-config-apply.md"
+)
+SHADOWPRIEST_ACTIVE_SPEC = (
+    ROOT / "docs/superpowers/specs/2026-07-27-shadowpriest-live-config-apply-design.md"
+)
 SOURCE_PROVENANCE_DIAGNOSTIC_SENTINELS = [
     "`reports/source_evidence_closure.json` is the compact diagnostic package-quality closure summary.",
     "decklists, HSReplay/HSGuru aggregate stats, static card databases, `policy_fallback`, `default_runtime`, and runtime examples are support/diagnostic only",
@@ -565,6 +571,28 @@ def test_operator_docs_keep_one_apply_authority_and_no_second_gate_language():
     assert "normal path Presume.json" not in combined
     assert "normal path Concede.json" not in combined
     assert "block/apply-gate" not in combined
+
+
+def test_active_shadowpriest_documents_keep_canonical_receipts_diagnostic_only():
+    plan = SHADOWPRIEST_ACTIVE_PLAN.read_text(encoding="utf-8")
+    spec = SHADOWPRIEST_ACTIVE_SPEC.read_text(encoding="utf-8")
+    active_documents = f"{plan}\n{spec}"
+
+    assert "`operator_summary.json` is the sole normal apply authority" in plan
+    assert 'assert claims["canonical_source_receipts"]' not in plan
+    assert "canonical_source_receipts must be nonempty" not in active_documents.lower()
+
+    canonical_receipt_diagnostic_section = _section(
+        plan, "## Canonical receipt diagnostic correction (2026-07-28)"
+    )
+    assert "stop before apply" not in canonical_receipt_diagnostic_section.lower()
+    assert (
+        "Canonical receipt count and exact-source closure are diagnostics. Empty exact\n"
+        "source evidence must remain visible, but it does not create a second apply\n"
+        "authority. The operator decision is read only from reports/operator_summary.json;\n"
+        "the apply command independently recomputes package integrity and parity."
+        in active_documents
+    )
 
 
 def test_operator_docs_and_skill_name_mulligan_policy_status_without_strong_promotion():
