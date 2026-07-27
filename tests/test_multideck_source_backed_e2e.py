@@ -6,11 +6,19 @@ from typing import Any
 import pytest
 
 from hsconfig.cli import main
+from hsconfig.combo_plan import build_combo_plan
+from hsconfig.compile_combo import compile_combo
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json, write_json
+from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
+from hsconfig.source_contract_audit import build_source_contract_audit
 from hsconfig.source_autopilot import build_source_autopilot_bundle
+from hsconfig.source_document_builder import build_source_document_bundle
 from hsconfig.source_document_model import qualify_source_claim
+from hsconfig.source_to_runtime_explainability import (
+    build_source_to_runtime_explainability_report,
+)
 from tests.helpers.fixture_prepare import (
     load_archetype_matrix,
     prepare_fixture_deck,
@@ -130,6 +138,90 @@ def test_shadowpriest_linked_hero_power_is_separate_from_darkbishop_source_recor
     assert ledger["linked_runtime_entities"]["EX1_625t"]["runtime_card_id"] == "EX1_625t"
     assert ledger["linked_runtime_entities"]["EX1_625t"]["runtime_emitted"] is True
     assert readiness["cards"]["SW_448"]["readiness_lane"] == "linked_runtime_source"
+
+
+def test_shadowpriest_default_combo_operator_matches_physical_ledger() -> None:
+    deck = next(
+        row
+        for row in load_archetype_matrix()
+        if row["deck_name"] == "ShadowPriest"
+    )
+    source_payload = read_json(
+        Path("tests/fixtures/source_documents_shadowpriest_strong.json")
+    )
+    source_payload["source_documents"][0][
+        "acquisition_provenance"
+    ] = acquire_live_test_provenance()
+    source_payload["source_documents"][0]["claims"].append(
+        {
+            "claim_id": "shadowpriest-default-combo",
+            "claim_kind": "combo_sequence",
+            "cards": ["GVG_009", "SW_446"],
+            "sequence": ["GVG_009", "SW_446"],
+            "timing_kind": "same_turn",
+            "values": ["10", "8"],
+            "condition": "*",
+            "evidence_text_short": (
+                "Play Shadowbomber before Voidtouched Attendant."
+            ),
+            "source_confidence": "high",
+            "promotion_eligible": True,
+        }
+    )
+    deck_identity = _deck_identity_for(deck)
+    bundle = build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=source_payload["source_documents"],
+        current_date="2026-07-27",
+    )
+    combo_plan = build_combo_plan(
+        deck_cards={
+            str(card["card_id"]) for card in deck_identity["cards"]
+        },
+        claims=bundle["claims"],
+        deck_identity=deck_identity,
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+    combo = compile_combo(
+        deck_name="ShadowPriest",
+        sequences=combo_plan["combos"],
+    )
+    assert combo is not None
+    audit = build_source_contract_audit(
+        deck_name="ShadowPriest",
+        deck_identity=deck_identity,
+        guide_claim_bundle=bundle,
+        combo_plan=combo_plan,
+    )
+    ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo=combo,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+    explainability = build_source_to_runtime_explainability_report(
+        audit,
+        runtime_surface_ledger=ledger,
+    )
+    combo_claim = next(
+        row
+        for row in audit["claim_rows"].values()
+        if row["claim_kind"] == "combo_sequence"
+        and row["cards"] == ["GVG_009", "SW_446"]
+    )
+    explainability_claim = next(
+        row
+        for row in explainability["claim_rows"]
+        if row["claim_id"] == combo_claim["claim_id"]
+    )
+
+    assert combo_claim["operator"] == ">>"
+    assert combo["ComboList"]["values"][0]["combo"] == "GVG_009>>SW_446"
+    assert explainability_claim["operator"] == ">>"
+    assert explainability_claim["emitted_runtime_files"] == ["Combo.json"]
 
 
 def test_audited_cards_emit_no_semantically_invalid_runtime_block(

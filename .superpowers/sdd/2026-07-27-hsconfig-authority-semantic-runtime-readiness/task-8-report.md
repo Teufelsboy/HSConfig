@@ -99,3 +99,28 @@ Round-4 verification: RED was observed for each mismatch and type case; the
 affected Task-8 and strict-validation suite finished with `340 passed`.
 Targeted Ruff and `git diff --check` passed. No runtime, HSTuner or Desktop
 access was used.
+
+## Round 5 productive identity and multi-owner follow-up
+
+The productive source-contract audit now carries the exact fields needed to
+reconcile emitted artifacts: Mulligan selector, action and source condition;
+Combo operator (defaulting to `>>`); both GlobalValues key spellings; and the
+accepted CardID behavior-plan identities.
+
+Mulligan conditions are normalized with the same lowering function as the
+compiler, including omitted conditions, coin state, and structured
+`hand_contains` conditions. The physical ledger canonicalizes its condition
+rows through that same contract. Combo claims without an explicit operator now
+match the compiler's `>>` default.
+
+Behavior-plan mappings retain every identity for a claim. Multi-card claims are
+reconciled per runtime owner and expected CardID file, so a complete two-file
+claim succeeds while a partial or value-mismatched file remains explicitly
+missing instead of being silently discarded as ambiguous.
+
+Round-5 verification used real source-contract audit output for the new
+regressions. RED was observed for missing productive identity fields, condition
+alias/canonicalization, the Combo default, and multi-identity behavior claims.
+The affected Task-8 suite plus source-audit coverage finished with `364 passed`;
+targeted Ruff and `git diff --check` passed. No runtime, HSTuner or Desktop
+access was used.

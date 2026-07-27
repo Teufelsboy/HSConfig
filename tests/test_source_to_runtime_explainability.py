@@ -9,6 +9,7 @@ from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_to_runtime_explainability import _card_expected_runtime_files
+from tests.mulligan_authority_fixtures import build_canonical_mulligan_bundle
 
 
 def _fixture_audit() -> dict:
@@ -150,6 +151,7 @@ def test_explainability_claim_rows_show_first_missing_link_and_runtime_files():
         "why_not_emitted": None,
         "apply_blocked": False,
         "next_source_action": "none",
+        "condition": "*",
     }
     assert rows["numeric_claim"]["first_missing_link"] == "runtime_evidence"
     assert rows["numeric_claim"]["why_not_emitted"] == "runtime_evidence_required"
@@ -499,6 +501,372 @@ def test_globalvalues_claim_requires_and_preserves_exact_changed_key():
         if row["claim_id"] == "numeric_claim"
     )
     assert matching_claim["emitted_runtime_files"] == ["GlobalValues.json"]
+
+
+@pytest.mark.parametrize(
+    ("condition_field", "source_condition", "compiled_condition"),
+    [
+        (None, None, "*"),
+        ("condition", {"coin": True}, "coin"),
+        (
+            "conditions",
+            {"hand_contains": "CARD_SUPPORT"},
+            "my_hand(count(),cardid=CARD_SUPPORT) > 0",
+        ),
+    ],
+)
+def test_productive_audit_mulligan_identity_matches_compiler_condition(
+    condition_field,
+    source_condition,
+    compiled_condition,
+):
+    source_claim = {
+        "claim_id": "keep_claim",
+        "claim_kind": "mulligan_keep",
+        "cards": ["CARD_KEEP"],
+        "selector": "CARD_KEEP",
+        "action": "hold",
+    }
+    if condition_field is not None:
+        source_claim[condition_field] = source_condition
+    bundle, deck_identity = build_canonical_mulligan_bundle([source_claim])
+    deck_identity["cards"].append(
+        {"card_id": "CARD_SUPPORT", "name": "Support", "count": 1}
+    )
+    claim_id = bundle["claims"][0]["claim_id"]
+    mulligan_plan = {
+        "rules": [
+            {
+                "card": "CARD_KEEP",
+                "selector": "CARD_KEEP",
+                "action": "hold",
+                "condition": compiled_condition,
+                "source_claim_ids": [claim_id],
+            }
+        ],
+        "suppressed_rules": [],
+    }
+    audit = build_source_contract_audit(
+        deck_name="CanonicalMulliganFixture",
+        deck_identity=deck_identity,
+        guide_claim_bundle=bundle,
+        mulligan_plan=mulligan_plan,
+    )
+    ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={
+            "Mulligan": {
+                "values": [
+                    {
+                        "mulligan": "CARD_KEEP",
+                        "condition": compiled_condition,
+                        "value": "hold",
+                    }
+                ]
+            }
+        },
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    report = build_source_to_runtime_explainability_report(
+        audit,
+        runtime_surface_ledger=ledger,
+    )
+    audit_claim = audit["claim_rows"][claim_id]
+    claim = next(
+        row for row in report["claim_rows"] if row["claim_id"] == claim_id
+    )
+
+    assert audit_claim["selector"] == "CARD_KEEP"
+    assert audit_claim["action"] == "hold"
+    assert audit_claim["condition"] == (
+        {} if source_condition is None else source_condition
+    )
+    assert claim["selector"] == "CARD_KEEP"
+    assert claim["action"] == "hold"
+    assert claim["condition"] == compiled_condition
+    assert claim["emitted_runtime_files"] == ["Mulligan.json"]
+
+
+def test_productive_audit_structured_mulligan_condition_rejects_mismatch():
+    bundle, deck_identity = build_canonical_mulligan_bundle(
+        [
+            {
+                "claim_id": "coin_keep",
+                "claim_kind": "mulligan_keep",
+                "cards": ["CARD_KEEP"],
+                "selector": "CARD_KEEP",
+                "action": "hold",
+                "condition": {"coin": True},
+            }
+        ]
+    )
+    claim_id = bundle["claims"][0]["claim_id"]
+    mulligan_plan = {
+        "rules": [
+            {
+                "card": "CARD_KEEP",
+                "selector": "CARD_KEEP",
+                "action": "hold",
+                "condition": "coin",
+                "source_claim_ids": [claim_id],
+            }
+        ],
+        "suppressed_rules": [],
+    }
+    audit = build_source_contract_audit(
+        deck_name="CanonicalMulliganFixture",
+        deck_identity=deck_identity,
+        guide_claim_bundle=bundle,
+        mulligan_plan=mulligan_plan,
+    )
+    ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={
+            "Mulligan": {
+                "values": [
+                    {
+                        "mulligan": "CARD_KEEP",
+                        "condition": "nocoin",
+                        "value": "hold",
+                    }
+                ]
+            }
+        },
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    report = build_source_to_runtime_explainability_report(
+        audit,
+        runtime_surface_ledger=ledger,
+    )
+    claim = next(
+        row for row in report["claim_rows"] if row["claim_id"] == claim_id
+    )
+
+    assert claim["condition"] == "coin"
+    assert claim["emitted_runtime_files"] == []
+
+
+@pytest.mark.parametrize("identity_field", ["key", "globalvalues_key"])
+def test_productive_audit_preserves_globalvalues_key_in_explainability(
+    identity_field,
+):
+    audit = build_source_contract_audit(
+        deck_name="GlobalFixture",
+        deck_identity={
+            "deck_name": "GlobalFixture",
+            "cards": [{"card_id": "CARD_NUM", "count": 1}],
+        },
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": "global_claim",
+                    "claim_kind": "globalvalue_numeric_tuning",
+                    "cards": ["CARD_NUM"],
+                    identity_field: "GlobalAggroValue",
+                }
+            ]
+        },
+    )
+
+    report = build_source_to_runtime_explainability_report(audit)
+    claim = next(
+        row
+        for row in report["claim_rows"]
+        if row["claim_id"] == "global_claim"
+    )
+
+    assert (
+        audit["claim_rows"]["global_claim"][identity_field]
+        == "GlobalAggroValue"
+    )
+    assert claim[identity_field] == "GlobalAggroValue"
+
+
+def test_multi_identity_behavior_claim_reconciles_each_physical_runtime_file():
+    claim_id = "multi_behavior_claim"
+    deck_identity = {
+        "deck_name": "MultiBehavior",
+        "cards": [
+            {"card_id": "CARD_A", "count": 1},
+            {"card_id": "CARD_B", "count": 1},
+        ],
+    }
+    behavior_rows = [
+        {
+            "claim_id": claim_id,
+            "source_claim_ids": [claim_id],
+            "card_id": card_id,
+            "source_card_id": card_id,
+            "runtime_card_id": card_id,
+            "link_kind": "self",
+            "surface_family": "CARDID.json",
+            "behavior_block": "BeforePlayCardBonus",
+            "condition": "*",
+            "value": value,
+            "meaningful_runtime_surface": True,
+        }
+        for card_id, value in (("CARD_A", "7"), ("CARD_B", "9"))
+    ]
+    behavior_plan = {"rows": behavior_rows, "suppressed": []}
+    audit = build_source_contract_audit(
+        deck_name="MultiBehavior",
+        deck_identity=deck_identity,
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": claim_id,
+                    "claim_kind": "targeting_rule",
+                    "cards": ["CARD_A", "CARD_B"],
+                }
+            ]
+        },
+        card_behavior_plan=behavior_plan,
+    )
+    ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={
+            f"{row['card_id']}.json": {
+                "GameCardId": row["card_id"],
+                "BeforePlayCardBonus": {
+                    "values": [
+                        {
+                            "condition": row["condition"],
+                            "value": row["value"],
+                        }
+                    ]
+                },
+            }
+            for row in behavior_rows
+        },
+        linked_runtime_owners=behavior_rows,
+    )
+
+    complete = build_source_to_runtime_explainability_report(
+        audit,
+        card_behavior_plan=behavior_plan,
+        runtime_surface_ledger=ledger,
+    )
+    complete_claim = next(
+        row
+        for row in complete["claim_rows"]
+        if row["claim_id"] == claim_id
+    )
+    assert complete_claim["emitted_runtime_files"] == [
+        "CARD_A.json",
+        "CARD_B.json",
+    ]
+    assert len(complete_claim["behavior_identities"]) == 2
+
+    ledger["cardid"]["entities"][1]["behavior_rows"][0]["value"] = "WRONG"
+    partial = build_source_to_runtime_explainability_report(
+        audit,
+        card_behavior_plan=behavior_plan,
+        runtime_surface_ledger=ledger,
+    )
+    partial_claim = next(
+        row
+        for row in partial["claim_rows"]
+        if row["claim_id"] == claim_id
+    )
+    assert partial_claim["emitted_runtime_files"] == ["CARD_A.json"]
+    assert partial_claim["not_emitted_runtime_files"] == ["CARD_B.json"]
+
+
+def test_multi_row_behavior_claim_requires_every_identity_in_runtime_file():
+    claim_id = "multi_row_behavior_claim"
+    deck_identity = {
+        "deck_name": "MultiRowBehavior",
+        "cards": [{"card_id": "CARD_A", "count": 1}],
+    }
+    behavior_rows = [
+        {
+            "claim_id": claim_id,
+            "source_claim_ids": [claim_id],
+            "card_id": "CARD_A",
+            "source_card_id": "CARD_A",
+            "runtime_card_id": "CARD_A",
+            "link_kind": "self",
+            "surface_family": "CARDID.json",
+            "behavior_block": behavior_block,
+            "condition": "*",
+            "value": value,
+            "meaningful_runtime_surface": True,
+        }
+        for behavior_block, value in (
+            ("BeforePlayCardBonus", "7"),
+            ("InHandBonus", "9"),
+        )
+    ]
+    behavior_plan = {"rows": behavior_rows, "suppressed": []}
+    audit = build_source_contract_audit(
+        deck_name="MultiRowBehavior",
+        deck_identity=deck_identity,
+        guide_claim_bundle={
+            "claims": [
+                {
+                    "claim_id": claim_id,
+                    "claim_kind": "targeting_rule",
+                    "cards": ["CARD_A"],
+                }
+            ]
+        },
+        card_behavior_plan=behavior_plan,
+    )
+    ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={
+            "CARD_A.json": {
+                "GameCardId": "CARD_A",
+                "BeforePlayCardBonus": {
+                    "values": [{"condition": "*", "value": "7"}]
+                },
+                "InHandBonus": {
+                    "values": [{"condition": "*", "value": "9"}]
+                },
+            }
+        },
+        linked_runtime_owners=behavior_rows,
+    )
+
+    complete = build_source_to_runtime_explainability_report(
+        audit,
+        card_behavior_plan=behavior_plan,
+        runtime_surface_ledger=ledger,
+    )
+    complete_claim = next(
+        row
+        for row in complete["claim_rows"]
+        if row["claim_id"] == claim_id
+    )
+    assert complete_claim["emitted_runtime_files"] == ["CARD_A.json"]
+
+    ledger["cardid"]["entities"][0]["behavior_rows"][1]["value"] = "WRONG"
+    partial = build_source_to_runtime_explainability_report(
+        audit,
+        card_behavior_plan=behavior_plan,
+        runtime_surface_ledger=ledger,
+    )
+    partial_claim = next(
+        row
+        for row in partial["claim_rows"]
+        if row["claim_id"] == claim_id
+    )
+    assert partial_claim["emitted_runtime_files"] == []
+    assert partial_claim["not_emitted_runtime_files"] == ["CARD_A.json"]
 
 
 def test_card_behavior_plan_requires_exact_block_for_self_runtime_owner():

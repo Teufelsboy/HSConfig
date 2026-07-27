@@ -134,6 +134,11 @@ def build_source_contract_audit(
             "first_reason": first_reason,
             "lowered_surfaces": emitted_surfaces,
             "surfaces": decisions,
+            **_claim_runtime_identity(
+                claim,
+                claim_kind=normalized_claim_kind(claim),
+                cards=cards,
+            ),
         }
         for card_id in cards:
             card_claim_lanes[card_id][lane] += 1
@@ -177,6 +182,41 @@ def build_source_contract_audit(
     if plan_input_diagnostics is not None:
         report["plan_input_diagnostics"] = dict(plan_input_diagnostics)
     return report
+
+
+def _claim_runtime_identity(
+    claim: Mapping[str, Any],
+    *,
+    claim_kind: str,
+    cards: list[str],
+) -> dict[str, Any]:
+    identity: dict[str, Any] = {}
+    if claim_kind in {"mulligan_keep", "mulligan_discard"}:
+        selector = str(
+            claim.get("selector")
+            or claim.get("mulligan")
+            or (cards[0] if len(cards) == 1 else "")
+        ).strip()
+        if selector:
+            identity["selector"] = selector
+        identity["action"] = str(
+            claim.get("action")
+            or claim.get("intent")
+            or (
+                "discard"
+                if claim_kind == "mulligan_discard"
+                else "hold"
+            )
+        )
+        identity["condition"] = claim.get(
+            "conditions", claim.get("condition", "*")
+        )
+    if claim_kind == "combo_sequence":
+        identity["operator"] = str(claim.get("operator", ">>"))
+    for key in ("key", "globalvalues_key"):
+        if key in claim and str(claim.get(key, "")).strip():
+            identity[key] = str(claim[key])
+    return identity
 
 
 def render_source_contract_audit_markdown(report: Mapping[str, Any]) -> str:

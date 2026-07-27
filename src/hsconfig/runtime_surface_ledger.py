@@ -9,6 +9,7 @@ from typing import Any
 
 from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
+from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.io import read_json
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import is_supported_card_behavior_block
@@ -150,13 +151,18 @@ def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
         )
         if normalized.get("supported") is not True:
             continue
+        condition, condition_error = lower_runtime_condition(
+            row.get("condition", "*")
+        )
+        if condition_error is not None:
+            continue
         rows.append(
             {
                 "mulligan": str(normalized["selector"]),
                 "selector_kind": str(normalized["selector_kind"]),
                 "selector_cards": list(normalized["selector_cards"]),
                 "value": str(row["value"]),
-                "condition": str(row.get("condition", "*")),
+                "condition": condition,
             }
         )
     return rows
