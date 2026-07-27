@@ -7,17 +7,10 @@ from pathlib import Path
 from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.contract_spine_sentinel import build_contract_spine_sentinel_report
-from hsconfig.io import write_json
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
-from hsconfig.package_derivation_receipt import (
-    DERIVATION_RECEIPT_PATH,
-    refresh_package_derivation_authority,
+from tests.helpers.current_apply_eligible_package import (
+    write_current_apply_eligible_package,
 )
-from tests.helpers.current_globalvalues_contract import (
-    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
-    write_current_globalvalues_contract,
-)
-from tests.helpers.verified_deck_input import install_verified_deck_input
 import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
 
@@ -87,54 +80,13 @@ def _write_minimal_package(
     *,
     technical_status: str = "VALID_PACKAGE",
 ) -> None:
-    deck_dir = package / "CustomConfig" / "deck"
-    reports = package / "reports"
-    deck_dir.mkdir(parents=True)
-    reports.mkdir(parents=True)
-    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "fixture"}
-    write_json(deck_dir / "GlobalValues.json", globalvalues)
-    write_json(
-        deck_dir / "Mulligan.json",
-        {
-            "GameCardId": "Mulligan",
-            "ConfigComment": "fixture",
-            "Mulligan": {"values": []},
-        },
-    )
-    write_json(reports / "input_manifest.json", {"deck_name": "deck"})
-    deck_input_verification = install_verified_deck_input(package)
-    write_current_globalvalues_contract(package, globalvalues)
-    write_json(
-        reports / "guide_claim_bundle.json",
-        {"canonical_source_receipts": []},
-    )
-    generated_files = [
-        "CustomConfig/deck/GlobalValues.json",
-        "CustomConfig/deck/Mulligan.json",
-    ]
-    write_json(
-        reports / "output_ownership_manifest.json",
-        build_output_ownership_manifest(
-            [
-                *generated_files,
-                GLOBALVALUES_AUTHORITY_MATRIX_PATH,
-                DERIVATION_RECEIPT_PATH,
-                "reports/operator_summary.json",
-                "reports/output_ownership_manifest.json",
-            ]
-        ),
-    )
-    package_derivation = refresh_package_derivation_authority(package)
-    write_json(
-        reports / "operator_summary.json",
-        {
+    write_current_apply_eligible_package(
+        package,
+        operator_summary={
             "technical_status": technical_status,
             "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
             "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
-            "generated_files": generated_files,
-            "deck_input_verification": deck_input_verification,
-            "package_derivation": package_derivation,
         },
     )
 
@@ -201,6 +153,28 @@ def test_output_ownership_manifest_marks_unknown_report_unclassified():
         "unclassified"
     )
     assert manifest["summary"]["unclassified_file_count"] == 2
+
+
+def test_output_ownership_manifest_classifies_runtime_surface_ledger_as_integrity():
+    manifest = build_output_ownership_manifest(
+        [
+            "reports/operator_summary.json",
+            "reports/runtime_surface_ledger.json",
+        ]
+    )
+    by_file = {row["file"]: row for row in manifest["files"]}
+
+    assert by_file["reports/runtime_surface_ledger.json"] == {
+        "file": "reports/runtime_surface_ledger.json",
+        "producer": "prepare",
+        "classification": "integrity_receipt",
+        "authority": "physical_runtime_surface_ledger",
+        "can_block_apply": True,
+        "runtime_surface": None,
+        "diagnostic_only": False,
+    }
+    assert manifest["summary"]["unclassified_file_count"] == 0
+    assert manifest["summary"]["gate_count"] == 1
 
 
 def test_output_ownership_manifest_marks_legacy_surfaces_as_forbidden_drift():

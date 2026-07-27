@@ -6,29 +6,17 @@ from typing import Any
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
-from hsconfig.io import write_json
-from hsconfig.output_ownership_manifest import build_output_ownership_manifest
-from hsconfig.package_derivation_receipt import (
-    DERIVATION_RECEIPT_PATH,
-    DERIVATION_RECEIPT_SCHEMA_VERSION,
-    build_package_derivation_receipt,
-    write_package_derivation_receipt,
+from hsconfig.io import read_json, write_json
+from tests.helpers.current_apply_eligible_package import (
+    DEFAULT_RUNTIME_FILES,
+    write_current_apply_eligible_package,
 )
-from tests.helpers.current_globalvalues_contract import (
-    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
-    write_current_globalvalues_contract,
+from tests.helpers.current_runtime_surface_ledger_contract import (
+    write_current_runtime_surface_ledger,
 )
-from tests.helpers.verified_deck_input import install_verified_deck_input
 
 
-RUNTIME_FILES = {
-    "GlobalValues.json": {"GameCardId": "GlobalValues", "ConfigComment": "new"},
-    "Mulligan.json": {
-        "GameCardId": "Mulligan",
-        "ConfigComment": "new",
-        "Mulligan": {"values": []},
-    },
-}
+RUNTIME_FILES = DEFAULT_RUNTIME_FILES
 
 
 def _write_package(
@@ -40,77 +28,44 @@ def _write_package(
     apply_policy: str = "ALLOWED",
     runtime_files: dict[str, Any] | None = None,
     generated_files: list[str] | None = None,
-    write_manifest: bool = True,
-    write_summary: bool = True,
     summary_payload: dict[str, Any] | None = None,
 ) -> Path:
-    deck_dir = package / "CustomConfig" / "deck"
     files = dict(RUNTIME_FILES)
     if runtime_files:
         files.update(runtime_files)
-    for filename, payload in files.items():
-        write_json(deck_dir / filename, payload)
-
-    if write_manifest:
-        write_json(
-            package / "reports" / "input_manifest.json",
-            {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+    summary = {
+        "technical_status": technical_status,
+        "semantic_status": semantic_status,
+        "next_action": next_action,
+        "apply_policy": apply_policy,
+        "semantic_blockers": [],
+        **dict(summary_payload or {}),
+    }
+    summary_files = generated_files
+    if summary_files is None:
+        payload_generated = summary.get("generated_files")
+        summary_files = (
+            list(payload_generated)
+            if isinstance(payload_generated, list)
+            else [f"CustomConfig/deck/{filename}" for filename in files]
         )
-        deck_input_verification = install_verified_deck_input(package)
-    else:
-        deck_input_verification = None
+    return write_current_apply_eligible_package(
+        package,
+        operator_summary=summary,
+        runtime_files=files,
+        generated_files=summary_files,
+    )
 
-    if write_summary:
-        if generated_files is None:
-            generated_files = [
-                f"CustomConfig/deck/{filename}" for filename in files
-            ]
-        summary = {
-            "technical_status": technical_status,
-            "semantic_status": semantic_status,
-            "next_action": next_action,
-            "apply_policy": apply_policy,
-            "semantic_blockers": [],
-            "generated_files": generated_files,
-        }
-        if summary_payload:
-            summary.update(summary_payload)
-        if write_manifest:
-            reports = package / "reports"
-            summary["deck_input_verification"] = deck_input_verification
-            globalvalues = files["GlobalValues.json"]
-            write_current_globalvalues_contract(package, globalvalues)
-            write_json(
-                reports / "guide_claim_bundle.json",
-                {"canonical_source_receipts": []},
-            )
-            ownership = build_output_ownership_manifest(
-                [
-                    *generated_files,
-                    GLOBALVALUES_AUTHORITY_MATRIX_PATH,
-                    DERIVATION_RECEIPT_PATH,
-                    "reports/operator_summary.json",
-                    "reports/output_ownership_manifest.json",
-                ]
-            )
-            write_json(
-                reports / "output_ownership_manifest.json",
-                ownership,
-            )
-            receipt = build_package_derivation_receipt(package)
-            digest = write_package_derivation_receipt(
-                package / DERIVATION_RECEIPT_PATH,
-                receipt,
-            )
-            summary["package_derivation"] = {
-                "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
-                "receipt_path": DERIVATION_RECEIPT_PATH,
-                "receipt_sha256": digest,
-                "verified": True,
-            }
-        write_json(package / "reports" / "operator_summary.json", summary)
 
-    return package
+def _add_runtime_file_after_build(package: Path, filename: str) -> None:
+    write_json(
+        package / "CustomConfig" / "deck" / filename,
+        {
+            "GameCardId": filename.removesuffix(".json"),
+            "ConfigComment": "added after build",
+        },
+    )
+    write_current_runtime_surface_ledger(package)
 
 
 @pytest.mark.parametrize(
@@ -174,10 +129,30 @@ def test_valid_minimal_package_without_cardid_or_combo_is_allowed(tmp_path: Path
     package = _write_package(tmp_path / "package")
 
     gate = evaluate_apply_gate(package)
+    source_bundle = read_json(package / "reports" / "guide_claim_bundle.json")
+    identity = read_json(package / "reports" / "deck_identity.json")
+    ledger = read_json(package / "reports" / "runtime_surface_ledger.json")
+    canonical_receipt = source_bundle["canonical_source_receipts"][0]
 
     assert gate["status"] == "allowed"
     assert gate["allowed"] is True
     assert gate["mode"] == "load_safe_apply"
+    assert canonical_receipt["receipt_kind"] == (
+        "canonical_exact_deck_source_document"
+    )
+    assert canonical_receipt["matched_deck_fingerprint"] == identity[
+        "deck_fingerprint"
+    ]
+    assert canonical_receipt["claim_id"] == "claim_current_apply_eligible"
+    assert canonical_receipt["claim_signature"].startswith("sha256:")
+    assert canonical_receipt["acquisition_provenance"]["mode"] == "live_http"
+    assert canonical_receipt["acquisition_provenance"]["authority"] == (
+        "live_verified"
+    )
+    assert source_bundle["claims"][0]["acquisition_provenance"] == (
+        canonical_receipt["acquisition_provenance"]
+    )
+    assert ledger["schema_version"] == 2
 
 
 @pytest.mark.parametrize(
@@ -210,10 +185,7 @@ def test_valid_minimal_package_without_cardid_or_combo_is_allowed(tmp_path: Path
             "normal_path_optional_surface_present",
         ),
         (
-            lambda package: write_json(
-                package / "CustomConfig" / "deck" / "EX1_999.json",
-                {"GameCardId": "EX1_999", "ConfigComment": "added after build"},
-            ),
+            lambda package: _add_runtime_file_after_build(package, "EX1_999.json"),
             "package_derivation_mismatch",
         ),
         (
@@ -326,12 +298,9 @@ def test_summary_runtime_file_drift_blocks(tmp_path: Path):
                     "CustomConfig/deck/Mulligan.json",
                 ],
             },
-            "mutate": lambda package: write_json(
-                package / "CustomConfig" / "deck" / "EX1_777.json",
-                {
-                    "GameCardId": "EX1_777",
-                    "ConfigComment": "added after build",
-                },
+            "mutate": lambda package: _add_runtime_file_after_build(
+                package,
+                "EX1_777.json",
             ),
             "expected_status": "blocked",
             "expected_reason": "package_derivation_mismatch",

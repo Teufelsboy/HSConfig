@@ -164,6 +164,16 @@ def _classify_file(path: str, report_rows: dict[str, dict[str, Any]]) -> dict[st
             "runtime_surface": None,
             "diagnostic_only": False,
         }
+    if path == "reports/runtime_surface_ledger.json":
+        return {
+            "file": path,
+            "producer": "prepare",
+            "classification": "integrity_receipt",
+            "authority": "physical_runtime_surface_ledger",
+            "can_block_apply": True,
+            "runtime_surface": None,
+            "diagnostic_only": False,
+        }
     if path in report_rows:
         row = dict(report_rows[path])
         return {

@@ -19,6 +19,9 @@ from hsconfig.contract_preflight import (
     build_package_contract_preflight,
 )
 from hsconfig.commands import contract_preflight as contract_preflight_command
+from tests.helpers.current_apply_eligible_package import (
+    write_current_apply_eligible_package,
+)
 from tests.helpers.current_globalvalues_contract import (
     write_current_globalvalues_contract,
 )
@@ -235,7 +238,19 @@ def _contract_preflight_clean_package(tmp_path: Path) -> Path:
             "Mulligan": {"values": []},
         },
     )
-    return package
+    operator = json.loads(
+        (reports / "operator_summary.json").read_text(encoding="utf-8")
+    )
+    return write_current_apply_eligible_package(
+        package,
+        operator_summary=operator,
+        deck_directory="shadowpriest",
+        deck_name="ShadowPriest",
+        deck_code=(
+            "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+            "KgG17oG1cEGAAA="
+        ),
+    )
 
 
 def test_contract_preflight_import_path_does_not_require_research_sentinel() -> None:

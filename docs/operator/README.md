@@ -607,7 +607,8 @@ The twelve captured/fixture-backed cases are expected to be technically valid
 and load-safe but apply-ineligible with
 `runtime_apply_reason=diagnostic_source_not_apply_eligible`. This is a
 provenance result from the current package's `reports/operator_summary.json`;
-the fixture manifests describe test scope and are not a second apply gate. A
+the fixture manifests describe test scope and do not participate in runtime
+apply authority. A
 separate exact-deck fixture acquired through the real source-acquisition path
 shows the positive boundary: only `live_http` plus `live_verified` provenance
 and a passing current strict package validation can produce a technically
