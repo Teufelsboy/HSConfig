@@ -67,8 +67,6 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
         return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
 
     has_curated_owner = _has_curated_linked_runtime_owner_file(package_path)
-    if has_curated_owner and not isinstance(behavior_plan.get("rows"), list):
-        return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
 
     deck_dirs = sorted(
         path
@@ -76,9 +74,14 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
         if path.is_dir()
     )
     errors: list[str] = []
-    linked_relations, relation_errors = _linked_runtime_relations(
-        behavior_plan
-    )
+    try:
+        linked_relations, relation_errors = _linked_runtime_relations(
+            behavior_plan
+        )
+    except ValueError as error:
+        if str(error) == LINKED_RUNTIME_OWNER_EVIDENCE_INVALID:
+            return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
+        raise
     errors.extend(relation_errors)
     if has_curated_owner and not _has_curated_linked_runtime_owner_relation(
         linked_relations
@@ -159,9 +162,7 @@ def _linked_runtime_relations(
 ) -> tuple[list[dict[str, str]], list[str]]:
     relations: list[dict[str, str]] = []
     errors: list[str] = []
-    for row in behavior_plan.get("rows", []):
-        if not isinstance(row, dict):
-            continue
+    for row in _validated_behavior_plan_rows(behavior_plan):
         source_card_id = str(
             row.get("source_card_id") or row.get("card_id") or ""
         ).strip()
@@ -226,3 +227,14 @@ def _linked_runtime_relations(
         ),
         errors,
     )
+
+
+def _validated_behavior_plan_rows(
+    behavior_plan: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    rows = behavior_plan.get("rows")
+    if not isinstance(rows, list) or any(
+        not isinstance(row, Mapping) for row in rows
+    ):
+        raise ValueError(LINKED_RUNTIME_OWNER_EVIDENCE_INVALID)
+    return rows

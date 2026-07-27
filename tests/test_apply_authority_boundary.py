@@ -126,6 +126,30 @@ def _install_linked_owner_authority(package: Path) -> None:
     write_json(summary_path, summary)
 
 
+def _remove_linked_owner_authority(package: Path) -> None:
+    from hsconfig.package_derivation_receipt import (
+        refresh_package_derivation_authority,
+    )
+
+    for owner_path in (package / "CustomConfig").glob("*/EX1_625t.json"):
+        owner_path.unlink()
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": []},
+    )
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary["generated_files"] = [
+        path
+        for path in summary["generated_files"]
+        if not str(path).replace("\\", "/").endswith("/EX1_625t.json")
+    ]
+    summary["package_derivation"] = refresh_package_derivation_authority(
+        package
+    )
+    write_json(summary_path, summary)
+
+
 def _first_reason_code(gate: dict) -> str:
     reason = gate["reasons"][0]
     return str(reason.get("code") or reason.get("reason"))
@@ -389,7 +413,7 @@ def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
         write_json(path, {"rows": []})
     else:
         write_json(path, {"rows": {}})
-    if mutation in {"empty_rows", "invalid_rows_container"}:
+    if mutation == "empty_rows":
         from hsconfig.package_derivation_receipt import (
             refresh_package_derivation_authority,
         )
@@ -437,6 +461,61 @@ def test_apply_gate_rejects_legacy_derivation_receipt_schema_one(
 
     assert gate["allowed"] is False
     assert _first_reason_code(gate) == "package_derivation_receipt_schema_unsupported"
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [{}, None, "corrupt", [None]],
+    ids=["object", "null", "string", "non_object_row"],
+)
+def test_ownerless_invalid_behavior_plan_rows_cannot_build_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rows: object,
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        build_package_derivation_receipt,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    _remove_linked_owner_authority(package)
+    assert evaluate_apply_gate(package)["allowed"] is True
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": rows},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="^linked_runtime_owner_evidence_invalid$",
+    ):
+        build_package_derivation_receipt(package)
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [{}, None, "corrupt", [None]],
+    ids=["object", "null", "string", "non_object_row"],
+)
+def test_apply_gate_rejects_ownerless_invalid_behavior_plan_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    rows: object,
+) -> None:
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    _remove_linked_owner_authority(package)
+    assert evaluate_apply_gate(package)["allowed"] is True
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": rows},
+    )
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "linked_runtime_owner_evidence_invalid"
 
 
 def test_forged_valid_operator_summary_cannot_authorize_package(

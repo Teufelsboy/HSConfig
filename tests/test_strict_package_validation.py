@@ -216,6 +216,49 @@ def test_linked_runtime_owner_projection_has_exact_authority_fields() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "rows",
+    [{}, None, "corrupt", [None]],
+    ids=["object", "null", "string", "non_object_row"],
+)
+def test_ownerless_package_rejects_invalid_behavior_plan_rows(
+    linked_owner_package: Path,
+    rows: object,
+) -> None:
+    for owner_path in (linked_owner_package / "CustomConfig").glob(
+        "*/EX1_625t.json"
+    ):
+        owner_path.unlink()
+    write_json(
+        linked_owner_package
+        / "reports"
+        / "card_behavior_plan_report.json",
+        {"rows": rows},
+    )
+
+    report = validate_complete_package(linked_owner_package)
+
+    assert report["status"] == "failed"
+    assert "linked_runtime_owner_evidence_invalid" in report["errors"]
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [{}, None, "corrupt", [None]],
+    ids=["object", "null", "string", "non_object_row"],
+)
+def test_linked_runtime_owner_projection_rejects_invalid_rows(
+    rows: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="^linked_runtime_owner_evidence_invalid$",
+    ):
+        strict_package_validation.linked_runtime_owner_projection(
+            {"rows": rows}
+        )
+
+
 def test_valid_package_passes_build_validate_apply_and_preflight(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

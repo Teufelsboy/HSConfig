@@ -373,7 +373,7 @@ def test_runtime_apply_fails_closed_without_valid_linked_owner_plan_report(
         write_json(path, {"rows": []})
     else:
         write_json(path, {"rows": {}})
-    if mutation in {"empty_rows", "invalid_rows_container"}:
+    if mutation == "empty_rows":
         summary = read_json(package / "reports" / "operator_summary.json")
         _write_operator_summary_with_derivation(package, summary)
 
@@ -383,6 +383,53 @@ def test_runtime_apply_fails_closed_without_valid_linked_owner_plan_report(
             "linked_runtime_owner_evidence_missing"
             "|linked_runtime_owner_evidence_invalid"
         ),
+    ):
+        if operation == "plan":
+            plan_apply_package(
+                package_root=package,
+                runtime_root=runtime,
+            )
+        else:
+            apply_package(
+                package_root=package,
+                runtime_root=runtime,
+            )
+
+    assert not runtime.exists()
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not (package / "reports" / "runtime_apply_receipt.json").exists()
+
+
+@pytest.mark.parametrize("operation", ["plan", "apply"])
+@pytest.mark.parametrize(
+    "rows",
+    [{}, None, "corrupt", [None]],
+    ids=["object", "null", "string", "non_object_row"],
+)
+def test_runtime_apply_rejects_ownerless_invalid_behavior_plan_rows_before_write(
+    tmp_path: Path,
+    operation: str,
+    rows: object,
+) -> None:
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    assert not any(
+        (package / "CustomConfig").glob("*/EX1_625t.json")
+    )
+    assert evaluate_apply_gate(package)["allowed"] is True
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {"rows": rows},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="linked_runtime_owner_evidence_invalid",
     ):
         if operation == "plan":
             plan_apply_package(
