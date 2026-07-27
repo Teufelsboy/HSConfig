@@ -66,6 +66,10 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
     if not isinstance(behavior_plan, Mapping):
         return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
 
+    has_curated_owner = _has_curated_linked_runtime_owner_file(package_path)
+    if has_curated_owner and not isinstance(behavior_plan.get("rows"), list):
+        return [LINKED_RUNTIME_OWNER_EVIDENCE_INVALID]
+
     deck_dirs = sorted(
         path
         for path in (package_path / "CustomConfig").glob("*")
@@ -76,6 +80,10 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
         behavior_plan
     )
     errors.extend(relation_errors)
+    if has_curated_owner and not _has_curated_linked_runtime_owner_relation(
+        linked_relations
+    ):
+        errors.append(LINKED_RUNTIME_OWNER_EVIDENCE_MISSING)
     for relation in linked_relations:
         runtime_card_id = relation["runtime_card_id"]
         filename = f"{runtime_card_id}.json"
@@ -104,6 +112,28 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
                     f"{filename} owns {runtime_card_id}, got {actual}"
                 )
     return errors
+
+
+def _has_curated_linked_runtime_owner_relation(
+    relations: list[dict[str, str]],
+) -> bool:
+    (
+        source_card_id,
+        semantic_surface,
+        link_kind,
+        runtime_card_id,
+    ) = AUTHORIZED_HERO_POWER_OWNER
+    return any(
+        relation
+        == {
+            "source_card_id": source_card_id,
+            "runtime_card_id": runtime_card_id,
+            "link_kind": link_kind,
+            "semantic_surface": semantic_surface,
+            "behavior_block": "BeforeUseHeroPowerBonus",
+        }
+        for relation in relations
+    )
 
 
 def _has_curated_linked_runtime_owner_file(package_path: Path) -> bool:

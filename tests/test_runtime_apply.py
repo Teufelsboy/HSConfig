@@ -344,7 +344,16 @@ def test_runtime_apply_obeys_shared_strict_validation_result_before_any_write(
 
 
 @pytest.mark.parametrize("operation", ["plan", "apply"])
-@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "remove",
+        "invalid_json",
+        "non_object",
+        "empty_rows",
+        "invalid_rows_container",
+    ],
+)
 def test_runtime_apply_fails_closed_without_valid_linked_owner_plan_report(
     tmp_path: Path,
     operation: str,
@@ -358,15 +367,21 @@ def test_runtime_apply_fails_closed_without_valid_linked_owner_plan_report(
         path.unlink()
     elif mutation == "invalid_json":
         path.write_text("{", encoding="utf-8")
-    else:
+    elif mutation == "non_object":
         path.write_text("[]", encoding="utf-8")
+    elif mutation == "empty_rows":
+        write_json(path, {"rows": []})
+    else:
+        write_json(path, {"rows": {}})
+    if mutation in {"empty_rows", "invalid_rows_container"}:
+        summary = read_json(package / "reports" / "operator_summary.json")
+        _write_operator_summary_with_derivation(package, summary)
 
     with pytest.raises(
         ValueError,
         match=(
             "linked_runtime_owner_evidence_missing"
             "|linked_runtime_owner_evidence_invalid"
-            "|package_derivation_mismatch"
         ),
     ):
         if operation == "plan":

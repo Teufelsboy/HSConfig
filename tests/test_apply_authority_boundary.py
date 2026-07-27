@@ -359,7 +359,16 @@ def test_derivation_receipt_binds_only_linked_owner_authority_fields(
     assert after_authority != before
 
 
-@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "remove",
+        "invalid_json",
+        "non_object",
+        "empty_rows",
+        "invalid_rows_container",
+    ],
+)
 def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -374,8 +383,23 @@ def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
         path.unlink()
     elif mutation == "invalid_json":
         path.write_text("{", encoding="utf-8")
-    else:
+    elif mutation == "non_object":
         path.write_text("[]", encoding="utf-8")
+    elif mutation == "empty_rows":
+        write_json(path, {"rows": []})
+    else:
+        write_json(path, {"rows": {}})
+    if mutation in {"empty_rows", "invalid_rows_container"}:
+        from hsconfig.package_derivation_receipt import (
+            refresh_package_derivation_authority,
+        )
+
+        summary_path = package / "reports" / "operator_summary.json"
+        summary = read_json(summary_path)
+        summary["package_derivation"] = refresh_package_derivation_authority(
+            package
+        )
+        write_json(summary_path, summary)
 
     gate = evaluate_apply_gate(package)
 
@@ -383,7 +407,6 @@ def test_apply_gate_fails_closed_without_valid_linked_owner_plan_report(
     assert _first_reason_code(gate) in {
         "linked_runtime_owner_evidence_missing",
         "linked_runtime_owner_evidence_invalid",
-        "package_derivation_mismatch",
     }
 
 

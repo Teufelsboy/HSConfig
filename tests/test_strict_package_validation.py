@@ -149,7 +149,16 @@ def linked_owner_package(
     return package
 
 
-@pytest.mark.parametrize("mutation", ["remove", "invalid_json", "non_object"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "remove",
+        "invalid_json",
+        "non_object",
+        "empty_rows",
+        "invalid_rows_container",
+    ],
+)
 def test_linked_owner_package_fails_closed_without_valid_plan_report(
     linked_owner_package: Path,
     mutation: str,
@@ -159,8 +168,12 @@ def test_linked_owner_package_fails_closed_without_valid_plan_report(
         path.unlink()
     elif mutation == "invalid_json":
         path.write_text("{", encoding="utf-8")
-    else:
+    elif mutation == "non_object":
         path.write_text("[]", encoding="utf-8")
+    elif mutation == "empty_rows":
+        write_json(path, {"rows": []})
+    else:
+        write_json(path, {"rows": {}})
 
     report = validate_complete_package(linked_owner_package)
 
