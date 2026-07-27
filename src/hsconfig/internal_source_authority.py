@@ -142,7 +142,6 @@ def _consume_acquired_search_records_handoff(
     )
     consumed_mac = _authority_token_mac(token, state=_CONSUMED_SEARCH)
 
-    _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce)
     _commit_token_state(token, state=_CONSUMED_SEARCH, mac=consumed_mac)
     return copied_records, lineage
 
@@ -157,6 +156,8 @@ def _issue_generated_source_documents_handoff(
     if token.state == _DOCUMENT_ISSUED:
         raise ValueError("source_authority_lineage_replayed")
     if token.state != _CONSUMED_SEARCH:
+        raise ValueError("invalid_internal_source_authority_lineage")
+    if _ACTIVE_ORIGINAL_TOKENS.get(token.nonce) is not token:
         raise ValueError("invalid_internal_source_authority_lineage")
     registered_fingerprint = token.record_fingerprint
     observed_record_fingerprint = _payload_fingerprint(
@@ -201,6 +202,7 @@ def _issue_generated_source_documents_handoff(
     )
     issued_mac = _authority_token_mac(token, state=_DOCUMENT_ISSUED)
 
+    _ACTIVE_ORIGINAL_TOKENS.pop(token.nonce)
     _commit_token_state(token, state=_DOCUMENT_ISSUED, mac=issued_mac)
     _register_authority_token(document_token)
     return handoff

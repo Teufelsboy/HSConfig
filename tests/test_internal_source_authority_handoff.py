@@ -260,6 +260,37 @@ def test_document_issuance_copy_failure_preserves_lineage_for_retry() -> None:
     _assert_token_active_and_registered(handoff, state="active_document")
 
 
+def test_deepcopied_consumed_search_lineage_cannot_issue_documents_twice() -> None:
+    search_handoff = source_authority._issue_acquired_search_records_handoff([])
+    _records, original_lineage = (
+        source_authority._consume_acquired_search_records_handoff(search_handoff)
+    )
+    copied_lineage = deepcopy(original_lineage)
+    documents = [{"source_url": "https://example.test/authority", "claims": []}]
+
+    with pytest.raises(
+        ValueError,
+        match="invalid_internal_source_authority_lineage",
+    ):
+        source_authority._issue_generated_source_documents_handoff(
+            copied_lineage,
+            documents,
+        )
+
+    document_handoff = (
+        source_authority._issue_generated_source_documents_handoff(
+            original_lineage,
+            documents,
+        )
+    )
+    _assert_token_active_and_registered(document_handoff, state="active_document")
+    with pytest.raises(ValueError, match="source_authority_lineage_replayed"):
+        source_authority._issue_generated_source_documents_handoff(
+            original_lineage,
+            documents,
+        )
+
+
 def test_document_split_copy_failure_preserves_capability_for_retry() -> None:
     documents = [{"source_url": "https://example.test/authority", "claims": []}]
     handoff = _issue_document_handoff(documents)
