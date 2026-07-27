@@ -36,6 +36,30 @@ FIXTURE_CARD_ALIASES = {
 }
 
 
+def expected_analysis_card_universe(
+    deck_identity: dict,
+) -> set[str]:
+    main_deck_card_ids = {
+        str(card["card_id"])
+        for card in deck_identity["main_deck"]
+    }
+    sideboard_card_ids = {
+        str(card["card_id"])
+        for sideboard in deck_identity.get("sideboards", [])
+        for card in sideboard.get("cards", [])
+    }
+    return main_deck_card_ids | sideboard_card_ids
+
+
+def expected_linked_runtime_entities(
+    derivation_receipt: dict,
+) -> set[str]:
+    return {
+        str(row["runtime_card_id"])
+        for row in derivation_receipt.get("linked_runtime_owners", [])
+    }
+
+
 def test_every_matrix_deck_declares_closure_profile():
     for deck in load_archetype_matrix():
         assert deck["closure_profile"]
@@ -486,6 +510,9 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
             encoding="utf-8"
         )
     )
+    derivation_receipt = json.loads(
+        (out / "package_derivation_receipt.json").read_text(encoding="utf-8")
+    )
     quality = build_config_quality_report(out)
     if deck_name == "Kingslayer":
         assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
@@ -507,7 +534,13 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     deck_dirs = [path for path in (out / "CustomConfig").iterdir() if path.is_dir()]
     assert len(deck_dirs) == 1
     deck_dir = deck_dirs[0]
-    deck_card_ids = {str(card["card_id"]) for card in deck_identity["cards"]}
+    deck_card_ids = {
+        str(card["card_id"]) for card in deck_identity["main_deck"]
+    }
+    analysis_card_ids = expected_analysis_card_universe(deck_identity)
+    linked_runtime_card_ids = expected_linked_runtime_entities(
+        derivation_receipt
+    )
 
     assert code == 0
     assert payload["status"] == "passed"
@@ -530,14 +563,18 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert source_contract_audit["schema_version"] == 1
     source_contract_card_ids = set(source_contract_audit["card_rows"])
     assert source_contract_audit["summary"]["cards_total"] == len(source_contract_card_ids)
-    assert deck_card_ids <= source_contract_card_ids
+    assert source_contract_card_ids == analysis_card_ids
     assert source_to_runtime["authority"] == "diagnostic_only"
     assert source_to_runtime["apply_blocking"] is False
     source_to_runtime_card_ids = {
         str(row["card_id"]) for row in source_to_runtime["card_rows"]
     }
     assert source_to_runtime["summary"]["cards_total"] == len(source_to_runtime_card_ids)
-    assert deck_card_ids <= source_to_runtime_card_ids
+    assert source_to_runtime_card_ids == analysis_card_ids
+    assert {
+        str(row["runtime_card_id"])
+        for row in source_to_runtime["runtime_entity_transitions"]
+    } == linked_runtime_card_ids
     assert quality["authority"] == "diagnostic_only"
     assert quality["apply_blocking"] is False
     assert quality["runtime_write_performed"] is False
@@ -570,7 +607,6 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert semantic_report["non_blocking"] is True
     assert "summary" in semantic_report
     assert "cards" in semantic_report
-    linked_runtime_card_ids = {"EX1_625t"} if deck_name == "ShadowPriest" else set()
     assert_runtime_surface_shape(deck_dir, deck_card_ids | linked_runtime_card_ids)
     if deck_name == "ShadowPriest":
         assert_darkbishop_effect_semantics_without_mulligan_keep(deck_dir)

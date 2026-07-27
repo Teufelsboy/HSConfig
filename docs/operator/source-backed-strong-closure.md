@@ -239,7 +239,13 @@ A matrix row may move from `source_informed_valid_fixture` to `core_source_backe
 
 Rows that do not meet all six checks stay source-informed and must expose one specific first missing chain.
 
-## Current Closure Targets
+## Captured Fixture Closure Snapshot — 2026-07-27
+
+This dated table records the fixture promotion state captured on 2026-07-27.
+It is historical diagnostic context, not current promotion truth and not apply
+authority. Regenerate the package and read its current
+`reports/operator_summary.json` plus closure reports before making a present
+promotion decision.
 
 | Deck | Fixture stage | Required work before promotion |
 |---|---|---|
@@ -260,7 +266,7 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 - `CtAPaladin`, `Discolock`, `TreantDruid`, and `PirateDH` remain load-safe partial rows. Do not use their package validity or policy/runtime fallback rows as source-backed-strong evidence.
 - Adjacent archetype advice is not source-backed evidence for these rows.
 
-## Current Source-Informed Closure Decisions
+## Captured Source-Informed Closure Decisions — 2026-07-27
 
 | Deck | Current decision | First missing link | Promotion blocker reason |
 |---|---|---|---|
@@ -274,14 +280,16 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 Boarlock's current low-confidence `WW_092` / `Fracking` mulligan row documents
 generic card-draw advice only. Do not treat Boarlock's low-confidence Fracking row as SOURCE_BACKED_STRONG.
 
-Current closure order keeps Boarlock first and Kingslayer second because they
-are durable preserved controls with explicit stop conditions. CtAPaladin,
+At the time of this snapshot, the closure order kept Boarlock first and
+Kingslayer second because they were durable preserved controls with explicit
+stop conditions. CtAPaladin,
 Discolock, TreantDruid, and PirateDH follow as load-safe partial rows; they are
 promotion targets only after the listed exact source or card-specific guide gaps
 close.
 
-After durable Boarlock and Kingslayer preservation, the current actionable
-source-informed closure targets are the four partial representative rows above.
+In this dated snapshot, after durable Boarlock and Kingslayer preservation, the
+actionable source-informed closure targets were the four partial representative
+rows above.
 They must remain `SOURCE_BACKED_PARTIAL` until new exact source evidence closes
 their first missing chain.
 
@@ -290,9 +298,11 @@ Do not widen the matrix to a twelfth deck to avoid these rows. Either close the 
 Source candidate proof decks live in `docs/operator/source-candidate-proof-decks.json`.
 Supplemental proof decks live in `docs/operator/supplemental-proof-decks.json` and do not change the representative matrix count.
 
-## Current Blocker Snapshot
+## Historical Blocker Snapshot — 2026-07-18
 
-Fresh no-apply runs with
+The following no-apply results are retained as a historical 2026-07-18
+snapshot. Their READY wording predates the current provenance gate and must not
+be read as current apply authority. Runs used
 `hsconfig configure --online-source --auto-source --current-date 2026-07-18`
 for the 12 user-supplied Wild decks show every package as `VALID_PACKAGE`.
 Every row keeps `source_status_apply_blocking=false` and

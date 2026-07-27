@@ -11,6 +11,30 @@ def build_operator_guidance(summary: dict[str, Any]) -> dict[str, Any]:
     semantic_status = str(summary.get("semantic_status", ""))
     apply_policy = str(summary.get("apply_policy", ""))
 
+    if (
+        technical_status == "VALID_PACKAGE"
+        and apply_policy == "BLOCKED"
+        and str(summary.get("runtime_apply_reason", ""))
+        == "diagnostic_source_not_apply_eligible"
+    ):
+        return {
+            "first_report_to_open": "reports/operator_summary.json",
+            "next_report_to_open": "reports/guide_source_depth_report.json",
+            "normal_next_step": "acquire_live_verified_source",
+            "normal_next_command": (
+                "acquire live_verified exact-deck source and rebuild the package"
+            ),
+            "safe_to_apply": False,
+            "requires_expert_flag": False,
+            **_config_usefulness_fields(summary),
+            **_mechanic_warning_fields(summary),
+            **_mechanic_visibility_fields(summary),
+            **_mechanic_drift_fields(summary),
+            **_runtime_apply_fields(summary),
+            **_configuration_assurance_fields(summary),
+            **_source_informed_scope_fields(summary),
+        }
+
     if technical_status == "INVALID_PACKAGE" or apply_policy == "BLOCKED":
         return {
             "first_report_to_open": "reports/operator_summary.json",

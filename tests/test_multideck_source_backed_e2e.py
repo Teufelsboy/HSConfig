@@ -716,6 +716,7 @@ def build_representative_multideck_matrix(tmp_path: Path) -> list[dict]:
                 "operator_summary": operator,
                 "runtime_apply_allowed": operator["runtime_apply_allowed"],
                 "runtime_apply_reason": operator["runtime_apply_reason"],
+                "fixture_classification": operator["fixture_classification"],
                 "fixture_expected_load_safe": deck["fixture_expected_load_safe"],
                 "fixture_runtime_apply_authority": deck[
                     "fixture_runtime_apply_authority"
@@ -969,6 +970,7 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
         assert row["technical_status"] == "VALID_PACKAGE", row
         assert row["fixture_expected_load_safe"] is True, row
         assert row["fixture_runtime_apply_authority"] == "diagnostic_only", row
+        assert row["fixture_classification"] == "load_safe_fixture", row
         assert row["runtime_apply_allowed"] is False, row
         assert row["runtime_apply_reason"] == (
             "diagnostic_source_not_apply_eligible"
@@ -1032,6 +1034,11 @@ def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
         assert operator["runtime_apply_reason"] == (
             "diagnostic_source_not_apply_eligible"
         ), row
+        assert operator["fixture_classification"] == "load_safe_fixture", row
+        assert operator["apply_policy"] == "BLOCKED", row
+        assert operator["next_action"] == (
+            "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        ), row
         assert operator["source_apply_eligibility_reasons"] == [
             "diagnostic_source_not_apply_eligible"
         ], row
@@ -1041,11 +1048,18 @@ def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
         assert operator["runtime_apply_contract"]["authority_scope"] == (
             "current_package_operator_gate"
         )
-        assert operator["next_action"] in {
-            "READY_TO_APPLY_OR_HANDOFF",
-            "READY_TO_APPLY_WITH_WARNINGS",
-            "SOURCE_CLOSURE_NEEDED",
-        }
+        no_block = operator["no_block_failure_mode_summary"]
+        assert no_block["runtime_apply_mode"] == "blocked", row
+        assert no_block["runtime_apply_allowed"] is False, row
+        assert no_block["runtime_apply_reason"] == (
+            "diagnostic_source_not_apply_eligible"
+        ), row
+        assert no_block["apply_policy"] == "BLOCKED", row
+        assert no_block["next_action"] == (
+            "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+        ), row
+        assert no_block["hard_block"] is False, row
+        assert no_block["overall"] == "runtime_apply_not_allowed", row
         assert operator["source_backed_strong_closure"]["diagnostic_only"] is True
         assert operator["source_backed_strong_closure"][
             "first_missing_source_action"

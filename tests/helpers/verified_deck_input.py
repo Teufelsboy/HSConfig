@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 from hearthstone.deckstrings import Deck, FormatType
 from hsconfig.deck_identity import build_deck_identity
 from hsconfig.deck_input_verification import verify_deck_input
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json, write_json
 
 
@@ -151,6 +152,44 @@ def install_verified_deck_input(
         deck_name=deck_name,
         deck_code=VERIFIED_TEST_DECK_CODE,
         cards=VERIFIED_TEST_CARDS,
+    )
+    write_json(reports / "deck_identity.json", identity)
+    write_json(
+        reports / "deck_fingerprint.json",
+        {"deck_fingerprint": identity["deck_fingerprint"]},
+    )
+    return verdict
+
+
+def install_verified_deckstring_input(
+    package: Path,
+    *,
+    deck_name: str,
+    deck_code: str,
+) -> dict[str, Any]:
+    reports = package / "reports"
+    manifest_path = reports / "input_manifest.json"
+    manifest = read_json(manifest_path) if manifest_path.is_file() else {}
+    cards = decode_deck_code(deck_code)["cards"]
+    verdict = verify_deck_input(
+        deck_code=deck_code,
+        cards=cards,
+        source="deckstring",
+    )
+    write_json(
+        manifest_path,
+        {
+            **manifest,
+            "deck_name": deck_name,
+            "deck_code": deck_code,
+            "card_source": "deckstring",
+            "deck_input_verification": verdict,
+        },
+    )
+    identity = build_deck_identity(
+        deck_name=deck_name,
+        deck_code=deck_code,
+        cards=cards,
     )
     write_json(reports / "deck_identity.json", identity)
     write_json(

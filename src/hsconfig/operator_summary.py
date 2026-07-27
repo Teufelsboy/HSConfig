@@ -60,6 +60,9 @@ SOURCE_INFORMED_ALLOWED_BLOCKER_REASONS = [
 LEGACY_SOURCE_INFORMED_FLAG = "--allow-source-informed"
 SOURCE_INFORMED_RUNTIME_GATE_IMPACT = "diagnostic_only"
 SOURCE_INFORMED_LEGACY_FLAG_SCOPE = "backward_compatible_only"
+DIAGNOSTIC_SOURCE_APPLY_REASON = "diagnostic_source_not_apply_eligible"
+DIAGNOSTIC_SOURCE_NEXT_ACTION = "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+LOAD_SAFE_FIXTURE_CLASSIFICATION = "load_safe_fixture"
 SOURCE_INFORMED_BLOCKING_REASONS = {
     "cards_need_runtime_surface",
     "cards_need_combo_sequence",
@@ -324,16 +327,15 @@ def build_operator_summary(
         semantic_status=semantic_status,
         primary_blockers=primary_blockers,
     )
+    if technical_status == "VALID_PACKAGE" and not source_apply_eligible:
+        next_action = DIAGNOSTIC_SOURCE_NEXT_ACTION
+        apply_policy = "BLOCKED"
     runtime_apply_mode, runtime_apply_allowed, runtime_apply_requires_flag = (
         _runtime_apply_contract(
             technical_status=technical_status,
             apply_policy=apply_policy,
         )
     )
-    if not source_apply_eligible:
-        runtime_apply_mode = "blocked"
-        runtime_apply_allowed = False
-        runtime_apply_requires_flag = None
     runtime_apply_reason = _runtime_apply_reason(
         technical_status=technical_status,
         runtime_apply_allowed=runtime_apply_allowed,
@@ -346,6 +348,7 @@ def build_operator_summary(
         technical_status=technical_status,
         runtime_apply_mode=runtime_apply_mode,
         runtime_apply_allowed=runtime_apply_allowed,
+        runtime_apply_reason=runtime_apply_reason,
         next_action=next_action,
         apply_policy=apply_policy,
         primary_blockers=primary_blockers,
@@ -425,6 +428,10 @@ def build_operator_summary(
         "runtime_apply_mode": runtime_apply_mode,
         "runtime_apply_allowed": runtime_apply_allowed,
         "runtime_apply_reason": runtime_apply_reason,
+        "fixture_classification": _fixture_classification(
+            technical_status=technical_status,
+            source_apply_eligibility_reasons=source_apply_eligibility_reasons,
+        ),
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
         "load_safe_to_install": load_safe_to_install,
         "use_config_now": load_safe_to_install,
@@ -2397,8 +2404,21 @@ def _runtime_apply_reason(
         return (
             source_apply_eligibility_reasons[0]
             if source_apply_eligibility_reasons
-            else "diagnostic_source_not_apply_eligible"
+            else DIAGNOSTIC_SOURCE_APPLY_REASON
         )
     if runtime_apply_allowed:
         return "current_package_operator_gate_allowed"
     return "current_package_operator_gate_blocked"
+
+
+def _fixture_classification(
+    *,
+    technical_status: str,
+    source_apply_eligibility_reasons: list[str],
+) -> str | None:
+    if (
+        technical_status == "VALID_PACKAGE"
+        and DIAGNOSTIC_SOURCE_APPLY_REASON in source_apply_eligibility_reasons
+    ):
+        return LOAD_SAFE_FIXTURE_CLASSIFICATION
+    return None

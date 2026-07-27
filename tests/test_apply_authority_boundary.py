@@ -8,6 +8,9 @@ from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
 from hsconfig.io import read_json, write_json
 from hsconfig.runtime_apply import apply_package
+from tests.helpers.current_runtime_surface_ledger_contract import (
+    write_current_runtime_surface_ledger,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +120,7 @@ def _install_linked_owner_authority(package: Path) -> None:
             },
         },
     )
+    write_current_runtime_surface_ledger(package)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     generated_path = owner_path.relative_to(package).as_posix()
@@ -137,6 +141,7 @@ def _remove_linked_owner_authority(package: Path) -> None:
         package / "reports" / "card_behavior_plan_report.json",
         {"rows": []},
     )
+    write_current_runtime_surface_ledger(package)
     summary_path = package / "reports" / "operator_summary.json"
     summary = read_json(summary_path)
     summary["generated_files"] = [

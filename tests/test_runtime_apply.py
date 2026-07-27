@@ -18,7 +18,17 @@ from tests.helpers.current_globalvalues_contract import (
     GLOBALVALUES_AUTHORITY_MATRIX_PATH,
     write_current_globalvalues_contract,
 )
+from tests.helpers.current_runtime_surface_ledger_contract import (
+    write_current_runtime_surface_ledger,
+)
 from tests.helpers.verified_deck_input import install_verified_deck_input
+from tests.helpers.verified_deck_input import install_verified_deckstring_input
+
+
+SHADOWPRIEST_DECK_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
 
 
 def _write_validation_reports(package: Path, globalvalues: dict) -> None:
@@ -28,20 +38,30 @@ def _write_validation_reports(package: Path, globalvalues: dict) -> None:
 def _write_operator_summary_with_derivation(
     package: Path,
     summary: dict,
+    *,
+    verified_deck_code: str | None = None,
 ) -> None:
     reports = package / "reports"
     manifest = read_json(reports / "input_manifest.json")
     deck_name = str(manifest.get("deck_name", "deck"))
-    deck_input_verification = install_verified_deck_input(
-        package,
-        deck_name=deck_name,
-    )
+    if verified_deck_code is None:
+        deck_input_verification = install_verified_deck_input(
+            package,
+            deck_name=deck_name,
+        )
+    else:
+        deck_input_verification = install_verified_deckstring_input(
+            package,
+            deck_name=deck_name,
+            deck_code=verified_deck_code,
+        )
     write_json(
         reports / "guide_claim_bundle.json",
         {"canonical_source_receipts": []},
     )
     if not (reports / "card_behavior_plan_report.json").exists():
         write_json(reports / "card_behavior_plan_report.json", {"rows": []})
+    write_current_runtime_surface_ledger(package)
     generated = summary.get("generated_files", [])
     generated_files = list(generated) if isinstance(generated, list) else []
     ownership = build_output_ownership_manifest(
@@ -92,7 +112,7 @@ def _complete_package(
     )
     write_json(
         deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+        {"GameCardId": "EX1_001", "ConfigComment": "metadata-only fixture"},
     )
     _write_validation_reports(package, globalvalues)
     write_json(
@@ -162,27 +182,13 @@ def _minimal_load_safe_package_without_cardid(tmp_path: Path) -> Path:
 
 
 def _raw_complete_package_without_operator_summary(tmp_path: Path) -> Path:
-    package = tmp_path / "raw-package"
-    deck = package / "CustomConfig" / "deck"
-    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
-    write_json(deck / "GlobalValues.json", globalvalues)
-    write_json(
-        deck / "Mulligan.json",
-        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
     )
-    write_json(
-        deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
-    )
-    _write_validation_reports(package, globalvalues)
-    write_json(
-        package / "reports" / "input_manifest.json",
-        {"deck_name": "Gate Deck", "deck_code": "fixture", "runtime_root": "unused"},
-    )
-    write_json(
-        package / "reports" / "card_behavior_plan_report.json",
-        {"rows": []},
-    )
+    (package / "reports" / "operator_summary.json").unlink()
     return package
 
 
@@ -227,7 +233,11 @@ def _linked_owner_complete_package(tmp_path: Path) -> Path:
     generated_path = owner_path.relative_to(package).as_posix()
     if generated_path not in summary["generated_files"]:
         summary["generated_files"].append(generated_path)
-    _write_operator_summary_with_derivation(package, summary)
+    _write_operator_summary_with_derivation(
+        package,
+        summary,
+        verified_deck_code=SHADOWPRIEST_DECK_CODE,
+    )
     return package
 
 
@@ -860,23 +870,7 @@ def test_apply_cli_source_informed_receipt_contains_real_operator_gate(
 def test_apply_cli_blocks_missing_operator_summary(tmp_path: Path, capsys):
     from hsconfig.cli import main
 
-    package = tmp_path / "package"
-    deck = package / "CustomConfig" / "deck"
-    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "new"}
-    write_json(deck / "GlobalValues.json", globalvalues)
-    write_json(
-        deck / "Mulligan.json",
-        {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}},
-    )
-    write_json(
-        deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
-    )
-    write_current_globalvalues_contract(package, globalvalues)
-    write_json(
-        package / "reports" / "card_behavior_plan_report.json",
-        {"rows": []},
-    )
+    package = _raw_complete_package_without_operator_summary(tmp_path)
 
     code = main(
         [
@@ -989,7 +983,7 @@ def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section
     write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
     write_json(
         package_deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+        {"GameCardId": "EX1_001", "ConfigComment": "metadata-only fixture"},
     )
     _write_validation_reports(package, globalvalues)
     write_json(
@@ -1039,7 +1033,7 @@ def test_apply_package_rejects_manifest_deck_name_that_breaks_ini_mapping(tmp_pa
     write_json(package_deck / "Mulligan.json", {"GameCardId": "Mulligan", "ConfigComment": "new", "Mulligan": {"values": []}})
     write_json(
         package_deck / "EX1_001.json",
-        {"GameCardId": "EX1_001", "ConfigComment": "new", "InHandPlayPriority": {"values": []}},
+        {"GameCardId": "EX1_001", "ConfigComment": "metadata-only fixture"},
     )
     _write_validation_reports(package, globalvalues)
     write_json(
@@ -1259,7 +1253,6 @@ def test_apply_package_rejects_stale_fake_receipt_before_runtime_mutation(tmp_pa
         {
             "GameCardId": "EX1_001",
             "ConfigComment": "changed",
-            "InHandPlayPriority": {"values": [{"condition": "*", "value": 100}]},
         },
     )
 

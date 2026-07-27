@@ -88,6 +88,8 @@ def test_fresh_shadowpriest_package_has_complete_closure_and_darkbishop_boundary
         row["closure"]["lane"]
         for row in card_rows
     } <= {
+        "source_backed_runtime_lowered",
+        "explicit_gap",
         "runtime_backed",
         "source_action_needed",
         "diagnostic_only",

@@ -13,6 +13,13 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
 - After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
 - `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed. This is the human-facing verdict only when read from `reports/operator_summary.json`; the apply command recomputes every technical authority boundary before writing.
+- A captured or diagnostic-source package can instead be
+  `technical_status=VALID_PACKAGE`, `runtime_load_safe=true`,
+  `fixture_classification=load_safe_fixture`, and
+  `runtime_apply_reason=diagnostic_source_not_apply_eligible` while
+  `runtime_apply_mode=blocked` and `runtime_apply_allowed=false`. This package
+  is valid and load-safe for inspection, but apply-ineligible until rebuilt
+  from live-verified source.
 - Warnings are follow-up work, not a second apply path.
 - HSTuner owns post-run evaluation and tuning.
 
@@ -101,6 +108,10 @@ technically valid. `operator_summary.json` exposes this separately as
 `source_status_apply_blocking` remains reserved for source-closure status.
 The apply gate recomputes this authority from receipt-bound package inputs
 before any runtime write.
+For a technically valid diagnostic or captured package,
+`fixture_classification=load_safe_fixture` is a descriptive classification
+only. It is separate from `runtime_load_safe`, is not read by `apply_gate`, and
+cannot authorize a write.
 
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
@@ -132,7 +143,10 @@ Use this loop to run `hsconfig configure`, then inspect source-contract and no-d
 2. Read `<out>/configure_summary.json.acceptance_summary` first; `use_config_now` and `next_report_to_open` are compact operator projection fields, not an apply authority.
 3. Read `<out>/configure_summary.json.handoff_contract` next for the pre-run config contract receipt; it is diagnostic-only and not an apply authority.
 4. When source-contract or no-default-only diagnostics are the question, read `<out>/configure_summary.json.source_closure_receipt` after acceptance and handoff; it is diagnostic-only and not an apply gate.
-5. Treat `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` as the load-safe apply signal.
+5. Treat `technical_status=VALID_PACKAGE` plus
+   `runtime_apply_mode=load_safe_apply` and `runtime_apply_allowed=true` as the
+   apply signal. A valid diagnostic package may still have
+   `runtime_load_safe=true` while its apply mode is blocked.
 6. Inspect `mulligan_policy_status` to see whether Mulligan is source-backed or policy-backed.
 7. `default_only_runtime_surfaces` must be inspected when non-empty.
 8. `source_to_runtime_explainability.json` is diagnostic.
@@ -238,7 +252,9 @@ The six `configuration_assurance` fields keep independent truths separate:
 
 Open `reports/operator_summary.json` first.
 
-- `technical_status`, `runtime_apply_mode`, and `runtime_apply_allowed` decide whether the package is structurally load-safe to apply.
+- `technical_status` and `runtime_load_safe` describe structural load safety.
+  `runtime_apply_mode`, `runtime_apply_allowed`, `apply_policy`, and
+  `runtime_apply_reason` describe the current package's apply decision.
 - `mulligan_policy_status` tells whether Mulligan used source-backed or policy-backed keeps. `default_only_runtime_surfaces` must normally be empty for a generated deck package; if it is not empty, open `default_only_runtime_surface_details` and `reports/source_to_runtime_explainability.json` for the per-card closure rows before improving source claims.
 - `surface_status_ledger` is the compact per-surface health view. It lists `mulligan`, `globalvalues`, `cardid_behavior`, and `combo` with one status each: `source_backed`, `policy_backed`, `static_semantics_backed`, `warning_only`, `suppressed_with_reason`, or `default_only`. This ledger is diagnostic-only. Runtime apply still depends on `operator_summary.json` technical validity and the guarded apply gate, not source strength. A `default_only` row means visible quality debt, not a hidden success and not an apply blocker by itself.
 - Minimal load-safe apply requires `GlobalValues.json` and `Mulligan.json`. Normal `prepare` packages should still emit per-card `<CARDID>.json` files when deck-card identity is known, but those rich CardID files are not the minimal runtime-apply gate.
@@ -307,11 +323,16 @@ identity, source receipts, GlobalValues authority inputs, ownership manifest,
 or runtime JSON no longer matches the canonical receipt.
 
 `no_block_failure_mode_summary` is the fastest way to read why a package did
-or did not stop. `technical_hard_block` is the only hard stop category. The
+or did not stop. `technical_hard_block` is the only technical hard-stop
+category. A valid `load_safe_fixture` can still have
+`overall=runtime_apply_not_allowed`, `hard_block=false`,
+`runtime_apply_reason=diagnostic_source_not_apply_eligible`,
+`apply_policy=BLOCKED`, and
+`next_action=ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY`. The
 other categories, `source_depth_warning`, `warning_only_mechanic`,
 `future_mechanic_drift`, `guide_strength_gap`, `combo_uncertainty`, and
 `runtime_evidence_only_tuning`, explain source or semantic limits while
-`load_safe_apply` can still proceed for `technical_status=VALID_PACKAGE`.
+`load_safe_apply` can proceed only when the current package gate also allows it.
 It does not create a second apply path.
 
 `hsconfig apply --fake --json` creates a receipt-bound preview without runtime mutation.
@@ -325,13 +346,21 @@ For the durable no-block contract across valid Wild decks, see
 
 - `technical_status=VALID_PACKAGE` means the runtime JSON shape is structurally valid and load-safe.
 - `runtime_load_safe=true` means the package passed the normal pre-run load-safety contract.
+- `fixture_classification=load_safe_fixture` classifies a technically valid
+  diagnostic/captured fixture. It is output-only and never an apply-gate input.
 - `runtime_apply_mode=load_safe_apply` means normal `hsconfig apply --json` is allowed.
-- `runtime_apply_mode=blocked` means no runtime write should happen because the package is invalid or load-unsafe.
+- `runtime_apply_mode=blocked` means no runtime write should happen. The package
+  may be invalid/load-unsafe, or it may be valid/load-safe but apply-ineligible
+  because its source provenance is diagnostic.
 - `runtime_apply_allowed=true` is descriptive; the CLI and `apply_package()` still re-evaluate the gate before writing.
 - `semantic_status=SOURCE_BACKED_STRONG` means source coverage and per-card closure support source-backed confidence and handoff. It is not a runtime apply permission; use `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` for normal guarded apply.
 - `semantic_status=VALID_BUT_NOT_GUIDE_STRONG` means the package is valid and load-safe, but source depth, runtime surfaces, combo detail, conditions, mechanics, or conflicts still need work before it can be called source-backed strong.
 - `apply_policy=ALLOWED` marks the no-warning source-strong path; it is not the only normal apply permission.
 - `next_action=READY_TO_APPLY_WITH_WARNINGS` plus `apply_policy=ALLOWED_WITH_WARNINGS` means the package is still allowed to write at runtime when `technical_status=VALID_PACKAGE`, while semantic warnings remain visible in the reports.
+- `runtime_apply_reason=diagnostic_source_not_apply_eligible` pairs with
+  `apply_policy=BLOCKED` and
+  `next_action=ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY`; READY/ALLOWED values
+  are not valid for that package.
 - `source_informed_apply_readiness.status=ready` is diagnostic only. It documents that the remaining semantic blockers are limited to allowed source-depth gaps such as `cards_need_guide_claims` or `cards_need_mulligan_claims`.
 - `cards_need_runtime_surface`, combo, condition, mechanic, conflict, unsupported-condition, uncovered-card, and generic-low-confidence blockers keep source-informed apply blocked.
 - `ALLOWED_WITH_WARNINGS can still be runtime-write permission when technical_status=VALID_PACKAGE`; warnings describe semantic/source confidence debt, not a write blocker.

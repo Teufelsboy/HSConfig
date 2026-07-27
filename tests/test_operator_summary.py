@@ -119,6 +119,7 @@ def test_operator_summary_names_current_package_apply_authority():
     assert summary["runtime_apply_reason"] == (
         "current_package_operator_gate_allowed"
     )
+    assert summary["fixture_classification"] is None
     assert summary["runtime_apply_contract"] == {
         "apply_authority": "reports/operator_summary.json",
         "authority_scope": "current_package_operator_gate",
@@ -140,14 +141,37 @@ def test_operator_summary_explains_diagnostic_source_apply_block():
 
     assert summary["technical_status"] == "VALID_PACKAGE"
     assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_mode"] == "blocked"
     assert summary["runtime_apply_allowed"] is False
     assert summary["runtime_apply_reason"] == (
         "diagnostic_source_not_apply_eligible"
+    )
+    assert summary["apply_policy"] == "BLOCKED"
+    assert summary["next_action"] == (
+        "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     )
     assert summary["runtime_apply_contract"] == {
         "apply_authority": "reports/operator_summary.json",
         "authority_scope": "current_package_operator_gate",
     }
+    assert summary["no_block_failure_mode_summary"][
+        "runtime_apply_reason"
+    ] == "diagnostic_source_not_apply_eligible"
+    assert summary["no_block_failure_mode_summary"]["runtime_apply_mode"] == "blocked"
+    assert summary["no_block_failure_mode_summary"]["runtime_apply_allowed"] is False
+    assert summary["no_block_failure_mode_summary"]["apply_policy"] == "BLOCKED"
+    assert summary["no_block_failure_mode_summary"]["next_action"] == (
+        "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
+    assert summary["no_block_failure_mode_summary"]["hard_block"] is False
+    assert summary["no_block_failure_mode_summary"]["overall"] == (
+        "runtime_apply_not_allowed"
+    )
+    assert summary["operator_guidance"]["normal_next_step"] == (
+        "acquire_live_verified_source"
+    )
+    assert summary["operator_guidance"]["safe_to_apply"] is False
+    assert summary["fixture_classification"] == "load_safe_fixture"
 
 
 def test_operator_summary_prioritizes_invalid_package_apply_reason():
@@ -168,6 +192,23 @@ def test_operator_summary_prioritizes_invalid_package_apply_reason():
 
     assert summary["runtime_apply_allowed"] is False
     assert summary["runtime_apply_reason"] == "invalid_package"
+    assert summary["fixture_classification"] is None
+
+
+def test_operator_summary_does_not_classify_unspecified_source_veto_as_fixture():
+    summary = build_operator_summary(
+        deck_name="Unspecified Source Veto",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        package_authority={
+            "source_apply_eligible": False,
+            "source_apply_eligibility_reasons": [],
+        },
+    )
+
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["fixture_classification"] is None
 
 
 def test_operator_summary_does_not_allow_optimality_claim_for_archetype_only_source():
