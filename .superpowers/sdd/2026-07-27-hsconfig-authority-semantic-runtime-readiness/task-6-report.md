@@ -66,3 +66,54 @@ now assert those existing boundaries directly.
 No runtime write, HSTuner invocation, Desktop/runtime access, branch creation,
 or push occurred. The result is static/package-level evidence only; live game
 behavior was intentionally not claimed.
+
+## Quality fix round 1
+
+Status: DONE
+
+The Task-6 reciprocal-burn reason was newly precise at the router boundary but
+was not yet recognized by config readiness. `GVG_009` therefore surfaced as a
+generic runtime/mechanic gap instead of an explicitly report-only semantic
+surface. This round also completes the required fixture-level physical output
+coverage and proves that exact duplicate runtime rows can be safely merged
+before compilation even when their source cards differ.
+
+RED:
+
+- Readiness regression: `reciprocal_burn_report_only` produced
+  `needs_runtime_surface` rather than `semantic_surface_not_expressible`.
+- Compiler regression: exact rows from `SOURCE_A` and `SOURCE_B` targeting the
+  same runtime card were discarded as an ownership collision instead of
+  canonicalizing to one physical action.
+
+Fix:
+
+- `REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS` centrally maps both the
+  legacy generic reason and `reciprocal_burn_report_only` to the established
+  report-only `semantic_surface_not_expressible` readiness lane.
+- Runtime ownership still rejects multiple source owners when their runtime
+  behavior signatures differ. It accepts only exact duplicates with the same
+  `(behavior_block, condition, value)`, allowing the existing compiler
+  canonicalization to merge them into one physical row.
+- A true `prepare_fixture_deck(load_archetype_matrix())` ShadowPriest E2E now
+  asserts all six physical block outcomes, exactly one summon action for
+  `TOY_518` and `WON_065`, original source provenance, and the
+  `SW_448 -> EX1_625t` hero-power ownership link.
+
+GREEN:
+
+- New focused readiness/compiler/fixture E2E plus the two specified ShadowPriest
+  integrations: `5 passed`.
+- `tests/test_shadowpriest_semantic_safety_wave.py`: `30 passed`.
+- Prescribed Task-6 suite: `343 passed in 66.64s`.
+- `tests/test_runtime_entity_owner.py`: `1 passed`; the differing-signature
+  owner-collision boundary remains covered.
+- Ruff and `git diff --check`: passed.
+
+Files added to this round:
+
+- `src/hsconfig/config_readiness.py`
+- `src/hsconfig/runtime_entity_owner.py`
+- `tests/test_config_readiness.py`
+- `tests/test_compile_cardid.py`
+- `tests/test_config_quality_contract.py`

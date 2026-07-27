@@ -244,6 +244,38 @@ def test_empty_per_card_file_is_visible_but_not_semantically_closed():
     assert card["first_missing_link"] == "semantic_surface_not_expressible"
 
 
+def test_reciprocal_burn_report_only_suppression_is_semantically_closed():
+    report = build_config_readiness_report(
+        deck_identity=_one_card_identity("GVG_009"),
+        claim_coverage=_covered_claims(
+            "GVG_009",
+            "source_backed_static_semantics",
+        ),
+        card_behavior_plan={
+            "rows": [],
+            "suppressed": [
+                {
+                    "claim_id": "shadowbomber-reciprocal-burn",
+                    "claim_kind": "card_role",
+                    "cards": ["GVG_009"],
+                    "reason": "reciprocal_burn_report_only",
+                }
+            ],
+        },
+        emitted_cardid_files=[],
+        mulligan_plan={"rules": [], "suppressed_rules": []},
+        combo_plan={"combos": [], "suppressed": []},
+        gameplan_contract={},
+        global_values_authority_matrix={},
+    )
+
+    card = report["cards"]["GVG_009"]
+    assert card["readiness_lane"] == "report_only_supported"
+    assert card["first_missing_link"] == "semantic_surface_not_expressible"
+    assert report["summary"]["report_only_supported"] == 1
+    assert report["summary"]["cards_needing_mechanic_lowering"] == 0
+
+
 def test_runtime_emitted_card_gets_runtime_lane():
     report = build_config_readiness_report(
         deck_identity={

@@ -8,9 +8,77 @@ from hsconfig.config_quality_contract import (
     build_config_quality_report,
     semantic_handoff_projection,
 )
+from hsconfig.visionai_registry import is_supported_card_behavior_block
+from tests.helpers.fixture_prepare import (
+    load_archetype_matrix,
+    prepare_fixture_deck,
+)
 
 
 DECK_SLUG = "shadowpriest"
+
+
+def _physical_blocks(card_files: dict[str, dict], card_id: str) -> list[str]:
+    payload = card_files.get(f"{card_id}.json", {})
+    return sorted(
+        block
+        for block in payload
+        if is_supported_card_behavior_block(block)
+    )
+
+
+def test_shadowpriest_fixture_has_exact_runtime_owned_physical_blocks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    shadow = next(
+        row
+        for row in load_archetype_matrix()
+        if row["deck_name"] == "ShadowPriest"
+    )
+    prepared = prepare_fixture_deck(tmp_path, shadow)
+    assert prepared["exit_code"] == 0
+
+    deck_dir = next((prepared["out"] / "CustomConfig").iterdir())
+    card_files = {
+        path.name: json.loads(path.read_text(encoding="utf-8"))
+        for path in deck_dir.glob("*.json")
+    }
+    assert _physical_blocks(card_files, "GVG_009") == []
+    assert _physical_blocks(card_files, "VAC_419") == []
+    assert _physical_blocks(card_files, "TOY_518") == ["OnBoardBonus"]
+    assert _physical_blocks(card_files, "WON_065") == ["OnBoardBonus"]
+    assert _physical_blocks(card_files, "SW_448") == []
+    assert _physical_blocks(card_files, "EX1_625t") == ["BeforeUseHeroPowerBonus"]
+
+    behavior_plan = json.loads(
+        (prepared["out"] / "reports" / "card_behavior_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    def emitted_actions(runtime_card_id: str, behavior_block: str) -> list[dict]:
+        return [
+            row
+            for row in behavior_plan["rows"]
+            if str(row.get("runtime_card_id", row.get("card_id", "")))
+            == runtime_card_id
+            and row.get("behavior_block") == behavior_block
+        ]
+
+    for card_id in ("TOY_518", "WON_065"):
+        rows = emitted_actions(card_id, "OnBoardBonus")
+        assert len(rows) == 1
+        assert rows[0]["source_card_id"] == card_id
+
+    hero_power_rows = emitted_actions("EX1_625t", "BeforeUseHeroPowerBonus")
+    assert len(hero_power_rows) == 1
+    assert hero_power_rows[0]["source_card_id"] == "SW_448"
+    assert hero_power_rows[0]["link_kind"] == "hero_power_transform"
 
 
 def test_semantic_handoff_projection_collects_semantic_parity_reasons() -> None:

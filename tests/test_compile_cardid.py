@@ -678,6 +678,39 @@ def test_compile_cardid_merges_exact_duplicate_rows_as_final_write_guard():
     assert files.merged_duplicate_runtime_row_count == 1
 
 
+def test_compile_cardid_merges_duplicate_runtime_rows_from_distinct_sources():
+    rows = [
+        {
+            "surface_family": "CARDID.json",
+            "card_id": source_card_id,
+            "source_card_id": source_card_id,
+            "runtime_card_id": "RUNTIME_SHARED",
+            "link_kind": "shared_runtime_effect",
+            "behavior_block": "OnBoardBonus",
+            "condition": "*",
+            "value": "8",
+            "claim_id": claim_id,
+            "source_claim_ids": [claim_id],
+        }
+        for source_card_id, claim_id in (
+            ("SOURCE_A", "claim-source-a"),
+            ("SOURCE_B", "claim-source-b"),
+        )
+    ]
+
+    files = compile_cardid_behaviors(
+        {"deck_name": "Fixture", "cards": {}},
+        rows=rows,
+    )
+
+    assert [
+        (row["condition"], row["value"])
+        for row in files["RUNTIME_SHARED.json"]["OnBoardBonus"]["values"]
+    ] == [("*", "8")]
+    assert files.merged_duplicate_runtime_row_count == 1
+    assert files.runtime_entity_owner_collisions == []
+
+
 def test_compile_cardid_omits_conflicting_key_and_exposes_conflict():
     rows = [
         {
