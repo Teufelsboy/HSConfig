@@ -306,6 +306,13 @@ def _validate_globalvalues(
             errors.append(f"{path}: GlobalValues unexpected key {key}")
     if profile is not None:
         if require_profile:
+            errors.extend(
+                _validate_required_globalvalues_profile_schema(
+                    path,
+                    profile,
+                    authority_matrix_present=authority_matrix is not None,
+                )
+            )
             coverage_errors, expected_overlay_keys = _validate_required_globalvalues_overlay_coverage(
                 path,
                 data,
@@ -362,6 +369,39 @@ def _validate_globalvalues(
         for key in sorted(missing_profiles):
             errors.append(f"{path}: GlobalValues profile missing key {key}")
     return errors
+
+
+def _validate_required_globalvalues_profile_schema(
+    path: Path,
+    profile: dict[str, Any],
+    *,
+    authority_matrix_present: bool,
+) -> list[str]:
+    if "schema_version" not in profile:
+        if authority_matrix_present:
+            return [
+                f"{path}: GlobalValues authority matrix requires profile "
+                "schema_version 2"
+            ]
+        return []
+
+    schema_version = profile["schema_version"]
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool):
+        return [
+            f"{path}: GlobalValues profile schema_version must be a non-bool "
+            "integer"
+        ]
+    if schema_version not in {1, 2}:
+        return [
+            f"{path}: GlobalValues profile schema_version unsupported: "
+            f"{schema_version}"
+        ]
+    if authority_matrix_present and schema_version != 2:
+        return [
+            f"{path}: GlobalValues authority matrix requires profile "
+            "schema_version 2"
+        ]
+    return []
 
 
 def _validate_canonical_globalvalues_authority(
@@ -528,6 +568,11 @@ def _validate_required_globalvalues_overlay_coverage(
                 f"{path}: GlobalValues profile expected overlay key must be a non-empty string"
             )
             continue
+        if key in expected_keys:
+            errors.append(
+                f"{path}: GlobalValues profile expected_overlay_keys contains "
+                f"duplicate key {key}"
+            )
         expected_keys.add(key)
         if key not in profiled_keys:
             errors.append(f"{path}: GlobalValues profile expected overlay key {key} is not profiled")
@@ -554,6 +599,11 @@ def _normalize_globalvalues_profile_ledgers(
                     f"{path}: GlobalValues profile generated_overlay_keys item must be a non-empty string"
                 )
                 continue
+            if key in generated_overlay_keys:
+                errors.append(
+                    f"{path}: GlobalValues profile generated_overlay_keys contains "
+                    f"duplicate key {key}"
+                )
             generated_overlay_keys.add(key)
 
     profiled_keys: set[str] = set()

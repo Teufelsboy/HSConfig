@@ -790,6 +790,112 @@ def test_compile_globalvalues_rejects_duplicate_authority_overlay_keys():
         )
 
 
+@pytest.mark.parametrize(
+    "row",
+    [
+        {
+            "key": "MyHeroPowerValue",
+            "overlay": "multiply",
+            "operation": "multiply",
+            "reason": "unsupported",
+        },
+        {
+            "key": "MyHeroPowerValue",
+            "overlay": "decrease",
+            "operation": "increase",
+            "reason": "conflicting",
+        },
+        {
+            "key": "FirstTurnValueWeight",
+            "overlay": "set:0.25",
+            "operation": "set",
+            "value": "0.75",
+            "reason": "conflicting set value",
+        },
+    ],
+)
+def test_compile_globalvalues_rejects_unsupported_or_conflicting_authority_rows(
+    row: dict,
+):
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "FirstTurnValueWeight": {
+            "values": [{"condition": "*", "value": "1.00"}]
+        },
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "globalvalues_authority_overlay_(operation_unsupported|semantics_conflict):"
+        ),
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": [row]
+                }
+            },
+        )
+
+
+def test_compile_globalvalues_rejects_whitespace_padded_authority_key():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_overlay_key_invalid:0",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": [
+                        {
+                            "key": " MyHeroPowerValue ",
+                            "overlay": "increase",
+                            "operation": "increase",
+                            "reason": "whitespace-padded",
+                        }
+                    ]
+                }
+            },
+        )
+
+
+def test_compile_globalvalues_rejects_non_step1_authority_key():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+        "GlobalTaunt": {"values": [{"condition": "*", "value": "1.00"}]},
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_overlay_key_not_step1:GlobalTaunt",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": [
+                        {
+                            "key": "GlobalTaunt",
+                            "overlay": "increase",
+                            "operation": "increase",
+                            "reason": "not a Step1 posture key",
+                        }
+                    ]
+                }
+            },
+        )
+
+
 def test_validate_package_rejects_globalvalues_authority_parity_mismatch(
     tmp_path: Path,
 ):

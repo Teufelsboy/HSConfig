@@ -5,7 +5,10 @@ from copy import deepcopy
 import operator
 from typing import Any, Mapping
 
-from hsconfig.globalvalues_key_authority import authority_for_key
+from hsconfig.globalvalues_key_authority import (
+    STEP1_POSTURE_KEYS,
+    authority_for_key,
+)
 
 
 TOP_LEVEL_KEYS = {"GameCardId", "ConfigComment"}
@@ -244,11 +247,15 @@ def validated_globalvalues_authority_rows(
                 f"globalvalues_authority_overlay_row_must_be_object:{index}"
             )
         key_value = raw_row.get("key")
-        if not isinstance(key_value, str) or not key_value.strip():
+        if (
+            not isinstance(key_value, str)
+            or not key_value
+            or key_value != key_value.strip()
+        ):
             raise ValueError(
                 f"globalvalues_authority_overlay_key_invalid:{index}"
             )
-        key = key_value.strip()
+        key = key_value
         if key in seen_keys:
             raise ValueError(
                 f"globalvalues_authority_duplicate_overlay_key:{key}"
@@ -263,9 +270,30 @@ def validated_globalvalues_authority_rows(
                     "globalvalues_authority_baseline_row_must_be_noop"
                 )
             continue
-        if operation == "none" and overlay == "none":
+        if key not in STEP1_POSTURE_KEYS:
             raise ValueError(
-                f"globalvalues_authority_overlay_operation_missing:{key}"
+                f"globalvalues_authority_overlay_key_not_step1:{key}"
+            )
+        if operation not in {"set", "increase", "decrease"}:
+            raise ValueError(
+                f"globalvalues_authority_overlay_operation_unsupported:{key}"
+            )
+        if operation == "set":
+            value = raw_row.get("value")
+            if value is None:
+                raise ValueError(
+                    f"globalvalues_authority_overlay_semantics_conflict:{key}"
+                )
+            expected_overlay = f"set:{value}"
+        else:
+            if raw_row.get("value") is not None:
+                raise ValueError(
+                    f"globalvalues_authority_overlay_semantics_conflict:{key}"
+                )
+            expected_overlay = operation
+        if "overlay" in raw_row and overlay != expected_overlay:
+            raise ValueError(
+                f"globalvalues_authority_overlay_semantics_conflict:{key}"
             )
         rows.append(dict(raw_row))
     return rows

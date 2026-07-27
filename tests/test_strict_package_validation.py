@@ -206,6 +206,74 @@ def test_strict_validation_binds_globalvalues_to_canonical_authority_matrix(
     )
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        (
+            "string_schema",
+            "GlobalValues profile schema_version must be a non-bool integer",
+        ),
+        (
+            "schema_downgrade",
+            "GlobalValues authority matrix requires profile schema_version 2",
+        ),
+        (
+            "duplicate_ledgers",
+            "GlobalValues profile generated_overlay_keys contains duplicate key "
+            "MyHeroPowerValue",
+        ),
+    ],
+)
+def test_strict_validation_rejects_schema_downgrade_and_duplicate_ledgers(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+    expected_error: str,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    reports = package / "reports"
+    deck_dir = next((package / "CustomConfig").iterdir())
+    config_path = deck_dir / "GlobalValues.json"
+    profile_path = reports / "globalvalues_profile.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+
+    if mutation == "string_schema":
+        profile["schema_version"] = "2"
+    elif mutation == "schema_downgrade":
+        profile["schema_version"] = 1
+        profile.pop("authority_parity")
+        profile.pop("baseline_overlay_parity")
+        profile["summary"].pop("authority_parity")
+        profile["summary"].pop("baseline_overlay_parity")
+    else:
+        key = "MyHeroPowerValue"
+        profile["schema_version"] = 1
+        profile.pop("authority_parity")
+        profile.pop("baseline_overlay_parity")
+        profile["summary"].pop("authority_parity")
+        profile["summary"].pop("baseline_overlay_parity")
+        config[key] = {"values": [{"condition": "*", "value": "1.15"}]}
+        profile["generated_overlay_keys"] = [key, key]
+        profile["expected_overlay_keys"] = [key, key]
+        profile["keys"][key] = {
+            "decision": "overlay_changed",
+            "status": "overlay_changed",
+            "reason": "forged duplicate ledger",
+        }
+        profile["key_count"] = len(config)
+
+    write_json(config_path, config)
+    write_json(profile_path, profile)
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(expected_error in error for error in report["errors"])
+
+
 @pytest.fixture
 def linked_owner_package(
     tmp_path: Path,

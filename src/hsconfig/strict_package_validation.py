@@ -36,9 +36,15 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
     package_path = Path(package)
     baseline = read_required_baseline(package_path)
     profile = read_optional_profile(package_path)
+    authority_matrix_path = (
+        package_path / "reports" / "global_values_authority_matrix.json"
+    )
     authority_matrix = (
         read_required_globalvalues_authority_matrix(package_path)
-        if _is_schema_two_globalvalues_profile(profile)
+        if (
+            authority_matrix_path.is_file()
+            or _is_schema_two_globalvalues_profile(profile)
+        )
         else None
     )
     report = validate_config_package(
