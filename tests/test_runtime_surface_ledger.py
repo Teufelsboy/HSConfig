@@ -1,5 +1,6 @@
 from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
 from hsconfig.config_readiness import build_config_readiness_report
+from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
@@ -28,7 +29,9 @@ def test_runtime_surface_ledger_uses_compiled_artifacts_and_keeps_linked_records
         compiled_mulligan={
             "Mulligan": {"values": [{"mulligan": "FIR_911", "value": "hold"}]}
         },
-        compiled_globalvalues={"GlobalAggroValue": "100"},
+        compiled_globalvalues={
+            "GlobalAggroValue": {"values": [{"condition": "*", "value": "100"}]}
+        },
         compiled_combo=None,
         compiled_cardid_files={
             "EX1_625t.json": {
@@ -64,7 +67,9 @@ def test_runtime_surface_ledger_uses_compiled_artifacts_and_keeps_linked_records
 def test_readiness_uses_ledger_mulligan_surface_over_plan_inference():
     ledger = build_runtime_surface_ledger(
         deck_identity={"deck_name": "Ledger Fixture", "cards": [{"card_id": "FIR_911", "count": 1}]},
-        compiled_mulligan={"Mulligan": {"values": [{"CardID": "FIR_911"}]}},
+        compiled_mulligan={
+            "Mulligan": {"values": [{"mulligan": "FIR_911", "value": "hold"}]}
+        },
         compiled_globalvalues={},
         compiled_combo=None,
         compiled_cardid_files={},
@@ -94,3 +99,166 @@ def test_explainability_carries_the_canonical_ledger_hash():
     )
 
     assert report["surface_ledger_sha256"] == "a" * 64
+
+
+def test_runtime_surface_ledger_parses_only_valid_combo_rows_and_fails_closed():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={
+            "deck_name": "Combo Fixture",
+            "cards": [
+                {"card_id": "A_001", "count": 1},
+                {"card_id": "B_002", "count": 1},
+                {"card_id": "C_003", "count": 1},
+            ],
+        },
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo={
+            "ComboList": {
+                "values": [
+                    {"combo": "A_001 >> B_002"},
+                    {"combo": "B_002 >-> C_003"},
+                    {"combo": "A_001"},
+                    {"combo": "A_001 >>  >> C_003"},
+                    {"cardid": "C_003"},
+                ]
+            }
+        },
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    assert ledger["cards"]["A_001"]["runtime_surfaces"] == ["Combo.json"]
+    assert ledger["cards"]["C_003"]["runtime_surfaces"] == ["Combo.json"]
+    assert ledger["physical_errors"] == [
+        "combo_malformed:2",
+        "combo_malformed:3",
+        "combo_malformed:4",
+    ]
+
+
+def test_runtime_surface_ledger_rejects_invalid_cardid_and_records_sideboard_emission():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={
+            "deck_name": "Physical Fixture",
+            "cards": [
+                {"card_id": "MAIN_001", "count": 1},
+                {"card_id": "BAD_001", "count": 1},
+            ],
+            "sideboards": [
+                {
+                    "owner_card_id": "MAIN_001",
+                    "cards": [{"card_id": "SIDE_001", "count": 1}],
+                }
+            ],
+        },
+        compiled_mulligan={},
+        compiled_globalvalues={"ConfigComment": "metadata only"},
+        compiled_combo=None,
+        compiled_cardid_files={
+            "MAIN_001.json": {
+                "GameCardId": "OTHER_001",
+                "BeforePlayCardBonus": {"values": [{"Value": "1"}]},
+            },
+            "SIDE_001.json": {
+                "GameCardId": "SIDE_001",
+                "BeforePlayCardBonus": {"values": [{"Value": "1"}]},
+            },
+            "BAD_001.json": {
+                "GameCardId": "BAD_001",
+                "BeforePlayCardBonus": {"values": ["not a behavior row"]},
+            },
+        },
+        linked_runtime_owners=[],
+    )
+
+    assert ledger["cards"]["MAIN_001"]["runtime_surfaces"] == []
+    assert ledger["cards"]["SIDE_001"]["runtime_surfaces"] == ["SIDE_001.json"]
+    assert ledger["physical_errors"] == [
+        "cardid_identity_invalid:MAIN_001.json",
+        "cardid_runtime_block_invalid:BAD_001.json",
+    ]
+    assert ledger["unexpected_runtime_emissions"] == [
+        {"card_id": "SIDE_001", "reason": "ineligible_card_runtime_emitted"}
+    ]
+    assert ledger["globalvalues_emitted"] is False
+
+
+def test_runtime_surface_ledger_rejects_owner_collisions_independent_of_input_order():
+    common = {
+        "deck_identity": {"deck_name": "Owner Fixture", "cards": [{"card_id": "A_001", "count": 1}, {"card_id": "B_002", "count": 1}]},
+        "compiled_mulligan": {},
+        "compiled_globalvalues": {},
+        "compiled_combo": None,
+        "compiled_cardid_files": {
+            "TOKEN_001.json": {
+                "GameCardId": "TOKEN_001",
+                "BeforePlayCardBonus": {"values": [{"Value": "1"}]},
+            }
+        },
+    }
+    forward = build_runtime_surface_ledger(
+        **common,
+        linked_runtime_owners=[
+            {"source_card_id": "A_001", "runtime_card_id": "TOKEN_001", "link_kind": "token"},
+            {"source_card_id": "B_002", "runtime_card_id": "TOKEN_001", "link_kind": "token"},
+        ],
+    )
+    reversed_owners = build_runtime_surface_ledger(
+        **common,
+        linked_runtime_owners=list(reversed([
+            {"source_card_id": "A_001", "runtime_card_id": "TOKEN_001", "link_kind": "token"},
+            {"source_card_id": "B_002", "runtime_card_id": "TOKEN_001", "link_kind": "token"},
+        ])),
+    )
+
+    assert forward["linked_runtime_entities"] == reversed_owners["linked_runtime_entities"] == {}
+    assert forward["linked_runtime_owner_collisions"] == reversed_owners["linked_runtime_owner_collisions"]
+
+
+def test_ledger_empty_physical_payload_cannot_inherit_plan_runtime_lane():
+    readiness = build_config_readiness_report(
+        deck_identity={"deck_name": "Empty Physical", "cards": [{"card_id": "A_001", "count": 1}]},
+        claim_coverage={},
+        gameplan_contract={"cards": {}},
+        mulligan_plan={"rules": [{"card_id": "A_001", "action": "hold"}]},
+        card_behavior_plan={"rows": [{"card_id": "A_001", "meaningful_runtime_surface": True, "behavior_block": "BeforePlayCardBonus"}]},
+        combo_plan={"combos": [{"cards": ["A_001", "B_002"]}]},
+        global_values_authority_matrix={},
+        emitted_cardid_files={"A_001.json": {"GameCardId": "A_001", "BeforePlayCardBonus": {"values": [{"Value": "1"}]}}},
+        runtime_surface_ledger={
+            "cards": {"A_001": {"runtime_surfaces": []}},
+            "linked_runtime_entities": {},
+            "surface_ledger_sha256": "b" * 64,
+        },
+    )
+
+    assert readiness["cards"]["A_001"]["runtime_surfaces"] == []
+    assert readiness["cards"]["A_001"]["readiness_lane"] == "report_only_supported"
+    assert readiness["cards"]["A_001"]["first_missing_link"] == "needs_runtime_surface"
+
+
+def test_config_usefulness_counts_only_authoritative_ledger_surfaces():
+    usefulness = build_config_usefulness(
+        technical_status="VALID_PACKAGE",
+        semantic_status="",
+        config_readiness_summary={"runtime_emitted": 1, "report_only_supported": 0},
+        config_readiness_report={"surface_ledger_sha256": "c" * 64},
+        mulligan_plan_report={"rules": [{"card_id": "A_001", "action": "hold"}]},
+        card_behavior_plan_report={"rows": [{"card_id": "A_001", "meaningful_runtime_surface": True, "behavior_block": "BeforePlayCardBonus"}]},
+        combo_plan_report={"combos": [{"cards": ["A_001", "B_002"]}]},
+        globalvalues_profile_report={"changed_keys": ["GlobalAggroValue"]},
+        runtime_surface_ledger={
+            "cards": {"A_001": {"runtime_surfaces": []}},
+            "globalvalues_emitted": False,
+        },
+    )
+
+    assert usefulness["surfaces"]["mulligan"]["rule_count"] == 0
+    assert usefulness["surfaces"]["mulligan"]["status"] == "thin"
+    assert usefulness["surfaces"]["cardid_behavior"]["cards_with_meaningful_cardid_rows"] == 0
+    assert usefulness["surfaces"]["cardid_behavior"]["status"] == "thin"
+    assert usefulness["surfaces"]["combo"]["combo_row_count"] == 0
+    assert usefulness["surfaces"]["combo"]["status"] == "not_expected"
+    assert usefulness["surfaces"]["globalvalues"]["changed_key_count"] == 0
+    assert usefulness["surfaces"]["globalvalues"]["status"] == "thin"

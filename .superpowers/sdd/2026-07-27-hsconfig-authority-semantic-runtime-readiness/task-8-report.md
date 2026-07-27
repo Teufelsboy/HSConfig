@@ -14,3 +14,21 @@ Covered physical parity:
 
 Verification: 248 prescribed tests passed; targeted Ruff check and `git diff --check`
 passed. No runtime, HSTuner or Desktop access was used.
+
+## Round 1 fail-closed follow-up
+
+The ledger now parses `ComboList.values[].combo` only through `>>` or `>->`
+sequences and records malformed rows as physical errors. CardID surfaces require
+matching filename/GameCardId plus a supported nonempty behavior block; metadata-
+only compiler scaffolds remain surface-less. GlobalValues is emitted only when a
+real nonempty value block exists.
+
+Empty or missing physical ledger records cannot inherit plan-derived readiness,
+usefulness, explainability, closure, evidence-chain, or attention status. The
+ledger also records ineligible sideboard emissions, rejects them in strict
+validation, and fails closed on order-independent linked-owner collisions.
+
+Round-1 verification: `74 passed` across ledger, explainability, and strict
+validation regressions; `19 passed` for the multi-deck source-backed E2E suite;
+both targeted Ruff checks and `git diff --check` passed. No runtime, HSTuner or
+Desktop access was used.

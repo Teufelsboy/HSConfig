@@ -34,6 +34,31 @@ def test_strict_validation_passed_requires_clean_passed_report(
     assert strict_validation_passed(report) is expected
 
 
+def test_strict_validation_rejects_unexpected_physical_sideboard_emission(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    write_json(
+        package / "reports" / "runtime_surface_ledger.json",
+        {
+            "cards": {},
+            "physical_errors": [],
+            "unexpected_runtime_emissions": [
+                {"card_id": "SIDE_001", "reason": "ineligible_card_runtime_emitted"}
+            ],
+            "linked_runtime_owner_collisions": [],
+        },
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert "runtime_surface_ledger_unexpected_emission:SIDE_001:ineligible_card_runtime_emitted" in report["errors"]
+
+
 def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[str, Any], int]:
     code = main([*args, "--json"])
     captured = capsys.readouterr()

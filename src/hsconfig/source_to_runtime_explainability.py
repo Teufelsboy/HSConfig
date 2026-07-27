@@ -144,23 +144,90 @@ def _apply_runtime_surface_ledger(
     ledger: Mapping[str, Any] | None,
 ) -> list[dict[str, Any]]:
     cards = ledger.get("cards", {}) if isinstance(ledger, Mapping) else {}
-    if not isinstance(cards, Mapping):
+    if ledger is None:
         return rows
+    if not isinstance(cards, Mapping):
+        cards = {}
+    links = ledger.get("linked_runtime_entities", {}) if isinstance(ledger, Mapping) else {}
+    linked_files_by_source: dict[str, list[str]] = defaultdict(list)
+    if isinstance(links, Mapping):
+        for link in links.values():
+            if not isinstance(link, Mapping) or link.get("runtime_emitted") is not True:
+                continue
+            source = str(link.get("source_card_id", ""))
+            surface = str(link.get("runtime_surface", ""))
+            if source and surface:
+                linked_files_by_source[source].append(surface)
     projected: list[dict[str, Any]] = []
     for row in rows:
         physical = cards.get(str(row.get("card_id", "")))
-        if not isinstance(physical, Mapping):
-            projected.append(row)
-            continue
-        projected.append(
-            {
-                **row,
-                "runtime_surfaces": [
-                    str(surface) for surface in physical.get("runtime_surfaces", [])
-                ],
-            }
+        direct_files = _string_list(
+            physical.get("runtime_surfaces") if isinstance(physical, Mapping) else []
         )
+        emitted_files = sorted(set(direct_files) | set(linked_files_by_source.get(str(row.get("card_id", "")), [])))
+        runtime_eligible = row.get("runtime_eligible") is not False
+        runtime_backed = bool(emitted_files)
+        first_missing_link = (
+            "none"
+            if not runtime_eligible
+            else None
+            if runtime_backed
+            else "needs_runtime_surface"
+        )
+        why_not_emitted = None if runtime_backed else "physical_runtime_surface_missing"
+        next_source_action = (
+            "none" if not runtime_eligible else _next_source_action(
+                first_missing_link=first_missing_link,
+                why_not_emitted=why_not_emitted,
+                claim_kind=str(row.get("strongest_claim_kind", "")),
+            )
+        )
+        updated = {
+            **row,
+            "runtime_surfaces": direct_files,
+            "emitted_runtime_files": emitted_files,
+            # Plans can state an intended surface, but only a ledger can state
+            # a physical non-emission.  Do not re-export intended files as a
+            # physical truth when the ledger is supplied.
+            "not_emitted_runtime_files": [],
+            "first_missing_link": first_missing_link,
+            "why_not_emitted": why_not_emitted,
+            "next_source_action": next_source_action,
+            "first_missing_source_action": next_source_action,
+            "runtime_lowering_status": (
+                "report_only_supported"
+                if not runtime_eligible
+                else "source_backed_runtime"
+                if runtime_backed
+                else "source_backed_contract_only"
+                if row.get("strongest_claim_id")
+                else "missing_source_claim"
+            ),
+            "closure_lane": (
+                "report_only"
+                if not runtime_eligible
+                else _closure_lane([], runtime_backed)
+            ),
+            "strong_ready": False,
+            "default_only_blocker": not runtime_backed,
+            "evidence_chain": _ledger_evidence_chain(row.get("evidence_chain", []), emitted_files, why_not_emitted),
+        }
+        updated["closure"] = _closure_row(row=updated, related_claims=[])
+        projected.append(updated)
     return projected
+
+
+def _ledger_evidence_chain(
+    rows: object,
+    emitted_files: list[str],
+    why_not_emitted: str | None,
+) -> list[dict[str, Any]]:
+    chain = [dict(row) for row in rows if isinstance(row, Mapping)] if isinstance(rows, list) else []
+    for row in chain:
+        row["runtime_files"] = list(emitted_files)
+        row["runtime_surface"] = _first_runtime_surface(emitted_files)
+        row["resolution_reason"] = "emitted" if emitted_files else str(why_not_emitted or "physical_runtime_surface_missing")
+    return chain
 
 
 def _claim_rows(

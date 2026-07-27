@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 import hashlib
 import re
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.config_usefulness import build_config_usefulness
 from hsconfig.config_quality_contract import semantic_handoff_projection
@@ -166,6 +166,7 @@ def build_operator_summary(
     package_derivation: dict[str, Any] | None = None,
     package_authority: dict[str, Any] | None = None,
     deck_input_verification: dict[str, Any] | None = None,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -227,6 +228,7 @@ def build_operator_summary(
         card_behavior_plan_report=card_behavior_plan_report or {},
         combo_plan_report=combo_plan_report or {},
         globalvalues_profile_report=globalvalues_profile_report or {},
+        runtime_surface_ledger=runtime_surface_ledger,
     )
     strong_promotion_evidence_blockers = _strong_promotion_evidence_blockers(
         preliminary_config_usefulness
@@ -298,6 +300,7 @@ def build_operator_summary(
         card_behavior_plan_report=card_behavior_plan_report or {},
         combo_plan_report=combo_plan_report or {},
         globalvalues_profile_report=globalvalues_profile_report or {},
+        runtime_surface_ledger=runtime_surface_ledger,
     )
     source_informed_apply_readiness = _source_informed_apply_readiness(
         technical_status=technical_status,

@@ -299,6 +299,29 @@ def test_explainability_prefers_hero_power_transform_over_generic_mechanic_usage
     }
 
 
+def test_explainability_uses_empty_ledger_not_plan_emission_for_closure_and_attention():
+    report = build_source_to_runtime_explainability_report(
+        _fixture_audit(),
+        runtime_surface_ledger={
+            "cards": {
+                "CARD_KEEP": {"runtime_surfaces": []},
+                "CARD_NUM": {"runtime_surfaces": []},
+            },
+            "linked_runtime_entities": {},
+            "surface_ledger_sha256": "d" * 64,
+        },
+    )
+    row = next(row for row in report["card_rows"] if row["card_id"] == "CARD_KEEP")
+    attention = next(row for row in report["operator_attention"] if row["card_id"] == "CARD_KEEP")
+
+    assert row["emitted_runtime_files"] == []
+    assert row["not_emitted_runtime_files"] == []
+    assert row["runtime_lowering_status"] == "source_backed_contract_only"
+    assert row["closure"]["runtime_surfaces"] == []
+    assert row["evidence_chain"][0]["runtime_files"] == []
+    assert attention["status"] == "source_action_needed"
+
+
 def test_explainability_keeps_darkbishop_as_source_and_mind_spike_as_runtime_owner():
     audit = {
         "schema_version": 1,

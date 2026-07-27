@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -36,6 +37,7 @@ def build_config_usefulness(
     card_behavior_plan_report: dict[str, Any] | None = None,
     combo_plan_report: dict[str, Any] | None = None,
     globalvalues_profile_report: dict[str, Any] | None = None,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = config_readiness_summary or {}
     if technical_status != "VALID_PACKAGE":
@@ -50,14 +52,23 @@ def build_config_usefulness(
             "next_report_to_open": "reports/validation_report.json",
         }
 
-    mulligan = _mulligan_surface(mulligan_plan_report or {})
-    cardid = _cardid_surface(
-        card_behavior_plan_report or {},
-        summary,
-        config_readiness_report or {},
-    )
-    combo = _combo_surface(combo_plan_report or {}, summary)
-    globalvalues = _globalvalues_surface(globalvalues_profile_report or {})
+    # Once supplied, the ledger is the only source for emitted-surface counts
+    # and statuses.  Plan/profile reports remain useful intent diagnostics for
+    # compatibility callers that have no physical ledger.
+    if isinstance(runtime_surface_ledger, Mapping):
+        mulligan = _ledger_mulligan_surface(runtime_surface_ledger)
+        cardid = _ledger_cardid_surface(runtime_surface_ledger, summary)
+        combo = _ledger_combo_surface(runtime_surface_ledger)
+        globalvalues = _ledger_globalvalues_surface(runtime_surface_ledger)
+    else:
+        mulligan = _mulligan_surface(mulligan_plan_report or {})
+        cardid = _cardid_surface(
+            card_behavior_plan_report or {},
+            summary,
+            config_readiness_report or {},
+        )
+        combo = _combo_surface(combo_plan_report or {}, summary)
+        globalvalues = _globalvalues_surface(globalvalues_profile_report or {})
     first_gap = _first_gap(summary, mulligan, cardid, combo, globalvalues)
     status = _overall_status(
         semantic_status=semantic_status,
@@ -86,7 +97,9 @@ def build_config_usefulness(
         "blocking": False,
         "surfaces": surfaces,
         "first_usefulness_gap": first_gap,
-        "next_report_to_open": GAP_REPORTS.get(first_gap, "reports/operator_summary.json"),
+        "next_report_to_open": GAP_REPORTS.get(
+            first_gap, "reports/operator_summary.json"
+        ),
     }
 
 
@@ -94,8 +107,12 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
     rules = _list(report.get("rules"))
     suppressed = _list(report.get("suppressed_rules"))
     quality = report.get("quality", {})
-    has_concrete_keeps = bool(quality.get("has_concrete_keeps")) if isinstance(quality, dict) else False
-    quality_status = str(quality.get("status", "")).strip() if isinstance(quality, dict) else ""
+    has_concrete_keeps = (
+        bool(quality.get("has_concrete_keeps")) if isinstance(quality, dict) else False
+    )
+    quality_status = (
+        str(quality.get("status", "")).strip() if isinstance(quality, dict) else ""
+    )
     concrete_runtime_rules = [
         row
         for row in rules
@@ -118,7 +135,8 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
     )
     suppressed_reasons = (
         dict(quality.get("suppressed_reasons", {}))
-        if isinstance(quality, dict) and isinstance(quality.get("suppressed_reasons"), dict)
+        if isinstance(quality, dict)
+        and isinstance(quality.get("suppressed_reasons"), dict)
         else {}
     )
     policy_backed_rule_count = (
@@ -132,14 +150,10 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
         else 0
     )
     policy_lanes = (
-        _string_list(quality.get("policy_lanes"))
-        if isinstance(quality, dict)
-        else []
+        _string_list(quality.get("policy_lanes")) if isinstance(quality, dict) else []
     )
     policy_reasons = (
-        _string_list(quality.get("policy_reasons"))
-        if isinstance(quality, dict)
-        else []
+        _string_list(quality.get("policy_reasons")) if isinstance(quality, dict) else []
     )
     return {
         "status": status,
@@ -187,8 +201,12 @@ def _cardid_surface(
             for surface in row.get("runtime_surfaces", [])
         )
     }
-    cards = sorted(physical_cards) if physical_cards else sorted(
-        {str(row.get("card_id")) for row in meaningful_rows if row.get("card_id")}
+    cards = (
+        sorted(physical_cards)
+        if physical_cards
+        else sorted(
+            {str(row.get("card_id")) for row in meaningful_rows if row.get("card_id")}
+        )
     )
     report_only_supported = _int(summary.get("report_only_supported"))
     runtime_emitted = _int(summary.get("runtime_emitted"))
@@ -208,6 +226,93 @@ def _cardid_surface(
     }
 
 
+def _ledger_cards(ledger: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    cards = ledger.get("cards", {})
+    return (
+        [row for row in cards.values() if isinstance(row, Mapping)]
+        if isinstance(cards, Mapping)
+        else []
+    )
+
+
+def _ledger_mulligan_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
+    count = sum(
+        "Mulligan.json" in _string_list(row.get("runtime_surfaces"))
+        for row in _ledger_cards(ledger)
+    )
+    status = "rich" if count else "thin"
+    return {
+        "status": status,
+        "rule_count": count,
+        "suppressed_rule_count": 0,
+        "has_concrete_keeps": bool(count),
+        "default_only": False,
+        "first_gap_reason": "none" if count else "no_physical_mulligan_keep",
+        "next_source_need": "none"
+        if count
+        else "source_backed_or_policy_backed_mulligan_keeps",
+        "source_backed_rule_count": 0,
+        "policy_backed_rule_count": 0,
+        "policy_backed_keep_rule_count": 0,
+        "policy_lanes": [],
+        "policy_reasons": [],
+        "suppressed_reasons": {},
+    }
+
+
+def _ledger_cardid_surface(
+    ledger: Mapping[str, Any], summary: dict[str, Any]
+) -> dict[str, Any]:
+    cards = sorted(
+        {
+            str(row.get("card_id", ""))
+            for row in _ledger_cards(ledger)
+            if any(
+                surface.endswith(".json")
+                and surface not in {"Mulligan.json", "Combo.json", "GlobalValues.json"}
+                for surface in _string_list(row.get("runtime_surfaces"))
+            )
+        }
+    )
+    report_only_supported = _int(summary.get("report_only_supported"))
+    return {
+        "status": "rich"
+        if cards
+        else ("report_only" if report_only_supported else "thin"),
+        "default_only": False,
+        "meaningful_cardid_row_count": len(cards),
+        "cards_with_meaningful_cardid_rows": len(cards),
+        "runtime_emitted_card_count": len(cards),
+        "report_only_supported_count": report_only_supported,
+    }
+
+
+def _ledger_combo_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
+    count = sum(
+        "Combo.json" in _string_list(row.get("runtime_surfaces"))
+        for row in _ledger_cards(ledger)
+    )
+    return {
+        "status": "rich" if count >= 2 else "not_expected",
+        "default_only": False,
+        "combo_expected": bool(count),
+        "combo_row_count": 1 if count >= 2 else 0,
+        "suppressed_combo_claim_count": 0,
+    }
+
+
+def _ledger_globalvalues_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
+    emitted = ledger.get("globalvalues_emitted") is True
+    return {
+        "status": "rich" if emitted else "thin",
+        "default_only": False,
+        "changed_key_count": int(emitted),
+        "unchanged_key_count": 0,
+        "expected_overlay_key_count": 0,
+        "profiled_key_count": int(emitted),
+    }
+
+
 def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
     combos = _list(report.get("combos"))
     suppressed = _list(report.get("suppressed"))
@@ -218,7 +323,9 @@ def _combo_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str,
         if isinstance(combo, dict) and _combo_claim_is_runtime_lowerable(combo)
     ]
     report_only_suppressed = bool(suppressed) and not lowerable_suppressed
-    combo_expected = bool(combos or lowerable_suppressed or (gap_count and not report_only_suppressed))
+    combo_expected = bool(
+        combos or lowerable_suppressed or (gap_count and not report_only_suppressed)
+    )
     if combos:
         status = "rich"
     elif suppressed:
@@ -284,13 +391,21 @@ def _first_gap(
         return "target_surface_gap"
     if _int(summary.get("cards_needing_mechanic_lowering")):
         return "mechanic_gap"
-    if _int(summary.get("cards_needing_mulligan_claims")) and mulligan["status"] != "policy_backed":
+    if (
+        _int(summary.get("cards_needing_mulligan_claims"))
+        and mulligan["status"] != "policy_backed"
+    ):
         return "mulligan_gap"
     if mulligan["status"] in {"thin", "report_only"}:
         return "mulligan_gap"
-    if _int(summary.get("cards_needing_guide_claims")) or _int(summary.get("generic_low_confidence")):
+    if _int(summary.get("cards_needing_guide_claims")) or _int(
+        summary.get("generic_low_confidence")
+    ):
         return "guide_claim_gap"
-    if cardid["status"] in {"thin", "report_only"} and _int(summary.get("runtime_emitted")) == 0:
+    if (
+        cardid["status"] in {"thin", "report_only"}
+        and _int(summary.get("runtime_emitted")) == 0
+    ):
         return "cardid_thin"
     if globalvalues["status"] == "thin":
         return "globalvalues_thin"
@@ -322,7 +437,9 @@ def _overall_status(
 
 def _headline(status: str, first_gap: str) -> str:
     if status == "guide_aligned":
-        return "Package is load-safe and config-rich across the visible pre-run surfaces."
+        return (
+            "Package is load-safe and config-rich across the visible pre-run surfaces."
+        )
     if status == "usable_with_targeted_gaps":
         return f"Package is load-safe and usable, with the first usefulness gap at {first_gap}."
     if status == "load_safe_but_thin":

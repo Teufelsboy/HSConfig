@@ -57,13 +57,18 @@ def validate_complete_package(
         require_globalvalues_profile=True,
     )
     linked_runtime_errors = _validate_linked_runtime_entities(package_path)
+    physical_surface_errors = _validate_runtime_surface_ledger(package_path)
     globalvalues_contract_errors = []
     if authority_matrix is None and not allow_legacy_globalvalues:
         globalvalues_contract_errors.append(
             "GlobalValues current contract requires authority matrix "
             "reports/global_values_authority_matrix.json"
         )
-    if not linked_runtime_errors and not globalvalues_contract_errors:
+    if (
+        not linked_runtime_errors
+        and not physical_surface_errors
+        and not globalvalues_contract_errors
+    ):
         return report
     return {
         **report,
@@ -72,8 +77,43 @@ def validate_complete_package(
             *report.get("errors", []),
             *globalvalues_contract_errors,
             *linked_runtime_errors,
+            *physical_surface_errors,
         ],
     }
+
+
+def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
+    """Fail strict validation when the physical ledger reports unsafe output."""
+    path = package_path / "reports" / "runtime_surface_ledger.json"
+    if not path.is_file():
+        return []
+    try:
+        ledger = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return ["runtime_surface_ledger_invalid"]
+    if not isinstance(ledger, Mapping):
+        return ["runtime_surface_ledger_invalid"]
+
+    errors: list[str] = []
+    for value in ledger.get("physical_errors", []):
+        errors.append(f"runtime_surface_ledger_physical_error:{value}")
+    for row in ledger.get("unexpected_runtime_emissions", []):
+        if isinstance(row, Mapping):
+            errors.append(
+                "runtime_surface_ledger_unexpected_emission:"
+                f"{row.get('card_id', '')}:{row.get('reason', '')}"
+            )
+        else:
+            errors.append("runtime_surface_ledger_unexpected_emission:invalid")
+    for row in ledger.get("linked_runtime_owner_collisions", []):
+        if isinstance(row, Mapping):
+            errors.append(
+                "runtime_surface_ledger_owner_collision:"
+                f"{row.get('runtime_card_id', '')}"
+            )
+        else:
+            errors.append("runtime_surface_ledger_owner_collision:invalid")
+    return sorted(set(errors))
 
 
 def _validate_linked_runtime_entities(package_path: Path) -> list[str]:

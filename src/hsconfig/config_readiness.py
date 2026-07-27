@@ -166,6 +166,7 @@ def build_config_readiness_report(
         and isinstance(runtime_surface_ledger.get("linked_runtime_entities"), Mapping)
         else {}
     )
+    ledger_authoritative = isinstance(runtime_surface_ledger, Mapping)
     semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
@@ -216,20 +217,22 @@ def build_config_readiness_report(
                 linked_runtime_source_cards=set(linked_runtime_sources),
             )
             ledger_record = ledger_cards.get(card_id)
-            if isinstance(ledger_record, Mapping):
+            if ledger_authoritative:
                 runtime_surfaces = [
                     str(surface)
-                    for surface in ledger_record.get("runtime_surfaces", [])
+                    for surface in (
+                        ledger_record.get("runtime_surfaces", [])
+                        if isinstance(ledger_record, Mapping)
+                        else []
+                    )
                 ]
                 lane, missing = _physical_lane(
                     card_id=card_id,
                     runtime_surfaces=runtime_surfaces,
                     linked_runtime_entities=ledger_links,
-                    has_semantic_suppression=(
-                        card_id in semantic_suppression_missing_links
+                    semantic_suppression=semantic_suppression_missing_links.get(
+                        card_id
                     ),
-                    fallback_lane=lane,
-                    fallback_missing=missing,
                 )
         else:
             runtime_surfaces = []
@@ -306,14 +309,19 @@ def _physical_lane(
     card_id: str,
     runtime_surfaces: list[str],
     linked_runtime_entities: Mapping[str, Any],
-    has_semantic_suppression: bool,
-    fallback_lane: str,
-    fallback_missing: str,
+    semantic_suppression: tuple[str, str] | None,
 ) -> tuple[str, str]:
-    # A real file proves that a surface exists, not that a separate semantic
-    # suppression disappeared. Preserve the stronger diagnostic reason.
-    if has_semantic_suppression and RUNTIME_SURFACE_MULLIGAN not in runtime_surfaces:
-        return fallback_lane, fallback_missing
+    # A ledger is the authority for what was emitted.  Plan rows describe
+    # intent only and cannot promote an empty physical surface to a runtime
+    # lane.  A real mulligan keep is intentionally sufficient even if a
+    # separate CardID lowering was suppressed.
+    if RUNTIME_SURFACE_MULLIGAN in runtime_surfaces:
+        return "mulligan_only", "none"
+    # A physical CardID file does not erase a known semantic suppression for
+    # that CardID lowering.  This keeps the suppression visible while never
+    # borrowing a plan-derived runtime-emitted status.
+    if semantic_suppression is not None:
+        return "report_only_supported", semantic_suppression[0]
     if any(surface.endswith(".json") and surface not in {
         RUNTIME_SURFACE_MULLIGAN,
         RUNTIME_SURFACE_COMBO,
@@ -327,11 +335,9 @@ def _physical_lane(
         for row in linked_runtime_entities.values()
     ):
         return "linked_runtime_source", "none"
-    if RUNTIME_SURFACE_MULLIGAN in runtime_surfaces:
-        return "mulligan_only", "none"
     if RUNTIME_SURFACE_COMBO in runtime_surfaces:
         return "runtime_emitted", "none"
-    return fallback_lane, fallback_missing
+    return "report_only_supported", "needs_runtime_surface"
 
 
 def _cards_from_deck(

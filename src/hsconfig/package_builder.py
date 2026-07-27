@@ -622,6 +622,7 @@ def build_package_payload(
         ),
         "gameplan_contract": gameplan_contract,
         "deck_input_verification": deck_input_verification,
+        "runtime_surface_ledger": runtime_surface_ledger,
     }
     generated_files = _generated_package_files(
         out,
