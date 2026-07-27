@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from hashlib import sha256
 import json
 from typing import Any
@@ -55,6 +56,7 @@ def build_guide_claim_bundle(
     deck_identity: dict[str, Any],
     card_metadata: dict[str, dict[str, Any]] | dict[str, Any] | list[dict[str, Any]],
     source_documents: list[dict[str, Any]] | None = None,
+    current_date: date | None = None,
 ) -> dict[str, Any]:
     cards = _card_metadata_by_id(card_metadata)
     source_documents = source_documents or []
@@ -69,6 +71,7 @@ def build_guide_claim_bundle(
             deck_identity=deck_identity,
             card_metadata=card_metadata,
             source_documents=source_documents,
+            current_date=current_date,
         )
         claims.extend(source_document_bundle["claims"])
         unsupported_claims.extend(source_document_bundle["unsupported_claims"])

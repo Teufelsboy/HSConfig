@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -52,6 +53,9 @@ def run_configure_command(args: argparse.Namespace) -> int:
 
 
 def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    current_date = _normalize_operator_date(
+        getattr(args, "current_date", None)
+    )
     out = Path(args.out)
     prepare_research_output_dir(out)
 
@@ -79,7 +83,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "full_cards_json": getattr(args, "full_cards_json", None),
         "allow_placeholder": bool(getattr(args, "allow_placeholder", False)),
         "source_url": list(getattr(args, "source_url", []) or []),
-        "current_date": getattr(args, "current_date", None),
+        "current_date": current_date,
         "json": True,
     }
 
@@ -112,7 +116,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         deck_name=args.deck_name,
         deck_code=args.deck_code,
         explicit_source_urls=explicit_source_urls,
-        current_date=getattr(args, "current_date", None),
+        current_date=current_date,
     )
     source_candidate_urls: list[str] = []
     source_urls: list[str] = []
@@ -132,7 +136,11 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         ]
         try:
             acquisition_args = SimpleNamespace(
-                **{**common, "source_url": source_urls},
+                **{
+                    **common,
+                    "source_url": source_urls,
+                    "current_date": current_date.isoformat(),
+                },
                 candidate_registry_url_count=len(surviving_registry_urls),
                 source_fixture_url_map_json=getattr(
                     args,
@@ -278,8 +286,10 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 plan_reports_dir=None,
                 allow_placeholder=bool(getattr(args, "allow_placeholder", False)),
                 auto_research_fallback=True,
+                current_date=current_date,
                 json=True,
-            )
+            ),
+            current_date=current_date,
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)
@@ -1355,13 +1365,24 @@ def _read_optional_json(path: str | Path | None) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _normalize_operator_date(value: Any) -> date:
+    if value is None:
+        return date.today()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError) as error:
+        raise ValueError("current_date_invalid") from error
+
+
 def _load_source_candidate_plan(
     path: Path,
     *,
     deck_name: str,
     deck_code: str,
     explicit_source_urls: list[str],
-    current_date: str | None,
+    current_date: date | None,
 ) -> dict[str, Any]:
     explicit_source_urls = dedupe_acquisition_urls(explicit_source_urls)
     try:
@@ -1388,7 +1409,7 @@ def _rebuild_source_candidate_plan(
     deck_name: str,
     deck_code: str,
     explicit_source_urls: list[str],
-    current_date: str | None,
+    current_date: date | None,
 ) -> dict[str, Any]:
     return build_source_candidate_plan(
         deck_name=deck_name,

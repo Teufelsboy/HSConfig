@@ -6,25 +6,62 @@ from typing import Any
 
 
 _DECIMAL_INTEGER = re.compile(r"^[0-9]+$")
+MAX_EXACT_SOURCE_CANDIDATES = 256
+MAX_EXACT_SOURCE_COUNT_DIGITS = len(str(MAX_EXACT_SOURCE_CANDIDATES))
+
+
+class ExactEvidenceError(ValueError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+def parse_exact_source_count(value: Any) -> int:
+    """Parse one bounded exact-source count without unbounded integer conversion."""
+    if isinstance(value, bool):
+        raise ExactEvidenceError("exact_evidence_count_invalid")
+    if isinstance(value, int):
+        if value < 0:
+            raise ExactEvidenceError("exact_evidence_count_invalid")
+        if value > MAX_EXACT_SOURCE_CANDIDATES:
+            raise ExactEvidenceError("exact_evidence_count_out_of_range")
+        return value
+    if not isinstance(value, str):
+        raise ExactEvidenceError("exact_evidence_count_invalid")
+    if value != value.strip() or not _DECIMAL_INTEGER.fullmatch(value):
+        raise ExactEvidenceError("exact_evidence_count_invalid")
+    if len(value) > MAX_EXACT_SOURCE_COUNT_DIGITS:
+        raise ExactEvidenceError("exact_evidence_count_out_of_range")
+    count = int(value)
+    if count > MAX_EXACT_SOURCE_CANDIDATES:
+        raise ExactEvidenceError("exact_evidence_count_out_of_range")
+    return count
 
 
 def parse_strict_nonnegative_int(value: Any) -> int | None:
     """Parse the supported exact-evidence count forms without coercing types."""
-    if isinstance(value, bool):
+    try:
+        return parse_exact_source_count(value)
+    except ExactEvidenceError:
         return None
-    if isinstance(value, int):
-        parsed = value
-    elif isinstance(value, str):
-        text = value.strip()
-        if not _DECIMAL_INTEGER.fullmatch(text):
-            return None
-        try:
-            parsed = int(text)
-        except ValueError:
-            return None
-    else:
-        return None
-    return parsed if parsed >= 0 else None
+
+
+def validate_exact_source_cardinality(
+    *,
+    candidate_count: int,
+    decoded_candidate_count: int,
+    candidate_hashes: list[str],
+) -> list[str]:
+    """Return stable canonical hashes or reject inconsistent exact evidence."""
+    if (
+        candidate_count < 1
+        or decoded_candidate_count < 1
+        or decoded_candidate_count > candidate_count
+        or len(candidate_hashes) != candidate_count
+        or len(set(candidate_hashes)) != len(candidate_hashes)
+    ):
+        raise ExactEvidenceError("exact_evidence_cardinality_mismatch")
+    return sorted(candidate_hashes)
 
 
 def canonical_exact_deck_evidence(
@@ -45,22 +82,27 @@ def canonical_exact_deck_evidence(
     if not target or not observed or observed != target:
         return {}
 
-    candidate_count = parse_strict_nonnegative_int(
-        exact_evidence.get("candidate_count")
-    )
-    decoded_candidate_count = parse_strict_nonnegative_int(
-        exact_evidence.get("decoded_candidate_count")
-    )
-    hashes = _canonical_hashes(
+    try:
+        candidate_count = parse_exact_source_count(
+            exact_evidence.get("candidate_count")
+        )
+        decoded_candidate_count = parse_exact_source_count(
+            exact_evidence.get("decoded_candidate_count")
+        )
+    except ExactEvidenceError:
+        return {}
+    candidate_hashes = _candidate_hashes(
         exact_evidence.get("candidate_deck_code_hashes")
     )
-    if (
-        candidate_count is None
-        or decoded_candidate_count is None
-        or candidate_count < 1
-        or decoded_candidate_count < 1
-        or not hashes
-    ):
+    if candidate_hashes is None:
+        return {}
+    try:
+        hashes = validate_exact_source_cardinality(
+            candidate_count=candidate_count,
+            decoded_candidate_count=decoded_candidate_count,
+            candidate_hashes=candidate_hashes,
+        )
+    except ExactEvidenceError:
         return {}
 
     return {
@@ -97,18 +139,18 @@ def exact_deck_evidence_is_complete(
     )
 
 
-def _canonical_hashes(value: Any) -> list[str]:
+def _candidate_hashes(value: Any) -> list[str] | None:
     if not isinstance(value, list):
-        return []
+        return None
     hashes: list[str] = []
     for item in value:
         if not isinstance(item, str):
-            return []
+            return None
         clean = item.strip()
         if not clean:
-            return []
+            return None
         hashes.append(clean)
-    return sorted(set(hashes))
+    return hashes
 
 
 def _clean_text(value: Any) -> str:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -108,8 +109,13 @@ def _with_strategic_receipt_verification(
     return result
 
 
-def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    payload, code = build_package_payload(args)
+def prepare_package_payload(
+    args: argparse.Namespace,
+    *,
+    current_date: date | None = None,
+) -> tuple[dict[str, Any], int]:
+    operator_date = _package_current_date(args, current_date)
+    payload, code = build_package_payload(args, current_date=operator_date)
     payload = dict(payload)
     payload["command"] = "prepare"
     if code == 0:
@@ -124,7 +130,11 @@ def prepare_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], i
     return payload, code
 
 
-def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+def build_package_payload(
+    args: argparse.Namespace,
+    *,
+    current_date: date | None = None,
+) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     deck_slug = slugify_deck_name(args.deck_name)
     deck_dir = out / "CustomConfig" / deck_slug
@@ -132,6 +142,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
 
     context = build_preconfig_context(
         args,
+        current_date=_package_current_date(args, current_date),
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=None,
         research_required_guide_sources_fn=_research_required_guide_sources,
@@ -642,12 +653,17 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
 
 
-def research_contract_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+def research_contract_payload(
+    args: argparse.Namespace,
+    *,
+    current_date: date | None = None,
+) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     prepare_research_output_dir(out)
 
     context = build_preconfig_context(
         args,
+        current_date=_package_current_date(args, current_date),
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=None,
         research_required_guide_sources_fn=_research_required_guide_sources,
@@ -665,6 +681,20 @@ def research_contract_payload(args: argparse.Namespace) -> tuple[dict[str, Any],
         },
         0,
     )
+
+
+def _package_current_date(
+    args: argparse.Namespace,
+    current_date: date | None,
+) -> date:
+    if current_date is not None:
+        return current_date
+    argument_date = getattr(args, "current_date", None)
+    if isinstance(argument_date, date):
+        return argument_date
+    if argument_date is not None:
+        return date.fromisoformat(str(argument_date))
+    return date.today()
 
 
 def _research_required_guide_sources(deck_name: str, deck_identity: dict[str, Any]) -> dict[str, Any]:

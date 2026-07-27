@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 from typing import Any
 
 from hsconfig.card_data_intake import build_card_data_context
@@ -39,11 +40,17 @@ from hsconfig.source_evidence_verifier import verify_source_documents
 def build_preconfig_context(
     args: argparse.Namespace,
     *,
+    current_date: date | None = None,
     fetch_latest_cards_fn: Any = fetch_latest_cards,
     fetch_latest_collectible_cards_fn: Any | None = fetch_latest_collectible_cards,
     research_required_guide_sources_fn: Any = research_required_guide_sources,
 ) -> dict[str, Any]:
     """Build the shared deck/source context used by research and prepare commands."""
+    operator_date = (
+        current_date
+        if current_date is not None
+        else getattr(args, "current_date", None)
+    )
     cards_payload = load_cards(
         args.cards_json,
         deck_name=args.deck_name,
@@ -120,6 +127,7 @@ def build_preconfig_context(
             deck_name=args.deck_name,
             deck_identity=deck_identity,
             evidence_rows=source_evidence_rows,
+            current_date=operator_date,
         )
         source_documents_input = [
             *source_documents_input,
@@ -135,6 +143,7 @@ def build_preconfig_context(
             deck_identity=deck_identity,
             card_roles={},
             source_documents=[],
+            current_date=operator_date,
         )
         strict_source_documents = []
     elif not guide_sources:
@@ -148,6 +157,7 @@ def build_preconfig_context(
         deck_identity=deck_identity,
         card_metadata=enriched_card_metadata,
         source_documents=source_documents,
+        current_date=operator_date,
     )
     source_claims = {
         "claims": guide_claim_bundle["claims"],
@@ -166,6 +176,7 @@ def build_preconfig_context(
             card_roles=research_bundle.get("card_role_map", {}),
             source_documents=source_documents_input,
             validated_claim_bundle=guide_claim_bundle,
+            current_date=operator_date,
         )
     elif generated_guide_sources is None and guide_sources:
         generated_guide_sources = build_guide_sources(
@@ -173,6 +184,7 @@ def build_preconfig_context(
             deck_identity=deck_identity,
             card_roles=research_bundle.get("card_role_map", {}),
             source_documents=guide_sources,
+            current_date=operator_date,
         )
     guide_builder_receipt = build_guide_builder_receipt(
         deck_name=args.deck_name,
@@ -184,6 +196,7 @@ def build_preconfig_context(
             deck_identity=deck_identity,
             card_roles=research_bundle.get("card_role_map", {}),
             source_documents=guide_sources,
+            current_date=operator_date,
         ),
     )
     deck_fingerprint = build_deck_fingerprint(deck_identity, deck_identity["cards"])

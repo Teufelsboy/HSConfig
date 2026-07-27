@@ -40,9 +40,13 @@ INVALID_EXACT_COUNT_VALUES = [
     pytest.param("not-an-int", id="nonnumeric-string"),
     pytest.param(True, id="boolean"),
     pytest.param(-1, id="negative"),
+    pytest.param(257, id="above-maximum"),
     pytest.param([], id="list"),
     pytest.param({}, id="dictionary"),
     pytest.param(1.5, id="float"),
+    pytest.param("+1", id="positive-sign"),
+    pytest.param("1e2", id="exponent"),
+    pytest.param(" 1 ", id="surrounding-whitespace"),
     pytest.param("9" * 5000, id="oversized-decimal-string"),
 ]
 

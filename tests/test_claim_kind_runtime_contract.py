@@ -1,4 +1,5 @@
 from copy import deepcopy
+import sys
 
 import pytest
 
@@ -20,10 +21,139 @@ from hsconfig.source_claim_lifecycle import (
     build_initial_lifecycle_rows,
     select_claims_for_surface,
 )
+from hsconfig.source_exact_evidence import (
+    ExactEvidenceError,
+    canonical_exact_deck_evidence,
+    parse_exact_source_count,
+    parse_strict_nonnegative_int,
+    validate_exact_source_cardinality,
+)
 from tests.helpers.live_acquisition import acquire_live_test_provenance
 
 
 MULLIGAN_RECEIPT_FINGERPRINT = "sha256:mulligan-receipt-target"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(0, 0, id="zero"),
+        pytest.param(1, 1, id="one"),
+        pytest.param("1", 1, id="decimal-string"),
+        pytest.param(256, 256, id="maximum"),
+    ],
+)
+def test_exact_source_count_parser_accepts_only_bounded_decimal_counts(
+    value,
+    expected,
+):
+    assert parse_exact_source_count(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_code"),
+    [
+        pytest.param(257, "exact_evidence_count_out_of_range", id="above-maximum"),
+        pytest.param(True, "exact_evidence_count_invalid", id="boolean"),
+        pytest.param(1.5, "exact_evidence_count_invalid", id="float"),
+        pytest.param("-1", "exact_evidence_count_invalid", id="negative-sign"),
+        pytest.param("+1", "exact_evidence_count_invalid", id="positive-sign"),
+        pytest.param("1e2", "exact_evidence_count_invalid", id="exponent"),
+        pytest.param(" 1", "exact_evidence_count_invalid", id="leading-whitespace"),
+        pytest.param("1 ", "exact_evidence_count_invalid", id="trailing-whitespace"),
+        pytest.param(" ", "exact_evidence_count_invalid", id="whitespace-only"),
+        pytest.param("not-decimal", "exact_evidence_count_invalid", id="non-decimal"),
+    ],
+)
+def test_exact_source_count_parser_rejects_invalid_or_out_of_range_values(
+    value,
+    expected_code,
+):
+    with pytest.raises(ExactEvidenceError) as excinfo:
+        parse_exact_source_count(value)
+
+    assert excinfo.value.code == expected_code
+
+
+def test_exact_source_count_parser_rejects_oversized_decimal_before_int_conversion():
+    original_limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(0)
+    try:
+        assert parse_strict_nonnegative_int("9" * 5000) is None
+    finally:
+        sys.set_int_max_str_digits(original_limit)
+
+
+@pytest.mark.parametrize(
+    ("candidate_count", "decoded_count", "candidate_hashes"),
+    [
+        pytest.param(1, 2, ["sha256:one"], id="decoded-exceeds-candidate"),
+        pytest.param(2, 1, ["sha256:one"], id="hash-count-mismatch"),
+        pytest.param(
+            2,
+            1,
+            ["sha256:duplicate", "sha256:duplicate"],
+            id="duplicate-hashes",
+        ),
+    ],
+)
+def test_exact_source_cardinality_inconsistencies_have_stable_error_code(
+    candidate_count,
+    decoded_count,
+    candidate_hashes,
+):
+    with pytest.raises(ExactEvidenceError) as excinfo:
+        validate_exact_source_cardinality(
+            candidate_count=candidate_count,
+            decoded_candidate_count=decoded_count,
+            candidate_hashes=candidate_hashes,
+        )
+
+    assert excinfo.value.code == "exact_evidence_cardinality_mismatch"
+
+
+@pytest.mark.parametrize(
+    "evidence_overrides",
+    [
+        pytest.param(
+            {"decoded_candidate_count": 2},
+            id="decoded-exceeds-candidate",
+        ),
+        pytest.param(
+            {
+                "candidate_count": 2,
+                "candidate_deck_code_hashes": ["sha256:one"],
+            },
+            id="hash-count-mismatch",
+        ),
+        pytest.param(
+            {
+                "candidate_count": 2,
+                "candidate_deck_code_hashes": [
+                    "sha256:duplicate",
+                    "sha256:duplicate",
+                ],
+            },
+            id="duplicate-hashes",
+        ),
+    ],
+)
+def test_canonical_exact_evidence_rejects_logical_cardinality_mismatches(
+    evidence_overrides,
+):
+    evidence = {
+        "candidate_count": 1,
+        "decoded_candidate_count": 1,
+        "matched": True,
+        "matched_deck_fingerprint": MULLIGAN_RECEIPT_FINGERPRINT,
+        "candidate_deck_code_hashes": ["sha256:one"],
+        **evidence_overrides,
+    }
+
+    assert canonical_exact_deck_evidence(
+        evidence,
+        target_fingerprint=MULLIGAN_RECEIPT_FINGERPRINT,
+    ) == {}
 
 
 def _canonical_mulligan_receipt_bundle(

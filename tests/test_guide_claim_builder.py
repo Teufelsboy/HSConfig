@@ -1,3 +1,5 @@
+from datetime import date
+
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.guide_claim_builder import build_guide_claim_bundle
 
@@ -16,6 +18,48 @@ def _mechanics(bundle):
         for claim in bundle["claims"]
         if claim["claim_kind"] == "mechanic_usage"
     }
+
+
+def test_guide_claim_builder_uses_explicit_operator_date_for_source_freshness():
+    bundle = build_guide_claim_bundle(
+        deck_identity={
+            "deck_name": "FrozenDateDeck",
+            "cards": [{"card_id": "CARD_001", "count": 1}],
+        },
+        card_metadata={
+            "CARD_001": {
+                "name": "Frozen Date Card",
+                "text": "Battlecry: Draw a card.",
+            }
+        },
+        source_documents=[
+            {
+                "source_url": "https://example.test/frozen-date-guide",
+                "source_title": "Frozen Date Guide",
+                "source_family": "guide",
+                "retrieved_at": "2028-12-01",
+                "claims": [
+                    {
+                        "claim_kind": "card_role",
+                        "cards": ["CARD_001"],
+                        "stance": "draw_engine",
+                        "evidence_text_short": "Use this card as a draw engine.",
+                        "source_confidence": "high",
+                    }
+                ],
+            }
+        ],
+        current_date=date(2030, 1, 15),
+    )
+
+    claim = next(
+        claim
+        for claim in bundle["claims"]
+        if claim.get("source_url") == "https://example.test/frozen-date-guide"
+    )
+    assert claim["freshness_status"] == "stale"
+    assert claim["claim_confidence"] == "medium"
+    assert claim["retrieved_at"] == "2028-12-01"
 
 
 def test_builds_atomic_claims_from_structured_sources():

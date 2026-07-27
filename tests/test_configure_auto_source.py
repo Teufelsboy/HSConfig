@@ -300,6 +300,73 @@ def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
     assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
 
 
+def test_configure_propagates_operator_date_to_final_guide_claims(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_shadow_cards_json(cards_json)
+    out = tmp_path / "configure"
+    source_records_path = tmp_path / "source_search_frozen_date.json"
+    source_records_path.write_text(
+        json.dumps(
+            _read_json(FIXTURES / "source_search_shadowpriest_2026.json")
+        ),
+        encoding="utf-8",
+    )
+
+    code = main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            TARGETED_SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--auto-source",
+            "--source-search-results-json",
+            str(source_records_path),
+            "--current-date",
+            "2030-01-15",
+            "--json",
+        ]
+    )
+
+    ranked_sources = _read_json(
+        out / "02_source_autopilot" / "ranked_sources.json"
+    )["ranked_sources"]
+    source_documents = _read_json(
+        out / "02_source_autopilot" / "source_documents.json"
+    )["source_documents"]
+    research_sources = _read_json(out / "03_research" / "guide_sources.json")
+    final_guide_bundle = _read_json(
+        out / "04_package" / "reports" / "guide_claim_bundle.json"
+    )
+    guide_claims = [
+        claim
+        for claim in final_guide_bundle["claims"]
+        if claim.get("source_url")
+        == "https://www.hearthpwn.com/decks/1461644-voidburn-wild-aggro-shadow-priest"
+    ]
+
+    assert code == 0
+    assert ranked_sources[0]["freshness_status"] == "stale"
+    assert source_documents[0]["retrieved_at"] == "2026-07-15T00:00:00Z"
+    assert research_sources["summary"]["stale_source_count"] == 1
+    assert guide_claims
+    assert {claim["freshness_status"] for claim in guide_claims} == {"stale"}
+    assert {claim["claim_confidence"] for claim in guide_claims} == {"medium"}
+    assert {claim["retrieved_at"] for claim in guide_claims} == {
+        "2026-07-15T00:00:00Z"
+    }
+
+
 def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
     tmp_path: Path,
     monkeypatch,
