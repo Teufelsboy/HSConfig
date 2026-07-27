@@ -22,6 +22,10 @@ from hsconfig.guide_source_builder import (
 )
 from hsconfig.hearthstonejson import fetch_latest_cards
 from hsconfig.io import read_json, slugify_deck_name, write_json
+from hsconfig.internal_source_authority import (
+    InternalSourceAuthorityHandoff,
+    reject_caller_supplied_source_authority,
+)
 from hsconfig.linked_entity_supplement import curated_links_for
 from hsconfig.mechanic_drift import build_mechanic_drift_report
 from hsconfig.models import InputManifest
@@ -59,8 +63,8 @@ from hsconfig.source_to_runtime_explainability import (
 )
 from hsconfig.source_document_model import (
     claim_can_lower_to_runtime,
+    has_verified_source_receipt,
     normalized_claim_kind,
-    source_claim_signature,
 )
 from hsconfig.strict_package_validation import validate_complete_package
 from hsconfig.strong_promotion_report import build_strong_promotion_report
@@ -84,27 +88,17 @@ def _with_strategic_receipt_verification(
     verified_source_receipts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     target_fingerprint = str(deck_identity.get("deck_fingerprint", "")).strip().lower()
-    verified_claim_signatures = {
-        (
-            str(receipt.get("claim_id", "")).strip(),
-            str(receipt.get("claim_signature", "")).strip(),
-        )
-        for receipt in verified_source_receipts
-        if isinstance(receipt, dict)
-        and receipt.get("receipt_kind") == "canonical_exact_deck_source_document"
-        and str(receipt.get("matched_deck_fingerprint", "")).strip().lower()
-        == target_fingerprint
-    }
     result: list[dict[str, Any]] = []
     for claim in claims if isinstance(claims, list) else []:
         if not isinstance(claim, dict):
             continue
         normalized = dict(claim)
         if normalized_claim_kind(normalized) in _STRATEGIC_STRONG_CLOSURE_CLAIM_KINDS:
-            normalized["strategic_receipt_verified"] = (
-                str(normalized.get("claim_id", "")).strip(),
-                source_claim_signature(normalized),
-            ) in verified_claim_signatures
+            normalized["strategic_receipt_verified"] = has_verified_source_receipt(
+                normalized,
+                target_fingerprint=target_fingerprint,
+                verified_source_receipts=verified_source_receipts,
+            )
         result.append(normalized)
     return result
 
@@ -113,9 +107,15 @@ def prepare_package_payload(
     args: argparse.Namespace,
     *,
     current_date: date | None = None,
+    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
 ) -> tuple[dict[str, Any], int]:
+    reject_caller_supplied_source_authority(args)
     operator_date = _package_current_date(args, current_date)
-    payload, code = build_package_payload(args, current_date=operator_date)
+    payload, code = build_package_payload(
+        args,
+        current_date=operator_date,
+        source_authority_handoff=source_authority_handoff,
+    )
     payload = dict(payload)
     payload["command"] = "prepare"
     if code == 0:
@@ -134,6 +134,7 @@ def build_package_payload(
     args: argparse.Namespace,
     *,
     current_date: date | None = None,
+    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
 ) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     deck_slug = slugify_deck_name(args.deck_name)
@@ -143,6 +144,7 @@ def build_package_payload(
     context = build_preconfig_context(
         args,
         current_date=_package_current_date(args, current_date),
+        source_authority_handoff=source_authority_handoff,
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=None,
         research_required_guide_sources_fn=_research_required_guide_sources,

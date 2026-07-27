@@ -15,6 +15,13 @@ from hsconfig.input_loading import (
     load_source_search_records,
 )
 from hsconfig.io import read_json, write_json
+from hsconfig.internal_source_authority import (
+    InternalSourceAuthorityHandoff,
+    _issue_acquired_search_records_handoff,
+    advance_to_source_documents_handoff,
+    reject_caller_supplied_source_authority,
+    trusted_search_records_from_handoff,
+)
 from hsconfig.package_io import prepare_research_output_dir
 from hsconfig.preconfig_context import build_preconfig_context
 from hsconfig.research_status_sync import build_research_status_sync_report
@@ -182,7 +189,6 @@ def draft_source_documents_payload(
         "deck_name": args.deck_name,
         "source_documents": draft["source_documents"],
     }
-    args.trusted_source_documents = draft["source_documents"]
     report = {
         "schema_version": 1,
         "deck_name": args.deck_name,
@@ -207,6 +213,29 @@ def draft_source_documents_payload(
 
 
 def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    reject_caller_supplied_source_authority(args)
+    payload, status, _handoff = _source_autopilot_payload(args)
+    return payload, status
+
+
+def source_autopilot_for_configure(
+    args: argparse.Namespace,
+    source_authority_handoff: InternalSourceAuthorityHandoff,
+) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff]:
+    payload, status, output_handoff = _source_autopilot_payload(
+        args,
+        source_authority_handoff=source_authority_handoff,
+    )
+    if output_handoff is None:
+        raise ValueError("source_document_handoff_not_issued")
+    return payload, status, output_handoff
+
+
+def _source_autopilot_payload(
+    args: argparse.Namespace,
+    *,
+    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff | None]:
     out = Path(args.out)
     prepare_research_output_dir(out)
 
@@ -224,7 +253,11 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         format=cards_payload.get("format"),
         sideboards=cards_payload.get("sideboards", []),
     )
-    trusted_source_records = getattr(args, "trusted_source_search_records", None)
+    trusted_source_records = (
+        trusted_search_records_from_handoff(source_authority_handoff)
+        if source_authority_handoff is not None
+        else None
+    )
     source_records = (
         trusted_source_records
         if isinstance(trusted_source_records, list)
@@ -248,12 +281,17 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         {"schema_version": 1, "evidence_rows": bundle["source_evidence_rows"]},
     )
     write_json(source_path, bundle["source_documents_payload"])
-    args.trusted_source_documents = bundle["source_documents_payload"][
-        "source_documents"
-    ]
+    output_handoff = (
+        advance_to_source_documents_handoff(
+            source_authority_handoff,
+            bundle["source_documents_payload"]["source_documents"],
+        )
+        if source_authority_handoff is not None
+        else None
+    )
     write_json(draft_report_path, bundle["source_document_draft_report"])
     write_json(report_path, bundle["source_autopilot_report"])
-    return (
+    payload_and_status = (
         {
             "status": "OK",
             "deck_name": args.deck_name,
@@ -271,9 +309,31 @@ def source_autopilot_payload(args: argparse.Namespace) -> tuple[dict[str, Any], 
         },
         0,
     )
+    return *payload_and_status, output_handoff
 
 
 def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    payload, status, _handoff = _source_acquire_payload(args)
+    return payload, status
+
+
+def source_acquire_for_configure(
+    args: argparse.Namespace,
+) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff]:
+    payload, status, handoff = _source_acquire_payload(
+        args,
+        issue_authority_handoff=True,
+    )
+    if handoff is None:
+        raise ValueError("source_acquisition_handoff_not_issued")
+    return payload, status, handoff
+
+
+def _source_acquire_payload(
+    args: argparse.Namespace,
+    *,
+    issue_authority_handoff: bool = False,
+) -> tuple[dict[str, Any], int, InternalSourceAuthorityHandoff | None]:
     out = Path(args.out)
     prepare_research_output_dir(out)
     source_urls = dedupe_acquisition_urls(
@@ -322,7 +382,11 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         compiled_record["acquisition_provenance"] = acquired_record[
             "acquisition_provenance"
         ]
-    args.trusted_source_search_records = compiled["records"]
+    authority_handoff = (
+        _issue_acquired_search_records_handoff(compiled["records"])
+        if issue_authority_handoff
+        else None
+    )
 
     acquisition_path = out / "source_acquisition_report.json"
     compiler_path = out / "source_claim_compiler_report.json"
@@ -330,7 +394,7 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
     write_json(acquisition_path, acquired["source_acquisition_report"])
     write_json(compiler_path, compiled["source_claim_compiler_report"])
     write_json(source_search_path, compiled)
-    return (
+    payload_and_status = (
         {
             "status": "OK",
             "deck_name": args.deck_name,
@@ -348,6 +412,7 @@ def source_acquire_payload(args: argparse.Namespace) -> tuple[dict[str, Any], in
         },
         0,
     )
+    return *payload_and_status, authority_handoff
 
 
 def _fixture_fetcher(path_value: str | None):
@@ -389,6 +454,25 @@ def _fixture_resolver(path_value: str | None):
 
 
 def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    reject_caller_supplied_source_authority(args)
+    return _research_deck_payload(args)
+
+
+def research_deck_for_configure(
+    args: argparse.Namespace,
+    source_authority_handoff: InternalSourceAuthorityHandoff,
+) -> tuple[dict[str, Any], int]:
+    return _research_deck_payload(
+        args,
+        source_authority_handoff=source_authority_handoff,
+    )
+
+
+def _research_deck_payload(
+    args: argparse.Namespace,
+    *,
+    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
+) -> tuple[dict[str, Any], int]:
     out = Path(args.out)
     prepare_research_output_dir(out)
     if not hasattr(args, "skip_semantic_fetch"):
@@ -396,6 +480,7 @@ def research_deck_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
 
     context = build_preconfig_context(
         args,
+        source_authority_handoff=source_authority_handoff,
         fetch_latest_cards_fn=fetch_latest_cards,
         fetch_latest_collectible_cards_fn=fetch_latest_collectible_cards,
     )

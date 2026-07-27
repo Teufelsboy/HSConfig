@@ -12,8 +12,10 @@ from hsconfig.commands.common import emit_result
 from hsconfig.commands.source_workflow import (
     draft_source_documents_payload,
     research_deck_payload,
-    source_acquire_payload,
+    research_deck_for_configure,
+    source_acquire_for_configure,
     source_autopilot_payload,
+    source_autopilot_for_configure,
     source_manifest_payload,
 )
 from hsconfig.config_quality_contract import (
@@ -103,10 +105,9 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     source_acquisition_path = None
     source_documents_json = None
-    trusted_source_documents = None
+    source_authority_handoff = None
     source_autopilot_path = None
     source_closure_intake_receipt_path = None
-    trusted_source_search_records = None
     source_candidate_plan_path = manifest_dir / "source_candidate_plan.json"
     explicit_source_urls = dedupe_acquisition_urls(
         list(getattr(args, "source_url", []) or [])
@@ -154,13 +155,12 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 ),
                 out=str(source_acquisition_dir),
             )
-            acquire_payload, acquire_status = source_acquire_payload(
+            (
+                acquire_payload,
+                acquire_status,
+                source_authority_handoff,
+            ) = source_acquire_for_configure(
                 acquisition_args
-            )
-            trusted_source_search_records = getattr(
-                acquisition_args,
-                "trusted_source_search_records",
-                None,
             )
         except Exception as exc:
             return _finish_stage_exception(out, "source-acquire", exc)
@@ -192,17 +192,21 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             autopilot_args = SimpleNamespace(
                 **common,
                 source_search_results_json=args.source_search_results_json,
-                trusted_source_search_records=trusted_source_search_records,
                 out=str(autopilot_dir),
             )
-            autopilot_payload, autopilot_status = source_autopilot_payload(
-                autopilot_args
-            )
-            trusted_source_documents = getattr(
-                autopilot_args,
-                "trusted_source_documents",
-                None,
-            )
+            if source_authority_handoff is not None:
+                (
+                    autopilot_payload,
+                    autopilot_status,
+                    source_authority_handoff,
+                ) = source_autopilot_for_configure(
+                    autopilot_args,
+                    source_authority_handoff,
+                )
+            else:
+                autopilot_payload, autopilot_status = source_autopilot_payload(
+                    autopilot_args
+                )
         except Exception as exc:
             return _finish_stage_exception(out, "source-autopilot", exc)
         if autopilot_status != 0:
@@ -224,11 +228,6 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             draft_payload, draft_status = draft_source_documents_payload(
                 draft_args
             )
-            trusted_source_documents = getattr(
-                draft_args,
-                "trusted_source_documents",
-                None,
-            )
         except Exception as exc:
             return _finish_stage_exception(out, "draft-source-documents", exc)
         if draft_status != 0:
@@ -244,19 +243,23 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if source_documents_json is None:
         research_source_evidence_json = getattr(args, "source_evidence_json", None)
     try:
-        research_payload, research_status = research_deck_payload(
-            SimpleNamespace(
+        research_args = SimpleNamespace(
                 **common,
                 out=str(research_dir),
                 source_documents_json=str(source_documents_json) if source_documents_json else None,
-                trusted_source_documents=trusted_source_documents,
                 source_evidence_json=research_source_evidence_json,
                 guide_sources_json=None,
                 claims_json=None,
                 skip_semantic_fetch=False,
                 auto_research_fallback=True,
             )
-        )
+        if source_authority_handoff is not None:
+            research_payload, research_status = research_deck_for_configure(
+                research_args,
+                source_authority_handoff,
+            )
+        else:
+            research_payload, research_status = research_deck_payload(research_args)
     except Exception as exc:
         return _finish_stage_exception(out, "research-deck", exc)
     if research_status != 0:
@@ -278,7 +281,6 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 source_documents_json=(
                     str(source_documents_json) if source_documents_json else None
                 ),
-                trusted_source_documents=trusted_source_documents,
                 cards_json=getattr(args, "cards_json", None),
                 collectible_cards_json=getattr(args, "collectible_cards_json", None),
                 full_cards_json=getattr(args, "full_cards_json", None),
@@ -290,6 +292,7 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 json=True,
             ),
             current_date=current_date,
+            source_authority_handoff=source_authority_handoff,
         )
     except Exception as exc:
         return _finish_stage_exception(out, "prepare", exc)

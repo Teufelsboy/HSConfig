@@ -230,11 +230,25 @@ def test_configure_shadowpriest_live_verified_source_remains_apply_eligible(
     ) == 0
 
     package = out / "04_package"
+    acquisition = _read_json(
+        out / "02_source_acquisition" / "source_search_results.json"
+    )
+    source_documents = _read_json(
+        out / "03_source_autopilot" / "source_documents.json"
+    )
     operator = _read_json(package / "reports" / "operator_summary.json")
     claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
     gate = evaluate_apply_gate(package)
 
     assert claim_bundle["canonical_source_receipts"]
+    assert acquisition["records"][0]["acquisition_provenance"]["mode"] == "live_http"
+    assert source_documents["source_documents"][0]["acquisition_provenance"][
+        "authority"
+    ] == "live_verified"
+    assert all(
+        receipt["acquisition_provenance"]["authority"] == "live_verified"
+        for receipt in claim_bundle["canonical_source_receipts"]
+    )
     assert operator["source_apply_eligible"] is True
     assert operator["source_apply_eligibility_reasons"] == []
     assert operator["runtime_apply_allowed"] is True

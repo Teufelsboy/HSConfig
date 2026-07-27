@@ -752,7 +752,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
         return payload, status
 
     acquire_calls: list[list[str]] = []
-    original_acquire_payload = configure_command.source_acquire_payload
+    original_acquire_payload = configure_command.source_acquire_for_configure
 
     def capture_acquire_urls(args):
         acquire_calls.append(list(args.source_url))
@@ -765,7 +765,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
     )
     monkeypatch.setattr(
         configure_command,
-        "source_acquire_payload",
+        "source_acquire_for_configure",
         capture_acquire_urls,
     )
     out = tmp_path / "configure"
@@ -836,7 +836,7 @@ def test_configure_online_source_filters_invalid_explicit_source_url_before_acqu
         ],
     )
     acquire_calls: list[list[str]] = []
-    original_acquire_payload = configure_command.source_acquire_payload
+    original_acquire_payload = configure_command.source_acquire_for_configure
 
     def capture_acquire_urls(args):
         acquire_calls.append(list(args.source_url))
@@ -844,7 +844,7 @@ def test_configure_online_source_filters_invalid_explicit_source_url_before_acqu
 
     monkeypatch.setattr(
         configure_command,
-        "source_acquire_payload",
+        "source_acquire_for_configure",
         capture_acquire_urls,
     )
     out = tmp_path / "configure"

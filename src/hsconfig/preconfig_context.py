@@ -31,6 +31,11 @@ from hsconfig.input_loading import (
     load_source_evidence,
     source_records_from_cards,
 )
+from hsconfig.internal_source_authority import (
+    InternalSourceAuthorityHandoff,
+    reject_caller_supplied_source_authority,
+    trusted_source_documents_from_handoff,
+)
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.semantic_enrichment import append_semantic_warning, enrich_card_metadata
 from hsconfig.source_document_drafter import draft_source_documents
@@ -41,11 +46,13 @@ def build_preconfig_context(
     args: argparse.Namespace,
     *,
     current_date: date | None = None,
+    source_authority_handoff: InternalSourceAuthorityHandoff | None = None,
     fetch_latest_cards_fn: Any = fetch_latest_cards,
     fetch_latest_collectible_cards_fn: Any | None = fetch_latest_collectible_cards,
     research_required_guide_sources_fn: Any = research_required_guide_sources,
 ) -> dict[str, Any]:
     """Build the shared deck/source context used by research and prepare commands."""
+    reject_caller_supplied_source_authority(args)
     operator_date = (
         current_date
         if current_date is not None
@@ -73,7 +80,9 @@ def build_preconfig_context(
     collectible_cards = collectible_cards or []
     full_cards = full_cards or []
     claims = load_claims(getattr(args, "claims_json", None))
-    trusted_source_documents = getattr(args, "trusted_source_documents", None)
+    trusted_source_documents = trusted_source_documents_from_handoff(
+        source_authority_handoff
+    )
     source_documents_input = (
         trusted_source_documents
         if isinstance(trusted_source_documents, list)

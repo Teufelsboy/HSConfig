@@ -563,7 +563,7 @@ def can_lower_to_mulligan(
             claim_kind,
             "mulligan",
         )
-    if not _has_verified_source_receipt(
+    if not has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
@@ -659,7 +659,7 @@ def can_lower_to_globalvalues(
             claim_kind,
             "globalvalues",
         )
-    if not _has_verified_source_receipt(
+    if not has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
@@ -758,7 +758,7 @@ def strategic_provenance_diagnostic(
     return None
 
 
-def _has_verified_source_receipt(
+def has_verified_source_receipt(
     claim: Mapping[str, Any],
     *,
     target_fingerprint: str,
@@ -798,7 +798,7 @@ def _has_verified_globalvalues_source_receipt(
     verified_source_receipts: Iterable[Mapping[str, Any]] | None,
 ) -> bool:
     """Compatibility alias for callers using the earlier surface-specific name."""
-    return _has_verified_source_receipt(
+    return has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
@@ -907,7 +907,7 @@ def can_lower_to_combo(
             claim_kind,
             "combo",
         )
-    if not _has_verified_source_receipt(
+    if not has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
@@ -1039,7 +1039,7 @@ def _can_lower_strategic_targeting_rule(
             claim_kind,
             "cardid",
         )
-    if not _has_verified_source_receipt(
+    if not has_verified_source_receipt(
         claim,
         target_fingerprint=target_fingerprint,
         verified_source_receipts=verified_source_receipts,
