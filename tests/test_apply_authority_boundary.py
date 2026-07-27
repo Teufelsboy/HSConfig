@@ -645,6 +645,50 @@ def test_builder_summary_never_claims_valid_when_task4_authority_blocks(
     assert _first_reason_code(gate) == expected_gate_code
 
 
+def test_builder_summary_recomputes_strict_validation_after_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig import package_builder
+
+    original_refresh = package_builder.refresh_package_derivation_authority
+
+    def refresh_then_add_unowned_linked_runtime(package_root: Path) -> dict:
+        package = Path(package_root)
+        authority = original_refresh(package)
+        plan_path = package / "reports" / "card_behavior_plan_report.json"
+        plan = read_json(plan_path)
+        plan["rows"].append(
+            {
+                "claim_id": "post_receipt_strict_mutation",
+                "card_id": "SW_448",
+                "source_card_id": "SW_448",
+                "runtime_card_id": "MISSING_RUNTIME_OWNER",
+                "link_kind": "hero_power_transform",
+                "behavior_block": "BeforeUseHeroPowerBonus",
+                "meaningful_runtime_surface": True,
+            }
+        )
+        write_json(plan_path, plan)
+        return authority
+
+    monkeypatch.setattr(
+        package_builder,
+        "refresh_package_derivation_authority",
+        refresh_then_add_unowned_linked_runtime,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    summary = read_json(package / "reports" / "operator_summary.json")
+    gate = evaluate_apply_gate(package)
+
+    assert summary["technical_status"] == "INVALID_PACKAGE"
+    assert summary["runtime_apply_allowed"] is False
+    assert gate["allowed"] is False
+    assert _first_reason_code(gate) == "strict_package_validation_failed"
+
+
 def test_derivation_receipt_is_non_circular(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -426,3 +426,84 @@ Vorgesehener Fix-Commit:
 ```text
 fix: close derivation authority edge cases
 ```
+
+## Fix-Runde 2: Finale Strict-Authority
+
+Ein zweites Controller-Review identifizierte eine verbleibende
+Authority-Divergenz: Der Builder führte die strikte Paketvalidierung früh aus
+und übergab diesen gespeicherten Report nach der Receipt-Erstellung an
+`build_package_authority_context()`. Eine danach erfolgte strict-relevante,
+aber nicht receipt-gebundene Änderung konnte deshalb vom Apply-Gate erkannt
+werden, während die gerade erzeugte Human Summary weiterhin
+`VALID_PACKAGE` meldete.
+
+### TDD RED
+
+Der neue reale Builder-Pfad-Test mutiert direkt nach der Receipt-Erstellung
+`reports/card_behavior_plan_report.json`. Er ergänzt eine
+strict-relevante linked-runtime-Zeile ohne die erforderliche Runtime-Owner-
+Datei.
+
+Vor der Produktionsänderung war der Test erwartungsgemäss rot:
+
+```text
+1 failed in 6.72s
+```
+
+Die Summary meldete dabei fälschlich `VALID_PACKAGE`; das Apply-Gate
+blockierte dasselbe finale Paket bereits mit
+`strict_package_validation_failed`.
+
+### Minimale Korrektur
+
+`build_package_authority_context()` akzeptiert keinen extern erzeugten
+`strict_validation_report` mehr. Die Funktion führt unmittelbar auf dem
+finalen Package selbst `validate_complete_package(package)` aus und
+verwendet nur dieses frische Ergebnis für
+`strict_validation_passed`.
+
+Der Builder-Aufruf übergibt damit nur noch den Package-Pfad. Es gibt keinen
+ignorierten, veralteten oder als Authority missverständlichen
+Strict-Report-Parameter mehr.
+
+Task 5 wurde nicht vorweggenommen. Deck-Input-Eligibility und alle übrigen
+Task-4-Grenzen blieben unverändert.
+
+### GREEN und Verifikation
+
+Neuer gezielter Builder-Regressionstest:
+
+```text
+1 passed in 13.87s
+```
+
+Erweiterte Task-4-Apply-Boundary-Suite:
+
+```text
+149 passed in 27.02s
+```
+
+Betroffene Builder-, Summary-, Configure- und Acceptance-Suite:
+
+```text
+169 passed in 14.91s
+```
+
+Vollständige Repository-Suite:
+
+```text
+2419 passed, 11 skipped in 265.42s
+```
+
+Ruff auf allen geänderten Python-Dateien meldete `All checks passed!`.
+`git diff --check` war sauber; die Windows-Hinweise zur künftigen
+LF/CRLF-Normalisierung sind keine Diff-Fehler.
+
+Es wurden keine Runtime-, HSTuner-, Hearthstone-, Desktop- oder privaten
+Evidence-Dateien geschrieben.
+
+Vorgesehener Fix-Commit:
+
+```text
+fix: recompute final strict package authority
+```

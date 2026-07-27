@@ -577,10 +577,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
     )
     write_json(reports_dir / "output_ownership_manifest.json", output_ownership_manifest)
     package_derivation = refresh_package_derivation_authority(out)
-    package_authority = build_package_authority_context(
-        out,
-        strict_validation_report=report,
-    )
+    package_authority = build_package_authority_context(out)
     operator_summary = build_operator_summary(
         generated_files=generated_files,
         output_ownership_manifest=output_ownership_manifest,

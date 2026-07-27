@@ -10,7 +10,10 @@ from hsconfig.io import read_json
 from hsconfig.source_acquisition_provenance import (
     strategic_source_provenance_is_verified,
 )
-from hsconfig.strict_package_validation import strict_validation_passed
+from hsconfig.strict_package_validation import (
+    strict_validation_passed,
+    validate_complete_package,
+)
 
 
 DERIVATION_RECEIPT_SCHEMA_VERSION = 1
@@ -236,10 +239,9 @@ def source_authority_reasons(
 
 def build_package_authority_context(
     package_root: str | Path,
-    *,
-    strict_validation_report: dict[str, Any],
 ) -> dict[str, Any]:
     package = Path(package_root)
+    final_strict_validation_report = validate_complete_package(package)
     receipt_verified = False
     receipt_sha256: str | None = None
     try:
@@ -254,7 +256,7 @@ def build_package_authority_context(
         )
     return {
         "strict_validation_passed": strict_validation_passed(
-            strict_validation_report
+            final_strict_validation_report
         ),
         "deck_input_apply_eligible": not deck_input_apply_eligibility_reasons(
             package
