@@ -431,6 +431,8 @@ def _policy_veto_card_ids(
     for claim in claims:
         if normalized_claim_kind(claim) not in {"mulligan_keep", "mulligan_discard"}:
             continue
+        if _has_legacy_unverified_acquisition_provenance(claim):
+            continue
         lifecycle = claim.get("_claim_lifecycle")
         for card_id in _claim_cards(claim):
             vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
@@ -446,6 +448,8 @@ def _policy_veto_card_ids(
             vetoes.setdefault(card_id, "excluded_source_mulligan_intent")
     for row in suppressed_rules:
         if row.get("action") not in {"hold", "discard"}:
+            continue
+        if _has_legacy_unverified_acquisition_provenance(row):
             continue
         reason = str(row.get("reason", ""))
         for card_id in _row_card_ids(row):
@@ -474,6 +478,14 @@ def _policy_veto_card_ids(
                 "excluded_non_hand_start_of_game_effect",
             )
     return vetoes
+
+
+def _has_legacy_unverified_acquisition_provenance(row: dict[str, Any]) -> bool:
+    provenance = row.get("acquisition_provenance")
+    return (
+        isinstance(provenance, dict)
+        and provenance.get("authority") == "legacy_unverified"
+    )
 
 
 def _row_card_ids(row: dict[str, Any]) -> set[str]:
