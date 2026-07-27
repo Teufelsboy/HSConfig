@@ -18,7 +18,22 @@ mechanic lowering, or combo sequence detail before it can be called strong.
 
 The fixture matrix also documents `decision_families_proven` and `known_coverage_limits`. These fields describe what a fixture proves for HSConfig's pre-game config compiler. They are not gameplay-quality claims and they do not imply post-run optimization coverage.
 
-runtime apply is no longer blocked by source strength. The representative matrix still preserves source-strength truth, but `VALID_PACKAGE` plus `runtime_load_safe=true` is enough for an initial load-safe runtime write. Source-informed rows remain valuable because they expose confidence debt, not because they should block usable package handoff.
+Captured fixtures classify expected package safety, not current write authority.
+Every representative or supplemental captured row is a `load_safe_fixture` with
+`fixture_expected_load_safe=true` and
+`fixture_runtime_apply_authority=diagnostic_only`. These fields describe what
+the fixture is expected to prove when replayed; they cannot grant an apply.
+runtime apply is no longer blocked by source strength; source provenance can
+still make the current package ineligible when it is diagnostic-only.
+
+Only the newly prepared package can decide its current apply state.
+`reports/operator_summary.json.runtime_apply_contract.authority_scope` is
+`current_package_operator_gate`, while `runtime_apply_reason` states why that
+gate allowed or denied apply. For example,
+`diagnostic_source_not_apply_eligible` means the package is technically
+load-safe but its current source provenance is diagnostic and cannot authorize
+the write. Source strength remains a diagnostic quality dimension rather than
+a second apply gate.
 
 ## SOURCE_BACKED_STRONG Contract
 
@@ -129,7 +144,10 @@ Operator invariants for source-backed strong closure:
 A package may be `SOURCE_BACKED_STRONG` only when:
 
 - `technical_status=VALID_PACKAGE`
-- `runtime_apply_allowed=true`
+- `runtime_load_safe=true`
+- its current apply decision comes only from
+  `operator_summary.json.runtime_apply_contract.authority_scope=current_package_operator_gate`;
+  fixture metadata never supplies this decision
 - every emitted normal runtime row is tied to a non-default promoting source claim
 - `default_only_runtime_surfaces=[]`
 - every expected runtime surface is emitted, explicitly suppressed, or reported as a gap or source action
@@ -226,16 +244,16 @@ Rows that do not meet all six checks stay source-informed and must expose one sp
 | Deck | Fixture stage | Required work before promotion |
 |---|---|---|
 | ShadowPriest | `core_source_backed_fixture` | Already strong. Preserve this as the control fixture. |
-| CtAPaladin | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. Package is load-safe and `runtime_apply_allowed=true`, but explicit mulligan source evidence is still needed before promotion. |
+| CtAPaladin | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. The captured fixture is expected load-safe but remains diagnostic-only for apply authority; explicit mulligan source evidence is still needed before promotion. |
 | PirateRogue | `core_source_backed_fixture` | Already strong. Preserve this as the third promoted fixture. |
 | BigShaman | `core_source_backed_fixture` | Already strong. Preserve the source-faithful recruit and deathrattle claim set, including explicit `9` recruit/big-cheat and `7` deathrattle runtime values. |
-| Discolock | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. Package is load-safe and `runtime_apply_allowed=true`, but explicit mulligan source evidence and source-warning closure are still needed before promotion. |
-| TreantDruid | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. Package is load-safe and `runtime_apply_allowed=true`, but card-specific guide claims are still needed before promotion. |
+| Discolock | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. The captured fixture is expected load-safe but remains diagnostic-only for apply authority; explicit mulligan source evidence and source-warning closure are still needed before promotion. |
+| TreantDruid | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. The captured fixture is expected load-safe but remains diagnostic-only for apply authority; card-specific guide claims are still needed before promotion. |
 | ImbueMage | `core_source_backed_fixture` | Promotion proven. Keep as a core control fixture. |
 | MechPala | `core_source_backed_fixture` | Already strong. Preserve this as the second promoted fixture. |
 | Kingslayer | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Kingslayer Quick Pick mulligan evidence remains unavailable. Preserve this row as the weapon-sequence source-informed control until an exact Kingslayer/Kingsbane Quick Pick keep-or-discard source exists. |
 | Boarlock | `source_informed_valid_fixture` | Preserved blocked with explicit stop condition: exact Boarlock Fracking mulligan evidence remains unavailable or unresolved lowering blockers remain. Preserve this row as the combo-control source-informed control until those blockers close. |
-| PirateDH | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. Package is load-safe and `runtime_apply_allowed=true`, but card-specific guide claims are still needed before promotion. |
+| PirateDH | `source_informed_valid_fixture` | `SOURCE_BACKED_PARTIAL`. The captured fixture is expected load-safe but remains diagnostic-only for apply authority; card-specific guide claims are still needed before promotion. |
 
 - `Boarlock` remains source-informed with explicit stop condition `exact_boarlock_fracking_mulligan_source_unavailable` unless an exact Boarlock-relevant Fracking mulligan source is added.
 - `Kingslayer` remains source-informed with explicit stop condition `exact_kingslayer_quick_pick_mulligan_source_unavailable` unless an exact Kingslayer/Kingsbane `DEEP_014` / `Quick Pick` mulligan source is added.

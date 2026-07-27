@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "purpose": "Decks used as supplemental HSConfig proof inputs without widening the representative source-depth closure matrix.",
-  "policy": "Supplemental decks may prove command acceptance, syntax coverage, or narrow regression behavior. They do not replace closing existing representative source-informed rows.",
+  "policy": "Supplemental decks may prove expected load safety, command acceptance, syntax coverage, or narrow regression behavior. They are diagnostic-only fixtures, cannot authorize a current package apply, and do not replace closing existing representative source-informed rows.",
   "decks": [
     {
       "deck_name": "CuteWarrior",
@@ -11,6 +11,8 @@
       "proof_role": "supplemental_load_safe_prepare_proof",
       "proof_scope": "supplemental_load_safe_only",
       "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
       "matrix_policy": "not_representative_until_future_matrix_review_proves_missing_family",
       "operator_action": "keep_supplemental",
       "known_limits": [
@@ -26,6 +28,8 @@
       "proof_role": "supplemental_wild_visibility_prepare_proof",
       "proof_scope": "supplemental_visibility_only",
       "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
       "primary_mechanics": ["secret", "secret_timing", "burn", "tempo"],
       "matrix_policy": "not_representative_visibility_only",
       "operator_action": "keep_supplemental_visibility",
@@ -43,6 +47,8 @@
       "proof_role": "supplemental_wild_visibility_prepare_proof",
       "proof_scope": "supplemental_visibility_only",
       "representative_output_competence": false,
+      "fixture_expected_load_safe": true,
+      "fixture_runtime_apply_authority": "diagnostic_only",
       "primary_mechanics": ["highlander", "location", "silence", "destroy", "hero_power_transform"],
       "matrix_policy": "not_representative_visibility_only",
       "operator_action": "keep_supplemental_visibility",

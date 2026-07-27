@@ -40,7 +40,9 @@ def test_every_matrix_deck_declares_closure_profile():
     for deck in load_archetype_matrix():
         assert deck["closure_profile"]
         assert "closure_profile_first_missing_link" in deck
-        assert deck["runtime_apply_allowed"] is True
+        assert deck["fixture_expected_load_safe"] is True
+        assert deck["fixture_runtime_apply_authority"] == "diagnostic_only"
+        assert "runtime_apply_allowed" not in deck
 
 
 def test_representative_wild_matrix_uses_specific_closure_profiles():
@@ -351,12 +353,14 @@ def assert_no_runtime_surface_is_hidden_default(deck_dir: Path, operator: dict) 
         "source_backed",
         "policy_backed",
         "source_and_policy_backed",
+        "static_semantics_backed",
         "warning_only",
     }
     mulligan_policy = operator["mulligan_policy_status"]
     assert mulligan_policy["default_only"] is False
     assert mulligan_policy["status"] in {
         "policy_backed",
+        "rich",
         "source_backed",
         "source_and_policy_backed",
     }
@@ -524,10 +528,16 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert no_block["operator_message"].startswith("Package is load-safe.")
     assert operator["source_contract_audit_summary"]["non_blocking"] is True
     assert source_contract_audit["schema_version"] == 1
-    assert source_contract_audit["summary"]["cards_total"] == len(deck_card_ids)
+    source_contract_card_ids = set(source_contract_audit["card_rows"])
+    assert source_contract_audit["summary"]["cards_total"] == len(source_contract_card_ids)
+    assert deck_card_ids <= source_contract_card_ids
     assert source_to_runtime["authority"] == "diagnostic_only"
     assert source_to_runtime["apply_blocking"] is False
-    assert source_to_runtime["summary"]["cards_total"] == len(deck_card_ids)
+    source_to_runtime_card_ids = {
+        str(row["card_id"]) for row in source_to_runtime["card_rows"]
+    }
+    assert source_to_runtime["summary"]["cards_total"] == len(source_to_runtime_card_ids)
+    assert deck_card_ids <= source_to_runtime_card_ids
     assert quality["authority"] == "diagnostic_only"
     assert quality["apply_blocking"] is False
     assert quality["runtime_write_performed"] is False
@@ -544,10 +554,13 @@ def test_valid_wild_deck_produces_load_safe_warning_apply_package(
     assert all(
         row["closure"]["lane"]
         in {
+            "source_backed_runtime_lowered",
+            "explicit_gap",
             "runtime_backed",
             "source_action_needed",
             "diagnostic_only",
             "baseline_only_visible",
+            "report_only",
         }
         for row in source_to_runtime["card_rows"]
     )

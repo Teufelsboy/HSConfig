@@ -108,6 +108,68 @@ def test_operator_summary_separates_pre_run_assurance_dimensions():
     }
 
 
+def test_operator_summary_names_current_package_apply_authority():
+    summary = build_operator_summary(
+        deck_name="Current Package",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+    )
+
+    assert summary["runtime_apply_allowed"] is True
+    assert summary["runtime_apply_reason"] == (
+        "current_package_operator_gate_allowed"
+    )
+    assert summary["runtime_apply_contract"] == {
+        "apply_authority": "reports/operator_summary.json",
+        "authority_scope": "current_package_operator_gate",
+    }
+
+
+def test_operator_summary_explains_diagnostic_source_apply_block():
+    summary = build_operator_summary(
+        deck_name="Diagnostic Source Package",
+        deck_code="AAE=",
+        technical_validation={"status": "passed", "errors": []},
+        package_authority={
+            "source_apply_eligible": False,
+            "source_apply_eligibility_reasons": [
+                "diagnostic_source_not_apply_eligible"
+            ],
+        },
+    )
+
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_load_safe"] is True
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
+    assert summary["runtime_apply_contract"] == {
+        "apply_authority": "reports/operator_summary.json",
+        "authority_scope": "current_package_operator_gate",
+    }
+
+
+def test_operator_summary_prioritizes_invalid_package_apply_reason():
+    summary = build_operator_summary(
+        deck_name="Invalid Diagnostic Source Package",
+        deck_code="bad",
+        technical_validation={
+            "status": "failed",
+            "errors": ["missing_required_runtime_file"],
+        },
+        package_authority={
+            "source_apply_eligible": False,
+            "source_apply_eligibility_reasons": [
+                "diagnostic_source_not_apply_eligible"
+            ],
+        },
+    )
+
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["runtime_apply_reason"] == "invalid_package"
+
+
 def test_operator_summary_does_not_allow_optimality_claim_for_archetype_only_source():
     summary = _strong_candidate_with_lane_counts(
         {"archetype_matched_public_guide": 3}

@@ -715,6 +715,11 @@ def build_representative_multideck_matrix(tmp_path: Path) -> list[dict]:
                 "technical_status": operator["technical_status"],
                 "operator_summary": operator,
                 "runtime_apply_allowed": operator["runtime_apply_allowed"],
+                "runtime_apply_reason": operator["runtime_apply_reason"],
+                "fixture_expected_load_safe": deck["fixture_expected_load_safe"],
+                "fixture_runtime_apply_authority": deck[
+                    "fixture_runtime_apply_authority"
+                ],
                 "semantic_status": operator["semantic_status"],
                 "default_only_runtime_surfaces": operator["default_only_runtime_surfaces"],
                 "deck_match_scopes": deck_match_scopes,
@@ -962,7 +967,12 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
     for row in results:
         expected = EXPECTED_EVIDENCE_STATUS[row["deck_name"]]
         assert row["technical_status"] == "VALID_PACKAGE", row
+        assert row["fixture_expected_load_safe"] is True, row
+        assert row["fixture_runtime_apply_authority"] == "diagnostic_only", row
         assert row["runtime_apply_allowed"] is False, row
+        assert row["runtime_apply_reason"] == (
+            "diagnostic_source_not_apply_eligible"
+        ), row
         assert row["operator_summary"]["source_apply_eligibility_reasons"] == [
             "diagnostic_source_not_apply_eligible"
         ], row
@@ -1019,11 +1029,17 @@ def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
         assert operator["technical_status"] == "VALID_PACKAGE", row
         assert operator["runtime_apply_allowed"] is False, row
         assert operator["runtime_apply_mode"] == "blocked", row
+        assert operator["runtime_apply_reason"] == (
+            "diagnostic_source_not_apply_eligible"
+        ), row
         assert operator["source_apply_eligibility_reasons"] == [
             "diagnostic_source_not_apply_eligible"
         ], row
         assert operator["runtime_apply_contract"]["apply_authority"] == (
             "reports/operator_summary.json"
+        )
+        assert operator["runtime_apply_contract"]["authority_scope"] == (
+            "current_package_operator_gate"
         )
         assert operator["next_action"] in {
             "READY_TO_APPLY_OR_HANDOFF",

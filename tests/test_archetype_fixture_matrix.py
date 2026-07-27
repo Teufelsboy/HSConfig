@@ -176,7 +176,9 @@ def test_archetype_fixture_matrix_has_actionable_rows():
         assert "GlobalValues.json" in row["expected_runtime_surfaces"]
         assert "Mulligan.json" in row["expected_runtime_surfaces"]
         assert "<CARDID>.json" in row["expected_runtime_surfaces"]
-        assert row["runtime_apply_allowed"] is True
+        assert row["fixture_expected_load_safe"] is True
+        assert row["fixture_runtime_apply_authority"] == "diagnostic_only"
+        assert "runtime_apply_allowed" not in row
         assert row["default_only_runtime_surfaces"] == []
         assert row["fixture_stage"] in {
             "core_source_backed_fixture",

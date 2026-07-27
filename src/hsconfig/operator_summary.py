@@ -334,6 +334,12 @@ def build_operator_summary(
         runtime_apply_mode = "blocked"
         runtime_apply_allowed = False
         runtime_apply_requires_flag = None
+    runtime_apply_reason = _runtime_apply_reason(
+        technical_status=technical_status,
+        runtime_apply_allowed=runtime_apply_allowed,
+        source_apply_eligible=source_apply_eligible,
+        source_apply_eligibility_reasons=source_apply_eligibility_reasons,
+    )
     mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
     source_depth_status = _source_depth_status(guide_source_depth or {})
     no_block_failure_mode_summary = build_no_block_failure_mode_summary(
@@ -418,6 +424,7 @@ def build_operator_summary(
         "runtime_load_safe": technical_status == "VALID_PACKAGE",
         "runtime_apply_mode": runtime_apply_mode,
         "runtime_apply_allowed": runtime_apply_allowed,
+        "runtime_apply_reason": runtime_apply_reason,
         "runtime_apply_requires_flag": runtime_apply_requires_flag,
         "load_safe_to_install": load_safe_to_install,
         "use_config_now": load_safe_to_install,
@@ -426,6 +433,7 @@ def build_operator_summary(
         "configuration_assurance": configuration_assurance,
         "runtime_apply_contract": {
             "apply_authority": "reports/operator_summary.json",
+            "authority_scope": "current_package_operator_gate",
         },
         "primary_blockers": primary_blockers,
         "warnings": warnings,
@@ -2374,3 +2382,23 @@ def _runtime_apply_contract(
     if technical_status == "VALID_PACKAGE" and apply_policy != "BLOCKED":
         return "load_safe_apply", True, None
     return "blocked", False, None
+
+
+def _runtime_apply_reason(
+    *,
+    technical_status: str,
+    runtime_apply_allowed: bool,
+    source_apply_eligible: bool,
+    source_apply_eligibility_reasons: list[str],
+) -> str:
+    if technical_status != "VALID_PACKAGE":
+        return "invalid_package"
+    if not source_apply_eligible:
+        return (
+            source_apply_eligibility_reasons[0]
+            if source_apply_eligibility_reasons
+            else "diagnostic_source_not_apply_eligible"
+        )
+    if runtime_apply_allowed:
+        return "current_package_operator_gate_allowed"
+    return "current_package_operator_gate_blocked"
