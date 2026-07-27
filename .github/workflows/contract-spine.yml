@@ -9,6 +9,8 @@ on:
 jobs:
   guardrails:
     runs-on: windows-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

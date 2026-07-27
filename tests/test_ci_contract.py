@@ -7,6 +7,11 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_WORKFLOWS = (
+    "contract-guardrails.yml",
+    "contract-spine.yml",
+    "full-test-suite.yml",
+)
 
 
 def _workflow_commands() -> list[str]:
@@ -50,6 +55,17 @@ def test_full_suite_updates_audited_packaging_tools():
     ).lower()
 
     assert "python -m pip install --upgrade pip setuptools" in commands
+
+
+def test_python_workflow_jobs_disable_bytecode_cache():
+    for filename in PYTHON_WORKFLOWS:
+        workflow = yaml.safe_load(
+            (ROOT / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+        )
+        for job_name, job in workflow["jobs"].items():
+            assert job.get("env", {}).get("PYTHONDONTWRITEBYTECODE") == "1", (
+                f"{filename}:{job_name} must disable Python bytecode writes"
+            )
 
 
 def test_ci_runs_lint_full_suite_and_contract_sentinels():

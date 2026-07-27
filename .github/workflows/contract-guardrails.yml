@@ -10,6 +10,8 @@ on:
 jobs:
   contract-guardrails:
     runs-on: windows-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
