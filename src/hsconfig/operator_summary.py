@@ -1078,6 +1078,22 @@ def _closure_profile_verdict(
         for row in claim_rows
         if _closure_profile_claim_is_promotion_eligible(row)
     ]
+    canonical_claim_rows = _canonical_ledger_claim_rows(
+        source_to_runtime_explainability_report
+    )
+    emitted_surfaces = (
+        sorted(
+            {
+                filename
+                for row in canonical_claim_rows
+                for filename in _string_list(
+                    row.get("emitted_runtime_files")
+                )
+            }
+        )
+        if canonical_claim_rows is not None
+        else _runtime_surface_filenames(generated_files)
+    )
     suppressed_claim_kinds = [
         str(row.get("claim_kind") or "")
         for row in claim_rows
@@ -1097,7 +1113,7 @@ def _closure_profile_verdict(
         archetype_bucket=archetype_bucket,
         primary_mechanics=primary_mechanics,
         source_claim_kinds=source_claim_kinds,
-        emitted_surfaces=_runtime_surface_filenames(generated_files),
+        emitted_surfaces=emitted_surfaces,
         default_only_surfaces=default_only_runtime_surfaces,
         suppressed_claim_kinds=suppressed_claim_kinds,
     )
@@ -1136,6 +1152,15 @@ def _closure_profile_claim_rows(
     source_contract_audit_report: dict[str, Any] | None,
     source_to_runtime_explainability_report: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
+    canonical_rows = _canonical_ledger_claim_rows(
+        source_to_runtime_explainability_report
+    )
+    if canonical_rows is not None:
+        return [
+            row
+            for row in canonical_rows
+            if str(row.get("claim_kind") or "")
+        ]
     rows: list[dict[str, Any]] = []
     rows.extend(
         _list_of_dicts(
@@ -1163,6 +1188,14 @@ def _closure_profile_claim_rows(
             for claim_kind in closure.get("claim_kinds", []):
                 rows.append(_claim_row_from_card_row(card_row, claim_kind))
     return [row for row in rows if str(row.get("claim_kind") or "")]
+
+
+def _canonical_ledger_claim_rows(
+    report: dict[str, Any] | None,
+) -> list[dict[str, Any]] | None:
+    if not isinstance(report, dict) or "claim_rows" not in report:
+        return None
+    return _list_of_dicts(report.get("claim_rows"))
 
 
 def _claim_row_from_card_row(
@@ -1211,6 +1244,11 @@ def _list_of_dicts(value: Any) -> list[dict[str, Any]]:
 
 
 def _closure_profile_claim_is_promotion_eligible(row: dict[str, Any]) -> bool:
+    if (
+        "emitted_runtime_files" in row
+        and not _string_list(row.get("emitted_runtime_files"))
+    ):
+        return False
     if row.get("promotion_eligible") is False:
         return False
     lane_values = {
@@ -1256,13 +1294,7 @@ def _strong_closure_diagnostics(claim_rows: list[dict[str, Any]]) -> list[dict[s
 
     for claim_id in claim_ids:
         if any(
-            lane_can_satisfy_strong_closure(
-                claim_kind=str(row.get("claim_kind") or ""),
-                source_lane=str(row.get("source_lane") or ""),
-                strategic_receipt_verified=(
-                    row.get("strategic_receipt_verified") is True
-                ),
-            )
+            _closure_profile_claim_is_promotion_eligible(row)
             for row in rows_by_claim_id[claim_id]
         ):
             continue

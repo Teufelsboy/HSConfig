@@ -95,7 +95,10 @@ def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
     if not isinstance(ledger, Mapping):
         return ["runtime_surface_ledger_invalid"]
 
-    if ledger.get("schema_version") != 2:
+    if (
+        type(ledger.get("schema_version")) is not int
+        or ledger.get("schema_version") != 2
+    ):
         return ["runtime_surface_ledger_schema_invalid"]
     try:
         rederived = rederive_runtime_surface_ledger_from_package(package_path)
@@ -105,7 +108,7 @@ def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
     errors: list[str] = []
     if ledger.get("surface_ledger_sha256") != rederived.get("surface_ledger_sha256"):
         errors.append("runtime_surface_ledger_sha256_mismatch")
-    if dict(ledger) != rederived:
+    if _canonical_json(ledger) != _canonical_json(rederived):
         errors.append("runtime_surface_ledger_content_mismatch")
 
     for value in rederived.get("physical_errors", []):
@@ -127,6 +130,15 @@ def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
         else:
             errors.append("runtime_surface_ledger_owner_collision:invalid")
     return sorted(set(errors))
+
+
+def _canonical_json(value: Mapping[str, Any]) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
 
 
 def _validate_linked_runtime_entities(package_path: Path) -> list[str]:

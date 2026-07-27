@@ -10,10 +10,12 @@ from typing import Any
 from hsconfig.card_metadata import analysis_cards_from_deck_identity
 from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
 from hsconfig.io import read_json
+from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import is_supported_card_behavior_block
 
 COMBO_SEPARATORS = (">->", ">>")
 _METADATA_KEYS = {"GameCardId", "ConfigComment"}
+_SPECIAL_SURFACE_FILES = {"Concede.json", "Presume.json"}
 
 
 def build_runtime_surface_ledger(
@@ -39,20 +41,36 @@ def build_runtime_surface_ledger(
         if card.get("card_id")
     }
     mulligan_rows = _mulligan_rows(compiled_mulligan)
-    mulligan_cards = {str(row["mulligan"]) for row in mulligan_rows if row["mulligan"] != "*"}
+    mulligan_cards = {
+        card_id
+        for row in mulligan_rows
+        for card_id in row["selector_cards"]
+    }
     combo_rows, combo_errors = _combo_rows(compiled_combo)
     combo_cards = {card_id for row in combo_rows for card_id in row["cards"]}
     cardid_payloads, cardid_errors = _valid_cardid_payloads(compiled_cardid_files)
-    explicit_linked_runtime_ids = {
-        str(owner.get("runtime_card_id", ""))
+    special_surfaces = sorted(
+        filename
+        for filename in compiled_cardid_files
+        if filename in _SPECIAL_SURFACE_FILES
+    )
+    validated_linked_owners = [
+        owner
         for owner in linked_runtime_owners
-        if str(owner.get("runtime_card_id", ""))
-    }
+        if str(owner.get("source_card_id", "")) in cards
+        and str(owner.get("runtime_card_id", ""))
+        and str(owner.get("runtime_card_id", ""))
+        != str(owner.get("source_card_id", ""))
+        and str(owner.get("link_kind", "")) not in {"", "self"}
+    ]
+    linked, collisions = _linked_entities(
+        validated_linked_owners, cardid_payloads
+    )
+    explicit_linked_runtime_ids = set(linked)
     ownership_errors = [
         *[
-            f"mulligan_out_of_deck_card:{row['mulligan']}"
-            for row in mulligan_rows
-            if row["mulligan"] != "*" and row["mulligan"] not in cards
+            f"mulligan_out_of_deck_card:{card_id}"
+            for card_id in sorted(mulligan_cards - set(cards))
         ],
         *[
             f"combo_out_of_deck_card:{card_id}"
@@ -79,7 +97,6 @@ def build_runtime_surface_ledger(
                 {"card_id": card_id, "reason": "ineligible_card_runtime_emitted"}
             )
         record["runtime_emitted"] = bool(record["runtime_surfaces"])
-    linked, collisions = _linked_entities(linked_runtime_owners, cardid_payloads)
     ledger = {
         "schema_version": 2,
         "cards": dict(sorted(cards.items())),
@@ -87,7 +104,7 @@ def build_runtime_surface_ledger(
         "globalvalues_emitted": globalvalues["physical_key_count"] > 0,
         "mulligan": {
             "rule_count": len(mulligan_rows),
-            "card_ids": sorted({str(row["mulligan"]) for row in mulligan_rows if row["mulligan"] != "*"}),
+            "card_ids": sorted(mulligan_cards),
             "rules": mulligan_rows,
         },
         "combo": {
@@ -96,6 +113,7 @@ def build_runtime_surface_ledger(
             "rows": [str(row["canonical"]) for row in combo_rows],
         },
         "cardid": _cardid_metrics(cardid_payloads),
+        "special_surfaces": special_surfaces,
         "globalvalues": globalvalues,
         "physical_errors": sorted([*combo_errors, *cardid_errors, *globalvalue_errors, *ownership_errors]),
         "unexpected_runtime_emissions": sorted(
@@ -113,23 +131,35 @@ def _add_surface(record: dict[str, Any], surface: str) -> None:
         record["runtime_surfaces"].sort()
 
 
-def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, str]]:
+def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     values = (
         payload.get("Mulligan", {}).get("values", [])
         if isinstance(payload, Mapping)
         else []
     )
-    return [
-        {
-            "mulligan": str(row["mulligan"]),
-            "value": str(row["value"]),
-            "condition": str(row.get("condition", "*")),
-        }
-        for row in values
-        if isinstance(row, Mapping)
-        and row.get("mulligan")
-        and row.get("value") in {"hold", "discard"}
-    ]
+    rows: list[dict[str, Any]] = []
+    for row in values:
+        if (
+            not isinstance(row, Mapping)
+            or not row.get("mulligan")
+            or row.get("value") not in {"hold", "discard"}
+        ):
+            continue
+        normalized = normalize_mulligan_selector(
+            {"selector": row["mulligan"]}
+        )
+        if normalized.get("supported") is not True:
+            continue
+        rows.append(
+            {
+                "mulligan": str(normalized["selector"]),
+                "selector_kind": str(normalized["selector_kind"]),
+                "selector_cards": list(normalized["selector_cards"]),
+                "value": str(row["value"]),
+                "condition": str(row.get("condition", "*")),
+            }
+        )
+    return rows
 
 
 def _combo_rows(
@@ -174,6 +204,8 @@ def _valid_cardid_payloads(
     valid: dict[str, Mapping[str, Any]] = {}
     errors: list[str] = []
     for filename, payload in files.items():
+        if filename in _SPECIAL_SURFACE_FILES:
+            continue
         card_id = _filename_card_id(filename)
         if (
             not card_id
@@ -199,13 +231,6 @@ def _has_runtime_effect(payload: Mapping[str, Any]) -> bool:
     )
 
 
-def _valid_globalvalues(payload: Mapping[str, Any]) -> bool:
-    return isinstance(payload, Mapping) and any(
-        key not in _METADATA_KEYS and _has_nonempty_mapping_rows(value)
-        for key, value in payload.items()
-    )
-
-
 def _has_nonempty_mapping_rows(value: object) -> bool:
     return (
         isinstance(value, Mapping)
@@ -225,7 +250,33 @@ def _cardid_metrics(payloads: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]
             and isinstance(value.get("values"), list)
             and _has_nonempty_mapping_rows(value)
         }
-        entities.append({"card_id": card_id, "behavior_blocks": blocks})
+        behavior_rows = [
+            {
+                "behavior_block": str(block),
+                "condition": str(row.get("condition", "*")),
+                "value": str(row.get("value", "")),
+            }
+            for block, value in payload.items()
+            if is_supported_card_behavior_block(str(block))
+            and isinstance(value, Mapping)
+            and isinstance(value.get("values"), list)
+            for row in value["values"]
+            if isinstance(row, Mapping) and bool(row)
+        ]
+        entities.append(
+            {
+                "card_id": card_id,
+                "behavior_blocks": blocks,
+                "behavior_rows": sorted(
+                    behavior_rows,
+                    key=lambda row: (
+                        row["behavior_block"],
+                        row["condition"],
+                        row["value"],
+                    ),
+                ),
+            }
+        )
     return {
         "entity_count": len(entities),
         "behavior_row_count": sum(sum(entity["behavior_blocks"].values()) for entity in entities),

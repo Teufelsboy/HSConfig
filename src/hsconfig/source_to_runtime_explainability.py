@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
+from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.runtime_entity_owner import partition_runtime_entity_owner_rows
 from hsconfig.source_claim_gap_report import NEXT_ACTION_BY_MISSING_LINK
 
@@ -80,14 +81,17 @@ def build_source_to_runtime_explainability_report(
         for row in runtime_entity_transitions
         if row.get("claim_id")
     }
+    behavior_by_claim_id = _behavior_by_claim_id(accepted_behavior_rows)
     claim_rows = _claim_rows(
         audit_report,
         ownership_by_claim_id=ownership_by_claim_id,
+        behavior_by_claim_id=behavior_by_claim_id,
     )
     claim_rows = _apply_runtime_surface_ledger_to_claim_rows(
         claim_rows,
         audit_report,
         runtime_surface_ledger,
+        behavior_by_claim_id=behavior_by_claim_id,
     )
     card_rows = _apply_runtime_surface_ledger(
         _card_rows(audit_report, claim_rows),
@@ -148,6 +152,8 @@ def _apply_runtime_surface_ledger_to_claim_rows(
     rows: list[dict[str, Any]],
     audit: Mapping[str, Any],
     ledger: Mapping[str, Any] | None,
+    *,
+    behavior_by_claim_id: Mapping[str, Mapping[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     if ledger is None:
         return rows
@@ -163,12 +169,20 @@ def _apply_runtime_surface_ledger_to_claim_rows(
     audit_claim_rows = audit.get("claim_rows", {})
     projected: list[dict[str, Any]] = []
     for row in rows:
-        raw_claim = (
+        audit_claim = (
             audit_claim_rows.get(str(row.get("claim_id", "")), {})
             if isinstance(audit_claim_rows, Mapping)
             else {}
         )
-        claim_cards = _string_list(raw_claim.get("cards")) if isinstance(raw_claim, Mapping) else []
+        raw_claim = (
+            dict(audit_claim) if isinstance(audit_claim, Mapping) else {}
+        )
+        behavior = (behavior_by_claim_id or {}).get(
+            str(row.get("claim_id", ""))
+        )
+        if isinstance(behavior, Mapping):
+            raw_claim.update(behavior)
+        claim_cards = _string_list(raw_claim.get("cards"))
         physical_files = sorted(
             {
                 surface
@@ -188,7 +202,7 @@ def _apply_runtime_surface_ledger_to_claim_rows(
             projected.append(row)
             continue
         emitted_files = _claim_physical_files(
-            raw_claim=raw_claim if isinstance(raw_claim, Mapping) else {},
+            raw_claim=raw_claim,
             expected_files=expected_files,
             physical_files=physical_files,
             ledger=ledger,
@@ -236,13 +250,26 @@ def _claim_physical_files(
         metrics = ledger.get("mulligan")
         if not isinstance(metrics, Mapping):
             return ["Mulligan.json"] if "Mulligan.json" in physical_files else []
-        selector = str(raw_claim.get("selector") or raw_claim.get("mulligan") or "")
+        selector = str(
+            raw_claim.get("selector") or raw_claim.get("mulligan") or ""
+        )
         cards = _string_list(raw_claim.get("cards"))
         selector = selector or (cards[0] if len(cards) == 1 else "")
+        selector_info = normalize_mulligan_selector({"selector": selector})
+        if selector_info.get("supported") is not True:
+            return []
         action = "discard" if "discard" in kind else "hold"
+        claim_condition = str(raw_claim.get("condition", "")).strip()
+        if not claim_condition:
+            return []
         if any(
-            str(rule.get("mulligan", "")) == selector
+            _mulligan_rule_selector_identity(rule)
+            == (
+                str(selector_info["selector_kind"]),
+                tuple(str(card) for card in selector_info["selector_cards"]),
+            )
             and str(rule.get("value", "")) == action
+            and str(rule.get("condition", "*")) == claim_condition
             for rule in metrics.get("rules", [])
             if isinstance(rule, Mapping)
         ):
@@ -255,9 +282,11 @@ def _claim_physical_files(
         cards = _string_list(raw_claim.get("cards"))
         rows = _string_list(metrics.get("rows"))
         operator = str(raw_claim.get("operator", ""))
+        if not operator:
+            return []
         if cards and any(
             identity["cards"] == cards
-            and (not operator or identity["operator"] == operator)
+            and identity["operator"] == operator
             for identity in (_combo_row_identity(row) for row in rows)
         ):
             return ["Combo.json"]
@@ -270,8 +299,24 @@ def _claim_physical_files(
         return []
     cardid_metrics = ledger.get("cardid")
     behavior_block = str(raw_claim.get("behavior_block", ""))
-    cardid_expected = [path for path in expected_files if path.endswith(".json") and path not in {"Mulligan.json", "Combo.json", "GlobalValues.json"}]
-    if cardid_expected and behavior_block and isinstance(cardid_metrics, Mapping):
+    behavior_condition = str(raw_claim.get("condition", "")).strip()
+    behavior_value = str(raw_claim.get("value", "")).strip()
+    cardid_expected = [
+        path
+        for path in expected_files
+        if path.endswith(".json")
+        and path
+        not in {
+            "Concede.json",
+            "Presume.json",
+            "Mulligan.json",
+            "Combo.json",
+            "GlobalValues.json",
+        }
+    ]
+    if cardid_expected:
+        if not behavior_block or not isinstance(cardid_metrics, Mapping):
+            return []
         entities = {
             str(entity.get("card_id", "")): entity
             for entity in cardid_metrics.get("entities", [])
@@ -280,9 +325,36 @@ def _claim_physical_files(
         return [
             path
             for path in cardid_expected
-            if behavior_block in _mapping_dict(entities.get(path[:-5])).get("behavior_blocks", {})
+            if behavior_condition
+            and behavior_value
+            and {
+                "behavior_block": behavior_block,
+                "condition": behavior_condition,
+                "value": behavior_value,
+            }
+            in _mapping_dict(entities.get(path[:-5])).get(
+                "behavior_rows", []
+            )
         ]
     return sorted(set(physical_files) & expected)
+
+
+def _mulligan_rule_selector_identity(
+    rule: Mapping[str, Any],
+) -> tuple[str, tuple[str, ...]]:
+    selector_kind = str(rule.get("selector_kind", ""))
+    selector_cards = tuple(_string_list(rule.get("selector_cards")))
+    if selector_kind:
+        return selector_kind, selector_cards
+    normalized = normalize_mulligan_selector(
+        {"selector": rule.get("mulligan", "")}
+    )
+    if normalized.get("supported") is not True:
+        return "", ()
+    return (
+        str(normalized["selector_kind"]),
+        tuple(str(card) for card in normalized["selector_cards"]),
+    )
 
 
 def _mapping_dict(value: object) -> Mapping[str, Any]:
@@ -308,8 +380,6 @@ def _apply_runtime_surface_ledger(
         return rows
     if not isinstance(cards, Mapping):
         cards = {}
-    links = ledger.get("linked_runtime_entities", {}) if isinstance(ledger, Mapping) else {}
-    linked_files_by_source = _linked_files_by_source(links)
     projected: list[dict[str, Any]] = []
     for row in rows:
         physical = cards.get(str(row.get("card_id", "")))
@@ -317,10 +387,13 @@ def _apply_runtime_surface_ledger(
             physical.get("runtime_surfaces") if isinstance(physical, Mapping) else []
         )
         emitted_files = sorted(
-            set(direct_files)
-            | set(linked_files_by_source.get(str(row.get("card_id", "")), []))
-            | set(_string_list(row.get("emitted_runtime_files")))
+            set(_string_list(row.get("emitted_runtime_files")))
         )
+        not_emitted_files = [
+            path
+            for path in _string_list(row.get("not_emitted_runtime_files"))
+            if path not in set(emitted_files)
+        ]
         runtime_eligible = row.get("runtime_eligible") is not False
         runtime_backed = bool(emitted_files)
         first_missing_link = (
@@ -345,9 +418,7 @@ def _apply_runtime_surface_ledger(
             # Plans can state an intended surface, but only a ledger can state
             # a physical non-emission.  Do not re-export intended files as a
             # physical truth when the ledger is supplied.
-            "not_emitted_runtime_files": _string_list(
-                row.get("not_emitted_runtime_files")
-            ),
+            "not_emitted_runtime_files": not_emitted_files,
             "first_missing_link": first_missing_link,
             "why_not_emitted": why_not_emitted,
             "next_source_action": next_source_action,
@@ -416,6 +487,7 @@ def _claim_rows(
     audit: Mapping[str, Any],
     *,
     ownership_by_claim_id: Mapping[str, Mapping[str, str]] | None = None,
+    behavior_by_claim_id: Mapping[str, Mapping[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     lifecycle_rows = audit.get("claim_lifecycle_rows", [])
     if not isinstance(lifecycle_rows, list):
@@ -423,6 +495,10 @@ def _claim_rows(
 
     rows: list[dict[str, Any]] = []
     ownership_by_claim_id = ownership_by_claim_id or {}
+    behavior_by_claim_id = behavior_by_claim_id or {}
+    audit_claim_rows = audit.get("claim_rows", {})
+    if not isinstance(audit_claim_rows, Mapping):
+        audit_claim_rows = {}
     for raw_row in lifecycle_rows:
         if not isinstance(raw_row, Mapping):
             continue
@@ -430,6 +506,12 @@ def _claim_rows(
         expected_files = _expected_runtime_files(raw_row)
         ownership = ownership_by_claim_id.get(
             str(raw_row.get("claim_id", ""))
+        )
+        behavior = behavior_by_claim_id.get(
+            str(raw_row.get("claim_id", ""))
+        )
+        audit_claim = audit_claim_rows.get(
+            str(raw_row.get("claim_id", "")), {}
         )
         if ownership is not None:
             source_file = f"{ownership['source_card_id']}.json"
@@ -476,6 +558,39 @@ def _claim_rows(
                     "link_kind": ownership["link_kind"],
                 }
             )
+        if behavior is not None:
+            row.update(
+                {
+                    "behavior_block": behavior["behavior_block"],
+                    "source_card_id": behavior["source_card_id"],
+                    "runtime_card_id": behavior["runtime_card_id"],
+                    "link_kind": behavior["link_kind"],
+                }
+            )
+        if isinstance(audit_claim, Mapping):
+            for key in (
+                "selector",
+                "mulligan",
+                "condition",
+                "operator",
+                "behavior_block",
+                "value",
+                "key",
+                "globalvalues_key",
+                "source_lane",
+                "source_type",
+                "source_confidence",
+                "claim_confidence",
+                "promotion_eligible",
+                "strategic_receipt_verified",
+            ):
+                if key in audit_claim and key not in row:
+                    value = audit_claim[key]
+                    row[key] = list(value) if isinstance(value, list) else value
+        if behavior is not None:
+            for key in ("condition", "value"):
+                if key in behavior:
+                    row[key] = behavior[key]
         rows.append(row)
     return rows
 
@@ -1242,6 +1357,65 @@ def _runtime_entity_transitions(
             "runtime_file": f"{runtime_card_id}.json",
         }
     return [transitions[key] for key in sorted(transitions)]
+
+
+def _behavior_by_claim_id(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, str]]:
+    candidates: dict[
+        str, set[tuple[str, str, str, str, str, str]]
+    ] = defaultdict(set)
+    for row in rows:
+        claim_id = str(row.get("claim_id") or "").strip()
+        behavior_block = str(row.get("behavior_block") or "").strip()
+        source_card_id = str(
+            row.get("source_card_id") or row.get("card_id") or ""
+        ).strip()
+        runtime_card_id = str(
+            row.get("runtime_card_id") or row.get("card_id") or ""
+        ).strip()
+        link_kind = str(row.get("link_kind") or "self").strip()
+        condition = str(row.get("condition") or "*").strip()
+        value = str(row.get("value") or "").strip()
+        if (
+            row.get("meaningful_runtime_surface") is not True
+            or not claim_id
+            or not behavior_block
+            or not source_card_id
+            or not runtime_card_id
+        ):
+            continue
+        candidates[claim_id].add(
+            (
+                behavior_block,
+                source_card_id,
+                runtime_card_id,
+                link_kind,
+                condition,
+                value,
+            )
+        )
+    result: dict[str, dict[str, str]] = {}
+    for claim_id, identities in candidates.items():
+        if len(identities) != 1:
+            continue
+        (
+            behavior_block,
+            source_card_id,
+            runtime_card_id,
+            link_kind,
+            condition,
+            value,
+        ) = next(iter(identities))
+        result[claim_id] = {
+            "behavior_block": behavior_block,
+            "source_card_id": source_card_id,
+            "runtime_card_id": runtime_card_id,
+            "link_kind": link_kind,
+            "condition": condition,
+            "value": value,
+        }
+    return result
 
 
 def _combo_claim_is_runtime_lowerable(combo: Mapping[str, Any]) -> bool:

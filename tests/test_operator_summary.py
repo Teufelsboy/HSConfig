@@ -3105,6 +3105,79 @@ def test_operator_summary_profile_miss_stays_non_apply_blocking():
     assert summary["runtime_apply_allowed"] is True
 
 
+def test_operator_summary_strong_closure_uses_only_ledger_confirmed_claims():
+    summary = build_operator_summary(
+        deck_name="ShadowPriest",
+        deck_code="AAEBA-test",
+        technical_validation={"status": "passed"},
+        guide_source_depth={
+            "source_depth_status": "source_backed",
+            "claim_count": 3,
+            "source_evidence": {"warnings_count": 0},
+        },
+        generated_files=[
+            "GlobalValues.json",
+            "Mulligan.json",
+            "EX1_625t.json",
+        ],
+        runtime_surface_ledger={
+            "mulligan": {
+                "rule_count": 1,
+                "rules": [
+                    {
+                        "mulligan": "CARD_KEEP",
+                        "value": "hold",
+                        "condition": "*",
+                    }
+                ],
+            },
+            "globalvalues": {"changed_key_count": 1},
+            "cardid": {"entity_count": 1},
+            "combo": {"row_count": 0},
+        },
+        source_to_runtime_explainability_report={
+            "surface_ledger_sha256": "f" * 64,
+            "summary": {"cards_with_first_missing_link": 1},
+            "claim_rows": [
+                {
+                    "claim_id": "gameplan",
+                    "claim_kind": "gameplan_posture",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
+                    "emitted_runtime_files": ["GlobalValues.json"],
+                },
+                {
+                    "claim_id": "mulligan",
+                    "claim_kind": "mulligan_keep",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
+                    "emitted_runtime_files": [],
+                    "not_emitted_runtime_files": ["Mulligan.json"],
+                },
+                {
+                    "claim_id": "hero-power",
+                    "claim_kind": "hero_power_transform",
+                    "source_lane": "deck_matched_public_guide",
+                    "strategic_receipt_verified": True,
+                    "emitted_runtime_files": ["EX1_625t.json"],
+                },
+            ],
+            "card_rows": [],
+        },
+    )
+
+    closure = summary["source_backed_strong_closure"]
+    assert closure["closure_profile_closed"] is False
+    assert closure["promotion_ready"] is False
+    assert closure["closure_profile_missing_surfaces"] == ["Mulligan.json"]
+    assert closure["strong_closure_diagnostics"] == [
+        {
+            "claim_id": "mulligan",
+            "reason": "strong_closure_claim_not_eligible",
+        }
+    ]
+
+
 def _source_backed_profile_summary(rows, *, gameplan_contract=None):
     return build_operator_summary(
         deck_name="Neutral Deck",

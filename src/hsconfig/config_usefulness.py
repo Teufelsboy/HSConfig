@@ -246,17 +246,25 @@ def _ledger_mulligan_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
         and str(rule.get("mulligan", "")) != "*"
         and str(rule.get("value", "")) == "hold"
     ]
+    specific_rules = [
+        rule
+        for rule in rules
+        if isinstance(rule, Mapping)
+        and str(rule.get("mulligan", "")) != "*"
+    ]
     status = "rich" if concrete_keeps else "thin"
     return {
         "status": status,
         "rule_count": count,
         "suppressed_rule_count": 0,
         "has_concrete_keeps": bool(concrete_keeps),
-        "default_only": bool(count) and not concrete_keeps,
+        "default_only": bool(count) and not specific_rules,
         "first_gap_reason": "none" if concrete_keeps else "no_physical_mulligan_keep",
-        "next_source_need": "none"
-        if count
-        else "source_backed_or_policy_backed_mulligan_keeps",
+        "next_source_need": (
+            "none"
+            if concrete_keeps
+            else "source_backed_or_policy_backed_mulligan_keeps"
+        ),
         "source_backed_rule_count": 0,
         "policy_backed_rule_count": 0,
         "policy_backed_keep_rule_count": 0,

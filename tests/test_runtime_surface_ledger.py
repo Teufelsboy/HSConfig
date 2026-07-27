@@ -408,3 +408,38 @@ def test_config_usefulness_keeps_discard_only_mulligan_thin():
     assert usefulness["surfaces"]["mulligan"]["rule_count"] == 1
     assert usefulness["surfaces"]["mulligan"]["has_concrete_keeps"] is False
     assert usefulness["surfaces"]["mulligan"]["status"] == "thin"
+    assert usefulness["surfaces"]["mulligan"]["default_only"] is False
+    assert usefulness["surfaces"]["mulligan"]["next_source_need"] == (
+        "source_backed_or_policy_backed_mulligan_keeps"
+    )
+
+
+def test_mulligan_selector_components_and_special_surfaces_are_owned_correctly():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Selectors", "cards": [{"card_id": "A_001", "count": 1}, {"card_id": "B_002", "count": 1}]},
+        compiled_mulligan={"Mulligan": {"values": [
+            {"mulligan": "DROP1", "value": "discard"},
+            {"mulligan": "A_001+B_002", "value": "hold"},
+            {"mulligan": "A_001,B_002", "value": "hold"},
+        ]}},
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={"Presume.json": {"GameCardId": "Presume"}, "Concede.json": {"GameCardId": "Concede"}},
+        linked_runtime_owners=[],
+    )
+    assert ledger["physical_errors"] == []
+    assert ledger["special_surfaces"] == ["Concede.json", "Presume.json"]
+    assert ledger["cards"]["A_001"]["runtime_surfaces"] == ["Mulligan.json"]
+    assert ledger["cards"]["B_002"]["runtime_surfaces"] == ["Mulligan.json"]
+
+
+def test_mulligan_component_and_self_owner_cannot_bless_orphans():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Selectors", "cards": [{"card_id": "A_001", "count": 1}]},
+        compiled_mulligan={"Mulligan": {"values": [{"mulligan": "A_001+Z_999", "value": "hold"}]}},
+        compiled_globalvalues={}, compiled_combo=None,
+        compiled_cardid_files={"Z_999.json": {"GameCardId": "Z_999", "BeforePlayCardBonus": {"values": [{"value": "1"}]}}},
+        linked_runtime_owners=[{"source_card_id": "Z_999", "runtime_card_id": "Z_999", "link_kind": "self"}],
+    )
+    assert "mulligan_out_of_deck_card:Z_999" in ledger["physical_errors"]
+    assert "cardid_orphan_runtime_entity:Z_999" in ledger["physical_errors"]

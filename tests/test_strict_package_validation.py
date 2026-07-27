@@ -42,22 +42,79 @@ def test_strict_validation_rejects_unexpected_physical_sideboard_emission(
     build_result, build_code = _build_fixture(tmp_path, capsys)
     assert build_code == 0
     package = Path(build_result["package"])
-    write_json(
-        package / "reports" / "runtime_surface_ledger.json",
+    reports = package / "reports"
+    deck_dir = next((package / "CustomConfig").iterdir())
+    deck_identity_path = reports / "deck_identity.json"
+    deck_identity = json.loads(deck_identity_path.read_text(encoding="utf-8"))
+    deck_identity["sideboards"] = [
         {
-            "cards": {},
-            "physical_errors": [],
-            "unexpected_runtime_emissions": [
-                {"card_id": "SIDE_001", "reason": "ineligible_card_runtime_emitted"}
-            ],
-            "linked_runtime_owner_collisions": [],
+            "owner_card_id": deck_identity["cards"][0]["card_id"],
+            "cards": [{"card_id": "SIDE_001", "count": 1}],
+        }
+    ]
+    write_json(deck_identity_path, deck_identity)
+    write_json(
+        deck_dir / "SIDE_001.json",
+        {
+            "GameCardId": "SIDE_001",
+            "BeforePlayCardBonus": {
+                "values": [{"condition": "*", "value": "1"}]
+            },
         },
     )
+    ledger = rederive_runtime_surface_ledger_from_package(package)
+    assert ledger["schema_version"] == 2
+    assert ledger["unexpected_runtime_emissions"] == [
+        {"card_id": "SIDE_001", "reason": "ineligible_card_runtime_emitted"}
+    ]
+    write_json(reports / "runtime_surface_ledger.json", ledger)
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert (
+        "runtime_surface_ledger_unexpected_emission:"
+        "SIDE_001:ineligible_card_runtime_emitted"
+    ) in report["errors"]
+
+
+@pytest.mark.parametrize("schema_version", [True, 2.0])
+def test_strict_validation_rejects_non_integer_ledger_schema_version(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    schema_version: object,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    ledger_path = package / "reports" / "runtime_surface_ledger.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    ledger["schema_version"] = schema_version
+    write_json(ledger_path, ledger)
 
     report = validate_complete_package(package)
 
     assert report["status"] == "failed"
     assert "runtime_surface_ledger_schema_invalid" in report["errors"]
+
+
+def test_strict_validation_compares_nested_canonical_types(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    ledger_path = package / "reports" / "runtime_surface_ledger.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert type(ledger["globalvalues_emitted"]) is bool
+    ledger["globalvalues_emitted"] = int(ledger["globalvalues_emitted"])
+    write_json(ledger_path, ledger)
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert "runtime_surface_ledger_content_mismatch" in report["errors"]
 
 
 @pytest.mark.parametrize("mutation", ["missing", "tampered", "stale"])
@@ -435,6 +492,10 @@ def linked_owner_package(
     assert build_code == 0
     package = Path(build_result["package"])
     deck_dir = next((package / "CustomConfig").iterdir())
+    deck_identity_path = package / "reports" / "deck_identity.json"
+    deck_identity = json.loads(deck_identity_path.read_text(encoding="utf-8"))
+    deck_identity["cards"].append({"card_id": "SW_448", "count": 1})
+    write_json(deck_identity_path, deck_identity)
     write_json(
         package / "reports" / "card_behavior_plan_report.json",
         {
@@ -732,6 +793,10 @@ def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
     assert build_code == 0
     package = Path(build_result["package"])
     deck_dir = next((package / "CustomConfig").iterdir())
+    deck_identity_path = package / "reports" / "deck_identity.json"
+    deck_identity = json.loads(deck_identity_path.read_text(encoding="utf-8"))
+    deck_identity["cards"].append({"card_id": "SW_448", "count": 1})
+    write_json(deck_identity_path, deck_identity)
     write_json(
         package / "reports" / "card_behavior_plan_report.json",
         {

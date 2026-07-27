@@ -70,3 +70,32 @@ Round-2 verification: RED observed for missing/tampered/stale Strict ledgers
 and absent metrics; then `80 passed` across ledger, explainability, and strict
 validation plus targeted Ruff; `19 passed` multi-deck E2E plus Ruff; `git diff
 --check` passed. No runtime, HSTuner or Desktop access was used.
+
+## Round 4 claim satisfaction and canonical identity follow-up
+
+Card, closure, and operator-attention status now derive from claim-specific
+physical satisfaction instead of a raw union of filenames. Mulligan matching
+uses normalized direct, list, plus-combo, DROP and wildcard selectors and
+requires exact action and condition. Combo requires exact order and operator;
+GlobalValues requires the exact changed key; CardID requires the accepted
+behavior-plan runtime owner, behavior block, condition and value to match a
+physical runtime row.
+
+Only validated non-self linked relations whose source exists in the deck or
+analysis graph can exempt linked CardID entities from orphan detection. Self
+owners cannot authorize unrelated entities. `Presume.json` and `Concede.json`
+are modelled as supported special surfaces rather than misclassified as CardID
+payloads. Discard-only Mulligan output remains thin and actionable but is not
+labelled default-only.
+
+Strict validation now requires schema version 2 to be an actual integer and
+compares canonical JSON type-safely, including nested bool/int distinctions.
+The sideboard regression reaches the real unexpected-physical-emission path.
+Strong Closure prefers canonical explainability claim rows and their
+ledger-confirmed emitted files, so generated-file lists or unmatched plan rows
+cannot close a profile.
+
+Round-4 verification: RED was observed for each mismatch and type case; the
+affected Task-8 and strict-validation suite finished with `340 passed`.
+Targeted Ruff and `git diff --check` passed. No runtime, HSTuner or Desktop
+access was used.
