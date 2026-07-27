@@ -510,25 +510,31 @@ def _append_semantically_allowed_rows(
 ) -> None:
     for row in candidates:
         semantic_score = row.get("semantic_score", {})
+        semantic_reason = str(
+            semantic_score.get(
+                "semantic_reason",
+                semantic_score.get("reason", ""),
+            )
+        )
         decision = decide_semantic_runtime(
-            semantic_reason=str(
-                semantic_score.get(
-                    "semantic_reason",
-                    semantic_score.get("reason", ""),
-                )
-            ),
+            semantic_reason=semantic_reason,
             source_lane=_claim_source_lane(claim),
             condition=str(row["condition"]),
             runtime_block=str(row["behavior_block"]),
             claim_kind=claim_kind,
         )
         if not decision.allowed:
+            suppression_reason = (
+                "reciprocal_burn_report_only"
+                if semantic_reason == "reciprocal_hero_burn"
+                else decision.reason
+            )
             suppressed.append(
                 _suppressed_row(
                     claim,
                     claim_kind,
                     [str(row["card_id"])],
-                    decision.reason,
+                    suppression_reason,
                 )
             )
             continue

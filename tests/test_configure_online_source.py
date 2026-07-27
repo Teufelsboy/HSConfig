@@ -385,6 +385,17 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert hero_power_owner["GameCardId"] == "EX1_625t"
     assert_darkbishop_effect_semantics_without_mulligan_keep(hero_power_owner, mulligan)
 
+    behavior_plan = _read_json(package / "reports" / "card_behavior_plan_report.json")
+    hero_power_rows = [
+        row
+        for row in behavior_plan["rows"]
+        if row.get("runtime_card_id") == "EX1_625t"
+        and row.get("behavior_block") == "BeforeUseHeroPowerBonus"
+    ]
+    assert len(hero_power_rows) == 1
+    assert hero_power_rows[0]["source_card_id"] == "SW_448"
+    assert hero_power_rows[0]["link_kind"] == "hero_power_transform"
+
     source_documents = _read_json(out / "03_source_autopilot" / "source_documents.json")
     flat_claims = [
         claim

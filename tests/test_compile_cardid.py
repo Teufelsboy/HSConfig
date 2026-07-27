@@ -513,6 +513,66 @@ def test_darkbishop_hero_power_behavior_is_owned_by_linked_mind_spike_file():
     ] == [("*", "10")]
 
 
+def test_compile_cardid_emits_one_physical_row_per_semantic_runtime_owner():
+    contract = {
+        "deck_name": "ShadowPriest",
+        "cards": {
+            card_id: {"roles": []}
+            for card_id in ("GVG_009", "VAC_419", "TOY_518", "WON_065", "SW_448")
+        },
+    }
+    rows = [
+        {
+            "surface_family": "CARDID.json",
+            "card_id": card_id,
+            "source_card_id": card_id,
+            "runtime_card_id": card_id,
+            "link_kind": "self",
+            "behavior_block": "OnBoardBonus",
+            "condition": "*",
+            "value": "8",
+            "rule_id_suffix": "summon_trigger_board_engine",
+            "source_claim_ids": [claim_id],
+            "confidence": "source_backed",
+        }
+        for card_id in ("TOY_518", "WON_065")
+        for claim_id in (f"{card_id}-source-a", f"{card_id}-source-b")
+    ]
+    rows.extend(
+        [
+            {
+                "surface_family": "CARDID.json",
+                "card_id": "SW_448",
+                "source_card_id": "SW_448",
+                "runtime_card_id": "EX1_625t",
+                "link_kind": "hero_power_transform",
+                "behavior_block": "BeforeUseHeroPowerBonus",
+                "condition": "*",
+                "value": "10",
+                "rule_id_suffix": "hero_power_transform",
+                "source_claim_ids": ["darkbishop-source"],
+                "confidence": "source_backed",
+            }
+        ]
+    )
+
+    files = compile_cardid_behaviors(contract, rows=rows)
+
+    assert set(files["GVG_009.json"]) == {"GameCardId", "ConfigComment"}
+    assert set(files["VAC_419.json"]) == {"GameCardId", "ConfigComment"}
+    assert set(files["SW_448.json"]) == {"GameCardId", "ConfigComment"}
+    for card_id in ("TOY_518", "WON_065"):
+        assert [
+            (row["condition"], row["value"])
+            for row in files[f"{card_id}.json"]["OnBoardBonus"]["values"]
+        ] == [("*", "8")]
+    assert [
+        (row["condition"], row["value"])
+        for row in files["EX1_625t.json"]["BeforeUseHeroPowerBonus"]["values"]
+    ] == [("*", "10")]
+    assert files.merged_duplicate_runtime_row_count == 2
+
+
 def test_explicit_body_behavior_row_is_not_removed_for_effect_only_card():
     contract = {
         "deck_name": "ShadowPriest",

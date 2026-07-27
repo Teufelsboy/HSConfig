@@ -182,21 +182,84 @@ def test_summon_trigger_engine_routes_only_to_on_board_bonus():
     )
 
 
-def test_recognized_report_only_semantics_cannot_bypass_exact_guide_gate():
+@pytest.mark.parametrize(
+    ("card_id", "evidence_text"),
+    [
+        (
+            "TOY_518",
+            "After you summon a Pirate, Treasure Distributor gives it +1 Attack.",
+        ),
+        (
+            "WON_065",
+            "After you summon a minion, Ship's Chirurgeon gives it +1 Health.",
+        ),
+    ],
+)
+def test_summon_trigger_board_engine_merges_to_one_persistent_owner_row(
+    card_id: str,
+    evidence_text: str,
+):
+    claims = [
+        {
+            "claim_id": claim_id,
+            "claim_kind": "card_role",
+            "cards": [card_id],
+            "claim_readiness": "source_backed_static_semantics",
+            "source_lane": "official_static_semantics",
+            "source_refs": ["hearthstonejson_static_semantics"],
+            "runtime_block": "OnBoardBonus",
+            "condition": "*",
+            "evidence_text_short": evidence_text,
+        }
+        for claim_id in ("claim-source-a", "claim-source-b")
+    ]
+
+    plan = route_card_behavior_surfaces(claims)
+
+    assert plan["suppressed"] == []
+    assert [
+        (row["card_id"], row["behavior_block"], row["condition"], row["value"])
+        for row in plan["rows"]
+    ] == [(card_id, "OnBoardBonus", "*", "8")]
+    assert plan["rows"][0]["source_claim_ids"] == [
+        "claim-source-a",
+        "claim-source-b",
+    ]
+    assert plan["merged_duplicate_runtime_row_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("card_id", "claim_id", "evidence_text"),
+    [
+        (
+            "GVG_009",
+            "claim_shadowbomber_exact_guide",
+            "Shadowbomber deals 3 damage to each hero with its Battlecry.",
+        ),
+        (
+            "VAC_419",
+            "claim_acupuncture_exact_guide",
+            "Acupuncture deals 4 damage to both heroes.",
+        ),
+    ],
+)
+def test_reciprocal_hero_burn_stays_report_only(
+    card_id: str,
+    claim_id: str,
+    evidence_text: str,
+):
     plan = route_card_behavior_surfaces(
         [
             {
-                "claim_id": "claim_shadowbomber_exact_guide",
+                "claim_id": claim_id,
                 "claim_kind": "card_role",
-                "cards": ["GVG_009"],
+                "cards": [card_id],
                 "stance": "battlecry_damage",
                 "claim_readiness": "guide_backed",
                 "source_lane": "deck_matched_public_guide",
                 "runtime_block": "BeforePlayCardBonus",
                 "condition": "*",
-                "evidence_text_short": (
-                    "Shadowbomber deals 3 damage to each hero with its Battlecry."
-                ),
+                "evidence_text_short": evidence_text,
             }
         ]
     )
@@ -204,10 +267,10 @@ def test_recognized_report_only_semantics_cannot_bypass_exact_guide_gate():
     assert plan["rows"] == []
     assert plan["suppressed"] == [
         {
-            "claim_id": "claim_shadowbomber_exact_guide",
+            "claim_id": claim_id,
             "claim_kind": "card_role",
-            "cards": ["GVG_009"],
-            "reason": "semantic_surface_not_expressible",
+            "cards": [card_id],
+            "reason": "reciprocal_burn_report_only",
         }
     ]
 
@@ -511,53 +574,65 @@ def test_explicit_runtime_value_preserves_value_provenance_and_card_semantics():
 
 
 @pytest.mark.parametrize(
-    "claim",
+    ("claim", "expected_suppression_reason"),
     [
-        {
-            "claim_id": "voidtouched_explicit_before_play",
-            "claim_kind": "card_role",
-            "cards": ["SW_446"],
-            "stance": "damage_amplifier",
-            "runtime_block": "BeforePlayCardBonus",
-            "runtime_value": "12",
-            "condition": "*",
-            "evidence_text_short": (
-                "Voidtouched Attendant makes both heroes take extra damage "
-                "from all sources."
-            ),
-            "source_lane": "deck_matched_public_guide",
-        },
-        {
-            "claim_id": "shadowbomber_explicit_before_play",
-            "claim_kind": "card_role",
-            "cards": ["GVG_009"],
-            "stance": "battlecry_damage",
-            "runtime_block": "BeforePlayCardBonus",
-            "runtime_value": "10",
-            "condition": "*",
-            "evidence_text_short": (
-                "Shadowbomber deals 3 damage to each hero with its Battlecry."
-            ),
-            "source_lane": "deck_matched_public_guide",
-        },
-        {
-            "claim_id": "treasure_distributor_explicit_before_play",
-            "claim_kind": "card_role",
-            "cards": ["TOY_518"],
-            "stance": "pirate_buff",
-            "runtime_block": "BeforePlayCardBonus",
-            "runtime_value": "8",
-            "condition": "*",
-            "evidence_text_short": (
-                "After you summon a Pirate, Treasure Distributor gives it "
-                "+1 Attack."
-            ),
-            "source_lane": "deck_matched_public_guide",
-        },
+        (
+            {
+                "claim_id": "voidtouched_explicit_before_play",
+                "claim_kind": "card_role",
+                "cards": ["SW_446"],
+                "stance": "damage_amplifier",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "12",
+                "condition": "*",
+                "evidence_text_short": (
+                    "Voidtouched Attendant makes both heroes take extra damage "
+                    "from all sources."
+                ),
+                "source_lane": "deck_matched_public_guide",
+            },
+            "semantic_surface_not_expressible",
+        ),
+        (
+            {
+                "claim_id": "shadowbomber_explicit_before_play",
+                "claim_kind": "card_role",
+                "cards": ["GVG_009"],
+                "stance": "battlecry_damage",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "10",
+                "condition": "*",
+                "evidence_text_short": (
+                    "Shadowbomber deals 3 damage to each hero with its Battlecry."
+                ),
+                "source_lane": "deck_matched_public_guide",
+            },
+            "reciprocal_burn_report_only",
+        ),
+        (
+            {
+                "claim_id": "treasure_distributor_explicit_before_play",
+                "claim_kind": "card_role",
+                "cards": ["TOY_518"],
+                "stance": "pirate_buff",
+                "runtime_block": "BeforePlayCardBonus",
+                "runtime_value": "8",
+                "condition": "*",
+                "evidence_text_short": (
+                    "After you summon a Pirate, Treasure Distributor gives it "
+                    "+1 Attack."
+                ),
+                "source_lane": "deck_matched_public_guide",
+            },
+            "semantic_surface_not_expressible",
+        ),
     ],
     ids=["SW_446", "GVG_009", "TOY_518"],
 )
-def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(claim):
+def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(
+    claim,
+    expected_suppression_reason,
+):
     plan = route_card_behavior_surfaces([claim])
 
     assert plan["rows"] == []
@@ -566,17 +641,17 @@ def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(claim):
             "claim_id": claim["claim_id"],
             "claim_kind": "card_role",
             "cards": claim["cards"],
-            "reason": "semantic_surface_not_expressible",
+            "reason": expected_suppression_reason,
         }
     ]
 
 
 @pytest.mark.parametrize(
-    "unsafe_card_id",
+    ("unsafe_card_id", "expected_suppression_reason"),
     [
-        "SW_446",
-        "GVG_009",
-        "TOY_518",
+        ("SW_446", "semantic_surface_not_expressible"),
+        ("GVG_009", "reciprocal_burn_report_only"),
+        ("TOY_518", "semantic_surface_not_expressible"),
     ],
 )
 @pytest.mark.parametrize(
@@ -588,6 +663,7 @@ def test_explicit_runtime_value_cannot_bypass_card_semantic_gate(claim):
 )
 def test_multicard_explicit_value_uses_each_row_card_identity_for_semantic_gate(
     unsafe_card_id,
+    expected_suppression_reason,
     value_field,
     explicit_value,
 ):
@@ -618,7 +694,7 @@ def test_multicard_explicit_value_uses_each_row_card_identity_for_semantic_gate(
             "claim_id": claim["claim_id"],
             "claim_kind": "card_role",
             "cards": [unsafe_card_id],
-            "reason": "semantic_surface_not_expressible",
+            "reason": expected_suppression_reason,
         }
     ]
 
