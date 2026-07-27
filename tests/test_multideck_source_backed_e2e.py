@@ -128,12 +128,59 @@ def test_audited_cards_emit_no_semantically_invalid_runtime_block(
         plan = read_json(
             prepared["out"] / "reports" / "card_behavior_plan_report.json"
         )
+        readiness = read_json(
+            prepared["out"] / "reports" / "per_card_config_readiness_report.json"
+        )
+        source_claims = read_json(
+            prepared["out"] / "reports" / "guide_claim_bundle.json"
+        )["claims"]
+        custom_config = next((prepared["out"] / "CustomConfig").iterdir())
         for card_id, invalid_block in expected.items():
             assert not any(
                 row.get("card_id") == card_id
                 and row.get("behavior_block") == invalid_block
                 for row in plan["rows"]
             )
+            assert invalid_block not in read_json(custom_config / f"{card_id}.json")
+
+        exact_fixture_expectations = {
+            ("BigShaman", "CS2_038"): (
+                "spell_cannot_use_battlecry_target",
+                "semantic_surface_not_expressible",
+            ),
+            ("BigShaman", "WON_335"): (
+                "spell_cannot_use_battlecry_target",
+                "semantic_surface_not_expressible",
+            ),
+            ("TreantDruid", "JAM_028"): (
+                "health_cost_condition_not_encoded",
+                "needs_condition_lowering",
+            ),
+        }
+        for (expected_deck, card_id), (
+            suppression_reason,
+            missing_link,
+        ) in exact_fixture_expectations.items():
+            if deck_name != expected_deck:
+                continue
+            suppression = next(
+                row
+                for row in plan["suppressed"]
+                if card_id in row.get("cards", [])
+                and row.get("reason") == suppression_reason
+            )
+            original_claim = next(
+                row
+                for row in source_claims
+                if row.get("claim_id") == suppression["claim_id"]
+            )
+            assert suppression["source_claim_ids"] == original_claim["source_claim_ids"]
+            assert suppression["source_refs"] == original_claim["source_refs"]
+            assert (
+                suppression["acquisition_provenance"]
+                == original_claim["acquisition_provenance"]
+            )
+            assert readiness["cards"][card_id]["first_missing_link"] == missing_link
 
 
 def test_discolock_emits_no_coverage_or_owner_mismatched_runtime_rows(

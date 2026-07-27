@@ -62,6 +62,7 @@ from hsconfig.source_to_runtime_explainability import (
     build_source_to_runtime_explainability_report,
 )
 from hsconfig.source_document_model import (
+    CARDID_SURFACE_CLAIM_KINDS,
     claim_can_lower_to_runtime,
     has_verified_source_receipt,
     normalized_claim_kind,
@@ -228,14 +229,11 @@ def build_package_payload(
         *mulligan_runtime_claims,
         *mulligan_selection["rejected_claims"],
     ]
-    cardid_claims = runtime_claims_for_surface(
-        initial_lifecycle_rows,
-        "cardid",
-        context={
-            "deck_identity": deck_identity,
-            "verified_source_receipts": verified_source_receipts,
-        },
-    )
+    cardid_claims = [
+        claim
+        for claim in plan_claims
+        if normalized_claim_kind(claim) in CARDID_SURFACE_CLAIM_KINDS
+    ]
     combo_claims = runtime_claims_for_surface(
         initial_lifecycle_rows,
         "combo",

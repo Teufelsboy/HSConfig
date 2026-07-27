@@ -530,3 +530,217 @@ def test_discard_payoff_trigger_does_not_become_manual_play_bonus(card_id):
 
     assert routed["rows"] == []
     assert routed["suppressed"][0]["reason"] == "discard_trigger_not_manual_play"
+
+
+def test_unrelated_lowered_condition_does_not_prove_variable_cost_semantics():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "variable_cost_with_coin",
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["VARIABLE_COST_CARD"],
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "coin",
+                "evidence_text_short": "Costs (1) less for each enemy minion.",
+            }
+        ],
+        card_metadata={
+            "cards": [
+                {
+                    "card_id": "VARIABLE_COST_CARD",
+                    "type": "SPELL",
+                    "text": "Costs (1) less for each enemy minion.",
+                }
+            ]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == (
+        "variable_cost_condition_not_encoded"
+    )
+
+
+def test_discover_option_identity_cannot_authorize_wrong_runtime_block():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "discover_wrong_block",
+                "claim_kind": "discover_choice",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["DISCOVER_CARD"],
+                "option_card_id": "OPTION_ALPHA",
+                "runtime_block": "BeforePlayCardBonus",
+                "evidence_text_short": "Discover a spell.",
+            }
+        ],
+        identity_links={
+            "DISCOVER_CARD": [{"link_kind": "entourage", "card_id": "OPTION_ALPHA"}]
+        },
+        card_metadata={
+            "cards": [
+                {
+                    "card_id": "DISCOVER_CARD",
+                    "type": "MINION",
+                    "text": "Discover a spell.",
+                }
+            ]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "discover_condition_not_encoded"
+
+
+def test_discover_identity_cannot_authorize_unrelated_condition():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "discover_with_coin",
+                "claim_kind": "discover_choice",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["CHOICE_CARD"],
+                "option_card_id": "OPTION_ALPHA",
+                "condition": "coin",
+                "evidence_text_short": "Discover an exact option.",
+            }
+        ],
+        identity_links={
+            "CHOICE_CARD": [{"link_kind": "entourage", "card_id": "OPTION_ALPHA"}]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "discover_condition_not_encoded"
+
+
+def test_choose_one_identity_cannot_authorize_wrong_runtime_block():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "choose_one_wrong_block",
+                "claim_kind": "choose_one_choice",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["CHOICE_CARD"],
+                "choice_card_id": "OPTION_ALPHA",
+                "runtime_block": "BeforePlayCardBonus",
+                "condition": "*",
+                "evidence_text_short": "Choose an exact option.",
+            }
+        ],
+        identity_links={
+            "CHOICE_CARD": [{"link_kind": "entourage", "card_id": "OPTION_ALPHA"}]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "choose_one_condition_not_encoded"
+
+
+def test_opponent_attack_trigger_cannot_be_owned_by_physical_attack_surface():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "opponent_attack_trigger",
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["ATTACK_TRIGGER_CARD"],
+                "runtime_block": "BeforePhysicalAttackBonus",
+                "condition": "*",
+                "evidence_text_short": "After your opponent attacks, draw a card.",
+            }
+        ],
+        card_metadata={
+            "cards": [
+                {
+                    "card_id": "ATTACK_TRIGGER_CARD",
+                    "type": "MINION",
+                    "text": "After your opponent attacks, draw a card.",
+                }
+            ]
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "trigger_owner_does_not_attack"
+
+
+def test_weapon_metadata_proves_physical_attack_surface_owner():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "weapon_owner",
+                "claim_kind": "mechanic_usage",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["WEAPON_CARD"],
+                "mechanic": "weapon",
+                "runtime_block": "BeforePhysicalAttackBonus",
+                "condition": "*",
+                "evidence_text_short": "Attack with this weapon.",
+            }
+        ],
+        card_metadata={
+            "WEAPON_CARD": {
+                "type": "WEAPON",
+                "text": "Has +2 Attack.",
+            }
+        },
+    )
+
+    assert routed["suppressed"] == []
+    assert routed["rows"][0]["behavior_block"] == "BeforePhysicalAttackBonus"
+
+
+def test_card_id_keyed_metadata_enforces_spell_surface_ownership():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "keyed_spell_metadata",
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["KEYED_SPELL"],
+                "runtime_block": "OnBoardBonus",
+                "condition": "*",
+            }
+        ],
+        card_metadata={
+            "KEYED_SPELL": {
+                "type": "SPELL",
+                "text": "Give your minions +1/+1.",
+            }
+        },
+    )
+
+    assert routed["rows"] == []
+    assert routed["suppressed"][0]["reason"] == "spell_cannot_own_on_board"
+
+
+def test_string_source_ref_is_preserved_as_one_provenance_element():
+    routed = route_card_behavior_claims(
+        [
+            {
+                "claim_id": "string_source_ref",
+                "claim_kind": "card_role",
+                "claim_readiness": "guide_backed",
+                "trust_ceiling": "runtime_lowerable",
+                "cards": ["SPELL_CARD"],
+                "runtime_block": "OnBoardBonus",
+                "source_refs": "https://example.test/source",
+            }
+        ],
+        card_metadata={
+            "cards": [{"card_id": "SPELL_CARD", "type": "SPELL", "text": ""}]
+        },
+    )
+
+    assert routed["suppressed"][0]["source_refs"] == [
+        "https://example.test/source"
+    ]

@@ -84,6 +84,7 @@ SEMANTIC_SUPPRESSION_MISSING_LINKS = {
     "linked_runtime_entity_unresolved": "needs_runtime_surface",
     "spell_cannot_use_battlecry_target": "semantic_surface_not_expressible",
     "spell_cannot_own_on_board": "semantic_surface_not_expressible",
+    "attack_owner_not_proven": "semantic_surface_not_expressible",
     "trigger_owner_does_not_attack": "semantic_surface_not_expressible",
     "battlecry_owner_does_not_attack": "semantic_surface_not_expressible",
     **REPORT_ONLY_SEMANTIC_SUPPRESSION_MISSING_LINKS,
@@ -433,12 +434,13 @@ def _is_cardid_runtime_row(row: Any) -> bool:
 
 def _cards_from_semantic_suppression(
     card_behavior_plan: dict[str, Any],
-) -> dict[str, str]:
-    missing_links: dict[str, str] = {}
+) -> dict[str, tuple[str, str]]:
+    missing_links: dict[str, tuple[str, str]] = {}
     for row in card_behavior_plan.get("suppressed", []):
         if not isinstance(row, dict):
             continue
-        missing_link = SEMANTIC_SUPPRESSION_MISSING_LINKS.get(str(row.get("reason", "")))
+        reason = str(row.get("reason", ""))
+        missing_link = SEMANTIC_SUPPRESSION_MISSING_LINKS.get(reason)
         if missing_link is None:
             continue
         cards: set[str] = set()
@@ -450,7 +452,12 @@ def _cards_from_semantic_suppression(
             suppressed_cards = [suppressed_cards]
         cards.update(str(card) for card in suppressed_cards if str(card))
         for card_id in cards:
-            missing_links.setdefault(card_id, missing_link)
+            existing = missing_links.get(card_id)
+            if existing is None or (
+                existing[1] == "unsupported_condition"
+                and reason != "unsupported_condition"
+            ):
+                missing_links[card_id] = (missing_link, reason)
     return missing_links
 
 
@@ -560,7 +567,7 @@ def _lane_and_missing_link(
     uncovered: set[str],
     concrete_cardid_cards: set[str],
     emitted_cardid_cards: set[str],
-    semantic_suppression_missing_links: dict[str, str],
+    semantic_suppression_missing_links: dict[str, tuple[str, str]],
     mulligan_cards: set[str],
     suppressed_mulligan_cards: set[str],
     mulligan_authority_gap_cards: set[str],
@@ -575,6 +582,9 @@ def _lane_and_missing_link(
     has_generic_coverage_gap = (
         card_id in uncovered or coverage == "generic_low_confidence"
     )
+    semantic_suppression = semantic_suppression_missing_links.get(card_id)
+    if semantic_suppression is not None and semantic_suppression[1] != "unsupported_condition":
+        return "report_only_supported", semantic_suppression[0]
     if card_id in mulligan_authority_gap_cards and has_generic_coverage_gap:
         return "report_only_supported", "needs_mulligan_claim"
     if has_generic_coverage_gap:
@@ -589,8 +599,8 @@ def _lane_and_missing_link(
         return "runtime_emitted", "none"
     if card_id in linked_runtime_source_cards:
         return "linked_runtime_source", "none"
-    if card_id in semantic_suppression_missing_links:
-        return "report_only_supported", semantic_suppression_missing_links[card_id]
+    if semantic_suppression is not None:
+        return "report_only_supported", semantic_suppression[0]
     if card_id in mulligan_cards:
         if is_guide_backed and _has_source_claim_ids(card):
             return "mulligan_only", "none"

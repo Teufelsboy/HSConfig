@@ -403,6 +403,11 @@ def classify_runtime_boundary(text: str) -> str:
         return "battlecry_owner_does_not_attack"
     if "if you discard this minion" in normalized and "summon it" in normalized:
         return "discard_trigger_not_manual_play"
+    if "attacks" in normalized and _has_any(
+        normalized,
+        ("your opponent", "enemy", "another character", "another minion"),
+    ):
+        return "trigger_owner_does_not_attack"
     if _has_token(normalized, "imbue"):
         return "imbue_condition_not_encoded"
     if _has_token(normalized, "outcast"):
@@ -414,6 +419,43 @@ def classify_runtime_boundary(text: str) -> str:
     if _has_any(normalized, ("choose one", "choose_one")):
         return "choose_one_condition_not_encoded"
     return ""
+
+
+def classify_attack_owner_relation(text: str, *, card_type: str = "") -> str:
+    """Return whether the runtime card owns the attack being evaluated."""
+    normalized = re.sub(r"<[^>]+>", " ", str(text or "").lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if "attack" not in normalized:
+        return "unknown"
+    if _has_any(
+        normalized,
+        (
+            "after your hero attacks",
+            "whenever your hero attacks",
+            "your opponent attacks",
+            "opponent's hero attacks",
+            "enemy attacks",
+            "another friendly",
+            "another character attacks",
+            "another minion attacks",
+        ),
+    ):
+        return "other"
+    if _has_any(
+        normalized,
+        (
+            "after this attacks",
+            "when this attacks",
+            "whenever this attacks",
+            "after this minion attacks",
+            "when this minion attacks",
+            "whenever this minion attacks",
+        ),
+    ):
+        return "owner"
+    if str(card_type).strip().upper() == "WEAPON":
+        return "owner"
+    return "unknown"
 
 
 def bounded_default_value(value_default: str) -> str:
@@ -604,6 +646,7 @@ __all__ = (
     "CONDITION_REQUIRED_SEMANTIC_INTENTS",
     "CardIntentClassification",
     "bounded_default_value",
+    "classify_attack_owner_relation",
     "classify_card_intent",
     "classify_runtime_boundary",
 )

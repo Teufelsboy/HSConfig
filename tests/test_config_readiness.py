@@ -683,6 +683,7 @@ def test_audited_semantic_suppressions_have_stable_readiness_links():
         "trigger_owner_does_not_attack": "semantic_surface_not_expressible",
         "buff_target_owner_mismatch": "needs_target_scope",
         "battlecry_owner_does_not_attack": "semantic_surface_not_expressible",
+        "attack_owner_not_proven": "semantic_surface_not_expressible",
     }
 
     for reason, expected_link in expected_by_reason.items():

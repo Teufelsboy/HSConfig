@@ -30,6 +30,16 @@ COMPATIBLE_TARGET_SCOPES = {
     "friendly_hero",
     "friendly_minion",
 }
+OPTION_SURFACE_CONTRACTS = {
+    "discover_condition_not_encoded": (
+        "discover_choice",
+        "OnDiscoverCardBonus",
+    ),
+    "choose_one_condition_not_encoded": (
+        "choose_one_choice",
+        "OnChooseOneCardBonus",
+    ),
+}
 STATIC_ACTION_SURFACES = {
     "damage_aura_amplifier": {
         ("OnBoardBonus", "card_role", "*"),
@@ -78,6 +88,7 @@ def semantic_runtime_decision(
     card_type: str = "",
     target_scope: str = "",
     option_identity: str = "",
+    attack_owner_relation: str = "",
 ) -> SurfaceGateDecision:
     normalized_type = str(card_type).strip().upper()
     if normalized_type == "SPELL" and runtime_block == "OnBoardBonus":
@@ -85,13 +96,26 @@ def semantic_runtime_decision(
     if normalized_type == "SPELL" and runtime_block == "BeforeBattlecryTargetBonus":
         return SurfaceGateDecision(False, "spell_cannot_use_battlecry_target")
 
-    if semantic_intent in CONDITION_REQUIRED_SEMANTIC_INTENTS and condition == "*":
-        has_exact_option_identity = bool(option_identity) and semantic_intent in {
-            "choose_one_condition_not_encoded",
-            "discover_condition_not_encoded",
-        }
-        if not has_exact_option_identity:
+    option_contract = OPTION_SURFACE_CONTRACTS.get(semantic_intent)
+    if option_contract is not None:
+        expected_claim_kind, expected_block = option_contract
+        if (
+            claim_kind != expected_claim_kind
+            or runtime_block != expected_block
+            or not option_identity
+        ):
             return SurfaceGateDecision(False, semantic_intent)
+        if semantic_intent == "discover_condition_not_encoded":
+            expected_condition = (
+                f"my_discover(count(),cardid={option_identity}) > 0"
+            )
+            if condition != expected_condition:
+                return SurfaceGateDecision(False, semantic_intent)
+    elif semantic_intent in CONDITION_REQUIRED_SEMANTIC_INTENTS:
+        # The current documented condition grammar cannot encode these
+        # Hearthstone state transitions. A safe but unrelated atom such as
+        # ``coin`` must not be mistaken for semantic proof.
+        return SurfaceGateDecision(False, semantic_intent)
     if semantic_intent in {
         "discard_trigger_not_manual_play",
         "trigger_owner_does_not_attack",
@@ -99,6 +123,11 @@ def semantic_runtime_decision(
         "battlecry_owner_does_not_attack",
     }:
         return SurfaceGateDecision(False, semantic_intent)
+    if (
+        runtime_block == "BeforePhysicalAttackBonus"
+        and attack_owner_relation != "owner"
+    ):
+        return SurfaceGateDecision(False, "attack_owner_not_proven")
     if runtime_block == "BeforeBattlecryTargetBonus":
         if not target_scope:
             return SurfaceGateDecision(False, "missing_target_scope")
@@ -130,6 +159,7 @@ def decide_semantic_runtime(
     card_type: str = "",
     target_scope: str = "",
     option_identity: str = "",
+    attack_owner_relation: str = "",
 ) -> SurfaceGateDecision:
     """Backward-compatible name for callers predating the surface-gate API."""
     return semantic_runtime_decision(
@@ -141,6 +171,7 @@ def decide_semantic_runtime(
         card_type=card_type,
         target_scope=target_scope,
         option_identity=option_identity,
+        attack_owner_relation=attack_owner_relation,
     )
 
 

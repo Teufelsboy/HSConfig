@@ -712,7 +712,7 @@ def test_multicard_explicit_value_uses_each_row_card_identity_for_semantic_gate(
     ]
 
 
-def test_kingslayer_multicard_weapon_claim_keeps_legitimate_rows():
+def test_multicard_weapon_claim_without_owner_metadata_fails_closed():
     fixture = json.loads(
         Path("tests/fixtures/source_documents_kingslayer_strong.json").read_text(
             encoding="utf-8"
@@ -731,16 +731,15 @@ def test_kingslayer_multicard_weapon_claim_keeps_legitimate_rows():
 
     plan = route_card_behavior_surfaces([claim])
 
-    assert plan["suppressed"] == []
-    assert {row["card_id"] for row in plan["rows"]} == {
-        "DEEP_014",
-        "VAC_701",
-        "TIME_875t1",
+    assert plan["rows"] == []
+    assert {
+        (row["cards"][0], row["reason"])
+        for row in plan["suppressed"]
+    } == {
+        ("DEEP_014", "attack_owner_not_proven"),
+        ("TIME_875t1", "attack_owner_not_proven"),
+        ("VAC_701", "attack_owner_not_proven"),
     }
-    assert {row["behavior_block"] for row in plan["rows"]} == {
-        "BeforePhysicalAttackBonus"
-    }
-    assert {row["value"] for row in plan["rows"]} == {"8"}
 
 
 def test_suppressed_behavior_row_is_not_semantically_scored():
@@ -1497,7 +1496,7 @@ def test_rush_static_mechanic_without_supported_semantics_is_report_only():
     )
 
     assert routed["card_rows"] == {}
-    assert routed["suppressed"][0]["reason"] == "semantic_surface_not_proven"
+    assert routed["suppressed"][0]["reason"] == "attack_owner_not_proven"
 
 
 def test_tradeable_static_mechanic_stays_report_only():

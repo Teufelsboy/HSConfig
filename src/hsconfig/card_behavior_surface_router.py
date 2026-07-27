@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from hsconfig.card_intent_taxonomy import classify_runtime_boundary
+from hsconfig.card_intent_taxonomy import (
+    CONDITION_REQUIRED_SEMANTIC_INTENTS,
+    classify_attack_owner_relation,
+    classify_runtime_boundary,
+)
 from hsconfig.condition_format import lower_runtime_condition
 from hsconfig.mechanic_support import (
     ROLE_ALIASES,
@@ -68,6 +72,18 @@ OPTION_CARD_KEYS = (
     "choice_card_id",
     "choice_card",
 )
+SEMANTIC_SAFETY_SUPPRESSION_REASONS = frozenset(
+    {
+        *CONDITION_REQUIRED_SEMANTIC_INTENTS,
+        "attack_owner_not_proven",
+        "battlecry_owner_does_not_attack",
+        "buff_target_owner_mismatch",
+        "discard_trigger_not_manual_play",
+        "spell_cannot_own_on_board",
+        "spell_cannot_use_battlecry_target",
+        "trigger_owner_does_not_attack",
+    }
+)
 
 
 def route_card_behavior_surfaces(
@@ -88,16 +104,6 @@ def route_card_behavior_surfaces(
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
         cards = _claim_cards(claim)
-        gate = can_lower_to_cardid(
-            claim,
-            deck_identity=deck_identity,
-            verified_source_receipts=verified_source_receipts,
-        )
-        if not gate.allowed and claim_kind != "targeting_rule":
-            if _belongs_to_dedicated_non_cardid_surface(claim_kind):
-                continue
-            suppressed.append(_suppressed_row(claim, claim_kind, cards, gate.reason))
-            continue
         condition, condition_error = _condition(claim)
         if condition_error is not None:
             target_condition = _documented_target_scope_condition(claim)
@@ -121,6 +127,29 @@ def route_card_behavior_surfaces(
                     "runtime_block": explicit_error["runtime_block"],
                 }
             )
+            continue
+
+        cards = _preflight_semantic_cards(
+            claim=claim,
+            claim_kind=claim_kind,
+            cards=cards,
+            condition=condition,
+            runtime_block=explicit_block,
+            metadata_by_card=metadata_by_card,
+            suppressed=suppressed,
+        )
+        if not cards:
+            continue
+
+        gate = can_lower_to_cardid(
+            claim,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
+        if not gate.allowed and claim_kind != "targeting_rule":
+            if _belongs_to_dedicated_non_cardid_surface(claim_kind):
+                continue
+            suppressed.append(_suppressed_row(claim, claim_kind, cards, gate.reason))
             continue
 
         option_rows = _option_resolution_rows(
@@ -527,18 +556,8 @@ def _append_semantically_allowed_rows(
         )
         card_id = str(row["card_id"])
         metadata = metadata_by_card.get(card_id, {})
-        boundary_intent = classify_runtime_boundary(
-            " ".join(
-                str(value)
-                for value in (
-                    metadata.get("text"),
-                    claim.get("evidence_text_short"),
-                    claim.get("stance"),
-                    claim.get("intent"),
-                )
-                if value
-            )
-        )
+        semantic_text = _semantic_text(claim, metadata)
+        boundary_intent = _boundary_intent(claim_kind, semantic_text)
         decision = semantic_runtime_decision(
             semantic_intent=boundary_intent or semantic_reason,
             source_lane=_claim_source_lane(claim),
@@ -548,6 +567,10 @@ def _append_semantically_allowed_rows(
             card_type=str(metadata.get("type", "")),
             target_scope=str(normalize_semantic_qualifiers(claim).get("target_scope") or ""),
             option_identity=str(_claim_option_card_id(claim) or ""),
+            attack_owner_relation=classify_attack_owner_relation(
+                semantic_text,
+                card_type=str(metadata.get("type", "")),
+            ),
         )
         if not decision.allowed:
             suppression_reason = (
@@ -576,7 +599,7 @@ def _base_row(claim: dict[str, Any], card_id: str, *, condition: str) -> dict[st
         "condition": condition,
         "confidence": str(claim.get("claim_confidence", claim.get("confidence", "source_backed"))),
         "source_claim_ids": _source_claim_ids(claim),
-        "source_refs": [str(item) for item in claim.get("source_refs", [])],
+        "source_refs": _source_refs(claim),
         "claim_confidence": str(claim.get("claim_confidence", claim.get("confidence", "source_backed"))),
     }
 
@@ -611,15 +634,92 @@ def _suppressed_row(
     for key in ("source_claim_ids", "source_refs", "acquisition_provenance"):
         if key in claim:
             value = claim[key]
-            row[key] = dict(value) if isinstance(value, Mapping) else list(value)
+            if isinstance(value, Mapping):
+                row[key] = dict(value)
+            elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                row[key] = list(value)
+            else:
+                row[key] = [value]
     return row
+
+
+def _preflight_semantic_cards(
+    *,
+    claim: dict[str, Any],
+    claim_kind: str,
+    cards: list[str],
+    condition: str,
+    runtime_block: str | None,
+    metadata_by_card: Mapping[str, Mapping[str, Any]],
+    suppressed: list[dict[str, Any]],
+) -> list[str]:
+    if runtime_block is None or claim_kind in OPTION_CLAIM_KINDS:
+        return cards
+    remaining: list[str] = []
+    qualifiers = normalize_semantic_qualifiers(claim)
+    for card_id in cards:
+        metadata = metadata_by_card.get(card_id, {})
+        semantic_text = _semantic_text(claim, metadata)
+        decision = semantic_runtime_decision(
+            semantic_intent=_boundary_intent(claim_kind, semantic_text)
+            or "semantic_default",
+            source_lane=_claim_source_lane(claim),
+            condition=condition,
+            runtime_block=runtime_block,
+            claim_kind=claim_kind,
+            card_type=str(metadata.get("type", "")),
+            target_scope=str(qualifiers.get("target_scope") or ""),
+            option_identity=str(_claim_option_card_id(claim) or ""),
+            attack_owner_relation=classify_attack_owner_relation(
+                semantic_text,
+                card_type=str(metadata.get("type", "")),
+            ),
+        )
+        if not decision.allowed and decision.reason in SEMANTIC_SAFETY_SUPPRESSION_REASONS:
+            suppressed.append(
+                _suppressed_row(claim, claim_kind, [card_id], decision.reason)
+            )
+            continue
+        remaining.append(card_id)
+    return remaining
+
+
+def _semantic_text(
+    claim: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> str:
+    return " ".join(
+        str(value)
+        for value in (
+            metadata.get("text"),
+            claim.get("evidence_text_short"),
+            claim.get("stance"),
+            claim.get("intent"),
+        )
+        if value
+    )
+
+
+def _boundary_intent(claim_kind: str, semantic_text: str) -> str:
+    if claim_kind == "discover_choice":
+        return "discover_condition_not_encoded"
+    if claim_kind == "choose_one_choice":
+        return "choose_one_condition_not_encoded"
+    return classify_runtime_boundary(semantic_text)
 
 
 def _metadata_by_card(
     card_metadata: Mapping[str, Any] | Sequence[Mapping[str, Any]] | None,
 ) -> dict[str, Mapping[str, Any]]:
     if isinstance(card_metadata, Mapping):
-        rows = card_metadata.get("cards", [])
+        if isinstance(card_metadata.get("cards"), Sequence):
+            rows = card_metadata["cards"]
+        else:
+            rows = [
+                {**dict(row), "card_id": str(card_id)}
+                for card_id, row in card_metadata.items()
+                if isinstance(row, Mapping)
+            ]
     else:
         rows = card_metadata or []
     if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
@@ -647,10 +747,28 @@ def _belongs_to_dedicated_non_cardid_surface(claim_kind: str) -> bool:
 
 
 def _source_claim_ids(claim: dict[str, Any]) -> list[str]:
-    if isinstance(claim.get("source_claim_ids"), list):
-        return [str(item) for item in claim["source_claim_ids"]]
+    source_claim_ids = claim.get("source_claim_ids")
+    if isinstance(source_claim_ids, Sequence) and not isinstance(
+        source_claim_ids,
+        (str, bytes),
+    ):
+        return [str(item) for item in source_claim_ids]
+    if source_claim_ids:
+        return [str(source_claim_ids)]
     if claim.get("claim_id"):
         return [str(claim["claim_id"])]
+    return []
+
+
+def _source_refs(claim: Mapping[str, Any]) -> list[str]:
+    source_refs = claim.get("source_refs")
+    if isinstance(source_refs, Sequence) and not isinstance(
+        source_refs,
+        (str, bytes),
+    ):
+        return [str(item) for item in source_refs]
+    if source_refs:
+        return [str(source_refs)]
     return []
 
 
