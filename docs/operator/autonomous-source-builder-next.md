@@ -1,6 +1,12 @@
 # Autonomous Source Builder Next Wave
 
-HSConfig can already build a valid initial package from deck input. It reaches `SOURCE_BACKED_STRONG` when current structured guide sources or qualifying `evergreen_wild_archetype` sources provide enough card-specific, runtime-lowerable claims.
+HSConfig can already build a valid initial package from deck input. Strategic
+`SOURCE_BACKED_STRONG` authority requires current exact-deck-matched guide
+claims acquired through `live_http` with `live_verified` provenance and a
+matching strategic receipt. Supported static semantics may close deterministic
+identity, role, and mechanical effect claims.
+
+`evergreen_wild_archetype` evidence may support only deterministic/static non-strategic closure; it can never authorize strategic Combo, strategic `SOURCE_BACKED_STRONG`, or a verified strategic receipt.
 
 The current lightweight autonomy bridge is `hsconfig source-autopilot` or `hsconfig configure --auto-source --source-search-results-json ...`. The next improvement is stronger source acquisition before those compact records are handed to `source-autopilot`, not another runtime gate or runtime surface.
 
@@ -36,7 +42,7 @@ The source builder must emit compact public source-search records that `source-a
 
 ## Success Criteria
 
-- `source-autopilot` reports `strong_candidate=false` for decklist-only/static inputs and only reports `strong_candidate=true` for current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable evidence.
+- `source-autopilot` reports `strong_candidate=false` when strategic claims lack current exact-deck-matched, live-verified guide receipts. Evergreen evidence may improve diagnostic or deterministic/static non-strategic closure, but it does not provide strategic candidate authority.
 - `hsconfig research-deck` consumes the generated source documents without schema errors.
 - `hsconfig prepare` produces `VALID_PACKAGE`.
 - `source_claim_gap_report.json` has fewer blocked cards than deck-only static semantics.

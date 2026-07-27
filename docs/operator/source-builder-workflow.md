@@ -35,7 +35,16 @@ gate.
 
 Evidence rows should be short and atomic. Long guide prose belongs outside runtime config.
 
-`source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, decklist-only pages, statistical enrichment, policy fallback, snippets, default/runtime examples, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims, or supported official static effect semantics, are still required.
+`source-autopilot` is source-strength preflight, not runtime apply authority.
+Strategic claims require current exact-deck-matched guide evidence acquired
+through `live_http` with `live_verified` provenance and a matching strategic
+receipt. Supported official static effect semantics may close deterministic
+identity, role, and mechanical effect claims only. `decklist_only`,
+decklist-only pages, statistical enrichment, policy fallback, snippets, and
+default/runtime examples remain diagnostic and do not supply strategic
+authority.
+
+`evergreen_wild_archetype` evidence may support only deterministic/static non-strategic closure; it can never authorize strategic Combo, strategic `SOURCE_BACKED_STRONG`, or a verified strategic receipt.
 
 Autonomous source path:
 

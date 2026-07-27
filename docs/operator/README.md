@@ -32,9 +32,9 @@ Other reports are diagnostic. They explain source quality, mechanic coverage,
 ownership, and missing links; they do not grant apply permission.
 
 Normal HSConfig output is limited to `GlobalValues.json`, `Mulligan.json`,
-per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence
-exists. `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are
-known VisionAI surfaces, but they are outside the normal output path.
+per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo evidence and a matching live-verified strategic receipt exist.
+`Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are known
+VisionAI surfaces, but they are outside the normal output path.
 
 ### Optional Contract Preflight
 
@@ -265,22 +265,27 @@ Semantic handoff safety:
 ## Runtime Apply Authority
 
 `reports/operator_summary.json` is the sole human-facing verdict; never infer apply readiness from individual diagnostic reports.
-The CLI and direct Python apply path do not trust that verdict as a
-self-assertion. Before any runtime mutation they use this exact order:
+The CLI and direct Python entry points both run strict complete-package validation before the shared apply gate.
+CLI prevalidation failures return `validation_report` and `errors`; they may stop before a stable apply-gate reason code exists.
+Direct `plan_apply_package()` / `apply_package()` prevalidation raises before the shared gate.
 
-1. Load the package and `reports/operator_summary.json`.
-2. Validate required structure, forbidden surfaces, runtime JSON, and strict package semantics.
+After prevalidation, `evaluate_apply_gate()` independently rechecks the package
+instead of trusting the human-facing verdict as a self-assertion. These are simplified fail-closed phases, not a promise that every entry point emits the same intermediate result or reason code:
+
+1. Require a readable object at `reports/operator_summary.json`.
+2. Validate required package structure, forbidden surfaces, runtime JSON, and strict package semantics.
 3. Recompute deck-input verification and require runtime apply eligibility.
 4. Verify strategic source authority.
-5. Verify the derivation receipt schema and summary-bound digest.
-6. Recompute package derivation from authoritative inputs and runtime JSON.
-7. Verify operator-summary derivation metadata and generated-file parity.
-8. Authorize the runtime write only for a recomputed valid package.
+5. Require the derivation receipt and summary derivation metadata.
+6. Verify the receipt schema and recompute its summary-bound digest.
+7. Recompute receipt content from authoritative inputs and runtime JSON.
+8. Verify exact summary derivation consistency and generated-file parity.
+9. Authorize the runtime write only for a recomputed valid package.
 
 Only `decoded_from_deck_code` and `cards_json_matches_deck_code` inputs are
 apply-eligible. Unverified deck input blocks apply even when a diagnostic package can still be built.
 
-Stable technical block codes include:
+When the shared gate is reached, stable coded failures include:
 
 - `strict_package_validation_failed`
 - `deck_input_not_verified`
@@ -290,6 +295,8 @@ Stable technical block codes include:
 - `package_derivation_receipt_digest_mismatch`
 - `package_derivation_mismatch`
 - `operator_summary_derivation_inconsistent`
+
+These codes belong to the shared gate; CLI prevalidation can instead return `validation_report` and `errors` before that gate is reached.
 
 `package_derivation_mismatch` is the recomputation failure: authoritative deck
 identity, source receipts, GlobalValues authority inputs, ownership manifest,
@@ -494,7 +501,7 @@ and does not block a technically valid package.
 `contract-preflight.research_context.latest_research_result_contract_*` exposes whether the latest research-deep result batch has HSConfig-valid fields and result payloads. This research-result sentinel is source-quality visibility only; it cannot promote, downgrade, block, or apply a package.
 `latest_research_result_contract_first_non_promoting_*` names the first source action needed for Strong closure; it is diagnostic-only, cannot block or promote a package, and operator_summary.json remains the only normal apply authority.
 
-Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof. `source_to_runtime_status` reports trace health (`clean`, `attention`, or `missing`), while `currentness_status`, `closure_schema_current`, and `cards_missing_closure` report closure freshness. `forbidden_normal_surfaces_status=unknown` means legacy-surface evidence was unavailable, not clean. `runtime_surface_boundary_details` lists `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json` as unconditional; `Combo.json` is conditional on a complete source-backed combo. This proof is not another apply gate and does not replace `reports/operator_summary.json`.
+Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnostic-only config proof. `source_to_runtime_status` reports trace health (`clean`, `attention`, or `missing`), while `currentness_status`, `closure_schema_current`, and `cards_missing_closure` report closure freshness. `forbidden_normal_surfaces_status=unknown` means legacy-surface evidence was unavailable, not clean. `runtime_surface_boundary_details` lists `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json` as unconditional; `Combo.json` is conditional on a complete source-backed combo with a matching live-verified strategic receipt. This proof is not another apply gate and does not replace `reports/operator_summary.json`.
 
 `<out>/configure_summary.json.config_quality_summary` remains a compact diagnostic-only, non-blocking mirror of the existing config-quality contract. It is for quick quality visibility after `hsconfig configure` or when `acceptance_summary.next_report_to_open` points to `reports/contract_doctor.json`. If `status` is `attention`, run `hsconfig contract-doctor --package <package>` for details. The normal apply authority remains `reports/operator_summary.json`.
 

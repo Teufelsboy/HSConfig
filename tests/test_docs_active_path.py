@@ -558,6 +558,37 @@ def test_guide_research_policy_documents_evergreen_wild_source_closure():
         assert term in text
 
 
+def test_active_source_builder_docs_keep_evergreen_out_of_strategic_authority():
+    paths = [
+        Path("docs/operator/autonomous-source-builder-next.md"),
+        Path("docs/operator/source-builder-workflow.md"),
+    ]
+    required_boundary = (
+        "`evergreen_wild_archetype` evidence may support only deterministic/static "
+        "non-strategic closure; it can never authorize strategic Combo, strategic "
+        "`SOURCE_BACKED_STRONG`, or a verified strategic receipt."
+    )
+    strong_candidate_success = re.compile(
+        r"(?:`strong_candidate=true`[^.\n]*`evergreen_wild_archetype`|"
+        r"`evergreen_wild_archetype`[^.\n]*`strong_candidate=true`)",
+        flags=re.IGNORECASE,
+    )
+    strategic_strong_success = re.compile(
+        r"(?:reaches|promotes?|qualif(?:y|ies)|required)[^.\n]*"
+        r"`SOURCE_BACKED_STRONG`[^.\n]*`evergreen_wild_archetype`|"
+        r"`evergreen_wild_archetype`[^.\n]*"
+        r"(?:reaches|promotes?|qualif(?:y|ies)|required)[^.\n]*"
+        r"`SOURCE_BACKED_STRONG`",
+        flags=re.IGNORECASE,
+    )
+
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        assert required_boundary in text, path
+        assert strong_candidate_success.search(text) is None, path
+        assert strategic_strong_success.search(text) is None, path
+
+
 def test_source_builder_workflow_marks_source_informed_apply_as_legacy_noop():
     text = Path("docs/operator/source-builder-workflow.md").read_text(encoding="utf-8")
 

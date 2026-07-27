@@ -1,5 +1,13 @@
+from argparse import Namespace
 import json
 from pathlib import Path
+
+import pytest
+
+from hsconfig.apply_gate import evaluate_apply_gate
+from hsconfig.commands.apply import apply_payload
+from hsconfig.io import write_json
+from hsconfig.runtime_apply import apply_package
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1090,23 +1098,104 @@ def test_operator_docs_define_linked_runtime_owner_and_verification_limits() -> 
     ) in operator
 
 
-def test_operator_docs_define_apply_recomputation_order_and_reason_codes() -> None:
+def test_operator_apply_docs_match_cli_and_direct_prevalidation_behavior(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "invalid-package"
+    runtime = tmp_path / "runtime"
+    globalvalues = {"GameCardId": "GlobalValues", "ConfigComment": "invalid"}
+    write_json(
+        package / "CustomConfig" / "deck" / "GlobalValues.json",
+        globalvalues,
+    )
+    write_json(
+        package / "reports" / "globalvalues_baseline.json",
+        globalvalues,
+    )
+    write_json(
+        package / "reports" / "globalvalues_profile.json",
+        {
+            "key_count": len(globalvalues),
+            "keys": {key: {"status": "unchanged"} for key in globalvalues},
+            "generated_overlay_keys": [],
+            "summary": {"all_expected_overlay_keys_accounted_for": True},
+            "expected_overlay_keys": [],
+            "missing_overlay_keys": [],
+        },
+    )
+    payload, exit_code = apply_payload(
+        Namespace(
+            package=str(package),
+            runtime_root=str(runtime),
+            fake=False,
+            from_fake_receipt=None,
+        )
+    )
+    gate = evaluate_apply_gate(package)
+
+    assert exit_code == 1
+    assert payload["status"] == "failed"
+    assert payload["errors"]
+    assert payload["validation_report"]["status"] == "failed"
+    assert "apply_gate" not in payload
+    assert gate["status"] == "blocked"
+    assert gate["reasons"][0]["reason"] == "missing_operator_summary"
+
+    with pytest.raises(
+        ValueError,
+        match="Runtime apply requires a valid complete package before",
+    ):
+        apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            write_history=False,
+        )
+
     operator = (ROOT / "docs" / "operator" / "README.md").read_text(
         encoding="utf-8"
     )
     section = _section(operator, "## Runtime Apply Authority")
-    ordered_steps = [
-        "1. Load the package and `reports/operator_summary.json`.",
-        "2. Validate required structure, forbidden surfaces, runtime JSON, and strict package semantics.",
-        "3. Recompute deck-input verification and require runtime apply eligibility.",
-        "4. Verify strategic source authority.",
-        "5. Verify the derivation receipt schema and summary-bound digest.",
-        "6. Recompute package derivation from authoritative inputs and runtime JSON.",
-        "7. Verify operator-summary derivation metadata and generated-file parity.",
-        "8. Authorize the runtime write only for a recomputed valid package.",
+
+    required_entrypoint_contracts = [
+        (
+            "The CLI and direct Python entry points both run strict complete-package "
+            "validation before the shared apply gate."
+        ),
+        (
+            "CLI prevalidation failures return `validation_report` and `errors`; "
+            "they may stop before a stable apply-gate reason code exists."
+        ),
+        (
+            "Direct `plan_apply_package()` / `apply_package()` prevalidation raises "
+            "before the shared gate."
+        ),
     ]
-    positions = [section.index(step) for step in ordered_steps]
-    assert positions == sorted(positions)
+    for contract in required_entrypoint_contracts:
+        assert contract in section
+
+
+def test_operator_docs_define_simplified_fail_closed_gate_phases_and_codes() -> None:
+    operator = (ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    section = _section(operator, "## Runtime Apply Authority")
+
+    assert (
+        "These are simplified fail-closed phases, not a promise that every "
+        "entry point emits the same intermediate result or reason code:"
+    ) in section
+    required_gate_phases = [
+        "Require a readable object at `reports/operator_summary.json`.",
+        "Recompute deck-input verification and require runtime apply eligibility.",
+        "Verify strategic source authority.",
+        "Require the derivation receipt and summary derivation metadata.",
+        "Verify the receipt schema and recompute its summary-bound digest.",
+        "Recompute receipt content from authoritative inputs and runtime JSON.",
+        "Verify exact summary derivation consistency and generated-file parity.",
+        "Authorize the runtime write only for a recomputed valid package.",
+    ]
+    for phase in required_gate_phases:
+        assert phase in section
 
     for reason_code in [
         "strict_package_validation_failed",
@@ -1128,3 +1217,22 @@ def test_operator_docs_define_apply_recomputation_order_and_reason_codes() -> No
         "`reports/operator_summary.json` is the sole human-facing verdict; "
         "never infer apply readiness from individual diagnostic reports."
     ) in section
+    assert (
+        "These codes belong to the shared gate; CLI prevalidation can instead "
+        "return `validation_report` and `errors` before that gate is reached."
+    ) in section
+
+
+def test_operator_combo_summaries_require_live_verified_strategic_receipt() -> None:
+    operator = (ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "per-card `<CARDID>.json`, and `Combo.json` when exact ordered combo "
+        "evidence and a matching live-verified strategic receipt exist."
+    ) in operator
+    assert (
+        "`Combo.json` is conditional on a complete source-backed combo with a "
+        "matching live-verified strategic receipt."
+    ) in operator
