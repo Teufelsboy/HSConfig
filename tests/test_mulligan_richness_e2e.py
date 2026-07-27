@@ -22,7 +22,7 @@ CARD_ALIASES = {
 }
 
 
-def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
+def test_prepare_with_rich_captured_mulligan_sources_stays_suppressed(
     tmp_path: Path, capsys, monkeypatch
 ):
     result = _run_prepare(
@@ -41,20 +41,20 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "blocked"
     assert operator["runtime_apply_allowed"] is False
-    assert mulligan_surface["status"] == "policy_backed"
+    assert mulligan_surface["status"] == "thin"
     assert mulligan_surface["source_backed_rule_count"] == 0
-    assert mulligan_surface["suppressed_reasons"][
+    assert result["mulligan_plan"]["quality"]["suppressed_reasons"][
         "strategic_provenance_not_live_verified"
-    ] == 4
-    assert {
-        (row["mulligan"], row["value"]) for row in mulligan_values
-    } == {
-        (CARDS[2]["card_id"], "hold"),
-        ("*", "discard"),
-    }
+    ] == 5
+    assert mulligan_values == []
+    assert result["mulligan_plan"]["quality"]["policy_backed_keep_rule_count"] == 0
+    assert result["mulligan_plan"]["quality"]["default_only"] is True
+    assert result["mulligan_plan"]["quality"]["suppressed_reasons"][
+        "explicit_source_gap_requires_resolution"
+    ] == 3
 
 
-def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
+def test_prepare_rejected_guide_claim_vetoes_policy_fallback_for_that_card(
     tmp_path: Path, capsys, monkeypatch
 ):
     source_documents = tmp_path / "rejected-guide-policy-fallback.json"
@@ -107,14 +107,10 @@ def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
     plan = result["mulligan_plan"]
     holds = [row for row in plan["rules"] if row.get("action") == "hold"]
 
+    assert not any(row.get("card") == CARDS[0]["card_id"] for row in holds)
     assert any(
         row.get("card") == CARDS[0]["card_id"]
-        and row.get("source_type") == "policy_backed_autonomous_mulligan"
-        for row in holds
-    )
-    assert not any(
-        row.get("card") == CARDS[0]["card_id"]
-        and row.get("reason") == "excluded_source_mulligan_intent"
+        and row.get("reason") == "explicit_source_gap_requires_resolution"
         for row in plan["quality"]["policy_result"]["suppressed"]
     )
 
@@ -194,11 +190,8 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     ]
     assert operator["config_usefulness"]["blocking"] is False
     assert operator["config_usefulness"]["first_usefulness_gap"] == "cardid_thin"
-    assert mulligan_surface["status"] == "policy_backed"
-    assert (
-        mulligan_surface["first_gap_reason"]
-        == "policy_backed_autonomous_mulligan"
-    )
+    assert mulligan_surface["status"] == "rich"
+    assert mulligan_surface["first_gap_reason"] == "none"
     assert mulligan_surface["next_source_need"] == "none"
 
 

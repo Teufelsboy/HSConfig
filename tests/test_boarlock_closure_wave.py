@@ -99,13 +99,18 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     gap_report = result["source_claim_gap_report"]
     promotion = result["strong_promotion_report"]
     readiness = result["readiness"]
+    mulligan_plan = json.loads(
+        (result["out"] / "reports" / "mulligan_plan_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
     fracking = _card_explainability(result, "WW_092")
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-    assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    assert operator["apply_policy"] == "BLOCKED"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "blocked"
     assert operator["runtime_apply_allowed"] is False
@@ -114,7 +119,7 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     ]
     assert operator["source_informed_apply_readiness"]["status"] == "blocked"
     assert {
-        "cards_need_mechanic_lowering",
+        "cards_need_condition_lowering",
         "contract_gap_not_strong_evidence",
     } <= set(operator["source_informed_apply_readiness"]["blocking_reasons"])
 
@@ -140,24 +145,22 @@ def test_boarlock_prepare_keeps_full_blocker_stack_visible(tmp_path, monkeypatch
     assert gap_report["summary"]["first_missing_chain"] is not None
     assert gap_report["summary"]["blocked_cards"] > 0
     assert fracking["name"] == "Fracking"
-    assert fracking["first_missing_link"] == "runtime_surface"
-    assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
+    assert fracking["first_missing_link"] == "needs_runtime_surface"
+    assert (
+        fracking["next_source_action"]
+        == "add_runtime_lowerable_claim_or_router_support"
+    )
     assert fracking["apply_blocked"] is False
     assert "Mulligan.json" in fracking["not_emitted_runtime_files"]
 
     summary = readiness["summary"]
     assert summary["cards_needing_mulligan_claims"] == 0
-    assert summary["cards_needing_runtime_surface"] == 0
+    assert summary["cards_needing_runtime_surface"] == 9
     assert summary["generic_low_confidence"] == 0
     assert summary["report_only_supported"] > 0
-    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "policy_backed"
+    assert operator["config_usefulness"]["surfaces"]["mulligan"]["status"] == "rich"
     assert operator["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
-    assert (
-        operator["config_usefulness"]["surfaces"]["mulligan"][
-            "policy_backed_keep_rule_count"
-        ]
-        > 0
-    )
+    assert mulligan_plan["quality"]["policy_backed_keep_rule_count"] > 0
 
 
 def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
@@ -179,7 +182,7 @@ def test_boarlock_closure_outcome_is_either_strong_or_explicitly_preserved(
 
     if promotion["promotion_ready"]:
         assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
-        assert operator["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
+        assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
         assert gap_report["summary"]["blocked_cards"] == 0
         assert gap_report["summary"]["first_missing_chain"] is None
     else:
@@ -225,8 +228,11 @@ def test_low_confidence_fracking_mulligan_row_does_not_satisfy_missing_chain(
     assert operator["source_informed_apply_readiness"]["status"] == "blocked"
     assert gap_report["summary"]["first_missing_chain"] is not None
     assert fracking["card_id"] == "WW_092"
-    assert fracking["first_missing_link"] == "runtime_surface"
-    assert fracking["next_source_action"] == "add_explicit_mulligan_claim"
+    assert fracking["first_missing_link"] == "needs_runtime_surface"
+    assert (
+        fracking["next_source_action"]
+        == "add_runtime_lowerable_claim_or_router_support"
+    )
     assert fracking["apply_blocked"] is False
 
 

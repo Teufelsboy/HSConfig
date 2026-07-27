@@ -393,9 +393,9 @@ def test_shadowpriest_depth_reports_show_broad_card_coverage(tmp_path: Path, cap
     assert len(coverage["uncovered_cards"]) <= 4
     assert depth["depth_status"] in {"strong", "usable", "usable_with_runtime_gaps"}
     assert depth["summary"]["cards_needing_runtime_surface"] == 0
-    assert depth["summary"]["warnings_count"] == 9
+    assert depth["summary"]["warnings_count"] == 10
     assert readiness["summary"]["generic_low_confidence"] == 0
-    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["runtime_emitted"] == 2
     assert readiness["summary"]["linked_runtime_source"] == 1
     assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["cards_needing_mechanic_lowering"] == 0

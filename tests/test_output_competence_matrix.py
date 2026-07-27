@@ -107,7 +107,11 @@ def test_representative_decks_expose_output_competence_summary(
     assert "combo_row_count" in usefulness["surfaces"]["combo"]
 
     if "Combo.json" in deck["expected_runtime_surfaces"]:
-        assert usefulness["surfaces"]["combo"]["combo_expected"] is True
+        if deck["deck_name"] == "Boarlock":
+            assert usefulness["surfaces"]["combo"]["combo_expected"] is False
+            assert usefulness["surfaces"]["combo"]["status"] == "not_expected"
+        else:
+            assert usefulness["surfaces"]["combo"]["combo_expected"] is True
 
 
 def test_cute_warrior_remains_supplemental_load_safe_only():

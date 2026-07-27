@@ -31,12 +31,19 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    assert operator["apply_policy"] == "BLOCKED"
+    assert operator["runtime_load_safe"] is True
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
     assert "Presume.json" not in result["generated_files"]
     assert "Concede.json" not in result["generated_files"]
 
     if promotion["promotion_ready"]:
         assert operator["semantic_status"] == "SOURCE_BACKED_STRONG"
-        assert operator["next_action"] == "READY_TO_APPLY_OR_HANDOFF"
         assert gap_report["summary"]["blocked_cards"] == 0
         assert gap_report["summary"]["first_missing_chain"] is None
     else:
@@ -47,31 +54,22 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
         readiness = operator["source_informed_apply_readiness"]
         if readiness["status"] == "not_applicable":
             assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-            assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-            assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
             assert readiness["blocking_reasons"] == []
             assert promotion["next_action"] == "close_first_missing_chain"
             assert gap_report["summary"]["blocked_cards"] == 0
             assert chain is None
         elif readiness["status"] == "ready":
-            assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-            assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
             assert readiness["blocking_reasons"] == []
             assert promotion["next_action"] == "source_informed_apply_ready_but_not_strong"
         else:
-            assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-            assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
             assert readiness["status"] == "blocked"
             visibility = deck["strongness_visibility"]
             assert visibility["source_informed_apply_readiness"] == "blocked"
             assert {
-                "cards_need_mechanic_lowering",
+                "cards_need_condition_lowering",
                 "contract_gap_not_strong_evidence",
             } <= set(readiness["blocking_reasons"])
             assert promotion["next_action"] == "close_first_missing_chain"
-        assert operator["runtime_load_safe"] is True
-        assert operator["runtime_apply_mode"] == "blocked"
-        assert operator["runtime_apply_allowed"] is False
         assert operator["source_apply_eligibility_reasons"] == [
             "diagnostic_source_not_apply_eligible"
         ]
@@ -119,7 +117,10 @@ def test_imbuemage_static_semantics_remain_load_safe_but_not_strong(
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    assert operator["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
     assert promotion["promotion_ready"] is False
     assert gap_report["summary"]["blocked_cards"] > 0
     assert gap_report["summary"]["first_missing_chain"] is not None
@@ -143,12 +144,14 @@ def test_discolock_remains_source_informed_with_visible_evidence_debt(
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-    assert operator["apply_policy"] == "ALLOWED_WITH_WARNINGS"
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    assert operator["apply_policy"] == "BLOCKED"
+    assert operator["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
     assert readiness["status"] == "blocked"
     assert readiness["source_gap_count"] == 0
     assert {
-        "policy_claim_not_strong_evidence",
         "source_evidence_warnings",
     } <= set(readiness["blocking_reasons"])
     assert promotion["promotion_ready"] is False

@@ -165,7 +165,13 @@ def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
     assert check["effect_only_body_rows"] == []
     assert check["unsupported_report_only_runtime_rows"] == []
     assert check["semantic_default_runtime_rows"] == []
-    assert check["attention"] == ["semantic_surface_not_expressible"]
+    assert check["attention"] == [
+        "reciprocal_burn_report_only",
+        "semantic_surface_not_expressible",
+        "spell_cannot_use_battlecry_target",
+        "targeting_requires_public_guide_source",
+        "variable_cost_condition_not_encoded",
+    ]
     assert quality["semantic_handoff_status"] == "attention"
     assert quality["semantic_handoff_reasons"] == check["attention"]
     assert reports["operator_summary"]["runtime_apply_allowed"] is False

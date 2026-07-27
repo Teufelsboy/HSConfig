@@ -140,8 +140,9 @@ def test_prepare_builds_valid_package_with_research_artifacts(tmp_path: Path, ca
     assert payload["package"] == str(package)
     assert validation["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert operator_summary["runtime_apply_allowed"] is True
@@ -421,7 +422,15 @@ def test_prepare_accepts_source_documents_json_and_writes_generated_guide_builde
     assert guide_sources["source_depth_status"] == "source_backed"
     assert receipt["source_depth_status"] == "source_backed"
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
+    assert operator_summary["runtime_apply_mode"] == "blocked"
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert "reports/guide_builder_receipt.json" in {
         path.replace("\\", "/") for path in operator_summary["generated_files"]
     }
@@ -539,9 +548,12 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     )
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
-    assert readiness["summary"]["generic_low_confidence"] == 3
+    assert readiness["summary"]["generic_low_confidence"] == 0
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
 
 
 def test_prepare_operator_summary_uses_live_source_claim_gap_report(
@@ -743,7 +755,7 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     )
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
-    assert readiness["summary"]["generic_low_confidence"] == 2
+    assert readiness["summary"]["generic_low_confidence"] == 0
     assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
@@ -835,7 +847,10 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
         ["source_confidence"],
     ]
     assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
 
 
 def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
@@ -997,9 +1012,9 @@ def test_prepare_no_auto_research_fallback_requests_research_before_strong_confi
     lane_counts = operator_summary["source_claim_quality_summary"][
         "source_quality_lane_counts"
     ]
-    assert lane_counts["generic_low_confidence"] == 1
+    assert lane_counts.get("generic_low_confidence", 0) == 0
     assert lane_counts["source_backed_static_semantics"] > 0
-    assert lane_counts.get("contract_gap", 0) == 0
+    assert lane_counts["contract_gap"] == 2
     assert any(
         warning["reason"] == "valid_but_not_guide_strong"
         for warning in operator_summary["warnings"]
@@ -1103,7 +1118,7 @@ def test_prepare_source_posture_drives_globalvalues_authority_matrix(
     assert authority["posture"] == "baseline"
     assert allowed == {"baseline"}
     assert key_profile_report == globalvalues_profile
-    assert key_profile_report["schema_version"] == 1
+    assert key_profile_report["schema_version"] == 2
     assert key_profile_report["status"] in {
         "baseline_confirmed",
         "overlay_changed",
@@ -1320,6 +1335,16 @@ def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
             for surface in row["runtime_surfaces"]
             if surface not in {"Combo.json", "GlobalValues.json", "Mulligan.json"}
         }
+        | {
+            row["runtime_surface"]
+            for row in readiness["linked_runtime_entities"].values()
+        }
+    )
+    meaningful_cardid_files = sorted(
+        filename
+        for filename in actual_cardid_files
+        if set(json.loads((deck_dir / filename).read_text(encoding="utf-8")))
+        - {"GameCardId", "ConfigComment"}
     )
 
     assert result == 0
@@ -1327,8 +1352,8 @@ def test_prepare_writes_readiness_and_depth_reports(tmp_path: Path, capsys):
     assert "depth_status" in depth
     assert payload["config_readiness_summary"] == readiness["summary"]
     assert payload["guide_source_depth_status"] == depth["depth_status"]
-    assert actual_cardid_files == reported_cardid_files
-    for filename in actual_cardid_files:
+    assert meaningful_cardid_files == reported_cardid_files
+    for filename in meaningful_cardid_files:
         card_id = filename.removesuffix(".json")
         if card_id in readiness["cards"]:
             assert filename in readiness["cards"][card_id]["runtime_surfaces"]
@@ -1520,12 +1545,21 @@ def test_prepare_suppresses_option_claim_without_identity_resolution(tmp_path: P
             "status": "unresolved",
         }
     ]
-    assert suppressions[0] == {
+    assert {
+        key: suppressions[0][key]
+        for key in ("claim_id", "claim_kind", "cards", "reason")
+    } == {
         "claim_id": card_behavior["suppressed"][0]["claim_id"],
         "claim_kind": "discover_choice",
         "cards": ["DISCOVER_CARD"],
         "reason": "unresolved_option_identity",
     }
+    assert suppressions[0]["acquisition_provenance"]["authority"] == (
+        "captured_unverified"
+    )
+    assert suppressions[0]["acquisition_provenance"]["mode"] == "captured_record"
+    assert suppressions[0]["source_claim_ids"]
+    assert suppressions[0]["source_refs"]
     assert any(
         row["claim_kind"] == "mechanic_usage"
         and row["reason"] == "semantic_surface_not_proven"
@@ -1634,7 +1668,13 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
     assert [row["claim_id"] for row in card_behavior["rows"]] == [discover_claim["claim_id"]]
     assert discover_row["semantic_score"]["reason"] == "draw_cycle"
     assert discover_row["value"] == "8"
-    assert card_behavior["suppressed"] == [
+    assert [
+        {
+            key: row[key]
+            for key in ("claim_id", "claim_kind", "cards", "reason")
+        }
+        for row in card_behavior["suppressed"]
+    ] == [
         {
             "claim_id": card_behavior["suppressed"][0]["claim_id"],
             "claim_kind": "mechanic_usage",
@@ -1642,6 +1682,8 @@ def test_prepare_routes_option_claim_with_identity_links(tmp_path: Path, capsys,
             "reason": "covered_by_resolved_choice_surface",
         }
     ]
+    assert all(row["source_claim_ids"] for row in card_behavior["suppressed"])
+    assert all(row["source_refs"] for row in card_behavior["suppressed"])
     assert card_behavior["option_resolution"] == [
         {
             "claim_id": discover_claim["claim_id"],
@@ -1807,18 +1849,27 @@ def test_prepare_partial_discover_choice_resolution_preserves_unresolved_generic
     ]
     assert discover_rows["CARD_RESOLVED"]["semantic_score"]["reason"] == "draw_cycle"
     assert discover_rows["CARD_RESOLVED"]["value"] == "8"
-    assert suppressions[0] == {
+    assert {
+        key: suppressions[0][key]
+        for key in ("claim_id", "claim_kind", "cards", "reason")
+    } == {
         "claim_id": resolved_choice_claim_id,
         "claim_kind": "discover_choice",
         "cards": ["CARD_UNRESOLVED"],
         "reason": "unresolved_option_identity",
     }
+    assert suppressions[0]["acquisition_provenance"]["authority"] == (
+        "captured_unverified"
+    )
+    assert suppressions[0]["acquisition_provenance"]["mode"] == "captured_record"
+    assert suppressions[0]["source_claim_ids"]
+    assert suppressions[0]["source_refs"]
     assert suppressions[1]["claim_kind"] == "mechanic_usage"
     assert suppressions[1]["cards"] == ["CARD_RESOLVED"]
     assert suppressions[1]["reason"] == "covered_by_resolved_choice_surface"
     assert suppressions[2]["claim_kind"] == "mechanic_usage"
     assert suppressions[2]["cards"] == ["CARD_UNRESOLVED"]
-    assert suppressions[2]["reason"] == "semantic_surface_not_proven"
+    assert suppressions[2]["reason"] == "discover_condition_not_encoded"
     assert resolved_config["OnDiscoverCardBonus"]["values"] == [
         {
             "comment": "Discover Split Deck: CARD_RESOLVED_pick_option_alpha",

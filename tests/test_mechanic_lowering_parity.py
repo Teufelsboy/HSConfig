@@ -132,9 +132,7 @@ def test_mechanic_lowering_parity_micro_fixture_connects_claims_to_runtime_repor
     assert _behavior_blocks(behavior_plan, "DEATH_001") == set()
     assert _behavior_blocks(behavior_plan, "RUSH_001") == set()
     assert _behavior_blocks(behavior_plan, "SPELLBURST_001") == set()
-    assert _behavior_blocks(behavior_plan, "DISCOVER_001") == {
-        "OnDiscoverCardBonus"
-    }
+    assert _behavior_blocks(behavior_plan, "DISCOVER_001") == set()
     assert {
         (row["claim_kind"], tuple(row["cards"]), row["reason"])
         for row in behavior_plan["suppressed"]
@@ -143,7 +141,7 @@ def test_mechanic_lowering_parity_micro_fixture_connects_claims_to_runtime_repor
         ("mechanic_usage", ("TRADE_001",), "tradeable_has_no_documented_runtime_block"),
         ("choose_one_choice", ("CHOOSE_001",), "unresolved_option_identity"),
         ("mechanic_usage", ("DEATH_001",), "semantic_surface_not_proven"),
-        ("mechanic_usage", ("RUSH_001",), "semantic_surface_not_proven"),
+        ("mechanic_usage", ("DISCOVER_001",), "discover_condition_not_encoded"),
         ("mechanic_usage", ("SPELLBURST_001",), "semantic_surface_not_proven"),
     }
 
@@ -151,17 +149,15 @@ def test_mechanic_lowering_parity_micro_fixture_connects_claims_to_runtime_repor
     for card_id in card_metadata:
         card_file = cardid_files[f"{card_id}.json"]
         assert card_file["GameCardId"] == card_id
-        if card_id == "DISCOVER_001":
-            assert "OnDiscoverCardBonus" in card_file
-        else:
-            assert set(card_file) == {"GameCardId", "ConfigComment"}
+        assert set(card_file) == {"GameCardId", "ConfigComment"}
     assert "BeforePlayCardBonus" not in cardid_files["TRADE_001.json"]
     assert "OnDiscoverCardBonus" not in cardid_files["DREDGE_001.json"]
 
     assert readiness["cards"]["DEATH_001"]["readiness_lane"] == "report_only_supported"
     assert readiness["cards"]["RUSH_001"]["readiness_lane"] == "report_only_supported"
     assert readiness["cards"]["SPELLBURST_001"]["readiness_lane"] == "report_only_supported"
-    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 3
+    assert readiness["summary"]["cards_needing_mechanic_lowering"] == 2
+    assert readiness["summary"]["cards_needing_condition_lowering"] == 1
     assert "needs_mechanic_lowering" in {
         row["first_missing_link"] for row in readiness["cards"].values()
     }

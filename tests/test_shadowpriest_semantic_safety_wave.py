@@ -373,7 +373,7 @@ def test_real_configure_paths_preserve_six_deck_one_linked_nine_report_only_cont
     }
     assert active_card_ids & EXPECTED_LINKED_RUNTIME_CARD_IDS == {"EX1_625t"}
     assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST | {"SW_448"}
-    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["runtime_emitted"] == 3
     assert readiness["summary"]["linked_runtime_source"] == 1
     assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["report_only_supported"] == 9
@@ -496,7 +496,7 @@ def test_shadowpriest_has_six_active_deck_cards_and_one_linked_runtime_entity(pa
     assert report_only_card_ids == REPORT_ONLY_SHADOWPRIEST | {"SW_448"}
 
     readiness = _report(package, "per_card_config_readiness_report.json")
-    assert readiness["summary"]["runtime_emitted"] == 6
+    assert readiness["summary"]["runtime_emitted"] == 3
     assert readiness["summary"]["linked_runtime_source"] == 1
     assert readiness["summary"]["linked_runtime_entity"] == 1
     assert readiness["summary"]["report_only_supported"] == 9

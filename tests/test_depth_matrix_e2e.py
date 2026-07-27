@@ -67,9 +67,7 @@ def test_depth_matrix_shadowpriest_primary_surface_contract(tmp_path: Path):
         and row["reason"] == "globalvalues_requires_exact_deck_match"
         for row in authority["blocked_until_runtime_evidence"]
     )
-    assert globalvalues_profile["keys"]["MyHeroPowerValue"]["status"] == (
-        "baseline_confirmed"
-    )
+    assert "MyHeroPowerValue" not in globalvalues_profile["keys"]
 
 
 def test_depth_matrix_mechpala_real_contrast_posture(tmp_path: Path):
@@ -258,7 +256,13 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
         for row in source_audit["claim_rows"].values()
     )
     assert card_behavior["option_resolution"][0]["status"] == "resolved"
-    assert suppression == [
+    assert [
+        {
+            key: row[key]
+            for key in ("claim_id", "claim_kind", "cards", "reason")
+        }
+        for row in suppression
+    ] == [
         {
             "claim_id": suppression[0]["claim_id"],
             "claim_kind": "mechanic_usage",
@@ -266,5 +270,7 @@ def test_depth_matrix_linked_entity_combo_micro_fixture(tmp_path: Path, monkeypa
             "reason": "covered_by_resolved_choice_surface",
         }
     ]
+    assert all(row["source_claim_ids"] for row in suppression)
+    assert all(row["source_refs"] for row in suppression)
     assert "OnDiscoverCardBonus" in discover
     assert "source_claim_ids" not in json.dumps(discover)

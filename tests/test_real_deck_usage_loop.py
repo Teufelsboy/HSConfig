@@ -99,11 +99,7 @@ def test_shadowpriest_configure_path_real_deck_loop_uses_operator_summary_withou
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["default_only_runtime_surface_details"] == []
     assert operator["mulligan_policy_status"]["default_only"] is False
-    assert operator["mulligan_policy_status"]["status"] in {
-        "policy_backed",
-        "source_backed",
-        "source_and_policy_backed",
-    }
+    assert operator["mulligan_policy_status"]["status"] == "rich"
 
     assert source_contract_audit["schema_version"] == 1
     assert isinstance(source_contract_audit["claim_lifecycle_rows"], list)

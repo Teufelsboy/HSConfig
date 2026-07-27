@@ -70,7 +70,7 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
     assert operator["runtime_load_safe"] is True
     assert operator["runtime_apply_mode"] == "blocked"
     assert operator["runtime_apply_allowed"] is False
@@ -79,7 +79,7 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
     ]
     assert operator["source_informed_apply_readiness"]["status"] == "blocked"
     assert {
-        "cards_need_mechanic_lowering",
+        "cards_need_condition_lowering",
         "contract_gap_not_strong_evidence",
     } <= set(operator["source_informed_apply_readiness"]["blocking_reasons"])
     assert promotion["promotion_ready"] is False
@@ -95,8 +95,11 @@ def test_source_informed_rows_expose_first_missing_chain_without_apply_ready(
         )
     elif target_card_row["first_missing_link"] == "semantic_surface_not_expressible":
         assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
-    elif target_card_row["first_missing_link"] == "runtime_surface":
-        assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"
+    elif target_card_row["first_missing_link"] == "needs_runtime_surface":
+        assert (
+            target_card_row["next_source_action"]
+            == "add_runtime_lowerable_claim_or_router_support"
+        )
     else:
         assert target_card_row["first_missing_link"] == "source_eligibility"
         assert target_card_row["next_source_action"] == "add_explicit_mulligan_claim"

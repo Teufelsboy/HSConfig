@@ -418,6 +418,9 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     globalvalues_profile = json.loads(
         (reports / "globalvalues_profile.json").read_text(encoding="utf-8")
     )
+    plan_report = json.loads(
+        (reports / "mulligan_plan_report.json").read_text(encoding="utf-8")
+    )
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     darkbishop_contract = contract["cards"]["SW_448"]
     darkbishop_source_config = deck_dir / "SW_448.json"
@@ -441,7 +444,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert validate_code == 0
     assert validate_out["status"] == "passed"
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["apply_policy"] == "ALLOWED_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
@@ -458,11 +461,15 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     )
     assert source_to_runtime_explainability["authority"] == "diagnostic_only"
     assert source_to_runtime_explainability["apply_blocking"] is False
-    assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"]
+    assert source_contract_audit["card_rows"]["SW_448"]["runtime_surfaces"] == []
     assert (
         operator_summary["source_informed_apply_readiness"]["status"]
-        == "not_applicable"
+        == "blocked"
     )
+    assert operator_summary["source_informed_apply_readiness"]["blocking_reasons"] == [
+        "cards_need_condition_lowering",
+        "contract_gap_not_strong_evidence",
+    ]
     assert apply_code == 0
     assert apply_out["status"] == "applied"
     assert apply_out["apply_gate"]["status"] == "allowed"
@@ -505,8 +512,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert "MyHeroPowerValue" not in {
         row["key"] for row in globalvalues_authority["allowed_step1_overlays"]
     }
-    hero_power_profile = globalvalues_profile["keys"]["MyHeroPowerValue"]
-    assert hero_power_profile["decision"] != "overlay_changed"
+    assert "MyHeroPowerValue" not in globalvalues_profile["keys"]
     assert (deck_dir / "GlobalValues.json").exists()
     assert (deck_dir / "Mulligan.json").exists()
     assert policy_hold_rows
@@ -514,12 +520,7 @@ def test_shadowpriest_deckinput_only_build_validate_and_apply(tmp_path: Path, ca
     assert operator_summary["config_usefulness"]["surfaces"]["mulligan"]["default_only"] is False
     assert operator_summary["default_only_runtime_surfaces"] == []
     assert operator_summary["mulligan_policy_status"]["default_only"] is False
-    assert (
-        operator_summary["config_usefulness"]["surfaces"]["mulligan"][
-            "policy_backed_rule_count"
-        ]
-        >= 1
-    )
+    assert plan_report["quality"]["policy_backed_keep_rule_count"] >= 1
     assert (deck_dir / "DS1_233.json").exists()
     assert darkbishop_source_config.exists()
     assert shadow_hero_power_config.exists()

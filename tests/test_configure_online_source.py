@@ -352,8 +352,12 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         str(blocker.get("reason", ""))
         for blocker in operator["semantic_blockers"]
     }
-    assert "cards_need_guide_claims" in blocker_reasons
-    assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
+    assert blocker_reasons == {
+        "cards_need_runtime_surface",
+        "contract_gap_not_strong_evidence",
+        "generic_low_confidence_not_strong_evidence",
+        "unsupported_conditions_present",
+    }
     rejected_mulligan_attention = [
         row
         for row in explainability["operator_attention"]
@@ -364,9 +368,11 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         row["card_id"] for row in rejected_mulligan_attention
     } == {"GVG_009", "SCH_514", "SW_444", "TOY_381"}
     assert all(
-        row["first_missing_link"] == "needs_mulligan_claim"
-        and row["first_missing_source_action"] == "add_exact_deck_matched_source"
-        and row["next_source_action"] == "add_exact_deck_matched_source"
+        row["first_missing_link"] == "needs_runtime_surface"
+        and row["first_missing_source_action"]
+        == "add_runtime_lowerable_claim_or_router_support"
+        and row["next_source_action"]
+        == "add_runtime_lowerable_claim_or_router_support"
         for row in rejected_mulligan_attention
     )
     assert operator["default_only_runtime_surfaces"] == []

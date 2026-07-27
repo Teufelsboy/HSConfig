@@ -1384,7 +1384,9 @@ def test_configure_writes_diagnostic_config_quality_summary(
         "use_config_now_scope": "load_safety_only",
         "semantic_handoff_status": "attention",
         "semantic_handoff_reasons": [
+            "reciprocal_burn_report_only",
             "semantic_surface_not_expressible",
+            "variable_cost_condition_not_encoded",
         ],
         "normal_apply_authority": "reports/operator_summary.json",
         "runtime_apply_allowed": True,
@@ -1438,7 +1440,9 @@ def test_configure_writes_diagnostic_config_quality_summary(
     assert handoff["use_config_now"] is True
     assert handoff["semantic_handoff_status"] == "attention"
     assert handoff["semantic_handoff_reasons"] == [
+        "reciprocal_burn_report_only",
         "semantic_surface_not_expressible",
+        "variable_cost_condition_not_encoded",
     ]
     assert handoff["source_status_apply_blocking"] is False
     assert handoff["source_gaps_apply_blocking"] is False

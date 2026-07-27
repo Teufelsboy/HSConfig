@@ -117,10 +117,12 @@ def test_core_archetype_fixture_prepare_path_is_source_informed(
         "VALID_BUT_NOT_GUIDE_STRONG",
         "STATIC_SEMANTICS_USABLE",
     }
-    assert operator["next_action"] in {
-        "READY_TO_APPLY_OR_HANDOFF",
-        "READY_TO_APPLY_WITH_WARNINGS",
-    }
+    assert operator["next_action"] == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
     assert (
         coverage["summary"]["guide_backed"]
         + coverage["summary"]["static_semantics_backfilled"]

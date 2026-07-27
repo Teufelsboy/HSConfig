@@ -1401,7 +1401,10 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
             "runtime_gate_impact": "none",
         }
     ]
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_mode"] == "blocked"
     assert operator_summary["runtime_apply_allowed"] is False
@@ -1577,7 +1580,10 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert not (deck_dir / "Combo.json").exists()
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
     assert (
         lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"]
         != "emitted"
@@ -2560,7 +2566,10 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     assert "BeforePlayCardBonus" not in quarantined_card
     assert operator_summary["runtime_load_safe"] is True
     assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert (
+        operator_summary["next_action"]
+        == "ACQUIRE_LIVE_VERIFIED_SOURCE_BEFORE_APPLY"
+    )
     assert claim_conflict_report["conflict_count"] == 1
     assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
         "conflict_target",

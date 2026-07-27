@@ -62,8 +62,13 @@ def test_source_evidence_closure_reports_captured_profile_gap(tmp_path: Path):
     )
     assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert report["source_strong_ready"] is False
-    assert report["first_missing_source_action"] == "inspect_card_gap"
-    assert report["source_missing_source_actions"] == ["inspect_card_gap"]
+    assert (
+        report["first_missing_source_action"]
+        == "rewrite_condition_to_supported_visionai_syntax"
+    )
+    assert report["source_missing_source_actions"] == [
+        "rewrite_condition_to_supported_visionai_syntax"
+    ]
     assert report["source_status_reasons"] == ["first_missing_claim_chain"]
     assert report["source_status_diagnostic_only"] is True
     assert report["source_status_apply_blocking"] is False
@@ -99,7 +104,7 @@ def test_source_evidence_closure_recomputes_source_status_from_gap_report():
                 "surface": "mulligan",
                 "first_missing_link": "needs_mulligan_claim",
                 "recommended_source_claim_kind": "mulligan_claim",
-                "next_action": "build_source_or_policy_backed_mulligan",
+                "next_action": "rewrite_condition_to_supported_visionai_syntax",
             },
         },
         "cards": {},
@@ -117,10 +122,10 @@ def test_source_evidence_closure_recomputes_source_status_from_gap_report():
     assert report["source_strong_ready"] is False
     assert (
         report["first_missing_source_action"]
-        == "build_source_or_policy_backed_mulligan"
+        == "rewrite_condition_to_supported_visionai_syntax"
     )
     assert report["source_missing_source_actions"] == [
-        "build_source_or_policy_backed_mulligan"
+        "rewrite_condition_to_supported_visionai_syntax"
     ]
     assert report["source_status_reasons"] == ["first_missing_claim_chain"]
     assert report["source_status_diagnostic_only"] is True
