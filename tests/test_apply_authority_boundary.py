@@ -73,8 +73,6 @@ def _build_authoritative_package(
             str(tmp_path / f"{name}-runtime"),
             "--out",
             str(package),
-            "--source-documents-json",
-            "tests/fixtures/source_documents_shadowpriest_strong.json",
             "--json",
         ]
     )
@@ -230,8 +228,15 @@ def test_prepared_package_projects_configuration_assurance_to_operator_outputs(
     assert summary["operator_guidance"]["first_report_to_open"] == (
         "reports/operator_summary.json"
     )
-    assert summary["runtime_apply_mode"] == "load_safe_apply"
-    assert summary["runtime_apply_allowed"] is True
+    assert summary["technical_status"] == "VALID_PACKAGE"
+    assert summary["runtime_apply_mode"] == "blocked"
+    assert summary["runtime_apply_mode"] == "blocked"
+    assert summary["runtime_apply_allowed"] is False
+    assert summary["source_apply_eligible"] is False
+    assert summary["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
+    assert summary["source_status_apply_blocking"] is False
     assert f"- Load safety: `{assurance['load_safety']}`" in markdown
     assert f"- Source authority: `{assurance['source_authority']}`" in markdown
     assert f"- Semantic closure: `{assurance['semantic_closure']}`" in markdown

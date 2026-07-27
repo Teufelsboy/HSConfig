@@ -11,6 +11,9 @@ AUTHORIZED_HERO_POWER_OWNER = (
     "hero_power_transform",
     "EX1_625t",
 )
+LINKED_RUNTIME_ENTITY_RELATION_INVALID = (
+    "linked_runtime_entity_relation_invalid"
+)
 
 
 @dataclass(frozen=True)
@@ -37,19 +40,33 @@ def resolve_runtime_entity_owner(
     if not isinstance(source_links, Mapping):
         return None
     runtime_card_id = source_links.get("hero_power_transform")
-    candidate = (
-        source_card_id,
-        semantic_reason,
-        "hero_power_transform",
-        str(runtime_card_id or ""),
-    )
-    if candidate != AUTHORIZED_HERO_POWER_OWNER:
+    if not runtime_entity_owner_relation_is_authorized(
+        source_card_id=source_card_id,
+        semantic_reason=semantic_reason,
+        link_kind="hero_power_transform",
+        runtime_card_id=str(runtime_card_id or ""),
+    ):
         return None
     return RuntimeEntityOwner(
         source_card_id=source_card_id,
         runtime_card_id=str(runtime_card_id),
         link_kind="hero_power_transform",
     )
+
+
+def runtime_entity_owner_relation_is_authorized(
+    *,
+    source_card_id: str,
+    semantic_reason: str,
+    link_kind: str,
+    runtime_card_id: str,
+) -> bool:
+    return (
+        source_card_id,
+        semantic_reason,
+        link_kind,
+        runtime_card_id,
+    ) == AUTHORIZED_HERO_POWER_OWNER
 
 
 def partition_runtime_entity_owner_rows(
@@ -113,7 +130,9 @@ def _meaningful_runtime_owner(
 __all__ = (
     "AUTHORIZED_HERO_POWER_OWNER",
     "LINKED_RUNTIME_ENTITY_OWNER_COLLISION",
+    "LINKED_RUNTIME_ENTITY_RELATION_INVALID",
     "RuntimeEntityOwner",
     "partition_runtime_entity_owner_rows",
     "resolve_runtime_entity_owner",
+    "runtime_entity_owner_relation_is_authorized",
 )

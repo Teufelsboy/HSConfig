@@ -262,11 +262,17 @@ def prepare_fixture_deck_with_source_claims(
     }
 
 
-def assert_load_safe_no_block_package(operator_summary: dict):
+def assert_diagnostic_source_package_is_load_safe_but_apply_blocked(
+    operator_summary: dict,
+):
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
     assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["runtime_apply_mode"] == "blocked"
+    assert operator_summary["source_apply_eligible"] is False
+    assert operator_summary["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert (
         operator_summary["deck_input_verification"]["status"]
         == "cards_json_matches_deck_code"
@@ -649,8 +655,8 @@ def test_unknown_semantic_qualifier_stays_warning_not_apply_block(tmp_path):
     assert result["exit_code"] == 0
     operator_summary = result["operator_summary"]
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["runtime_apply_mode"] == "blocked"
     assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
     mechanic_visibility = operator_summary["mechanic_visibility_summary"]
     assert mechanic_visibility["non_blocking"] is True
@@ -695,7 +701,8 @@ def test_singleton_hero_power_state_requirement_preserves_effect_without_mulliga
 
     assert result["exit_code"] == 0
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["runtime_apply_mode"] == "blocked"
     assert claim["semantic_qualifiers"]["state_requirements"] == ["all_shadow_spells"]
     assert "BeforeUseHeroPowerBonus" not in card_behavior
     assert any(
@@ -739,7 +746,9 @@ def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
     ]
 
     assert result["exit_code"] == 0
-    assert_load_safe_no_block_package(operator_summary)
+    assert_diagnostic_source_package_is_load_safe_but_apply_blocked(
+        operator_summary
+    )
     assert result["guide_claim_bundle"]["claim_conflict_report"]["conflict_count"] == 1
     assert {row["claim_kind"] for row in quarantined_rows} == {
         "mulligan_keep",
@@ -818,7 +827,9 @@ def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block
     ]
 
     assert result["exit_code"] == 0
-    assert_load_safe_no_block_package(operator_summary)
+    assert_diagnostic_source_package_is_load_safe_but_apply_blocked(
+        operator_summary
+    )
     assert source_contract_audit["summary"]["report_only_claims"] >= 1
     assert source_contract_audit["summary"]["runtime_evidence_required_claims"] >= 1
     assert report_only_rows
@@ -874,7 +885,9 @@ def test_warning_bearing_future_mechanic_package_still_load_safe(tmp_path):
     assert result["exit_code"] == 0
     operator_summary = result["operator_summary"]
 
-    assert_load_safe_no_block_package(operator_summary)
+    assert_diagnostic_source_package_is_load_safe_but_apply_blocked(
+        operator_summary
+    )
     assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )

@@ -32,7 +32,7 @@ _BUILDER_ROUTER_EXPECTATIONS = {
     "mulligan_keep": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "suppressed"},
     "mulligan_discard": {"surface": "mulligan", "runner": "build_mulligan_plan", "outcome": "suppressed"},
     "card_role": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
-    "targeting_rule": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
+    "targeting_rule": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "suppressed"},
     "combo_sequence": {"surface": "combo", "runner": "build_combo_plan", "outcome": "suppressed"},
     "gameplan_posture": {"surface": "globalvalues", "runner": "build_globalvalues_authority_matrix", "outcome": "suppressed"},
     "hero_power_transform": {"surface": "cardid", "runner": "route_card_behavior_surfaces", "outcome": "emitted"},
@@ -287,6 +287,15 @@ def _claim_kind_row(claim_kind: str, policy_row: Mapping[str, object]) -> dict[s
         context["verified_source_receipts"] = bundle[
             "canonical_source_receipts"
         ]
+    elif claim_kind == "targeting_rule":
+        bundle = _fixture_targeting_bundle()
+        claim = bundle["claims"][0]
+        context["deck_identity"] = {
+            "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        }
+        context["verified_source_receipts"] = bundle[
+            "canonical_source_receipts"
+        ]
     elif claim_kind == "combo_sequence":
         bundle = _fixture_combo_bundle()
         claim = bundle["claims"][0]
@@ -480,12 +489,7 @@ def _representative_claim(claim_kind: str, *, incomplete: bool = False) -> dict[
     if claim_kind == "card_role":
         return {**claim, "runtime_block": "InHandBonus"}
     if claim_kind == "targeting_rule":
-        return {
-            **claim,
-            "stance": "prefer_enemy_hero",
-            "target_scope": "enemy_hero",
-            "runtime_block": "BeforeBattlecryTargetBonus",
-        }
+        return _fixture_targeting_bundle()["claims"][0]
     if claim_kind == "mechanic_usage":
         return {**claim, "mechanic": "deathrattle"}
     if claim_kind == "known_bad_pattern":
@@ -562,9 +566,20 @@ def _builder_runner_result(
                     for link in curated_links_for("SW_448")
                 },
             }
+        fixture_bundle = (
+            _fixture_targeting_bundle()
+            if claim_kind == "targeting_rule"
+            else {"canonical_source_receipts": []}
+        )
         plan = route_card_behavior_surfaces(
             [claim],
             identity_links=identity_links,
+            deck_identity={
+                "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+            },
+            verified_source_receipts=fixture_bundle[
+                "canonical_source_receipts"
+            ],
         )
         if any(row.get("claim_id") == claim["claim_id"] for row in plan["rows"]):
             return {"outcome": "emitted", "reason": "emitted"}
@@ -668,6 +683,62 @@ def _fixture_combo_bundle(*, incomplete: bool = False) -> dict[str, Any]:
                         "operator": ">>",
                         "values": ["6"] * len(cards),
                         "evidence_text_short": "Play CARD_001 before CARD_002.",
+                        "source_confidence": "high",
+                        "promotion_eligible": True,
+                    }
+                ],
+            }
+        ],
+        current_date="2026-07-26",
+    )
+
+
+def _fixture_targeting_bundle() -> dict[str, Any]:
+    deck_identity = {
+        "deck_name": "Conformance",
+        "deck_fingerprint": _CONFORMANCE_DECK_FINGERPRINT,
+        "cards": [
+            {"card_id": "CARD_001", "name": "Conformance Card", "count": 1}
+        ],
+    }
+    return build_source_document_bundle(
+        deck_identity=deck_identity,
+        card_metadata={"cards": deck_identity["cards"]},
+        source_documents=[
+            {
+                "source_url": "https://example.invalid/conformance-targeting-guide",
+                "source_title": "Conformance exact-deck targeting guide",
+                "source_family": "guide",
+                "source_type": "public_guide",
+                "retrieved_at": "2026-07-26T00:00:00Z",
+                "acquisition_provenance": _conformance_fixture_provenance(),
+                "source_visibility": "full_text",
+                "source_lane": "deck_matched_public_guide",
+                "deck_match_scope": "exact_deck_matched",
+                "deck_match": {
+                    "exact_deck_evidence": {
+                        "candidate_count": 1,
+                        "decoded_candidate_count": 1,
+                        "matched": True,
+                        "matched_deck_fingerprint": (
+                            _CONFORMANCE_DECK_FINGERPRINT
+                        ),
+                        "candidate_deck_code_hashes": [
+                            "sha256:conformance-targeting-source"
+                        ],
+                    }
+                },
+                "claims": [
+                    {
+                        "claim_id": "conformance_targeting_rule",
+                        "claim_kind": "targeting_rule",
+                        "cards": ["CARD_001"],
+                        "scope": "card",
+                        "stance": "prefer_enemy_hero",
+                        "target_scope": "enemy_hero",
+                        "runtime_block": "BeforeBattlecryTargetBonus",
+                        "runtime_value": "12",
+                        "evidence_text_short": "Prefer the enemy hero target.",
                         "source_confidence": "high",
                         "promotion_eligible": True,
                     }

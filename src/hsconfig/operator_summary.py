@@ -184,6 +184,22 @@ def build_operator_summary(
     deck_name = deck_name or ""
     deck_code = deck_code or ""
     unsupported_conditions = _runtime_unsupported_condition_rows(unsupported_conditions)
+    source_apply_eligible = (
+        True
+        if package_authority is None
+        else package_authority.get("source_apply_eligible") is True
+    )
+    source_apply_eligibility_reasons = (
+        []
+        if package_authority is None
+        else [
+            str(row)
+            for row in package_authority.get(
+                "source_apply_eligibility_reasons",
+                [],
+            )
+        ]
+    )
 
     technical_status = _technical_status(
         technical_validation,
@@ -311,6 +327,10 @@ def build_operator_summary(
             apply_policy=apply_policy,
         )
     )
+    if not source_apply_eligible:
+        runtime_apply_mode = "blocked"
+        runtime_apply_allowed = False
+        runtime_apply_requires_flag = None
     mechanic_drift_summary = _mechanic_drift_summary(mechanic_drift_report)
     source_depth_status = _source_depth_status(guide_source_depth or {})
     no_block_failure_mode_summary = build_no_block_failure_mode_summary(
@@ -417,9 +437,14 @@ def build_operator_summary(
         "source_missing_source_actions": list(
             source_status_resolution.missing_source_actions
         ),
-        "source_status_reasons": list(source_status_resolution.reasons),
+        "source_status_reasons": [
+            *source_status_resolution.reasons,
+            *source_apply_eligibility_reasons,
+        ],
         "source_status_diagnostic_only": source_status_resolution.diagnostic_only,
         "source_status_apply_blocking": source_status_resolution.apply_blocking,
+        "source_apply_eligible": source_apply_eligible,
+        "source_apply_eligibility_reasons": source_apply_eligibility_reasons,
         "no_default_only_verdict": _no_default_only_verdict(
             technical_status,
             config_usefulness,

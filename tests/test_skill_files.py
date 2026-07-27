@@ -1602,6 +1602,10 @@ def test_skill_routes_new_authority_contract_without_becoming_an_implementation_
             "never infer apply readiness from individual diagnostic reports."
         ),
         "Only `live_http` plus `live_verified` can mint strategic receipts.",
+        (
+            "Consumed captured, fixture, manual, and legacy source provenance "
+            "blocks runtime apply"
+        ),
         "Unverified deck input blocks apply.",
         "The apply gate recomputes package derivation before runtime write authorization.",
         (
@@ -1617,8 +1621,8 @@ def test_skill_routes_new_authority_contract_without_becoming_an_implementation_
     assert "Physical row: `CardID/EX1_625t.json`" in active_docs
     assert "Static semantics can never authorize strategic Combo order." in active_docs
     assert (
-        "Captured, fixture, manual, and legacy inputs are diagnostic-only for "
-        "strategic authority."
+        "Captured, fixture, manual, and legacy inputs are diagnostic-only and "
+        "runtime-apply-ineligible."
     ) in active_docs
     assert (
         "The numeric bonus is configuration policy, not proof of optimal play."

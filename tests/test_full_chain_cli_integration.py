@@ -135,6 +135,10 @@ def test_documented_operator_chain_reaches_guarded_apply(tmp_path: Path, monkeyp
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert "runtime_apply_mode" in operator
     assert "generated_files" in operator
+    assert operator["source_apply_eligible"] is False
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
 
     assert main(["validate", "--package", str(package_out), "--json"]) == 0
 
@@ -152,7 +156,7 @@ def test_documented_operator_chain_reaches_guarded_apply(tmp_path: Path, monkeyp
     can_apply = (
         operator["runtime_apply_allowed"]
         and operator["runtime_apply_mode"] == "load_safe_apply"
-    ) or operator["apply_policy"] in {"ALLOWED", "ALLOWED_WITH_WARNINGS"}
+    )
 
     if can_apply:
         assert fake_code == 0

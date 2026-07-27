@@ -237,6 +237,27 @@ def source_authority_reasons(
     return []
 
 
+def source_apply_eligibility_reasons(
+    package_root: str | Path,
+) -> list[dict[str, str]]:
+    package = Path(package_root)
+    bundle_path = package / "reports" / "guide_claim_bundle.json"
+    if not bundle_path.is_file():
+        return []
+    try:
+        bundle = read_json(bundle_path)
+    except ValueError:
+        return [_diagnostic_source_not_apply_eligible_reason()]
+    if not isinstance(bundle, Mapping):
+        return [_diagnostic_source_not_apply_eligible_reason()]
+    for row in _source_provenance_projection(bundle):
+        if not strategic_source_provenance_is_verified(
+            row.get("acquisition_provenance")
+        ):
+            return [_diagnostic_source_not_apply_eligible_reason()]
+    return []
+
+
 def build_package_authority_context(
     package_root: str | Path,
 ) -> dict[str, Any]:
@@ -254,6 +275,7 @@ def build_package_authority_context(
             package,
             receipt,
         )
+    source_apply_reasons = source_apply_eligibility_reasons(package)
     return {
         "strict_validation_passed": strict_validation_passed(
             final_strict_validation_report
@@ -262,6 +284,11 @@ def build_package_authority_context(
             package
         ),
         "source_authority_verified": not source_authority_reasons(package),
+        "source_apply_eligible": not source_apply_reasons,
+        "source_apply_eligibility_reasons": [
+            str(row["reason"])
+            for row in source_apply_reasons
+        ],
         "derivation_receipt_verified": receipt_verified,
         "receipt_sha256": receipt_sha256,
     }
@@ -306,6 +333,9 @@ def _authoritative_input_digests(package_root: Path) -> dict[str, str]:
     )
     inputs["reports/guide_claim_bundle.json#canonical_source_receipts"] = (
         _canonical_json_sha256(_canonical_receipt_sequence(source_receipts))
+    )
+    inputs["reports/guide_claim_bundle.json#source_provenance"] = (
+        _canonical_json_sha256(_source_provenance_projection(guide_bundle))
     )
 
     deck_input_verification_path = (
@@ -378,6 +408,51 @@ def _canonical_receipt_sequence(value: Any) -> list[Any]:
         raise ValueError("Canonical source receipts must be a list.")
     receipts = [_stable_authority_value(item) for item in value]
     return sorted(receipts, key=_canonical_json_bytes)
+
+
+def _source_provenance_projection(
+    bundle: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    projection: list[dict[str, Any]] = []
+    for record_kind, rows, id_keys in (
+        ("claim", bundle.get("claims", []), ("claim_id", "source_ref")),
+        (
+            "source_evidence",
+            bundle.get("source_evidence_index", []),
+            ("source_ref", "source_id"),
+        ),
+    ):
+        if not isinstance(rows, Sequence) or isinstance(
+            rows, (str, bytes, bytearray)
+        ):
+            continue
+        for row in rows:
+            if not isinstance(row, Mapping) or "acquisition_provenance" not in row:
+                continue
+            projection.append(
+                {
+                    "record_kind": record_kind,
+                    "record_ids": {
+                        key: str(row.get(key, ""))
+                        for key in id_keys
+                    },
+                    "acquisition_provenance": _stable_authority_value(
+                        row.get("acquisition_provenance")
+                    ),
+                }
+            )
+    return sorted(projection, key=_canonical_json_bytes)
+
+
+def _diagnostic_source_not_apply_eligible_reason() -> dict[str, str]:
+    return {
+        "reason": "diagnostic_source_not_apply_eligible",
+        "code": "diagnostic_source_not_apply_eligible",
+        "detail": (
+            "Package source provenance is diagnostic-only and cannot authorize "
+            "runtime apply."
+        ),
+    }
 
 
 def _canonical_json_sha256(value: Any) -> str:

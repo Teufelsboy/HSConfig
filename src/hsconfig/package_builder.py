@@ -225,7 +225,14 @@ def build_package_payload(
         *mulligan_runtime_claims,
         *mulligan_selection["rejected_claims"],
     ]
-    cardid_claims = runtime_claims_for_surface(initial_lifecycle_rows, "cardid")
+    cardid_claims = runtime_claims_for_surface(
+        initial_lifecycle_rows,
+        "cardid",
+        context={
+            "deck_identity": deck_identity,
+            "verified_source_receipts": verified_source_receipts,
+        },
+    )
     combo_claims = runtime_claims_for_surface(
         initial_lifecycle_rows,
         "combo",
@@ -278,6 +285,8 @@ def build_package_payload(
     card_behavior_plan = route_card_behavior_claims(
         cardid_claims,
         identity_links=_card_behavior_identity_links(gameplan_contract),
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
     )
     combo_plan = build_combo_plan(
         deck_cards=set(gameplan_contract.get("cards", {})),

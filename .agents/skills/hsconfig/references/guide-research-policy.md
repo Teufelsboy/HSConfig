@@ -64,7 +64,10 @@ HearthstoneJSON and other static records may support deterministic CardID/effect
 ## Strategic Acquisition Authority
 
 Only `live_http` plus `live_verified` provenance can mint strategic receipts.
-Captured, fixture, manual, and legacy inputs are diagnostic-only for strategic authority.
+Captured, fixture, manual, and legacy inputs are diagnostic-only and runtime-apply-ineligible.
+They may still build, validate, and preflight. The apply gate recomputes their
+receipt-bound provenance and returns
+`diagnostic_source_not_apply_eligible`; summary fields cannot override it.
 
 | Mode | Authority | Strategic receipt |
 | --- | --- | --- |
@@ -407,4 +410,4 @@ Depth reports:
 
 Do not infer replay performance, winrate, or postgame tuning from HSConfig outputs.
 
-`hsconfig apply` enforces load safety, not source strength. A valid load-safe package may apply even when guide depth is weak; source-depth gaps remain visible in `operator_summary.json`, `source_claim_gap_report.json`, and `strong_promotion_report.json`.
+`hsconfig apply` enforces load safety and receipt-bound source provenance, not source strength. A valid load-safe package may apply when guide depth is weak only if its consumed source provenance is apply-eligible; source-depth gaps remain visible in `operator_summary.json`, `source_claim_gap_report.json`, and `strong_promotion_report.json`.

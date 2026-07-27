@@ -670,8 +670,9 @@ def test_shadowpriest_is_load_safe_without_claiming_semantic_closure(package):
     operator = _report(package, "operator_summary.json")
 
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_allowed"] is True
-    assert operator["load_safe_to_install"] is True
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["load_safe_to_install"] is False
     assert operator["semantic_handoff_status"] in {"attention", "insufficient_evidence"}
     assert "semantic_surface_not_expressible" in operator["semantic_handoff_reasons"]
 

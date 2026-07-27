@@ -85,7 +85,11 @@ def test_representative_decks_expose_output_competence_summary(
 
     assert code == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert usefulness["runtime_permission_impact"] == "none"
     assert usefulness["status"] in {
         "guide_aligned",

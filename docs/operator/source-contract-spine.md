@@ -53,6 +53,12 @@ Strategic receipts require canonical exact-deck guide evidence acquired through
 static, policy, statistical, decklist, snippet, and default-runtime evidence
 remains diagnostic-only for strategic authority.
 
+Consumed captured, fixture, manual, or legacy provenance is also globally
+runtime-apply-ineligible. The package may still be built, validated, and
+preflighted, but the receipt-bound apply gate returns the stable reason
+`diagnostic_source_not_apply_eligible`. Only canonical `live_http` /
+`live_verified` provenance can clear that source apply boundary.
+
 ## GlobalValues Plan Trust Boundary
 
 | Boundary | Canonical input | Required outcome |

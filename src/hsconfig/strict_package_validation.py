@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from hsconfig.package_io import read_optional_profile, read_required_baseline
+from hsconfig.runtime_entity_owner import (
+    LINKED_RUNTIME_ENTITY_RELATION_INVALID,
+    runtime_entity_owner_relation_is_authorized,
+)
 from hsconfig.validate_package import validate_config_package
 
 
@@ -55,7 +59,12 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
         if path.is_dir()
     )
     errors: list[str] = []
-    for runtime_card_id in _linked_runtime_card_ids(behavior_plan):
+    linked_relations, relation_errors = _linked_runtime_relations(
+        behavior_plan
+    )
+    errors.extend(relation_errors)
+    for relation in linked_relations:
+        runtime_card_id = relation["runtime_card_id"]
         filename = f"{runtime_card_id}.json"
         matching_paths = [
             deck_dir / filename
@@ -84,18 +93,74 @@ def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
     return errors
 
 
-def _linked_runtime_card_ids(behavior_plan: dict[str, Any]) -> list[str]:
-    runtime_card_ids: set[str] = set()
+def _linked_runtime_relations(
+    behavior_plan: dict[str, Any],
+) -> tuple[list[dict[str, str]], list[str]]:
+    relations: list[dict[str, str]] = []
+    errors: list[str] = []
     for row in behavior_plan.get("rows", []):
         if not isinstance(row, dict):
             continue
-        source_card_id = str(row.get("source_card_id") or row.get("card_id") or "")
-        runtime_card_id = str(row.get("runtime_card_id") or row.get("card_id") or "")
         if (
-            row.get("meaningful_runtime_surface") is True
-            and source_card_id
-            and runtime_card_id
-            and source_card_id != runtime_card_id
+            row.get("meaningful_runtime_surface") is not True
+            or not row.get("behavior_block")
         ):
-            runtime_card_ids.add(runtime_card_id)
-    return sorted(runtime_card_ids)
+            continue
+        source_card_id = str(
+            row.get("source_card_id") or row.get("card_id") or ""
+        ).strip()
+        runtime_card_id = str(
+            row.get("runtime_card_id") or row.get("card_id") or ""
+        ).strip()
+        link_kind = str(row.get("link_kind") or "self").strip()
+        if (
+            not source_card_id
+            or not runtime_card_id
+            or (
+                source_card_id == runtime_card_id
+                and link_kind == "self"
+            )
+        ):
+            continue
+        semantic_reason = _runtime_owner_semantic_reason(row)
+        relation = {
+            "source_card_id": source_card_id,
+            "semantic_reason": semantic_reason,
+            "link_kind": link_kind,
+            "runtime_card_id": runtime_card_id,
+        }
+        if not runtime_entity_owner_relation_is_authorized(**relation):
+            errors.append(
+                f"{LINKED_RUNTIME_ENTITY_RELATION_INVALID}: "
+                f"source={source_card_id}, semantic={semantic_reason}, "
+                f"link={link_kind}, runtime={runtime_card_id}"
+            )
+            continue
+        relations.append(relation)
+    return (
+        sorted(
+            relations,
+            key=lambda row: (
+                row["source_card_id"],
+                row["semantic_reason"],
+                row["link_kind"],
+                row["runtime_card_id"],
+            ),
+        ),
+        errors,
+    )
+
+
+def _runtime_owner_semantic_reason(row: dict[str, Any]) -> str:
+    semantic_score = row.get("semantic_score")
+    semantic_reason = (
+        str(semantic_score.get("semantic_reason", "")).strip()
+        if isinstance(semantic_score, dict)
+        else ""
+    )
+    if (
+        row.get("behavior_block") == "BeforeUseHeroPowerBonus"
+        and semantic_reason == "hero_power_transform"
+    ):
+        return "hero_power_before_use"
+    return semantic_reason

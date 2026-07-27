@@ -513,7 +513,10 @@ def test_representative_decks_are_load_safe_and_do_not_fake_strong(
     for row in results:
         expected = EXPECTED_EVIDENCE_STATUS[row["deck_name"]]
         assert row["technical_status"] == "VALID_PACKAGE", row
-        assert row["runtime_apply_allowed"] is True, row
+        assert row["runtime_apply_allowed"] is False, row
+        assert row["operator_summary"]["source_apply_eligibility_reasons"] == [
+            "diagnostic_source_not_apply_eligible"
+        ], row
         assert set(row["default_only_runtime_surfaces"]) <= {"cardid_behavior"}, row
         if expected == "SOURCE_BACKED_STRONG":
             assert row["semantic_status"] == "SOURCE_BACKED_STRONG", row
@@ -565,7 +568,11 @@ def test_multideck_matrix_never_blocks_valid_config_but_keeps_strong_honest(
         strong_report = row["strong_promotion_report"]
 
         assert operator["technical_status"] == "VALID_PACKAGE", row
-        assert operator["runtime_apply_allowed"] is True, row
+        assert operator["runtime_apply_allowed"] is False, row
+        assert operator["runtime_apply_mode"] == "blocked", row
+        assert operator["source_apply_eligibility_reasons"] == [
+            "diagnostic_source_not_apply_eligible"
+        ], row
         assert operator["runtime_apply_contract"]["apply_authority"] == (
             "reports/operator_summary.json"
         )

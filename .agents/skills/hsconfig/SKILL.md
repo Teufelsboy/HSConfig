@@ -29,7 +29,7 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 ## Hard Boundaries
 
 - Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Unverified deck input blocks apply.
-- Only `live_http` plus `live_verified` can mint strategic receipts.
+- Only `live_http` plus `live_verified` can mint strategic receipts. Consumed captured, fixture, manual, and legacy source provenance blocks runtime apply; those packages remain build-, validation-, and preflight-only.
 - Guide-backed Mulligan authority requires consistent public-guide identity, complete exact evidence, the current target fingerprint, and a matching canonical source receipt.
 - GlobalValues posture authority requires a canonical non-plan receipt bound to claim signature and target fingerprint; untyped legacy posture cannot self-assert it.
 - Document and claim identities are additive; any non-guide signal vetoes. Canonical non-plan bundle, receipts, lifecycle, and audit remain truth; plan inputs are diagnostic only.
@@ -64,7 +64,7 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 - Source evidence lowers through `claim_kind`, surface gates, builder/router outcomes, and visible diagnostics before runtime rows emit.
 - Static semantics are surface-scoped and may support deterministic CardID/effect rows such as `hero_power_transform`.
 - Static semantics can never authorize strategic Combo order. They do not prove Mulligan, targeting, or gameplan posture.
-- When source coverage is weak, still build a technically valid load-safe package and report `first_missing_source_action`.
+- When source coverage is weak, still build a technically valid diagnostic package and report `first_missing_source_action`. Weak coverage alone is not an apply gate, but diagnostic acquisition provenance is.
 - Contract compiler checklist: `references/contract-compiler-checklist.md`.
 
 ## Expert Paths

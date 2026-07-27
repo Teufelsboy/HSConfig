@@ -39,7 +39,8 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert mulligan_surface["status"] == "policy_backed"
     assert mulligan_surface["source_backed_rule_count"] == 0
     assert mulligan_surface["suppressed_reasons"][
@@ -186,10 +187,13 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert operator["config_usefulness"]["blocking"] is False
-    assert operator["config_usefulness"]["first_usefulness_gap"] == "target_scope_gap"
+    assert operator["config_usefulness"]["first_usefulness_gap"] == "cardid_thin"
     assert mulligan_surface["status"] == "policy_backed"
     assert (
         mulligan_surface["first_gap_reason"]

@@ -11,6 +11,7 @@ from hsconfig.package_derivation_receipt import (
     deck_input_apply_eligibility_reasons,
     derivation_schema_version_supported,
     package_derivation_receipt_sha256,
+    source_apply_eligibility_reasons,
     source_authority_reasons,
     verify_package_derivation_receipt,
 )
@@ -89,6 +90,10 @@ def evaluate_apply_gate(
     source_reasons = source_authority_reasons(package)
     if source_reasons:
         return _blocked(operator_path, *source_reasons)
+
+    source_apply_reasons = source_apply_eligibility_reasons(package)
+    if source_apply_reasons:
+        return _blocked(operator_path, *source_apply_reasons)
 
     derivation_reasons = _package_derivation_reasons(package, summary)
     if derivation_reasons:

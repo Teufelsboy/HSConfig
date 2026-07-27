@@ -226,6 +226,9 @@ def test_strict_validation_rejects_linked_runtime_filename_gamecardid_mismatch(
                     "runtime_card_id": "EX1_625t",
                     "link_kind": "hero_power_transform",
                     "behavior_block": "BeforeUseHeroPowerBonus",
+                    "semantic_score": {
+                        "semantic_reason": "hero_power_transform",
+                    },
                     "meaningful_runtime_surface": True,
                 }
             ]
@@ -249,5 +252,123 @@ def test_strict_validation_rejects_linked_runtime_filename_gamecardid_mismatch(
         "linked runtime entity filename/GameCardId mismatch: "
         "EX1_625t.json owns EX1_625t, got SW_448"
         in error
+        for error in report["errors"]
+    )
+
+
+def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    deck_dir = next((package / "CustomConfig").iterdir())
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "claim_darkbishop",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "semantic_score": {
+                        "semantic_reason": "hero_power_transform",
+                    },
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+    write_json(
+        deck_dir / "EX1_625t.json",
+        {
+            "GameCardId": "EX1_625t",
+            "ConfigComment": "curated linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "passed"
+    assert report["errors"] == []
+
+
+@pytest.mark.parametrize(
+    (
+        "source_card_id",
+        "runtime_card_id",
+        "link_kind",
+        "behavior_block",
+    ),
+    [
+        (
+            "SW_448",
+            "SW_448",
+            "hero_power_transform",
+            "BeforeUseHeroPowerBonus",
+        ),
+        (
+            "SW_448",
+            "WRONG_TARGET",
+            "hero_power_transform",
+            "BeforeUseHeroPowerBonus",
+        ),
+        (
+            "SW_448",
+            "EX1_625t",
+            "wrong_link",
+            "BeforeUseHeroPowerBonus",
+        ),
+        (
+            "SW_448",
+            "EX1_625t",
+            "hero_power_transform",
+            "OnBoardBonus",
+        ),
+    ],
+)
+def test_strict_validation_rejects_non_curated_linked_runtime_relation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    source_card_id: str,
+    runtime_card_id: str,
+    link_kind: str,
+    behavior_block: str,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "invalid_linked_owner",
+                    "card_id": source_card_id,
+                    "source_card_id": source_card_id,
+                    "runtime_card_id": runtime_card_id,
+                    "link_kind": link_kind,
+                    "behavior_block": behavior_block,
+                    "semantic_score": {
+                        "semantic_reason": "hero_power_transform",
+                    },
+                    "meaningful_runtime_surface": True,
+                }
+            ]
+        },
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        error.startswith("linked_runtime_entity_relation_invalid:")
         for error in report["errors"]
     )

@@ -13,6 +13,10 @@ from tests.mulligan_authority_fixtures import (
     build_canonical_mulligan_bundle,
     canonical_mulligan_gate_context,
 )
+from tests.targeting_authority_fixtures import (
+    build_canonical_targeting_bundle,
+    targeting_gate_context,
+)
 
 
 EXPECTED_POLICY = {
@@ -200,6 +204,10 @@ def test_surface_gate_matches_policy_matrix(claim_kind, expected):
         context["verified_source_receipts"] = bundle[
             "canonical_source_receipts"
         ]
+    elif claim_kind == "targeting_rule":
+        bundle, deck_identity = build_canonical_targeting_bundle()
+        claim = bundle["claims"][0]
+        context.update(targeting_gate_context(bundle, deck_identity))
 
     for surface in ("mulligan", "globalvalues", "cardid", "combo"):
         decision = surface_gate_decision(claim, surface, context=context)

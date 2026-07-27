@@ -70,7 +70,11 @@ def test_source_informed_rows_have_actionable_closure_chain(tmp_path, monkeypatc
             } <= set(readiness["blocking_reasons"])
             assert promotion["next_action"] == "close_first_missing_chain"
         assert operator["runtime_load_safe"] is True
-        assert operator["runtime_apply_mode"] == "load_safe_apply"
+        assert operator["runtime_apply_mode"] == "blocked"
+        assert operator["runtime_apply_allowed"] is False
+        assert operator["source_apply_eligibility_reasons"] == [
+            "diagnostic_source_not_apply_eligible"
+        ]
         if readiness["status"] == "not_applicable":
             assert readiness["source_gap_count"] == 0
         else:

@@ -175,7 +175,8 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     )
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert source_closure_receipt["authority"] == "diagnostic_only"
     assert source_closure_receipt["operator_gate"] == "reports/operator_summary.json"
     assert source_closure_receipt["normal_apply_authority"] == (
@@ -185,10 +186,13 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     assert source_closure_receipt["runtime_write_performed"] is False
     assert source_closure_receipt["source_backed_status"] == operator["source_backed_status"]
     assert source_closure_receipt["source_status_apply_blocking"] is False
-    assert source_closure_receipt["first_missing_source_action"] == "add_explicit_target_scope"
+    assert (
+        source_closure_receipt["first_missing_source_action"]
+        == "add_runtime_lowerable_claim_or_router_support"
+    )
     assert source_closure_receipt["default_only_clean"] is True
     assert source_closure_receipt["default_only_runtime_surfaces"] == []
-    assert source_closure_receipt["source_closure_lane"] == "source_action_needed"
+    assert source_closure_receipt["source_closure_lane"] == "runtime_surface_needed"
     assert source_closure_receipt["compiled_claim_count"] >= 1
     assert source_closure_receipt["runtime_lowerable_claim_count"] >= 1
     for key in (
@@ -196,7 +200,6 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         "uncovered_cards",
         "source_evidence_warnings",
         "cards_needing_guide_claims",
-        "cards_needing_runtime_surface",
         "cards_needing_mulligan_claims",
         "cards_needing_combo_sequence",
         "cards_needing_condition_lowering",
@@ -205,7 +208,8 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
         "cards_needing_mechanic_lowering",
     ):
         assert operator["guide_strength_summary"][key] == 0
-    assert operator["guide_strength_summary"]["cards_needing_target_scope"] > 0
+    assert operator["guide_strength_summary"]["cards_needing_runtime_surface"] == 1
+    assert operator["guide_strength_summary"]["cards_needing_target_scope"] == 0
     assert "SW_448" not in mulligan_text
     assert list(package.glob("CustomConfig/*/SW_448.json"))
     assert source_evidence_closure["authority"] == "diagnostic_only"
@@ -296,7 +300,8 @@ def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
     assert guide_bundle["canonical_source_receipts"] == []
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_load_safe"] is True
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
 
 
@@ -405,7 +410,8 @@ def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
     assert code == 0
     assert autopilot_report["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
     assert source_closure_receipt["authority"] == "diagnostic_only"
     assert source_closure_receipt["apply_blocking"] is False
@@ -462,6 +468,7 @@ def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_sa
     assert autopilot_report["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is True
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
 
 

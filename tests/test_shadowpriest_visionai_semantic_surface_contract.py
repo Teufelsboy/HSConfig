@@ -75,7 +75,8 @@ def test_shadowpriest_package_is_load_safe_without_default_only_surfaces(shadowp
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"
     assert operator["source_status_apply_blocking"] is False
     assert operator["default_only_runtime_surfaces"] == []
     assert operator["source_backed_strong_closure"]["status"] == "needs_source_closure"
@@ -164,10 +165,7 @@ def test_shadowpriest_quality_report_exposes_semantic_suppressions_without_gate(
     assert check["effect_only_body_rows"] == []
     assert check["unsupported_report_only_runtime_rows"] == []
     assert check["semantic_default_runtime_rows"] == []
-    assert check["attention"] == [
-        "missing_target_scope",
-        "semantic_surface_not_expressible",
-    ]
+    assert check["attention"] == ["semantic_surface_not_expressible"]
     assert quality["semantic_handoff_status"] == "attention"
     assert quality["semantic_handoff_reasons"] == check["attention"]
-    assert reports["operator_summary"]["runtime_apply_allowed"] is True
+    assert reports["operator_summary"]["runtime_apply_allowed"] is False

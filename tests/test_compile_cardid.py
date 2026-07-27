@@ -1,8 +1,13 @@
 from pathlib import Path
 
+from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 from hsconfig.compile_cardid import compile_cardid_behaviors
 from hsconfig.io import write_json
 from hsconfig.validate_package import validate_config_package
+from tests.targeting_authority_fixtures import (
+    build_canonical_targeting_bundle,
+    targeting_gate_context,
+)
 
 
 def test_compile_cardid_does_not_invent_priority_for_report_only_card():
@@ -48,6 +53,43 @@ def test_compile_cardid_preserves_explicit_priority_row():
     )["EX1_001.json"]
 
     assert payload["InHandPlayPriority"]["values"][0]["value"] == "9"
+
+
+def test_compile_cardid_receives_only_receipt_authorized_targeting_rows():
+    bundle, deck_identity = build_canonical_targeting_bundle()
+    claim = next(
+        row for row in bundle["claims"] if row["claim_id"] == "targeting-authorized"
+    )
+    authorized = route_card_behavior_surfaces(
+        [claim],
+        **targeting_gate_context(bundle, deck_identity),
+    )
+    suppressed = route_card_behavior_surfaces(
+        [claim],
+        deck_identity=deck_identity,
+        verified_source_receipts=[],
+    )
+
+    authorized_files = compile_cardid_behaviors(
+        {"deck_name": "Targeting", "cards": {}},
+        rows=authorized["rows"],
+    )
+    suppressed_files = compile_cardid_behaviors(
+        {
+            "deck_name": "Targeting",
+            "cards": {
+                "CARD_TARGET": {
+                    "roles": [],
+                    "source_claim_ids": [],
+                    "confidence": "source_backed",
+                }
+            },
+        },
+        rows=suppressed["rows"],
+    )
+
+    assert "BeforeBattlecryTargetBonus" in authorized_files["CARD_TARGET.json"]
+    assert "BeforeBattlecryTargetBonus" not in suppressed_files["CARD_TARGET.json"]
 
 
 def test_compile_cardid_behaviors_emit_valid_minimal_files_without_explicit_rows(

@@ -56,8 +56,11 @@ def test_source_backed_partial_fixtures_stay_load_safe_without_strong_claim(
 
     assert result["exit_code"] == 0
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_allowed"] is True
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
     assert operator["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert promotion["verdict"] == "PROMOTION_BLOCKED"

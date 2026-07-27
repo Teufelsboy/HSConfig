@@ -191,4 +191,5 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     assert physical["BeforePlayCardBonus"]["values"][0]["value"] == (
         persisted["rows"][0]["value"]
     )
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"

@@ -47,6 +47,12 @@ Only `live_http` plus `live_verified` provenance can mint a canonical strategic 
 Captured, fixture, manual, and legacy inputs remain diagnostic-only for strategic authority.
 Content equality does not upgrade an unverified acquisition mode.
 
+The same provenance boundary governs runtime apply globally. Packages that
+consume captured, fixture, manual, or legacy source rows can still build,
+validate, and preflight, but cannot write runtime configuration. The stable
+apply-gate reason is `diagnostic_source_not_apply_eligible`; the gate derives it
+from receipt-bound package data rather than trusting a summary field.
+
 | Mode | Authority | Strategic receipt |
 | --- | --- | --- |
 | `live_http` | `live_verified` | eligible after all exact guide gates |

@@ -97,19 +97,24 @@ def build_source_document_bundle(
                         "missing_source_keys": missing_source_keys,
                     }
                 )
-            source_evidence_index.append(
-                {
-                    "source_ref": source_ref,
-                    "source_id": str(document.get("source_id", f"source_{source_index}")),
-                    "source_url": str(document.get("source_url", "")),
-                    "source_title": str(document.get("source_title", "")),
-                    "source_family": str(document.get("source_family", "unknown")),
-                    "retrieved_at": str(document.get("retrieved_at", "")),
-                    "claim_count": promoted_count,
-                    "unsupported_claim_count": len(unsupported_claims) - unsupported_count_before,
-                    "missing_source_keys": missing_source_keys,
-                }
-            )
+            source_evidence_row = {
+                "source_ref": source_ref,
+                "source_id": str(document.get("source_id", f"source_{source_index}")),
+                "source_url": str(document.get("source_url", "")),
+                "source_title": str(document.get("source_title", "")),
+                "source_family": str(document.get("source_family", "unknown")),
+                "retrieved_at": str(document.get("retrieved_at", "")),
+                "claim_count": promoted_count,
+                "unsupported_claim_count": (
+                    len(unsupported_claims) - unsupported_count_before
+                ),
+                "missing_source_keys": missing_source_keys,
+            }
+            if isinstance(document.get("acquisition_provenance"), dict):
+                source_evidence_row["acquisition_provenance"] = document[
+                    "acquisition_provenance"
+                ]
+            source_evidence_index.append(source_evidence_row)
             continue
 
         for claim_index, raw_claim in enumerate(raw_claims, start=1):
@@ -160,19 +165,24 @@ def build_source_document_bundle(
                     )
             promoted_count += 1
 
-        source_evidence_index.append(
-            {
-                "source_ref": source_ref,
-                "source_id": str(document.get("source_id", f"source_{source_index}")),
-                "source_url": str(document.get("source_url", "")),
-                "source_title": str(document.get("source_title", "")),
-                "source_family": str(document.get("source_family", "unknown")),
-                "retrieved_at": str(document.get("retrieved_at", "")),
-                "claim_count": promoted_count,
-                "unsupported_claim_count": len(unsupported_claims) - unsupported_count_before,
-                "missing_source_keys": missing_source_keys,
-            }
-        )
+        source_evidence_row = {
+            "source_ref": source_ref,
+            "source_id": str(document.get("source_id", f"source_{source_index}")),
+            "source_url": str(document.get("source_url", "")),
+            "source_title": str(document.get("source_title", "")),
+            "source_family": str(document.get("source_family", "unknown")),
+            "retrieved_at": str(document.get("retrieved_at", "")),
+            "claim_count": promoted_count,
+            "unsupported_claim_count": (
+                len(unsupported_claims) - unsupported_count_before
+            ),
+            "missing_source_keys": missing_source_keys,
+        }
+        if isinstance(document.get("acquisition_provenance"), dict):
+            source_evidence_row["acquisition_provenance"] = document[
+                "acquisition_provenance"
+            ]
+        source_evidence_index.append(source_evidence_row)
 
     return {
         "claims": claims,

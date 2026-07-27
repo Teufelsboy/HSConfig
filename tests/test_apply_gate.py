@@ -14,6 +14,13 @@ from hsconfig.package_derivation_receipt import (
     write_package_derivation_receipt,
 )
 from hsconfig.package_io import read_optional_profile, read_required_baseline
+from hsconfig.source_acquisition_provenance import (
+    CAPTURED_RECORD,
+    FIXTURE_MAP,
+    LEGACY_CLAIMS_JSON,
+    MANUAL_EVIDENCE,
+    build_acquisition_provenance,
+)
 
 
 SHADOWPRIEST_DECK_CODE = (
@@ -164,6 +171,75 @@ def _refresh_derivation_reference(package: Path) -> None:
         "verified": True,
     }
     write_json(operator_path, summary)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        FIXTURE_MAP,
+        CAPTURED_RECORD,
+        MANUAL_EVIDENCE,
+        LEGACY_CLAIMS_JSON,
+    ],
+)
+def test_apply_gate_blocks_receipt_bound_diagnostic_source_provenance(
+    tmp_path: Path,
+    mode: str,
+):
+    package = tmp_path / mode
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "VALID_BUT_NOT_GUIDE_STRONG",
+            "next_action": "READY_TO_APPLY_WITH_WARNINGS",
+            "apply_policy": "ALLOWED_WITH_WARNINGS",
+            "runtime_apply_mode": "load_safe_apply",
+            "runtime_apply_allowed": True,
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    provenance = build_acquisition_provenance(
+        mode=mode,
+        content=f"{mode} diagnostic source".encode(),
+    )
+    write_json(
+        package / "reports" / "guide_claim_bundle.json",
+        {
+            "claims": [
+                {
+                    "claim_id": f"{mode}-claim",
+                    "claim_kind": "card_role",
+                    "acquisition_provenance": provenance,
+                }
+            ],
+            "source_evidence_index": [
+                {
+                    "source_ref": "source:1",
+                    "acquisition_provenance": provenance,
+                }
+            ],
+            "canonical_source_receipts": [],
+        },
+    )
+    _refresh_derivation_reference(package)
+
+    receipt = read_json(package / DERIVATION_RECEIPT_PATH)
+    gate = evaluate_apply_gate(package)
+
+    assert (
+        "reports/guide_claim_bundle.json#source_provenance"
+        in receipt["inputs"]
+    )
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
 
 
 def test_apply_gate_blocks_prebuilt_summary_when_input_verdict_is_missing(

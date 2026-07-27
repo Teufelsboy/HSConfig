@@ -435,7 +435,10 @@ def test_representative_matrix_has_no_silent_default_only_surfaces(tmp_path):
 
 
 @pytest.mark.parametrize("fixture", SEMANTIC_ARCHETYPE_FIXTURES, ids=lambda item: item["deck_name"])
-def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_path, fixture):
+def test_semantic_archetype_fixture_is_load_safe_diagnostic_and_not_default_only(
+    tmp_path,
+    fixture,
+):
     prepared = _prepare_semantic_fixture(tmp_path, fixture)
     out = prepared["out"]
     reports = prepared["reports"]
@@ -455,8 +458,12 @@ def test_semantic_archetype_fixture_remains_load_safe_and_not_default_only(tmp_p
 
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_load_safe"] is True
-    assert operator["runtime_apply_allowed"] is True
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["source_apply_eligible"] is False
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert set(operator["default_only_runtime_surfaces"]) <= {"mulligan"}
     assert all(
         row["status"] != "default_only"

@@ -62,8 +62,8 @@ def test_source_evidence_closure_reports_captured_profile_gap(tmp_path: Path):
     )
     assert report["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert report["source_strong_ready"] is False
-    assert report["first_missing_source_action"] == "add_explicit_target_scope"
-    assert report["source_missing_source_actions"] == ["add_explicit_target_scope"]
+    assert report["first_missing_source_action"] == "inspect_card_gap"
+    assert report["source_missing_source_actions"] == ["inspect_card_gap"]
     assert report["source_status_reasons"] == ["first_missing_claim_chain"]
     assert report["source_status_diagnostic_only"] is True
     assert report["source_status_apply_blocking"] is False

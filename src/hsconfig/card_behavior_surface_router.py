@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hsconfig.condition_format import lower_runtime_condition
@@ -71,6 +72,9 @@ OPTION_CARD_KEYS = (
 def route_card_behavior_surfaces(
     claims: list[dict[str, Any]],
     identity_links: dict[str, Any] | None = None,
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
@@ -81,8 +85,12 @@ def route_card_behavior_surfaces(
     for claim in claims:
         claim_kind = normalized_claim_kind(claim)
         cards = _claim_cards(claim)
-        gate = can_lower_to_cardid(claim)
-        if not gate.allowed:
+        gate = can_lower_to_cardid(
+            claim,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
+        if not gate.allowed and claim_kind != "targeting_rule":
             if _belongs_to_dedicated_non_cardid_surface(claim_kind):
                 continue
             suppressed.append(_suppressed_row(claim, claim_kind, cards, gate.reason))
@@ -152,6 +160,11 @@ def route_card_behavior_surfaces(
             if explicit_block not in TARGET_RUNTIME_BLOCKS:
                 suppressed.append(
                     _suppressed_row(claim, claim_kind, cards, "target_scope_not_encoded")
+                )
+                continue
+            if not gate.allowed:
+                suppressed.append(
+                    _suppressed_row(claim, claim_kind, cards, gate.reason)
                 )
                 continue
             intent = _claim_intent(claim, fallback=claim_kind)

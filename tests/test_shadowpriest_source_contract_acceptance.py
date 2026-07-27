@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from hsconfig.acceptance_matrix import build_acceptance_matrix
+from hsconfig.apply_gate import evaluate_apply_gate
 from hsconfig.cli import main
+from hsconfig.runtime_apply import apply_package
 
 from tests.test_configure_auto_source import (
     SHADOWPRIEST_CODE,
@@ -92,12 +97,20 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
         "strong_candidate_blockers"
     ]
     assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["source_apply_eligible"] is False
+    assert operator["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert operator["source_backed_status"] == "SOURCE_BACKED_PARTIAL"
     assert operator["source_strong_ready"] is False
     assert operator["first_missing_source_action"] == (
         "replace_default_only_runtime_surface_with_source_or_policy_claim"
     )
-    assert operator["source_status_reasons"] == ["default_only_runtime_surface"]
+    assert operator["source_status_reasons"] == [
+        "default_only_runtime_surface",
+        "diagnostic_source_not_apply_eligible",
+    ]
     assert operator["default_only_runtime_surfaces"] == ["mulligan"]
     assert operator["source_status_apply_blocking"] is False
     assert acquisition["records"][0]["source_visibility"] == "full_text"
@@ -142,3 +155,88 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
         or "shadow hero" in shadow_hero_power_text
     )
     assert "shadow" in shadow_hero_power_text
+
+    gate = evaluate_apply_gate(package)
+    acceptance = build_acceptance_matrix([package])
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
+    assert acceptance["status"] == "failed"
+    assert acceptance["packages"][0]["apply_gate_allowed"] is False
+    assert acceptance["packages"][0]["apply_gate_reasons"][0]["reason"] == (
+        "diagnostic_source_not_apply_eligible"
+    )
+
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._single_config_dir",
+        lambda _package: pytest.fail("runtime writer preparation must not run"),
+    )
+    with pytest.raises(
+        ValueError,
+        match="diagnostic_source_not_apply_eligible",
+    ):
+        apply_package(
+            package_root=package,
+            runtime_root=tmp_path / "blocked-runtime",
+            write_history=False,
+        )
+    assert not (tmp_path / "blocked-runtime").exists()
+
+
+def test_configure_shadowpriest_live_verified_source_remains_apply_eligible(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _stub_empty_fetches(monkeypatch)
+    cards_json = tmp_path / "cards.json"
+    _write_shadow_cards_json(cards_json)
+    out = tmp_path / "configure-live"
+    source_url = "https://example.test/current-shadowpriest-guide"
+    source_body = (
+        (FIXTURES / "source_pages" / "shadowpriest_current_guide.html")
+        .read_text(encoding="utf-8")
+        .replace(SHADOWPRIEST_CODE, TARGETED_SHADOWPRIEST_CODE)
+        .encode("utf-8")
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition._default_resolver",
+        lambda _hostname: ["93.184.216.34"],
+    )
+    monkeypatch.setattr(
+        "hsconfig.source_acquisition._fetch_with_validated_address",
+        lambda _url, _timeout, _address: (200, "text/html", source_body),
+    )
+
+    assert main(
+        [
+            "configure",
+            "--deck-name",
+            "ShadowPriest",
+            "--deck-code",
+            TARGETED_SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(out),
+            "--cards-json",
+            str(cards_json),
+            "--online-source",
+            "--auto-source",
+            "--source-url",
+            source_url,
+            "--json",
+        ]
+    ) == 0
+
+    package = out / "04_package"
+    operator = _read_json(package / "reports" / "operator_summary.json")
+    claim_bundle = _read_json(package / "reports" / "guide_claim_bundle.json")
+    gate = evaluate_apply_gate(package)
+
+    assert claim_bundle["canonical_source_receipts"]
+    assert operator["source_apply_eligible"] is True
+    assert operator["source_apply_eligibility_reasons"] == []
+    assert operator["runtime_apply_allowed"] is True
+    assert operator["source_status_apply_blocking"] is False
+    assert gate["allowed"] is True

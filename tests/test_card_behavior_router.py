@@ -6,6 +6,17 @@ import pytest
 
 from hsconfig.card_behavior_router import route_card_behavior_claims
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
+from hsconfig.source_acquisition_provenance import (
+    CAPTURED_RECORD,
+    FIXTURE_MAP,
+    LEGACY_CLAIMS_JSON,
+    MANUAL_EVIDENCE,
+    build_acquisition_provenance,
+)
+from tests.targeting_authority_fixtures import (
+    build_canonical_targeting_bundle,
+    targeting_gate_context,
+)
 
 
 def test_risky_static_semantics_stay_report_only_after_candidate_scoring():
@@ -252,10 +263,12 @@ def test_card_behavior_router_routes_specific_runtime_blocks():
 
     plan = route_card_behavior_claims(claims)
 
-    assert plan["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
-    assert plan["rows"][0]["condition"] == "my_target(count(),hero=true) > 0"
-    assert plan["rows"][1]["behavior_block"] == "OnDiscoverCardBonus"
-    assert plan["rows"][1]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
+    assert len(plan["rows"]) == 1
+    assert plan["rows"][0]["behavior_block"] == "OnDiscoverCardBonus"
+    assert plan["rows"][0]["condition"] == "my_discover(count(),cardid=CARD_C) > 0"
+    assert plan["suppressed"][0]["reason"] == (
+        "targeting_requires_public_guide_source"
+    )
 
 
 def test_conditional_target_kill_burn_guide_row_stays_report_only():
@@ -281,7 +294,7 @@ def test_conditional_target_kill_burn_guide_row_stays_report_only():
             "claim_id": "",
             "claim_kind": "targeting_rule",
             "cards": ["NX2_019"],
-            "reason": "semantic_surface_not_expressible",
+                "reason": "targeting_requires_public_guide_source",
         }
     ]
 
@@ -356,7 +369,7 @@ def test_targeting_claim_requires_compatible_target_block():
     assert report["suppressed"][0]["reason"] == "target_scope_not_encoded"
 
 
-def test_targeting_claim_with_scope_and_target_block_is_meaningful():
+def test_unverified_targeting_claim_with_scope_and_target_block_is_suppressed():
     claim = {
         "claim_id": "target-complete",
         "claim_kind": "targeting_rule",
@@ -370,23 +383,97 @@ def test_targeting_claim_with_scope_and_target_block_is_meaningful():
 
     report = route_card_behavior_surfaces([claim])
 
+    assert report["rows"] == []
+    assert report["suppressed"][0]["reason"] == (
+        "targeting_requires_public_guide_source"
+    )
+
+
+def test_receipt_bound_targeting_claim_routes_to_meaningful_runtime_row():
+    bundle, deck_identity = build_canonical_targeting_bundle()
+    claim = next(
+        row for row in bundle["claims"] if row["claim_id"] == "targeting-authorized"
+    )
+
+    report = route_card_behavior_surfaces(
+        [claim],
+        **targeting_gate_context(bundle, deck_identity),
+    )
+
     assert report["suppressed"] == []
-    assert report["rows"][0]["behavior_block"] == "BeforeBattlecryTargetBonus"
+    assert report["rows"][0]["claim_id"] == "targeting-authorized"
     assert report["rows"][0]["meaningful_runtime_surface"] is True
 
 
+@pytest.mark.parametrize(
+    "mode",
+    [
+        FIXTURE_MAP,
+        CAPTURED_RECORD,
+        MANUAL_EVIDENCE,
+        LEGACY_CLAIMS_JSON,
+    ],
+)
+def test_diagnostic_targeting_claim_without_receipt_is_suppressed(
+    mode: str,
+):
+    bundle, deck_identity = build_canonical_targeting_bundle()
+    claim = {
+        **bundle["claims"][0],
+        "acquisition_provenance": build_acquisition_provenance(
+            mode=mode,
+            content=b"diagnostic targeting source",
+        ),
+    }
+
+    report = route_card_behavior_surfaces(
+        [claim],
+        deck_identity=deck_identity,
+        verified_source_receipts=[],
+    )
+
+    assert report["rows"] == []
+    assert report["suppressed"] == [
+        {
+            "claim_id": "targeting-authorized",
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_TARGET"],
+            "reason": "strategic_provenance_not_live_verified",
+        }
+    ]
+
+
+def test_static_targeting_claim_without_receipt_is_suppressed():
+    claim = {
+        "claim_id": "targeting-static",
+        "claim_kind": "targeting_rule",
+        "claim_readiness": "source_backed_static_semantics",
+        "source_lane": "source_backed_static_semantics",
+        "trust_ceiling": "static_semantics",
+        "cards": ["CARD_TARGET"],
+        "target_scope": "enemy_minion",
+        "runtime_block": "BeforeBattlecryTargetBonus",
+        "condition": "my_target(count(),minion=true) > 0",
+    }
+
+    report = route_card_behavior_surfaces([claim])
+
+    assert report["rows"] == []
+    assert report["suppressed"] == [
+        {
+            "claim_id": "targeting-static",
+            "claim_kind": "targeting_rule",
+            "cards": ["CARD_TARGET"],
+            "reason": "targeting_requires_public_guide_source",
+        }
+    ]
+
+
 def test_explicit_target_runtime_block_is_preserved():
+    bundle, deck_identity = build_canonical_targeting_bundle()
     plan = route_card_behavior_surfaces(
-        [
-            {
-                "claim_kind": "targeting_rule",
-                "cards": ["TARGET_CARD"],
-                "stance": "prefer_enemy_minion",
-                "runtime_block": "BeforeBattlecryTargetBonus",
-                "target_scope": "enemy_minion",
-                "source_lane": "deck_matched_public_guide",
-            }
-        ]
+        [bundle["claims"][0]],
+        **targeting_gate_context(bundle, deck_identity),
     )
 
     assert plan["suppressed"] == []
@@ -607,17 +694,11 @@ def test_standalone_static_discover_without_exact_semantics_is_report_only():
 
 
 def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
+    bundle, deck_identity = build_canonical_targeting_bundle()
     plan = route_card_behavior_surfaces(
         [
             {
-                "claim_id": "raw_target",
-                "claim_kind": "targeting_rule",
-                "cards": ["CARD_A"],
-                "stance": "prefer_enemy_hero",
-                "target_scope": "enemy_hero",
-                "runtime_block": "BeforeBattlecryTargetBonus",
-                "source_claim_ids": ["raw_target"],
-                "source_lane": "deck_matched_public_guide",
+                **bundle["claims"][0],
                 "_claim_lifecycle": {
                     "claim_id": "lifecycle_target",
                     "surface": "cardid",
@@ -632,11 +713,12 @@ def test_card_behavior_surface_router_rows_use_lifecycle_claim_id():
                     "surface": "cardid",
                 },
             },
-        ]
+        ],
+        **targeting_gate_context(bundle, deck_identity),
     )
 
     assert plan["rows"][0]["claim_id"] == "lifecycle_target"
-    assert plan["rows"][0]["source_claim_ids"] == ["raw_target"]
+    assert plan["rows"][0]["source_claim_ids"] == ["targeting-authorized"]
     assert plan["suppressed"][0]["claim_id"] == "lifecycle_bad"
 
 
@@ -645,6 +727,7 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
     assert spec is not None, "card behavior surface router module is required"
     from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 
+    bundle, deck_identity = build_canonical_targeting_bundle()
     claims = [
         {
             "claim_id": "claim_choose_one",
@@ -662,16 +745,7 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
             "runtime_value": "4",
             "source_lane": "deck_matched_public_guide",
         },
-        {
-            "claim_id": "claim_target",
-            "claim_kind": "targeting_rule",
-            "cards": ["CARD_B"],
-            "stance": "prefer_enemy_minion",
-            "target_scope": "enemy_minion",
-            "runtime_block": "BeforeBattlecryTargetBonus",
-            "runtime_value": "8",
-            "source_lane": "deck_matched_public_guide",
-        },
+        bundle["claims"][0],
     ]
 
     plan = route_card_behavior_surfaces(
@@ -680,15 +754,16 @@ def test_card_behavior_surface_router_sorts_claim_rows_by_runtime_signature():
             "SW_448": {"hero_power_transform": "EX1_625t"},
             "CARD_Z": [{"link_kind": "entourage", "card_id": "CHOICE_ALPHA"}],
         },
+        **targeting_gate_context(bundle, deck_identity),
     )
 
     assert [row["claim_id"] for row in plan["rows"]] == [
-        "claim_target",
+        "targeting-authorized",
         "claim_choose_one",
         "claim_hero_power",
     ]
     assert [row["card_id"] for row in plan["rows"]] == [
-        "CARD_B",
+        "CARD_TARGET",
         "CARD_Z",
         "SW_448",
     ]
@@ -1253,25 +1328,16 @@ def test_card_behavior_router_sorts_rows_by_canonical_card_identity():
 
 
 def test_routes_targeting_claim_to_cardid_surface():
-    claims = [
-        {
-            "claim_kind": "targeting_rule",
-            "cards": ["DMF_090"],
-            "stance": "prefer_enemy_hero",
-            "target_scope": "enemy_hero",
-            "runtime_block": "BeforeBattlecryTargetBonus",
-            "conditions": {"phase": "burn"},
-            "claim_confidence": "high",
-            "source_refs": ["guide:1"],
-            "source_lane": "deck_matched_public_guide",
-        }
-    ]
+    bundle, deck_identity = build_canonical_targeting_bundle()
 
-    routed = route_card_behavior_claims(claims)
+    routed = route_card_behavior_claims(
+        [bundle["claims"][0]],
+        **targeting_gate_context(bundle, deck_identity),
+    )
 
-    assert routed["card_rows"]["DMF_090"]
-    assert routed["card_rows"]["DMF_090"][0]["surface"] == "CardID.json"
-    assert routed["card_rows"]["DMF_090"][0]["intent"] == "prefer_enemy_hero"
+    assert routed["card_rows"]["CARD_TARGET"]
+    assert routed["card_rows"]["CARD_TARGET"][0]["surface"] == "CardID.json"
+    assert routed["card_rows"]["CARD_TARGET"][0]["intent"] == "prefer_enemy_minion"
     assert routed["suppressed"] == []
 
 
@@ -1292,28 +1358,22 @@ def test_blocks_unsupported_claim_from_runtime_rows():
 
 
 def test_card_role_fallback_does_not_override_stronger_targeting_row():
+    bundle, deck_identity = build_canonical_targeting_bundle()
     routed = route_card_behavior_claims(
         [
-            {
-                "claim_kind": "targeting_rule",
-                "cards": ["CARD_001"],
-                "stance": "prefer_enemy_hero",
-                "target_scope": "enemy_hero",
-                "runtime_block": "BeforeBattlecryTargetBonus",
-                "claim_confidence": "high",
-                "source_lane": "deck_matched_public_guide",
-            },
+            bundle["claims"][0],
             {
                 "claim_kind": "card_role",
-                "cards": ["CARD_001"],
+                "cards": ["CARD_TARGET"],
                 "stance": "pressure",
                 "claim_confidence": "medium",
             },
-        ]
+        ],
+        **targeting_gate_context(bundle, deck_identity),
     )
 
-    intents = [row["intent"] for row in routed["card_rows"]["CARD_001"]]
-    assert "prefer_enemy_hero" in intents
+    intents = [row["intent"] for row in routed["card_rows"]["CARD_TARGET"]]
+    assert "prefer_enemy_minion" in intents
     assert "in_hand_priority" not in intents
 
 

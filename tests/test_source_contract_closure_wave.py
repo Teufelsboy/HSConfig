@@ -126,7 +126,11 @@ def test_start_of_game_hero_power_transform_preserves_effect_without_mulligan_ke
     )
 
     assert result["exit_code"] == 0
-    assert result["operator_summary"]["runtime_apply_allowed"] is True
+    assert result["operator_summary"]["runtime_apply_allowed"] is False
+    assert result["operator_summary"]["runtime_apply_mode"] == "blocked"
+    assert result["operator_summary"]["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert not any(
         row.get("mulligan") == FIXTURE_CARD_ID
         for row in mulligan["Mulligan"]["values"]

@@ -75,7 +75,7 @@ When public guide URLs are available for a fresh config, use the online source p
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
 
-This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. Strategic Strong claims require exact deck-matching guide claims acquired as `live_http` with `live_verified` provenance and bound to matching strategic receipts. Static semantics may support only deterministic identity, role, and mechanical effect claim families. If sources are thin, unavailable, stale, captured, fixture-backed, manual, legacy, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a diagnostic/load-safe package when technically valid and reports the first missing source link.
+This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. Strategic Strong claims require exact deck-matching guide claims acquired as `live_http` with `live_verified` provenance and bound to matching strategic receipts. Static semantics may support only deterministic identity, role, and mechanical effect claim families. If sources are thin, unavailable, stale, captured, fixture-backed, manual, legacy, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a technically valid diagnostic package and reports the first missing source link. A package that consumed captured, fixture, manual, or legacy provenance remains available for build, validation, and preflight, but runtime apply is blocked with `diagnostic_source_not_apply_eligible`.
 
 When `--online-source` is used, HSConfig also checks its source candidate
 registry for the deck name. These candidate URLs are acquisition seeds only.
@@ -92,11 +92,15 @@ hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-r
 This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts; static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`. Supported deterministic static effect claims remain eligible only for their non-strategic claim families. `reports/operator_summary.json` remains the only normal apply authority.
 
 Source freshness fields remain diagnostic, while normalized acquisition
-provenance is an authorization input for strategic receipts. Only
-`live_http` plus `live_verified` can mint them; captured, fixture, manual, and
-legacy inputs remain diagnostic-only for strategic authority. Missing or stale
-authority prevents strategic Strong promotion, but it does not replace
-`reports/operator_summary.json`.
+provenance is an authorization input for strategic receipts and runtime apply.
+Only `live_http` plus `live_verified` is apply-eligible. Captured, fixture,
+manual, and legacy inputs remain diagnostic-only even when their package is
+technically valid. `operator_summary.json` exposes this separately as
+`source_apply_eligible=false` and
+`source_apply_eligibility_reasons=["diagnostic_source_not_apply_eligible"]`;
+`source_status_apply_blocking` remains reserved for source-closure status.
+The apply gate recomputes this authority from receipt-bound package inputs
+before any runtime write.
 
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.

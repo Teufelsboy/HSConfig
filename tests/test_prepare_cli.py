@@ -2149,8 +2149,11 @@ def test_prepare_writes_source_contract_audit_and_operator_summary_pointer(
     assert "claim_lifecycle_decision_counts" in audit["summary"]
     assert "claim_lifecycle_decision_counts" in operator_summary["source_contract_audit_summary"]
     assert operator_summary["technical_status"] == "VALID_PACKAGE"
-    assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["runtime_apply_mode"] == "blocked"
+    assert operator_summary["source_apply_eligibility_reasons"] == [
+        "diagnostic_source_not_apply_eligible"
+    ]
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
     assert (
         operator_summary["source_contract_audit_summary"]["next_report_to_open"]

@@ -318,8 +318,8 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert autopilot["strong_candidate"] is False
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert preview["authority"] == "diagnostic_source_readiness_preview"
     assert preview["diagnostic_only"] is True
     assert preview["runtime_apply_authority"] == "reports/operator_summary.json"
@@ -340,8 +340,8 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     assert preview["default_only_evaluated"] is True
     assert preview["default_only_clean"] is True
     assert preview["default_only_runtime_surface_status"] == "clean"
-    assert preview["runtime_apply_allowed"] is True
-    assert preview["runtime_apply_mode"] == "load_safe_apply"
+    assert preview["runtime_apply_allowed"] is False
+    assert preview["runtime_apply_mode"] == "blocked"
     assert autopilot_preview["authority"] == "diagnostic_source_readiness_preview"
     assert autopilot_preview["default_only_evaluated"] is False
     assert autopilot_preview["default_only_clean"] is False
@@ -457,7 +457,8 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
         == "add_current_card_specific_runtime_source"
     )
     assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
 
 
@@ -507,6 +508,7 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
     assert acquisition["first_missing_source_action"] == "add_public_guide_url_or_use_static_semantics"
     assert operator["technical_status"] == "VALID_PACKAGE"
     assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is True
     assert operator["semantic_status"] != "SOURCE_BACKED_STRONG"
     assert preview["authority"] == "diagnostic_source_readiness_preview"
     assert preview["diagnostic_only"] is True

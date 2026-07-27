@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
@@ -8,8 +9,16 @@ from hsconfig.card_behavior_surface_router import route_card_behavior_surfaces
 def route_card_behavior_claims(
     claims: list[dict[str, Any]],
     identity_links: dict[str, Any] | None = None,
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    plan = route_card_behavior_surfaces(claims, identity_links=identity_links)
+    plan = route_card_behavior_surfaces(
+        claims,
+        identity_links=identity_links,
+        deck_identity=deck_identity,
+        verified_source_receipts=verified_source_receipts,
+    )
     card_rows: dict[str, list[dict[str, Any]]] = {}
     for row in plan["rows"]:
         card_rows.setdefault(str(row["card_id"]), []).append(row)

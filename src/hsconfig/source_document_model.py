@@ -413,7 +413,13 @@ def surface_gate_decision(
             ),
         )
     if normalized_surface == "cardid":
-        return can_lower_to_cardid(claim)
+        return can_lower_to_cardid(
+            claim,
+            deck_identity=(context or {}).get("deck_identity"),
+            verified_source_receipts=(context or {}).get(
+                "verified_source_receipts"
+            ),
+        )
     if normalized_surface == "card_behavior":
         claim_kind = normalized_claim_kind(claim)
         if claim_kind in {"discover_choice", "choose_one_choice"} and not _has_exact_option_identity(
@@ -426,7 +432,13 @@ def surface_gate_decision(
                 claim_kind,
                 normalized_surface,
             )
-        return can_lower_to_cardid(claim)
+        return can_lower_to_cardid(
+            claim,
+            deck_identity=(context or {}).get("deck_identity"),
+            verified_source_receipts=(context or {}).get(
+                "verified_source_receipts"
+            ),
+        )
     return SurfaceGateDecision(
         False, "unknown_surface", normalized_claim_kind(claim), normalized_surface
     )
@@ -909,12 +921,135 @@ def can_lower_to_combo(
     return SurfaceGateDecision(True, "allowed", claim_kind, "combo")
 
 
-def can_lower_to_cardid(claim: Mapping[str, Any]) -> SurfaceGateDecision:
+def can_lower_to_cardid(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None = None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None = None,
+) -> SurfaceGateDecision:
     claim_kind = normalized_claim_kind(claim)
     if claim_kind not in CARDID_SURFACE_CLAIM_KINDS:
         return SurfaceGateDecision(False, "claim_kind_not_cardid_surface", claim_kind, "cardid")
     if not claim_can_lower_to_runtime(dict(claim)):
         return SurfaceGateDecision(False, "claim_not_runtime_lowerable", claim_kind, "cardid")
+    if claim_kind == "targeting_rule":
+        return _can_lower_strategic_targeting_rule(
+            claim,
+            deck_identity=deck_identity,
+            verified_source_receipts=verified_source_receipts,
+        )
+    return SurfaceGateDecision(True, "allowed", claim_kind, "cardid")
+
+
+def _can_lower_strategic_targeting_rule(
+    claim: Mapping[str, Any],
+    *,
+    deck_identity: Mapping[str, Any] | None,
+    verified_source_receipts: Iterable[Mapping[str, Any]] | None,
+) -> SurfaceGateDecision:
+    claim_kind = normalized_claim_kind(claim)
+    if not _is_canonical_public_guide_source(claim):
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_public_guide_source",
+            claim_kind,
+            "cardid",
+        )
+    if _normalized_text(claim.get("deck_match_scope")) != "exact_deck_matched":
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_exact_deck_match",
+            claim_kind,
+            "cardid",
+        )
+    if not _bool_value(claim.get("promotion_eligible")):
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_promotion_eligible_source",
+            claim_kind,
+            "cardid",
+        )
+    if _normalized_text(claim.get("source_visibility")) != "full_text":
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_full_text_source",
+            claim_kind,
+            "cardid",
+        )
+    if _normalized_text(claim.get("source_lane")) != "deck_matched_public_guide":
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_deck_matched_public_guide_lane",
+            claim_kind,
+            "cardid",
+        )
+    target_fingerprint = _normalized_text(
+        (deck_identity or {}).get("deck_fingerprint")
+    )
+    if not target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_target_deck_fingerprint",
+            claim_kind,
+            "cardid",
+        )
+    deck_match = claim.get("deck_match")
+    exact_evidence = (
+        deck_match.get("exact_deck_evidence")
+        if isinstance(deck_match, Mapping)
+        else None
+    )
+    evidence_fingerprint = (
+        _normalized_text(exact_evidence.get("matched_deck_fingerprint"))
+        if isinstance(exact_evidence, Mapping)
+        else ""
+    )
+    if (
+        not isinstance(exact_evidence, Mapping)
+        or exact_evidence.get("matched") is not True
+        or not evidence_fingerprint
+    ):
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_verified_exact_deck_evidence",
+            claim_kind,
+            "cardid",
+        )
+    if evidence_fingerprint != target_fingerprint:
+        return SurfaceGateDecision(
+            False,
+            "targeting_exact_deck_fingerprint_mismatch",
+            claim_kind,
+            "cardid",
+        )
+    if not canonical_exact_deck_evidence(
+        exact_evidence,
+        target_fingerprint=target_fingerprint,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_complete_exact_deck_evidence",
+            claim_kind,
+            "cardid",
+        )
+    if strategic_source_receipt_provenance(claim) is None:
+        return SurfaceGateDecision(
+            False,
+            STRATEGIC_PROVENANCE_NOT_LIVE_VERIFIED,
+            claim_kind,
+            "cardid",
+        )
+    if not _has_verified_source_receipt(
+        claim,
+        target_fingerprint=target_fingerprint,
+        verified_source_receipts=verified_source_receipts,
+    ):
+        return SurfaceGateDecision(
+            False,
+            "targeting_requires_verified_source_receipt",
+            claim_kind,
+            "cardid",
+        )
     return SurfaceGateDecision(True, "allowed", claim_kind, "cardid")
 
 

@@ -72,6 +72,7 @@ def test_conformance_strategic_examples_remain_diagnostic_only():
     expected_reasons = {
         "mulligan_keep": "strategic_provenance_not_live_verified",
         "mulligan_discard": "strategic_provenance_not_live_verified",
+        "targeting_rule": "strategic_provenance_not_live_verified",
         "combo_sequence": "strategic_provenance_not_live_verified",
         "gameplan_posture": "requires_runtime_evidence",
     }

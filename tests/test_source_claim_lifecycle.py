@@ -12,6 +12,10 @@ from hsconfig.source_document_model import (
     strict_claim_kind,
 )
 from tests.helpers.live_acquisition import acquire_live_test_provenance
+from tests.targeting_authority_fixtures import (
+    build_canonical_targeting_bundle,
+    targeting_gate_context,
+)
 
 
 _MULLIGAN_FINGERPRINT = "sha256:lifecycle-mulligan-fixture"
@@ -321,26 +325,22 @@ def test_lifecycle_claim_id_prefers_lifecycle_metadata_over_raw_claim_id():
 
 
 def test_runtime_builder_rows_use_lifecycle_claim_id_over_raw_claim_id():
+    bundle, deck_identity = build_canonical_targeting_bundle()
     emitted = route_card_behavior_surfaces(
         [
             {
-                "claim_id": "raw_target",
-                "claim_kind": "targeting_rule",
-                "cards": ["CARD_A"],
-                "stance": "prefer_enemy_hero",
-                "target_scope": "enemy_hero",
-                "runtime_block": "BeforeBattlecryTargetBonus",
-                "source_lane": "deck_matched_public_guide",
+                **bundle["claims"][0],
                 "_claim_lifecycle": {
                     "claim_id": "lifecycle_target",
                     "surface": "cardid",
                 },
             }
-        ]
+        ],
+        **targeting_gate_context(bundle, deck_identity),
     )
 
     assert emitted["rows"][0]["claim_id"] == "lifecycle_target"
-    assert emitted["rows"][0]["source_claim_ids"] == ["raw_target"]
+    assert emitted["rows"][0]["source_claim_ids"] == ["targeting-authorized"]
     assert "_claim_lifecycle" not in emitted["rows"][0]
 
     suppressed = build_combo_plan(

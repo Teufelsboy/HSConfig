@@ -15,6 +15,10 @@ from tests.mulligan_authority_fixtures import (
     build_canonical_mulligan_bundle,
     canonical_mulligan_gate_context,
 )
+from tests.targeting_authority_fixtures import (
+    build_canonical_targeting_bundle,
+    targeting_gate_context,
+)
 
 
 def _canonical_posture_bundle():
@@ -282,13 +286,9 @@ def test_exact_guide_combo_claim_with_verified_receipt_is_lowerable():
     assert decision.reason == "allowed"
 
 
-def test_cardid_surface_accepts_behavior_claims_but_not_mulligan_or_globalvalues():
-    targeting = {
-        "claim_kind": "targeting_rule",
-        "claim_readiness": "guide_backed",
-        "trust_ceiling": "runtime_candidate",
-        "cards": ["CARD_001"],
-    }
+def test_cardid_surface_accepts_receipt_bound_targeting_but_not_mulligan():
+    bundle, deck_identity = build_canonical_targeting_bundle()
+    targeting = bundle["claims"][0]
     mulligan = {
         "claim_kind": "mulligan_keep",
         "claim_readiness": "guide_backed",
@@ -296,10 +296,76 @@ def test_cardid_surface_accepts_behavior_claims_but_not_mulligan_or_globalvalues
         "cards": ["CARD_001"],
     }
 
-    assert can_lower_to_cardid(targeting).allowed is True
+    assert can_lower_to_cardid(
+        targeting,
+        **targeting_gate_context(bundle, deck_identity),
+    ).allowed is True
     decision = can_lower_to_cardid(mulligan)
     assert decision.allowed is False
     assert decision.reason == "claim_kind_not_cardid_surface"
+
+
+def test_targeting_rule_without_verified_receipt_is_rejected():
+    bundle, deck_identity = build_canonical_targeting_bundle()
+
+    decision = can_lower_to_cardid(
+        bundle["claims"][0],
+        deck_identity=deck_identity,
+        verified_source_receipts=[],
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "targeting_requires_verified_source_receipt"
+
+
+def test_targeting_rule_receipt_for_wrong_deck_is_rejected():
+    bundle, _deck_identity = build_canonical_targeting_bundle()
+
+    decision = can_lower_to_cardid(
+        bundle["claims"][0],
+        deck_identity={"deck_fingerprint": "wrong-target-deck"},
+        verified_source_receipts=bundle["canonical_source_receipts"],
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "targeting_exact_deck_fingerprint_mismatch"
+
+
+def test_targeting_rule_receipt_for_wrong_claim_is_rejected():
+    bundle, deck_identity = build_canonical_targeting_bundle()
+    claim = next(
+        row for row in bundle["claims"] if row["claim_id"] == "targeting-authorized"
+    )
+    wrong_claim_receipts = [
+        row
+        for row in bundle["canonical_source_receipts"]
+        if row["claim_id"] == "targeting-other-claim"
+    ]
+
+    decision = can_lower_to_cardid(
+        claim,
+        deck_identity=deck_identity,
+        verified_source_receipts=wrong_claim_receipts,
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "targeting_requires_verified_source_receipt"
+
+
+def test_non_strategic_static_cardid_claim_remains_deterministically_lowerable():
+    decision = can_lower_to_cardid(
+        {
+            "claim_id": "static-card-role",
+            "claim_kind": "card_role",
+            "claim_readiness": "source_backed_static_semantics",
+            "source_lane": "source_backed_static_semantics",
+            "trust_ceiling": "static_semantics",
+            "cards": ["CARD_STATIC"],
+        }
+    )
+
+    assert decision.allowed is True
+    assert decision.reason == "allowed"
 
 
 def test_every_supported_claim_kind_has_contract_policy():
@@ -379,6 +445,10 @@ def test_contract_policy_allowed_surfaces_match_surface_gate_decisions():
             context["verified_source_receipts"] = bundle[
                 "globalvalues_source_receipts"
             ]
+        elif claim_kind == "targeting_rule":
+            bundle, deck_identity = build_canonical_targeting_bundle()
+            claim = bundle["claims"][0]
+            context.update(targeting_gate_context(bundle, deck_identity))
         elif claim_kind == "combo_sequence":
             bundle = _canonical_combo_bundle()
             claim = bundle["claims"][0]

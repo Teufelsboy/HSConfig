@@ -1391,8 +1391,8 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     assert payload["status"] == "passed"
     assert receipt["source_depth_status"] == "source_backed"
     assert depth["summary"]["report_only_claims"] == 0
-    assert depth["source_depth_status"] == "usable"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert depth["source_depth_status"] == "static_semantics_only"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
     assert plan_diagnostics["ignored_claims"] == [
         {
             "claim_id": "claim_report_only_runtime",
@@ -1403,8 +1403,8 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     ]
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
-    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_mode"] == "blocked"
+    assert operator_summary["runtime_apply_allowed"] is False
 
 
 def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
@@ -1568,7 +1568,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert valid_card["BeforeBattlecryTargetBonus"]["values"]
+    assert "BeforeBattlecryTargetBonus" not in valid_card
     assert "BeforePlayCardBonus" not in report_only_card
     assert "BeforePlayCardBonus" not in unreferenced_card
     assert not any(
@@ -1576,10 +1576,11 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     )
     assert not (deck_dir / "Combo.json").exists()
     assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_allowed"] is False
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-    assert lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"] == (
-        "emitted"
+    assert (
+        lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"]
+        != "emitted"
     )
     for claim_id in (
         "report_only_target",
@@ -2543,10 +2544,10 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
 
     assert code == 0
     assert payload["status"] == "passed"
-    assert valid_card["BeforeBattlecryTargetBonus"]["values"]
+    assert "BeforeBattlecryTargetBonus" not in valid_card
     assert "BeforePlayCardBonus" not in quarantined_card
     assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_allowed"] is False
     assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert claim_conflict_report["conflict_count"] == 1
     assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
