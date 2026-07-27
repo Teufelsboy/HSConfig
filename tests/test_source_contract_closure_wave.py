@@ -15,6 +15,7 @@ from hsconfig.source_to_runtime_explainability import (
 )
 from tests.test_universal_wild_no_block_matrix import (
     DECKS,
+    FIXTURE_CARD_ID,
     prepare_fixture_deck_with_source_claim,
 )
 
@@ -115,7 +116,9 @@ def test_start_of_game_hero_power_transform_preserves_effect_without_mulligan_ke
 
     deck_dir = next((result["package"] / "CustomConfig").iterdir())
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
-    card_behavior = json.loads((deck_dir / "CARD_001.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (deck_dir / f"{FIXTURE_CARD_ID}.json").read_text(encoding="utf-8")
+    )
     behavior_report = json.loads(
         (
             result["package"] / "reports" / "card_behavior_plan_report.json"
@@ -123,19 +126,15 @@ def test_start_of_game_hero_power_transform_preserves_effect_without_mulligan_ke
     )
 
     assert result["exit_code"] == 0
-    assert result["operator_summary"]["runtime_apply_allowed"] is False
-    assert (
-        result["operator_summary"]["deck_input_verification"]["status"]
-        == "cards_json_unverified"
-    )
+    assert result["operator_summary"]["runtime_apply_allowed"] is True
     assert not any(
-        row.get("mulligan") == "CARD_001"
+        row.get("mulligan") == FIXTURE_CARD_ID
         for row in mulligan["Mulligan"]["values"]
     )
     assert "BeforeUseHeroPowerBonus" not in card_behavior
     assert any(
         row["reason"] == "linked_runtime_entity_unresolved"
-        and row["cards"] == ["CARD_001"]
+        and row["cards"] == [FIXTURE_CARD_ID]
         for row in behavior_report["suppressed"]
     )
 

@@ -12,16 +12,23 @@ from hsconfig.commands.configure import (
     _build_config_proof_summary,
     _compact_config_quality_summary,
 )
-from tests.helpers.verified_deck_input import (
-    VERIFIED_TEST_CARDS,
-    VERIFIED_TEST_DECK_CODE,
-)
+from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
 SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+CONFIGURE_FIXTURE_CARDS = [
+    {
+        "card_id": "SW_448",
+        "dbf_id": 64443,
+        "count": 1,
+        "name": "Darkbishop Benedictus",
+        "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+    }
+]
+CONFIGURE_FIXTURE_DECK_CODE = deck_code_for_cards(CONFIGURE_FIXTURE_CARDS)
 
 
 def _read_json(path: Path) -> dict:
@@ -33,11 +40,7 @@ def _write_cards_json(path: Path) -> None:
         json.dumps(
             {
                 "cards": [
-                    {
-                        **VERIFIED_TEST_CARDS[0],
-                        "name": "Darkbishop Benedictus",
-                        "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
-                    }
+                    CONFIGURE_FIXTURE_CARDS[0]
                 ]
             }
         ),
@@ -330,7 +333,7 @@ def test_configure_source_evidence_is_not_reingested_after_drafting(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            VERIFIED_TEST_DECK_CODE,
+            CONFIGURE_FIXTURE_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -417,7 +420,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            VERIFIED_TEST_DECK_CODE,
+            CONFIGURE_FIXTURE_DECK_CODE,
             "--runtime-root",
             str(runtime_root),
             "--out",
@@ -471,7 +474,7 @@ def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            VERIFIED_TEST_DECK_CODE,
+            CONFIGURE_FIXTURE_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

@@ -30,6 +30,11 @@ def plan_apply_package(
 ) -> dict[str, Any]:
     package = Path(package_root)
     _validate_runtime_apply_package(package)
+    resolved_apply_gate = _resolve_allowed_apply_gate(
+        package=package,
+        apply_gate=apply_gate,
+        allow_source_informed=False,
+    )
     deck_dir_name = config_dir or _single_config_dir(package)
     _validate_config_dir(deck_dir_name)
     source_dir = package / "CustomConfig" / deck_dir_name
@@ -40,7 +45,7 @@ def plan_apply_package(
         package_root=package,
         runtime_root=runtime_root,
         config_dir=deck_dir_name,
-        apply_gate=apply_gate or {"status": "not_checked"},
+        apply_gate=resolved_apply_gate,
     )
     write_fake_apply_receipt(package, receipt)
     return receipt

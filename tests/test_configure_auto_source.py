@@ -5,7 +5,6 @@ from pathlib import Path
 
 from hsconfig.cli import main
 from hsconfig.deck_identity import build_deck_identity
-from hsconfig.deckstring_decode import decode_deck_code
 from tests.helpers.verified_deck_input import (
     VERIFIED_TEST_CARDS,
     VERIFIED_TEST_DECK_CODE,
@@ -17,45 +16,58 @@ SHADOWPRIEST_CODE = (
     "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
     "KgG17oG1cEGAAA="
 )
+TARGETED_SHADOWPRIEST_CODE = "AAEBAa0GAbv3AwWRD9fOA6P3A633A8SoBgAA"
 
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_shadow_cards_json(
-    path: Path,
-    *,
-    deck_code: str = SHADOWPRIEST_CODE,
-) -> None:
-    overrides = {
-        card["card_id"]: card
-        for card in [
-            {
-                "card_id": "SW_448",
-                "name": "Darkbishop Benedictus",
-                "cost": 5,
-                "count": 1,
-                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
-            },
-            {
-                "card_id": "SW_446",
-                "name": "Voidtouched Attendant",
-                "cost": 1,
-                "count": 2,
-            },
-            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
-            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
-            {"card_id": "SCH_514", "name": "Raise Dead", "cost": 0, "count": 2},
-            {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
-        ]
-    }
-    cards = [
-        {**card, **overrides.get(card["card_id"], {})}
-        for card in decode_deck_code(deck_code)["cards"]
-    ]
+def _write_shadow_cards_json(path: Path) -> None:
     path.write_text(
-        json.dumps({"cards": cards}),
+        json.dumps(
+            {
+                "cards": [
+                    {
+                        "card_id": "SW_448",
+                        "name": "Darkbishop Benedictus",
+                        "cost": 5,
+                        "count": 1,
+                        "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+                    },
+                    {
+                        "card_id": "SW_446",
+                        "name": "Voidtouched Attendant",
+                        "cost": 1,
+                        "count": 2,
+                    },
+                    {
+                        "card_id": "TOY_381",
+                        "name": "Papercraft Angel",
+                        "cost": 3,
+                        "count": 2,
+                    },
+                    {
+                        "card_id": "SW_444",
+                        "name": "Twilight Deceptor",
+                        "cost": 2,
+                        "count": 2,
+                    },
+                    {
+                        "card_id": "SCH_514",
+                        "name": "Raise Dead",
+                        "cost": 0,
+                        "count": 2,
+                    },
+                    {
+                        "card_id": "GVG_009",
+                        "name": "Shadowbomber",
+                        "cost": 1,
+                        "count": 2,
+                    },
+                ]
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -101,7 +113,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
     source_records = _read_json(FIXTURES / "source_search_shadowpriest_2026.json")
     deck_identity = build_deck_identity(
         deck_name="ShadowPriest",
-        deck_code=SHADOWPRIEST_CODE,
+        deck_code=TARGETED_SHADOWPRIEST_CODE,
         cards=_read_json(cards_json)["cards"],
     )
     source_record = source_records["records"][0]
@@ -122,7 +134,7 @@ def test_configure_auto_source_builds_load_safe_package_without_darkbishop_mulli
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -223,7 +235,7 @@ def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
     source_records = _read_json(FIXTURES / "source_search_shadowpriest_2026.json")
     deck_identity = build_deck_identity(
         deck_name="ShadowPriest",
-        deck_code=SHADOWPRIEST_CODE,
+        deck_code=TARGETED_SHADOWPRIEST_CODE,
         cards=_read_json(cards_json)["cards"],
     )
     source_record = source_records["records"][0]
@@ -247,7 +259,7 @@ def test_configure_auto_source_invalid_exact_count_stays_load_safe_partial(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -412,7 +424,7 @@ def test_configure_online_source_uses_registry_when_source_url_is_omitted(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -472,7 +484,7 @@ def test_configure_auto_source_requires_source_search_results_json(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

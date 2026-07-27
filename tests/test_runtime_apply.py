@@ -302,6 +302,44 @@ def test_apply_package_blocks_direct_write_without_operator_summary(tmp_path: Pa
     assert not (runtime / "CustomConfig" / "deck").exists()
 
 
+def test_plan_apply_package_rejects_unverified_deck_before_target_preparation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hsconfig.runtime_apply as runtime_apply
+
+    package = _complete_package(
+        tmp_path,
+        semantic_status="SOURCE_BACKED_STRONG",
+        next_action="READY_TO_APPLY_OR_HANDOFF",
+        apply_policy="ALLOWED",
+    )
+    runtime = tmp_path / "runtime"
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest["deck_code"] = "unverified-fixture"
+    write_json(manifest_path, manifest)
+
+    def fail_target_preparation(*args, **kwargs):
+        raise AssertionError("target preparation must not run")
+
+    monkeypatch.setattr(runtime_apply, "_single_config_dir", fail_target_preparation)
+    monkeypatch.setattr(runtime_apply, "_validate_config_dir", fail_target_preparation)
+    monkeypatch.setattr(runtime_apply, "build_fake_apply_receipt", fail_target_preparation)
+    monkeypatch.setattr(runtime_apply, "write_fake_apply_receipt", fail_target_preparation)
+    monkeypatch.setattr(runtime_apply, "runtime_snapshot", fail_target_preparation)
+
+    with pytest.raises(ValueError, match="deck_input_not_verified"):
+        runtime_apply.plan_apply_package(
+            package_root=package,
+            runtime_root=runtime,
+            apply_gate={"status": "allowed"},
+        )
+
+    assert not (package / "reports" / "runtime_apply_fake_receipt.json").exists()
+    assert not runtime.exists()
+
+
 def test_apply_package_rejects_forged_allowed_gate_without_operator_summary_path(
     tmp_path: Path,
 ):

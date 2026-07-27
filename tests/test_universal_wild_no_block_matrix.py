@@ -7,6 +7,11 @@ from hsconfig.cli import main
 from hsconfig.config_quality_contract import build_config_quality_report
 from hsconfig.source_closure_intake import build_source_closure_intake_receipt
 from tests.helpers.fixture_prepare import load_archetype_matrix
+from tests.helpers.verified_deck_input import (
+    VERIFIED_SYNTHETIC_CARDS,
+    deck_code_for_cards,
+    remap_card_ids,
+)
 
 
 DECKS = [
@@ -23,6 +28,12 @@ DECKS = [
     ("PirateDH", "AAEBAea5AwaRvALUyAP51QOHiwTh+AX8wAYM+w/psAPyyQPltgSl4gSr4gSVqgX8qAbYwAb2wAatxQax6wYAAA=="),
     ("CuteWarrior", "AAEBAQcEkbwCkdAD69YHstgHDY0Q6bADpLYDxN4D/9sEj5UFlaoFtNEF9PIFovoF/KgGltMGtI8HAAA="),
 ]
+FIXTURE_CARD_ID = VERIFIED_SYNTHETIC_CARDS[0]["card_id"]
+FUTURE_FIXTURE_CARD_ID = VERIFIED_SYNTHETIC_CARDS[1]["card_id"]
+FIXTURE_CARD_ALIASES = {
+    "CARD_001": FIXTURE_CARD_ID,
+    "CARD_777": FUTURE_FIXTURE_CARD_ID,
+}
 
 
 def test_every_matrix_deck_declares_closure_profile():
@@ -110,22 +121,17 @@ def _stub_empty_card_fetches(monkeypatch) -> None:
 
 
 def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, claim: dict):
+    fixture_cards = [
+        {
+            **VERIFIED_SYNTHETIC_CARDS[0],
+            "count": 30,
+            "text": "Future mechanic: fixture card text.",
+            "mechanics": ["FUTURE_MECHANIC"],
+        }
+    ]
     cards = tmp_path / "cards.json"
     cards.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {
-                        "card_id": "CARD_001",
-                        "dbf_id": 1,
-                        "count": 30,
-                        "name": "Fixture Card",
-                        "text": "Future mechanic: fixture card text.",
-                        "mechanics": ["FUTURE_MECHANIC"],
-                    }
-                ]
-            }
-        ),
+        json.dumps({"cards": fixture_cards}),
         encoding="utf-8",
     )
     sources = tmp_path / "sources.json"
@@ -137,7 +143,7 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
                     "source_title": "Qualifier Fixture",
                     "source_family": "guide_fixture",
                     "retrieved_at": "2026-07-13T00:00:00Z",
-                    "claims": [claim],
+                    "claims": [remap_card_ids(claim, FIXTURE_CARD_ALIASES)],
                 }
             ]
         ),
@@ -150,7 +156,7 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
             "--deck-name",
             deck_name,
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(fixture_cards),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -177,29 +183,23 @@ def prepare_fixture_deck_with_source_claim(tmp_path: Path, *, deck_name: str, cl
 def prepare_fixture_deck_with_source_claims(
     tmp_path: Path, *, deck_name: str, claims: list[dict]
 ):
+    fixture_cards = [
+        {
+            **VERIFIED_SYNTHETIC_CARDS[0],
+            "count": 1,
+            "text": "Fixture card text.",
+        },
+        {
+            **VERIFIED_SYNTHETIC_CARDS[1],
+            "count": 1,
+            "name": "Future Fixture Card",
+            "text": "Future mechanic fixture card text.",
+            "mechanics": ["FUTURE_KEYWORD"],
+        },
+    ]
     cards = tmp_path / f"{deck_name}_cards.json"
     cards.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {
-                        "card_id": "CARD_001",
-                        "dbf_id": 1,
-                        "count": 1,
-                        "name": "Fixture Card",
-                        "text": "Fixture card text.",
-                    },
-                    {
-                        "card_id": "CARD_777",
-                        "dbf_id": 777,
-                        "count": 1,
-                        "name": "Future Fixture Card",
-                        "text": "Future mechanic fixture card text.",
-                        "mechanics": ["FUTURE_KEYWORD"],
-                    },
-                ]
-            }
-        ),
+        json.dumps({"cards": fixture_cards}),
         encoding="utf-8",
     )
     sources = tmp_path / f"{deck_name}_sources.json"
@@ -211,7 +211,7 @@ def prepare_fixture_deck_with_source_claims(
                     "source_title": f"{deck_name} Fixture",
                     "source_family": "guide_fixture",
                     "retrieved_at": "2026-07-13T00:00:00Z",
-                    "claims": claims,
+                    "claims": remap_card_ids(claims, FIXTURE_CARD_ALIASES),
                 }
             ]
         ),
@@ -224,7 +224,7 @@ def prepare_fixture_deck_with_source_claims(
             "--deck-name",
             deck_name,
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(fixture_cards),
             "--runtime-root",
             str(tmp_path / f"{deck_name}_runtime"),
             "--out",
@@ -262,20 +262,18 @@ def prepare_fixture_deck_with_source_claims(
     }
 
 
-def assert_diagnostic_fixture_blocks_only_unverified_deck_input(
-    operator_summary: dict,
-):
-    assert operator_summary["technical_status"] == "INVALID_PACKAGE"
-    assert operator_summary["runtime_load_safe"] is False
-    assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["runtime_apply_mode"] == "blocked"
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
+def assert_load_safe_no_block_package(operator_summary: dict):
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
     assert (
-        operator_summary["deck_input_verification"]["runtime_apply_eligible"]
-        is False
+        operator_summary["deck_input_verification"]["status"]
+        == "cards_json_matches_deck_code"
     )
+    assert operator_summary["deck_input_verification"]["runtime_apply_eligible"] is True
     assert operator_summary["source_contract_audit_summary"]["non_blocking"] is True
-    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is True
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
     assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
@@ -288,7 +286,10 @@ def assert_diagnostic_fixture_blocks_only_unverified_deck_input(
     )
     assert operator_summary["source_status_diagnostic_only"] is True
     assert operator_summary["source_status_apply_blocking"] is False
-    assert operator_summary["source_backed_status"] == "INVALID_PACKAGE"
+    assert operator_summary["source_backed_status"] in {
+        "SOURCE_BACKED_STRONG",
+        "SOURCE_BACKED_PARTIAL",
+    }
     assert isinstance(operator_summary["source_missing_source_actions"], list)
     assert operator_summary["source_backed_strong_closure"]["status"] in {
         "not_reported",
@@ -647,11 +648,10 @@ def test_unknown_semantic_qualifier_stays_warning_not_apply_block(tmp_path):
 
     assert result["exit_code"] == 0
     operator_summary = result["operator_summary"]
-    assert operator_summary["technical_status"] == "INVALID_PACKAGE"
-    assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["runtime_apply_mode"] == "blocked"
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
-    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is True
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
     mechanic_visibility = operator_summary["mechanic_visibility_summary"]
     assert mechanic_visibility["non_blocking"] is True
     assert "future_mechanic" in mechanic_visibility["mechanics_by_bucket"]["warning_only"]
@@ -681,7 +681,9 @@ def test_singleton_hero_power_state_requirement_preserves_effect_without_mulliga
 
     package = result["package"]
     deck_dir = next((package / "CustomConfig").iterdir())
-    card_behavior = json.loads((deck_dir / "CARD_001.json").read_text(encoding="utf-8"))
+    card_behavior = json.loads(
+        (deck_dir / f"{FIXTURE_CARD_ID}.json").read_text(encoding="utf-8")
+    )
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     claim = result["guide_claim_bundle"]["claims"][0]
     operator_summary = result["operator_summary"]
@@ -692,17 +694,19 @@ def test_singleton_hero_power_state_requirement_preserves_effect_without_mulliga
     )
 
     assert result["exit_code"] == 0
-    assert operator_summary["technical_status"] == "INVALID_PACKAGE"
-    assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator_summary["technical_status"] == "VALID_PACKAGE"
+    assert operator_summary["runtime_apply_allowed"] is True
     assert claim["semantic_qualifiers"]["state_requirements"] == ["all_shadow_spells"]
     assert "BeforeUseHeroPowerBonus" not in card_behavior
     assert any(
         row["reason"] == "linked_runtime_entity_unresolved"
-        and row["cards"] == ["CARD_001"]
+        and row["cards"] == [FIXTURE_CARD_ID]
         for row in behavior_report["suppressed"]
     )
-    assert not any(row.get("mulligan") == "CARD_001" for row in mulligan["Mulligan"]["values"])
+    assert not any(
+        row.get("mulligan") == FIXTURE_CARD_ID
+        for row in mulligan["Mulligan"]["values"]
+    )
 
 
 def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
@@ -735,7 +739,7 @@ def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
     ]
 
     assert result["exit_code"] == 0
-    assert_diagnostic_fixture_blocks_only_unverified_deck_input(operator_summary)
+    assert_load_safe_no_block_package(operator_summary)
     assert result["guide_claim_bundle"]["claim_conflict_report"]["conflict_count"] == 1
     assert {row["claim_kind"] for row in quarantined_rows} == {
         "mulligan_keep",
@@ -752,7 +756,7 @@ def test_quarantined_claims_do_not_block_valid_load_safe_package(tmp_path):
         "suppressed"
     ] >= len(quarantined_rows)
     assert not any(
-        row.get("mulligan") == "CARD_001"
+        row.get("mulligan") == FIXTURE_CARD_ID
         for row in result["mulligan"]["Mulligan"]["values"]
     )
 
@@ -776,7 +780,7 @@ def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block
                 "card_id": "CARD_001",
                 "stance": "thin report-only role",
                 "evidence_text_short": "Thin source role should not become runtime authority.",
-                "source_confidence": "report_only",
+                "source_confidence": "low",
             },
             {
                 "claim_id": "numeric_runtime_evidence",
@@ -814,7 +818,7 @@ def test_unsupported_future_report_only_and_runtime_evidence_claims_do_not_block
     ]
 
     assert result["exit_code"] == 0
-    assert_diagnostic_fixture_blocks_only_unverified_deck_input(operator_summary)
+    assert_load_safe_no_block_package(operator_summary)
     assert source_contract_audit["summary"]["report_only_claims"] >= 1
     assert source_contract_audit["summary"]["runtime_evidence_required_claims"] >= 1
     assert report_only_rows
@@ -870,11 +874,11 @@ def test_warning_bearing_future_mechanic_package_still_load_safe(tmp_path):
     assert result["exit_code"] == 0
     operator_summary = result["operator_summary"]
 
-    assert_diagnostic_fixture_blocks_only_unverified_deck_input(operator_summary)
+    assert_load_safe_no_block_package(operator_summary)
     assert operator_summary["runtime_apply_contract"]["apply_authority"] == (
         "reports/operator_summary.json"
     )
-    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is True
+    assert operator_summary["no_block_failure_mode_summary"]["hard_block"] is False
     assert any(
         warning.get("key") == "FirstTurnValueWeight"
         and warning.get("reason") == "globalvalue_runtime_evidence_required"

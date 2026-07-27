@@ -2,13 +2,24 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from hsconfig.deck_identity import stable_deck_fingerprint
+from tests.helpers.verified_deck_input import (
+    VERIFIED_SYNTHETIC_CARDS,
+    deck_code_for_cards,
+    remap_card_ids,
+)
 
 
 CARDS = [
-    {"card_id": "TEST_001", "dbf_id": 1, "count": 2, "name": "Card A", "cost": 1, "type": "MINION"},
-    {"card_id": "TEST_002", "dbf_id": 2, "count": 2, "name": "Card B", "cost": 2, "type": "MINION"},
-    {"card_id": "TEST_003", "dbf_id": 3, "count": 2, "name": "Card C", "cost": 3, "type": "SPELL"},
+    {**VERIFIED_SYNTHETIC_CARDS[0], "name": "Card A", "cost": 1, "type": "MINION"},
+    {**VERIFIED_SYNTHETIC_CARDS[1], "name": "Card B", "cost": 2, "type": "MINION"},
+    {**VERIFIED_SYNTHETIC_CARDS[2], "name": "Card C", "cost": 3, "type": "SPELL"},
 ]
+CARD_ALIASES = {
+    "TEST_001": CARDS[0]["card_id"],
+    "TEST_002": CARDS[1]["card_id"],
+    "TEST_003": CARDS[2]["card_id"],
+}
 
 
 def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
@@ -22,15 +33,13 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     )
 
     operator = result["operator_summary"]
-    mulligan_surface = result["mulligan_plan"]["quality"]
+    mulligan_surface = operator["config_usefulness"]["surfaces"]["mulligan"]
     mulligan_values = result["mulligan_json"]["Mulligan"]["values"]
 
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
-    assert operator["technical_status"] == "INVALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "blocked"
-    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
-    assert operator["deck_input_verification"]["runtime_apply_eligible"] is False
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
     assert mulligan_surface["status"] == "policy_backed"
     assert mulligan_surface["source_backed_rule_count"] == 0
     assert mulligan_surface["suppressed_reasons"][
@@ -39,7 +48,7 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     assert {
         (row["mulligan"], row["value"]) for row in mulligan_values
     } == {
-        ("TEST_003", "hold"),
+        (CARDS[2]["card_id"], "hold"),
         ("*", "discard"),
     }
 
@@ -60,7 +69,7 @@ def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["TEST_001"],
+                                "cards": [CARDS[0]["card_id"]],
                                 "evidence_text_short": "Keep Card A.",
                                 "source_confidence": "high",
                             }
@@ -74,7 +83,7 @@ def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
                         "claims": [
                             {
                                 "claim_kind": "card_role",
-                                "cards": ["TEST_001"],
+                                "cards": [CARDS[0]["card_id"]],
                                 "stance": "early_pressure",
                                 "evidence_text_short": "Card A is early pressure.",
                                 "source_confidence": "high",
@@ -98,12 +107,12 @@ def test_prepare_rejected_guide_claim_does_not_veto_policy_fallback(
     holds = [row for row in plan["rules"] if row.get("action") == "hold"]
 
     assert any(
-        row.get("card") == "TEST_001"
+        row.get("card") == CARDS[0]["card_id"]
         and row.get("source_type") == "policy_backed_autonomous_mulligan"
         for row in holds
     )
     assert not any(
-        row.get("card") == "TEST_001"
+        row.get("card") == CARDS[0]["card_id"]
         and row.get("reason") == "excluded_source_mulligan_intent"
         for row in plan["quality"]["policy_result"]["suppressed"]
     )
@@ -125,7 +134,7 @@ def test_prepare_rejected_guide_claim_does_not_create_policy_role_evidence(
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["REJECTED_001"],
+                                "cards": [VERIFIED_SYNTHETIC_CARDS[3]["card_id"]],
                                 "evidence_text_short": "Keep Rejected Candidate.",
                                 "source_confidence": "high",
                             }
@@ -144,9 +153,7 @@ def test_prepare_rejected_guide_claim_does_not_create_policy_role_evidence(
         source_documents=str(source_documents),
         cards=[
             {
-                "card_id": "REJECTED_001",
-                "dbf_id": 4,
-                "count": 1,
+                **VERIFIED_SYNTHETIC_CARDS[3],
                 "name": "Rejected Candidate",
                 "cost": 4,
                 "type": "MINION",
@@ -154,15 +161,16 @@ def test_prepare_rejected_guide_claim_does_not_create_policy_role_evidence(
         ],
     )
 
-    assert "mulligan_anchor" not in result["research_card_roles"]["REJECTED_001"]["roles"]
+    rejected_card_id = VERIFIED_SYNTHETIC_CARDS[3]["card_id"]
+    assert "mulligan_anchor" not in result["research_card_roles"][rejected_card_id]["roles"]
     assert not any(
-        row.get("mulligan") == "REJECTED_001"
+        row.get("mulligan") == rejected_card_id
         and row.get("value") == "hold"
         for row in result["mulligan_json"]["Mulligan"]["values"]
     )
 
 
-def test_prepare_with_thin_mulligan_sources_stays_diagnostic_and_apply_blocked(
+def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     tmp_path: Path, capsys, monkeypatch
 ):
     result = _run_prepare(
@@ -173,22 +181,21 @@ def test_prepare_with_thin_mulligan_sources_stays_diagnostic_and_apply_blocked(
     )
 
     operator = result["operator_summary"]
-    mulligan_surface = result["mulligan_plan"]["quality"]
+    mulligan_surface = operator["config_usefulness"]["surfaces"]["mulligan"]
 
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
-    assert operator["technical_status"] == "INVALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "blocked"
-    assert operator["runtime_apply_allowed"] is False
-    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator["technical_status"] == "VALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_allowed"] is True
     assert operator["config_usefulness"]["blocking"] is False
-    assert operator["config_usefulness"]["status"] == "invalid_package"
+    assert operator["config_usefulness"]["first_usefulness_gap"] == "target_scope_gap"
     assert mulligan_surface["status"] == "policy_backed"
     assert (
         mulligan_surface["first_gap_reason"]
         == "policy_backed_autonomous_mulligan"
     )
-    assert mulligan_surface["policy_result"]["status"] == "applied"
+    assert mulligan_surface["next_source_need"] == "none"
 
 
 def _run_prepare(
@@ -200,8 +207,29 @@ def _run_prepare(
     cards: list[dict] | None = None,
 ) -> dict:
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
+    roster = cards or CARDS
     cards_json = tmp_path / "cards.json"
-    cards_json.write_text(json.dumps({"cards": cards or CARDS}), encoding="utf-8")
+    cards_json.write_text(json.dumps({"cards": roster}), encoding="utf-8")
+    source_documents_payload = remap_card_ids(
+        json.loads(Path(source_documents).read_text(encoding="utf-8")),
+        CARD_ALIASES,
+    )
+    exact_evidence = (
+        source_documents_payload
+        .get("source_documents", [{}])[0]
+        .get("deck_match", {})
+        .get("exact_deck_evidence")
+    )
+    if isinstance(exact_evidence, dict):
+        exact_evidence["matched_deck_fingerprint"] = stable_deck_fingerprint(
+            (str(card["card_id"]), int(card["count"]))
+            for card in roster
+        )
+    remapped_source_documents = tmp_path / "source_documents.json"
+    remapped_source_documents.write_text(
+        json.dumps(source_documents_payload),
+        encoding="utf-8",
+    )
     package = tmp_path / "package"
     exit_code = main(
         [
@@ -209,7 +237,7 @@ def _run_prepare(
             "--deck-name",
             "Mulligan Fixture",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -217,7 +245,7 @@ def _run_prepare(
             "--cards-json",
             str(cards_json),
             "--source-documents-json",
-            source_documents,
+            str(remapped_source_documents),
             "--json",
         ]
     )

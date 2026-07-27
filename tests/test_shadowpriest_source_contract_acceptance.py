@@ -7,15 +7,13 @@ from hsconfig.cli import main
 
 from tests.test_configure_auto_source import (
     SHADOWPRIEST_CODE,
+    TARGETED_SHADOWPRIEST_CODE,
     _stub_empty_fetches,
     _write_shadow_cards_json,
 )
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
-SOURCE_MATCHING_SHADOWPRIEST_CODE = "AAEBAa0GAbv3AwWRD9fOA6P3A633A8SoBgAA"
-
-
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -26,17 +24,14 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
-    _write_shadow_cards_json(
-        cards_json,
-        deck_code=SOURCE_MATCHING_SHADOWPRIEST_CODE,
-    )
+    _write_shadow_cards_json(cards_json)
     out = tmp_path / "configure"
     source_url = "https://example.test/current-shadowpriest-guide"
     source_fixture = tmp_path / "shadowpriest_current_guide.html"
     source_fixture.write_text(
         (FIXTURES / "source_pages" / "shadowpriest_current_guide.html")
         .read_text(encoding="utf-8")
-        .replace(SHADOWPRIEST_CODE, SOURCE_MATCHING_SHADOWPRIEST_CODE),
+        .replace(SHADOWPRIEST_CODE, TARGETED_SHADOWPRIEST_CODE),
         encoding="utf-8",
     )
     fixture_map = tmp_path / "fixture_map.json"
@@ -57,7 +52,7 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SOURCE_MATCHING_SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

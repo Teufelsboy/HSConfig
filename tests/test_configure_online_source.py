@@ -11,7 +11,7 @@ from hsconfig.source_candidate_registry import SourceCandidate
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
 from tests.test_configure_auto_source import (
-    SHADOWPRIEST_CODE,
+    TARGETED_SHADOWPRIEST_CODE,
     _read_json,
     _stub_empty_fetches,
     _write_shadow_cards_json,
@@ -91,7 +91,7 @@ def run_configure_with_fixture_online_source(tmp_path: Path, monkeypatch) -> dic
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(runtime),
             "--out",
@@ -252,7 +252,7 @@ def test_full_text_public_guide_can_be_strong_candidate_only_after_fetch(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            TARGETED_SHADOWPRIEST_CODE,
             "--runtime-root",
             str(runtime),
             "--out",
@@ -353,10 +353,7 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         for blocker in operator["semantic_blockers"]
     }
     assert "cards_need_guide_claims" in blocker_reasons
-    assert blocker_reasons & {
-        "generic_low_confidence_not_strong_evidence",
-        "policy_claim_not_strong_evidence",
-    }
+    assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
     rejected_mulligan_attention = [
         row
         for row in explainability["operator_attention"]
@@ -365,9 +362,9 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     ]
     assert {
         row["card_id"] for row in rejected_mulligan_attention
-    } == {"TOY_381"}
+    } == {"GVG_009", "SCH_514", "SW_444", "TOY_381"}
     assert all(
-        row["first_missing_link"] == "needs_guide_claim"
+        row["first_missing_link"] == "needs_mulligan_claim"
         and row["first_missing_source_action"] == "add_exact_deck_matched_source"
         and row["next_source_action"] == "add_exact_deck_matched_source"
         for row in rejected_mulligan_attention

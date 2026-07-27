@@ -14,6 +14,11 @@ from hsconfig.cli_parser import build_parser
 from hsconfig.input_loading import guide_documents_from_legacy_claims
 from hsconfig.package_builder import _filter_globalvalues_authority_matrix
 from hsconfig.source_document_model import globalvalues_claim_signature
+from tests.helpers.verified_deck_input import (
+    VERIFIED_CARD_DBF_IDS,
+    deck_code_for_cards,
+    verified_roster_for_card_ids,
+)
 
 
 SHADOWPRIEST_CODE = (
@@ -34,23 +39,24 @@ def test_cli_parser_subcommands_match_main_dispatch_commands():
     assert registered_commands == dispatched_commands
 
 
-def _write_cards_json(path: Path, card_ids: list[str]) -> None:
-    path.write_text(
-        json.dumps(
+def _write_cards_json(path: Path, card_ids: list[str]) -> list[dict]:
+    if all(card_id in VERIFIED_CARD_DBF_IDS for card_id in card_ids):
+        roster = verified_roster_for_card_ids(card_ids)
+    else:
+        roster = [
             {
-                "cards": [
-                    {
-                        "card_id": card_id,
-                        "dbf_id": index,
-                        "count": 1,
-                        "name": f"Fixture {card_id}",
-                    }
-                    for index, card_id in enumerate(card_ids, start=1)
-                ]
+                "card_id": card_id,
+                "dbf_id": index,
+                "count": 1,
+                "name": f"Fixture {card_id}",
             }
-        ),
+            for index, card_id in enumerate(card_ids, start=1)
+        ]
+    path.write_text(
+        json.dumps({"cards": roster}),
         encoding="utf-8",
     )
+    return roster
 
 
 def _claim_bundle_for_override(
@@ -1135,15 +1141,17 @@ def test_build_accepts_source_documents_json_and_writes_source_evidence_report(
 
 
 def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: Path, capsys):
+    roster = [
+        {
+            "card_id": "EX1_001",
+            "dbf_id": 1655,
+            "count": 2,
+            "name": "Pressure One",
+        }
+    ]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
-                ]
-            }
-        ),
+        json.dumps({"cards": roster}),
         encoding="utf-8",
     )
     source_documents = tmp_path / "source_documents.json"
@@ -1181,7 +1189,7 @@ def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: 
             "--deck-name",
             "PressureDeck",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -1207,26 +1215,24 @@ def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: 
     assert source_report["summary"]["warnings_count"] == 1
     assert depth["source_evidence"]["warnings_count"] == 1
     assert operator_summary["guide_strength_summary"]["source_evidence_warnings"] == 1
-    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
-    assert operator_summary["deck_input_verification"]["status"] == (
-        "cards_json_unverified"
-    )
-    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
 def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     tmp_path: Path,
     capsys,
 ):
+    roster = [
+        {
+            "card_id": "EX1_001",
+            "dbf_id": 1655,
+            "count": 2,
+            "name": "Pressure One",
+        }
+    ]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Pressure One"},
-                ]
-            }
-        ),
+        json.dumps({"cards": roster}),
         encoding="utf-8",
     )
     source_documents = tmp_path / "source_documents.json"
@@ -1357,7 +1363,7 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
             "--deck-name",
             "PressureDeck",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -1386,7 +1392,7 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     assert receipt["source_depth_status"] == "source_backed"
     assert depth["summary"]["report_only_claims"] == 0
     assert depth["source_depth_status"] == "usable"
-    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
     assert plan_diagnostics["ignored_claims"] == [
         {
             "claim_id": "claim_report_only_runtime",
@@ -1395,18 +1401,18 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
             "runtime_gate_impact": "none",
         }
     ]
-    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
-    assert operator_summary["runtime_load_safe"] is False
-    assert operator_summary["runtime_apply_mode"] == "blocked"
-    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
+    assert operator_summary["runtime_apply_allowed"] is True
 
 
 def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     tmp_path: Path, capsys
 ):
     cards_json = tmp_path / "cards.json"
-    card_ids = ["EX1_001", "EX1_002", "EX1_003", "EX1_004", "EX1_005", "EX1_006"]
-    _write_cards_json(cards_json, card_ids)
+    card_ids = ["EX1_001", "EX1_002", "EX1_004", "EX1_005", "EX1_006", "EX1_007"]
+    roster = _write_cards_json(cards_json, card_ids)
     source_documents = tmp_path / "source_documents.json"
     _write_minimal_source_documents(
         source_documents,
@@ -1445,7 +1451,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
                 {
                     "claim_id": "low_confidence_keep",
                     "claim_kind": "mulligan_keep",
-                    "cards": ["EX1_003"],
+                    "cards": ["EX1_004"],
                     "claim_readiness": "explicit_low_confidence",
                     "trust_ceiling": "report_only",
                     "source_confidence": "low",
@@ -1454,8 +1460,8 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
                 {
                     "claim_id": "rejected_combo",
                     "claim_kind": "combo_sequence",
-                    "cards": ["EX1_004", "EX1_005"],
-                    "sequence": ["EX1_004", "EX1_005"],
+                    "cards": ["EX1_005", "EX1_006"],
+                    "sequence": ["EX1_005", "EX1_006"],
                     "operator": ">>",
                     "values": ["7", "9"],
                     "claim_readiness": "contract_gap",
@@ -1467,9 +1473,9 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
         ),
         mulligan_rules=[
             {
-                "card": "EX1_003",
+                "card": "EX1_004",
                 "selector_kind": "card",
-                "selector": "EX1_003",
+                "selector": "EX1_004",
                 "action": "hold",
                 "condition": "*",
                 "source_claim_ids": ["low_confidence_keep"],
@@ -1493,7 +1499,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
                 "source_claim_ids": ["report_only_target"],
             },
             {
-                "card_id": "EX1_006",
+                "card_id": "EX1_007",
                 "surface_family": "CARDID.json",
                 "surface": "CardID.json",
                 "behavior_block": "BeforePlayCardBonus",
@@ -1503,7 +1509,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
         combo_rows=[
             {
                 "rule_id": "rejected_combo",
-                "cards": ["EX1_004", "EX1_005"],
+                "cards": ["EX1_005", "EX1_006"],
                 "operator": ">>",
                 "values": ["7", "9"],
                 "condition": "*",
@@ -1519,7 +1525,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
             "--deck-name",
             "Plan Override Filter",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -1541,7 +1547,7 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
         (deck_dir / "EX1_002.json").read_text(encoding="utf-8")
     )
     unreferenced_card = json.loads(
-        (deck_dir / "EX1_006.json").read_text(encoding="utf-8")
+        (deck_dir / "EX1_007.json").read_text(encoding="utf-8")
     )
     mulligan = json.loads((deck_dir / "Mulligan.json").read_text(encoding="utf-8"))
     operator_summary = json.loads(
@@ -1566,12 +1572,12 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
     assert "BeforePlayCardBonus" not in report_only_card
     assert "BeforePlayCardBonus" not in unreferenced_card
     assert not any(
-        row.get("mulligan") == "EX1_003" for row in mulligan["Mulligan"]["values"]
+        row.get("mulligan") == "EX1_004" for row in mulligan["Mulligan"]["values"]
     )
     assert not (deck_dir / "Combo.json").exists()
-    assert operator_summary["runtime_load_safe"] is False
-    assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"] == (
         "emitted"
     )
@@ -2423,7 +2429,7 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
 ):
     cards_json = tmp_path / "cards.json"
     card_ids = ["EX1_001", "EX1_002"]
-    _write_cards_json(cards_json, card_ids)
+    roster = _write_cards_json(cards_json, card_ids)
     source_documents = tmp_path / "source_documents.json"
     _write_conflicting_target_source_documents(source_documents)
     plan_reports = tmp_path / "plan_reports"
@@ -2501,7 +2507,7 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
             "--deck-name",
             "Plan Override Conflict Filter",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -2539,9 +2545,9 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     assert payload["status"] == "passed"
     assert valid_card["BeforeBattlecryTargetBonus"]["values"]
     assert "BeforePlayCardBonus" not in quarantined_card
-    assert operator_summary["runtime_load_safe"] is False
-    assert operator_summary["runtime_apply_allowed"] is False
-    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert operator_summary["runtime_load_safe"] is True
+    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
     assert claim_conflict_report["conflict_count"] == 1
     assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
         "conflict_target",

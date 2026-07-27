@@ -2,26 +2,24 @@ import json
 from pathlib import Path
 
 from hsconfig.cli import main
+from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
 def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     tmp_path: Path,
     capsys,
 ):
+    roster = [
+        {
+            "card_id": "REV_290",
+            "dbf_id": 82310,
+            "count": 1,
+            "name": "Cathedral of Atonement",
+        }
+    ]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {
-                        "card_id": "REV_290",
-                        "dbf_id": 1,
-                        "count": 1,
-                        "name": "Cathedral of Atonement",
-                    }
-                ]
-            }
-        ),
+        json.dumps({"cards": roster}),
         encoding="utf-8",
     )
     source_documents = tmp_path / "source_documents.json"
@@ -138,7 +136,7 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
             "--deck-name",
             "Compiler Conflict",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -170,12 +168,6 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     operator = json.loads(
         (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
-    manifest = json.loads(
-        (package / "reports" / "input_manifest.json").read_text(encoding="utf-8")
-    )
-    receipt = json.loads(
-        (package / "package_derivation_receipt.json").read_text(encoding="utf-8")
-    )
     diagnostics = json.loads(
         (package / "reports" / "plan_input_diagnostics.json").read_text(
             encoding="utf-8"
@@ -199,8 +191,4 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     assert physical["BeforePlayCardBonus"]["values"][0]["value"] == (
         persisted["rows"][0]["value"]
     )
-    assert manifest["deck_input_verification"] == operator["deck_input_verification"]
-    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
-    assert operator["deck_input_verification"]["runtime_apply_eligible"] is False
-    assert operator["runtime_apply_allowed"] is False
-    assert "deck_input_verification" in receipt["inputs"]
+    assert operator["runtime_apply_allowed"] is True

@@ -236,3 +236,193 @@ Vorgesehener Task-Commit:
 ```text
 fix: require verified deck input for runtime apply
 ```
+
+## Fix-Runde 1: Apply-Planung und No-Block-Verträge
+
+Status: `DONE`
+
+### Direkte Apply-Planung
+
+Das Self-Review zeigte eine zweite Python-Oberfläche: `apply_package()`
+reevaluierte das Apply-Gate bereits selbst, `plan_apply_package()` validierte
+dagegen nur die Paketstruktur und vertraute anschließend dem optional
+übergebenen `apply_gate`.
+
+Der neue Regressionstest ruft `plan_apply_package()` direkt mit einem
+nachträglich unverifizierten Deck-Input und einem gefälschten positiven Gate
+auf. Wachposten auf `_single_config_dir`, `_validate_config_dir`,
+Fake-Receipt-Erzeugung/-Persistenz und Runtime-Snapshot belegen, dass keine
+Ziel- oder Receipt-Vorbereitung erreicht werden darf.
+
+RED:
+
+```text
+1 failed
+AssertionError: target preparation must not run
+```
+
+GREEN nach der minimalen Produktionsänderung:
+
+```text
+4 passed in 7.79s
+```
+
+`plan_apply_package()` ruft nun direkt nach der gemeinsamen strikten
+Paketvalidierung `_resolve_allowed_apply_gate()` auf. Damit werden
+Operator-Summary, Deck-Input-Verifikation, Source-Authority und
+Derivation-Authority erneut ausgewertet. Ein unverifiziertes Paket endet vor
+der Zielvorbereitung stabil mit `deck_input_not_verified`. Das frisch
+ausgewertete Gate wird in das Fake-Receipt übernommen.
+
+### Wiederhergestellte No-Block- und Load-safe-Verträge
+
+Der vollständige Testdiff `3d61649..781452e` wurde Datei für Datei geprüft.
+Die erste Task-5-Migration hatte mehrere ältere Integrationsverträge auf
+`INVALID_PACKAGE` beziehungsweise `blocked` umgestellt, obwohl die Tests
+eigentlich andere Grenzen belegen sollten.
+
+Betroffen waren insbesondere:
+
+- `universal_wild_no_block_matrix`;
+- importierte Plan-Konflikte in `package_builder`;
+- vier `prepare_cli`-Verträge;
+- `mulligan_richness_e2e`;
+- `source_contract_closure_wave`;
+- vier Build-/Plan-Override-Verträge in `test_cli.py`;
+- die ShadowPriest-Online-Source-Semantik.
+
+Zuerst wurden die ursprünglichen fachlichen Assertions ohne Fixture-Reparatur
+wiederhergestellt. Der gemeinsame RED-Lauf belegte die Ursache:
+
+```text
+18 failed in 29.43s
+```
+
+Alle 18 Fehler gingen auf unverifizierte beziehungsweise nicht passende
+Testroster zurück; bei ShadowPriest war zusätzlich die Vollroster-bedingte
+Semantikverschiebung sichtbar.
+
+Die Reparatur verwendet nun zentrale Testhelfer:
+
+- reale CardID-/DBF-Paare für normale Fixtures;
+- aus dem jeweiligen Roster erzeugte Deckcodes;
+- deckcode-verifizierte synthetische `UNRESOLVED_DBF_*`-Karten, wenn ein Test
+  bewusst unbekannte zukünftige Kartenmechaniken modelliert;
+- rekursives CardID-Remapping für Source-Dokumente;
+- dynamisch aus dem aktuellen Roster berechnete Exact-Deck-Fingerprints.
+
+Die synthetischen Roster bleiben dadurch fachlich unbekannt, sind aber
+Authority-seitig exakt zum Deckcode passend. Die Universal-No-Block-Hilfe
+prüft zusätzlich ausdrücklich:
+
+```text
+deck_input_verification.status=cards_json_matches_deck_code
+deck_input_verification.runtime_apply_eligible=true
+```
+
+GREEN:
+
+```text
+18 passed in 29.89s
+```
+
+Wiederhergestellt sind unter anderem:
+
+- `technical_status=VALID_PACKAGE`;
+- `runtime_load_safe=true`;
+- `runtime_apply_mode=load_safe_apply`;
+- `runtime_apply_allowed=true`;
+- `no_block_failure_mode_summary.hard_block=false`;
+- die ursprünglichen `config_usefulness`- und Mulligan-Qualitätsassertions;
+- die ursprünglichen Conflict-, Report-only- und Runtime-evidence-Lanes.
+
+### ShadowPriest
+
+Die Online-Source-Fixture verwendet wieder das ursprüngliche gezielte Roster:
+
+```text
+SW_448 x1
+SW_446 x2
+TOY_381 x2
+SW_444 x2
+SCH_514 x2
+GVG_009 x2
+```
+
+Dazu gehört der exakt passende Testdeckcode
+`AAEBAa0GAbv3AwWRD9fOA6P3A633A8SoBgAA`. Die zwischenzeitliche
+Vollroster-Decodierung wurde entfernt.
+
+Die ursprünglichen exakten Assertions sind wieder aktiv und grün:
+
+- `generic_low_confidence_not_strong_evidence` ist der erwartete Blocker;
+- abgelehnte Mulligan-Ziele sind exakt `GVG_009`, `SCH_514`, `SW_444` und
+  `TOY_381`;
+- ihr erster fehlender Link ist exakt `needs_mulligan_claim`;
+- Darkbishop bleibt Start-of-game-/Hero-power-Effekt und kein Mulligan-Keep.
+
+### Finale Verifikation
+
+Apply-Authority und Runtime-Planung:
+
+```text
+108 passed in 17.79s
+```
+
+Explizite No-Block-, Closure- und Mulligan-Suiten:
+
+```text
+76 passed in 42.12s
+```
+
+CLI-, Prepare-, Configure- und ShadowPriest-Suiten:
+
+```text
+126 passed in 84.39s
+```
+
+Weitere geänderte Authority-/Validation-Suiten:
+
+```text
+49 passed in 16.48s
+```
+
+Vollständige Repository-Suite:
+
+```text
+2437 passed, 11 skipped in 271.24s
+```
+
+Contract-Guardrail:
+
+```text
+826 passed in 59.80s
+OK: installed skill sync
+OK: contract spine sentinel
+OK: focused contract boundary tests
+```
+
+Ruff auf allen in Fix-Runde 1 geänderten Python-Dateien:
+
+```text
+All checks passed!
+```
+
+`git diff --check` ist sauber. Der repo-weite Ruff-Lauf meldet vier
+unberührte Baselinebefunde: zusätzlich zu den drei bereits dokumentierten
+F401-Befunden einen bestehenden E402-Befund in
+`scripts/sync_installed_skill.py`.
+
+Der erneute Assertions-Diff gegen `3d61649` zeigt keine verbliebene
+Task-5-Abschwächung der alten No-Block-/Load-safe-Verträge.
+
+### Scope
+
+Es gab keine Task-6-, Runtime-, HSTuner-, Hearthstone-, Desktop- oder privaten
+Evidence-Schreibzugriffe.
+
+Vorgesehener Fix-Commit:
+
+```text
+fix: preserve apply planning and no-block contracts
+```

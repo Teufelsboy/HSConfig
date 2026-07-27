@@ -5,6 +5,10 @@ from pathlib import Path
 from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
 from hsconfig.deckstring_decode import decode_deck_code
+from tests.helpers.verified_deck_input import (
+    VERIFIED_FIXTURE_CARDS,
+    deck_code_for_cards,
+)
 
 
 SHADOWPRIEST_CODE = (
@@ -430,17 +434,15 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
+    weak_cards = [
+        {**VERIFIED_FIXTURE_CARDS[0], "name": "Card A"},
+        {**VERIFIED_FIXTURE_CARDS[1], "name": "Card B"},
+        {**VERIFIED_FIXTURE_CARDS[2], "name": "Card C"},
+    ]
+    weak_card_ids = [card["card_id"] for card in weak_cards]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {"card_id": "CARD_001", "dbf_id": 1, "count": 2, "name": "Card A"},
-                    {"card_id": "CARD_002", "dbf_id": 2, "count": 2, "name": "Card B"},
-                    {"card_id": "CARD_003", "dbf_id": 3, "count": 2, "name": "Card C"},
-                ]
-            }
-        ),
+        json.dumps({"cards": weak_cards}),
         encoding="utf-8",
     )
     source_documents = tmp_path / "source_documents.json"
@@ -456,21 +458,21 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
                         "claims": [
                             {
                                 "claim_kind": "mulligan_keep",
-                                "cards": ["CARD_001"],
+                                "cards": [weak_card_ids[0]],
                                 "stance": "keep",
                                 "evidence_text_short": "Card A might be a keep.",
                                 "source_confidence": "low",
                             },
                             {
                                 "claim_kind": "targeting_rule",
-                                "cards": ["CARD_002"],
+                                "cards": [weak_card_ids[1]],
                                 "stance": "prefer_enemy_hero",
                                 "evidence_text_short": "Card B might go face.",
                                 "source_confidence": "low",
                             },
                             {
                                 "claim_kind": "card_role",
-                                "cards": ["CARD_003"],
+                                "cards": [weak_card_ids[2]],
                                 "stance": "maybe_core",
                                 "evidence_text_short": "Card C might be part of the plan.",
                                 "source_confidence": "low",
@@ -490,7 +492,7 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
             "--deck-name",
             "WeakDeck",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(weak_cards),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -538,9 +540,8 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
     assert readiness["summary"]["generic_low_confidence"] == 3
-    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
-    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_prepare_operator_summary_uses_live_source_claim_gap_report(
@@ -650,16 +651,23 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
 ):
     monkeypatch.setattr("hsconfig.package_builder.fetch_latest_cards", lambda timeout=10.0: [])
 
+    weak_cards = [
+        {
+            "card_id": "EX1_001",
+            "dbf_id": 1655,
+            "count": 2,
+            "name": "Card A",
+        },
+        {
+            "card_id": "EX1_002",
+            "dbf_id": 1656,
+            "count": 2,
+            "name": "Card B",
+        },
+    ]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Card A"},
-                    {"card_id": "EX1_002", "dbf_id": 2, "count": 2, "name": "Card B"},
-                ]
-            }
-        ),
+        json.dumps({"cards": weak_cards}),
         encoding="utf-8",
     )
     claims_json = tmp_path / "claims.json"
@@ -694,7 +702,7 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
             "--deck-name",
             "WeakLegacyDeck",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(weak_cards),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -736,20 +744,21 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
     assert readiness["summary"]["generic_low_confidence"] == 2
-    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
 
 
 def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):
+    roster = [
+        {
+            "card_id": "EX1_001",
+            "dbf_id": 1655,
+            "count": 2,
+            "name": "Card A",
+        }
+    ]
     cards_json = tmp_path / "cards.json"
     cards_json.write_text(
-        json.dumps(
-            {
-                "cards": [
-                    {"card_id": "EX1_001", "dbf_id": 1, "count": 2, "name": "Card A"},
-                ]
-            }
-        ),
+        json.dumps({"cards": roster}),
         encoding="utf-8",
     )
     source_documents = tmp_path / "source_documents.json"
@@ -789,7 +798,7 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
             "--deck-name",
             "Fixture",
             "--deck-code",
-            "fixture-code",
+            deck_code_for_cards(roster),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -825,9 +834,8 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
         ["source_confidence"],
         ["source_confidence"],
     ]
-    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
-    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
-    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
+    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
 
 
 def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
@@ -2160,27 +2168,26 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
     out = tmp_path / "package"
     runtime = tmp_path / "runtime"
     cards = tmp_path / "cards.json"
+    drift_cards = [
+        {
+            **VERIFIED_FIXTURE_CARDS[0],
+            "id": VERIFIED_FIXTURE_CARDS[0]["card_id"],
+            "name": "Text Trade Card",
+            "type": "SPELL",
+            "mechanics": [],
+            "text": "Tradeable. Deal 2 damage.",
+        },
+        {
+            **VERIFIED_FIXTURE_CARDS[1],
+            "id": VERIFIED_FIXTURE_CARDS[1]["card_id"],
+            "name": "Future Card",
+            "type": "LETTUCE_ABILITY",
+            "mechanics": ["FUTURE_KEYWORD"],
+            "text": "Future Keyword: Do something.",
+        },
+    ]
     cards.write_text(
-        json.dumps(
-            [
-                {
-                    "card_id": "SW_001",
-                    "id": "SW_001",
-                    "name": "Text Trade Card",
-                    "type": "SPELL",
-                    "mechanics": [],
-                    "text": "Tradeable. Deal 2 damage.",
-                },
-                {
-                    "card_id": "FUTURE_001",
-                    "id": "FUTURE_001",
-                    "name": "Future Card",
-                    "type": "LETTUCE_ABILITY",
-                    "mechanics": ["FUTURE_KEYWORD"],
-                    "text": "Future Keyword: Do something.",
-                },
-            ]
-        ),
+        json.dumps(drift_cards),
         encoding="utf-8",
     )
 
@@ -2190,14 +2197,13 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
             "--deck-name",
             "DriftDeck",
             "--deck-code",
-            "AAECAf0EAAAA",
+            deck_code_for_cards(drift_cards),
             "--out",
             str(out),
             "--runtime-root",
             str(runtime),
             "--cards-json",
             str(cards),
-            "--allow-placeholder",
             "--json",
         ]
     )
@@ -2216,5 +2222,4 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
     assert drift_report["unknown_card_types"] == ["lettuce_ability"]
     assert operator["mechanic_drift_summary"]["unknown_mechanic_count"] == 1
     assert operator["mechanic_drift_summary"]["unknown_card_type_count"] == 1
-    assert operator["runtime_apply_mode"] == "blocked"
-    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator["runtime_apply_mode"] == "load_safe_apply"
