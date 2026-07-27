@@ -4,9 +4,12 @@ import hashlib
 import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from hsconfig.card_metadata import analysis_cards_from_deck_identity
+from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS
+from hsconfig.io import read_json
 from hsconfig.visionai_registry import is_supported_card_behavior_block
 
 COMBO_SEPARATORS = (">->", ">>")
@@ -18,6 +21,7 @@ def build_runtime_surface_ledger(
     deck_identity: Mapping[str, Any],
     compiled_mulligan: Mapping[str, Any],
     compiled_globalvalues: Mapping[str, Any],
+    globalvalues_baseline: Mapping[str, Any] | None = None,
     compiled_combo: Mapping[str, Any] | None,
     compiled_cardid_files: Mapping[str, Mapping[str, Any]],
     linked_runtime_owners: Sequence[Mapping[str, str]],
@@ -34,9 +38,14 @@ def build_runtime_surface_ledger(
         for card in analysis_cards_from_deck_identity(dict(deck_identity))
         if card.get("card_id")
     }
-    mulligan_cards = _mulligan_cards(compiled_mulligan)
-    combo_cards, combo_errors = _combo_cards(compiled_combo)
+    mulligan_rows = _mulligan_rows(compiled_mulligan)
+    mulligan_cards = {str(row["mulligan"]) for row in mulligan_rows if row["value"] == "hold" and row["mulligan"] != "*"}
+    combo_rows, combo_errors = _combo_rows(compiled_combo)
+    combo_cards = {card_id for row in combo_rows for card_id in row}
     cardid_payloads, cardid_errors = _valid_cardid_payloads(compiled_cardid_files)
+    globalvalues, globalvalue_errors = _globalvalues_metrics(
+        compiled_globalvalues, globalvalues_baseline
+    )
     unexpected: list[dict[str, str]] = []
     for card_id, record in cards.items():
         if card_id in mulligan_cards:
@@ -55,8 +64,20 @@ def build_runtime_surface_ledger(
         "schema_version": 2,
         "cards": dict(sorted(cards.items())),
         "linked_runtime_entities": linked,
-        "globalvalues_emitted": _valid_globalvalues(compiled_globalvalues),
-        "physical_errors": sorted([*combo_errors, *cardid_errors]),
+        "globalvalues_emitted": globalvalues["physical_key_count"] > 0,
+        "mulligan": {
+            "rule_count": len(mulligan_rows),
+            "card_ids": sorted({str(row["mulligan"]) for row in mulligan_rows if row["mulligan"] != "*"}),
+            "rules": mulligan_rows,
+        },
+        "combo": {
+            "row_count": len(combo_rows),
+            "card_ids": sorted(combo_cards),
+            "rows": [">>".join(row) for row in combo_rows],
+        },
+        "cardid": _cardid_metrics(cardid_payloads),
+        "globalvalues": globalvalues,
+        "physical_errors": sorted([*combo_errors, *cardid_errors, *globalvalue_errors]),
         "unexpected_runtime_emissions": sorted(
             unexpected, key=lambda row: row["card_id"]
         ),
@@ -72,32 +93,32 @@ def _add_surface(record: dict[str, Any], surface: str) -> None:
         record["runtime_surfaces"].sort()
 
 
-def _mulligan_cards(payload: Mapping[str, Any]) -> set[str]:
+def _mulligan_rows(payload: Mapping[str, Any]) -> list[dict[str, str]]:
     values = (
         payload.get("Mulligan", {}).get("values", [])
         if isinstance(payload, Mapping)
         else []
     )
-    return {
-        str(row["mulligan"])
+    return [
+        {"mulligan": str(row["mulligan"]), "value": str(row["value"])}
         for row in values
         if isinstance(row, Mapping)
         and row.get("mulligan")
-        and row.get("value") == "hold"
-    }
+        and row.get("value") in {"hold", "discard"}
+    ]
 
 
-def _combo_cards(payload: Mapping[str, Any] | None) -> tuple[set[str], list[str]]:
+def _combo_rows(payload: Mapping[str, Any] | None) -> tuple[list[list[str]], list[str]]:
     if payload is None:
-        return set(), []
+        return [], []
     values = (
         payload.get("ComboList", {}).get("values", [])
         if isinstance(payload, Mapping)
         else []
     )
     if not isinstance(values, list):
-        return set(), ["combo_values_malformed"]
-    cards: set[str] = set()
+        return [], ["combo_values_malformed"]
+    parsed_rows: list[list[str]] = []
     errors: list[str] = []
     for index, row in enumerate(values):
         raw = row.get("combo") if isinstance(row, Mapping) else None
@@ -105,8 +126,8 @@ def _combo_cards(payload: Mapping[str, Any] | None) -> tuple[set[str], list[str]
         if parsed is None:
             errors.append(f"combo_malformed:{index}")
         else:
-            cards.update(parsed)
-    return cards, errors
+            parsed_rows.append(parsed)
+    return parsed_rows, errors
 
 
 def _parse_combo(raw: Any) -> list[str] | None:
@@ -166,6 +187,103 @@ def _has_nonempty_mapping_rows(value: object) -> bool:
         isinstance(value, Mapping)
         and isinstance(value.get("values"), list)
         and any(isinstance(row, Mapping) and bool(row) for row in value["values"])
+    )
+
+
+def _cardid_metrics(payloads: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    entities: list[dict[str, Any]] = []
+    for card_id, payload in sorted(payloads.items()):
+        blocks = {
+            str(block): len(value["values"])
+            for block, value in payload.items()
+            if is_supported_card_behavior_block(str(block))
+            and isinstance(value, Mapping)
+            and isinstance(value.get("values"), list)
+            and _has_nonempty_mapping_rows(value)
+        }
+        entities.append({"card_id": card_id, "behavior_blocks": blocks})
+    return {
+        "entity_count": len(entities),
+        "behavior_row_count": sum(sum(entity["behavior_blocks"].values()) for entity in entities),
+        "card_ids": [entity["card_id"] for entity in entities],
+        "entities": entities,
+    }
+
+
+def _globalvalues_metrics(
+    payload: Mapping[str, Any], baseline: Mapping[str, Any] | None
+) -> tuple[dict[str, Any], list[str]]:
+    if not isinstance(payload, Mapping):
+        return {"physical_key_count": 0, "changed_key_count": 0, "changed_keys": [], "keys": []}, ["globalvalues_payload_invalid"]
+    keys = sorted(
+        key for key, value in payload.items()
+        if key not in _METADATA_KEYS and _has_nonempty_mapping_rows(value)
+    )
+    errors: list[str] = []
+    if baseline is not None:
+        known = set(baseline) | set(KNOWN_GENERATED_OVERLAY_DEFAULTS)
+        errors.extend(f"globalvalues_unknown_key:{key}" for key in keys if key not in known)
+        changed = [key for key in keys if key not in baseline or _normalized_values(payload[key]) != _normalized_values(baseline[key])]
+    else:
+        changed = list(keys)
+    return {
+        "physical_key_count": len(keys),
+        "changed_key_count": len(changed),
+        "changed_keys": changed,
+        "keys": keys,
+        "baseline_compared": baseline is not None,
+    }, errors
+
+
+def _normalized_values(value: object) -> list[dict[str, str]]:
+    if isinstance(value, Mapping) and isinstance(value.get("values"), list):
+        return [
+            {"condition": str(row.get("condition", "*")), "value": str(row.get("value", ""))}
+            for row in value["values"]
+            if isinstance(row, Mapping)
+        ]
+    if isinstance(value, Mapping):
+        return [{"condition": str(value.get("condition", "*")), "value": str(value.get("value", ""))}]
+    return [{"condition": "*", "value": str(value)}]
+
+
+def rederive_runtime_surface_ledger_from_package(package: str | Path) -> dict[str, Any]:
+    package_path = Path(package)
+    reports = package_path / "reports"
+    deck_identity = read_json(reports / "deck_identity.json")
+    baseline = read_json(reports / "globalvalues_baseline.json")
+    behavior_plan = read_json(reports / "card_behavior_plan_report.json")
+    if not isinstance(deck_identity, Mapping) or not isinstance(baseline, Mapping):
+        raise ValueError("runtime_surface_ledger_report_invalid")
+    if not isinstance(behavior_plan, Mapping):
+        raise ValueError("runtime_surface_ledger_behavior_plan_invalid")
+    deck_dirs = sorted(path for path in (package_path / "CustomConfig").iterdir() if path.is_dir())
+    if len(deck_dirs) != 1:
+        raise ValueError("runtime_surface_ledger_customconfig_dir_invalid")
+    payloads = {
+        path.name: read_json(path)
+        for path in deck_dirs[0].glob("*.json")
+    }
+    return build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan=payloads.get("Mulligan.json", {}),
+        compiled_globalvalues=payloads.get("GlobalValues.json", {}),
+        globalvalues_baseline=baseline,
+        compiled_combo=payloads.get("Combo.json"),
+        compiled_cardid_files={
+            name: payload
+            for name, payload in payloads.items()
+            if name not in {"Mulligan.json", "GlobalValues.json", "Combo.json"}
+        },
+        linked_runtime_owners=[
+            {
+                "source_card_id": str(row.get("source_card_id") or row.get("card_id", "")),
+                "runtime_card_id": str(row.get("runtime_card_id") or row.get("card_id", "")),
+                "link_kind": str(row.get("link_kind") or "self"),
+            }
+            for row in behavior_plan.get("rows", [])
+            if isinstance(row, Mapping) and row.get("meaningful_runtime_surface") is True
+        ],
     )
 
 

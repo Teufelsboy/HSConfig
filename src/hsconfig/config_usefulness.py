@@ -236,10 +236,8 @@ def _ledger_cards(ledger: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def _ledger_mulligan_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
-    count = sum(
-        "Mulligan.json" in _string_list(row.get("runtime_surfaces"))
-        for row in _ledger_cards(ledger)
-    )
+    metrics = ledger.get("mulligan", {})
+    count = _int(metrics.get("rule_count")) if isinstance(metrics, Mapping) else 0
     status = "rich" if count else "thin"
     return {
         "status": status,
@@ -263,16 +261,12 @@ def _ledger_mulligan_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
 def _ledger_cardid_surface(
     ledger: Mapping[str, Any], summary: dict[str, Any]
 ) -> dict[str, Any]:
-    cards = sorted(
-        {
-            str(row.get("card_id", ""))
-            for row in _ledger_cards(ledger)
-            if any(
-                surface.endswith(".json")
-                and surface not in {"Mulligan.json", "Combo.json", "GlobalValues.json"}
-                for surface in _string_list(row.get("runtime_surfaces"))
-            )
-        }
+    metrics = ledger.get("cardid", {})
+    cards = (
+        _string_list(metrics.get("card_ids")) if isinstance(metrics, Mapping) else []
+    )
+    behavior_rows = (
+        _int(metrics.get("behavior_row_count")) if isinstance(metrics, Mapping) else 0
     )
     report_only_supported = _int(summary.get("report_only_supported"))
     return {
@@ -280,7 +274,7 @@ def _ledger_cardid_surface(
         if cards
         else ("report_only" if report_only_supported else "thin"),
         "default_only": False,
-        "meaningful_cardid_row_count": len(cards),
+        "meaningful_cardid_row_count": behavior_rows,
         "cards_with_meaningful_cardid_rows": len(cards),
         "runtime_emitted_card_count": len(cards),
         "report_only_supported_count": report_only_supported,
@@ -288,28 +282,28 @@ def _ledger_cardid_surface(
 
 
 def _ledger_combo_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
-    count = sum(
-        "Combo.json" in _string_list(row.get("runtime_surfaces"))
-        for row in _ledger_cards(ledger)
-    )
+    metrics = ledger.get("combo", {})
+    count = _int(metrics.get("row_count")) if isinstance(metrics, Mapping) else 0
     return {
         "status": "rich" if count >= 2 else "not_expected",
         "default_only": False,
         "combo_expected": bool(count),
-        "combo_row_count": 1 if count >= 2 else 0,
+        "combo_row_count": count,
         "suppressed_combo_claim_count": 0,
     }
 
 
 def _ledger_globalvalues_surface(ledger: Mapping[str, Any]) -> dict[str, Any]:
-    emitted = ledger.get("globalvalues_emitted") is True
+    metrics = ledger.get("globalvalues", {})
+    changed = _int(metrics.get("changed_key_count")) if isinstance(metrics, Mapping) else 0
+    physical = _int(metrics.get("physical_key_count")) if isinstance(metrics, Mapping) else 0
     return {
-        "status": "rich" if emitted else "thin",
+        "status": "rich" if changed else "thin",
         "default_only": False,
-        "changed_key_count": int(emitted),
-        "unchanged_key_count": 0,
+        "changed_key_count": changed,
+        "unchanged_key_count": max(physical - changed, 0),
         "expected_overlay_key_count": 0,
-        "profiled_key_count": int(emitted),
+        "profiled_key_count": physical,
     }
 
 

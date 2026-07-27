@@ -16,6 +16,7 @@ from hsconfig.runtime_entity_owner import (
     linked_runtime_entity_semantic_surface,
     runtime_entity_owner_relation_is_authorized,
 )
+from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
 from hsconfig.validate_package import validate_config_package
 
 
@@ -83,10 +84,10 @@ def validate_complete_package(
 
 
 def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
-    """Fail strict validation when the physical ledger reports unsafe output."""
+    """Validate the serialized schema-2 ledger against physical package files."""
     path = package_path / "reports" / "runtime_surface_ledger.json"
     if not path.is_file():
-        return []
+        return ["runtime_surface_ledger_missing"]
     try:
         ledger = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
@@ -94,10 +95,22 @@ def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
     if not isinstance(ledger, Mapping):
         return ["runtime_surface_ledger_invalid"]
 
+    if ledger.get("schema_version") != 2:
+        return ["runtime_surface_ledger_schema_invalid"]
+    try:
+        rederived = rederive_runtime_surface_ledger_from_package(package_path)
+    except (OSError, ValueError, TypeError):
+        return ["runtime_surface_ledger_rederive_failed"]
+
     errors: list[str] = []
-    for value in ledger.get("physical_errors", []):
+    if ledger.get("surface_ledger_sha256") != rederived.get("surface_ledger_sha256"):
+        errors.append("runtime_surface_ledger_sha256_mismatch")
+    if dict(ledger) != rederived:
+        errors.append("runtime_surface_ledger_content_mismatch")
+
+    for value in rederived.get("physical_errors", []):
         errors.append(f"runtime_surface_ledger_physical_error:{value}")
-    for row in ledger.get("unexpected_runtime_emissions", []):
+    for row in rederived.get("unexpected_runtime_emissions", []):
         if isinstance(row, Mapping):
             errors.append(
                 "runtime_surface_ledger_unexpected_emission:"
@@ -105,7 +118,7 @@ def _validate_runtime_surface_ledger(package_path: Path) -> list[str]:
             )
         else:
             errors.append("runtime_surface_ledger_unexpected_emission:invalid")
-    for row in ledger.get("linked_runtime_owner_collisions", []):
+    for row in rederived.get("linked_runtime_owner_collisions", []):
         if isinstance(row, Mapping):
             errors.append(
                 "runtime_surface_ledger_owner_collision:"

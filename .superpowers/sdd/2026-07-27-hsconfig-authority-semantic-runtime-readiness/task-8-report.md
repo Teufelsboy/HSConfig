@@ -32,3 +32,27 @@ Round-1 verification: `74 passed` across ledger, explainability, and strict
 validation regressions; `19 passed` for the multi-deck source-backed E2E suite;
 both targeted Ruff checks and `git diff --check` passed. No runtime, HSTuner or
 Desktop access was used.
+
+## Round 2 canonicality and claim-projection follow-up
+
+Schema-2 packages now require `reports/runtime_surface_ledger.json`. Strict
+validation re-derives the canonical ledger from `CustomConfig`, deck identity,
+the GlobalValues baseline, and linked-owner plan records, then verifies schema,
+SHA-256, and complete content equality. Missing, stale, malformed, or tampered
+ledger files fail closed; the physical re-derivation itself supplies the
+sideboard, malformed-payload, owner-collision, and unknown-GlobalValues-key
+checks.
+
+The ledger records actual Mulligan rule identities/count, Combo row identities/
+count, CardID entities and behavior-row counts (including linked runtime
+owners), and baseline-compared GlobalValues changed-key metrics. Usefulness now
+uses those values exactly, so baseline-only GlobalValues remains thin.
+
+Explainability reprojects matching claim files from card/linked physical
+surfaces. Empty physical output removes claim emission and summary lowering;
+matching strong Mulligan output keeps the source-backed strong closure.
+
+Round-2 verification: RED observed for missing/tampered/stale Strict ledgers
+and absent metrics; then `80 passed` across ledger, explainability, and strict
+validation plus targeted Ruff; `19 passed` multi-deck E2E plus Ruff; `git diff
+--check` passed. No runtime, HSTuner or Desktop access was used.

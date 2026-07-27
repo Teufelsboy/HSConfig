@@ -262,3 +262,67 @@ def test_config_usefulness_counts_only_authoritative_ledger_surfaces():
     assert usefulness["surfaces"]["combo"]["status"] == "not_expected"
     assert usefulness["surfaces"]["globalvalues"]["changed_key_count"] == 0
     assert usefulness["surfaces"]["globalvalues"]["status"] == "thin"
+
+
+def test_runtime_surface_ledger_tracks_exact_surface_metrics_and_baseline_only_globalvalues():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={
+            "deck_name": "Metric Fixture",
+            "cards": [
+                {"card_id": "A_001", "count": 1},
+                {"card_id": "B_002", "count": 1},
+                {"card_id": "C_003", "count": 1},
+            ],
+        },
+        compiled_mulligan={
+            "Mulligan": {
+                "values": [
+                    {"mulligan": "A_001", "value": "hold"},
+                    {"mulligan": "B_002", "value": "hold"},
+                ]
+            }
+        },
+        compiled_globalvalues={
+            "GlobalAggroValue": {"values": [{"condition": "*", "value": "100"}]}
+        },
+        globalvalues_baseline={"GlobalAggroValue": "100"},
+        compiled_combo={
+            "ComboList": {
+                "values": [
+                    {"combo": "A_001 >> B_002"},
+                    {"combo": "B_002 >-> C_003"},
+                ]
+            }
+        },
+        compiled_cardid_files={},
+        linked_runtime_owners=[],
+    )
+
+    assert ledger["mulligan"]["rule_count"] == 2
+    assert ledger["mulligan"]["card_ids"] == ["A_001", "B_002"]
+    assert ledger["combo"]["row_count"] == 2
+    assert ledger["combo"]["card_ids"] == ["A_001", "B_002", "C_003"]
+    assert ledger["globalvalues"]["changed_key_count"] == 0
+    assert ledger["globalvalues"]["changed_keys"] == []
+
+
+def test_runtime_surface_ledger_counts_linked_owner_cardid_entity():
+    ledger = build_runtime_surface_ledger(
+        deck_identity={"deck_name": "Linked Metric", "cards": [{"card_id": "SOURCE_001", "count": 1}]},
+        compiled_mulligan={},
+        compiled_globalvalues={},
+        compiled_combo=None,
+        compiled_cardid_files={
+            "TOKEN_001.json": {
+                "GameCardId": "TOKEN_001",
+                "BeforePlayCardBonus": {"values": [{"condition": "*", "value": "1"}]},
+            }
+        },
+        linked_runtime_owners=[
+            {"source_card_id": "SOURCE_001", "runtime_card_id": "TOKEN_001", "link_kind": "token"}
+        ],
+    )
+
+    assert ledger["cardid"]["entity_count"] == 1
+    assert ledger["cardid"]["card_ids"] == ["TOKEN_001"]
+    assert ledger["cardid"]["behavior_row_count"] == 1

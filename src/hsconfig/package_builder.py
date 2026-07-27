@@ -417,6 +417,7 @@ def build_package_payload(
         deck_identity=deck_identity,
         compiled_mulligan=compiled_mulligan,
         compiled_globalvalues=globalvalues["config"],
+        globalvalues_baseline=baseline,
         compiled_combo=combo,
         compiled_cardid_files=cardid_behavior_files,
         linked_runtime_owners=[

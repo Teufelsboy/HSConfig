@@ -84,6 +84,11 @@ def build_source_to_runtime_explainability_report(
         audit_report,
         ownership_by_claim_id=ownership_by_claim_id,
     )
+    claim_rows = _apply_runtime_surface_ledger_to_claim_rows(
+        claim_rows,
+        audit_report,
+        runtime_surface_ledger,
+    )
     card_rows = _apply_runtime_surface_ledger(
         _card_rows(audit_report, claim_rows),
         runtime_surface_ledger,
@@ -94,7 +99,7 @@ def build_source_to_runtime_explainability_report(
         "runtime_lowered_claims": sum(
             1
             for row in claim_rows
-            if row.get("builder_or_router_decision") == "emitted"
+            if row.get("emitted_runtime_files")
         ),
         "claims_with_first_missing_link": sum(
             1 for row in claim_rows if row.get("first_missing_link") is not None
@@ -139,6 +144,80 @@ def build_source_to_runtime_explainability_report(
     }
 
 
+def _apply_runtime_surface_ledger_to_claim_rows(
+    rows: list[dict[str, Any]],
+    audit: Mapping[str, Any],
+    ledger: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if ledger is None:
+        return rows
+    cards = ledger.get("cards", {}) if isinstance(ledger, Mapping) else {}
+    links = (
+        ledger.get("linked_runtime_entities", {})
+        if isinstance(ledger, Mapping)
+        else {}
+    )
+    if not isinstance(cards, Mapping):
+        cards = {}
+    linked_files_by_source = _linked_files_by_source(links)
+    audit_claim_rows = audit.get("claim_rows", {})
+    projected: list[dict[str, Any]] = []
+    for row in rows:
+        raw_claim = (
+            audit_claim_rows.get(str(row.get("claim_id", "")), {})
+            if isinstance(audit_claim_rows, Mapping)
+            else {}
+        )
+        claim_cards = _string_list(raw_claim.get("cards")) if isinstance(raw_claim, Mapping) else []
+        physical_files = sorted(
+            {
+                surface
+                for card_id in claim_cards
+                for surface in (
+                    _string_list(cards.get(card_id, {}).get("runtime_surfaces"))
+                    if isinstance(cards.get(card_id), Mapping)
+                    else []
+                ) + linked_files_by_source.get(card_id, [])
+            }
+        )
+        expected_files = sorted(
+            set(_string_list(row.get("emitted_runtime_files")))
+            | set(_string_list(row.get("not_emitted_runtime_files")))
+        )
+        if not expected_files:
+            projected.append(row)
+            continue
+        emitted_files = sorted(set(physical_files) & set(expected_files))
+        projected.append(
+            {
+                **row,
+                "emitted_runtime_files": emitted_files,
+                "not_emitted_runtime_files": [
+                    path for path in expected_files if path not in emitted_files
+                ],
+                "builder_or_router_decision": (
+                    "emitted" if emitted_files else "physical_not_emitted"
+                ),
+                "first_missing_link": (
+                    None if emitted_files else "needs_runtime_surface"
+                ),
+                "why_not_emitted": (
+                    None if emitted_files else "physical_runtime_surface_missing"
+                ),
+                "next_source_action": (
+                    "none"
+                    if emitted_files
+                    else _next_source_action(
+                        first_missing_link="needs_runtime_surface",
+                        why_not_emitted="physical_runtime_surface_missing",
+                        claim_kind=str(row.get("claim_kind", "")),
+                    )
+                ),
+            }
+        )
+    return projected
+
+
 def _apply_runtime_surface_ledger(
     rows: list[dict[str, Any]],
     ledger: Mapping[str, Any] | None,
@@ -149,15 +228,7 @@ def _apply_runtime_surface_ledger(
     if not isinstance(cards, Mapping):
         cards = {}
     links = ledger.get("linked_runtime_entities", {}) if isinstance(ledger, Mapping) else {}
-    linked_files_by_source: dict[str, list[str]] = defaultdict(list)
-    if isinstance(links, Mapping):
-        for link in links.values():
-            if not isinstance(link, Mapping) or link.get("runtime_emitted") is not True:
-                continue
-            source = str(link.get("source_card_id", ""))
-            surface = str(link.get("runtime_surface", ""))
-            if source and surface:
-                linked_files_by_source[source].append(surface)
+    linked_files_by_source = _linked_files_by_source(links)
     projected: list[dict[str, Any]] = []
     for row in rows:
         physical = cards.get(str(row.get("card_id", "")))
@@ -206,15 +277,39 @@ def _apply_runtime_surface_ledger(
             "closure_lane": (
                 "report_only"
                 if not runtime_eligible
+                else "source_backed_runtime_lowered"
+                if runtime_backed and row.get("strong_ready") is True
                 else _closure_lane([], runtime_backed)
             ),
-            "strong_ready": False,
+            "strong_ready": runtime_backed and row.get("strong_ready") is True,
             "default_only_blocker": not runtime_backed,
             "evidence_chain": _ledger_evidence_chain(row.get("evidence_chain", []), emitted_files, why_not_emitted),
         }
         updated["closure"] = _closure_row(row=updated, related_claims=[])
+        updated["closure"]["lane"] = updated["closure_lane"]
+        if isinstance(row.get("closure"), Mapping):
+            updated["closure"]["claim_kinds"] = _string_list(
+                row["closure"].get("claim_kinds")
+            )
+            updated["closure"]["source_lanes"] = _string_list(
+                row["closure"].get("source_lanes")
+            )
         projected.append(updated)
     return projected
+
+
+def _linked_files_by_source(links: object) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = defaultdict(list)
+    if not isinstance(links, Mapping):
+        return result
+    for link in links.values():
+        if not isinstance(link, Mapping) or link.get("runtime_emitted") is not True:
+            continue
+        source = str(link.get("source_card_id", ""))
+        surface = str(link.get("runtime_surface", ""))
+        if source and surface:
+            result[source].append(surface)
+    return result
 
 
 def _ledger_evidence_chain(

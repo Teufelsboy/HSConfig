@@ -320,6 +320,28 @@ def test_explainability_uses_empty_ledger_not_plan_emission_for_closure_and_atte
     assert row["closure"]["runtime_surfaces"] == []
     assert row["evidence_chain"][0]["runtime_files"] == []
     assert attention["status"] == "source_action_needed"
+    keep_claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
+    assert keep_claim["emitted_runtime_files"] == []
+    assert keep_claim["builder_or_router_decision"] != "emitted"
+    assert report["summary"]["runtime_lowered_claims"] == 0
+
+
+def test_explainability_preserves_strong_claim_when_ledger_has_matching_mulligan_surface():
+    report = build_source_to_runtime_explainability_report(
+        _fixture_audit(),
+        runtime_surface_ledger={
+            "cards": {"CARD_KEEP": {"runtime_surfaces": ["Mulligan.json"]}},
+            "linked_runtime_entities": {},
+            "surface_ledger_sha256": "e" * 64,
+        },
+    )
+    card = next(row for row in report["card_rows"] if row["card_id"] == "CARD_KEEP")
+    claim = next(row for row in report["claim_rows"] if row["claim_id"] == "keep_claim")
+
+    assert claim["emitted_runtime_files"] == ["Mulligan.json"]
+    assert card["strong_ready"] is True
+    assert card["closure_lane"] == "source_backed_runtime_lowered"
+    assert report["summary"]["runtime_lowered_claims"] == 1
 
 
 def test_explainability_keeps_darkbishop_as_source_and_mind_spike_as_runtime_owner():

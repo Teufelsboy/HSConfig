@@ -12,6 +12,7 @@ import hsconfig.strict_package_validation as strict_package_validation
 from hsconfig.cli import main
 from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import write_json
+from hsconfig.runtime_surface_ledger import rederive_runtime_surface_ledger_from_package
 from hsconfig.strict_package_validation import validate_complete_package
 from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
@@ -56,7 +57,36 @@ def test_strict_validation_rejects_unexpected_physical_sideboard_emission(
     report = validate_complete_package(package)
 
     assert report["status"] == "failed"
-    assert "runtime_surface_ledger_unexpected_emission:SIDE_001:ineligible_card_runtime_emitted" in report["errors"]
+    assert "runtime_surface_ledger_schema_invalid" in report["errors"]
+
+
+@pytest.mark.parametrize("mutation", ["missing", "tampered", "stale"])
+def test_strict_validation_requires_current_canonical_runtime_surface_ledger(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    ledger_path = package / "reports" / "runtime_surface_ledger.json"
+    if mutation == "missing":
+        ledger_path.unlink()
+    elif mutation == "tampered":
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        ledger["cards"] = {}
+        ledger_path.write_text(json.dumps(ledger), encoding="utf-8")
+    else:
+        deck_dir = next((package / "CustomConfig").iterdir())
+        mulligan_path = deck_dir / "Mulligan.json"
+        mulligan = json.loads(mulligan_path.read_text(encoding="utf-8"))
+        mulligan["Mulligan"]["values"] = []
+        mulligan_path.write_text(json.dumps(mulligan), encoding="utf-8")
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(error.startswith("runtime_surface_ledger_") for error in report["errors"])
 
 
 def _run_cli(capsys: pytest.CaptureFixture[str], args: list[str]) -> tuple[dict[str, Any], int]:
@@ -683,7 +713,6 @@ def test_strict_validation_rejects_linked_runtime_filename_gamecardid_mismatch(
             },
         },
     )
-
     report = validate_complete_package(package)
 
     assert report["status"] == "failed"
@@ -731,6 +760,10 @@ def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
                 "values": [{"condition": "*", "value": "10"}]
             },
         },
+    )
+    write_json(
+        package / "reports" / "runtime_surface_ledger.json",
+        rederive_runtime_surface_ledger_from_package(package),
     )
 
     report = validate_complete_package(package)
