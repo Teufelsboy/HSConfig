@@ -170,6 +170,12 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     operator = json.loads(
         (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
     )
+    manifest = json.loads(
+        (package / "reports" / "input_manifest.json").read_text(encoding="utf-8")
+    )
+    receipt = json.loads(
+        (package / "package_derivation_receipt.json").read_text(encoding="utf-8")
+    )
     diagnostics = json.loads(
         (package / "reports" / "plan_input_diagnostics.json").read_text(
             encoding="utf-8"
@@ -193,4 +199,8 @@ def test_imported_card_behavior_conflicts_remain_diagnostic_only(
     assert physical["BeforePlayCardBonus"]["values"][0]["value"] == (
         persisted["rows"][0]["value"]
     )
-    assert operator["runtime_apply_allowed"] is True
+    assert manifest["deck_input_verification"] == operator["deck_input_verification"]
+    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator["deck_input_verification"]["runtime_apply_eligible"] is False
+    assert operator["runtime_apply_allowed"] is False
+    assert "deck_input_verification" in receipt["inputs"]

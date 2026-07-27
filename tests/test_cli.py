@@ -704,6 +704,10 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     reports = out / "reports"
     deck_identity = json.loads((reports / "deck_identity.json").read_text(encoding="utf-8"))
     manifest = json.loads((reports / "input_manifest.json").read_text(encoding="utf-8"))
+    operator = json.loads((reports / "operator_summary.json").read_text(encoding="utf-8"))
+    derivation = json.loads(
+        (out / "package_derivation_receipt.json").read_text(encoding="utf-8")
+    )
     receipt = json.loads((reports / "deckstring_decode_receipt.json").read_text(encoding="utf-8"))
     card_id_map = json.loads((reports / "card_id_map.json").read_text(encoding="utf-8"))
     semantic_report = json.loads(
@@ -717,6 +721,10 @@ def test_build_decodes_deck_code_by_default(tmp_path: Path, capsys):
     assert deck_identity["card_count_total"] == 30
     assert manifest["card_source"] == "deckstring"
     assert manifest["format"] == "FT_WILD"
+    assert manifest["deck_input_verification"] == operator["deck_input_verification"]
+    assert operator["deck_input_verification"]["status"] == "decoded_from_deck_code"
+    assert operator["deck_input_verification"]["runtime_apply_eligible"] is True
+    assert "deck_input_verification" in derivation["inputs"]
     assert receipt["decoder"] == "hearthstone.deckstrings"
     assert card_id_map["545"]["card_id"] == "DS1_233"
     assert any(card["card_id"] == "SW_448" for card in semantic_report["cards"])
@@ -748,6 +756,97 @@ def test_build_rejects_invalid_deck_code_without_placeholder_flag(tmp_path: Path
     assert code == 1
     assert payload["status"] == "failed"
     assert not list(out.glob("CustomConfig/fixture_deck/HSC_*.json"))
+
+
+def test_configure_keeps_unverified_cards_diagnostic_but_blocks_apply_before_write_prep(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+):
+    monkeypatch.setattr(
+        "hsconfig.package_builder.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_cards",
+        lambda timeout=10.0: [],
+    )
+    monkeypatch.setattr(
+        "hsconfig.commands.source_workflow.fetch_latest_collectible_cards",
+        lambda timeout=10.0: [],
+    )
+    cards_json = tmp_path / "cards.json"
+    _write_cards_json(cards_json, ["EX1_001"])
+    diagnostic_out = tmp_path / "diagnostic"
+
+    diagnostic_code = main(
+        [
+            "configure",
+            "--deck-name",
+            "Diagnostic Cards",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(diagnostic_out),
+            "--cards-json",
+            str(cards_json),
+            "--json",
+        ]
+    )
+    diagnostic_payload = json.loads(capsys.readouterr().out)
+    package = diagnostic_out / "04_package"
+    manifest = json.loads(
+        (package / "reports" / "input_manifest.json").read_text(encoding="utf-8")
+    )
+    operator = json.loads(
+        (package / "reports" / "operator_summary.json").read_text(encoding="utf-8")
+    )
+
+    assert diagnostic_code == 0
+    assert diagnostic_payload["status"] == "OK"
+    assert manifest["deck_input_verification"] == operator["deck_input_verification"]
+    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator["deck_input_verification"]["runtime_apply_eligible"] is False
+    assert operator["runtime_apply_allowed"] is False
+
+    def fail_if_write_prep_is_reached(*_args, **_kwargs):
+        raise AssertionError("runtime write preparation must not be reached")
+
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._single_config_dir",
+        fail_if_write_prep_is_reached,
+    )
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._snapshot_existing_runtime_target",
+        fail_if_write_prep_is_reached,
+    )
+    apply_out = tmp_path / "apply"
+    apply_code = main(
+        [
+            "configure",
+            "--deck-name",
+            "Diagnostic Cards",
+            "--deck-code",
+            SHADOWPRIEST_CODE,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--out",
+            str(apply_out),
+            "--cards-json",
+            str(cards_json),
+            "--apply",
+            "--json",
+        ]
+    )
+    apply_payload = json.loads(capsys.readouterr().out)
+
+    assert apply_code == 1
+    assert apply_payload["status"] == "failed"
+    assert apply_payload["stage"] == "apply"
+    assert "deck_input_not_verified" in json.dumps(apply_payload)
+    assert not (tmp_path / "runtime").exists()
 
 
 def test_legacy_claims_synthesize_legacy_retrieved_at_when_unstamped():
@@ -1108,7 +1207,11 @@ def test_build_threads_source_evidence_warnings_into_operator_summary(tmp_path: 
     assert source_report["summary"]["warnings_count"] == 1
     assert depth["source_evidence"]["warnings_count"] == 1
     assert operator_summary["guide_strength_summary"]["source_evidence_warnings"] == 1
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
+    assert operator_summary["deck_input_verification"]["status"] == (
+        "cards_json_unverified"
+    )
+    assert operator_summary["runtime_apply_allowed"] is False
 
 
 def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
@@ -1283,7 +1386,7 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
     assert receipt["source_depth_status"] == "source_backed"
     assert depth["summary"]["report_only_claims"] == 0
     assert depth["source_depth_status"] == "usable"
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
     assert plan_diagnostics["ignored_claims"] == [
         {
             "claim_id": "claim_report_only_runtime",
@@ -1292,10 +1395,10 @@ def test_build_ignores_plan_claim_bundle_when_computing_source_depth(
             "runtime_gate_impact": "none",
         }
     ]
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
-    assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_mode"] == "load_safe_apply"
-    assert operator_summary["runtime_apply_allowed"] is True
+    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert operator_summary["runtime_load_safe"] is False
+    assert operator_summary["runtime_apply_mode"] == "blocked"
+    assert operator_summary["runtime_apply_allowed"] is False
 
 
 def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
@@ -1466,9 +1569,9 @@ def test_build_plan_reports_dir_filters_stale_report_only_runtime_rows(
         row.get("mulligan") == "EX1_003" for row in mulligan["Mulligan"]["values"]
     )
     assert not (deck_dir / "Combo.json").exists()
-    assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is False
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
     assert lifecycle_by_id["valid_runtime_target"]["builder_or_router_decision"] == (
         "emitted"
     )
@@ -2436,9 +2539,9 @@ def test_build_plan_reports_dir_filters_conflict_quarantined_runtime_rows(
     assert payload["status"] == "passed"
     assert valid_card["BeforeBattlecryTargetBonus"]["values"]
     assert "BeforePlayCardBonus" not in quarantined_card
-    assert operator_summary["runtime_load_safe"] is True
-    assert operator_summary["runtime_apply_allowed"] is True
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["runtime_load_safe"] is False
+    assert operator_summary["runtime_apply_allowed"] is False
+    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
     assert claim_conflict_report["conflict_count"] == 1
     assert set(claim_conflict_report["conflicts"][0]["claim_ids"]) == {
         "conflict_target",

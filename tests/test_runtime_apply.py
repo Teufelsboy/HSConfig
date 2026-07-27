@@ -14,6 +14,7 @@ from hsconfig.package_derivation_receipt import (
 )
 from hsconfig.runtime_package_match import RuntimePackageMismatchError
 from hsconfig.runtime_apply import apply_package, plan_apply_package
+from tests.helpers.verified_deck_input import install_verified_deck_input
 
 
 def _write_validation_reports(package: Path, globalvalues: dict) -> None:
@@ -38,17 +39,9 @@ def _write_operator_summary_with_derivation(
     reports = package / "reports"
     manifest = read_json(reports / "input_manifest.json")
     deck_name = str(manifest.get("deck_name", "deck"))
-    deck_fingerprint = "sha256:" + ("0" * 64)
-    write_json(
-        reports / "deck_identity.json",
-        {
-            "deck_name": deck_name,
-            "deck_fingerprint": deck_fingerprint,
-        },
-    )
-    write_json(
-        reports / "deck_fingerprint.json",
-        {"deck_fingerprint": deck_fingerprint},
+    deck_input_verification = install_verified_deck_input(
+        package,
+        deck_name=deck_name,
     )
     write_json(
         reports / "guide_claim_bundle.json",
@@ -74,6 +67,7 @@ def _write_operator_summary_with_derivation(
         reports / "operator_summary.json",
         {
             **summary,
+            "deck_input_verification": deck_input_verification,
             "package_derivation": {
                 "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
                 "receipt_path": DERIVATION_RECEIPT_PATH,
@@ -763,7 +757,7 @@ def test_apply_cli_blocks_empty_operator_summary_runtime_files(tmp_path: Path, c
     assert not runtime.exists()
 
 
-def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys):
+def test_apply_cli_returns_json_block_for_placeholder_package(tmp_path: Path, capsys):
     from hsconfig.cli import main
 
     package = tmp_path / "package"
@@ -801,15 +795,10 @@ def test_apply_cli_returns_json_status_for_built_package(tmp_path: Path, capsys)
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
 
-    assert code == 0
-    assert payload["status"] == "applied"
-    assert payload["receipt"]["target_path"].endswith("CustomConfig/apply_deck") or payload[
-        "receipt"
-    ]["target_path"].endswith("CustomConfig\\apply_deck")
-    assert payload["receipt"]["mapped_deck_name"] == "Apply Deck"
-    assert payload["receipt"]["deck_config_ini_updated"] is True
-    deck_config = runtime / "CustomConfig" / "deck_config.ini"
-    assert "Apply Deck = apply_deck" in deck_config.read_text(encoding="utf-8")
+    assert code == 1
+    assert payload["status"] == "blocked"
+    assert payload["apply_gate"]["reasons"][0]["code"] == "deck_input_not_verified"
+    assert not runtime.exists()
 
 
 def test_apply_package_updates_bom_deck_config_without_duplicate_configs_section(tmp_path: Path):

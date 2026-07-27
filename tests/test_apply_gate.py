@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 
 from hsconfig.apply_gate import evaluate_apply_gate
+from hsconfig.deck_identity import stable_deck_fingerprint
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json, write_json
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
 from hsconfig.package_derivation_receipt import (
@@ -12,6 +14,24 @@ from hsconfig.package_derivation_receipt import (
     write_package_derivation_receipt,
 )
 from hsconfig.package_io import read_optional_profile, read_required_baseline
+
+
+SHADOWPRIEST_DECK_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+
+
+def _verified_deck_input_fixture() -> tuple[list[dict], dict]:
+    cards = decode_deck_code(SHADOWPRIEST_DECK_CODE)["cards"]
+    digest = stable_deck_fingerprint(
+        (str(card["card_id"]), int(card["count"])) for card in cards
+    )
+    return cards, {
+        "status": "decoded_from_deck_code",
+        "runtime_apply_eligible": True,
+        "normalized_roster_sha256": f"sha256:{digest}",
+    }
 
 
 def _write_operator_summary(package: Path, payload: dict) -> None:
@@ -46,12 +66,24 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     )
     manifest = read_json(manifest_path)
     deck_name = str(manifest.get("deck_name", "deck"))
-    deck_fingerprint = "sha256:" + ("0" * 64)
+    cards, verification = _verified_deck_input_fixture()
+    manifest = {
+        **manifest,
+        "deck_code": SHADOWPRIEST_DECK_CODE,
+        "card_source": "deckstring",
+        "deck_input_verification": verification,
+    }
+    write_json(manifest_path, manifest)
+    deck_fingerprint = stable_deck_fingerprint(
+        (str(card["card_id"]), int(card["count"])) for card in cards
+    )
     write_json(
         reports / "deck_identity.json",
         {
             "deck_name": deck_name,
             "deck_fingerprint": deck_fingerprint,
+            "cards": cards,
+            "main_deck": cards,
         },
     )
     write_json(
@@ -80,6 +112,7 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
     )
     payload = {
         **payload,
+        "deck_input_verification": verification,
         "package_derivation": {
             "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
             "receipt_path": DERIVATION_RECEIPT_PATH,
@@ -91,6 +124,7 @@ def _write_operator_summary(package: Path, payload: dict) -> None:
 
 
 def _write_minimal_runtime_package(package: Path) -> None:
+    _cards, verification = _verified_deck_input_fixture()
     write_json(
         package / "CustomConfig" / "deck" / "GlobalValues.json",
         {"GameCardId": "GlobalValues", "ConfigComment": "new"},
@@ -105,8 +139,129 @@ def _write_minimal_runtime_package(package: Path) -> None:
     )
     write_json(
         package / "reports" / "input_manifest.json",
-        {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
+        {
+            "deck_name": "deck",
+            "deck_code": SHADOWPRIEST_DECK_CODE,
+            "runtime_root": "unused",
+            "card_source": "deckstring",
+            "deck_input_verification": verification,
+        },
     )
+
+
+def _refresh_derivation_reference(package: Path) -> None:
+    receipt = build_package_derivation_receipt(package)
+    digest = write_package_derivation_receipt(
+        package / DERIVATION_RECEIPT_PATH,
+        receipt,
+    )
+    operator_path = package / "reports" / "operator_summary.json"
+    summary = read_json(operator_path)
+    summary["package_derivation"] = {
+        "schema_version": DERIVATION_RECEIPT_SCHEMA_VERSION,
+        "receipt_path": DERIVATION_RECEIPT_PATH,
+        "receipt_sha256": digest,
+        "verified": True,
+    }
+    write_json(operator_path, summary)
+
+
+def test_apply_gate_blocks_prebuilt_summary_when_input_verdict_is_missing(
+    tmp_path: Path,
+):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest.pop("deck_input_verification")
+    write_json(manifest_path, manifest)
+    _refresh_derivation_reference(package)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["code"] == "deck_input_not_verified"
+
+
+def test_apply_gate_blocks_prebuilt_summary_when_input_verdict_disagrees(
+    tmp_path: Path,
+):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    operator_path = package / "reports" / "operator_summary.json"
+    summary = read_json(operator_path)
+    summary["deck_input_verification"] = {
+        **summary["deck_input_verification"],
+        "runtime_apply_eligible": False,
+    }
+    write_json(operator_path, summary)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["code"] == "deck_input_not_verified"
+
+
+def test_apply_gate_recomputes_forged_eligible_verdict_from_deck_identity(
+    tmp_path: Path,
+):
+    package = tmp_path / "package"
+    _write_minimal_runtime_package(package)
+    _write_operator_summary(
+        package,
+        {
+            "technical_status": "VALID_PACKAGE",
+            "semantic_status": "SOURCE_BACKED_STRONG",
+            "next_action": "READY_TO_APPLY_OR_HANDOFF",
+            "apply_policy": "ALLOWED",
+            "semantic_blockers": [],
+            "generated_files": [
+                "CustomConfig/deck/GlobalValues.json",
+                "CustomConfig/deck/Mulligan.json",
+                "CustomConfig/deck/EX1_001.json",
+            ],
+        },
+    )
+    identity_path = package / "reports" / "deck_identity.json"
+    identity = read_json(identity_path)
+    identity["cards"][0]["count"] += 1
+    write_json(identity_path, identity)
+    _refresh_derivation_reference(package)
+
+    gate = evaluate_apply_gate(package)
+
+    assert gate["allowed"] is False
+    assert gate["reasons"][0]["code"] == "deck_input_not_verified"
 
 
 def test_apply_gate_allows_source_backed_ready_package(tmp_path: Path):

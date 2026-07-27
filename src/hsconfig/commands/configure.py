@@ -392,6 +392,24 @@ def configure_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     apply_payload_result: dict[str, Any] | None = None
     apply_status = None
     if bool(getattr(args, "apply", False)):
+        deck_input_verification = operator_summary.get(
+            "deck_input_verification",
+            {},
+        )
+        if (
+            not isinstance(deck_input_verification, Mapping)
+            or deck_input_verification.get("runtime_apply_eligible") is not True
+        ):
+            return _finish(
+                out,
+                "failed",
+                {
+                    "stage": "apply",
+                    "reason": "deck_input_not_verified",
+                    "errors": ["deck_input_not_verified"],
+                },
+                1,
+            )
         try:
             apply_payload_result, apply_status = apply_payload(
                 SimpleNamespace(

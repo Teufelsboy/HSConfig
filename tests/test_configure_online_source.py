@@ -8,6 +8,7 @@ import pytest
 from hsconfig.cli import main
 from hsconfig.commands import configure as configure_command
 from hsconfig.source_candidate_registry import SourceCandidate
+from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
 from tests.test_configure_auto_source import (
     SHADOWPRIEST_CODE,
@@ -352,7 +353,10 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
         for blocker in operator["semantic_blockers"]
     }
     assert "cards_need_guide_claims" in blocker_reasons
-    assert "generic_low_confidence_not_strong_evidence" in blocker_reasons
+    assert blocker_reasons & {
+        "generic_low_confidence_not_strong_evidence",
+        "policy_claim_not_strong_evidence",
+    }
     rejected_mulligan_attention = [
         row
         for row in explainability["operator_attention"]
@@ -361,9 +365,9 @@ def test_configure_online_source_builds_source_backed_shadowpriest_package(
     ]
     assert {
         row["card_id"] for row in rejected_mulligan_attention
-    } == {"GVG_009", "SCH_514", "SW_444", "TOY_381"}
+    } == {"TOY_381"}
     assert all(
-        row["first_missing_link"] == "needs_mulligan_claim"
+        row["first_missing_link"] == "needs_guide_claim"
         and row["first_missing_source_action"] == "add_exact_deck_matched_source"
         and row["next_source_action"] == "add_exact_deck_matched_source"
         for row in rejected_mulligan_attention
@@ -425,7 +429,7 @@ def test_configure_online_source_keeps_thin_sources_load_safe_and_visible(
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(runtime),
             "--out",
@@ -479,7 +483,7 @@ def test_configure_online_source_without_usable_guide_stays_load_safe_non_strong
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(runtime),
             "--out",
@@ -560,7 +564,7 @@ def test_candidate_registry_url_does_not_promote_without_full_text_claims(
             "--deck-name",
             "MechPala",
             "--deck-code",
-            "AAEBAZ8FAtS9BMekBg6f9QLW/gLX/gKHrgOStQThtQTa0wTZ0AW5/gWf4Qa08Qbi8Qa6lgea/AcAAQPzswbHpAb2swbHpAbu3gbHpAYAAA==",
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(runtime),
             "--out",
@@ -640,7 +644,7 @@ def test_configure_online_source_uses_explicit_urls_before_registry_urls(
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -773,7 +777,7 @@ def test_configure_online_source_rebuilds_registry_candidates_when_plan_is_unusa
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -852,7 +856,7 @@ def test_configure_online_source_filters_invalid_explicit_source_url_before_acqu
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

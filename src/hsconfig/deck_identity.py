@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from hsconfig.io import slugify_deck_name
@@ -16,6 +16,21 @@ def stable_deck_fingerprint(cards: Iterable[tuple[str, int]]) -> str:
     canonical = sorted(card_counts.items(), key=lambda row: row[0])
     payload = json.dumps(canonical, separators=(",", ":"), sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def normalize_roster(
+    cards: Iterable[Mapping[str, Any]],
+) -> tuple[tuple[str, int], ...]:
+    card_counts: dict[str, int] = {}
+    for card in cards:
+        if not isinstance(card, Mapping):
+            raise ValueError("deck_input_card_row_invalid")
+        card_id = str(card.get("card_id") or "").strip()
+        if not card_id:
+            raise ValueError("deck_input_card_id_missing")
+        count = _normalized_roster_count(card.get("count", 1))
+        card_counts[card_id] = card_counts.get(card_id, 0) + count
+    return tuple(sorted(card_counts.items(), key=lambda row: row[0]))
 
 
 def build_deck_identity(
@@ -66,6 +81,23 @@ def _normalize_card(card: dict[str, Any]) -> dict[str, Any]:
     if name:
         normalized["name"] = name
     return normalized
+
+
+def _normalized_roster_count(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("deck_input_count_invalid")
+    if isinstance(value, int):
+        count = value
+    elif isinstance(value, str):
+        try:
+            count = int(value.strip())
+        except ValueError as error:
+            raise ValueError("deck_input_count_invalid") from error
+    else:
+        raise ValueError("deck_input_count_invalid")
+    if count <= 0:
+        raise ValueError("deck_input_count_non_positive")
+    return count
 
 
 def _normalize_sideboards(sideboards: list[dict[str, Any]]) -> list[dict[str, Any]]:

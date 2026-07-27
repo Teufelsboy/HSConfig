@@ -123,7 +123,11 @@ def test_start_of_game_hero_power_transform_preserves_effect_without_mulligan_ke
     )
 
     assert result["exit_code"] == 0
-    assert result["operator_summary"]["runtime_apply_allowed"] is True
+    assert result["operator_summary"]["runtime_apply_allowed"] is False
+    assert (
+        result["operator_summary"]["deck_input_verification"]["status"]
+        == "cards_json_unverified"
+    )
     assert not any(
         row.get("mulligan") == "CARD_001"
         for row in mulligan["Mulligan"]["values"]

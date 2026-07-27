@@ -14,6 +14,7 @@ from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     refresh_package_derivation_authority,
 )
+from tests.helpers.verified_deck_input import install_verified_deck_input
 from hsconfig.research_contract import build_research_contract_bundle
 from hsconfig.source_claim_gap_report import build_source_claim_gap_report
 from hsconfig.source_document_builder import build_source_document_bundle
@@ -189,6 +190,7 @@ def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path,
         },
     )
     write_json(reports / "input_manifest.json", {"deck_name": "deck"})
+    deck_input_verification = install_verified_deck_input(package)
     write_json(reports / "globalvalues_baseline.json", globalvalues)
     write_json(
         reports / "globalvalues_profile.json",
@@ -201,15 +203,6 @@ def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path,
             "missing_overlay_keys": [],
         },
     )
-    deck_fingerprint = "sha256:" + ("0" * 64)
-    write_json(
-        reports / "deck_identity.json",
-        {"deck_name": "deck", "deck_fingerprint": deck_fingerprint},
-    )
-    write_json(
-        reports / "deck_fingerprint.json",
-        {"deck_fingerprint": deck_fingerprint},
-    )
     write_json(
         reports / "guide_claim_bundle.json",
         {"canonical_source_receipts": []},
@@ -218,6 +211,7 @@ def test_broader_claim_conflicts_remain_visible_without_blocking_apply(tmp_path,
         "CustomConfig/deck/GlobalValues.json",
         "CustomConfig/deck/Mulligan.json",
     ]
+    operator["deck_input_verification"] = deck_input_verification
     write_json(
         reports / "output_ownership_manifest.json",
         build_output_ownership_manifest(

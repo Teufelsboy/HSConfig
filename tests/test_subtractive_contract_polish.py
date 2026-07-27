@@ -13,6 +13,7 @@ from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     refresh_package_derivation_authority,
 )
+from tests.helpers.verified_deck_input import install_verified_deck_input
 import hsconfig.package_builder as package_builder
 from hsconfig.surface_intent import build_surface_intent
 
@@ -97,6 +98,7 @@ def _write_minimal_package(
         },
     )
     write_json(reports / "input_manifest.json", {"deck_name": "deck"})
+    deck_input_verification = install_verified_deck_input(package)
     write_json(reports / "globalvalues_baseline.json", globalvalues)
     write_json(
         reports / "globalvalues_profile.json",
@@ -108,15 +110,6 @@ def _write_minimal_package(
             "expected_overlay_keys": [],
             "missing_overlay_keys": [],
         },
-    )
-    deck_fingerprint = "sha256:" + ("0" * 64)
-    write_json(
-        reports / "deck_identity.json",
-        {"deck_name": "deck", "deck_fingerprint": deck_fingerprint},
-    )
-    write_json(
-        reports / "deck_fingerprint.json",
-        {"deck_fingerprint": deck_fingerprint},
     )
     write_json(
         reports / "guide_claim_bundle.json",
@@ -146,6 +139,7 @@ def _write_minimal_package(
             "next_action": "READY_TO_APPLY_WITH_WARNINGS",
             "apply_policy": "ALLOWED_WITH_WARNINGS",
             "generated_files": generated_files,
+            "deck_input_verification": deck_input_verification,
             "package_derivation": package_derivation,
         },
     )

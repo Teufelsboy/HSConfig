@@ -14,6 +14,7 @@ from hsconfig.package_derivation_receipt import (
     build_package_derivation_receipt,
     write_package_derivation_receipt,
 )
+from tests.helpers.verified_deck_input import install_verified_deck_input
 
 
 RUNTIME_FILES = {
@@ -51,6 +52,9 @@ def _write_package(
             package / "reports" / "input_manifest.json",
             {"deck_name": "deck", "deck_code": "fixture", "runtime_root": "unused"},
         )
+        deck_input_verification = install_verified_deck_input(package)
+    else:
+        deck_input_verification = None
 
     if write_summary:
         if generated_files is None:
@@ -69,6 +73,7 @@ def _write_package(
             summary.update(summary_payload)
         if write_manifest:
             reports = package / "reports"
+            summary["deck_input_verification"] = deck_input_verification
             globalvalues = files["GlobalValues.json"]
             write_json(reports / "globalvalues_baseline.json", globalvalues)
             write_json(
@@ -85,18 +90,6 @@ def _write_package(
                     "expected_overlay_keys": [],
                     "missing_overlay_keys": [],
                 },
-            )
-            deck_fingerprint = "sha256:" + ("0" * 64)
-            write_json(
-                reports / "deck_identity.json",
-                {
-                    "deck_name": "deck",
-                    "deck_fingerprint": deck_fingerprint,
-                },
-            )
-            write_json(
-                reports / "deck_fingerprint.json",
-                {"deck_fingerprint": deck_fingerprint},
             )
             write_json(
                 reports / "guide_claim_bundle.json",

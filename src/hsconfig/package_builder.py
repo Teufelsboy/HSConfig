@@ -137,6 +137,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         research_required_guide_sources_fn=_research_required_guide_sources,
     )
     cards_payload = context["cards_payload"]
+    deck_input_verification = cards_payload["deck_input_verification"]
     mechanic_drift_report = build_mechanic_drift_report(cards_payload["cards"])
     deck_identity = context["deck_identity"]
     card_metadata = context["card_metadata"]
@@ -414,6 +415,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
         str(Path(args.plan_reports_dir)) if getattr(args, "plan_reports_dir", None) else None
     )
     manifest["card_source"] = cards_payload["card_source"]
+    manifest["deck_input_verification"] = deck_input_verification
     write_json(reports_dir / "input_manifest.json", manifest)
     write_json(reports_dir / "deck_identity.json", deck_identity)
     if cards_payload.get("deckstring_decode_receipt") is not None:
@@ -557,6 +559,7 @@ def build_package_payload(args: argparse.Namespace) -> tuple[dict[str, Any], int
             source_to_runtime_explainability_report
         ),
         "gameplan_contract": gameplan_contract,
+        "deck_input_verification": deck_input_verification,
     }
     generated_files = _generated_package_files(
         out,

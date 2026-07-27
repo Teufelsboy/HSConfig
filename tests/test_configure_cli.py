@@ -12,6 +12,10 @@ from hsconfig.commands.configure import (
     _build_config_proof_summary,
     _compact_config_quality_summary,
 )
+from tests.helpers.verified_deck_input import (
+    VERIFIED_TEST_CARDS,
+    VERIFIED_TEST_DECK_CODE,
+)
 
 
 SHADOWPRIEST_CODE = (
@@ -30,9 +34,7 @@ def _write_cards_json(path: Path) -> None:
             {
                 "cards": [
                     {
-                        "card_id": "BAR_735",
-                        "dbf_id": 1,
-                        "count": 1,
+                        **VERIFIED_TEST_CARDS[0],
                         "name": "Darkbishop Benedictus",
                         "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
                     }
@@ -328,7 +330,7 @@ def test_configure_source_evidence_is_not_reingested_after_drafting(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            "fixture-code",
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -415,7 +417,7 @@ def test_configure_apply_uses_existing_apply_command_gate(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            "fixture-code",
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(runtime_root),
             "--out",
@@ -469,7 +471,7 @@ def test_configure_apply_fails_closed_for_invalid_runtime_match_receipt(
             "--deck-name",
             "ShadowPriest",
             "--deck-code",
-            "fixture-code",
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

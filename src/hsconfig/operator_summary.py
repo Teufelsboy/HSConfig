@@ -165,6 +165,7 @@ def build_operator_summary(
     gameplan_contract: dict[str, Any] | None = None,
     package_derivation: dict[str, Any] | None = None,
     package_authority: dict[str, Any] | None = None,
+    deck_input_verification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # Compatibility inputs for callers that use the task-brief naming.
     if technical_validation is None:
@@ -449,6 +450,8 @@ def build_operator_summary(
         "generated_files": sorted(str(path) for path in generated_files),
         "report_ownership": build_report_ownership(),
     }
+    if deck_input_verification is not None:
+        summary["deck_input_verification"] = dict(deck_input_verification)
     if package_derivation is not None:
         summary["package_derivation"] = dict(package_derivation)
     summary["operator_guidance"] = build_operator_guidance(summary)

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+from hsconfig.deck_input_verification import verify_deck_input
 from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.io import read_json
 from hsconfig.source_acquisition_provenance import (
@@ -32,7 +33,7 @@ def load_cards(
 ) -> dict[str, Any]:
     if cards_json is None and not allow_placeholder:
         decoded = decode_deck_code(deck_code)
-        return {
+        return _with_deck_input_verification({
             "cards": decoded["cards"],
             "hero_dbf_id": decoded["hero_dbf_id"],
             "format": decoded["format"],
@@ -40,9 +41,9 @@ def load_cards(
             "deckstring_decode_receipt": decoded["deckstring_decode_receipt"],
             "card_id_map": decoded["card_id_map"],
             "card_source": "deckstring",
-        }
+        }, deck_code=deck_code)
     if cards_json is None:
-        return {
+        return _with_deck_input_verification({
             "cards": _placeholder_cards(deck_name=deck_name, deck_code=deck_code),
             "hero_dbf_id": None,
             "format": None,
@@ -50,7 +51,7 @@ def load_cards(
             "deckstring_decode_receipt": None,
             "card_id_map": None,
             "card_source": "placeholder",
-        }
+        }, deck_code=deck_code)
     payload = read_json(cards_json)
     if isinstance(payload, dict):
         payload = payload.get("cards")
@@ -59,7 +60,7 @@ def load_cards(
     cards = [_normalize_card_input(card) for card in payload]
     if not cards:
         raise ValueError("--cards-json did not contain any cards")
-    return {
+    return _with_deck_input_verification({
         "cards": cards,
         "hero_dbf_id": None,
         "format": None,
@@ -67,7 +68,7 @@ def load_cards(
         "deckstring_decode_receipt": None,
         "card_id_map": None,
         "card_source": "cards_json",
-    }
+    }, deck_code=deck_code)
 
 
 def load_claims(claims_json: str | None) -> list[dict[str, Any]]:
@@ -396,18 +397,42 @@ def _placeholder_cards(*, deck_name: str, deck_code: str) -> list[dict[str, Any]
 
 def _normalize_card_input(card: Any) -> dict[str, Any]:
     if not isinstance(card, dict):
-        raise ValueError("Every card row must be an object")
+        raise ValueError("deck_input_card_row_invalid")
     if not card.get("card_id"):
-        raise ValueError("Every card row must include card_id")
+        raise ValueError("deck_input_card_id_missing")
+    raw_count = card.get("count", 1)
+    if isinstance(raw_count, bool) or not isinstance(raw_count, (int, str)):
+        raise ValueError("deck_input_count_invalid")
+    try:
+        count = int(raw_count)
+    except (TypeError, ValueError) as error:
+        raise ValueError("deck_input_count_invalid") from error
+    if count <= 0:
+        raise ValueError("deck_input_count_non_positive")
     normalized = {
         "card_id": str(card["card_id"]),
         "dbf_id": int(card["dbf_id"]) if card.get("dbf_id") is not None else None,
-        "count": int(card.get("count", 1)),
+        "count": count,
     }
     for optional_key in ("name", "cost", "type", "text", "mechanics", "card_class", "class"):
         if optional_key in card:
             normalized[optional_key] = card[optional_key]
     return normalized
+
+
+def _with_deck_input_verification(
+    payload: dict[str, Any],
+    *,
+    deck_code: str,
+) -> dict[str, Any]:
+    return {
+        **payload,
+        "deck_input_verification": verify_deck_input(
+            deck_code=deck_code,
+            cards=payload["cards"],
+            source=str(payload["card_source"]),
+        ),
+    }
 
 
 def source_records_from_cards(cards: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

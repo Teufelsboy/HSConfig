@@ -5,6 +5,11 @@ from pathlib import Path
 
 from hsconfig.cli import main
 from hsconfig.deck_identity import build_deck_identity
+from hsconfig.deckstring_decode import decode_deck_code
+from tests.helpers.verified_deck_input import (
+    VERIFIED_TEST_CARDS,
+    VERIFIED_TEST_DECK_CODE,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -18,31 +23,39 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_shadow_cards_json(path: Path) -> None:
-    path.write_text(
-        json.dumps(
+def _write_shadow_cards_json(
+    path: Path,
+    *,
+    deck_code: str = SHADOWPRIEST_CODE,
+) -> None:
+    overrides = {
+        card["card_id"]: card
+        for card in [
             {
-                "cards": [
-                    {
-                        "card_id": "SW_448",
-                        "name": "Darkbishop Benedictus",
-                        "cost": 5,
-                        "count": 1,
-                        "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
-                    },
-                    {
-                        "card_id": "SW_446",
-                        "name": "Voidtouched Attendant",
-                        "cost": 1,
-                        "count": 2,
-                    },
-                    {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
-                    {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
-                    {"card_id": "SCH_514", "name": "Raise Dead", "cost": 0, "count": 2},
-                    {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
-                ]
-            }
-        ),
+                "card_id": "SW_448",
+                "name": "Darkbishop Benedictus",
+                "cost": 5,
+                "count": 1,
+                "text": "Start of Game: If the spells in your deck are all Shadow, enter Shadowform.",
+            },
+            {
+                "card_id": "SW_446",
+                "name": "Voidtouched Attendant",
+                "cost": 1,
+                "count": 2,
+            },
+            {"card_id": "TOY_381", "name": "Papercraft Angel", "cost": 3, "count": 2},
+            {"card_id": "SW_444", "name": "Twilight Deceptor", "cost": 2, "count": 2},
+            {"card_id": "SCH_514", "name": "Raise Dead", "cost": 0, "count": 2},
+            {"card_id": "GVG_009", "name": "Shadowbomber", "cost": 1, "count": 2},
+        ]
+    }
+    cards = [
+        {**card, **overrides.get(card["card_id"], {})}
+        for card in decode_deck_code(deck_code)["cards"]
+    ]
+    path.write_text(
+        json.dumps({"cards": cards}),
         encoding="utf-8",
     )
 
@@ -53,10 +66,9 @@ def _write_thin_cards_json(path: Path) -> None:
             {
                 "cards": [
                     {
-                        "card_id": "CARD_001",
+                        **VERIFIED_TEST_CARDS[0],
                         "name": "Fixture Card",
                         "cost": 1,
-                        "count": 2,
                         "text": "Battlecry: Deal 1 damage.",
                     }
                 ]
@@ -291,7 +303,7 @@ def test_configure_auto_source_keeps_decklist_only_non_strong_but_load_safe(
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",
@@ -350,7 +362,7 @@ def test_configure_auto_source_keeps_empty_source_records_non_strong_but_load_sa
             "--deck-name",
             "ThinDeck",
             "--deck-code",
-            SHADOWPRIEST_CODE,
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

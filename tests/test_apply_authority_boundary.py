@@ -277,6 +277,7 @@ def test_forged_valid_operator_summary_cannot_authorize_package(
             "apply_policy": "ALLOWED",
             "semantic_blockers": [],
             "generated_files": original["generated_files"],
+            "deck_input_verification": original["deck_input_verification"],
         },
     )
 
@@ -743,6 +744,45 @@ def test_runtime_apply_rejects_tamper_before_runtime_write_boundary(
     runtime = tmp_path / "runtime"
 
     with pytest.raises(ValueError, match="package_derivation_mismatch"):
+        apply_package(package_root=package, runtime_root=runtime)
+
+    assert not runtime.exists()
+
+
+def test_runtime_apply_rejects_missing_deck_input_verdict_before_destination_prep(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from hsconfig.package_derivation_receipt import (
+        refresh_package_derivation_authority,
+    )
+
+    package = _build_authoritative_package(tmp_path, monkeypatch, capsys)
+    manifest_path = package / "reports" / "input_manifest.json"
+    manifest = read_json(manifest_path)
+    manifest.pop("deck_input_verification", None)
+    write_json(manifest_path, manifest)
+    summary_path = package / "reports" / "operator_summary.json"
+    summary = read_json(summary_path)
+    summary.pop("deck_input_verification", None)
+    summary["package_derivation"] = refresh_package_derivation_authority(package)
+    write_json(summary_path, summary)
+
+    def fail_if_destination_prep_is_reached(*_args, **_kwargs):
+        raise AssertionError("runtime destination preparation must not be reached")
+
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._single_config_dir",
+        fail_if_destination_prep_is_reached,
+    )
+    monkeypatch.setattr(
+        "hsconfig.runtime_apply._snapshot_existing_runtime_target",
+        fail_if_destination_prep_is_reached,
+    )
+    runtime = tmp_path / "runtime"
+
+    with pytest.raises(ValueError, match="deck_input_not_verified"):
         apply_package(package_root=package, runtime_root=runtime)
 
     assert not runtime.exists()

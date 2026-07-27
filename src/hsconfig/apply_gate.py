@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from hsconfig.deck_input_verification import verify_deck_input
 from hsconfig.io import read_json
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
@@ -81,7 +82,7 @@ def evaluate_apply_gate(
     if strict_reasons:
         return _blocked(operator_path, *strict_reasons)
 
-    deck_input_reasons = deck_input_apply_eligibility_reasons(package)
+    deck_input_reasons = _deck_input_verification_reasons(package, summary)
     if deck_input_reasons:
         return _blocked(operator_path, *deck_input_reasons)
 
@@ -133,6 +134,52 @@ def evaluate_apply_gate(
             "apply_policy": apply_policy,
         },
     )
+
+
+def _deck_input_verification_reasons(
+    package: Path,
+    summary: dict[str, Any],
+) -> list[dict[str, str]]:
+    existing_reasons = deck_input_apply_eligibility_reasons(package)
+    if existing_reasons:
+        return existing_reasons
+    try:
+        manifest = read_json(package / "reports" / "input_manifest.json")
+        deck_identity = read_json(package / "reports" / "deck_identity.json")
+        if not isinstance(manifest, dict) or not isinstance(deck_identity, dict):
+            raise ValueError("deck input authority documents must be objects")
+        cards = deck_identity.get("cards")
+        if not isinstance(cards, list):
+            raise ValueError("deck identity cards must be a list")
+        recomputed = verify_deck_input(
+            deck_code=manifest.get("deck_code"),
+            cards=cards,
+            source=str(manifest.get("card_source") or ""),
+        )
+    except (OSError, TypeError, ValueError) as error:
+        return [_deck_input_not_verified_reason(str(error))]
+
+    persisted = manifest.get("deck_input_verification")
+    summary_verification = summary.get("deck_input_verification")
+    if (
+        persisted != recomputed
+        or summary_verification != recomputed
+        or recomputed.get("runtime_apply_eligible") is not True
+    ):
+        return [
+            _deck_input_not_verified_reason(
+                "Persisted deck input verification is missing, ineligible, or stale."
+            )
+        ]
+    return []
+
+
+def _deck_input_not_verified_reason(detail: str) -> dict[str, str]:
+    return {
+        "reason": "deck_input_not_verified",
+        "code": "deck_input_not_verified",
+        "detail": detail or "Deck input is not eligible for runtime apply.",
+    }
 
 
 def _strict_package_validation_reasons(package: Path) -> list[dict[str, Any]]:

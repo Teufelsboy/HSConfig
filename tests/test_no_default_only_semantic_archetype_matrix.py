@@ -6,6 +6,7 @@ import pytest
 from hsconfig.cli import main
 from hsconfig.deck_identity import stable_deck_fingerprint
 from tests.helpers.fixture_prepare import load_archetype_matrix
+from tests.helpers.verified_deck_input import deck_code_for_cards
 
 
 SOURCE_CLAIM_FIELDS = {
@@ -40,27 +41,27 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
     {
         "deck_name": "SyntheticSecretHunter",
         "cards": [
-            {"card_id": "SECRET_001", "name": "Secret Opener", "cost": 1, "type": "SPELL", "text": "Secret: fixture.", "mechanics": ["SECRET"]},
-            {"card_id": "TEMPO_001", "name": "Tempo One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage.", "mechanics": ["BATTLECRY"]},
+            {"card_id": "CS2_172", "dbf_id": 216, "count": 1, "name": "Secret Opener", "cost": 1, "type": "SPELL", "text": "Secret: fixture.", "mechanics": ["SECRET"]},
+            {"card_id": "CS2_182", "dbf_id": 90, "count": 1, "name": "Tempo One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage.", "mechanics": ["BATTLECRY"]},
         ],
         "claims": [
-            {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "TEMPO_001", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_63d125d89e8e", "claim_kind": "mulligan_keep", "card_id": "CS2_182", "evidence_text_short": "Keep early pressure.", "source_confidence": "guide_backed"},
             {
                 "claim_id": "claim_db9a1c18eb5a",
                 "claim_kind": "mechanic_usage",
-                "card_id": "SECRET_001",
+                "card_id": "CS2_172",
                 "mechanic": "secret",
                 "evidence_text_short": "Secrets are part of the gameplan.",
                 "source_confidence": "guide_backed",
             },
         ],
         "runtime_expectations": {
-            "SECRET_001": {
+            "CS2_172": {
                 "claim_db9a1c18eb5a": {
                     "runtime_block": "BeforePlayCardBonus",
                     "condition": "*",
                     "value": "6",
-                    "comment": "SyntheticSecretHunter: SECRET_001_use_secret_according_to_card_text",
+                    "comment": "SyntheticSecretHunter: CS2_172_use_secret_according_to_card_text",
                 }
             }
         },
@@ -68,27 +69,27 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
     {
         "deck_name": "SyntheticLocationDruid",
         "cards": [
-            {"card_id": "LOCATION_001", "name": "Location Fixture", "cost": 2, "type": "LOCATION", "text": "Summon two minions."},
-            {"card_id": "BOARD_001", "name": "Board One", "cost": 1, "type": "MINION", "text": "Summon a Treant."},
+            {"card_id": "CS2_200", "dbf_id": 1686, "count": 1, "name": "Location Fixture", "cost": 2, "type": "LOCATION", "text": "Summon two minions."},
+            {"card_id": "EX1_011", "dbf_id": 132, "count": 1, "name": "Board One", "cost": 1, "type": "MINION", "text": "Summon a Treant."},
         ],
         "claims": [
-            {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "BOARD_001", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_fbd07c663bf4", "claim_kind": "mulligan_keep", "card_id": "EX1_011", "evidence_text_short": "Keep board opener.", "source_confidence": "guide_backed"},
             {
                 "claim_id": "claim_325924175cfb",
                 "claim_kind": "mechanic_usage",
-                "card_id": "LOCATION_001",
+                "card_id": "CS2_200",
                 "mechanic": "location",
                 "evidence_text_short": "Location supports board plan.",
                 "source_confidence": "guide_backed",
             },
         ],
         "runtime_expectations": {
-            "LOCATION_001": {
+            "CS2_200": {
                 "claim_325924175cfb": {
                     "runtime_block": "BeforePlayCardBonus",
                     "condition": "*",
                     "value": "8",
-                    "comment": "SyntheticLocationDruid: LOCATION_001_use_location_according_to_card_text",
+                    "comment": "SyntheticLocationDruid: CS2_200_use_location_according_to_card_text",
                     "semantic_reason": "location_tempo",
                 }
             }
@@ -97,23 +98,23 @@ SEMANTIC_ARCHETYPE_FIXTURES = [
     {
         "deck_name": "SyntheticDiscoverMage",
         "cards": [
-            {"card_id": "DISCOVER_001", "name": "Discover One", "cost": 2, "type": "SPELL", "text": "Discover a spell."},
-            {"card_id": "BURN_001", "name": "Burn One", "cost": 1, "type": "SPELL", "text": "Deal damage."},
+            {"card_id": "EX1_015", "dbf_id": 284, "count": 1, "name": "Discover One", "cost": 2, "type": "SPELL", "text": "Discover a spell."},
+            {"card_id": "EX1_025", "dbf_id": 523, "count": 1, "name": "Burn One", "cost": 1, "type": "SPELL", "text": "Deal damage."},
         ],
         "claims": [
-            {"claim_id": "claim_aafc09aad784", "claim_kind": "mulligan_keep", "card_id": "BURN_001", "evidence_text_short": "Keep cheap burn.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_2ba9a2be2581", "claim_kind": "discover_choice", "card_id": "DISCOVER_001", "evidence_text_short": "Prefer damage from Discover.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_aafc09aad784", "claim_kind": "mulligan_keep", "card_id": "EX1_025", "evidence_text_short": "Keep cheap burn.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_2ba9a2be2581", "claim_kind": "discover_choice", "card_id": "EX1_015", "evidence_text_short": "Prefer damage from Discover.", "source_confidence": "guide_backed"},
         ],
     },
     {
         "deck_name": "SyntheticHighlanderPriest",
         "cards": [
-            {"card_id": "HIGHLANDER_001", "name": "Highlander Effect", "cost": 5, "type": "MINION", "text": "Start of Game: if your deck has no duplicates, improve your hero power."},
-            {"card_id": "LOW_CURVE_001", "name": "Low Curve One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage."},
+            {"card_id": "EX1_066", "dbf_id": 906, "count": 1, "name": "Highlander Effect", "cost": 5, "type": "MINION", "text": "Start of Game: if your deck has no duplicates, improve your hero power."},
+            {"card_id": "CS2_189", "dbf_id": 389, "count": 1, "name": "Low Curve One", "cost": 1, "type": "MINION", "text": "Battlecry: deal damage."},
         ],
         "claims": [
-            {"claim_id": "claim_f4040dfcd9af", "claim_kind": "hero_power_transform", "card_id": "HIGHLANDER_001", "semantic_qualifiers": {"timing": "start_of_game", "zone_scope": "deck"}, "evidence_text_short": "The deckbuilding effect matters.", "source_confidence": "guide_backed"},
-            {"claim_id": "claim_377b7a739f09", "claim_kind": "mulligan_keep", "card_id": "LOW_CURVE_001", "evidence_text_short": "Keep the low curve opener.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_f4040dfcd9af", "claim_kind": "hero_power_transform", "card_id": "EX1_066", "semantic_qualifiers": {"timing": "start_of_game", "zone_scope": "deck"}, "evidence_text_short": "The deckbuilding effect matters.", "source_confidence": "guide_backed"},
+            {"claim_id": "claim_377b7a739f09", "claim_kind": "mulligan_keep", "card_id": "CS2_189", "evidence_text_short": "Keep the low curve opener.", "source_confidence": "guide_backed"},
         ],
     },
 ]
@@ -365,7 +366,7 @@ def _prepare_semantic_fixture(tmp_path: Path, fixture: dict) -> dict:
             "--deck-name",
             fixture["deck_name"],
             "--deck-code",
-            "synthetic-fixture-code",
+            deck_code_for_cards(fixture["cards"]),
             "--runtime-root",
             str(tmp_path / "runtime"),
             "--out",

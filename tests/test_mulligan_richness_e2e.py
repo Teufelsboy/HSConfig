@@ -22,13 +22,15 @@ def test_prepare_with_rich_captured_mulligan_sources_stays_policy_backed(
     )
 
     operator = result["operator_summary"]
-    mulligan_surface = operator["config_usefulness"]["surfaces"]["mulligan"]
+    mulligan_surface = result["mulligan_plan"]["quality"]
     mulligan_values = result["mulligan_json"]["Mulligan"]["values"]
 
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
-    assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["technical_status"] == "INVALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator["deck_input_verification"]["runtime_apply_eligible"] is False
     assert mulligan_surface["status"] == "policy_backed"
     assert mulligan_surface["source_backed_rule_count"] == 0
     assert mulligan_surface["suppressed_reasons"][
@@ -160,7 +162,7 @@ def test_prepare_rejected_guide_claim_does_not_create_policy_role_evidence(
     )
 
 
-def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
+def test_prepare_with_thin_mulligan_sources_stays_diagnostic_and_apply_blocked(
     tmp_path: Path, capsys, monkeypatch
 ):
     result = _run_prepare(
@@ -171,24 +173,22 @@ def test_prepare_with_thin_mulligan_sources_stays_applyable_and_diagnosed(
     )
 
     operator = result["operator_summary"]
-    mulligan_surface = operator["config_usefulness"]["surfaces"]["mulligan"]
+    mulligan_surface = result["mulligan_plan"]["quality"]
 
     assert result["exit_code"] == 0
     assert result["payload"]["status"] == "passed"
-    assert operator["technical_status"] == "VALID_PACKAGE"
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
-    assert operator["runtime_apply_allowed"] is True
+    assert operator["technical_status"] == "INVALID_PACKAGE"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["runtime_apply_allowed"] is False
+    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"
     assert operator["config_usefulness"]["blocking"] is False
-    assert operator["config_usefulness"]["first_usefulness_gap"] == "target_scope_gap"
+    assert operator["config_usefulness"]["status"] == "invalid_package"
     assert mulligan_surface["status"] == "policy_backed"
     assert (
         mulligan_surface["first_gap_reason"]
         == "policy_backed_autonomous_mulligan"
     )
-    assert (
-        mulligan_surface["next_source_need"]
-        == "none"
-    )
+    assert mulligan_surface["policy_result"]["status"] == "applied"
 
 
 def _run_prepare(

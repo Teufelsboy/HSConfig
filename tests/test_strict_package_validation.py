@@ -12,6 +12,7 @@ from hsconfig.cli import main
 from hsconfig.contract_preflight import build_package_contract_preflight
 from hsconfig.io import write_json
 from hsconfig.strict_package_validation import validate_complete_package
+from tests.helpers.verified_deck_input import VERIFIED_TEST_DECK_CODE
 
 
 @pytest.mark.parametrize(
@@ -100,12 +101,11 @@ def _build_fixture(
             "--deck-name",
             "Strict Fixture",
             "--deck-code",
-            "fixture-code",
+            VERIFIED_TEST_DECK_CODE,
             "--runtime-root",
             str(tmp_path / "build-runtime"),
             "--out",
             str(tmp_path / "build-package"),
-            "--allow-placeholder",
         ],
     )
 

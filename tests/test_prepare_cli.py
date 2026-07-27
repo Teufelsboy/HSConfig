@@ -538,8 +538,9 @@ def test_prepare_low_confidence_source_documents_do_not_lower_runtime_rows(
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
     assert readiness["summary"]["generic_low_confidence"] == 3
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
+    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
+    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
 
 
 def test_prepare_operator_summary_uses_live_source_claim_gap_report(
@@ -735,7 +736,8 @@ def test_prepare_low_confidence_claims_json_does_not_lower_runtime_rows(
     assert readiness["summary"]["runtime_emitted"] == 0
     assert readiness["summary"]["mulligan_only"] == 0
     assert readiness["summary"]["generic_low_confidence"] == 2
-    assert operator_summary["semantic_status"] == "VALID_BUT_NOT_GUIDE_STRONG"
+    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
+    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
 
 
 def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tmp_path: Path, capsys):
@@ -823,8 +825,9 @@ def test_prepare_source_documents_missing_source_confidence_stays_unsupported(tm
         ["source_confidence"],
         ["source_confidence"],
     ]
-    assert operator_summary["semantic_status"] == "STATIC_SEMANTICS_USABLE"
-    assert operator_summary["next_action"] == "READY_TO_APPLY_WITH_WARNINGS"
+    assert operator_summary["semantic_status"] == "INVALID_PACKAGE"
+    assert operator_summary["next_action"] == "FIX_PACKAGE_BEFORE_APPLY"
+    assert operator_summary["deck_input_verification"]["status"] == "cards_json_unverified"
 
 
 def test_prepare_source_document_timed_combo_emits_combo_json(tmp_path: Path, capsys):
@@ -2213,4 +2216,5 @@ def test_prepare_writes_mechanic_drift_report_and_operator_summary(
     assert drift_report["unknown_card_types"] == ["lettuce_ability"]
     assert operator["mechanic_drift_summary"]["unknown_mechanic_count"] == 1
     assert operator["mechanic_drift_summary"]["unknown_card_type_count"] == 1
-    assert operator["runtime_apply_mode"] == "load_safe_apply"
+    assert operator["runtime_apply_mode"] == "blocked"
+    assert operator["deck_input_verification"]["status"] == "cards_json_unverified"

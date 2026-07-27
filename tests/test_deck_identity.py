@@ -1,6 +1,24 @@
+import importlib
+import json
+
 import pytest
 
+from hsconfig.deckstring_decode import decode_deck_code
 from hsconfig.deck_identity import build_deck_identity, stable_deck_fingerprint
+from hsconfig.input_loading import load_cards
+
+
+SHADOWPRIEST_CODE = (
+    "AAEBAa0GApG8Arv3Aw6hBJEP6bADurYD184Do/cDrfcDhoMF3aQFyKEGxKgG/"
+    "KgG17oG1cEGAAA="
+)
+
+
+def _deck_input_verification_module():
+    try:
+        return importlib.import_module("hsconfig.deck_input_verification")
+    except ModuleNotFoundError:
+        pytest.fail("hsconfig.deck_input_verification is required")
 
 
 def test_stable_deck_fingerprint_is_order_independent():
@@ -67,4 +85,148 @@ def test_build_deck_identity_rejects_missing_card_id():
             deck_name="Example",
             deck_code="test-code",
             cards=[{"dbf_id": 1, "count": 1}],
+        )
+
+
+@pytest.mark.parametrize(
+    ("source", "deck_code", "cards_factory", "expected_status", "eligible"),
+    [
+        (
+            "deckstring",
+            SHADOWPRIEST_CODE,
+            lambda decoded: decoded,
+            "decoded_from_deck_code",
+            True,
+        ),
+        (
+            "cards_json",
+            SHADOWPRIEST_CODE,
+            lambda decoded: list(reversed(decoded)),
+            "cards_json_matches_deck_code",
+            True,
+        ),
+        (
+            "cards_json",
+            SHADOWPRIEST_CODE,
+            lambda decoded: [{**decoded[0], "count": decoded[0]["count"] + 1}, *decoded[1:]],
+            "cards_json_unverified",
+            False,
+        ),
+        (
+            "placeholder",
+            None,
+            lambda _decoded: [{"card_id": "HSC_PLACEHOLDER", "count": 1}],
+            "placeholder_unverified",
+            False,
+        ),
+        (
+            "cards_json",
+            "malformed-deck-code",
+            lambda decoded: decoded,
+            "cards_json_unverified",
+            False,
+        ),
+        (
+            "cards_json",
+            "AA==",
+            lambda decoded: decoded,
+            "cards_json_unverified",
+            False,
+        ),
+    ],
+)
+def test_deck_input_verification_matrix(
+    source,
+    deck_code,
+    cards_factory,
+    expected_status,
+    eligible,
+):
+    verification = _deck_input_verification_module()
+    decoded_cards = decode_deck_code(SHADOWPRIEST_CODE)["cards"]
+
+    verdict = verification.verify_deck_input(
+        deck_code=deck_code,
+        cards=cards_factory(decoded_cards),
+        source=source,
+    )
+
+    assert verdict["status"] == expected_status
+    assert verdict["runtime_apply_eligible"] is eligible
+    assert verdict["normalized_roster_sha256"].startswith("sha256:")
+    assert len(verdict["normalized_roster_sha256"]) == 71
+
+
+def test_deck_input_verification_normalizes_multiset_without_names_or_order():
+    verification = _deck_input_verification_module()
+    decoded_cards = decode_deck_code(SHADOWPRIEST_CODE)["cards"]
+    card_with_two_copies = next(card for card in decoded_cards if card["count"] == 2)
+    supplied_cards = [
+        {
+            **card,
+            "name": f"Renamed {index}",
+        }
+        for index, card in enumerate(reversed(decoded_cards))
+        if card["card_id"] != card_with_two_copies["card_id"]
+    ]
+    supplied_cards.extend(
+        [
+            {
+                "card_id": card_with_two_copies["card_id"],
+                "count": 1,
+                "name": "First duplicate",
+            },
+            {
+                "card_id": card_with_two_copies["card_id"],
+                "count": 1,
+                "name": "Second duplicate",
+            },
+        ]
+    )
+
+    verdict = verification.verify_deck_input(
+        deck_code=SHADOWPRIEST_CODE,
+        cards=supplied_cards,
+        source="cards_json",
+    )
+
+    assert verdict["status"] == "cards_json_matches_deck_code"
+    assert verdict["runtime_apply_eligible"] is True
+
+
+@pytest.mark.parametrize(
+    ("cards", "error_code"),
+    [
+        ([{"card_id": "EX1_001", "count": 0}], "deck_input_count_non_positive"),
+        ([{"card_id": "EX1_001", "count": -1}], "deck_input_count_non_positive"),
+        ([{"count": 1}], "deck_input_card_id_missing"),
+    ],
+)
+def test_deck_input_verification_rejects_invalid_roster_before_hashing(
+    cards,
+    error_code,
+):
+    verification = _deck_input_verification_module()
+
+    with pytest.raises(ValueError, match=error_code):
+        verification.verify_deck_input(
+            deck_code=SHADOWPRIEST_CODE,
+            cards=cards,
+            source="cards_json",
+        )
+
+
+@pytest.mark.parametrize("count", [True, 1.5])
+def test_load_cards_rejects_non_integer_count_types(tmp_path, count):
+    cards_json = tmp_path / "cards.json"
+    cards_json.write_text(
+        json.dumps({"cards": [{"card_id": "EX1_001", "count": count}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="deck_input_count_invalid"):
+        load_cards(
+            str(cards_json),
+            deck_name="Example",
+            deck_code=SHADOWPRIEST_CODE,
         )

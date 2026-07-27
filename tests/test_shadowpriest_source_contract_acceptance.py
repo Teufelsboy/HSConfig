@@ -26,7 +26,10 @@ def test_configure_shadowpriest_fixture_is_diagnostic_not_strategic_authority(
 ):
     _stub_empty_fetches(monkeypatch)
     cards_json = tmp_path / "cards.json"
-    _write_shadow_cards_json(cards_json)
+    _write_shadow_cards_json(
+        cards_json,
+        deck_code=SOURCE_MATCHING_SHADOWPRIEST_CODE,
+    )
     out = tmp_path / "configure"
     source_url = "https://example.test/current-shadowpriest-guide"
     source_fixture = tmp_path / "shadowpriest_current_guide.html"
