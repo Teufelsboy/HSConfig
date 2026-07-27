@@ -44,13 +44,13 @@ hsconfig configure --auto-source --source-search-results-json ...
 
 The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing research and prepare stages. `source-autopilot` is source-strength preflight, not runtime apply authority. decklist-only and static records do not promote `SOURCE_BACKED_STRONG`.
 
-`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and leaves the final decision in `outputs/<DeckName>/04_package/reports/operator_summary.json`. It only writes runtime files when `--apply` is explicitly requested.
+`hsconfig configure` is the one-command pre-run package path. It decodes the deck, writes the manifest, creates source-document/research/package output folders, runs research, prepares the package, validates it, and leaves the sole human-facing verdict in `outputs/<DeckName>/04_package/reports/operator_summary.json`. Individual reports are diagnostic and must not be used to infer apply readiness. It only writes runtime files when `--apply` is explicitly requested.
 
 Lower-level inspected path: `source-manifest -> source-autopilot or draft-source-documents -> research-deck -> prepare -> validate -> apply`.
 
 Use the lower-level inspected path when you need to review or edit source evidence between stages. Compact source-search records can be converted with `hsconfig source-autopilot` before the inspected chain continues. It starts with `hsconfig source-manifest`, continues through `hsconfig source-autopilot` or `hsconfig draft-source-documents`, then `hsconfig research-deck` and `hsconfig prepare`, and still ends at `reports/operator_summary.json` plus the guarded `hsconfig apply` gate.
 
-Runtime apply is guarded: `hsconfig apply` validates the package, checks `reports/operator_summary.json`, creates a fake apply receipt, verifies the package hash, and then writes only when runtime apply is explicitly requested.
+Runtime apply is guarded by recomputed strict validation, verified deck input and strategic source authority, deterministic package derivation, and operator-summary parity. See `docs/operator/README.md` for the exact gate order and blocked reason codes.
 Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
 
 Keep the installed skill synchronized with:

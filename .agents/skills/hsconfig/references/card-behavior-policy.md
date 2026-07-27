@@ -108,6 +108,15 @@ and other state-dependent mechanics remain report-only until a documented safe
 condition exists. A metadata-only CardID file is not `runtime_emitted`; only a
 parsed physical payload with a non-metadata `values` row can earn that status.
 
+- Source card: `SW_448` (Darkbishop Benedictus)
+- Link: `hero_power_transform`
+- Runtime owner: `EX1_625t` (Mind Spike)
+- Physical row: `CardID/EX1_625t.json`
+
+The source card causes the transform while the linked entity owns
+`BeforeUseHeroPowerBonus / * / 10`. The numeric bonus is configuration policy,
+not proof of optimal play.
+
 ## Physical Runtime Row Contract
 
 | Concept | Shape | Result |

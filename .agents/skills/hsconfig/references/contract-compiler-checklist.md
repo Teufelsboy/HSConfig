@@ -13,6 +13,15 @@ Use this checklist before generated config handoff, source-depth work, or runtim
 9. Darkbishop gate: preserve `SW_448` hero-power-transform semantics, but do not emit a Mulligan keep without explicit opening-hand source text.
 10. Boundary gate: do not add `Presume.json`, `Concede.json`, aggregate `CardBehavior.json`, replay parsing, winrate analysis, HSTuner tuning, or gameplay sequencing logic.
 
+## Authority Hardening
+
+- Only `live_http` plus `live_verified` provenance can mint strategic receipts; captured, fixture, manual, and legacy inputs are diagnostic only for strategic authority.
+- Static semantics can support deterministic CardID/effect claims but can never authorize strategic Combo order.
+- `reports/operator_summary.json` is the sole human-facing verdict; never infer apply readiness from individual diagnostic reports.
+- Unverified deck input blocks apply, and package derivation is recomputed before write authorization.
+- `SW_448` causes `hero_power_transform`; `EX1_625t` owns the physical Mind Spike behavior row.
+- Offline tests prove neither in-client behavior nor gameplay optimality.
+
 ## Semantic Handoff Safety
 
 - `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.

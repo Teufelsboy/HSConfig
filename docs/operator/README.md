@@ -12,7 +12,7 @@ Research artifacts are evidence, not operator instructions. Use `docs/research/R
 - Before source refresh, package generation, or runtime-facing apply review, run `git fetch --all --prune --tags`, `python scripts/check_hsconfig_currentness.py --cwd . --json`, and `git status --short --branch`. Runtime-facing work must start from a clean worktree and not be behind `origin/main`; feature branches may be ahead.
 - Use `--online-source --auto-source --source-url ...` for public guide URLs, or `--auto-source --source-search-results-json ...` for captured source records.
 - After `configure`, read `<out>/configure_summary.json.acceptance_summary` first, then `<out>/configure_summary.json.handoff_contract`, then `<out>/configure_summary.json.source_closure_receipt` when source depth is the question. Use `reports/operator_summary.json` as the apply authority. `source_closure_receipt` is a compact diagnostic-only source-closure receipt. It does not replace `reports/operator_summary.json`, cannot promote, block, apply, or write runtime files, and keeps source_status_apply_blocking=false.
-- `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed.
+- `technical_status=VALID_PACKAGE` plus `runtime_apply_mode=load_safe_apply` means runtime apply is allowed. This is the human-facing verdict only when read from `reports/operator_summary.json`; the apply command recomputes every technical authority boundary before writing.
 - Warnings are follow-up work, not a second apply path.
 - HSTuner owns post-run evaluation and tuning.
 
@@ -75,7 +75,7 @@ When public guide URLs are available for a fresh config, use the online source p
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --online-source --auto-source --source-url "<public-guide-url>" --json
 ```
 
-This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. It can reach `SOURCE_BACKED_STRONG` only when acquired sources contain exact deck-matching guide claims or explicit supported static effect semantics that lower through the existing source-to-runtime contract. If sources are thin, unavailable, stale, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a load-safe package when technically valid and reports the first missing source link.
+This writes `02_source_acquisition`, `03_source_autopilot`, and the normal `04_package`. Strategic Strong claims require exact deck-matching guide claims acquired as `live_http` with `live_verified` provenance and bound to matching strategic receipts. Static semantics may support only deterministic identity, role, and mechanical effect claim families. If sources are thin, unavailable, stale, captured, fixture-backed, manual, legacy, only decklist evidence, or static records without supported effect semantics, HSConfig still builds a diagnostic/load-safe package when technically valid and reports the first missing source link.
 
 When `--online-source` is used, HSConfig also checks its source candidate
 registry for the deck name. These candidate URLs are acquisition seeds only.
@@ -89,14 +89,14 @@ When current guide/search records are already captured, use the source-autopilot
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims are still required. `reports/operator_summary.json` remains the only normal apply authority.
+This writes `02_source_autopilot/source_autopilot_report.json`, `02_source_autopilot/source_evidence_rows.json`, and `02_source_autopilot/source_documents.json`, then feeds the generated source documents into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts; static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`. Supported deterministic static effect claims remain eligible only for their non-strategic claim families. `reports/operator_summary.json` remains the only normal apply authority.
 
-Source freshness/provenance fields are diagnostic-only. `freshness_status`,
-`current_or_evergreen`, `current_or_evergreen_reason`, `deck_identity_match`,
-and `deck_identity_match_basis` explain why a fetched source can or cannot
-support `SOURCE_BACKED_STRONG`. Missing or stale provenance prevents Strong
-promotion, but it does not block a technically valid load-safe package and it
-does not replace `reports/operator_summary.json`.
+Source freshness fields remain diagnostic, while normalized acquisition
+provenance is an authorization input for strategic receipts. Only
+`live_http` plus `live_verified` can mint them; captured, fixture, manual, and
+legacy inputs remain diagnostic-only for strategic authority. Missing or stale
+authority prevents strategic Strong promotion, but it does not replace
+`reports/operator_summary.json`.
 
 For staged inspection, use the Lower-Level Inspected Path below.
 Per-card runtime files use `per-card <CARDID>.json` naming when the guide-backed surface is documented.
@@ -171,10 +171,10 @@ runtime write. Runtime output is decided by surface-specific gates:
 
 - `Mulligan.json`: only explicit `mulligan_keep` or `mulligan_discard` claims.
 - `GlobalValues.json`: curated `gameplan_posture` overlays plus full baseline keys.
-- `Combo.json`: exact `combo_sequence` claims with valid CardID sequences.
+- `Combo.json`: exact `combo_sequence` claims with valid CardID sequences and a matching live-verified strategic receipt; static semantics never authorize strategic Combo order.
 - `<CARDID>.json`: documented CardID behavior claims such as targeting,
   mechanic usage, hero-power transform, discover, choose-one, and known bad
-  patterns.
+  patterns. A curated linked runtime entity may own the physical file.
 
 Wrong-surface or low-confidence claims do not block deck generation. They are
 reported as suppressed/report-only rows with explicit reasons.
@@ -191,6 +191,21 @@ facts do not become Mulligan keeps unless there is separate exact hand-keep
 authority. `source_contract_audit.json` is diagnostic; `operator_summary.json`
 remains the normal apply authority.
 
+### Linked Runtime Ownership
+
+Card semantics and physical runtime ownership are separate:
+
+- Source card: `SW_448` (Darkbishop Benedictus)
+- Link: `hero_power_transform`
+- Runtime owner: `EX1_625t` (Mind Spike)
+- Physical row: `CardID/EX1_625t.json`
+
+`SW_448` causes the transform and stays traceable in diagnostics;
+`EX1_625t` owns the physical `BeforeUseHeroPowerBonus / * / 10` row.
+The numeric bonus is a configuration policy value, not proof of optimal play.
+Unknown or uncurated linked entities are suppressed rather than written to an
+arbitrary non-deck CardID.
+
 ### Audited Semantic Closure
 
 Use the [source-contract spine](source-contract-spine.md) for the compact
@@ -201,7 +216,7 @@ for exact source identity and Mulligan eligibility.
 - Guide-backed Mulligan claims require `exact_deck_matched`.
 - `hero_power_transform` does not authorize aggressive GlobalValues by itself.
 - A metadata-only CardID file is not `runtime_emitted`.
-- Load safety does not prove in-client optimality.
+- Offline tests prove neither in-client behavior nor gameplay optimality.
 - `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
 
 The six `configuration_assurance` fields keep independent truths separate:
@@ -247,9 +262,38 @@ Semantic handoff safety:
 - A thin Mulligan means guide evidence and autonomous policy did not find enough safe keeps. It is a source-quality signal, not a HearthRanger load error. When no source-backed keep can be emitted, `policy_backed_autonomous_mulligan` may still emit a small low-curve keep set, but it remains weaker than source-backed guide evidence, cannot promote the deck to `SOURCE_BACKED_STRONG`, vetoes cards with explicit, suppressed, or quarantined Mulligan source intent, and must not keep non-hand start-of-game enablers such as Darkbishop Benedictus without explicit opening-hand source text.
 - HSConfig stays pre-run only. Post-game evidence review and post-game tuning belong in HSTuner, outside this skill.
 
-## Single Gate
+## Runtime Apply Authority
 
-Use `reports/operator_summary.json` as the normal operator gate.
+`reports/operator_summary.json` is the sole human-facing verdict; never infer apply readiness from individual diagnostic reports.
+The CLI and direct Python apply path do not trust that verdict as a
+self-assertion. Before any runtime mutation they use this exact order:
+
+1. Load the package and `reports/operator_summary.json`.
+2. Validate required structure, forbidden surfaces, runtime JSON, and strict package semantics.
+3. Recompute deck-input verification and require runtime apply eligibility.
+4. Verify strategic source authority.
+5. Verify the derivation receipt schema and summary-bound digest.
+6. Recompute package derivation from authoritative inputs and runtime JSON.
+7. Verify operator-summary derivation metadata and generated-file parity.
+8. Authorize the runtime write only for a recomputed valid package.
+
+Only `decoded_from_deck_code` and `cards_json_matches_deck_code` inputs are
+apply-eligible. Unverified deck input blocks apply even when a diagnostic package can still be built.
+
+Stable technical block codes include:
+
+- `strict_package_validation_failed`
+- `deck_input_not_verified`
+- `source_authority_receipt_invalid`
+- `package_derivation_receipt_missing`
+- `package_derivation_receipt_schema_unsupported`
+- `package_derivation_receipt_digest_mismatch`
+- `package_derivation_mismatch`
+- `operator_summary_derivation_inconsistent`
+
+`package_derivation_mismatch` is the recomputation failure: authoritative deck
+identity, source receipts, GlobalValues authority inputs, ownership manifest,
+or runtime JSON no longer matches the canonical receipt.
 
 `no_block_failure_mode_summary` is the fastest way to read why a package did
 or did not stop. `technical_hard_block` is the only hard stop category. The
@@ -458,7 +502,7 @@ Then read `<out>/configure_summary.json.config_proof_summary` only as a diagnost
 
 ## Expert Paths
 
-Use `hsconfig build`, `hsconfig research-contract`, `--cards-json`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs.
+Use `hsconfig build`, `hsconfig research-contract`, `--claims-json`, `--plan-reports-dir`, and `--allow-placeholder` only for fixtures, diagnostics, or inspected expert inputs. `--cards-json` is apply-eligible only when its normalized roster exactly matches the decoded deck code; otherwise it remains diagnostic and apply is blocked.
 
 `--allow-source-informed` is a backward-compatible legacy no-op. It does not create a second apply path. Runtime apply decisions come from `reports/operator_summary.json`.
 

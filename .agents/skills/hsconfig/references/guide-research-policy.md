@@ -12,7 +12,7 @@ Every source document should be written as structured JSON and normalized with `
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims, or supported official static effect semantics, can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts. Supported static effect semantics may contribute only to deterministic non-strategic claim families. operator_summary.json remains the only normal apply authority.
 
 `source_autopilot_report.json` stays diagnostic. Read
 `runtime_apply_authority`, `default_only_runtime_surfaces`,
@@ -40,7 +40,7 @@ Rejected source types:
 ## Source Lanes
 
 - `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
-- `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
+- `deck_matched_public_guide`: explicit public guide whose decoded deck fingerprint matches the target list.
 - `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
 - `evergreen_wild_archetype`: full-text public Wild deck or archetype guide for an evergreen archetype pattern, with explicit deck/archetype match and concrete card overlap.
 - `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
@@ -48,11 +48,31 @@ Rejected source types:
 - `policy_fallback`: internal autonomous rule used to keep packages useful.
 - `default_runtime`: generated default row with no source claim.
 
-Only explicit `official_static_semantics`, explicit current `deck_matched_public_guide`, explicit current `archetype_matched_public_guide`, and qualifying `evergreen_wild_archetype` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
+Strong authority is claim-kind-specific. Strategic claims require
+`deck_matched_public_guide` plus a verified strategic receipt. Deterministic
+identity, role, and mechanical effect claims may use
+`deck_matched_public_guide` or `source_backed_static_semantics`.
+`decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets,
+`default_runtime`, and runtime examples must not prove
+`SOURCE_BACKED_STRONG`.
 
-Evergreen Wild guide rule: `SOURCE_BACKED_STRONG` may use a current deck-matched public guide or `evergreen_wild_archetype` evidence when the source is full-text public Wild guide material, deck- or archetype-matched, and has explicit card overlap with the deck cards or strategic package being lowered. Current deck-matched guide evidence should still win when available; old non-Wild guides, snippets, decklists, HSReplay/HSGuru aggregate stats, and static card databases are support or diagnostic evidence. They must not prove strategic runtime surfaces by themselves, including opening-hand Mulligan keeps, combo order, targeting posture, or gameplan posture, and they must not promote `SOURCE_BACKED_STRONG` without a matching guide claim.
+Evergreen Wild guide rule: a full-text public Wild guide with explicit card overlap remains useful `evergreen_wild_archetype` strategic context, not exact strategic receipt authority.
+Current exact deck-matched guide evidence acquired through the live-verified path is required for strategic `SOURCE_BACKED_STRONG` claims; old non-Wild guides, archetype-only guides, snippets, decklists, HSReplay/HSGuru aggregate stats, and static card databases remain support or diagnostic evidence and must not prove strategic runtime surfaces by themselves.
 
 HearthstoneJSON and other static records may support deterministic CardID/effect rows like `hero_power_transform`, identity, or card-text semantics. They must not create opening-hand Mulligan keeps without an explicit mulligan claim from a qualifying guide source. operator_summary.json remains the only normal apply authority.
+
+## Strategic Acquisition Authority
+
+Only `live_http` plus `live_verified` provenance can mint strategic receipts.
+Captured, fixture, manual, and legacy inputs are diagnostic-only for strategic authority.
+
+| Mode | Authority | Strategic receipt |
+| --- | --- | --- |
+| `live_http` | `live_verified` | eligible after all exact guide gates |
+| `captured_record` | `captured_unverified` | no; diagnostic-only |
+| `manual_evidence` | `manual_unverified` | no; diagnostic-only |
+| `fixture_map` | `fixture_only` | no; diagnostic-only |
+| `legacy_claims_json` | `legacy_unverified` | no; diagnostic-only |
 
 ## Exact Source Authority
 
@@ -77,7 +97,7 @@ exact authority for a 30-card target deck.
 | `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
 | `target_deck_fingerprint` | present and equal to `matched_deck_fingerprint` | suppress with visible reason |
 | `exact_deck_evidence` | `matched=true`; both counts `>=1`; non-empty code-hash list | suppress with visible reason |
-| `source_receipt` | matching `claim_id`, claim signature, and target fingerprint | suppress with visible reason |
+| `source_receipt` | matching `claim_id`, claim signature, target fingerprint, and `live_http` / `live_verified` provenance | suppress with visible reason |
 | `promotion_eligible` | `true` | suppress with visible reason |
 | `source_visibility` | `full_text` | suppress with visible reason |
 | `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
@@ -333,6 +353,7 @@ Explicit guide-backed discard intent remains separate and may lower to
 Combo timing support:
 
 - `combo_sequence` claims must include explicit `sequence`, `timing_kind`, `operator`, and `values` before runtime `Combo.json` emission.
+- Static semantics can never authorize strategic Combo order.
 - Claims without explicit order or timing stay in reports and do not become runtime rows.
 
 GlobalValues key authority:

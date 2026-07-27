@@ -26,43 +26,44 @@ For a source-refreshed deck config on the source-backed route, use this command 
 
 Before source refresh, deck package generation, or runtime-facing apply work, run `git fetch --all --prune --tags`, then `python scripts/check_hsconfig_currentness.py --cwd . --json`.
 Feature branches may be ahead of `origin/main`, but must not be behind, and runtime-facing verification starts from a clean worktree.
-
 ## Hard Boundaries
 
-- Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Guide-backed Mulligan claims require `exact_deck_matched`.
+- Decode the deck code first, then resolve exact CardID identity before writing config. `exact_deck_matched` requires a decoded canonical deck fingerprint match. Unverified deck input blocks apply.
+- Only `live_http` plus `live_verified` can mint strategic receipts.
 - Guide-backed Mulligan authority requires consistent public-guide identity, complete exact evidence, the current target fingerprint, and a matching canonical source receipt.
 - GlobalValues posture authority requires a canonical non-plan receipt bound to claim signature and target fingerprint; untyped legacy posture cannot self-assert it.
 - Document and claim identities are additive; any non-guide signal vetoes. Canonical non-plan bundle, receipts, lifecycle, and audit remain truth; plan inputs are diagnostic only.
 - Freshly rebuilt Mulligan, CardID, and Combo plans are the sole runtime truth; imported plan payloads are diagnostic only.
 - Re-gate plan rows with canonical lifecycle, target fingerprint, and receipts. Suppressions retain key/operation/overlay/value/claim refs; malformed counts fail closed.
 - Runtime writes happen only through `hsconfig apply` or `hsconfig configure --apply`.
-- `reports/operator_summary.json` remains the only normal apply authority.
-- Runtime apply is guarded by `operator_summary.json`, package structure, fake receipts, and package hashes.
+- `reports/operator_summary.json` remains the only normal apply authority. `reports/operator_summary.json` is the sole human-facing verdict; never infer apply readiness from individual diagnostic reports.
+- Runtime apply is guarded. The apply gate recomputes package derivation before runtime write authorization.
 - After runtime apply, inspect `receipt.runtime_package_match.status`; it must be `matched` for a successful install.
   For read-only checks use `python -m hsconfig.cli runtime-match --package <package> --runtime-root <runtime> --json`. This is an install-integrity check, not a source/semantic apply gate.
 - `SOURCE_BACKED_STRONG` is an evidence-quality label, not a generation or apply gate. `SOURCE_BACKED_STRONG` proves source closure only. It is necessary but not sufficient for semantic handoff.
-  Load safety does not prove in-client optimality.
+  Offline tests prove neither in-client behavior nor gameplay optimality.
 - Read `semantic_handoff_status` and `semantic_handoff_reasons` before describing a package as semantically closed. `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
 - `semantic_handoff_status` is diagnostic and never creates a second apply gate.
 - `source_status_apply_blocking` must remain `false` for source-quality work.
 - No hidden default-only runtime success.
 - Every expected surface must be emitted, explicitly suppressed, or reported as a visible source/action gap.
-- Normal output remains `GlobalValues.json`, `Mulligan.json`, per-card `<CARDID>.json`, and `Combo.json` only for exact ordered combo evidence. A metadata-only CardID file is not `runtime_emitted`.
+- Normal output remains `GlobalValues.json`, `Mulligan.json`, and per-card `<CARDID>.json`; `Combo.json` only for exact ordered combo evidence.
+- Strategic Combo authority additionally requires a verified live receipt. A metadata-only CardID file is not `runtime_emitted`.
 - `Presume.json`, `Concede.json`, and aggregate `CardBehavior.json` are outside the normal HSConfig output path.
 - Effect semantics are not opening-hand mulligan keeps. Never lower generic gameplay “keep” prose into `Mulligan.json`; explicit opening-hand or Mulligan context is required.
 - Reject the whole runtime row when any structured condition atom is unsupported.
 - Targeting claims count as closed only when target scope and a compatible target surface are both encoded.
 - Do not emit generic `InHandPlayPriority` or `BeforePlayCardBonus` rows solely to make every-card coverage appear complete.
 - Preserve Darkbishop Benedictus / `SW_448` hero-power-transform semantics, but do not emit a Mulligan keep without explicit opening-hand source text.
-  `hero_power_transform` does not authorize aggressive GlobalValues by itself.
+- Source card: `SW_448` (Darkbishop Benedictus); link: `hero_power_transform`; runtime owner: `EX1_625t` (Mind Spike); physical row: `CardID/EX1_625t.json`.
+  Preserve the transform without a Darkbishop Mulligan keep or GlobalValues posture inference; the bonus is policy, not optimality proof.
 - Card-intent taxonomy is diagnostic-only. It explains per-card config signals but does not encode HearthRanger gameplay sequencing or create another apply gate.
-
 ## Source Contract
 
 - Candidate registries, `source_closure_intake_receipt.json`, and `source-autopilot` are acquisition input or source preflight only.
 - Source evidence lowers through `claim_kind`, surface gates, builder/router outcomes, and visible diagnostics before runtime rows emit.
 - Static semantics are surface-scoped and may support deterministic CardID/effect rows such as `hero_power_transform`.
-- Static semantics do not prove Mulligan, combo, targeting, or gameplan posture without matching source claims.
+- Static semantics can never authorize strategic Combo order. They do not prove Mulligan, targeting, or gameplan posture.
 - When source coverage is weak, still build a technically valid load-safe package and report `first_missing_source_action`.
 - Contract compiler checklist: `references/contract-compiler-checklist.md`.
 
@@ -72,7 +73,6 @@ Feature branches may be ahead of `origin/main`, but must not be behind, and runt
 - Use `--skill-install-root` only for non-default skill roots.
 - Use optional expert inputs only for fixtures, diagnostics, or inspected expert paths.
 - Use `--allow-placeholder` only for deterministic fixture or preview tests.
-
 ## References:
 
 `references/workflow.md`; `references/visionai-surfaces.md`; `references/contract-compiler-checklist.md`;

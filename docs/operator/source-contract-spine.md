@@ -40,6 +40,19 @@ A metadata-only CardID file is not `runtime_emitted`.
 Load safety does not prove in-client optimality.
 `configuration_assurance` is diagnostic and has `runtime_gate_impact=none`.
 
+## Claim-Kind Strong Authority
+
+| Claim family | Claim kinds | Strong authority |
+| --- | --- | --- |
+| `strategic_claims` | `combo_sequence`, `mulligan_keep`, `mulligan_discard`, `targeting_rule`, `gameplan_posture`, `globalvalue_numeric_tuning` | `deck_matched_public_guide` plus verified strategic receipt |
+| `deterministic_static_claims` | identity, role, and mechanical effect families | `deck_matched_public_guide` or `source_backed_static_semantics` |
+
+Static semantics can support deterministic CardID and effect claims, but they can never authorize strategic Combo order.
+Strategic receipts require canonical exact-deck guide evidence acquired through
+`live_http` with `live_verified` authority. Captured, fixture, manual, legacy,
+static, policy, statistical, decklist, snippet, and default-runtime evidence
+remains diagnostic-only for strategic authority.
+
 ## GlobalValues Plan Trust Boundary
 
 | Boundary | Canonical input | Required outcome |
@@ -76,7 +89,7 @@ fail-closed diagnostics against the canonical authority matrix.
 
 | Semantic family | Identity | Runtime surface | Boundary |
 | --- | --- | --- | --- |
-| `hero_power_transform` | `SW_448 -> EX1_625t` | one `BeforeUseHeroPowerBonus` | No Darkbishop body priority and no inferred Mulligan keep. |
+| `hero_power_transform` | `SW_448 -> EX1_625t` | one `BeforeUseHeroPowerBonus` in `CardID/EX1_625t.json` | No Darkbishop body priority and no inferred Mulligan keep. |
 | `gameplan_posture` | separate exact guide claim | `GlobalValues.json` posture overlay | The Hero Power transform alone has no aggressive GlobalValues authority. |
 | `summon_trigger_board_engine` | Treasure Distributor or Ship's Chirurgeon | `OnBoardBonus` | Board engine value only; it does not claim the card summons a minion. |
 | `reciprocal_hero_burn` | reciprocal health effect | report-only | Self-health safety is not proven by the supported condition grammar. |
@@ -122,7 +135,7 @@ meaningful report row must correspond to physical output.
 | `mulligan_discard` | runtime_lowerable | `Mulligan.json` | Requires explicit opening-hand discard intent. |
 | `card_role` | suppressed_or_conditional | `CARDID.json` | Requires supported card behavior surface. |
 | `targeting_rule` | runtime_lowerable | `CARDID.json` | Requires supported target and block identity. |
-| `combo_sequence` | runtime_lowerable | `Combo.json` | Requires complete ordered sequence. |
+| `combo_sequence` | runtime_lowerable | `Combo.json` | Requires complete ordered sequence plus exact live-verified guide receipt; static semantics never authorize order. |
 | `gameplan_posture` | runtime_lowerable | `GlobalValues.json` | Posture overlay only; not numeric runtime tuning. |
 | `hero_power_transform` | suppressed_or_conditional | `CARDID.json` | Preserves effect semantics; not a mulligan keep by itself. |
 | `mechanic_usage` | suppressed_or_conditional | `CARDID.json` | Requires documented CardID surface. |

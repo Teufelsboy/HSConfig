@@ -1501,7 +1501,8 @@ def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
             "matched=true; both counts >=1; non-empty code-hash list"
         ),
         "source_receipt": (
-            "matching claim_id, claim signature, and target fingerprint"
+            "matching claim_id, claim signature, target fingerprint, and "
+            "live_http / live_verified provenance"
         ),
         "promotion_eligible": "true",
         "source_visibility": "full_text",
@@ -1589,3 +1590,36 @@ def test_skill_globalvalues_plan_trust_boundary_is_machine_readable() -> None:
         "`SOURCE_BACKED_PARTIAL`, exposes the exact-source gap, and mints no "
         "receipt."
     ) in guide
+
+
+def test_skill_routes_new_authority_contract_without_becoming_an_implementation_copy() -> None:
+    skill = _skill_entrypoint_text()
+    active_docs = _active_skill_docs_text()
+
+    required_entrypoint_phrases = [
+        (
+            "`reports/operator_summary.json` is the sole human-facing verdict; "
+            "never infer apply readiness from individual diagnostic reports."
+        ),
+        "Only `live_http` plus `live_verified` can mint strategic receipts.",
+        "Unverified deck input blocks apply.",
+        "The apply gate recomputes package derivation before runtime write authorization.",
+        (
+            "Offline tests prove neither in-client behavior nor gameplay "
+            "optimality."
+        ),
+    ]
+    for phrase in required_entrypoint_phrases:
+        assert phrase in skill
+
+    assert "Source card: `SW_448` (Darkbishop Benedictus)" in active_docs
+    assert "Runtime owner: `EX1_625t` (Mind Spike)" in active_docs
+    assert "Physical row: `CardID/EX1_625t.json`" in active_docs
+    assert "Static semantics can never authorize strategic Combo order." in active_docs
+    assert (
+        "Captured, fixture, manual, and legacy inputs are diagnostic-only for "
+        "strategic authority."
+    ) in active_docs
+    assert (
+        "The numeric bonus is configuration policy, not proof of optimal play."
+    ) in active_docs

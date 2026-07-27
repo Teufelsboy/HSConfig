@@ -13,4 +13,6 @@ Open `reports/operator_summary.json` first. Other reports explain source quality
 
 Choice-surface lowering for `discover_choice` and `choose_one_choice` stays within `per-card <CARDID>.json` and only lowers when option identity is source-backed; unresolved identities remain report-visible.
 
+Linked runtime entities may own physical CardID files. Source card: `SW_448` (Darkbishop Benedictus); link: `hero_power_transform`; runtime owner: `EX1_625t` (Mind Spike); physical row: `CardID/EX1_625t.json`. The numeric bonus is configuration policy, not proof of optimal play.
+
 Reports stay under `reports/` and must not be copied into runtime deck folders.

@@ -23,7 +23,7 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 ## Source Lanes
 
 - `official_static_semantics`: HearthstoneJSON, Blizzard card library, or equivalent card database facts.
-- `deck_matched_public_guide`: explicit public guide for the exact list or close archetype.
+- `deck_matched_public_guide`: explicit public guide whose decoded deck fingerprint matches the target list.
 - `archetype_matched_public_guide`: explicit guide for the same archetype but not exact decklist.
 - `evergreen_wild_archetype`: full-text public Wild deck or archetype guide for an evergreen archetype pattern, with explicit deck/archetype match and concrete card overlap.
 - `statistical_enrichment`: HSReplay/HSGuru-style aggregate or public stats surface.
@@ -31,13 +31,44 @@ For the normal operator entry point, start at `docs/operator/README.md`.
 - `policy_fallback`: internal autonomous rule used to keep packages useful.
 - `default_runtime`: generated default row with no source claim.
 
-Only explicit `official_static_semantics`, explicit current `deck_matched_public_guide`, explicit current `archetype_matched_public_guide`, and qualifying `evergreen_wild_archetype` may promote claims, and only for the runtime surface they actually support. `decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets, `default_runtime`, and runtime examples must not prove `SOURCE_BACKED_STRONG`.
+Promotion is claim-kind-specific. Deterministic identity, role, and mechanical
+effect claims may use `deck_matched_public_guide` or
+`source_backed_static_semantics`. Strategic claims can satisfy Strong only
+through `deck_matched_public_guide` with a verified strategic receipt.
+`decklist_only`, `statistical_enrichment`, `policy_fallback`, snippets,
+`default_runtime`, and runtime examples must not prove
+`SOURCE_BACKED_STRONG`.
 
 Static semantics are surface-scoped. Official or HearthstoneJSON static records may support deterministic CardID/effect rows such as `hero_power_transform`, but they do not prove deck-specific mulligan, combo, targeting, or gameplan posture without public guide evidence. Source-autopilot is preflight only; runtime default-only truth is read from `reports/operator_summary.json`.
 
+## Strategic Acquisition Authority
+
+Only `live_http` plus `live_verified` provenance can mint a canonical strategic source receipt.
+Captured, fixture, manual, and legacy inputs remain diagnostic-only for strategic authority.
+Content equality does not upgrade an unverified acquisition mode.
+
+| Mode | Authority | Strategic receipt |
+| --- | --- | --- |
+| `live_http` | `live_verified` | eligible after all exact guide gates |
+| `captured_record` | `captured_unverified` | no; diagnostic-only |
+| `manual_evidence` | `manual_unverified` | no; diagnostic-only |
+| `fixture_map` | `fixture_only` | no; diagnostic-only |
+| `legacy_claims_json` | `legacy_unverified` | no; diagnostic-only |
+
+This authority is narrow: live provenance is necessary but does not replace
+public-guide identity, exact deck fingerprint equality, complete bounded
+evidence, promotion eligibility, full-text visibility, the
+`deck_matched_public_guide` lane, or the matching receipt signature.
+
 ## Evergreen Wild Guide Rule
 
-`SOURCE_BACKED_STRONG` may use a current deck-matched public guide or `evergreen_wild_archetype` evidence when the source is full-text public Wild guide material, deck- or archetype-matched, and has explicit card overlap with the deck cards or strategic package being lowered. The evergreen lane exists for stable Wild archetypes where a current exact-list guide may be unavailable but a full-text public Wild guide still gives concrete card-level or package-level advice that maps to the runtime surface.
+`evergreen_wild_archetype` evidence remains useful strategic context, but it
+cannot mint exact strategic receipts or satisfy strategic Strong authority.
+The evergreen lane exists for stable Wild archetypes where a current exact-list
+guide may be unavailable; concrete card-level or package-level advice stays
+visible for diagnostics and source follow-up.
+A full-text public Wild guide with explicit card overlap can therefore inform
+the next source action without becoming an exact strategic receipt.
 
 Current deck-matched guide evidence should still win when available; old non-Wild guides, snippets, decklists, HSReplay/HSGuru aggregate stats, and static card databases are support or diagnostic evidence. They must not prove strategic runtime surfaces by themselves, including opening-hand Mulligan keeps, combo order, targeting posture, or gameplan posture, and they must not promote `SOURCE_BACKED_STRONG` without a matching guide claim.
 
@@ -68,7 +99,7 @@ checks must pass:
 | `deck_match_scope` | `exact_deck_matched` | suppress with visible reason |
 | `target_deck_fingerprint` | present and equal to `matched_deck_fingerprint` | suppress with visible reason |
 | `exact_deck_evidence` | `matched=true`; both counts `>=1`; non-empty code-hash list | suppress with visible reason |
-| `source_receipt` | matching `claim_id`, claim signature, and target fingerprint | suppress with visible reason |
+| `source_receipt` | matching `claim_id`, claim signature, target fingerprint, and `live_http` / `live_verified` provenance | suppress with visible reason |
 | `promotion_eligible` | `true` | suppress with visible reason |
 | `source_visibility` | `full_text` | suppress with visible reason |
 | `source_lane` | `deck_matched_public_guide` | suppress with visible reason |
@@ -168,7 +199,7 @@ Pass researched source documents with `--source-documents-json`, or pass normali
 hsconfig configure --deck-name "<DeckName>" --deck-code "<DeckCode>" --runtime-root "<HearthRangerRoot>" --out "outputs/<DeckName>" --auto-source --source-search-results-json "source_search_results.json" --json
 ```
 
-The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and static records without explicit supported effect semantics do not promote `SOURCE_BACKED_STRONG`; only current guide-backed or qualifying `evergreen_wild_archetype` card-specific runtime-lowerable claims, or supported official static effect semantics, can close the strong source-depth contract. operator_summary.json remains the only normal apply authority.
+The bridge writes `02_source_autopilot/source_documents.json` and feeds it into the existing `research-deck` and `prepare` stages. `source-autopilot` is source-strength preflight, not runtime apply authority. Captured search records, `decklist_only`, snippets, `policy_fallback`, `default_runtime`, and `evergreen_wild_archetype` context cannot mint strategic receipts. Supported official static effect semantics may contribute only to deterministic non-strategic claim families. operator_summary.json remains the only normal apply authority.
 
 `source_autopilot_report.json` should stay compact and machine-readable:
 `runtime_apply_authority` must remain `reports/operator_summary.json`,
@@ -630,7 +661,9 @@ Claim readiness lanes:
 - `generic_low_confidence`: no useful source or static semantic support exists.
 - `contract_gap`: the claim could not be made specific enough for the config contract.
 
-Only `guide_backed` and `source_backed_static_semantics` can contribute toward strong guide-depth readiness.
+For Strong readiness, `guide_backed` strategic claims additionally require the
+exact live-verified receipt path. `source_backed_static_semantics` contributes
+only to deterministic identity, role, and mechanical effect families.
 
 For each card, prefer claims that answer at least one of these questions:
 

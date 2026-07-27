@@ -23,7 +23,7 @@ Rules:
 - Evaluate document and claim source identities additively. Any explicit
   official, static, statistical, or otherwise non-guide signal vetoes
   public-guide authority.
-- Keep the canonical non-plan claim bundle, verified receipts, lifecycle, and
+- Keep the canonical non-plan claim bundle, live-verified receipts, lifecycle, and
   source audit as package truth. Imported plan claims, rows, and receipts stay
   in diagnostic-only `plan_input_diagnostics.json`.
 - Re-gate imported plan rows against canonical lifecycle, the target
@@ -49,9 +49,11 @@ Rules:
 | `archetype-only gameplan_posture` | baseline only | Keep validated posture values unchanged. |
 
 `hero_power_transform` does not authorize aggressive GlobalValues by itself.
-The exact `SW_448 -> EX1_625t` identity owns one CardID Hero Power bonus; it
+The exact source `SW_448` -> `hero_power_transform` -> runtime owner
+`EX1_625t` identity owns one physical `CardID/EX1_625t.json` Hero Power bonus; it
 does not authorize a Darkbishop body priority, a Mulligan keep, or a
-GlobalValues posture change. A neutral generated `MyHeroPowerValue=1.00` may
+GlobalValues posture change. The numeric bonus is configuration policy, not
+proof of optimal play. A neutral generated `MyHeroPowerValue=1.00` may
 fill a missing registered baseline key, but it is not an aggressive overlay.
 Archetype-only posture claims are suppressed visibly and cannot change posture.
 An asserted `deck_match_scope=exact_deck_matched` without matching

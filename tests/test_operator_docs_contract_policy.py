@@ -866,7 +866,8 @@ def test_exact_guide_mulligan_gate_is_machine_readable_and_fail_closed() -> None
             "matched=true; both counts >=1; non-empty code-hash list"
         ),
         "source_receipt": (
-            "matching claim_id, claim signature, and target fingerprint"
+            "matching claim_id, claim signature, target fingerprint, and "
+            "live_http / live_verified provenance"
         ),
         "promotion_eligible": "true",
         "source_visibility": "full_text",
@@ -1021,3 +1022,109 @@ def test_operator_contract_names_globalvalues_plan_trust_boundaries() -> None:
         "`SOURCE_BACKED_PARTIAL`, exposes the exact-source gap,\nand mints no "
         "receipt."
     ) in spine
+
+
+def test_operator_docs_define_strategic_acquisition_authority() -> None:
+    guide = (ROOT / "docs" / "operator" / "guide-research-policy.md").read_text(
+        encoding="utf-8"
+    )
+    rows = _markdown_table(guide, "## Strategic Acquisition Authority")
+
+    assert {
+        mode: (row["Authority"], row["Strategic receipt"])
+        for mode, row in rows.items()
+    } == {
+        "live_http": ("live_verified", "eligible after all exact guide gates"),
+        "captured_record": ("captured_unverified", "no; diagnostic-only"),
+        "manual_evidence": ("manual_unverified", "no; diagnostic-only"),
+        "fixture_map": ("fixture_only", "no; diagnostic-only"),
+        "legacy_claims_json": ("legacy_unverified", "no; diagnostic-only"),
+    }
+    assert (
+        "Only `live_http` plus `live_verified` provenance can mint a canonical "
+        "strategic source receipt."
+    ) in guide
+    assert (
+        "Captured, fixture, manual, and legacy inputs remain diagnostic-only "
+        "for strategic authority."
+    ) in guide
+
+
+def test_operator_docs_define_claim_kind_strong_and_combo_boundaries() -> None:
+    spine = (ROOT / "docs" / "operator" / "source-contract-spine.md").read_text(
+        encoding="utf-8"
+    )
+    rows = _markdown_table(spine, "## Claim-Kind Strong Authority")
+
+    assert rows["strategic_claims"]["Strong authority"] == (
+        "deck_matched_public_guide plus verified strategic receipt"
+    )
+    assert rows["deterministic_static_claims"]["Strong authority"] == (
+        "deck_matched_public_guide or source_backed_static_semantics"
+    )
+    assert (
+        "Static semantics can support deterministic CardID and effect claims, "
+        "but they can never authorize strategic Combo order."
+    ) in spine
+
+
+def test_operator_docs_define_linked_runtime_owner_and_verification_limits() -> None:
+    operator = (ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    linked_owner_lines = [
+        "Source card: `SW_448` (Darkbishop Benedictus)",
+        "Link: `hero_power_transform`",
+        "Runtime owner: `EX1_625t` (Mind Spike)",
+        "Physical row: `CardID/EX1_625t.json`",
+    ]
+    for line in linked_owner_lines:
+        assert line in operator
+    assert (
+        "The numeric bonus is a configuration policy value, not proof of "
+        "optimal play."
+    ) in operator
+    assert (
+        "Offline tests prove neither in-client behavior nor gameplay optimality."
+    ) in operator
+
+
+def test_operator_docs_define_apply_recomputation_order_and_reason_codes() -> None:
+    operator = (ROOT / "docs" / "operator" / "README.md").read_text(
+        encoding="utf-8"
+    )
+    section = _section(operator, "## Runtime Apply Authority")
+    ordered_steps = [
+        "1. Load the package and `reports/operator_summary.json`.",
+        "2. Validate required structure, forbidden surfaces, runtime JSON, and strict package semantics.",
+        "3. Recompute deck-input verification and require runtime apply eligibility.",
+        "4. Verify strategic source authority.",
+        "5. Verify the derivation receipt schema and summary-bound digest.",
+        "6. Recompute package derivation from authoritative inputs and runtime JSON.",
+        "7. Verify operator-summary derivation metadata and generated-file parity.",
+        "8. Authorize the runtime write only for a recomputed valid package.",
+    ]
+    positions = [section.index(step) for step in ordered_steps]
+    assert positions == sorted(positions)
+
+    for reason_code in [
+        "strict_package_validation_failed",
+        "deck_input_not_verified",
+        "source_authority_receipt_invalid",
+        "package_derivation_receipt_missing",
+        "package_derivation_receipt_schema_unsupported",
+        "package_derivation_receipt_digest_mismatch",
+        "package_derivation_mismatch",
+        "operator_summary_derivation_inconsistent",
+    ]:
+        assert f"`{reason_code}`" in section
+
+    assert (
+        "Unverified deck input blocks apply even when a diagnostic package can "
+        "still be built."
+    ) in section
+    assert (
+        "`reports/operator_summary.json` is the sole human-facing verdict; "
+        "never infer apply readiness from individual diagnostic reports."
+    ) in section

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from hsconfig.source_contract_matrix import source_contract_policy_by_claim_kind
@@ -30,6 +32,8 @@ EXPECTED_POLICY = {
     "choose_one_choice": ("suppressed_or_conditional", ("cardid",)),
     "globalvalue_numeric_tuning": ("runtime_evidence_required", ()),
 }
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _canonical_posture_bundle():
@@ -235,3 +239,21 @@ def test_each_policy_row_has_complete_contract_metadata():
         assert set(row["allowed_surfaces"]).issubset(
             {"mulligan", "globalvalues", "cardid", "combo"}
         ), claim_kind
+
+
+def test_source_contract_spine_freezes_claim_kind_specific_strong_authority():
+    spine = (
+        REPO_ROOT / "docs" / "operator" / "source-contract-spine.md"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "| `strategic_claims` | `combo_sequence`, `mulligan_keep`, "
+        "`mulligan_discard`, `targeting_rule`, `gameplan_posture`, "
+        "`globalvalue_numeric_tuning` | `deck_matched_public_guide` plus "
+        "verified strategic receipt |"
+    ) in spine
+    assert (
+        "| `deterministic_static_claims` | identity, role, and mechanical "
+        "effect families | `deck_matched_public_guide` or "
+        "`source_backed_static_semantics` |"
+    ) in spine
