@@ -53,12 +53,14 @@ in-client behavior, win rate, or gameplay optimality.
 6. Run strict package validation and package-mode contract preflight.
 
 Phase 1 succeeds only when the package is technically valid and all identity,
-receipt, physical-output, and semantic checks are internally consistent.
+package-derivation receipt, physical-output, and semantic checks are internally
+consistent.
 
 Canonical receipt count and exact-source closure are diagnostics. Empty exact
 source evidence must remain visible, but it does not create a second apply
 authority. The operator decision is read only from reports/operator_summary.json;
 the apply command independently recomputes package integrity and parity.
+Source-quality fields remain observation-only through final review.
 
 ### Phase 2: Guarded runtime apply
 

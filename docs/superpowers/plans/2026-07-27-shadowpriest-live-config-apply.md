@@ -264,36 +264,49 @@ if (Test-Path -LiteralPath (Join-Path $packageRoot 'reports\runtime_apply_receip
 
 Expected: no exception and no runtime apply receipt.
 
-- [ ] **Step 4: Verify the acquisition was live and normalized**
+- [ ] **Step 4: Record live-source acquisition diagnostics**
 
 Run:
 
 ```powershell
 $outRoot = 'C:\Users\darbo\Documents\HSConfig\outputs\ShadowPriest-2026-07-27-live-verified'
-$acquisition = Get-Content -LiteralPath (
-    Join-Path $outRoot '02_source_acquisition\source_search_results.json'
-) -Raw | ConvertFrom-Json
-$documents = Get-Content -LiteralPath (
-    Join-Path $outRoot '03_source_autopilot\source_documents.json'
-) -Raw | ConvertFrom-Json
+$acquisitionPath = Join-Path $outRoot '02_source_acquisition\source_search_results.json'
+$documentsPath = Join-Path $outRoot '03_source_autopilot\source_documents.json'
+$acquisition = if (Test-Path -LiteralPath $acquisitionPath -PathType Leaf) {
+    Get-Content -LiteralPath $acquisitionPath -Raw | ConvertFrom-Json
+} else {
+    $null
+}
+$documents = if (Test-Path -LiteralPath $documentsPath -PathType Leaf) {
+    Get-Content -LiteralPath $documentsPath -Raw | ConvertFrom-Json
+} else {
+    $null
+}
 $modes = @($acquisition.records | ForEach-Object {
     $_.acquisition_provenance.mode
 } | Sort-Object -Unique)
 $authorities = @($documents.source_documents | ForEach-Object {
     $_.acquisition_provenance.authority
 } | Sort-Object -Unique)
-if ('live_http' -notin $modes -or 'live_verified' -notin $authorities) {
-    throw "Live source authority was not established. Modes=$modes Authorities=$authorities"
+$sourceDiagnostics = [ordered]@{
+    acquisition_artifact_present = $null -ne $acquisition
+    source_documents_artifact_present = $null -ne $documents
+    modes = $modes
+    authorities = $authorities
+    live_http_observed = 'live_http' -in $modes
+    live_verified_observed = 'live_verified' -in $authorities
 }
+$sourceDiagnostics | ConvertTo-Json -Depth 4
 ```
 
 Expected:
 
-- at least one acquisition record has mode `live_http`;
-- at least one normalized source document has authority `live_verified`.
+- observed acquisition modes and normalized authorities are printed;
+- whether `live_http` and `live_verified` were observed remains explicit.
 
-This step does not yet authorize apply; the package receipt and operator gate
-must agree in Task 3.
+This step is diagnostic capture only. Its observed values do not control
+continuation or authorize apply. Task 3 reads the apply decision solely from
+`reports/operator_summary.json`.
 
 - [ ] **Step 5: Confirm repository isolation**
 
@@ -330,7 +343,7 @@ No generated artifact is staged or committed.
 **Interfaces:**
 
 - Consumes: the fresh Task 2 package.
-- Produces: a strict validation verdict, exact source/apply authority verdict, and ShadowPriest physical semantic verdict.
+- Produces: a strict validation verdict, exact-source diagnostic observation, sole-operator-authority verdict, and ShadowPriest physical semantic verdict.
 
 - [ ] **Step 1: Run strict package validation**
 
@@ -372,7 +385,7 @@ if ($preflight.status -ne 'PASS' -or
 
 Expected: current package contract, passed validation, and no runtime write.
 
-- [ ] **Step 3: Verify exact deck and receipt-bound source authority**
+- [ ] **Step 3: Verify exact deck, package receipt, and operator authority**
 
 Run from the repository root:
 
@@ -390,7 +403,8 @@ def read(path: Path):
 identity = read(reports / "deck_identity.json")
 operator = read(reports / "operator_summary.json")
 receipt = read(package / "package_derivation_receipt.json")
-claims = read(reports / "guide_claim_bundle.json")
+claims_path = reports / "guide_claim_bundle.json"
+claims = read(claims_path) if claims_path.exists() else {}
 
 assert identity["deck_name"] == "ShadowPriest"
 assert identity["deck_slug"] == "shadowpriest"
@@ -401,12 +415,30 @@ assert receipt["schema_version"] == 2
 assert operator["package_derivation"]["schema_version"] == 2
 assert operator["package_derivation"]["verified"] is True
 assert operator["package_derivation"]["receipt_sha256"].startswith("sha256:")
-canonical_receipts = claims["canonical_source_receipts"]
-assert all(
-    row["acquisition_provenance"]["mode"] == "live_http"
-    and row["acquisition_provenance"]["authority"] == "live_verified"
-    for row in canonical_receipts
+source_receipt_payload = claims.get("canonical_source_receipts")
+canonical_receipts = (
+    source_receipt_payload if isinstance(source_receipt_payload, list) else []
 )
+
+def provenance(row):
+    if not isinstance(row, dict):
+        return {}
+    value = row.get("acquisition_provenance")
+    return value if isinstance(value, dict) else {}
+
+source_diagnostics = {
+    "guide_claim_bundle_present": claims_path.exists(),
+    "canonical_receipts_field_is_list": isinstance(source_receipt_payload, list),
+    "canonical_receipt_count": len(canonical_receipts),
+    "live_http_receipt_count": sum(
+        provenance(row).get("mode") == "live_http"
+        for row in canonical_receipts
+    ),
+    "live_verified_receipt_count": sum(
+        provenance(row).get("authority") == "live_verified"
+        for row in canonical_receipts
+    ),
+}
 assert operator["technical_status"] == "VALID_PACKAGE"
 assert operator["runtime_load_safe"] is True
 assert operator["runtime_apply_mode"] == "load_safe_apply"
@@ -415,14 +447,15 @@ assert operator["apply_policy"] in {"ALLOWED", "ALLOWED_WITH_WARNINGS"}
 assert operator["runtime_apply_reason"] == "current_package_operator_gate_allowed"
 print(json.dumps({
     "deck_fingerprint": identity["deck_fingerprint"],
-    "canonical_receipt_count": len(canonical_receipts),
+    "source_diagnostics": source_diagnostics,
     "source_apply_eligible": operator["source_apply_eligible"],
     "runtime_apply_allowed": operator["runtime_apply_allowed"],
 }, sort_keys=True))
 '@ | python -
 ```
 
-Expected: all assertions pass.
+Expected: all package/operator assertions pass and source diagnostics are
+printed regardless of their observed values.
 
 If any assertion fails, record `operator_summary.json.primary_blockers`,
 `runtime_apply_reason`, and `source_apply_eligibility_reasons`; do not continue
@@ -833,10 +866,10 @@ Expected:
 
 - [ ] **Step 3: Final independent review**
 
-The final reviewer confirms:
+The final reviewer confirms the package, operator-authority, semantic, and
+install-integrity items:
 
 - fresh output path was used;
-- live source provenance is `live_http/live_verified`;
 - exact deck identity is 30/0;
 - package and derivation receipts are current;
 - `operator_summary.json` alone authorized apply;
@@ -847,6 +880,14 @@ The final reviewer confirms:
 - real apply used only `--from-fake-receipt`;
 - persisted and independent runtime matches are `matched`;
 - no HSTuner, replay, win-rate, or gameplay-optimality claim was introduced.
+
+The reviewer separately records these non-authoritative source diagnostics:
+
+- whether `live_http/live_verified` provenance was observed;
+- canonical receipt count;
+- exact-source closure status.
+
+These observed values remain visible but are not apply prerequisites.
 
 - [ ] **Step 4: Commit boundary**
 
