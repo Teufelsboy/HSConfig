@@ -114,7 +114,9 @@ $preflight = hsconfig contract-preflight --repo-root . --json |
 if ($preflight.status -ne 'PASS' -or
     $preflight.failures.Count -ne 0 -or
     $preflight.installed_skill_sync.status -ne 'in_sync' -or
-    $preflight.runtime_write_performed -ne $false) {
+    $preflight.diagnostic_only -ne $true -or
+    $preflight.runtime_apply_authority -ne 'reports/operator_summary.json' -or
+    $preflight.source_status_apply_blocking -ne $false) {
     throw "HSConfig contract preflight failed: $($preflight | ConvertTo-Json -Depth 8 -Compress)"
 }
 ```
@@ -124,7 +126,9 @@ Expected:
 - installed skill is in sync;
 - preflight status is `PASS`;
 - failures are empty;
-- `runtime_write_performed=false`.
+- `diagnostic_only=true`;
+- `runtime_apply_authority=reports/operator_summary.json`;
+- `source_status_apply_blocking=false`.
 
 - [ ] **Step 4: Run the repository contract guardrail**
 
