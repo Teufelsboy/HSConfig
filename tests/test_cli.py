@@ -1688,6 +1688,18 @@ def test_build_plan_reports_dir_suppresses_noncanonical_globalvalues_overlay(
     )
     assert profile["status"] == "baseline_confirmed"
     assert profile["changed_keys"] == []
+    assert profile["generated_overlay_keys"] == []
+    assert profile["expected_overlay_keys"] == []
+    assert profile["authority_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
+    assert profile["baseline_overlay_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
 
 
 def test_build_claims_json_cannot_self_assert_exact_globalvalues_authority(

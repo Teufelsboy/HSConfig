@@ -306,6 +306,22 @@ def _validate_globalvalues(
             )
             errors.extend(coverage_errors)
             errors.extend(
+                _validate_required_globalvalues_authority_parity(
+                    path,
+                    data,
+                    profile,
+                    expected_overlay_keys,
+                )
+            )
+            errors.extend(
+                _validate_required_globalvalues_baseline_overlay_parity(
+                    path,
+                    data,
+                    profile,
+                    generated_overlay_keys,
+                )
+            )
+            errors.extend(
                 _validate_required_generated_overlay_keys(
                     path,
                     data,
@@ -327,6 +343,107 @@ def _validate_globalvalues(
         for key in sorted(missing_profiles):
             errors.append(f"{path}: GlobalValues profile missing key {key}")
     return errors
+
+
+def _validate_required_globalvalues_authority_parity(
+    path: Path,
+    data: dict[str, Any],
+    profile: dict[str, Any],
+    expected_overlay_keys: set[str],
+) -> list[str]:
+    parity = profile.get("authority_parity")
+    if not isinstance(parity, Mapping):
+        if _requires_globalvalues_authority_parity(profile):
+            return [f"{path}: GlobalValues profile authority_parity must be an object"]
+        return []
+
+    authorized = parity.get("authorized_overlay_keys")
+    emitted = parity.get("emitted_overlay_keys")
+    if not isinstance(authorized, list) or not all(
+        _is_safe_globalvalues_key(key) for key in authorized
+    ):
+        return [
+            f"{path}: GlobalValues profile authority parity authorized_overlay_keys "
+            "must be a list of non-empty strings"
+        ]
+    if not isinstance(emitted, list) or not all(
+        _is_safe_globalvalues_key(key) for key in emitted
+    ):
+        return [
+            f"{path}: GlobalValues profile authority parity emitted_overlay_keys "
+            "must be a list of non-empty strings"
+        ]
+
+    authorized_keys = set(authorized)
+    emitted_keys = set(emitted)
+    actual_emitted_keys = expected_overlay_keys & set(data)
+    errors: list[str] = []
+    if (
+        parity.get("status") != "matched"
+        or authorized_keys != emitted_keys
+        or authorized_keys != expected_overlay_keys
+        or emitted_keys != actual_emitted_keys
+        or len(authorized) != len(authorized_keys)
+        or len(emitted) != len(emitted_keys)
+    ):
+        errors.append(f"{path}: GlobalValues profile authority parity mismatch")
+    return errors
+
+
+def _validate_required_globalvalues_baseline_overlay_parity(
+    path: Path,
+    data: dict[str, Any],
+    profile: dict[str, Any],
+    generated_overlay_keys: set[str],
+) -> list[str]:
+    parity = profile.get("baseline_overlay_parity")
+    if not isinstance(parity, Mapping):
+        if _requires_globalvalues_authority_parity(profile):
+            return [
+                f"{path}: GlobalValues profile baseline_overlay_parity must be an object"
+            ]
+        return []
+
+    authorized = parity.get("authorized_overlay_keys")
+    emitted = parity.get("emitted_overlay_keys")
+    if not isinstance(authorized, list) or not all(
+        _is_safe_globalvalues_key(key) for key in authorized
+    ):
+        return [
+            f"{path}: GlobalValues profile baseline overlay parity "
+            "authorized_overlay_keys must be a list of non-empty strings"
+        ]
+    if not isinstance(emitted, list) or not all(
+        _is_safe_globalvalues_key(key) for key in emitted
+    ):
+        return [
+            f"{path}: GlobalValues profile baseline overlay parity "
+            "emitted_overlay_keys must be a list of non-empty strings"
+        ]
+
+    authorized_keys = set(authorized)
+    emitted_keys = set(emitted)
+    errors: list[str] = []
+    if (
+        parity.get("status") != "matched"
+        or authorized_keys != emitted_keys
+        or not emitted_keys <= (set(data) - generated_overlay_keys)
+        or len(authorized) != len(authorized_keys)
+        or len(emitted) != len(emitted_keys)
+    ):
+        errors.append(
+            f"{path}: GlobalValues profile baseline overlay parity mismatch"
+        )
+    return errors
+
+
+def _requires_globalvalues_authority_parity(profile: Mapping[str, Any]) -> bool:
+    schema_version = profile.get("schema_version", 1)
+    return (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version >= 2
+    )
 
 
 def _validate_required_globalvalues_overlay_coverage(

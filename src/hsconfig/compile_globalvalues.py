@@ -47,7 +47,14 @@ def compile_globalvalues(
         allowed_rows = [
             row
             for row in authority_matrix.get("allowed_step1_overlays", [])
-            if isinstance(row, dict) and row.get("key") not in {None, "baseline"}
+            if (
+                isinstance(row, dict)
+                and row.get("key") not in {None, "baseline"}
+                and (
+                    str(row.get("operation", "none")) != "none"
+                    or str(row.get("overlay", "none")) != "none"
+                )
+            )
         ]
         overlays = {str(row["key"]): _overlay_from_authority_row(row) for row in allowed_rows}
         overlay_reasons = {
@@ -55,22 +62,27 @@ def compile_globalvalues(
             for row in allowed_rows
             if row.get("reason") is not None
         }
+        authority_rows = {str(row["key"]): row for row in allowed_rows}
     else:
         overlays = dict(aggression_profile.get("global_value_overlays", {}))
         overlays.update(aggression_profile.get("mechanic_priorities", {}))
         overlay_reasons = dict(aggression_profile.get("global_value_overlay_reasons", {}))
+        authority_rows = {}
     generated_overlay_candidates = set(overlays)
-    if has_authority_overlays:
-        generated_overlay_candidates.update(
-            aggression_profile.get("global_value_overlays", {})
-        )
     generated_overlay_keys = sorted(
         key
         for key in generated_overlay_candidates
         if key not in default_values and key in KNOWN_GENERATED_OVERLAY_DEFAULTS
     )
+    authorized_baseline_overlay_keys = sorted(
+        key
+        for key in overlays
+        if key not in TOP_LEVEL_KEYS and key in default_values
+    )
     expected_overlay_keys = sorted(
-        key for key in overlays if key not in TOP_LEVEL_KEYS
+        key
+        for key in overlays
+        if key not in TOP_LEVEL_KEYS and key not in default_values
     )
     missing_overlay_keys = sorted(
         key
@@ -136,6 +148,15 @@ def compile_globalvalues(
                     "reason": overlay_reasons.get(key, _overlay_reason(key, overlay)),
                 }
             )
+            authority_row = authority_rows.get(key)
+            if authority_row is not None:
+                if authority_row.get("claim_id"):
+                    decision["claim_id"] = str(authority_row["claim_id"])
+                claim_refs = authority_row.get("claim_refs")
+                if isinstance(claim_refs, list):
+                    decision["claim_refs"] = [
+                        str(claim_ref) for claim_ref in claim_refs
+                    ]
         after = _first_value(config[key])
         if after != before:
             changed_keys.append(key)
@@ -143,9 +164,37 @@ def compile_globalvalues(
             unchanged_keys.append(key)
         key_profiles[key] = decision
 
+    emitted_overlay_keys = sorted(
+        key for key in expected_overlay_keys if key in config
+    )
+    authority_parity = {
+        "authorized_overlay_keys": expected_overlay_keys,
+        "emitted_overlay_keys": emitted_overlay_keys,
+        "status": (
+            "matched"
+            if expected_overlay_keys == emitted_overlay_keys
+            else "mismatch"
+        ),
+    }
+    emitted_baseline_overlay_keys = sorted(
+        key for key in authorized_baseline_overlay_keys if key in config
+    )
+    baseline_overlay_parity = {
+        "authorized_overlay_keys": authorized_baseline_overlay_keys,
+        "emitted_overlay_keys": emitted_baseline_overlay_keys,
+        "status": (
+            "matched"
+            if authorized_baseline_overlay_keys == emitted_baseline_overlay_keys
+            else "mismatch"
+        ),
+    }
     status = (
         "attention"
-        if missing_overlay_keys
+        if (
+            missing_overlay_keys
+            or authority_parity["status"] == "mismatch"
+            or baseline_overlay_parity["status"] == "mismatch"
+        )
         else "overlay_changed"
         if changed_keys
         else "baseline_confirmed"
@@ -160,13 +209,15 @@ def compile_globalvalues(
         "generated_overlay_key_count": len(generated_overlay_keys),
         "all_baseline_keys_accounted_for": True,
         "all_expected_overlay_keys_accounted_for": all_expected_overlay_keys_accounted_for,
+        "authority_parity": authority_parity,
+        "baseline_overlay_parity": baseline_overlay_parity,
         "missing_overlay_keys": missing_overlay_keys,
     }
 
     return {
         "config": config,
         "profile": {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": status,
             "runtime_permission_impact": "none",
             "summary": summary,
@@ -175,6 +226,8 @@ def compile_globalvalues(
             "expected_overlay_keys": expected_overlay_keys,
             "missing_overlay_keys": missing_overlay_keys,
             "all_expected_overlay_keys_accounted_for": all_expected_overlay_keys_accounted_for,
+            "authority_parity": authority_parity,
+            "baseline_overlay_parity": baseline_overlay_parity,
             "changed_keys": changed_keys,
             "unchanged_keys": unchanged_keys,
             "keys": key_profiles,

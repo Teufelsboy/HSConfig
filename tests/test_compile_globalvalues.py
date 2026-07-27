@@ -78,11 +78,15 @@ def test_compile_globalvalues_exposes_overlay_coverage_in_profile_and_summary():
     assert result["profile"]["summary"]["missing_overlay_keys"] == ["GlobalMinionAttack"]
 
 
-def test_compile_globalvalues_keeps_known_hero_power_overlay_in_profile_when_authority_is_baseline():
+@pytest.mark.parametrize("deck_name", ["ImbueMage", "Boarlock"])
+def test_compile_globalvalues_baseline_authority_blocks_hidden_hero_power_overlay(
+    deck_name: str,
+):
     baseline = load_globalvalues_baseline(None)["baseline"]
     result = compile_globalvalues(
         baseline,
         {
+            "deck_name": deck_name,
             "aggression_profile": {
                 "global_value_overlays": {"MyHeroPowerValue": "increase"}
             },
@@ -99,9 +103,14 @@ def test_compile_globalvalues_keeps_known_hero_power_overlay_in_profile_when_aut
     )
 
     assert "MyHeroPowerValue" not in baseline
-    assert result["profile"]["generated_overlay_keys"] == ["MyHeroPowerValue"]
-    assert result["profile"]["keys"]["MyHeroPowerValue"]["decision"] == "baseline_confirmed"
-    assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.00"
+    assert "MyHeroPowerValue" not in result["config"]
+    assert result["profile"]["generated_overlay_keys"] == []
+    assert result["profile"]["expected_overlay_keys"] == []
+    assert result["profile"]["authority_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
 
 
 def test_validate_package_rejects_required_globalvalues_profile_with_missing_overlay_coverage(
@@ -316,7 +325,9 @@ def test_validate_package_rejects_generated_overlay_injection_not_expected_or_kn
     )
 
 
-def test_validate_package_accepts_known_generated_hero_power_overlay_exception(tmp_path: Path):
+def test_validate_package_rejects_hidden_generated_hero_power_overlay_without_authority(
+    tmp_path: Path,
+):
     baseline = {
         "GameCardId": "GlobalValues",
         "ConfigComment": "Baseline",
@@ -348,7 +359,8 @@ def test_validate_package_accepts_known_generated_hero_power_overlay_exception(t
     )
 
     assert result["profile"]["expected_overlay_keys"] == []
-    assert result["profile"]["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["generated_overlay_keys"] == []
+    assert "MyHeroPowerValue" not in result["config"]
     assert report["status"] == "passed"
 
 
@@ -654,6 +666,7 @@ def test_compile_globalvalues_authority_matrix_uses_only_allowed_rows_and_reason
                     "operation": "increase",
                     "value": None,
                     "authority": "step1_source_backed_posture",
+                    "claim_id": "shadowpriest-hero-power-pressure",
                     "reason": "hero_power_pressure_prioritizes_hero_power",
                 }
             ],
@@ -667,7 +680,106 @@ def test_compile_globalvalues_authority_matrix_uses_only_allowed_rows_and_reason
     assert result["config"]["SecondTurnValueWeight"]["values"][0]["value"] == "1"
     assert result["config"]["MyHeroPowerValue"]["values"][0]["value"] == "1.15"
     assert result["profile"]["changed_keys"] == ["MyHeroPowerValue"]
-    assert result["profile"]["expected_overlay_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["expected_overlay_keys"] == []
+    assert result["profile"]["generated_overlay_keys"] == []
+    assert result["profile"]["authority_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
+    assert result["profile"]["baseline_overlay_parity"] == {
+        "authorized_overlay_keys": ["MyHeroPowerValue"],
+        "emitted_overlay_keys": ["MyHeroPowerValue"],
+        "status": "matched",
+    }
     profile = result["profile"]["keys"]["MyHeroPowerValue"]
     assert profile["decision"] == "overlay_changed"
     assert profile["reason"] == "hero_power_pressure_prioritizes_hero_power"
+    assert profile["claim_id"] == "shadowpriest-hero-power-pressure"
+
+
+def test_compile_globalvalues_generates_authorized_missing_hero_power_key_once():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Runtime default without hero power key",
+    }
+    result = compile_globalvalues(
+        baseline,
+        {
+            "global_values_authority_matrix": {
+                "allowed_step1_overlays": [
+                    {
+                        "key": "MyHeroPowerValue",
+                        "overlay": "increase",
+                        "operation": "increase",
+                        "authority": "step1_source_backed_posture",
+                        "claim_id": "shadowpriest-hero-power-pressure",
+                        "reason": "hero_power_pressure_prioritizes_hero_power",
+                    }
+                ]
+            }
+        },
+    )
+
+    assert list(result["config"]).count("MyHeroPowerValue") == 1
+    assert result["profile"]["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["expected_overlay_keys"] == ["MyHeroPowerValue"]
+    assert result["profile"]["authority_parity"] == {
+        "authorized_overlay_keys": ["MyHeroPowerValue"],
+        "emitted_overlay_keys": ["MyHeroPowerValue"],
+        "status": "matched",
+    }
+    profile = result["profile"]["keys"]["MyHeroPowerValue"]
+    assert profile["reason"] == "hero_power_pressure_prioritizes_hero_power"
+    assert profile["claim_id"] == "shadowpriest-hero-power-pressure"
+
+
+def test_validate_package_rejects_globalvalues_authority_parity_mismatch(
+    tmp_path: Path,
+):
+    baseline, _, profile = _required_globalvalues_fixture(tmp_path)
+    profile["authority_parity"] = {
+        "authorized_overlay_keys": ["FirstTurnValueWeight"],
+        "emitted_overlay_keys": [],
+        "status": "mismatch",
+    }
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(
+        "GlobalValues profile authority parity mismatch" in error
+        for error in report["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_error"),
+    [
+        ("authority_parity", "authority_parity must be an object"),
+        ("baseline_overlay_parity", "baseline_overlay_parity must be an object"),
+    ],
+)
+def test_validate_package_requires_authority_parity_for_schema_two_profiles(
+    tmp_path: Path,
+    field: str,
+    expected_error: str,
+):
+    baseline, _, profile = _required_globalvalues_fixture(tmp_path)
+    assert profile["schema_version"] == 2
+    profile.pop(field)
+
+    report = validate_config_package(
+        tmp_path,
+        globalvalues_baseline=baseline,
+        globalvalues_profile=profile,
+        require_globalvalues_profile=True,
+    )
+
+    assert report["status"] == "failed"
+    assert any(expected_error in error for error in report["errors"])

@@ -87,9 +87,7 @@ EXPECTED_GLOBALVALUES_BASELINE_KEYS = frozenset(
         "SecondTurnValueWeight",
     }
 )
-EXPECTED_GLOBALVALUES_EMITTED_KEYS = EXPECTED_GLOBALVALUES_BASELINE_KEYS | {
-    "MyHeroPowerValue"
-}
+EXPECTED_GLOBALVALUES_EMITTED_KEYS = EXPECTED_GLOBALVALUES_BASELINE_KEYS
 SAFE_SHADOWPRIEST_ROWS = {
     ("DS1_233", "BeforePlayCardBonus", "*", "12"),
     ("REV_290", "BeforePlayCardBonus", "*", "8"),
@@ -582,22 +580,42 @@ def test_shadowpriest_package_identity_and_globalvalues_are_exact(package):
     assert baseline_receipt["key_count"] == 38
     assert baseline_receipt["snapshot_status"] == "known_runtime_snapshot"
     assert baseline_receipt["source"] == "bundled_fallback"
-    assert profile["key_count"] == 39
+    assert profile["key_count"] == 38
     assert profile["expected_overlay_keys"] == []
-    assert profile["generated_overlay_keys"] == ["MyHeroPowerValue"]
+    assert profile["generated_overlay_keys"] == []
     assert profile["missing_overlay_keys"] == []
     assert profile["all_expected_overlay_keys_accounted_for"] is True
+    assert profile["authority_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
+    assert profile["baseline_overlay_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
     assert profile["summary"] == {
         "all_baseline_keys_accounted_for": True,
         "all_expected_overlay_keys_accounted_for": True,
+        "authority_parity": {
+            "authorized_overlay_keys": [],
+            "emitted_overlay_keys": [],
+            "status": "matched",
+        },
+        "baseline_overlay_parity": {
+            "authorized_overlay_keys": [],
+            "emitted_overlay_keys": [],
+            "status": "matched",
+        },
         "changed_key_count": 0,
         "expected_overlay_key_count": 0,
-        "generated_overlay_key_count": 1,
-        "key_count": 39,
+        "generated_overlay_key_count": 0,
+        "key_count": 38,
         "missing_overlay_keys": [],
         "runtime_permission_impact": "none",
         "status": "baseline_confirmed",
-        "unchanged_key_count": 39,
+        "unchanged_key_count": 38,
     }
 
 

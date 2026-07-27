@@ -86,6 +86,38 @@ def hold_cards(plan: Mapping[str, Any]) -> set[str]:
     }
 
 
+@pytest.mark.parametrize("deck_name", ["ImbueMage", "Boarlock"])
+def test_baseline_only_globalvalues_authority_emits_no_hidden_hero_power_overlay(
+    tmp_path: Path,
+    deck_name: str,
+) -> None:
+    deck = next(
+        row for row in load_archetype_matrix()
+        if row["deck_name"] == deck_name
+    )
+    prepared = prepare_fixture_deck(tmp_path / deck_name, deck)
+    assert prepared["exit_code"] == 0
+
+    reports = prepared["out"] / "reports"
+    authority = read_json(reports / "global_values_authority_matrix.json")
+    profile = read_json(reports / "globalvalues_profile.json")
+    globalvalues = read_json(
+        next((prepared["out"] / "CustomConfig").rglob("GlobalValues.json"))
+    )
+
+    assert {
+        row["key"] for row in authority["allowed_step1_overlays"]
+    } == {"baseline"}
+    assert "MyHeroPowerValue" not in globalvalues
+    assert profile["generated_overlay_keys"] == []
+    assert profile["expected_overlay_keys"] == []
+    assert profile["authority_parity"] == {
+        "authorized_overlay_keys": [],
+        "emitted_overlay_keys": [],
+        "status": "matched",
+    }
+
+
 def test_policy_mulligan_honors_named_source_and_role_vetoes(
     tmp_path: Path,
 ) -> None:
