@@ -734,6 +734,62 @@ def test_compile_globalvalues_generates_authorized_missing_hero_power_key_once()
     assert profile["claim_id"] == "shadowpriest-hero-power-pressure"
 
 
+def test_compile_globalvalues_rejects_malformed_present_authority_matrix():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_allowed_step1_overlays_must_be_list",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "aggression_profile": {
+                    "global_value_overlays": {"MyHeroPowerValue": "increase"}
+                },
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": "malformed"
+                },
+            },
+        )
+
+
+def test_compile_globalvalues_rejects_duplicate_authority_overlay_keys():
+    baseline = {
+        "GameCardId": "GlobalValues",
+        "ConfigComment": "Baseline",
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="globalvalues_authority_duplicate_overlay_key:MyHeroPowerValue",
+    ):
+        compile_globalvalues(
+            baseline,
+            {
+                "global_values_authority_matrix": {
+                    "allowed_step1_overlays": [
+                        {
+                            "key": "MyHeroPowerValue",
+                            "overlay": "increase",
+                            "operation": "increase",
+                            "reason": "first",
+                        },
+                        {
+                            "key": "MyHeroPowerValue",
+                            "overlay": "decrease",
+                            "operation": "decrease",
+                            "reason": "conflicting",
+                        },
+                    ]
+                }
+            },
+        )
+
+
 def test_validate_package_rejects_globalvalues_authority_parity_mismatch(
     tmp_path: Path,
 ):

@@ -26,6 +26,22 @@ def read_required_baseline(package: Path) -> dict[str, Any]:
     return baseline
 
 
+def read_required_globalvalues_authority_matrix(
+    package: Path,
+) -> dict[str, Any]:
+    matrix_path = package / "reports" / "global_values_authority_matrix.json"
+    if not matrix_path.exists():
+        raise ValueError(
+            f"Missing GlobalValues authority matrix report: {matrix_path}"
+        )
+    matrix = read_json(matrix_path)
+    if not isinstance(matrix, dict):
+        raise ValueError(
+            f"GlobalValues authority matrix must be an object: {matrix_path}"
+        )
+    return matrix
+
+
 def prepare_research_output_dir(out: Path) -> None:
     if not out.exists():
         return

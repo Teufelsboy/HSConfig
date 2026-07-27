@@ -81,6 +81,11 @@ def _configure_builder_report_mutation(
             return
         if mutation == "missing_profile" and path.name == "globalvalues_profile.json":
             return
+        if (
+            mutation == "missing_authority_matrix"
+            and path.name == "global_values_authority_matrix.json"
+        ):
+            return
         if mutation == "missing_overlay_keys" and path.name == "globalvalues_profile.json":
             mutated_profile = deepcopy(payload)
             mutated_profile["missing_overlay_keys"] = ["GlobalMinionAttack"]
@@ -108,6 +113,96 @@ def _build_fixture(
             "--out",
             str(tmp_path / "build-package"),
         ],
+    )
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    ["generated_overlay", "baseline_overlay"],
+)
+def test_strict_validation_binds_globalvalues_to_canonical_authority_matrix(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    forgery: str,
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    reports = package / "reports"
+    deck_dir = next((package / "CustomConfig").iterdir())
+    config_path = deck_dir / "GlobalValues.json"
+    profile_path = reports / "globalvalues_profile.json"
+    authority = json.loads(
+        (reports / "global_values_authority_matrix.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+    assert {
+        row["key"] for row in authority["allowed_step1_overlays"]
+    } == {"baseline"}
+
+    if forgery == "generated_overlay":
+        key = "MyHeroPowerValue"
+        config[key] = {"values": [{"condition": "*", "value": "1.15"}]}
+        profile["generated_overlay_keys"] = [key]
+        profile["expected_overlay_keys"] = [key]
+        profile["authority_parity"] = {
+            "authorized_overlay_keys": [key],
+            "emitted_overlay_keys": [key],
+            "status": "matched",
+        }
+        profile["keys"][key] = {
+            "decision": "overlay_changed",
+            "status": "overlay_changed",
+            "reason": "forged generated overlay",
+        }
+        profile["key_count"] = len(config)
+    else:
+        key = "GlobalMinionAttack"
+        config[key]["values"][0]["value"] = "999"
+        profile["baseline_overlay_parity"] = {
+            "authorized_overlay_keys": [key],
+            "emitted_overlay_keys": [key],
+            "status": "matched",
+        }
+        profile["keys"][key].update(
+            {
+                "decision": "overlay_changed",
+                "status": "overlay_changed",
+                "new_value": "999",
+                "reason": "forged baseline overlay",
+            }
+        )
+        profile["changed_keys"] = [key]
+        profile["unchanged_keys"] = [
+            existing
+            for existing in profile["unchanged_keys"]
+            if existing != key
+        ]
+
+    profile["summary"].update(
+        {
+            "authority_parity": profile["authority_parity"],
+            "baseline_overlay_parity": profile["baseline_overlay_parity"],
+            "changed_key_count": len(profile["changed_keys"]),
+            "unchanged_key_count": len(profile["unchanged_keys"]),
+            "expected_overlay_key_count": len(profile["expected_overlay_keys"]),
+            "generated_overlay_key_count": len(profile["generated_overlay_keys"]),
+            "key_count": profile["key_count"],
+        }
+    )
+    write_json(config_path, config)
+    write_json(profile_path, profile)
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        "GlobalValues config does not match canonical authority matrix" in error
+        or "GlobalValues profile does not match canonical authority matrix" in error
+        for error in report["errors"]
     )
 
 
@@ -306,7 +401,12 @@ def test_valid_package_passes_build_validate_apply_and_preflight(
 
 @pytest.mark.parametrize(
     "mutation",
-    ["missing_baseline", "missing_profile", "missing_overlay_keys"],
+    [
+        "missing_baseline",
+        "missing_profile",
+        "missing_authority_matrix",
+        "missing_overlay_keys",
+    ],
 )
 def test_invalid_globalvalues_reports_fail_all_strict_paths(
     tmp_path: Path,

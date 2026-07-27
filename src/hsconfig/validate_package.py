@@ -6,7 +6,11 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from hsconfig.compile_globalvalues import KNOWN_GENERATED_OVERLAY_DEFAULTS, _numeric_value
+from hsconfig.compile_globalvalues import (
+    KNOWN_GENERATED_OVERLAY_DEFAULTS,
+    _numeric_value,
+    compile_globalvalues,
+)
 from hsconfig.condition_format import classify_runtime_condition
 from hsconfig.mulligan_selector import normalize_mulligan_selector
 from hsconfig.visionai_registry import (
@@ -36,6 +40,7 @@ def validate_config_package(
     *,
     globalvalues_baseline: dict[str, Any] | None = None,
     globalvalues_profile: dict[str, Any] | None = None,
+    globalvalues_authority_matrix: dict[str, Any] | None = None,
     require_complete_package: bool = False,
     require_globalvalues_profile: bool = False,
 ) -> dict[str, Any]:
@@ -87,6 +92,7 @@ def validate_config_package(
                     data,
                     globalvalues_baseline=globalvalues_baseline,
                     globalvalues_profile=globalvalues_profile,
+                    globalvalues_authority_matrix=globalvalues_authority_matrix,
                     require_globalvalues_profile=require_globalvalues_profile,
                 )
             )
@@ -128,6 +134,7 @@ def _validate_blocks(
     *,
     globalvalues_baseline: dict[str, Any] | None,
     globalvalues_profile: dict[str, Any] | None,
+    globalvalues_authority_matrix: dict[str, Any] | None,
     require_globalvalues_profile: bool,
 ) -> list[str]:
     if path.name == "Mulligan.json":
@@ -144,6 +151,7 @@ def _validate_blocks(
             data,
             globalvalues_baseline,
             globalvalues_profile,
+            globalvalues_authority_matrix,
             require_profile=require_globalvalues_profile,
         )
     if path.name in SPECIAL_SURFACE_NAMES:
@@ -276,6 +284,7 @@ def _validate_globalvalues(
     data: dict[str, Any],
     baseline: dict[str, Any] | None,
     profile: dict[str, Any] | None,
+    authority_matrix: dict[str, Any] | None,
     *,
     require_profile: bool,
 ) -> list[str]:
@@ -330,6 +339,16 @@ def _validate_globalvalues(
                     expected_overlay_keys,
                 )
             )
+            if baseline is not None and authority_matrix is not None:
+                errors.extend(
+                    _validate_canonical_globalvalues_authority(
+                        path,
+                        data,
+                        baseline,
+                        profile,
+                        authority_matrix,
+                    )
+                )
         expected_key_count = (
             len(baseline) + len(generated_overlay_keys) if baseline is not None else len(data)
         )
@@ -342,6 +361,35 @@ def _validate_globalvalues(
         missing_profiles = runtime_keys - profiled_keys
         for key in sorted(missing_profiles):
             errors.append(f"{path}: GlobalValues profile missing key {key}")
+    return errors
+
+
+def _validate_canonical_globalvalues_authority(
+    path: Path,
+    data: dict[str, Any],
+    baseline: dict[str, Any],
+    profile: dict[str, Any],
+    authority_matrix: dict[str, Any],
+) -> list[str]:
+    try:
+        canonical = compile_globalvalues(
+            baseline,
+            {"global_values_authority_matrix": authority_matrix},
+        )
+    except ValueError as error:
+        return [
+            f"{path}: GlobalValues canonical authority matrix invalid: {error}"
+        ]
+
+    errors: list[str] = []
+    if data != canonical["config"]:
+        errors.append(
+            f"{path}: GlobalValues config does not match canonical authority matrix"
+        )
+    if profile != canonical["profile"]:
+        errors.append(
+            f"{path}: GlobalValues profile does not match canonical authority matrix"
+        )
     return errors
 
 

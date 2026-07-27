@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from copy import deepcopy
 import operator
-from typing import Any
+from typing import Any, Mapping
 
 from hsconfig.globalvalues_key_authority import authority_for_key
 
@@ -37,25 +37,13 @@ def compile_globalvalues(
     contract = contract or {"aggression_profile": posture or {}}
     aggression_profile = contract.get("aggression_profile", posture or {})
 
-    authority_matrix = contract.get("global_values_authority_matrix", {})
-    has_authority_overlays = (
-        isinstance(authority_matrix, dict)
-        and isinstance(authority_matrix.get("allowed_step1_overlays"), list)
-    )
+    has_authority_overlays = "global_values_authority_matrix" in contract
+    authority_matrix = contract.get("global_values_authority_matrix")
+    allowed_rows: list[dict[str, Any]] = []
+    if has_authority_overlays:
+        allowed_rows = validated_globalvalues_authority_rows(authority_matrix)
     key_authorities = _key_authorities_from_matrix(authority_matrix)
     if has_authority_overlays:
-        allowed_rows = [
-            row
-            for row in authority_matrix.get("allowed_step1_overlays", [])
-            if (
-                isinstance(row, dict)
-                and row.get("key") not in {None, "baseline"}
-                and (
-                    str(row.get("operation", "none")) != "none"
-                    or str(row.get("overlay", "none")) != "none"
-                )
-            )
-        ]
         overlays = {str(row["key"]): _overlay_from_authority_row(row) for row in allowed_rows}
         overlay_reasons = {
             str(row["key"]): str(row["reason"])
@@ -164,6 +152,8 @@ def compile_globalvalues(
             unchanged_keys.append(key)
         key_profiles[key] = decision
 
+    changed_keys.sort()
+    unchanged_keys.sort()
     emitted_overlay_keys = sorted(
         key for key in expected_overlay_keys if key in config
     )
@@ -233,6 +223,52 @@ def compile_globalvalues(
             "keys": key_profiles,
         },
     }
+
+
+def validated_globalvalues_authority_rows(
+    authority_matrix: Any,
+) -> list[dict[str, Any]]:
+    if not isinstance(authority_matrix, Mapping):
+        raise ValueError("globalvalues_authority_matrix_must_be_object")
+    raw_rows = authority_matrix.get("allowed_step1_overlays")
+    if not isinstance(raw_rows, list):
+        raise ValueError(
+            "globalvalues_authority_allowed_step1_overlays_must_be_list"
+        )
+
+    rows: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for index, raw_row in enumerate(raw_rows):
+        if not isinstance(raw_row, Mapping):
+            raise ValueError(
+                f"globalvalues_authority_overlay_row_must_be_object:{index}"
+            )
+        key_value = raw_row.get("key")
+        if not isinstance(key_value, str) or not key_value.strip():
+            raise ValueError(
+                f"globalvalues_authority_overlay_key_invalid:{index}"
+            )
+        key = key_value.strip()
+        if key in seen_keys:
+            raise ValueError(
+                f"globalvalues_authority_duplicate_overlay_key:{key}"
+            )
+        seen_keys.add(key)
+
+        operation = str(raw_row.get("operation", "none"))
+        overlay = str(raw_row.get("overlay", "none"))
+        if key == "baseline":
+            if operation != "none" or overlay != "none":
+                raise ValueError(
+                    "globalvalues_authority_baseline_row_must_be_noop"
+                )
+            continue
+        if operation == "none" and overlay == "none":
+            raise ValueError(
+                f"globalvalues_authority_overlay_operation_missing:{key}"
+            )
+        rows.append(dict(raw_row))
+    return rows
 
 
 def _values_block(value: Any) -> dict[str, Any]:

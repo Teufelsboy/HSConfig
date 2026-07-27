@@ -5,7 +5,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from hsconfig.package_io import read_optional_profile, read_required_baseline
+from hsconfig.package_io import (
+    read_optional_profile,
+    read_required_baseline,
+    read_required_globalvalues_authority_matrix,
+)
 from hsconfig.runtime_entity_owner import (
     AUTHORIZED_HERO_POWER_OWNER,
     LINKED_RUNTIME_ENTITY_RELATION_INVALID,
@@ -32,10 +36,16 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
     package_path = Path(package)
     baseline = read_required_baseline(package_path)
     profile = read_optional_profile(package_path)
+    authority_matrix = (
+        read_required_globalvalues_authority_matrix(package_path)
+        if _is_schema_two_globalvalues_profile(profile)
+        else None
+    )
     report = validate_config_package(
         package_path,
         globalvalues_baseline=baseline,
         globalvalues_profile=profile,
+        globalvalues_authority_matrix=authority_matrix,
         require_complete_package=True,
         require_globalvalues_profile=True,
     )
@@ -47,6 +57,19 @@ def validate_complete_package(package: str | Path) -> dict[str, Any]:
         "status": "failed",
         "errors": [*report.get("errors", []), *linked_runtime_errors],
     }
+
+
+def _is_schema_two_globalvalues_profile(
+    profile: Mapping[str, Any] | None,
+) -> bool:
+    if profile is None:
+        return False
+    schema_version = profile.get("schema_version")
+    return (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version >= 2
+    )
 
 
 def _validate_linked_runtime_entities(package_path: Path) -> list[str]:
