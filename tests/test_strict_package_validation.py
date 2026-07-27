@@ -300,12 +300,60 @@ def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
     assert report["errors"] == []
 
 
+def test_strict_validation_rejects_linked_relation_masked_as_not_meaningful(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    build_result, build_code = _build_fixture(tmp_path, capsys)
+    assert build_code == 0
+    package = Path(build_result["package"])
+    deck_dir = next((package / "CustomConfig").iterdir())
+    write_json(
+        package / "reports" / "card_behavior_plan_report.json",
+        {
+            "rows": [
+                {
+                    "claim_id": "masked_linked_owner",
+                    "card_id": "SW_448",
+                    "source_card_id": "SW_448",
+                    "runtime_card_id": "EX1_625t",
+                    "link_kind": "hero_power_transform",
+                    "behavior_block": "BeforeUseHeroPowerBonus",
+                    "semantic_score": {
+                        "semantic_reason": "hero_power_before_use",
+                    },
+                    "meaningful_runtime_surface": False,
+                }
+            ]
+        },
+    )
+    write_json(
+        deck_dir / "EX1_625t.json",
+        {
+            "GameCardId": "EX1_625t",
+            "ConfigComment": "curated linked runtime owner",
+            "BeforeUseHeroPowerBonus": {
+                "values": [{"condition": "*", "value": "10"}]
+            },
+        },
+    )
+
+    report = validate_complete_package(package)
+
+    assert report["status"] == "failed"
+    assert any(
+        error.startswith("linked_runtime_entity_relation_invalid:")
+        for error in report["errors"]
+    )
+
+
 @pytest.mark.parametrize(
     (
         "source_card_id",
         "runtime_card_id",
         "link_kind",
         "behavior_block",
+        "semantic_reason",
     ),
     [
         (
@@ -313,24 +361,35 @@ def test_strict_validation_accepts_exact_curated_linked_runtime_relation(
             "SW_448",
             "hero_power_transform",
             "BeforeUseHeroPowerBonus",
+            "hero_power_transform",
         ),
         (
             "SW_448",
             "WRONG_TARGET",
             "hero_power_transform",
             "BeforeUseHeroPowerBonus",
+            "hero_power_transform",
         ),
         (
             "SW_448",
             "EX1_625t",
             "wrong_link",
             "BeforeUseHeroPowerBonus",
+            "hero_power_before_use",
         ),
         (
             "SW_448",
             "EX1_625t",
             "hero_power_transform",
             "OnBoardBonus",
+            "hero_power_before_use",
+        ),
+        (
+            "SW_448",
+            "EX1_625t",
+            "hero_power_transform",
+            "BeforePlayCardBonus",
+            "hero_power_before_use",
         ),
     ],
 )
@@ -341,6 +400,7 @@ def test_strict_validation_rejects_non_curated_linked_runtime_relation(
     runtime_card_id: str,
     link_kind: str,
     behavior_block: str,
+    semantic_reason: str,
 ) -> None:
     build_result, build_code = _build_fixture(tmp_path, capsys)
     assert build_code == 0
@@ -357,7 +417,7 @@ def test_strict_validation_rejects_non_curated_linked_runtime_relation(
                     "link_kind": link_kind,
                     "behavior_block": behavior_block,
                     "semantic_score": {
-                        "semantic_reason": "hero_power_transform",
+                        "semantic_reason": semantic_reason,
                     },
                     "meaningful_runtime_surface": True,
                 }

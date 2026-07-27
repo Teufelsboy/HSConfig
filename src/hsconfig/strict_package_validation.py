@@ -7,6 +7,7 @@ from typing import Any
 from hsconfig.package_io import read_optional_profile, read_required_baseline
 from hsconfig.runtime_entity_owner import (
     LINKED_RUNTIME_ENTITY_RELATION_INVALID,
+    linked_runtime_entity_semantic_surface,
     runtime_entity_owner_relation_is_authorized,
 )
 from hsconfig.validate_package import validate_config_package
@@ -101,11 +102,6 @@ def _linked_runtime_relations(
     for row in behavior_plan.get("rows", []):
         if not isinstance(row, dict):
             continue
-        if (
-            row.get("meaningful_runtime_surface") is not True
-            or not row.get("behavior_block")
-        ):
-            continue
         source_card_id = str(
             row.get("source_card_id") or row.get("card_id") or ""
         ).strip()
@@ -122,18 +118,28 @@ def _linked_runtime_relations(
             )
         ):
             continue
-        semantic_reason = _runtime_owner_semantic_reason(row)
+        behavior_block = str(row.get("behavior_block") or "").strip()
+        semantic_surface = linked_runtime_entity_semantic_surface(
+            behavior_block=behavior_block,
+            link_kind=link_kind,
+        )
         relation = {
             "source_card_id": source_card_id,
-            "semantic_reason": semantic_reason,
+            "semantic_reason": semantic_surface or "",
             "link_kind": link_kind,
             "runtime_card_id": runtime_card_id,
         }
-        if not runtime_entity_owner_relation_is_authorized(**relation):
+        if (
+            row.get("meaningful_runtime_surface") is not True
+            or semantic_surface is None
+            or not runtime_entity_owner_relation_is_authorized(**relation)
+        ):
             errors.append(
                 f"{LINKED_RUNTIME_ENTITY_RELATION_INVALID}: "
-                f"source={source_card_id}, semantic={semantic_reason}, "
-                f"link={link_kind}, runtime={runtime_card_id}"
+                f"source={source_card_id}, "
+                f"semantic={semantic_surface or 'unauthorized'}, "
+                f"link={link_kind}, block={behavior_block or 'missing'}, "
+                f"runtime={runtime_card_id}"
             )
             continue
         relations.append(relation)
@@ -149,18 +155,3 @@ def _linked_runtime_relations(
         ),
         errors,
     )
-
-
-def _runtime_owner_semantic_reason(row: dict[str, Any]) -> str:
-    semantic_score = row.get("semantic_score")
-    semantic_reason = (
-        str(semantic_score.get("semantic_reason", "")).strip()
-        if isinstance(semantic_score, dict)
-        else ""
-    )
-    if (
-        row.get("behavior_block") == "BeforeUseHeroPowerBonus"
-        and semantic_reason == "hero_power_transform"
-    ):
-        return "hero_power_before_use"
-    return semantic_reason

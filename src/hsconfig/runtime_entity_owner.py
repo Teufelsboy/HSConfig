@@ -69,6 +69,22 @@ def runtime_entity_owner_relation_is_authorized(
     ) == AUTHORIZED_HERO_POWER_OWNER
 
 
+def linked_runtime_entity_semantic_surface(
+    *,
+    behavior_block: str,
+    link_kind: str,
+) -> str | None:
+    if (
+        behavior_block,
+        link_kind,
+    ) == (
+        "BeforeUseHeroPowerBonus",
+        AUTHORIZED_HERO_POWER_OWNER[2],
+    ):
+        return AUTHORIZED_HERO_POWER_OWNER[1]
+    return None
+
+
 def partition_runtime_entity_owner_rows(
     rows: Iterable[Mapping[str, Any]],
 ) -> tuple[list[Mapping[str, Any]], list[dict[str, Any]]]:
@@ -132,6 +148,7 @@ __all__ = (
     "LINKED_RUNTIME_ENTITY_OWNER_COLLISION",
     "LINKED_RUNTIME_ENTITY_RELATION_INVALID",
     "RuntimeEntityOwner",
+    "linked_runtime_entity_semantic_surface",
     "partition_runtime_entity_owner_rows",
     "resolve_runtime_entity_owner",
     "runtime_entity_owner_relation_is_authorized",
