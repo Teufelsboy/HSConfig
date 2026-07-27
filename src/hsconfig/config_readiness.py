@@ -122,6 +122,7 @@ def build_config_readiness_report(
     emitted_cardid_files: (
         Mapping[str, Any] | list[str] | tuple[str, ...] | set[str] | None
     ) = None,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     accepted_behavior_rows, owner_collisions = (
         partition_runtime_entity_owner_rows(
@@ -153,6 +154,18 @@ def build_config_readiness_report(
         str(row["source_card_id"]): str(row["runtime_surface"])
         for row in linked_runtime_entities.values()
     }
+    ledger_cards = (
+        runtime_surface_ledger.get("cards", {})
+        if isinstance(runtime_surface_ledger, Mapping)
+        and isinstance(runtime_surface_ledger.get("cards"), Mapping)
+        else {}
+    )
+    ledger_links = (
+        runtime_surface_ledger.get("linked_runtime_entities", {})
+        if isinstance(runtime_surface_ledger, Mapping)
+        and isinstance(runtime_surface_ledger.get("linked_runtime_entities"), Mapping)
+        else {}
+    )
     semantic_suppression_missing_links = _cards_from_semantic_suppression(
         card_behavior_plan
     )
@@ -202,6 +215,22 @@ def build_config_readiness_report(
                 globalvalue_cards=globalvalue_cards,
                 linked_runtime_source_cards=set(linked_runtime_sources),
             )
+            ledger_record = ledger_cards.get(card_id)
+            if isinstance(ledger_record, Mapping):
+                runtime_surfaces = [
+                    str(surface)
+                    for surface in ledger_record.get("runtime_surfaces", [])
+                ]
+                lane, missing = _physical_lane(
+                    card_id=card_id,
+                    runtime_surfaces=runtime_surfaces,
+                    linked_runtime_entities=ledger_links,
+                    has_semantic_suppression=(
+                        card_id in semantic_suppression_missing_links
+                    ),
+                    fallback_lane=lane,
+                    fallback_missing=missing,
+                )
         else:
             runtime_surfaces = []
             lane, missing = "report_only_supported", "none"
@@ -264,7 +293,45 @@ def build_config_readiness_report(
         "cards": rows,
         "linked_runtime_entities": linked_runtime_entities,
         "runtime_entity_owner_collisions": owner_collisions,
+        "surface_ledger_sha256": (
+            str(runtime_surface_ledger.get("surface_ledger_sha256", ""))
+            if isinstance(runtime_surface_ledger, Mapping)
+            else ""
+        ),
     }
+
+
+def _physical_lane(
+    *,
+    card_id: str,
+    runtime_surfaces: list[str],
+    linked_runtime_entities: Mapping[str, Any],
+    has_semantic_suppression: bool,
+    fallback_lane: str,
+    fallback_missing: str,
+) -> tuple[str, str]:
+    # A real file proves that a surface exists, not that a separate semantic
+    # suppression disappeared. Preserve the stronger diagnostic reason.
+    if has_semantic_suppression and RUNTIME_SURFACE_MULLIGAN not in runtime_surfaces:
+        return fallback_lane, fallback_missing
+    if any(surface.endswith(".json") and surface not in {
+        RUNTIME_SURFACE_MULLIGAN,
+        RUNTIME_SURFACE_COMBO,
+        RUNTIME_SURFACE_GLOBALVALUES,
+    } for surface in runtime_surfaces):
+        return "runtime_emitted", "none"
+    if any(
+        isinstance(row, Mapping)
+        and str(row.get("source_card_id", "")) == card_id
+        and row.get("runtime_emitted") is True
+        for row in linked_runtime_entities.values()
+    ):
+        return "linked_runtime_source", "none"
+    if RUNTIME_SURFACE_MULLIGAN in runtime_surfaces:
+        return "mulligan_only", "none"
+    if RUNTIME_SURFACE_COMBO in runtime_surfaces:
+        return "runtime_emitted", "none"
+    return fallback_lane, fallback_missing
 
 
 def _cards_from_deck(

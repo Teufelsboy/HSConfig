@@ -86,6 +86,52 @@ def hold_cards(plan: Mapping[str, Any]) -> set[str]:
     }
 
 
+def test_imbuemage_fir_911_physical_mulligan_parity_uses_surface_ledger(
+    tmp_path: Path,
+) -> None:
+    deck = next(row for row in load_archetype_matrix() if row["deck_name"] == "ImbueMage")
+    prepared = prepare_fixture_deck(tmp_path / "ImbueMage", deck)
+    assert prepared["exit_code"] == 0
+
+    reports = prepared["out"] / "reports"
+    deck_dir = next((prepared["out"] / "CustomConfig").iterdir())
+    mulligan = read_json(deck_dir / "Mulligan.json")
+    readiness = read_json(reports / "per_card_config_readiness_report.json")
+    ledger = read_json(reports / "runtime_surface_ledger.json")
+    explainability = read_json(reports / "source_to_runtime_explainability.json")
+    operator = read_json(reports / "operator_summary.json")
+    compiled_holds = {
+        str(row["mulligan"])
+        for row in mulligan["Mulligan"]["values"]
+        if row.get("value") == "hold"
+    }
+
+    assert "FIR_911" in compiled_holds
+    assert readiness["cards"]["FIR_911"]["runtime_surfaces"] == ["Mulligan.json"]
+    assert readiness["cards"]["FIR_911"]["readiness_lane"] == "mulligan_only"
+    assert ledger["cards"]["FIR_911"]["runtime_surfaces"] == ["Mulligan.json"]
+    assert operator["surface_ledger_sha256"] == readiness["surface_ledger_sha256"]
+    assert readiness["surface_ledger_sha256"] == explainability["surface_ledger_sha256"]
+
+
+def test_shadowpriest_linked_hero_power_is_separate_from_darkbishop_source_record(
+    tmp_path: Path,
+) -> None:
+    deck = next(row for row in load_archetype_matrix() if row["deck_name"] == "ShadowPriest")
+    prepared = prepare_fixture_deck(tmp_path / "ShadowPriest", deck)
+    assert prepared["exit_code"] == 0
+
+    reports = prepared["out"] / "reports"
+    ledger = read_json(reports / "runtime_surface_ledger.json")
+    readiness = read_json(reports / "per_card_config_readiness_report.json")
+
+    assert ledger["cards"]["SW_448"]["runtime_surfaces"] == []
+    assert ledger["linked_runtime_entities"]["EX1_625t"]["source_card_id"] == "SW_448"
+    assert ledger["linked_runtime_entities"]["EX1_625t"]["runtime_card_id"] == "EX1_625t"
+    assert ledger["linked_runtime_entities"]["EX1_625t"]["runtime_emitted"] is True
+    assert readiness["cards"]["SW_448"]["readiness_lane"] == "linked_runtime_source"
+
+
 def test_audited_cards_emit_no_semantically_invalid_runtime_block(
     tmp_path: Path,
 ) -> None:
@@ -317,6 +363,7 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
         deck_identity = read_json(reports / "deck_identity.json")
         metadata = read_json(reports / "semantic_enrichment_report.json")
         readiness = read_json(reports / "per_card_config_readiness_report.json")
+        surface_ledger = read_json(reports / "runtime_surface_ledger.json")
         coverage = read_json(reports / "claim_coverage_report.json")
         explainability = read_json(reports / "source_to_runtime_explainability.json")
         roles = read_json(reports / "research" / "card_role_map.json")
@@ -326,6 +373,9 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
         assert deck_identity["sideboard_count"] == 3
         assert coverage["total_cards"] == len(deck_identity["cards"])
         assert readiness["summary"]["total_cards"] == len(deck_identity["cards"])
+        assert summary["surface_ledger_sha256"] == readiness["surface_ledger_sha256"]
+        assert readiness["surface_ledger_sha256"] == explainability["surface_ledger_sha256"]
+        assert surface_ledger["surface_ledger_sha256"] == readiness["surface_ledger_sha256"]
         metadata_by_card = {row["card_id"]: row for row in metadata["cards"]}
         explainability_by_card = {
             row["card_id"]: row for row in explainability["card_rows"]
@@ -346,6 +396,8 @@ def test_multideck_source_backed_prepare(tmp_path: Path, deck_name: str, deck_co
             assert metadata_by_card[card_id]["runtime_eligible"] is False
             assert readiness["cards"][card_id]["deck_zone"] == "sideboard"
             assert readiness["cards"][card_id]["runtime_surfaces"] == []
+            assert surface_ledger["cards"][card_id]["runtime_surfaces"] == []
+            assert surface_ledger["cards"][card_id]["deck_zone"] == "sideboard"
             assert readiness["cards"][card_id]["readiness_lane"] == "report_only_supported"
             assert readiness["cards"][card_id]["first_missing_link"] == "none"
             assert explainability_by_card[card_id]["deck_zone"] == "sideboard"

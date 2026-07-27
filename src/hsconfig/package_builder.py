@@ -35,6 +35,7 @@ from hsconfig.models import InputManifest
 from hsconfig.mulligan_plan import build_mulligan_plan, mulligan_rule_key
 from hsconfig.operator_summary import build_operator_summary
 from hsconfig.output_ownership_manifest import build_output_ownership_manifest
+from hsconfig.runtime_surface_ledger import build_runtime_surface_ledger
 from hsconfig.package_derivation_receipt import (
     DERIVATION_RECEIPT_PATH,
     build_package_authority_context,
@@ -407,6 +408,27 @@ def build_package_payload(
     card_behavior_plan["compiler_runtime_row_conflicts"] = (
         cardid_behavior_files.runtime_row_conflicts
     )
+    baseline_receipt = load_globalvalues_baseline(args.runtime_root)
+    baseline = baseline_receipt["baseline"]
+    globalvalues = compile_globalvalues(baseline, gameplan_contract)
+    compiled_mulligan = compile_mulligan(gameplan_contract)
+    combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
+    runtime_surface_ledger = build_runtime_surface_ledger(
+        deck_identity=deck_identity,
+        compiled_mulligan=compiled_mulligan,
+        compiled_globalvalues=globalvalues["config"],
+        compiled_combo=combo,
+        compiled_cardid_files=cardid_behavior_files,
+        linked_runtime_owners=[
+            {
+                "source_card_id": str(row.get("source_card_id") or row.get("card_id", "")),
+                "runtime_card_id": str(row.get("runtime_card_id") or row.get("card_id", "")),
+                "link_kind": str(row.get("link_kind") or "self"),
+            }
+            for row in card_behavior_plan["rows"]
+            if isinstance(row, dict) and row.get("meaningful_runtime_surface") is True
+        ],
+    )
     config_readiness_report = build_config_readiness_report(
         deck_identity=deck_identity,
         claim_coverage=guide_claim_bundle["coverage"],
@@ -416,6 +438,7 @@ def build_package_payload(
         combo_plan=combo_plan,
         global_values_authority_matrix=global_values_authority_matrix,
         emitted_cardid_files=cardid_behavior_files,
+        runtime_surface_ledger=runtime_surface_ledger,
     )
     guide_source_depth_report = build_guide_source_depth_report(
         guide_claim_bundle=guide_claim_bundle,
@@ -424,19 +447,15 @@ def build_package_payload(
     )
     surface_intent = build_surface_intent(gameplan_contract)
 
-    baseline_receipt = load_globalvalues_baseline(args.runtime_root)
-    baseline = baseline_receipt["baseline"]
-    globalvalues = compile_globalvalues(baseline, gameplan_contract)
     _reset_generated_package_dirs(deck_dir, reports_dir)
     derivation_receipt_path = out / DERIVATION_RECEIPT_PATH
     if derivation_receipt_path.is_file():
         derivation_receipt_path.unlink()
     write_json(deck_dir / "GlobalValues.json", globalvalues["config"])
-    write_json(deck_dir / "Mulligan.json", compile_mulligan(gameplan_contract))
+    write_json(deck_dir / "Mulligan.json", compiled_mulligan)
     for filename, payload in cardid_behavior_files.items():
         write_json(deck_dir / filename, payload)
 
-    combo = compile_combo(gameplan_contract, sequences=combo_plan["combos"])
     if combo is not None:
         write_json(deck_dir / "Combo.json", combo)
 
@@ -521,6 +540,7 @@ def build_package_payload(
             plan_input_diagnostics,
         )
     write_json(reports_dir / "per_card_config_readiness_report.json", config_readiness_report)
+    write_json(reports_dir / "runtime_surface_ledger.json", runtime_surface_ledger)
     write_json(reports_dir / "guide_source_depth_report.json", guide_source_depth_report)
     source_contract_audit_report = build_source_contract_audit(
         deck_name=args.deck_name,
@@ -557,6 +577,7 @@ def build_package_payload(
         build_source_to_runtime_explainability_report(
             source_contract_audit_report,
             card_behavior_plan=card_behavior_plan,
+            runtime_surface_ledger=runtime_surface_ledger,
         )
     )
     write_json(
@@ -628,6 +649,12 @@ def build_package_payload(
         package_derivation=package_derivation,
         package_authority=package_authority,
         **operator_summary_kwargs,
+    )
+    assert operator_summary["surface_ledger_sha256"] == config_readiness_report[
+        "surface_ledger_sha256"
+    ]
+    assert config_readiness_report["surface_ledger_sha256"] == (
+        source_to_runtime_explainability_report["surface_ledger_sha256"]
     )
     (reports_dir / "card_semantic_audit.md").write_text(
         render_semantic_audit_markdown(

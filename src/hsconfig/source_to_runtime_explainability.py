@@ -54,6 +54,7 @@ def build_source_to_runtime_explainability_report(
     audit: Mapping[str, Any] | None = None,
     runtime_files: Sequence[str] | set[str] | None = None,
     card_behavior_plan: Mapping[str, Any] | None = None,
+    runtime_surface_ledger: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project source-contract audit rows into operator-facing diagnostics.
 
@@ -83,7 +84,10 @@ def build_source_to_runtime_explainability_report(
         audit_report,
         ownership_by_claim_id=ownership_by_claim_id,
     )
-    card_rows = _card_rows(audit_report, claim_rows)
+    card_rows = _apply_runtime_surface_ledger(
+        _card_rows(audit_report, claim_rows),
+        runtime_surface_ledger,
+    )
     summary = {
         "cards_total": len(card_rows),
         "claims_total": len(claim_rows),
@@ -126,8 +130,37 @@ def build_source_to_runtime_explainability_report(
             for row in runtime_entity_transitions
         ],
         "runtime_entity_owner_collisions": owner_collisions,
+        "surface_ledger_sha256": (
+            str(runtime_surface_ledger.get("surface_ledger_sha256", ""))
+            if isinstance(runtime_surface_ledger, Mapping)
+            else ""
+        ),
         "operator_attention": _operator_attention_rows(card_rows),
     }
+
+
+def _apply_runtime_surface_ledger(
+    rows: list[dict[str, Any]],
+    ledger: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    cards = ledger.get("cards", {}) if isinstance(ledger, Mapping) else {}
+    if not isinstance(cards, Mapping):
+        return rows
+    projected: list[dict[str, Any]] = []
+    for row in rows:
+        physical = cards.get(str(row.get("card_id", "")))
+        if not isinstance(physical, Mapping):
+            projected.append(row)
+            continue
+        projected.append(
+            {
+                **row,
+                "runtime_surfaces": [
+                    str(surface) for surface in physical.get("runtime_surfaces", [])
+                ],
+            }
+        )
+    return projected
 
 
 def _claim_rows(

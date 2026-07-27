@@ -390,8 +390,20 @@ def build_operator_summary(
         ),
         semantic_handoff_status=str(semantic_handoff["semantic_handoff_status"]),
     )
+    readiness_ledger_hash = str(
+        (config_readiness_report or {}).get("surface_ledger_sha256", "")
+    )
+    explainability_ledger_hash = str(
+        (source_to_runtime_explainability_report or {}).get(
+            "surface_ledger_sha256", ""
+        )
+    )
+    if readiness_ledger_hash and explainability_ledger_hash:
+        if readiness_ledger_hash != explainability_ledger_hash:
+            raise ValueError("runtime_surface_ledger_hash_mismatch")
     summary = {
         "schema_version": 1,
+        "surface_ledger_sha256": readiness_ledger_hash or explainability_ledger_hash,
         "deck": {
             "name": deck_name,
             "deck_code_hash": f"sha256:{hashlib.sha256(deck_code.encode('utf-8')).hexdigest()}",

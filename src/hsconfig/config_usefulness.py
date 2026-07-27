@@ -51,7 +51,11 @@ def build_config_usefulness(
         }
 
     mulligan = _mulligan_surface(mulligan_plan_report or {})
-    cardid = _cardid_surface(card_behavior_plan_report or {}, summary)
+    cardid = _cardid_surface(
+        card_behavior_plan_report or {},
+        summary,
+        config_readiness_report or {},
+    )
     combo = _combo_surface(combo_plan_report or {}, summary)
     globalvalues = _globalvalues_surface(globalvalues_profile_report or {})
     first_gap = _first_gap(summary, mulligan, cardid, combo, globalvalues)
@@ -73,6 +77,9 @@ def build_config_usefulness(
 
     return {
         "schema_version": 1,
+        "surface_ledger_sha256": (
+            str((config_readiness_report or {}).get("surface_ledger_sha256", ""))
+        ),
         "status": status,
         "headline": _headline(status, first_gap),
         "runtime_permission_impact": "none",
@@ -157,7 +164,11 @@ def _mulligan_surface(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _cardid_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+def _cardid_surface(
+    report: dict[str, Any],
+    summary: dict[str, Any],
+    readiness_report: dict[str, Any],
+) -> dict[str, Any]:
     rows = _list(report.get("rows"))
     meaningful_rows = [
         row
@@ -166,10 +177,22 @@ def _cardid_surface(report: dict[str, Any], summary: dict[str, Any]) -> dict[str
         and row.get("meaningful_runtime_surface") is True
         and bool(row.get("behavior_block"))
     ]
-    cards = sorted({str(row.get("card_id")) for row in meaningful_rows if row.get("card_id")})
+    physical_cards = {
+        str(card_id)
+        for card_id, row in (readiness_report.get("cards", {}) or {}).items()
+        if isinstance(row, dict)
+        and any(
+            str(surface).endswith(".json")
+            and str(surface) not in {"Mulligan.json", "Combo.json", "GlobalValues.json"}
+            for surface in row.get("runtime_surfaces", [])
+        )
+    }
+    cards = sorted(physical_cards) if physical_cards else sorted(
+        {str(row.get("card_id")) for row in meaningful_rows if row.get("card_id")}
+    )
     report_only_supported = _int(summary.get("report_only_supported"))
     runtime_emitted = _int(summary.get("runtime_emitted"))
-    if meaningful_rows:
+    if physical_cards or meaningful_rows:
         status = "rich"
     elif report_only_supported > 0:
         status = "report_only"
